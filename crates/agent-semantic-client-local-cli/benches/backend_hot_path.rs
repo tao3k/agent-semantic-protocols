@@ -14,7 +14,7 @@ fn backend_hot_path(c: &mut Criterion) {
     let request = ClientRequest::new(ClientMethod::Search, root)
         .with_language("rust")
         .with_forwarded_args(vec![
-            "fzf".to_string(),
+            "lexical".to_string(),
             "cache replay".to_string(),
             "--view=seeds".to_string(),
             ".".to_string(),

@@ -166,7 +166,7 @@ fn frontier_receipt_out_is_owned_by_client_runtime() {
     let parsed = parse_client_args(
         vec![
             "search".to_string(),
-            "fzf".to_string(),
+            "lexical".to_string(),
             "semantic-fact-frontier-receipt".to_string(),
             "owner".to_string(),
             "tests".to_string(),
@@ -185,7 +185,7 @@ fn frontier_receipt_out_is_owned_by_client_runtime() {
     assert_eq!(
         parsed.forwarded_args,
         vec![
-            "fzf",
+            "lexical",
             "semantic-fact-frontier-receipt",
             "owner",
             "tests",

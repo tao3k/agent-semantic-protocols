@@ -685,7 +685,7 @@ fn fast_search_needs_provider_context(
     args: &[String],
     provider: &agent_semantic_hook::ActivatedProvider,
 ) -> bool {
-    if matches!(args.get(1).map(String::as_str), Some("pipe" | "fzf")) {
+    if matches!(args.get(1).map(String::as_str), Some("pipe" | "lexical")) {
         if provider.search_capabilities.dependency_topology
             && fast_search_requests_dependency_topology(args)
         {
@@ -700,7 +700,7 @@ fn fast_search_needs_provider_context(
         && matches!(args.get(1).map(String::as_str), Some("owner"))
         && matches!(args.get(3).map(String::as_str), Some("items"))
     {
-        return provider.search_capabilities.owner_items;
+        return true;
     }
     if matches!(args.get(1).map(String::as_str), Some("ingest")) {
         return provider.search_capabilities.semantic_facts
@@ -780,7 +780,7 @@ fn is_guide_help(args: &[String]) -> bool {
 
 fn provider_usage() -> String {
     format!(
-        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ...\nsearch: pipe|fzf|deps|dependency|ingest|failure|reasoning|owner|guide|prime\nsearch deps: current manifest dependency topology and dependency-owned next actions",
+        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ...\nsearch: pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime\nsearch deps: current manifest dependency topology and dependency-owned next actions",
         SUPPORTED_LANGUAGES.join("|")
     )
 }

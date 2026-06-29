@@ -1,6 +1,8 @@
 //! Codex plugin installation path for `asp install plugin --codex`.
 
-use super::hook_runtime_subagent::install_codex_asp_explorer_agent;
+use super::hook_runtime_subagent::{
+    install_codex_asp_explorer_agent, remove_project_codex_asp_explorer_agents,
+};
 use agent_semantic_hook::{
     install_codex_user_project_trust, merge_codex_asp_explorer_role_config,
     remove_codex_managed_hook_blocks, validate_codex_config_toml,
@@ -60,7 +62,15 @@ pub(super) fn install_codex_plugin_hooks(
     let marketplace_name = ASP_CODEX_PLUGIN_MARKETPLACE_NAME;
     let project_config_path = install_codex_project_plugin_config(project_root)?;
     let trust_config_path = install_codex_user_project_trust(&project_config_path)?;
-    let subagent_path = install_codex_asp_explorer_agent(project_root, subagent_model)?;
+    let codex_agent_config_path = global_codex_config_path()?;
+    let codex_agent_home = codex_agent_config_path
+        .parent()
+        .ok_or_else(|| "global Codex config path has no parent".to_string())?
+        .to_path_buf();
+    fs::create_dir_all(&codex_agent_home)
+        .map_err(|error| format!("failed to create {}: {error}", codex_agent_home.display()))?;
+    let subagent_path = install_codex_asp_explorer_agent(&codex_agent_home, subagent_model)?;
+    remove_project_codex_asp_explorer_agents(project_root)?;
     let codex_home = match scope {
         CodexPluginScope::Project => Some(project_root.join(".codex")),
         CodexPluginScope::Global => None,
@@ -101,7 +111,7 @@ pub(super) fn install_codex_plugin_hooks(
                 .unwrap_or_default()
         }
     };
-    ensure_codex_asp_explorer_role_config(&project_config_path)?;
+    ensure_codex_asp_explorer_role_config(&codex_agent_config_path)?;
     let config_path = match scope {
         CodexPluginScope::Project => project_root.join(".codex").join("config.toml"),
         CodexPluginScope::Global => global_codex_config_path()?,
@@ -109,12 +119,13 @@ pub(super) fn install_codex_plugin_hooks(
     Ok((
         config_path,
         format!(
-            " pluginScope={} pluginManifest={} pluginMarketplace={} projectConfig={} projectTrustConfig={} subagent={}{}",
+            " pluginScope={} pluginManifest={} pluginMarketplace={} projectConfig={} projectTrustConfig={} codexAgentConfig={} subagent={}{}",
             scope.label(),
             super::display_path(project_root, &plugin_manifest),
             marketplace_name,
             super::display_path(project_root, &project_config_path),
             super::display_path(project_root, &trust_config_path),
+            super::display_path(project_root, &codex_agent_config_path),
             super::display_path(project_root, &subagent_path),
             installed_path,
         ),

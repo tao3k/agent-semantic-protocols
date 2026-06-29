@@ -104,7 +104,7 @@ fn builtin_manifests_include_document_language_providers() {
         ]
     );
     assert_eq!(
-        org.routes.fzf.argv,
+        org.routes.lexical.argv,
         [
             "asp",
             "org",
@@ -147,7 +147,7 @@ fn builtin_manifests_include_document_language_providers() {
         ]
     );
     assert_eq!(
-        md.routes.fzf.argv,
+        md.routes.lexical.argv,
         [
             "asp",
             "md",

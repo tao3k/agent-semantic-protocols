@@ -107,7 +107,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
             "kind": "query",
             "role": "term",
             "value": query,
-            "action": "fzf"
+            "action": "lexical"
         }));
     }
 
@@ -355,7 +355,7 @@ fn provider_context_for_dependency_seed<'a>(
     candidates: &[Candidate],
 ) -> Option<&'a ProviderGraphFactsContext<'a>> {
     let context = provider_context?;
-    if include_deps(surfaces) && surface != "search-fzf" {
+    if include_deps(surfaces) && surface != "search-lexical" {
         return Some(context);
     }
     let search_pipe_dependency_query = surface == "search-pipe"

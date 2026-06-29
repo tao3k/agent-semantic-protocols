@@ -47,8 +47,8 @@ graph_action_specs! {
     "symbol" => "symbol", "symbol", "S", "symbol";
     "item-symbol" => "item", "symbol", "I", "syntax";
     "hot" => "hot", "symbol", "H", "syntax";
-    "text" => "query", "term", "Q", "fzf";
-    "fzf" => "query", "term", "Q", "fzf";
+    "text" => "query", "term", "Q", "lexical";
+    "lexical" => "query", "term", "Q", "lexical";
     "query" => "query", "term", "Q", "query";
     "dependency" => "dependency", "pkg", "D", "dependency";
     "deps" => "dependency", "pkg", "D", "deps";
@@ -346,7 +346,7 @@ fn packet_root_action(packet: &Value) -> Option<GraphAction> {
             action: None,
             syntax_query: None,
         }),
-        "fzf" => {
+        "lexical" => {
             let action = packet
                 .get("header")
                 .and_then(|header| header.get("fields"))
@@ -354,7 +354,7 @@ fn packet_root_action(packet: &Value) -> Option<GraphAction> {
                 .and_then(header_field_scalar)
                 .filter(|skipped| skipped == "code-shaped-query")
                 .map(|_| "query")
-                .unwrap_or("fzf");
+                .unwrap_or("lexical");
             Some(GraphAction {
                 kind: action.to_string(),
                 target: query.to_string(),

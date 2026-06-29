@@ -34,8 +34,8 @@ fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
 }
 
 #[test]
-fn asp_fzf_source_index_warm_path_stays_inside_scenario_gate() {
-    super::support::asp_fzf_source_index_warm_path_stays_inside_scenario_gate();
+fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
+    super::support::asp_lexical_source_index_warm_path_stays_inside_scenario_gate();
 }
 
 #[test]

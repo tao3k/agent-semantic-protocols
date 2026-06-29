@@ -9,6 +9,7 @@ protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 [aspSessionPolicy]
 enabled = true
 residentChildName = "asp-explore"
+residentCodexAgentName = "asp_explorer"
 mainAllowedAspCommandPrefixes = [
   "help",
   "--help",

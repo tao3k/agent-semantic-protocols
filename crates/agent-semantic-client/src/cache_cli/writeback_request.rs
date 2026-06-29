@@ -135,7 +135,7 @@ fn is_owner_items_search(args: &[String]) -> bool {
 
 fn is_search_packet_seed_search(args: &[String]) -> bool {
     args.first()
-        .is_some_and(|arg| arg == "fzf" || arg == "pipe")
+        .is_some_and(|arg| arg == "lexical" || arg == "pipe")
         && is_seed_search_without_code(args)
 }
 

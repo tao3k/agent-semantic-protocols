@@ -29,11 +29,14 @@ pub use config::{BackendMode, ClientConfig, PrivacyMode};
 pub use project_context::{ProjectContext, StateLayout};
 pub use receipt::{
     AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID, AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID,
-    ClientReceipt, ExecutionRoute, NativeProvenance, ProviderCommandReceipt,
+    ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbRuntimePragmasReceipt,
+    ClientDbSqliteReceipt, ClientReceipt, ExecutionRoute, NativeProvenance, ProviderCommandReceipt,
 };
 pub use types::{
     ByteCount, CacheArtifactId, CacheExportMethod, CacheGenerationId, CacheStatus, ClientCachePath,
-    ClientDbJournalMode, ClientDbStatus, CompactArtifactId, ElapsedMillis, LanguageId, ProviderId,
+    ClientDbBackend, ClientDbEngineDurability, ClientDbFileName, ClientDbFutureBackend,
+    ClientDbJournalMode, ClientDbStatus, ClientRepoId, ClientScopeId, ClientStateLayoutVersion,
+    ClientWorkspaceId, CompactArtifactId, ElapsedMillis, LanguageId, ProviderId,
     SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
     SyntaxQueryAstAbiFingerprint, SyntaxQueryGrammarId, SyntaxQueryGrammarProfileVersion,
     SyntaxQuerySelector,

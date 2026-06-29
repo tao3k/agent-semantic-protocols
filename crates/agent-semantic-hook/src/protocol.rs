@@ -84,7 +84,7 @@ fn action_blocks(action: ActionPolicy) -> bool {
 pub struct HookRoutes {
     pub prime: CommandTemplate,
     pub owner: CommandTemplate,
-    pub fzf: CommandTemplate,
+    pub lexical: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<CommandTemplate>,
     pub ingest: CommandTemplate,
@@ -185,7 +185,7 @@ pub enum DecisionRouteKind {
     Prime,
     Owner,
     Query,
-    Fzf,
+    Lexical,
     Read,
     Deps,
     Api,

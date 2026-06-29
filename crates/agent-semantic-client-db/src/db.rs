@@ -57,10 +57,7 @@ pub struct ClientDbReport {
     pub reason: Option<String>,
 }
 
-fn serialize_client_db_status<S>(
-    status: &ClientDbStatus,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_client_db_status<S>(status: &ClientDbStatus, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {

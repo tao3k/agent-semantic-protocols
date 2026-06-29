@@ -8,6 +8,7 @@ mod cache_replay;
 pub mod cli;
 mod cli_args;
 mod compact_mode;
+mod dynamic_search;
 mod native_prime;
 mod provider_method;
 mod search_history;
@@ -21,6 +22,12 @@ mod tools_cli;
 
 pub use agent_semantic_client_core::LanguageId;
 pub use cli::{run_cli_args, run_cli_from_env};
+pub use dynamic_search::{
+    DynamicOwnerItem, DynamicOwnerItemsRequest, DynamicOwnerPath, DynamicOwnerQuery,
+    DynamicSearchLanguage, DynamicSearchRoots, LexicalOverlayCandidateHit, LexicalOverlayDocument,
+    LexicalOverlaySearchHit, LexicalOverlaySearchRequest, render_dynamic_owner_items_code,
+    render_dynamic_owner_items_frontier, search_lexical_overlay, search_lexical_overlay_candidates,
+};
 pub use source_index::{
     SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
     SourceIndexRefreshReport, SourceIndexSourceKind, lookup_source_index,

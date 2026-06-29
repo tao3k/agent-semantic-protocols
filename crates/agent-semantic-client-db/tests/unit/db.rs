@@ -68,13 +68,23 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
     assert!(engine.db_path().starts_with(&state_home));
     assert!(!root.join(".cache").join("agent-semantic-protocol").exists());
 
-    let missing = engine.inspect_sqlite();
+    let missing = engine.inspect_backend();
     assert_eq!(missing.status, ClientDbStatus::Missing);
     assert!(!engine.db_path().exists());
     let engine_report = engine.inspect();
     assert_eq!(engine_report.backend, SQLITE_V1_BACKEND);
     assert_eq!(engine_report.future_backend, TURSO_BACKEND);
     assert_eq!(engine_report.layout_version, STATE_LAYOUT_VERSION);
+    assert_eq!(engine_report.db_file_name, "client.sqlite3");
+    assert_eq!(engine_report.schema_version, 1);
+    assert_eq!(engine_report.durability, "sqlite-file");
+    assert!(!engine_report.features.async_io);
+    assert!(!engine_report.features.concurrent_writes);
+    assert!(!engine_report.features.fts);
+    assert!(!engine_report.features.vector);
+    assert!(!engine_report.features.overlay_search);
+    assert!(!engine_report.features.sync);
+    assert!(!engine_report.features.encryption);
     assert_eq!(engine_report.db_path, state.paths.client_db_path);
     assert_eq!(
         engine_report.manifest_path,
@@ -87,6 +97,16 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
     assert_eq!(engine_report_json["backend"], SQLITE_V1_BACKEND);
     assert_eq!(engine_report_json["futureBackend"], TURSO_BACKEND);
     assert_eq!(engine_report_json["layoutVersion"], STATE_LAYOUT_VERSION);
+    assert_eq!(engine_report_json["dbFileName"], "client.sqlite3");
+    assert_eq!(engine_report_json["schemaVersion"], 1);
+    assert_eq!(engine_report_json["durability"], "sqlite-file");
+    assert_eq!(engine_report_json["features"]["asyncIo"], false);
+    assert_eq!(engine_report_json["features"]["concurrentWrites"], false);
+    assert_eq!(engine_report_json["features"]["fts"], false);
+    assert_eq!(engine_report_json["features"]["vector"], false);
+    assert_eq!(engine_report_json["features"]["overlaySearch"], false);
+    assert_eq!(engine_report_json["features"]["sync"], false);
+    assert_eq!(engine_report_json["features"]["encryption"], false);
     assert_eq!(engine_report_json["repoId"], state.repo.repo_id.as_str());
     assert_eq!(
         engine_report_json["workspaceId"],
@@ -109,9 +129,12 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
         schema["$id"],
         "https://agent-semantic-protocols.local/schemas/semantic-db-engine-report.v1.schema.json"
     );
-    assert_eq!(schema["properties"]["futureBackend"]["const"], TURSO_BACKEND);
+    assert_eq!(
+        schema["properties"]["futureBackend"]["const"],
+        TURSO_BACKEND
+    );
 
-    let db = engine.open_sqlite_or_create().expect("open sqlite backend");
+    let db = engine.open_or_create().expect("open db engine backend");
     assert_eq!(db.path(), engine.db_path());
     assert!(engine.db_path().is_file());
     let _ = std::fs::remove_dir_all(root);

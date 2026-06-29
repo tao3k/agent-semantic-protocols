@@ -14,7 +14,7 @@
       "methods": [
         "search/prime",
         "search/owner",
-        "search/fzf",
+        "search/lexical",
         "search/ingest",
         "search/semantic-facts",
         "query/direct-source-read",
@@ -55,14 +55,14 @@
           "supportsPackageScope": true
         },
         {
-          "method": "search/fzf",
+          "method": "search/lexical",
           "command": "search",
           "supportsJson": true,
           "supportsCompact": true,
           "packetSchemas": [
             "semantic-search-packet.v1"
           ],
-          "view": "fzf",
+          "view": "lexical",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
           ],
@@ -173,7 +173,7 @@
       "methods": [
         "search/prime",
         "search/owner",
-        "search/fzf",
+        "search/lexical",
         "search/ingest",
         "search/semantic-facts",
         "query/direct-source-read",
@@ -214,14 +214,14 @@
           "supportsPackageScope": true
         },
         {
-          "method": "search/fzf",
+          "method": "search/lexical",
           "command": "search",
           "supportsJson": true,
           "supportsCompact": true,
           "packetSchemas": [
             "semantic-search-packet.v1"
           ],
-          "view": "fzf",
+          "view": "lexical",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
           ],
@@ -332,7 +332,7 @@
       "methods": [
         "search/prime",
         "search/owner",
-        "search/fzf",
+        "search/lexical",
         "search/ingest",
         "search/semantic-facts",
         "query/direct-source-read",
@@ -373,14 +373,14 @@
           "supportsPackageScope": true
         },
         {
-          "method": "search/fzf",
+          "method": "search/lexical",
           "command": "search",
           "supportsJson": true,
           "supportsCompact": true,
           "packetSchemas": [
             "semantic-search-packet.v1"
           ],
-          "view": "fzf",
+          "view": "lexical",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
           ],
@@ -491,7 +491,7 @@
       "methods": [
         "search/prime",
         "search/owner",
-        "search/fzf",
+        "search/lexical",
         "search/ingest",
         "search/query",
         "search/semantic-facts",
@@ -532,14 +532,14 @@
           "supportsPackageScope": true
         },
         {
-          "method": "search/fzf",
+          "method": "search/lexical",
           "command": "search",
           "supportsJson": true,
           "supportsCompact": true,
           "packetSchemas": [
             "semantic-search-packet.v1"
           ],
-          "view": "fzf",
+          "view": "lexical",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
           ],
@@ -641,7 +641,7 @@
       "methods": [
         "search/prime",
         "search/owner",
-        "search/fzf",
+        "search/lexical",
         "search/ingest",
         "search/pattern",
         "search/runtime-source",
@@ -686,14 +686,14 @@
           "supportsPackageScope": true
         },
         {
-          "method": "search/fzf",
+          "method": "search/lexical",
           "command": "search",
           "supportsJson": false,
           "supportsCompact": true,
           "packetSchemas": [
             "semantic-search-packet.v1"
           ],
-          "view": "fzf",
+          "view": "lexical",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
           ],
@@ -873,7 +873,7 @@
       "methods": [
         "search/prime",
         "search/toc",
-        "search/fzf",
+        "search/lexical",
         "query/document",
         "guide"
       ],
@@ -911,7 +911,7 @@
           "supportsPackageScope": true
         },
         {
-          "method": "search/fzf",
+          "method": "search/lexical",
           "command": "search",
           "supportsJson": true,
           "supportsCompact": true,
@@ -921,7 +921,7 @@
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-search-packet"
           ],
-          "view": "fzf",
+          "view": "lexical",
           "requiresQuery": true,
           "acceptsStdin": false,
           "supportsPackageScope": true
@@ -976,7 +976,7 @@
       "methods": [
         "search/prime",
         "search/toc",
-        "search/fzf",
+        "search/lexical",
         "query/document",
         "guide"
       ],
@@ -1014,7 +1014,7 @@
           "supportsPackageScope": true
         },
         {
-          "method": "search/fzf",
+          "method": "search/lexical",
           "command": "search",
           "supportsJson": true,
           "supportsCompact": true,
@@ -1024,7 +1024,7 @@
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-search-packet"
           ],
-          "view": "fzf",
+          "view": "lexical",
           "requiresQuery": true,
           "acceptsStdin": false,
           "supportsPackageScope": true

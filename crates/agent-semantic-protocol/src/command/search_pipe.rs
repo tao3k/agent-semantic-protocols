@@ -9,7 +9,7 @@ use serde_json::Value;
 use super::graph::GraphTurboReceiptRequest;
 use super::search_config::AspConfig;
 use super::search_pipe_args::{
-    parse_fzf_args, parse_ingest_args, parse_owner_only_args, parse_owner_query_args,
+    parse_ingest_args, parse_lexical_args, parse_owner_only_args, parse_owner_query_args,
     parse_search_pipe_args,
 };
 use super::search_pipe_candidates::{parse_ingest_candidates, read_piped_stdin};
@@ -19,7 +19,6 @@ use super::search_pipe_model::SearchPipeSourceTrace;
 use super::search_pipe_owner_items_fast::{
     SearchOwnerItemsFastContext, run_search_owner_items_query_command,
 };
-use super::search_pipe_owner_query::render_owner_query_frontier;
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{render_empty_ingest_diagnostic, render_owner_tests_frontier};
@@ -54,7 +53,7 @@ pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
         || is_search_suggest(args)
         || is_unsupported_search_pipeline_command(args)
         || is_search_ingest(args)
-        || is_search_fzf(args)
+        || is_search_lexical(args)
         || is_search_failure(args)
         || is_reasoning_owner_query(args)
         || is_reasoning_owner_tests(args)
@@ -87,8 +86,8 @@ pub(super) fn run_asp_fast_search_command(
     if is_search_ingest(args) {
         return run_search_ingest_command(args, &context);
     }
-    if is_search_fzf(args) {
-        return run_search_fzf_command(args, &context);
+    if is_search_lexical(args) {
+        return run_search_lexical_command(args, &context);
     }
     if is_search_failure(args) {
         return run_search_failure_command(
@@ -146,9 +145,9 @@ fn is_search_ingest(args: &[String]) -> bool {
         && !args.iter().any(|arg| arg == "--json")
 }
 
-fn is_search_fzf(args: &[String]) -> bool {
+fn is_search_lexical(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
-        && matches!(args.get(1).map(String::as_str), Some("fzf"))
+        && matches!(args.get(1).map(String::as_str), Some("lexical"))
         && args.get(2).is_some_and(|query| !query.starts_with('-'))
         && has_supported_fast_search_view(args)
         && !args.iter().any(|arg| arg == "--json")
@@ -183,8 +182,7 @@ fn is_reasoning_owner_tests(args: &[String]) -> bool {
 fn is_search_owner_items_query(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
         && matches!(args.get(1).map(String::as_str), Some("owner"))
-        && args.iter().any(|arg| arg == "--query")
-        && args.iter().any(|arg| arg == "items")
+        && matches!(args.get(3).map(String::as_str), Some("items"))
         && has_supported_owner_items_view(args)
         && !args.iter().any(|arg| arg == "--json" || arg == "--code")
 }
@@ -354,7 +352,7 @@ fn print_search_query_budget_block(
     println!(
         "refineHint=use path-or-symbol terms first; example: asp fd -query 'path-or-symbol|error-code' --workspace <scope>"
     );
-    println!("avoid=repeat-search-pipe,broad-fzf,raw-rg,workspace-wide-rg");
+    println!("avoid=repeat-search-pipe,broad-lexical,raw-rg,workspace-wide-rg");
 }
 
 fn search_budget_next_command(query: &str, workspace: Option<&Path>, scopes: &[PathBuf]) -> String {
@@ -537,8 +535,8 @@ fn normalize_path(path: &Path) -> PathBuf {
 fn run_reasoning_owner_query_command(
     language_id: &str,
     args: &[String],
-    project_root: &Path,
-    locator_root: &Path,
+    _project_root: &Path,
+    _locator_root: &Path,
     frontier_receipt: Option<&GraphTurboReceiptRequest>,
 ) -> Result<(), String> {
     reject_non_graph_turbo_receipt(frontier_receipt)?;
@@ -546,17 +544,10 @@ fn run_reasoning_owner_query_command(
     if owner_query_args.view != "seeds" {
         return Err("search reasoning owner-query fast path supports --view seeds".to_string());
     }
-    print!(
-        "{}",
-        render_owner_query_frontier(
-            language_id,
-            project_root,
-            locator_root,
-            &owner_query_args.owner,
-            &owner_query_args.query
-        )
-    );
-    Ok(())
+    Err(format!(
+        "search reasoning owner-query for language `{language_id}` requires a language-harness owner-query interface for `{}`; ASP will not synthesize language items from source text",
+        owner_query_args.owner.display()
+    ))
 }
 
 fn run_reasoning_owner_tests_command(
@@ -636,16 +627,19 @@ fn run_search_ingest_command(
     Ok(())
 }
 
-fn run_search_fzf_command(args: &[String], context: &FastSearchContext<'_>) -> Result<(), String> {
-    let pipe_args = parse_fzf_args(args)?;
+fn run_search_lexical_command(
+    args: &[String],
+    context: &FastSearchContext<'_>,
+) -> Result<(), String> {
+    let pipe_args = parse_lexical_args(args)?;
     if !matches!(pipe_args.view.as_str(), "seeds" | "graph-turbo-request") {
         return Err(
-            "search fzf fast path supports --view seeds or --view graph-turbo-request".to_string(),
+            "search lexical supports --view seeds or --view graph-turbo-request".to_string(),
         );
     }
     if let Some(block) = search_query_budget_block(&pipe_args.query, &pipe_args.owners, false) {
         print_search_query_budget_block(
-            "search-fzf",
+            "search-lexical",
             context.language_id,
             &pipe_args.query,
             None,
@@ -681,7 +675,7 @@ fn run_search_fzf_command(args: &[String], context: &FastSearchContext<'_>) -> R
         project_root: context.project_root,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
-        surface: "search-fzf",
+        surface: "search-lexical",
         query: Some(&pipe_args.query),
         candidates: &acquisition.candidates,
         pipes: &pipe_args.pipes,

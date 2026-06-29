@@ -8,8 +8,3 @@ source_type = "local"
 source = "."
 [plugins."asp-codex-plugin@asp-project"]
 enabled = true
-
-[agents.asp_explorer]
-description = "ASP search/query evidence explorer."
-config_file = "agents/asp-explorer.toml"
-nickname_candidates = ["ASP owner", "ASP rg", "ASP selector", "ASP search"]

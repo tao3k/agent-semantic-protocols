@@ -19,8 +19,8 @@ fn refresh_source_index(root: &std::path::Path) {
 }
 
 #[test]
-fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
-    let root = temp_project_root("search-fzf-fast-facade");
+fn lexical_seeds_is_asp_owned_for_cheap_discovery() {
+    let root = temp_project_root("search-lexical-fast-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -38,7 +38,7 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "cache_root",
             "owner",
             "items",
@@ -49,7 +49,7 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
             "seeds",
         ])
         .output()
-        .expect("run asp rust search fzf");
+        .expect("run asp rust search lexical");
 
     assert!(
         output.status.success(),
@@ -60,20 +60,20 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
     assert_builtin_graph_frontier(&stdout, "cache_root");
     assert!(
         !marker.exists(),
-        "search fzf seeds should not spawn provider"
+        "search lexical seeds should not spawn provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn fzf_seeds_use_source_index_before_native_finder() {
-    let root = temp_project_root("search-fzf-source-index");
+fn lexical_seeds_use_source_index_before_native_finder() {
+    let root = temp_project_root("search-lexical-source-index");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"search-fzf-source-index\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "[package]\nname = \"search-lexical-source-index\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
     )
     .expect("write rust package anchor");
     std::fs::write(
@@ -92,7 +92,7 @@ fn fzf_seeds_use_source_index_before_native_finder() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "source_index_fixture",
             "owner",
             "items",
@@ -103,7 +103,7 @@ fn fzf_seeds_use_source_index_before_native_finder() {
             "seeds",
         ])
         .output()
-        .expect("run asp rust search fzf");
+        .expect("run asp rust search lexical");
 
     assert!(
         output.status.success(),
@@ -111,7 +111,7 @@ fn fzf_seeds_use_source_index_before_native_finder() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[search-fzf]"), "{stdout}");
+    assert!(stdout.starts_with("[search-lexical]"), "{stdout}");
     assert!(stdout.contains("source=source-index"), "{stdout}");
     assert!(stdout.contains("sourceTrace=sourceIndex:used"), "{stdout}");
     assert!(stdout.contains("finder:skipped"), "{stdout}");
@@ -119,14 +119,14 @@ fn fzf_seeds_use_source_index_before_native_finder() {
     assert!(!stdout.contains("sourceTrace=finder:used"), "{stdout}");
     assert!(
         !marker.exists(),
-        "source-index fzf fast path should not spawn provider"
+        "source-index lexical path should not spawn provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
-    let root = temp_project_root("search-fzf-frontier-receipt-out");
+fn lexical_frontier_receipt_out_is_asp_owned_runtime_capture() {
+    let root = temp_project_root("search-lexical-frontier-receipt-out");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     let receipt_path = root.join("frontier-receipt.json");
@@ -141,7 +141,7 @@ fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "cache_root",
             "owner",
             "items",
@@ -171,7 +171,7 @@ fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
             ".",
         ])
         .output()
-        .expect("run asp rust search fzf with frontier receipt");
+        .expect("run asp rust search lexical with frontier receipt");
 
     assert!(
         output.status.success(),
@@ -195,8 +195,8 @@ fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
 }
 
 #[test]
-fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
-    let root = temp_project_root("search-fzf-scoped-root-locators");
+fn lexical_scoped_root_outputs_workspace_relative_replayable_locators() {
+    let root = temp_project_root("search-lexical-scoped-root-locators");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("crates/demo/src")).expect("create scoped src");
@@ -224,7 +224,7 @@ fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "cache_root",
             "owner",
             "items",
@@ -234,7 +234,7 @@ fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
             "crates/demo",
         ])
         .output()
-        .expect("run scoped asp rust search fzf");
+        .expect("run scoped asp rust search lexical");
 
     assert!(
         output.status.success(),
@@ -265,8 +265,8 @@ fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
 }
 
 #[test]
-fn fzf_can_emit_graph_turbo_request_for_live_candidate_frontier() {
-    let root = temp_project_root("search-fzf-graph-turbo-request");
+fn lexical_can_emit_graph_turbo_request_for_live_candidate_frontier() {
+    let root = temp_project_root("search-lexical-graph-turbo-request");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -284,7 +284,7 @@ fn fzf_can_emit_graph_turbo_request_for_live_candidate_frontier() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "cache_root",
             "owner",
             "items",
@@ -294,7 +294,7 @@ fn fzf_can_emit_graph_turbo_request_for_live_candidate_frontier() {
             ".",
         ])
         .output()
-        .expect("run asp rust search fzf graph turbo request");
+        .expect("run asp rust search lexical graph turbo request");
 
     assert!(
         output.status.success(),
@@ -318,14 +318,14 @@ fn fzf_can_emit_graph_turbo_request_for_live_candidate_frontier() {
     );
     assert!(
         !marker.exists(),
-        "search fzf graph-turbo-request should not spawn provider"
+        "search lexical graph-turbo-request should not spawn provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn typescript_fzf_can_emit_typed_hot_request_for_live_candidate_frontier() {
-    let root = temp_project_root("typescript-search-fzf-graph-turbo-request");
+fn typescript_lexical_can_emit_typed_hot_request_for_live_candidate_frontier() {
+    let root = temp_project_root("typescript-search-lexical-graph-turbo-request");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -343,7 +343,7 @@ fn typescript_fzf_can_emit_typed_hot_request_for_live_candidate_frontier() {
         .args([
             "typescript",
             "search",
-            "fzf",
+            "lexical",
             "cacheRoot",
             "owner",
             "items",
@@ -353,7 +353,7 @@ fn typescript_fzf_can_emit_typed_hot_request_for_live_candidate_frontier() {
             ".",
         ])
         .output()
-        .expect("run asp typescript search fzf graph turbo request");
+        .expect("run asp typescript search lexical graph turbo request");
 
     assert!(
         output.status.success(),
@@ -373,8 +373,8 @@ fn typescript_fzf_can_emit_typed_hot_request_for_live_candidate_frontier() {
 }
 
 #[test]
-fn fzf_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
-    let root = temp_project_root("search-fzf-default-graph-turbo");
+fn lexical_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
+    let root = temp_project_root("search-lexical-default-graph-turbo");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -392,7 +392,7 @@ fn fzf_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "cache_root",
             "owner",
             "items",
@@ -400,7 +400,7 @@ fn fzf_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
             ".",
         ])
         .output()
-        .expect("run asp rust search fzf default view");
+        .expect("run asp rust search lexical default view");
 
     assert!(
         output.status.success(),
@@ -411,14 +411,14 @@ fn fzf_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
     assert_builtin_graph_frontier(&stdout, "cache_root");
     assert!(
         !marker.exists(),
-        "search fzf default view should not spawn provider"
+        "search lexical default view should not spawn provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
-    let root = temp_project_root("typescript-search-fzf-default-graph-turbo");
+fn typescript_lexical_default_view_uses_shared_graph_turbo_ranker() {
+    let root = temp_project_root("typescript-search-lexical-default-graph-turbo");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -436,7 +436,7 @@ fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
         .args([
             "typescript",
             "search",
-            "fzf",
+            "lexical",
             "cacheRoot",
             "owner",
             "items",
@@ -444,7 +444,7 @@ fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
             ".",
         ])
         .output()
-        .expect("run asp typescript search fzf default view");
+        .expect("run asp typescript search lexical default view");
 
     assert!(
         output.status.success(),
@@ -458,7 +458,7 @@ fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
     );
     assert!(
         !marker.exists(),
-        "typescript search fzf default view should not spawn provider"
+        "typescript search lexical default view should not spawn provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }

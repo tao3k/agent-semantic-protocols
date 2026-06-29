@@ -3,7 +3,7 @@
 mod artifact;
 mod graph_render;
 mod limits;
-mod search_fzf;
+mod search_lexical;
 mod search_packet;
 mod syntax_query;
 
@@ -17,9 +17,9 @@ pub(crate) use artifact::{
     structured_evidence_artifact_path,
 };
 pub(crate) use limits::MAX_CACHE_REPLAY_ARTIFACT_BYTES;
-pub(crate) use search_fzf::search_fzf_generation_matches_request;
+pub(crate) use search_lexical::search_lexical_generation_matches_request;
 #[cfg(test)]
-pub(crate) use search_fzf::search_fzf_packet_matches_request;
+pub(crate) use search_lexical::search_lexical_packet_matches_request;
 #[cfg(test)]
 pub(crate) use search_packet::output_with_delegation_hint_lines;
 pub(crate) use search_packet::{

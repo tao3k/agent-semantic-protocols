@@ -4,7 +4,7 @@ use crate::provider_command::support::{
 
 #[test]
 fn asp_toml_search_ignore_dirs_apply_to_fast_discovery() {
-    let root = temp_project_root("search-fzf-asp-toml-ignore");
+    let root = temp_project_root("search-lexical-asp-toml-ignore");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -29,7 +29,7 @@ fn asp_toml_search_ignore_dirs_apply_to_fast_discovery() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "cache_root",
             "owner",
             "tests",
@@ -39,7 +39,7 @@ fn asp_toml_search_ignore_dirs_apply_to_fast_discovery() {
             "seeds",
         ])
         .output()
-        .expect("run asp rust search fzf with asp.toml");
+        .expect("run asp rust search lexical with asp.toml");
 
     assert!(
         output.status.success(),
@@ -58,7 +58,7 @@ fn asp_toml_search_ignore_dirs_apply_to_fast_discovery() {
 
 #[test]
 fn asp_toml_language_disabled_blocks_fast_discovery() {
-    let root = temp_project_root("search-fzf-language-disabled");
+    let root = temp_project_root("search-lexical-language-disabled");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -74,7 +74,7 @@ fn asp_toml_language_disabled_blocks_fast_discovery() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "cache_root",
             "owner",
             "tests",
@@ -84,7 +84,7 @@ fn asp_toml_language_disabled_blocks_fast_discovery() {
             "seeds",
         ])
         .output()
-        .expect("run disabled asp rust search fzf");
+        .expect("run disabled asp rust search lexical");
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("stderr");

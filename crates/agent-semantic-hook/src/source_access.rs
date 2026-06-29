@@ -263,8 +263,8 @@ pub enum SourceAccessRouteKind {
     Owner,
     /// Query route.
     Query,
-    /// Fuzzy search route.
-    Fzf,
+    /// Lexical search route.
+    Lexical,
     /// Ingest route.
     Ingest,
     /// Guide route.
@@ -538,7 +538,7 @@ impl From<DecisionRoute> for SourceAccessRoute {
                 crate::protocol::DecisionRouteKind::Owner => SourceAccessRouteKind::Owner,
                 crate::protocol::DecisionRouteKind::Query
                 | crate::protocol::DecisionRouteKind::Read => SourceAccessRouteKind::Query,
-                crate::protocol::DecisionRouteKind::Fzf => SourceAccessRouteKind::Fzf,
+                crate::protocol::DecisionRouteKind::Lexical => SourceAccessRouteKind::Lexical,
                 crate::protocol::DecisionRouteKind::Ingest => SourceAccessRouteKind::Ingest,
                 crate::protocol::DecisionRouteKind::Deps
                 | crate::protocol::DecisionRouteKind::Api

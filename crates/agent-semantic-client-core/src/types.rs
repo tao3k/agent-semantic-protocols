@@ -140,6 +140,38 @@ semantic_string_type!(
     /// Observed SQLite journal mode for the local client DB.
     ClientDbJournalMode
 );
+semantic_string_type!(
+    /// Active DB Engine backend identifier emitted in client receipts.
+    ClientDbBackend
+);
+semantic_string_type!(
+    /// Future DB Engine backend identifier recorded for migration receipts.
+    ClientDbFutureBackend
+);
+semantic_string_type!(
+    /// State layout version identifier carried by DB Engine receipts.
+    ClientStateLayoutVersion
+);
+semantic_string_type!(
+    /// DB Engine file name recorded in client receipts.
+    ClientDbFileName
+);
+semantic_string_type!(
+    /// DB Engine durability class recorded in client receipts.
+    ClientDbEngineDurability
+);
+semantic_string_type!(
+    /// Stable repository identity under the ASP state root.
+    ClientRepoId
+);
+semantic_string_type!(
+    /// Stable workspace identity under one repository state root.
+    ClientWorkspaceId
+);
+semantic_string_type!(
+    /// Stable analysis scope identity under one workspace state root.
+    ClientScopeId
+);
 
 impl ClientCachePath {
     /// Convert a filesystem path into the client wire path string.

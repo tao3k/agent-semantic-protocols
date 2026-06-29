@@ -6,7 +6,7 @@ The scenario must keep policy ids for these performance-sensitive surfaces:
 - tree-sitter query execution
 - search deps
 - search fd
-- search fzf
+- search lexical
 - search owner
 - search pipe
 - search rg

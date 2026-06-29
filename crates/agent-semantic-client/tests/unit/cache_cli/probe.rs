@@ -253,49 +253,49 @@ rank=O frontier=O.owner\n";
 }
 
 #[test]
-fn fzf_seed_probe_reuses_latest_fresh_matching_query_after_fingerprint_miss() {
+fn lexical_seed_probe_reuses_latest_fresh_matching_query_after_fingerprint_miss() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
-    let root = temp_root("fresh-fzf-reuse");
+    let root = temp_root("fresh-lexical-reuse");
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src dir");
-    std::fs::write(root.join("src/lib.rs"), "pub fn cached_fzf() {}\n").expect("write source");
+    std::fs::write(root.join("src/lib.rs"), "pub fn cached_lexical() {}\n").expect("write source");
     let cache_root = ClientCacheManifest::inspect_project(&root)
         .cache_root
         .expect("cache root");
     let db_path = ClientDb::default_path(&cache_root);
-    let stdout = "[search-fzf] q=cache replay view=seeds alg=seed-frontier\n\
+    let stdout = "[search-lexical] q=cache replay view=seeds alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,Q:query\n\
-Q=query:term(cache replay)!fzf\n\
+Q=query:term(cache replay)!lexical\n\
 G>{Q:matches}\n\
-rank=Q frontier=Q.fzf\n";
-    write_search_packet_artifact(&cache_root, "fzf-fresh.json", "cache replay");
-    write_search_output_artifact(&cache_root, "fzf-fresh.txt", stdout);
-    write_search_packet_artifact(&cache_root, "fzf-unrelated.json", "different query");
+rank=Q frontier=Q.lexical\n";
+    write_search_packet_artifact(&cache_root, "lexical-fresh.json", "cache replay");
+    write_search_output_artifact(&cache_root, "lexical-fresh.txt", stdout);
+    write_search_packet_artifact(&cache_root, "lexical-unrelated.json", "different query");
     write_search_output_artifact(
         &cache_root,
-        "fzf-unrelated.txt",
-        "[search-fzf] q=different query view=seeds alg=seed-frontier\n",
+        "lexical-unrelated.txt",
+        "[search-lexical] q=different query view=seeds alg=seed-frontier\n",
     );
 
-    let generation = search_fzf_generation_with_artifacts(
+    let generation = search_lexical_generation_with_artifacts(
         &root,
-        "fresh-fzf",
+        "fresh-lexical",
         vec![hash_project_file(&root, "src/lib.rs")],
-        "fzf-fresh.json",
-        "fzf-fresh.txt",
+        "lexical-fresh.json",
+        "lexical-fresh.txt",
     );
     let manifest = manifest_from_generation(&cache_root, generation);
     let mut db = ClientDb::open_or_create(&db_path).expect("open db");
     db.import_manifest(&manifest).expect("import manifest");
     std::thread::sleep(Duration::from_secs(1));
-    let unrelated_generation = search_fzf_generation_with_artifacts(
+    let unrelated_generation = search_lexical_generation_with_artifacts(
         &root,
-        "fresh-fzf-unrelated-latest",
+        "fresh-lexical-unrelated-latest",
         vec![hash_project_file(&root, "src/lib.rs")],
-        "fzf-unrelated.json",
-        "fzf-unrelated.txt",
+        "lexical-unrelated.json",
+        "lexical-unrelated.txt",
     );
     let unrelated_manifest = manifest_from_generation(&cache_root, unrelated_generation);
     db.import_manifest(&unrelated_manifest)
@@ -307,14 +307,14 @@ rank=Q frontier=Q.fzf\n";
         providers: vec![rust_provider()],
     };
     let request = ClientRequest::new(ClientMethod::Search, &root).with_forwarded_args(vec![
-        "fzf".to_string(),
+        "lexical".to_string(),
         "cache replay".to_string(),
         "--view=seeds".to_string(),
         ".".to_string(),
     ]);
 
     let probe = provider_cache_probe(&root, &snapshot, &request).expect("probe");
-    let replay = probe.replay.as_ref().expect("fresh fzf replay");
+    let replay = probe.replay.as_ref().expect("fresh lexical replay");
 
     assert_eq!(probe.cache_status, CacheStatus::Hit);
     assert_eq!(
@@ -399,7 +399,7 @@ fn search_prime_generation(
     .expect("search prime generation")
 }
 
-fn search_fzf_generation_with_artifacts(
+fn search_lexical_generation_with_artifacts(
     root: &std::path::Path,
     generation_id: &str,
     file_hashes: Vec<ClientCacheFileHash>,
@@ -411,7 +411,7 @@ fn search_fzf_generation_with_artifacts(
         "languageId": "rust",
         "providerId": "rs-harness",
         "providerVersion": "0.1.0",
-        "exportMethod": "search/fzf",
+        "exportMethod": "search/lexical",
         "projectRoot": root.display().to_string(),
         "packageRoot": ".",
         "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
@@ -424,7 +424,7 @@ fn search_fzf_generation_with_artifacts(
             format!("search-output/{output_file_name}")
         ]
     }))
-    .expect("search fzf generation")
+    .expect("search lexical generation")
 }
 
 fn manifest_from_generation(
@@ -472,7 +472,7 @@ fn write_search_packet_artifact(cache_root: &std::path::Path, file_name: &str, q
     std::fs::create_dir_all(&search_dir).expect("create search packet dir");
     let packet = json!({
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
-        "method": "search/fzf",
+        "method": "search/lexical",
         "query": query,
         "nodes": []
     });

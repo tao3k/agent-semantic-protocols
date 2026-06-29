@@ -6,6 +6,9 @@ use serde_json::{Value, json};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+#[path = "client_hook_claude_smoke/codex_session.rs"]
+mod codex_session;
+
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[test]
@@ -51,195 +54,6 @@ fn claude_install_writes_project_settings_hooks() {
         !prompt_path.exists(),
         "hook trigger prompt is hook-crate system policy, not an installed user/project file"
     );
-}
-
-#[test]
-fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-    register_asp_explore_session(
-        &root,
-        "019f126d-0000-7000-8000-000000000001",
-        "019f126d-0000-7000-8000-000000000101",
-    );
-
-    let decision = run_codex_pre_tool_decision_with_env(
-        &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
-        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000001")],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(decision["reasonKind"].as_str(), Some("raw-broad-search"));
-    assert_eq!(
-        decision["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionLifecycle"].as_str(),
-        Some("resident")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionStatusCheck"].as_str(),
-        Some("query-host-status-then-resume")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child")
-    );
-    assert_eq!(
-        decision["fields"]["childSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000101")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionResumeId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000101")
-    );
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("Reuse or resume the registered resident asp-explore child session"));
-    assert!(message.contains("do not spawn another asp-explore session"));
-    assert!(message.contains("do not close it after the result"));
-    assert!(message.contains("query the host session status"));
-    assert!(message.contains("If the host reports active/running"));
-    assert!(message.contains("Only create a replacement when the host reports"));
-    assert!(message.contains("019f126d-0000-7000-8000-000000000101"));
-}
-
-#[test]
-fn codex_main_session_denies_asp_query_when_asp_explore_is_expired() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-    register_expired_asp_explore_session(
-        &root,
-        "019f126d-0000-7000-8000-000000000006",
-        "019f126d-0000-7000-8000-000000000106",
-    );
-
-    let decision = run_codex_pre_tool_decision_with_env(
-        &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
-        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000006")],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("start-resident-child")
-    );
-    assert!(decision["fields"].get("childSessionId").is_none());
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("no registered active asp-explore child session"));
-    assert!(message.contains("do not create duplicate asp-explore sessions"));
-}
-
-#[test]
-fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-
-    let decision = run_codex_pre_tool_decision_with_env(
-        &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
-        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000002")],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionLifecycle"].as_str(),
-        Some("resident")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionStatusCheck"].as_str(),
-        Some("query-host-status-then-resume")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("start-resident-child")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionBootstrap"].as_str(),
-        Some("session-start-reminder")
-    );
-    assert_eq!(
-        decision["fields"]["rootSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000002")
-    );
-    assert!(decision["fields"].get("childSessionId").is_none());
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP session-start bootstrap required"));
-    assert!(message.contains("no registered active asp-explore child session"));
-    assert!(message.contains("--child-session-id <child-session-id>"));
-    assert!(message.contains("do not create duplicate asp-explore sessions"));
-    assert!(message.contains("After registration, retry the original tool command"));
-}
-
-#[test]
-fn codex_session_start_bootstraps_missing_asp_explore() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-
-    let decision = run_codex_hook_decision_with_env(
-        &root,
-        "session-start",
-        json!({"source": "session-start-smoke"}),
-        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000020")],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("allow"));
-    assert_eq!(
-        decision["fields"]["agentSessionBootstrap"].as_str(),
-        Some("session-start-reminder")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("start-resident-child")
-    );
-    assert_eq!(
-        decision["fields"]["rootSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000020")
-    );
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP session-start bootstrap"));
-    assert!(message.contains("--child-session-id <child-session-id>"));
-    assert!(message.contains("Do not create duplicate asp-explore sessions"));
-}
-
-#[test]
-fn codex_main_session_requires_asp_explore_before_non_registry_tool() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-
-    let decision = run_codex_pre_tool_decision_with_env(
-        &root,
-        codex_asp_query_payload("cargo test -p agent-semantic-protocol codex_"),
-        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000004")],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionBootstrap"].as_str(),
-        Some("session-start-reminder")
-    );
-    assert_eq!(
-        decision["fields"]["rootSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000004")
-    );
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP session-start bootstrap required"));
-    assert!(message.contains("After registration, retry the original tool command"));
 }
 
 #[test]
@@ -483,10 +297,14 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
         std::fs::read_to_string(root.join(".codex").join("config.toml")).expect("read config");
     assert!(codex_config.contains("[marketplaces.asp-project]"));
     assert!(codex_config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
-    assert!(codex_config.contains("[agents.asp_explorer]"));
-    assert!(root.join(".codex/agents/asp-explorer.toml").is_file());
+    assert!(!codex_config.contains("[agents.asp_explorer]"));
+    assert!(!root.join(".codex/agents/asp-explorer.toml").exists());
+    let codex_user_config =
+        std::fs::read_to_string(codex_home.join("config.toml")).expect("read Codex user config");
+    assert!(codex_user_config.contains("[agents.asp_explorer]"));
+    assert!(codex_home.join("agents/asp-explorer.toml").is_file());
     let codex_agent =
-        std::fs::read_to_string(root.join(".codex/agents/asp-explorer.toml")).expect("read agent");
+        std::fs::read_to_string(codex_home.join("agents/asp-explorer.toml")).expect("read agent");
     assert!(codex_agent.contains("description = \"ASP search/query evidence explorer.\""));
     assert!(codex_agent.contains("[asp-search-subagent]"));
     assert!(!codex_agent.contains("fork_context=false"));

@@ -205,6 +205,19 @@ supplies lifecycle, caching, trust, overlays, Turso-backed stable search,
 Turso-owned Tantivy-backed dynamic overlay search, Python graph fusion, compact
 rendering, and receipts.
 
+The generated contract must make this split executable. A language harness exposes CLI commands and schema-valid packets such as =capabilities=, =snapshot=, =diff=, =query=, =locate=, =owner-items=, =deps=, and =health=. It should be callable as a normal process and should not link to ASP internals. ASP wraps that process and owns:
+- provider registry lookup and activation;
+- command normalization and workspace/root resolution;
+- trust gates and executable digest checks;
+- warm-worker or daemon lifecycle when available;
+- timeout, cancellation, batching, and retry policy;
+- packet validation and schema-version negotiation;
+- stable-generation cache and dirty overlay merge;
+- DB Engine ingestion and receipt emission;
+- graph/ranking bridge inputs;
+- compact render and next-action guidance for agents.
+
+The performance target is therefore not "each harness implements a faster search engine." The target is "each harness emits the smallest correct native facts, and Rust ASP makes repeated agent searches cheap by controlling the process boundary, state, cache, overlay, DB, graph, and render layers." A new harness must not implement global ranking, state-root layout, Turso persistence, or prompt rendering; those are ASP responsibilities.
 * Acceptance
 
 - =asp init --language <name> --out <dir>= is deterministic and does not depend

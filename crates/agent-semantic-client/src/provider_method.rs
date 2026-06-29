@@ -431,7 +431,7 @@ fn is_compare_search(args: &[String]) -> bool {
 
 fn is_search_packet_seed_search(args: &[String]) -> bool {
     args.first()
-        .is_some_and(|arg| arg == "fzf" || arg == "pipe")
+        .is_some_and(|arg| arg == "lexical" || arg == "pipe")
         && has_seed_view(args)
 }
 

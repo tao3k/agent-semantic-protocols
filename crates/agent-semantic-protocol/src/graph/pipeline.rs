@@ -98,7 +98,7 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
             lines.push(entries);
         }
         lines.push("omit=items,blocks,code,full-test-list".to_string());
-        lines.push("avoid=raw-read,full-json,broad-fzf".to_string());
+        lines.push("avoid=raw-read,full-json,broad-lexical".to_string());
     } else if let Some(profiles) = graph_profiles_line(packet, &aliases) {
         lines.push(profiles);
     }
@@ -183,7 +183,7 @@ fn prime_decision_line(packet: &Value) -> String {
         .filter(|language_id| !language_id.trim().is_empty())
         .unwrap_or("<language>");
     format!(
-        "|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds\""
+        "|decision purpose=decision-primer answer=false code=false capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds\""
     )
 }
 

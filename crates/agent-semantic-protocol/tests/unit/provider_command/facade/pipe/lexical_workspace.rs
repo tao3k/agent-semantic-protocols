@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 const WORKSPACE_FILE_REJECTION_API_MAX: Duration = Duration::from_millis(25);
 
 #[test]
-fn fzf_accepts_workspace_and_trailing_scope_path() {
-    let root = temp_project_root("search-fzf-workspace-scope");
+fn lexical_accepts_workspace_and_trailing_scope_path() {
+    let root = temp_project_root("search-lexical-workspace-scope");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     let scoped_dir = root.join("packages/python/asp_graph_turbo/src/asp_graph_turbo");
@@ -33,7 +33,7 @@ fn fzf_accepts_workspace_and_trailing_scope_path() {
         .args([
             "python",
             "search",
-            "fzf",
+            "lexical",
             "calibration",
             "--workspace",
             ".",
@@ -42,7 +42,7 @@ fn fzf_accepts_workspace_and_trailing_scope_path() {
             "packages/python/asp_graph_turbo/src/asp_graph_turbo",
         ])
         .output()
-        .expect("run asp python search fzf with workspace scope");
+        .expect("run asp python search lexical with workspace scope");
 
     assert!(
         output.status.success(),
@@ -56,7 +56,7 @@ fn fzf_accepts_workspace_and_trailing_scope_path() {
         "{stdout}"
     );
     assert!(!stdout.contains("tests/unit/noise.py"), "{stdout}");
-    assert!(!marker.exists(), "search fzf should not spawn provider");
+    assert!(!marker.exists(), "search lexical should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
 

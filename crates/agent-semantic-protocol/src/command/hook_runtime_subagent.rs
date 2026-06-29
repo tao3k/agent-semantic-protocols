@@ -41,13 +41,10 @@ pub(super) fn install_claude_asp_explorer_agent(
 }
 
 pub(super) fn install_codex_asp_explorer_agent(
-    project_root: &Path,
+    codex_home: &Path,
     subagent_model: &str,
 ) -> Result<PathBuf, String> {
-    let path = project_root
-        .join(".codex")
-        .join("agents")
-        .join("asp-explorer.toml");
+    let path = codex_home.join("agents").join("asp-explorer.toml");
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
@@ -64,6 +61,22 @@ pub(super) fn install_codex_asp_explorer_agent(
     fs::write(&path, contents.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
     Ok(path)
+}
+
+pub(super) fn remove_project_codex_asp_explorer_agents(project_root: &Path) -> Result<(), String> {
+    let agents_dir = project_root.join(".codex").join("agents");
+    if !agents_dir.is_dir() {
+        return Ok(());
+    }
+    remove_stale_agent_files(
+        &agents_dir,
+        &[
+            "asp-explorer.toml",
+            "asp-explorer-owner.toml",
+            "asp-explorer-rg.toml",
+            "asp-explorer-selector.toml",
+        ],
+    )
 }
 
 fn default_subagent_model(client: &str) -> &'static str {

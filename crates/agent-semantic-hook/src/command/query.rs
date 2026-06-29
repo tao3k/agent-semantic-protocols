@@ -21,7 +21,7 @@ pub(crate) fn search_query_route(
     terms: &[String],
 ) -> Option<DecisionRoute> {
     let selector = provider_source_selector(provider);
-    search_fzf_route_for_selector(provider, &selector, ".", terms)
+    search_lexical_route_for_selector(provider, &selector, ".", terms)
 }
 
 pub(crate) fn selector_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
@@ -74,7 +74,7 @@ pub(crate) fn search_query_route_for_selector(
     let (kind, template) = if let Some(template) = provider.routes.query.as_ref() {
         (DecisionRouteKind::Query, template)
     } else {
-        (DecisionRouteKind::Fzf, &provider.routes.fzf)
+        (DecisionRouteKind::Lexical, &provider.routes.lexical)
     };
     Some(route_from_query_template(
         provider,
@@ -86,7 +86,7 @@ pub(crate) fn search_query_route_for_selector(
     ))
 }
 
-fn search_fzf_route_for_selector(
+fn search_lexical_route_for_selector(
     provider: &ActivatedProvider,
     selector: &str,
     project_root: &str,
@@ -94,8 +94,8 @@ fn search_fzf_route_for_selector(
 ) -> Option<DecisionRoute> {
     Some(route_from_query_template(
         provider,
-        DecisionRouteKind::Fzf,
-        &provider.routes.fzf,
+        DecisionRouteKind::Lexical,
+        &provider.routes.lexical,
         selector,
         project_root,
         terms,

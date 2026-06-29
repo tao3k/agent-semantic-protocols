@@ -17,6 +17,11 @@ agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
+turso = { workspace = true, optional = true }
+
+[features]
+default = []
+turso-overlay = ["dep:turso"]
 
 [build-dependencies]
 rust-lang-project-harness = { workspace = true }

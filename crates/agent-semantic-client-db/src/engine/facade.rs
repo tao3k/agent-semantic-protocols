@@ -10,6 +10,8 @@ use serde::Serialize;
 
 use crate::db::{ClientDb, ClientDbReport};
 
+use super::sqlite::SqliteClientDbEngineBackend;
+
 /// Current durable client DB backend selected by the ASP DB Engine.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientDbBackend {
@@ -25,6 +27,69 @@ impl ClientDbBackend {
             Self::SqliteV1 => SQLITE_V1_BACKEND,
         }
     }
+}
+
+/// Durability class for the selected DB Engine backend.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClientDbEngineDurability {
+    /// Transitional SQLite file managed by the phase-1 `rusqlite` adapter.
+    SqliteFile,
+}
+
+impl ClientDbEngineDurability {
+    /// Stable receipt token for this durability class.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SqliteFile => "sqlite-file",
+        }
+    }
+}
+
+/// Capability flags reported by a DB Engine backend.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientDbEngineFeatures {
+    pub async_io: bool,
+    pub concurrent_writes: bool,
+    pub fts: bool,
+    pub vector: bool,
+    pub overlay_search: bool,
+    pub sync: bool,
+    pub encryption: bool,
+}
+
+/// Backend adapter boundary used by the ASP DB Engine facade.
+pub(super) trait ClientDbEngineBackend {
+    /// Open connection type for this backend.
+    type Connection;
+
+    /// Diagnostic report emitted by this backend.
+    type Report;
+
+    /// Stable backend token recorded in manifests and receipts.
+    fn backend(&self) -> ClientDbBackend;
+
+    /// DB file name used below the State Core client directory.
+    fn db_file_name(&self) -> &'static str;
+
+    /// Released schema version for this backend.
+    fn schema_version(&self) -> i64;
+
+    /// Durability class used by analyzer receipts and migration gates.
+    fn durability(&self) -> ClientDbEngineDurability;
+
+    /// Backend capability flags used by migration and benchmark gates.
+    fn features(&self) -> ClientDbEngineFeatures;
+
+    /// Open the backend and create or migrate its schema when needed.
+    fn open_or_create(&self, db_path: &Path) -> Result<Self::Connection, String>;
+
+    /// Open the backend read-only when its DB file already exists.
+    fn open_read_only_existing(&self, db_path: &Path) -> Result<Option<Self::Connection>, String>;
+
+    /// Inspect the backend without creating a DB file.
+    fn inspect(&self, db_path: &Path) -> Self::Report;
 }
 
 /// Resolved DB Engine paths and backend selection for one State Core workspace.
@@ -49,6 +114,10 @@ pub struct ClientDbEngineReport {
     pub backend: &'static str,
     pub future_backend: &'static str,
     pub layout_version: &'static str,
+    pub db_file_name: &'static str,
+    pub schema_version: i64,
+    pub durability: &'static str,
+    pub features: ClientDbEngineFeatures,
     pub client_dir: PathBuf,
     pub db_path: PathBuf,
     pub manifest_path: PathBuf,
@@ -70,8 +139,9 @@ impl ClientDbEngine {
     /// Build an engine descriptor from an already resolved State Core value.
     #[must_use]
     pub fn from_resolved_state(state: &ResolvedState) -> Self {
+        let backend = SqliteClientDbEngineBackend.backend();
         Self {
-            backend: ClientDbBackend::SqliteV1,
+            backend,
             future_backend: TURSO_BACKEND,
             layout_version: STATE_LAYOUT_VERSION,
             client_dir: state.paths.client_dir.clone(),
@@ -96,29 +166,34 @@ impl ClientDbEngine {
         client_dir.as_ref().join(STATE_MANIFEST_FILE)
     }
 
-    /// Open the current SQLite v1 backend and run idempotent schema migration.
-    pub fn open_sqlite_or_create(&self) -> Result<ClientDb, String> {
-        ClientDb::open_or_create(&self.db_path)
+    /// Open the current DB Engine backend and run idempotent schema migration.
+    pub fn open_or_create(&self) -> Result<ClientDb, String> {
+        self.sqlite_backend().open_or_create(&self.db_path)
     }
 
-    /// Open the current SQLite v1 backend read-only when the file exists.
-    pub fn open_sqlite_read_only_existing(&self) -> Result<Option<ClientDb>, String> {
-        ClientDb::open_read_only_existing(&self.db_path)
+    /// Open the current DB Engine backend read-only when the file exists.
+    pub fn open_read_only_existing(&self) -> Result<Option<ClientDb>, String> {
+        self.sqlite_backend().open_read_only_existing(&self.db_path)
     }
 
-    /// Inspect the current SQLite v1 backend without creating a DB file.
+    /// Inspect the current DB Engine backend without creating a DB file.
     #[must_use]
-    pub fn inspect_sqlite(&self) -> ClientDbReport {
-        ClientDb::inspect(&self.db_path)
+    pub fn inspect_backend(&self) -> ClientDbReport {
+        self.sqlite_backend().inspect(&self.db_path)
     }
 
     /// Inspect the current engine selection and active SQLite v1 adapter.
     #[must_use]
     pub fn inspect(&self) -> ClientDbEngineReport {
+        let backend = self.sqlite_backend();
         ClientDbEngineReport {
             backend: self.backend.as_str(),
             future_backend: self.future_backend,
             layout_version: self.layout_version,
+            db_file_name: backend.db_file_name(),
+            schema_version: backend.schema_version(),
+            durability: backend.durability().as_str(),
+            features: backend.features(),
             client_dir: self.client_dir.clone(),
             db_path: self.db_path.clone(),
             manifest_path: self.manifest_path.clone(),
@@ -126,7 +201,7 @@ impl ClientDbEngine {
             repo_id: self.repo_id.clone(),
             workspace_id: self.workspace_id.clone(),
             scope_id: self.scope_id.clone(),
-            sqlite_report: self.inspect_sqlite(),
+            sqlite_report: self.inspect_backend(),
         }
     }
 
@@ -188,5 +263,9 @@ impl ClientDbEngine {
     #[must_use]
     pub fn scope_id(&self) -> &str {
         &self.scope_id
+    }
+
+    fn sqlite_backend(&self) -> SqliteClientDbEngineBackend {
+        SqliteClientDbEngineBackend
     }
 }

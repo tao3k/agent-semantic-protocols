@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::cache_manifest::{CacheManifestReport, CacheManifestStatus};
 use crate::request::ClientMethod;
 use crate::types::{
-    ByteCount, CacheArtifactId, CacheStatus, ClientCachePath, ClientDbJournalMode, ClientDbStatus,
+    ByteCount, CacheArtifactId, CacheStatus, ClientCachePath, ClientDbBackend,
+    ClientDbEngineDurability, ClientDbFileName, ClientDbFutureBackend, ClientDbJournalMode,
+    ClientDbStatus, ClientRepoId, ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId,
     CompactArtifactId, ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId,
     SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion, SyntaxQueryAstAbiFingerprint,
     SyntaxQueryGrammarId, SyntaxQueryGrammarProfileVersion, SyntaxQuerySelector,
@@ -62,6 +64,73 @@ pub struct ProviderCommandReceipt {
     pub elapsed_ms: ElapsedMillis,
 }
 
+/// Structured DB Engine state embedded in client receipts.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientDbEngineReceipt {
+    pub backend: ClientDbBackend,
+    pub future_backend: ClientDbFutureBackend,
+    pub layout_version: ClientStateLayoutVersion,
+    pub db_file_name: ClientDbFileName,
+    pub schema_version: i64,
+    pub durability: ClientDbEngineDurability,
+    pub features: ClientDbEngineFeaturesReceipt,
+    pub client_dir: ClientCachePath,
+    pub db_path: ClientCachePath,
+    pub manifest_path: ClientCachePath,
+    pub artifact_path: ClientCachePath,
+    pub repo_id: ClientRepoId,
+    pub workspace_id: ClientWorkspaceId,
+    pub scope_id: ClientScopeId,
+    pub sqlite_report: ClientDbSqliteReceipt,
+}
+
+/// Capability flags reported by the active DB Engine backend.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientDbEngineFeaturesReceipt {
+    pub async_io: bool,
+    pub concurrent_writes: bool,
+    pub fts: bool,
+    pub vector: bool,
+    pub overlay_search: bool,
+    pub sync: bool,
+    pub encryption: bool,
+}
+
+/// SQLite transition-backend report nested under the DB Engine receipt.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientDbSqliteReceipt {
+    pub db_path: ClientCachePath,
+    pub status: ClientDbStatus,
+    pub generation_count: u32,
+    pub syntax_row_generation_count: u32,
+    pub syntax_row_match_count: u32,
+    pub syntax_row_capture_count: u32,
+    pub structural_index_generation_count: u32,
+    pub structural_index_owner_count: u32,
+    pub structural_index_symbol_count: u32,
+    pub structural_index_dependency_usage_count: u32,
+    pub source_index_generation_count: u32,
+    pub source_index_owner_count: u32,
+    pub source_index_selector_count: u32,
+    pub artifact_event_count: u32,
+    pub raw_source_stored: bool,
+    pub runtime_pragmas: Option<ClientDbRuntimePragmasReceipt>,
+    pub reason: Option<String>,
+}
+
+/// Runtime SQLite pragmas observed through the current DB Engine adapter.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientDbRuntimePragmasReceipt {
+    pub journal_mode: ClientDbJournalMode,
+    pub synchronous: i64,
+    pub busy_timeout_ms: u64,
+    pub foreign_keys: bool,
+}
+
 /// Machine-readable receipt for one `agent-semantic-client` command.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -115,6 +184,8 @@ pub struct ClientReceipt {
     pub cache_generation_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_source_stored: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub db_engine: Option<ClientDbEngineReceipt>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_path: Option<ClientCachePath>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -199,6 +270,7 @@ impl ClientReceipt {
             cache_manifest_status: None,
             cache_generation_count: None,
             raw_source_stored: None,
+            db_engine: None,
             client_db_path: None,
             client_db_status: None,
             client_db_generation_count: None,
@@ -274,6 +346,7 @@ impl ClientReceipt {
             cache_manifest_status: Some(cache_report.status.clone()),
             cache_generation_count: Some(cache_report.generation_count),
             raw_source_stored: Some(cache_report.raw_source_stored),
+            db_engine: None,
             client_db_path: None,
             client_db_status: None,
             client_db_generation_count: None,

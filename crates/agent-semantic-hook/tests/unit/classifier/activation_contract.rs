@@ -114,7 +114,7 @@ fn provider_manifest_value() -> Value {
         "routes": {
             "prime": {"argv": ["ts-harness", "search", "prime", "."]},
             "owner": {"argv": ["ts-harness", "search", "owner", "{path}", "."]},
-            "fzf": {"argv": ["ts-harness", "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."]},
+            "lexical": {"argv": ["ts-harness", "search", "lexical", "{query}", "owner", "tests", "--view", "seeds", "."]},
             "query": {"argv": ["ts-harness", "search", "query", "--selector", "{selector}", "{termArgs}", "--surface", "owner,tests", "--view", "seeds", "."]},
             "ingest": {
                 "argv": ["ts-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."],

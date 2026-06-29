@@ -2,10 +2,12 @@ use crate::command::{
     RegisteredSession, asp_explore_session_for_current_root, current_registered_session,
     current_root_session_id, has_current_agent_session, record_current_session_tool_event,
 };
+use agent_semantic_config::{
+    HookClientAspSessionPolicyConfig, HookClientConfigFile, load_hook_client_config_file,
+};
 use agent_semantic_hook::{
-    AspSessionPolicy, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
-    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    HookRuntime, ReasonKind,
+    DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
+    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, HookRuntime, ReasonKind,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -17,11 +19,65 @@ struct AspExplorationCommand {
     language_id: Option<String>,
 }
 
+pub(super) struct AspSessionPolicy {
+    enabled: bool,
+    resident_child_name: String,
+    resident_codex_agent_name: String,
+    main_allowed_asp_command_prefixes: Vec<Vec<String>>,
+}
+
+impl AspSessionPolicy {
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn resident_child_name(&self) -> &str {
+        &self.resident_child_name
+    }
+
+    fn resident_codex_agent_name(&self) -> &str {
+        &self.resident_codex_agent_name
+    }
+
+    fn main_asp_command_allowed(&self, tokens: &[String], asp_index: usize) -> bool {
+        self.main_allowed_asp_command_prefixes
+            .iter()
+            .any(|prefix| command_prefix_matches(tokens, asp_index, prefix))
+    }
+}
+
 struct MainSessionRouteContext {
     has_agent_session: bool,
     current_session: Option<RegisteredSession>,
     active_explore_session: Option<RegisteredSession>,
     root_session_id: Option<String>,
+}
+
+pub(super) fn load_asp_session_policy(config_path: &Path) -> Result<AspSessionPolicy, String> {
+    let config = if config_path.is_file() {
+        load_hook_client_config_file(config_path)?
+    } else {
+        HookClientConfigFile::default()
+    };
+    AspSessionPolicy::try_from(config.asp_session_policy)
+}
+
+impl TryFrom<HookClientAspSessionPolicyConfig> for AspSessionPolicy {
+    type Error = String;
+
+    fn try_from(config: HookClientAspSessionPolicyConfig) -> Result<Self, Self::Error> {
+        let main_allowed_asp_command_prefixes = config
+            .main_allowed_asp_command_prefixes
+            .iter()
+            .map(|prefix| command_prefix_tokens(prefix))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            enabled: config.enabled,
+            resident_child_name: config.resident_child_name,
+            resident_codex_agent_name: config.resident_codex_agent_name,
+            main_allowed_asp_command_prefixes,
+        })
+    }
 }
 
 impl MainSessionRouteContext {
@@ -44,9 +100,9 @@ impl MainSessionRouteContext {
     ) -> bool {
         self.has_agent_session
             && self.active_explore_session.is_none()
-            && !commands
+            && commands
                 .iter()
-                .any(|command| command_can_run_without_resident_child(command, asp_session_policy))
+                .any(|command| command_requires_resident_child(command, asp_session_policy))
     }
 }
 
@@ -110,7 +166,7 @@ fn classify_pre_tool_main_session_asp(
             payload,
             commands.first().map(String::as_str),
             context.root_session_id,
-            asp_session_policy.resident_child_name(),
+            asp_session_policy,
         )));
     }
 
@@ -124,7 +180,7 @@ fn classify_pre_tool_main_session_asp(
             command,
             invocation,
             context.active_explore_session.as_ref(),
-            asp_session_policy.resident_child_name(),
+            asp_session_policy,
         )));
     }
     if let Some((command, invocation)) =
@@ -137,7 +193,7 @@ fn classify_pre_tool_main_session_asp(
             command,
             invocation,
             context.active_explore_session.as_ref(),
-            asp_session_policy.resident_child_name(),
+            asp_session_policy,
         )));
     }
     Ok(None)
@@ -173,10 +229,10 @@ fn first_asp_exploration_command<'a>(
     })
 }
 
-fn first_restricted_main_session_asp_command(
-    commands: &[String],
+fn first_restricted_main_session_asp_command<'a>(
+    commands: &'a [String],
     asp_session_policy: &AspSessionPolicy,
-) -> Option<(&str, AspExplorationCommand)> {
+) -> Option<(&'a str, AspExplorationCommand)> {
     commands.iter().find_map(|command| {
         restricted_main_session_asp_command(command, asp_session_policy)
             .map(|invocation| (command.as_str(), invocation))
@@ -213,7 +269,7 @@ fn classify_session_start_bootstrap(
         event,
         payload,
         current_root_session_id(),
-        asp_session_policy.resident_child_name(),
+        asp_session_policy,
     )))
 }
 
@@ -238,9 +294,11 @@ fn session_start_bootstrap_decision(
     event: &str,
     payload: &serde_json::Value,
     root_session_id: Option<String>,
-    resident_child_name: &str,
+    asp_session_policy: &AspSessionPolicy,
 ) -> HookDecision {
+    let resident_child_name = asp_session_policy.resident_child_name();
     let mut fields = agent_session_route_fields("start-resident-child", resident_child_name);
+    append_resident_agent_fields(&mut fields, asp_session_policy);
     fields.insert(
         "agentSessionBootstrap".to_string(),
         serde_json::Value::String("session-start-reminder".to_string()),
@@ -268,7 +326,8 @@ fn session_start_bootstrap_decision(
         },
         routes: Vec::new(),
         message: format!(
-            "ASP session-start bootstrap: this root session has no registered active {resident_child_name} child session. Create or resume one resident {resident_child_name} subagent and register it with `asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role asp-explore`. Do not create duplicate {resident_child_name} sessions for the same root session; if a child id already exists outside the registry, register that id instead."
+            "ASP session-start bootstrap: this root session has no registered active {resident_child_name} child session. First recall the ASP registry with `asp agent session reuse --name {resident_child_name} --json`. If no child session is returned, create the resident child by selecting the configured Codex agent `{}`; do not use an ad-hoc natural-language subagent. Then register the returned child id with `asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role asp-explore`. Do not create duplicate {resident_child_name} sessions for the same root session; if a child id already exists outside the registry, register that id instead.",
+            asp_session_policy.resident_codex_agent_name()
         ),
         fields,
     }
@@ -280,9 +339,11 @@ fn missing_resident_asp_explore_decision(
     payload: &serde_json::Value,
     command: Option<&str>,
     root_session_id: Option<String>,
-    resident_child_name: &str,
+    asp_session_policy: &AspSessionPolicy,
 ) -> HookDecision {
+    let resident_child_name = asp_session_policy.resident_child_name();
     let mut fields = agent_session_route_fields("start-resident-child", resident_child_name);
+    append_resident_agent_fields(&mut fields, asp_session_policy);
     fields.insert(
         "agentSessionBootstrap".to_string(),
         serde_json::Value::String("session-start-reminder".to_string()),
@@ -313,7 +374,8 @@ fn missing_resident_asp_explore_decision(
         },
         routes: Vec::new(),
         message: format!(
-            "ASP session-start bootstrap required. This root session has no registered active {resident_child_name} child session in the ASP session registry. Create or resume one resident {resident_child_name} subagent, then register it with `asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role asp-explore`. After registration, retry the original tool command; do not create duplicate {resident_child_name} sessions for the same root session. If a child id already exists outside the registry, register that id instead.{command_line}"
+            "ASP session-start bootstrap required. This root session has no registered active {resident_child_name} child session in the ASP session registry. First recall the ASP registry with `asp agent session reuse --name {resident_child_name} --json`. If no child session is returned, create the resident child by selecting the configured Codex agent `{}`; do not use an ad-hoc natural-language subagent. Then register it with `asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role asp-explore`. After registration, retry the original tool command; do not create duplicate {resident_child_name} sessions for the same root session. If a child id already exists outside the registry, register that id instead.{command_line}",
+            asp_session_policy.resident_codex_agent_name()
         ),
         fields,
     }
@@ -326,8 +388,9 @@ fn main_session_asp_exploration_decision(
     command: &str,
     invocation: AspExplorationCommand,
     explore_session: Option<&RegisteredSession>,
-    resident_child_name: &str,
+    asp_session_policy: &AspSessionPolicy,
 ) -> HookDecision {
+    let resident_child_name = asp_session_policy.resident_child_name();
     let command_label = match invocation.stage.as_deref() {
         Some(stage) => format!("asp {} {stage}", invocation.facade),
         None => format!("asp {}", invocation.facade),
@@ -339,7 +402,8 @@ fn main_session_asp_exploration_decision(
         )
     } else {
         format!(
-            "ASP denied main-session ASP exploration (`{command_label}`). Start one resident {resident_child_name} subagent for this root session, then register it with `asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role asp-explore`. Reuse that child for ASP search/query for the rest of this root session; do not create duplicate {resident_child_name} sessions and do not close it while the root session is active.\nCommand: {command}",
+            "ASP denied main-session ASP exploration (`{command_label}`). First recall the ASP registry with `asp agent session reuse --name {resident_child_name} --json`. If no child session is returned, create the resident child by selecting the configured Codex agent `{}`; do not use an ad-hoc natural-language subagent. Then register it with `asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role asp-explore`. Reuse that child for ASP search/query for the rest of this root session; do not create duplicate {resident_child_name} sessions and do not close it while the root session is active.\nCommand: {command}",
+            asp_session_policy.resident_codex_agent_name()
         )
     };
     let mut fields = agent_session_route_fields(
@@ -350,6 +414,7 @@ fn main_session_asp_exploration_decision(
         },
         resident_child_name,
     );
+    append_resident_agent_fields(&mut fields, asp_session_policy);
     fields.insert(
         "blockedAspFacade".to_string(),
         serde_json::Value::String(invocation.facade.clone()),
@@ -406,13 +471,15 @@ fn main_session_restricted_asp_command_decision(
     command: &str,
     invocation: AspExplorationCommand,
     explore_session: Option<&RegisteredSession>,
-    resident_child_name: &str,
+    asp_session_policy: &AspSessionPolicy,
 ) -> HookDecision {
+    let resident_child_name = asp_session_policy.resident_child_name();
     let command_label = match invocation.stage.as_deref() {
         Some(stage) => format!("asp {} {stage}", invocation.facade),
         None => format!("asp {}", invocation.facade),
     };
     let mut fields = agent_session_route_fields("reuse-resident-child", resident_child_name);
+    append_resident_agent_fields(&mut fields, asp_session_policy);
     fields.insert(
         "mainSessionAspPolicy".to_string(),
         serde_json::Value::String("session-checkpoint-recovery-only".to_string()),
@@ -472,6 +539,16 @@ fn main_session_restricted_asp_command_decision(
     }
 }
 
+fn append_resident_agent_fields(
+    fields: &mut BTreeMap<String, serde_json::Value>,
+    asp_session_policy: &AspSessionPolicy,
+) {
+    fields.insert(
+        "residentCodexAgentName".to_string(),
+        serde_json::Value::String(asp_session_policy.resident_codex_agent_name().to_string()),
+    );
+}
+
 fn agent_session_route_fields(
     action: &str,
     resident_child_name: &str,
@@ -492,6 +569,18 @@ fn agent_session_route_fields(
         (
             "agentSessionAction".to_string(),
             serde_json::Value::String(action.to_string()),
+        ),
+        (
+            "agentSessionLookupCommand".to_string(),
+            serde_json::Value::String(format!(
+                "asp agent session reuse --name {resident_child_name} --json"
+            )),
+        ),
+        (
+            "agentSessionRegisterCommandTemplate".to_string(),
+            serde_json::Value::String(format!(
+                "asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role asp-explore"
+            )),
         ),
     ])
 }
@@ -631,14 +720,36 @@ fn is_asp_binary_token(token: &str) -> bool {
     token.rsplit('/').next() == Some("asp")
 }
 
-fn command_can_run_without_resident_child(
-    command: &str,
-    asp_session_policy: &AspSessionPolicy,
-) -> bool {
+fn command_requires_resident_child(command: &str, asp_session_policy: &AspSessionPolicy) -> bool {
     let tokens = shell_like_tokens(command);
     tokens.iter().enumerate().any(|(index, token)| {
-        is_asp_binary_token(token) && asp_session_policy.main_asp_command_allowed(&tokens, index)
+        is_asp_binary_token(token) && !asp_session_policy.main_asp_command_allowed(&tokens, index)
     })
+}
+
+fn command_prefix_tokens(prefix: &str) -> Result<Vec<String>, String> {
+    let tokens = prefix
+        .split_whitespace()
+        .map(|token| token.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    if tokens.is_empty() {
+        Err("aspSessionPolicy.mainAllowedAspCommandPrefixes[] must not be empty".to_string())
+    } else {
+        Ok(tokens)
+    }
+}
+
+fn command_prefix_matches(tokens: &[String], asp_index: usize, prefix: &[String]) -> bool {
+    let command_start = asp_index + 1;
+    if tokens.len() <= command_start {
+        return prefix.len() == 1 && prefix[0] == "help";
+    }
+    tokens.len() >= command_start + prefix.len()
+        && tokens
+            .iter()
+            .skip(command_start)
+            .zip(prefix.iter())
+            .all(|(token, expected)| token.eq_ignore_ascii_case(expected))
 }
 
 fn shell_like_tokens(command: &str) -> Vec<String> {

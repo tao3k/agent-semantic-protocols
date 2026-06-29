@@ -76,7 +76,7 @@ fn check_changed_view_seeds_renders_failure_frontier_after_provider_failure() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("avoid=manual-window-scan,duplicate-read,raw-read,broad-fzf"),
+        stdout.contains("avoid=manual-window-scan,duplicate-read,raw-read,broad-lexical"),
         "{stdout}"
     );
     for debug_prefix in [

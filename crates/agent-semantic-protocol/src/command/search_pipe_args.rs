@@ -16,7 +16,7 @@ pub(super) struct SearchPipeArgs {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub(super) struct SearchFzfArgs {
+pub(super) struct SearchLexicalArgs {
     pub(super) query: String,
     pub(super) pipes: Vec<String>,
     pub(super) owners: Vec<PathBuf>,
@@ -272,7 +272,7 @@ pub(super) fn parse_search_owner_items_query_args(
     }
     Ok(OwnerQueryArgs {
         owner: PathBuf::from(owner),
-        query: query.ok_or_else(|| "search owner items requires --query".to_string())?,
+        query: query.unwrap_or_default(),
         view,
     })
 }
@@ -309,11 +309,11 @@ pub(super) fn parse_ingest_args(args: &[String]) -> Result<IngestArgs, String> {
     Ok(IngestArgs { pipes, view })
 }
 
-pub(super) fn parse_fzf_args(args: &[String]) -> Result<SearchFzfArgs, String> {
+pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, String> {
     let query = args
         .get(2)
         .filter(|query| !query.starts_with('-'))
-        .ok_or_else(|| "search fzf requires a query".to_string())?
+        .ok_or_else(|| "search lexical requires a query".to_string())?
         .clone();
     let mut pipes = Vec::new();
     let mut owners = Vec::new();
@@ -341,13 +341,10 @@ pub(super) fn parse_fzf_args(args: &[String]) -> Result<SearchFzfArgs, String> {
                 index += 2;
             }
             "--query-set" | "--owner" | "--dependency" => {
-                return Err(format!(
-                    "search fzf fast path does not support {}",
-                    args[index]
-                ));
+                return Err(format!("search lexical does not support {}", args[index]));
             }
             value if value.starts_with('-') => {
-                return Err(format!("unknown search fzf option: {value}"));
+                return Err(format!("unknown search lexical option: {value}"));
             }
             "owner" => {
                 pipes.push("items".to_string());
@@ -366,7 +363,7 @@ pub(super) fn parse_fzf_args(args: &[String]) -> Result<SearchFzfArgs, String> {
     if pipes.is_empty() {
         pipes.extend(default_search_surfaces());
     }
-    Ok(SearchFzfArgs {
+    Ok(SearchLexicalArgs {
         query,
         pipes,
         owners,

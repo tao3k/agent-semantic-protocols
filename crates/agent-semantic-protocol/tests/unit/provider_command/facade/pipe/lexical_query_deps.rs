@@ -6,8 +6,8 @@ use serde_json::Value;
 use super::assert_graph_turbo_request_contract;
 
 #[test]
-fn rust_fzf_query_deps_request_includes_import_dependency_facts() {
-    let root = temp_project_root("rust-search-fzf-query-deps-graph-turbo-request");
+fn rust_lexical_query_deps_request_includes_import_dependency_facts() {
+    let root = temp_project_root("rust-search-lexical-query-deps-graph-turbo-request");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -25,7 +25,7 @@ fn rust_fzf_query_deps_request_includes_import_dependency_facts() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "serde_json",
             "deps",
             "--view",
@@ -33,7 +33,7 @@ fn rust_fzf_query_deps_request_includes_import_dependency_facts() {
             ".",
         ])
         .output()
-        .expect("run asp rust search fzf query deps");
+        .expect("run asp rust search lexical query deps");
 
     assert!(
         output.status.success(),
@@ -52,8 +52,8 @@ fn rust_fzf_query_deps_request_includes_import_dependency_facts() {
 }
 
 #[test]
-fn typescript_fzf_query_deps_request_includes_import_dependency_facts() {
-    let root = temp_project_root("typescript-search-fzf-query-deps-graph-turbo-request");
+fn typescript_lexical_query_deps_request_includes_import_dependency_facts() {
+    let root = temp_project_root("typescript-search-lexical-query-deps-graph-turbo-request");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -71,7 +71,7 @@ fn typescript_fzf_query_deps_request_includes_import_dependency_facts() {
         .args([
             "typescript",
             "search",
-            "fzf",
+            "lexical",
             "node:fs",
             "deps",
             "--view",
@@ -79,7 +79,7 @@ fn typescript_fzf_query_deps_request_includes_import_dependency_facts() {
             ".",
         ])
         .output()
-        .expect("run asp typescript search fzf query deps");
+        .expect("run asp typescript search lexical query deps");
 
     assert!(
         output.status.success(),

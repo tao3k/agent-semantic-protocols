@@ -42,7 +42,7 @@ fn ensure_generated_activation_provider_commands_current(
     let runtime = load_or_sync_activation(&activation_path, project_root)?;
     let context_fingerprint = provider_command_selection_context_fingerprint(project_root)?;
     let db_engine = ClientDbEngine::resolve(project_root)?;
-    let mut db = db_engine.open_sqlite_or_create()?;
+    let mut db = db_engine.open_or_create()?;
     if let Some(cached) =
         db.lookup_provider_command_selections(project_root, &context_fingerprint)?
         && cached.iter().all(cached_provider_executable_is_fresh)

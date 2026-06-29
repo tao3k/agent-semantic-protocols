@@ -29,9 +29,9 @@ fn search_packet_first_skips_workspace_seed_discovery() {
 }
 
 #[test]
-fn search_packet_first_still_handles_seed_fzf() {
+fn search_packet_first_still_handles_seed_lexical() {
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
-        "fzf".to_string(),
+        "lexical".to_string(),
         "workspace".to_string(),
         "--view".to_string(),
         "seeds".to_string(),

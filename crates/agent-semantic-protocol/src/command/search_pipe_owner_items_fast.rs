@@ -1,15 +1,15 @@
 //! ASP-owned fast path for `search owner <path> items`.
 
-use std::fs;
-use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
 use super::graph::GraphTurboReceiptRequest;
-use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
+use super::language_owner_items::{
+    LanguageOwnerItemsDispatchRequest, LanguageOwnerItemsDispatchResult,
+    dispatch_language_owner_items, language_owner_path_exists,
+};
 use super::search_config::AspConfig;
 use super::search_pipe_args::parse_search_owner_items_query_args;
 use super::search_pipe_gerbil_owner_items::run_inline_gerbil_owner_items_query;
-use super::search_pipe_owner_query::render_owner_query_frontier;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_view::reject_non_graph_turbo_receipt;
 
@@ -26,8 +26,6 @@ pub(super) struct SearchOwnerItemsFastContext<'a> {
 struct OwnerItemsSearchState<'a> {
     args: &'a [String],
     language_id: &'a str,
-    project_root: &'a Path,
-    locator_root: &'a Path,
     owner_project_root: PathBuf,
     cache_home: &'a Path,
     config: &'a AspConfig,
@@ -57,8 +55,6 @@ impl<'a> OwnerItemsSearchState<'a> {
         Self {
             args,
             language_id: context.language_id,
-            project_root: context.project_root,
-            locator_root: context.locator_root,
             owner_project_root,
             cache_home: context.cache_home,
             config: context.config,
@@ -81,25 +77,18 @@ impl<'a> OwnerItemsSearchState<'a> {
     }
 
     fn try_provider(&self) -> Result<OwnerItemsSearchStep, String> {
-        run_provider_owner_items_query(
-            self.language_id,
-            self.args,
-            self.owner,
-            &self.owner_project_root,
-            self.cache_home,
-            self.config,
-            self.provider_context,
-        )
-    }
-
-    fn render_native_owner_query(&self) -> String {
-        render_owner_query_frontier(
-            self.language_id,
-            self.project_root,
-            self.locator_root,
-            self.owner,
-            self.query,
-        )
+        match dispatch_language_owner_items(LanguageOwnerItemsDispatchRequest {
+            language_id: self.language_id,
+            args: self.args,
+            owner: self.owner,
+            project_root: &self.owner_project_root,
+            cache_home: self.cache_home,
+            config: self.config,
+            provider_context: self.provider_context,
+        })? {
+            LanguageOwnerItemsDispatchResult::Handled => Ok(OwnerItemsSearchStep::Handled),
+            LanguageOwnerItemsDispatchResult::Unsupported => Ok(OwnerItemsSearchStep::Unsupported),
+        }
     }
 }
 
@@ -120,20 +109,10 @@ pub(super) fn run_search_owner_items_query_command(
         &owner_query_args.owner,
         &owner_query_args.query,
     );
-    if state.language_id == "python" {
-        if state.owner.extension().and_then(|value| value.to_str()) != Some("py")
-            || !owner_path_exists(&state.owner_project_root, state.owner)
-        {
-            return Err(format!(
-                "python search owner items requires an existing .py owner path `{}`; no fallback executed",
-                state.owner.display()
-            ));
-        }
-        if state.try_provider()? == OwnerItemsSearchStep::Handled {
-            return Ok(());
-        }
+    if !language_owner_path_exists(&state.owner_project_root, state.owner) {
         return Err(format!(
-            "python search owner items requires provider-owned owner-items for existing .py owner path `{}`; no fallback executed",
+            "{} search owner items requires an existing owner path `{}`; no fallback executed",
+            state.language_id,
             state.owner.display()
         ));
     }
@@ -143,8 +122,11 @@ pub(super) fn run_search_owner_items_query_command(
     if state.try_provider()? == OwnerItemsSearchStep::Handled {
         return Ok(());
     }
-    print!("{}", state.render_native_owner_query());
-    Ok(())
+    Err(format!(
+        "{} search owner items requires a language-harness owner-items interface for `{}`; ASP will not synthesize language items from source text",
+        state.language_id,
+        state.owner.display()
+    ))
 }
 
 fn search_owner_items_workspace(args: &[String]) -> Option<PathBuf> {
@@ -156,131 +138,6 @@ fn search_owner_items_workspace(args: &[String]) -> Option<PathBuf> {
         index += 1;
     }
     None
-}
-
-fn run_provider_owner_items_query(
-    language_id: &str,
-    args: &[String],
-    owner: &Path,
-    project_root: &Path,
-    cache_home: &Path,
-    config: &AspConfig,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
-) -> Result<OwnerItemsSearchStep, String> {
-    let Some(context) = provider_context else {
-        return Ok(OwnerItemsSearchStep::Unsupported);
-    };
-    if !context.provider.search_capabilities.owner_items {
-        return Ok(OwnerItemsSearchStep::Unsupported);
-    }
-    let existing_owner_path = owner_path_exists(project_root, owner);
-    let invocation = provider_invocation_with_profile(
-        context.profiles,
-        context.provider,
-        args,
-        project_root,
-        config,
-    )?;
-    let output = run_provider_command_with_stdin(
-        language_id,
-        context.provider,
-        &invocation,
-        project_root,
-        cache_home,
-        Vec::new(),
-    )?;
-    if !output.status.success() {
-        if !existing_owner_path {
-            return Ok(OwnerItemsSearchStep::Unsupported);
-        }
-        return Err(provider_owner_items_failure(
-            "provider-owned owner-items failed",
-            owner,
-            output.stderr.as_ref(),
-            existing_owner_path,
-        ));
-    }
-    if output
-        .stdout
-        .iter()
-        .all(|byte| byte.is_ascii_whitespace() || *byte == 0)
-    {
-        if !existing_owner_path {
-            return Ok(OwnerItemsSearchStep::Unsupported);
-        }
-        return Err(provider_owner_items_failure(
-            "provider-owned owner-items produced empty output",
-            owner,
-            output.stderr.as_ref(),
-            existing_owner_path,
-        ));
-    }
-    io::stderr()
-        .write_all(output.stderr.as_ref())
-        .map_err(|error| format!("failed to write provider stderr: {error}"))?;
-    let stdout = compact_provider_owner_items_stdout(output.stdout.as_ref());
-    io::stdout()
-        .write_all(stdout.as_ref())
-        .map_err(|error| format!("failed to write provider stdout: {error}"))?;
-    Ok(OwnerItemsSearchStep::Handled)
-}
-
-fn compact_provider_owner_items_stdout(stdout: &[u8]) -> Vec<u8> {
-    String::from_utf8_lossy(stdout)
-        .lines()
-        .filter(|line| !default_search_internal_line(line))
-        .fold(String::new(), |mut rendered, line| {
-            rendered.push_str(line);
-            rendered.push('\n');
-            rendered
-        })
-        .into_bytes()
-}
-
-fn default_search_internal_line(line: &str) -> bool {
-    matches!(
-        line,
-        "actionFrontier=" | "recommendedNext=" | "rankedEvidence=" | "evidenceFrontier="
-    ) || line.starts_with("actionFrontier=")
-        || line.starts_with("recommendedNext=")
-        || line.starts_with("rankedEvidence=")
-        || line.starts_with("evidenceFrontier=")
-        || line.starts_with("commandHandles=")
-        || line.starts_with("treeSitterHandles=")
-        || line.starts_with("[graph-frontier]")
-        || line.starts_with("[route-graph]")
-}
-
-fn owner_path_exists(project_root: &Path, owner: &Path) -> bool {
-    let path = if owner.is_absolute() {
-        owner.to_path_buf()
-    } else {
-        project_root.join(owner)
-    };
-    fs::metadata(path).is_ok()
-}
-
-fn provider_owner_items_failure(
-    message: &str,
-    owner: &Path,
-    stderr: &[u8],
-    existing_owner_path: bool,
-) -> String {
-    let owner_state = if existing_owner_path {
-        "existing owner path"
-    } else {
-        "owner"
-    };
-    let mut failure = format!(
-        "{message} for {owner_state} `{}`; no fallback executed",
-        owner.display()
-    );
-    let provider_stderr = String::from_utf8_lossy(stderr).trim().to_string();
-    if !provider_stderr.is_empty() {
-        failure.push_str(": ");
-        failure.push_str(&provider_stderr);
-    }
-    failure
 }
 
 fn search_workspace_root(

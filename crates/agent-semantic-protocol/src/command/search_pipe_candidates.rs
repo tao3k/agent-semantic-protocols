@@ -5,8 +5,8 @@ use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::path::{Path, PathBuf};
 
+use agent_semantic_client::{LexicalOverlayDocument, search_lexical_overlay_candidates};
 use agent_semantic_provider_transport::byte_text;
-use aho_corasick::{AhoCorasick, AhoCorasickBuilder};
 use ignore::{DirEntry, WalkBuilder};
 
 use super::search_config::AspConfig;
@@ -86,18 +86,12 @@ pub(super) fn collect_candidates(
         .unwrap_or_default();
         return Ok(native_candidates);
     }
-    let term_matcher = CandidateTermMatcher::new(&terms)?;
     let search_roots = roots
         .iter()
         .map(|root| sorted_search_root_files(root, config, &file_spec, &terms))
         .collect::<Result<Vec<_>, _>>()?;
-    let supplemental_candidates = collect_candidates_from_search_roots(
-        locator_root,
-        &file_spec,
-        &terms,
-        &term_matcher,
-        &search_roots,
-    )?;
+    let supplemental_candidates =
+        collect_candidates_from_search_roots(locator_root, &file_spec, &terms, &search_roots);
     Ok(supplemental_candidates)
 }
 
@@ -117,38 +111,52 @@ fn collect_candidates_from_search_roots(
     locator_root: &Path,
     file_spec: &LanguageFileSpec,
     terms: &[String],
-    term_matcher: &CandidateTermMatcher,
     search_roots: &[Vec<PathBuf>],
-) -> Result<Vec<Candidate>, String> {
+) -> Vec<Candidate> {
     let mut candidates = Vec::new();
-    let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
     let per_term_limit = per_term_candidate_limit(terms.len());
-    let mut term_counts = vec![0usize; terms.len()];
     let mut seen = HashSet::new();
-    let mut collector = CandidateCollector {
-        locator_root,
-        file_spec,
-        terms,
-        term_matcher,
-        per_term_limit,
-        term_counts: &mut term_counts,
-        candidates: &mut candidates,
-        remaining: &mut remaining,
-        seen: &mut seen,
-    };
+    let documents = search_roots
+        .iter()
+        .flat_map(|paths| paths.iter())
+        .filter(|path| file_spec.matches(path))
+        .filter_map(|path| lexical_overlay_document(locator_root, path))
+        .collect::<Vec<_>>();
+    if documents.is_empty() {
+        return candidates;
+    }
+    let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
     for paths in search_roots {
-        if collector.is_done() {
+        if remaining == 0 {
             break;
         }
-        collector.append_path_candidates(paths);
+        append_overlay_path_candidates(
+            locator_root,
+            file_spec,
+            terms,
+            per_term_limit,
+            paths,
+            &mut remaining,
+            &mut seen,
+            &mut candidates,
+        );
     }
-    for paths in search_roots {
-        if collector.is_done() {
+    for hit in search_lexical_overlay_candidates(terms, &documents, per_term_limit, remaining) {
+        if candidates.len() >= PIPE_CANDIDATE_LINE_LIMIT {
             break;
         }
-        collector.append_candidates(paths)?;
+        let candidate = Candidate {
+            path: hit.owner_path().to_string(),
+            line: 1,
+            end_line: 1,
+            symbol: hit.symbol().to_string(),
+            text: hit.text().to_string(),
+            source: "overlay".to_string(),
+            confidence: "lexical-overlay".to_string(),
+        };
+        push_candidate(candidate, &mut seen, &mut candidates);
     }
-    Ok(candidates)
+    candidates
 }
 
 fn parse_ingest_candidate_line(
@@ -221,192 +229,74 @@ fn query_terms(query: &str) -> Vec<String> {
         .collect()
 }
 
-struct CandidateCollector<'a> {
-    locator_root: &'a Path,
-    file_spec: &'a LanguageFileSpec,
-    terms: &'a [String],
-    term_matcher: &'a CandidateTermMatcher,
+fn append_overlay_path_candidates(
+    locator_root: &Path,
+    file_spec: &LanguageFileSpec,
+    terms: &[String],
     per_term_limit: usize,
-    term_counts: &'a mut [usize],
-    candidates: &'a mut Vec<Candidate>,
-    remaining: &'a mut usize,
-    seen: &'a mut HashSet<String>,
-}
-
-impl CandidateCollector<'_> {
-    fn is_done(&self) -> bool {
-        *self.remaining == 0
-    }
-
-    fn append_path_candidates(&mut self, paths: &[PathBuf]) {
-        for path in paths {
-            if self.is_done() {
-                break;
-            }
-            self.append_path_candidate(path);
+    paths: &[PathBuf],
+    remaining: &mut usize,
+    seen: &mut HashSet<String>,
+    candidates: &mut Vec<Candidate>,
+) {
+    let mut term_counts = vec![0usize; terms.len()];
+    for path in paths {
+        if *remaining == 0 {
+            break;
         }
-    }
-
-    fn append_candidates(&mut self, paths: &[PathBuf]) -> Result<(), String> {
-        for path in paths {
-            if self.is_done() {
-                break;
-            }
-            self.append_file_candidates(path)?;
+        if !file_spec.matches(path) {
+            continue;
         }
-        Ok(())
-    }
-
-    fn append_file_candidates(&mut self, path: &Path) -> Result<(), String> {
-        if !self.file_spec.matches(path) {
-            return Ok(());
-        }
-        self.append_path_candidate(path);
-        let Ok(bytes) = fs::read(path) else {
-            return Ok(());
-        };
-        for (index, line) in file_candidate_lines(&bytes).enumerate() {
-            if self.is_done() {
-                break;
-            }
-            let Some((candidate, term_index)) = self.line_candidate(path, line, index + 1) else {
+        let display = display_path(locator_root, path);
+        let lower = display.to_ascii_lowercase();
+        for (index, term) in terms.iter().enumerate() {
+            if term_counts[index] >= per_term_limit || !lower.contains(term) {
                 continue;
+            }
+            let candidate = Candidate {
+                path: display.clone(),
+                line: 1,
+                end_line: 1,
+                symbol: term.clone(),
+                text: display.clone(),
+                source: "overlay-path".to_string(),
+                confidence: "path-lexical-overlay".to_string(),
             };
-            if self.push_candidate(candidate) {
-                self.term_counts[term_index] += 1;
-                *self.remaining -= 1;
+            if push_candidate(candidate, seen, candidates) {
+                term_counts[index] += 1;
+                *remaining -= 1;
             }
-        }
-        Ok(())
-    }
-
-    fn append_path_candidate(&mut self, path: &Path) {
-        if self.is_done() {
-            return;
-        }
-        if !self.file_spec.matches(path) {
-            return;
-        }
-        let display = display_path(self.locator_root, path);
-        let Some(term_index) = self.term_matcher.find_available_str(
-            &display,
-            self.terms,
-            self.per_term_limit,
-            self.term_counts,
-        ) else {
-            return;
-        };
-        let candidate = Candidate {
-            path: display.clone(),
-            line: 1,
-            end_line: 1,
-            symbol: self.terms[term_index].clone(),
-            text: display,
-            source: "finder-path".to_string(),
-            confidence: "path-exact".to_string(),
-        };
-        if self.push_candidate(candidate) {
-            self.term_counts[term_index] += 1;
-            *self.remaining -= 1;
-        }
-    }
-
-    fn push_candidate(&mut self, candidate: Candidate) -> bool {
-        let key = format!(
-            "{}:{}:{}:{}",
-            candidate.path, candidate.line, candidate.symbol, candidate.source
-        );
-        if !self.seen.insert(key) {
-            return false;
-        }
-        self.candidates.push(candidate);
-        true
-    }
-
-    fn line_candidate(
-        &self,
-        path: &Path,
-        line: &[u8],
-        line_number: usize,
-    ) -> Option<(Candidate, usize)> {
-        let term_index = self.term_matcher.find_available_bytes(
-            line,
-            self.terms,
-            self.per_term_limit,
-            self.term_counts,
-        )?;
-        Some((
-            Candidate {
-                path: display_path(self.locator_root, path),
-                line: line_number,
-                end_line: line_number,
-                symbol: self.terms[term_index].clone(),
-                text: byte_text::lossy_string(line),
-                source: "finder".to_string(),
-                confidence: "heuristic".to_string(),
-            },
-            term_index,
-        ))
-    }
-}
-
-enum CandidateTermMatcher {
-    Ascii(AhoCorasick),
-    UnicodeFallback,
-}
-
-impl CandidateTermMatcher {
-    fn new(terms: &[String]) -> Result<Self, String> {
-        if !terms.iter().all(|term| term.is_ascii()) {
-            return Ok(Self::UnicodeFallback);
-        }
-        AhoCorasickBuilder::new()
-            .ascii_case_insensitive(true)
-            .build(terms)
-            .map(Self::Ascii)
-            .map_err(|error| format!("failed to compile search pipe term matcher: {error}"))
-    }
-
-    fn find_available_str(
-        &self,
-        haystack: &str,
-        terms: &[String],
-        per_term_limit: usize,
-        term_counts: &[usize],
-    ) -> Option<usize> {
-        self.find_available_bytes(haystack.as_bytes(), terms, per_term_limit, term_counts)
-    }
-
-    fn find_available_bytes(
-        &self,
-        haystack: &[u8],
-        terms: &[String],
-        per_term_limit: usize,
-        term_counts: &[usize],
-    ) -> Option<usize> {
-        match self {
-            Self::Ascii(matcher) => matcher
-                .find_overlapping_iter(haystack)
-                .map(|mat| mat.pattern().as_usize())
-                .filter(|index| term_available(*index, per_term_limit, term_counts))
-                .min(),
-            Self::UnicodeFallback => {
-                let lower = byte_text::lowercase_lossy_string(haystack);
-                terms
-                    .iter()
-                    .enumerate()
-                    .find(|(index, term)| {
-                        term_available(*index, per_term_limit, term_counts)
-                            && lower.contains(term.as_str())
-                    })
-                    .map(|(index, _)| index)
-            }
+            break;
         }
     }
 }
 
-fn term_available(index: usize, per_term_limit: usize, term_counts: &[usize]) -> bool {
-    term_counts.get(index).copied().unwrap_or(0) < per_term_limit
+fn lexical_overlay_document(locator_root: &Path, path: &Path) -> Option<LexicalOverlayDocument> {
+    let display = display_path(locator_root, path);
+    let bytes = fs::read(path).ok()?;
+    let source_text = byte_text::lossy_string(&bytes);
+    Some(
+        LexicalOverlayDocument::new(display.clone(), display.clone(), symbol_from_text(&display))
+            .kind("owner")
+            .source_hash("workspace-dirty")
+            .search_text(source_text),
+    )
+}
+
+fn push_candidate(
+    candidate: Candidate,
+    seen: &mut HashSet<String>,
+    candidates: &mut Vec<Candidate>,
+) -> bool {
+    let key = format!(
+        "{}:{}:{}:{}",
+        candidate.path, candidate.line, candidate.symbol, candidate.source
+    );
+    if !seen.insert(key) {
+        return false;
+    }
+    candidates.push(candidate);
+    true
 }
 
 fn path_search_priority(path: &Path, terms: &[String]) -> (u8, u8, String) {
@@ -586,10 +476,6 @@ fn parse_usize_ascii(bytes: &[u8]) -> Option<usize> {
 
 fn ingest_candidate_lines(stdin: &[u8]) -> impl Iterator<Item = &[u8]> {
     byte_text::split_lf_or_nul_records(stdin)
-}
-
-fn file_candidate_lines(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
-    byte_text::split_lf_lines(bytes)
 }
 
 fn display_path(project_root: &Path, path: &Path) -> String {

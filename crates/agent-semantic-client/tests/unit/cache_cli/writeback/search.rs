@@ -19,11 +19,11 @@ fn search_output_writeback_adds_replay_ready_stdout_artifact() {
     let root = temp_root("search-output-writeback");
     let cache_root = v2_cache_root(&root);
     let mut generation = ClientCacheGeneration {
-        generation_id: CacheGenerationId::from("rust-search-fzf-abc123"),
+        generation_id: CacheGenerationId::from("rust-search-lexical-abc123"),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         provider_version: None,
-        export_method: Some("search/fzf".to_string()),
+        export_method: Some("search/lexical".to_string()),
         project_root: root.display().to_string(),
         package_root: Some(".".to_string()),
         schema_ids: vec![SemanticSchemaId::from(
@@ -34,27 +34,27 @@ fn search_output_writeback_adds_replay_ready_stdout_artifact() {
         request_fingerprint: None,
         file_hashes: None,
         artifact_ids: Some(vec![CacheArtifactId::from(
-            "search/rust-search-fzf-abc123.json",
+            "search/rust-search-lexical-abc123.json",
         )]),
     };
-    let stdout = "[search-fzf] q=cache view=fzf alg=seed-frontier\n\
+    let stdout = "[search-lexical] q=cache view=lexical alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,Q:query\n\
-Q=query:term(cache)!fzf\n\
+Q=query:term(cache)!lexical\n\
 G>{Q:matches}\n\
-rank=Q frontier=Q.fzf\n";
+rank=Q frontier=Q.lexical\n";
 
     maybe_write_search_output_artifact(&cache_root, &mut generation, stdout.as_bytes());
 
     let artifact_ids = generation.artifact_ids.expect("artifact ids");
-    assert!(
-        artifact_ids.iter().any(|artifact_id| {
-            artifact_id.as_str() == "search-output/rust-search-fzf-abc123.txt"
-        })
-    );
+    assert!(artifact_ids.iter().any(|artifact_id| {
+        artifact_id.as_str() == "search-output/rust-search-lexical-abc123.txt"
+    }));
     assert_eq!(
-        std::fs::read_to_string(root.join("artifacts/search-output/rust-search-fzf-abc123.txt"))
-            .expect("search output artifact"),
+        std::fs::read_to_string(
+            root.join("artifacts/search-output/rust-search-lexical-abc123.txt")
+        )
+        .expect("search output artifact"),
         stdout
     );
     let _ = std::fs::remove_dir_all(root);
@@ -76,7 +76,7 @@ fn search_output_file_hashes_use_prompt_facing_locators() {
     )
     .expect("write test");
     let package_roots = vec!["crates/client".to_string()];
-    let stdout = "[search-fzf] q=cache view=fzf alg=seed-frontier\n\
+    let stdout = "[search-lexical] q=cache view=lexical alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,Q:query,O:owner,T:test\n\
 O=owner:path(src/cache.rs)!owner;T=test:path(tests/unit/cache.rs)!tests\n";
@@ -134,7 +134,7 @@ fn search_packet_writeback_replays_rendered_stdout_artifact() {
     }))
     .expect("packet json");
     let rendered_stdout = "[search-prime] root=. view=prime alg=seed-frontier\n\
-|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"\n\
+|decision purpose=decision-primer answer=false code=false capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\

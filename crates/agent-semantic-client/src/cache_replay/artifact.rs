@@ -129,8 +129,8 @@ pub(crate) fn load_replay_artifact(
         "purpose=decision-primer;",
         "answer=false;",
         "code=false;",
-        "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
-        "ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code;",
+        "capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
+        "ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code;",
         "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
         "risk=broad-direct-read,manual-window-scan,repeat-prime;",
         "next=search pipe <question-or-feature-term> --view seeds"

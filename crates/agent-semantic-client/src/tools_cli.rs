@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const REQUIRED_TOOLS: &[&str] = &["fd", "rg", "fzf", "eza", "asp-graph-turbo"];
+const REQUIRED_TOOLS: &[&str] = &["fd", "rg", "eza", "asp-graph-turbo"];
 
 pub(crate) fn run_tools(project_root: &Path, args: &[String]) -> Result<(), String> {
     match args {

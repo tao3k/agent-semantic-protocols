@@ -55,7 +55,7 @@ fn native_prime_seed_stdout_renders_owner_nodes_without_provider() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("avoid=raw-read,full-json,broad-fzf"),
+        stdout.contains("avoid=raw-read,full-json,broad-lexical"),
         "{stdout}"
     );
     let _ = fs::remove_dir_all(root);

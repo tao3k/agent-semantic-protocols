@@ -10,8 +10,12 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheManifestReport, CacheManifestStatus,
-    ClientCacheManifest, ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt, LanguageId,
-    ProjectContext, ProviderId, ProviderRegistrySnapshot, StateLayout,
+    ClientCacheManifest, ClientCachePath, ClientDbBackend, ClientDbEngineDurability,
+    ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbFileName, ClientDbFutureBackend,
+    ClientDbJournalMode, ClientDbRuntimePragmasReceipt, ClientDbSqliteReceipt, ClientDbStatus,
+    ClientMethod, ClientReceipt, ClientRepoId, ClientScopeId, ClientStateLayoutVersion,
+    ClientWorkspaceId, LanguageId, ProjectContext, ProviderId, ProviderRegistrySnapshot,
+    StateLayout,
 };
 use agent_semantic_client_db::{ClientDb, ClientDbEngine, ClientDbEngineReport, ClientDbReport};
 use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout_in_client_cache};
@@ -113,8 +117,8 @@ pub(crate) fn run_cache(
                 .as_ref()
                 .map(|report| &report.sqlite_report);
             let mut receipt = ClientReceipt::cache_status(provenance, &cache_report);
-            if let Some(db_report) = &db_report {
-                apply_db_report_to_receipt(&mut receipt, db_report);
+            if let Some(db_engine_report) = &db_engine_report {
+                apply_db_engine_report_to_receipt(&mut receipt, db_engine_report);
             }
             receipt.sqlite_read_count = Some(u64::from(db_report.is_some()));
             receipt.sqlite_write_count = Some(0);
@@ -179,7 +183,7 @@ pub(crate) fn run_cache(
                 .unwrap_or_else(|_| ClientDb::inspect(db_path));
             let mut receipt =
                 ClientReceipt::cache_report(ClientMethod::CacheImport, provenance, &cache_report);
-            apply_db_report_to_receipt(&mut receipt, &db_report);
+            apply_project_db_report_to_receipt(&mut receipt, project_root, &db_report);
             receipt.sqlite_read_count = Some(1);
             receipt.sqlite_write_count = Some(1 + structural_index_imported_count);
             println!(
@@ -328,7 +332,7 @@ pub(crate) fn run_cache(
                 &updated_cache_report,
             );
             receipt.cache_status = agent_semantic_client_core::CacheStatus::Invalidated;
-            apply_db_report_to_receipt(&mut receipt, &db_report);
+            apply_project_db_report_to_receipt(&mut receipt, project_root, &db_report);
             receipt.sqlite_read_count = Some(1);
             receipt.sqlite_write_count = Some(1);
             println!(
@@ -388,7 +392,7 @@ pub(crate) fn run_cache(
             let mut receipt =
                 ClientReceipt::cache_report(receipt_method, provenance, &updated_cache_report);
             receipt.cache_status = agent_semantic_client_core::CacheStatus::Invalidated;
-            apply_db_report_to_receipt(&mut receipt, &db_report);
+            apply_project_db_report_to_receipt(&mut receipt, project_root, &db_report);
             receipt.sqlite_read_count = Some(1);
             receipt.sqlite_write_count = Some(1);
             println!(
@@ -706,6 +710,86 @@ fn apply_db_report_to_receipt(receipt: &mut ClientReceipt, db_report: &ClientDbR
         receipt.client_db_synchronous = Some(pragmas.synchronous);
         receipt.client_db_busy_timeout_ms = u64::try_from(pragmas.busy_timeout_ms).ok();
         receipt.client_db_foreign_keys = Some(pragmas.foreign_keys);
+    }
+}
+
+fn apply_db_engine_report_to_receipt(
+    receipt: &mut ClientReceipt,
+    engine_report: &ClientDbEngineReport,
+) {
+    receipt.db_engine = Some(db_engine_receipt(engine_report));
+    apply_db_report_to_receipt(receipt, &engine_report.sqlite_report);
+}
+
+fn apply_project_db_report_to_receipt(
+    receipt: &mut ClientReceipt,
+    project_root: &Path,
+    fallback_db_report: &ClientDbReport,
+) {
+    if let Some(engine_report) = ClientDbEngine::resolve(project_root)
+        .ok()
+        .map(|engine| engine.inspect())
+    {
+        apply_db_engine_report_to_receipt(receipt, &engine_report);
+    } else {
+        apply_db_report_to_receipt(receipt, fallback_db_report);
+    }
+}
+
+fn db_engine_receipt(engine_report: &ClientDbEngineReport) -> ClientDbEngineReceipt {
+    ClientDbEngineReceipt {
+        backend: ClientDbBackend::from(engine_report.backend),
+        future_backend: ClientDbFutureBackend::from(engine_report.future_backend),
+        layout_version: ClientStateLayoutVersion::from(engine_report.layout_version),
+        db_file_name: ClientDbFileName::from(engine_report.db_file_name),
+        schema_version: engine_report.schema_version,
+        durability: ClientDbEngineDurability::from(engine_report.durability),
+        features: ClientDbEngineFeaturesReceipt {
+            async_io: engine_report.features.async_io,
+            concurrent_writes: engine_report.features.concurrent_writes,
+            fts: engine_report.features.fts,
+            vector: engine_report.features.vector,
+            overlay_search: engine_report.features.overlay_search,
+            sync: engine_report.features.sync,
+            encryption: engine_report.features.encryption,
+        },
+        client_dir: ClientCachePath::from_path(&engine_report.client_dir),
+        db_path: ClientCachePath::from_path(&engine_report.db_path),
+        manifest_path: ClientCachePath::from_path(&engine_report.manifest_path),
+        artifact_path: ClientCachePath::from_path(&engine_report.artifact_path),
+        repo_id: ClientRepoId::from(engine_report.repo_id.clone()),
+        workspace_id: ClientWorkspaceId::from(engine_report.workspace_id.clone()),
+        scope_id: ClientScopeId::from(engine_report.scope_id.clone()),
+        sqlite_report: sqlite_receipt(&engine_report.sqlite_report),
+    }
+}
+
+fn sqlite_receipt(db_report: &ClientDbReport) -> ClientDbSqliteReceipt {
+    ClientDbSqliteReceipt {
+        db_path: ClientCachePath::from_path(&db_report.db_path),
+        status: db_report.status.clone(),
+        generation_count: db_report.generation_count,
+        syntax_row_generation_count: db_report.syntax_row_generation_count,
+        syntax_row_match_count: db_report.syntax_row_match_count,
+        syntax_row_capture_count: db_report.syntax_row_capture_count,
+        structural_index_generation_count: db_report.structural_index_generation_count,
+        structural_index_owner_count: db_report.structural_index_owner_count,
+        structural_index_symbol_count: db_report.structural_index_symbol_count,
+        structural_index_dependency_usage_count: db_report.structural_index_dependency_usage_count,
+        source_index_generation_count: db_report.source_index_generation_count,
+        source_index_owner_count: db_report.source_index_owner_count,
+        source_index_selector_count: db_report.source_index_selector_count,
+        artifact_event_count: db_report.artifact_event_count,
+        raw_source_stored: db_report.raw_source_stored,
+        runtime_pragmas: db_report.runtime_pragmas.as_ref().map(|pragmas| {
+            ClientDbRuntimePragmasReceipt {
+                journal_mode: ClientDbJournalMode::from(pragmas.journal_mode.as_str().to_string()),
+                synchronous: pragmas.synchronous,
+                busy_timeout_ms: u64::try_from(pragmas.busy_timeout_ms).unwrap_or_default(),
+                foreign_keys: pragmas.foreign_keys,
+            }
+        }),
+        reason: db_report.reason.clone(),
     }
 }
 

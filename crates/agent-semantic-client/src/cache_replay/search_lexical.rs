@@ -11,7 +11,7 @@ use serde_json::Value;
 use super::artifact::replay_artifact_path;
 use super::limits::MAX_CACHE_REPLAY_ARTIFACT_BYTES;
 
-pub(crate) fn search_fzf_generation_matches_request(
+pub(crate) fn search_lexical_generation_matches_request(
     cache_root: &Path,
     generation_hit: &ClientDbGenerationHit,
     request: &ClientRequest,
@@ -23,11 +23,11 @@ pub(crate) fn search_fzf_generation_matches_request(
             return None;
         }
         let packet: Value = serde_json::from_slice(&fs::read(artifact_path).ok()?).ok()?;
-        search_fzf_packet_matches_request(&packet, request)
+        search_lexical_packet_matches_request(&packet, request)
     })
 }
 
-pub(crate) fn search_fzf_packet_matches_request(
+pub(crate) fn search_lexical_packet_matches_request(
     packet: &Value,
     request: &ClientRequest,
 ) -> Option<()> {
@@ -42,18 +42,18 @@ pub(crate) fn search_fzf_packet_matches_request(
     if string_field(packet, "schemaId")? != "agent.semantic-protocols.semantic-search-packet" {
         return None;
     }
-    if string_field(packet, "method")? != "search/fzf" {
+    if string_field(packet, "method")? != "search/lexical" {
         return None;
     }
-    if string_field(packet, "query")? != request_search_fzf_query(&request.forwarded_args)? {
+    if string_field(packet, "query")? != request_search_lexical_query(&request.forwarded_args)? {
         return None;
     }
     Some(())
 }
 
-fn request_search_fzf_query(forwarded_args: &[String]) -> Option<&str> {
+fn request_search_lexical_query(forwarded_args: &[String]) -> Option<&str> {
     forwarded_args.windows(2).find_map(|window| {
-        (window[0] == "fzf" && !window[1].starts_with('-') && window[1] != ".")
+        (window[0] == "lexical" && !window[1].starts_with('-') && window[1] != ".")
             .then_some(window[1].as_str())
     })
 }

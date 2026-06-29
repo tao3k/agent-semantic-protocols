@@ -110,8 +110,8 @@ pub(super) fn provider_routes(binary: &str, query: Option<CommandTemplate>) -> H
         owner: command(&[
             binary, "search", "owner", "{path}", "items", "--query", "{query}", ".",
         ]),
-        fzf: command(&[
-            binary, "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", ".",
+        lexical: command(&[
+            binary, "search", "lexical", "{query}", "owner", "tests", "--view", "seeds", ".",
         ]),
         query,
         ingest: command_with_stdin(

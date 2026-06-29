@@ -51,7 +51,7 @@ fn structured_evidence_artifacts_prevent_prompt_stdout_replay() {
     write_source(&root);
     write_prompt_output_artifact(&root, "safe prompt stdout\n");
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
-        "fzf".to_string(),
+        "lexical".to_string(),
         "relation".to_string(),
         "--view".to_string(),
         "seeds".to_string(),
@@ -93,7 +93,7 @@ fn generation_hit(
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         project_root: root.to_path_buf(),
-        export_method: CacheExportMethod::from("search/fzf"),
+        export_method: CacheExportMethod::from("search/lexical"),
         schema_ids: vec![
             SemanticSchemaId::from("agent.semantic-protocols.client-prompt-output"),
             SemanticSchemaId::from("agent.semantic-protocols.semantic-relation-plan"),
@@ -154,7 +154,7 @@ fn prompt_output_request_fingerprint(root: &Path, request: &ClientRequest) -> St
         "rust",
         "rs-harness",
         project_root,
-        "search/fzf",
+        "search/lexical",
         request.forwarded_args.join("\0"),
         "syntax-query-ast-abi:none",
         "prompt-output-render-abi:none"

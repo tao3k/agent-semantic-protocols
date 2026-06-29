@@ -362,7 +362,7 @@ fn search_failure_frontier_is_asp_owned_and_points_to_hot_blocks() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("avoid=manual-window-scan,duplicate-read,raw-read,broad-fzf"),
+        stdout.contains("avoid=manual-window-scan,duplicate-read,raw-read,broad-lexical"),
         "{stdout}"
     );
     assert!(

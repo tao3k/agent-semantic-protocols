@@ -44,7 +44,7 @@ pub(super) fn packet_query(packet: &Value) -> Option<&str> {
 pub(super) fn fallback_algorithm(mode: &str) -> String {
     match mode {
         "prime" | "package" => "budgeted-prime-frontier-v1",
-        "query" | "fzf" => "native-syntax-query",
+        "query" | "lexical" => "native-syntax-query",
         _ => "seed-frontier",
     }
     .to_string()

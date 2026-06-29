@@ -96,7 +96,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
 {next_command_line}\
 nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector\n\
 omit=source,full-candidate-list,raw-finder-output,generated-files,long-field-signatures\n\
-avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,direct-source-read,raw-read\n",
+avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read\n",
     )
 }
 

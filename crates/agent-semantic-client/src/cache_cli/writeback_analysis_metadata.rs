@@ -228,7 +228,7 @@ fn analysis_metadata_target(args: &[String]) -> String {
     }
     match args.first().map(String::as_str) {
         Some("owner") => args.get(1).cloned().unwrap_or_default(),
-        Some("fzf" | "pipe" | "fd" | "rg") => args.get(1).cloned().unwrap_or_default(),
+        Some("lexical" | "pipe" | "fd" | "rg") => args.get(1).cloned().unwrap_or_default(),
         Some("deps") => option_value_from_args(args, "--dependency")
             .unwrap_or("")
             .to_string(),

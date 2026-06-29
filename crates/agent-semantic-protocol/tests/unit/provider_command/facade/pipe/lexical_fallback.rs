@@ -3,8 +3,8 @@ use crate::provider_command::support::{
 };
 
 #[test]
-fn fzf_fallback_collector_matches_multiple_terms_without_native_finder() {
-    let root = temp_project_root("search-fzf-fallback-multi-term");
+fn lexical_fallback_collector_matches_multiple_terms_without_native_finder() {
+    let root = temp_project_root("search-lexical-fallback-multi-term");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -27,7 +27,7 @@ fn fzf_fallback_collector_matches_multiple_terms_without_native_finder() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "cache_root|providerneedle",
             "owner",
             "items",
@@ -38,7 +38,7 @@ fn fzf_fallback_collector_matches_multiple_terms_without_native_finder() {
             "seeds",
         ])
         .output()
-        .expect("run asp rust search fzf without native finder");
+        .expect("run asp rust search lexical without native finder");
 
     assert!(
         output.status.success(),
@@ -55,7 +55,7 @@ fn fzf_fallback_collector_matches_multiple_terms_without_native_finder() {
     assert!(!stdout.contains(".txt"), "{stdout}");
     assert!(
         !marker.exists(),
-        "fallback fzf seeds should not spawn provider"
+        "fallback lexical seeds should not spawn provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }

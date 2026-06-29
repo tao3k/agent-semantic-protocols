@@ -5,7 +5,7 @@ use crate::rust_harness_activation::support::temp_project_root;
 use crate::rust_harness_activation::cli::hook::support::{last_hook_event, run_hook_decision};
 
 #[test]
-fn cli_hook_replay_blocks_functions_exec_command_raw_search_to_fzf_frontier() {
+fn cli_hook_replay_blocks_functions_exec_command_raw_search_to_lexical_frontier() {
     let root = temp_project_root("hook-exec-raw-search");
     let command = "rg -n --glob '*.rs' WorkflowExecution src";
     let decision = run_hook_decision(
@@ -18,14 +18,14 @@ fn cli_hook_replay_blocks_functions_exec_command_raw_search_to_fzf_frontier() {
     assert_eq!(decision["reasonKind"], "raw-broad-search");
     assert_eq!(decision["subject"]["toolName"], "functions.exec_command");
     assert_eq!(decision["subject"]["command"], command);
-    assert_eq!(decision["routes"][0]["kind"], "fzf");
+    assert_eq!(decision["routes"][0]["kind"], "lexical");
     assert_eq!(
         decision["routes"][0]["argv"],
         json!([
             "asp",
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "WorkflowExecution",
             "owner",
             "tests",

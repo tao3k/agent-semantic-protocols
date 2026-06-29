@@ -107,7 +107,7 @@ fn normalize_source_defaults(source: &mut ManifestSourceDefaults) {
 fn normalize_hook_routes(routes: &mut HookRoutes) {
     normalize_command_template(&mut routes.prime);
     normalize_command_template(&mut routes.owner);
-    normalize_command_template(&mut routes.fzf);
+    normalize_command_template(&mut routes.lexical);
     if let Some(query) = routes.query.as_mut() {
         normalize_command_template(query);
     }

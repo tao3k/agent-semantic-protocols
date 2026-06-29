@@ -12,17 +12,17 @@ fn lookup_recent_generations_returns_newest_matching_candidates() {
 
     db.import_manifest(&manifest_with_generation(
         &root,
-        "older-fzf",
-        "search/fzf",
-        "search/older-fzf.json",
+        "older-lexical",
+        "search/lexical",
+        "search/older-lexical.json",
     ))
     .expect("import older manifest");
     std::thread::sleep(Duration::from_secs(1));
     db.import_manifest(&manifest_with_generation(
         &root,
-        "newer-fzf",
-        "search/fzf",
-        "search/newer-fzf.json",
+        "newer-lexical",
+        "search/lexical",
+        "search/newer-lexical.json",
     ))
     .expect("import newer manifest");
 
@@ -31,14 +31,14 @@ fn lookup_recent_generations_returns_newest_matching_candidates() {
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         project_root: root.clone(),
-        export_method: CacheExportMethod::from("search/fzf"),
+        export_method: CacheExportMethod::from("search/lexical"),
         request_fingerprint: None,
     };
     let hits = ClientDb::lookup_recent_generations(&lookup, 10).expect("lookup recent");
     let limited = ClientDb::lookup_recent_generations(&lookup, 1).expect("lookup limited");
     let exact = ClientDb::lookup_recent_generations(
         &ClientDbGenerationLookup {
-            request_fingerprint: Some("fnv64:older-fzf".to_string()),
+            request_fingerprint: Some("fnv64:older-lexical".to_string()),
             ..lookup
         },
         10,
@@ -46,12 +46,24 @@ fn lookup_recent_generations_returns_newest_matching_candidates() {
     .expect("lookup exact");
 
     assert_eq!(hits.len(), 2);
-    assert_eq!(hits[0].artifact_ids[0].as_str(), "search/newer-fzf.json");
-    assert_eq!(hits[1].artifact_ids[0].as_str(), "search/older-fzf.json");
+    assert_eq!(
+        hits[0].artifact_ids[0].as_str(),
+        "search/newer-lexical.json"
+    );
+    assert_eq!(
+        hits[1].artifact_ids[0].as_str(),
+        "search/older-lexical.json"
+    );
     assert_eq!(limited.len(), 1);
-    assert_eq!(limited[0].artifact_ids[0].as_str(), "search/newer-fzf.json");
+    assert_eq!(
+        limited[0].artifact_ids[0].as_str(),
+        "search/newer-lexical.json"
+    );
     assert_eq!(exact.len(), 1);
-    assert_eq!(exact[0].artifact_ids[0].as_str(), "search/older-fzf.json");
+    assert_eq!(
+        exact[0].artifact_ids[0].as_str(),
+        "search/older-lexical.json"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

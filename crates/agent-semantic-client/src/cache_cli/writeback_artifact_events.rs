@@ -222,7 +222,7 @@ fn command_query(argv: &[String]) -> String {
         return String::new();
     };
     let (surface, surface_index) = command_surface(argv, search_index + 1);
-    if surface == Some("fzf") {
+    if surface == Some("lexical") {
         next_positional(argv, surface_index + 1)
             .unwrap_or("")
             .to_string()

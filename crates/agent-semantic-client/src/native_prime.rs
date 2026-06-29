@@ -232,7 +232,7 @@ fn render_prime_seed_text(project_root: &Path, owners: &[String]) -> String {
             "[search-prime] root={root_label} alg=native-fd-prime-frontier-v1 budget=handles:{NATIVE_PRIME_OWNER_LIMIT}"
         ),
         format!(
-            "|decision purpose=decision-primer answer=false code=false route=evidence-state capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime rule=\"prime maps workspace/owners only; choose the narrowest route justified by current evidence\" routeOptions=\"owner-items when owner known; selector-code when exact selector known; deps when dependency known; pipe/fzf only for ambiguous query refinement\""
+            "|decision purpose=decision-primer answer=false code=false route=evidence-state capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime rule=\"prime maps workspace/owners only; choose the narrowest route justified by current evidence\" routeOptions=\"owner-items when owner known; selector-code when exact selector known; deps when dependency known; pipe/lexical only for ambiguous query refinement\""
         ),
         "[route-graph] profile=asp-search-routing evidence=unknown-workspace chosen=UNKNOWN_WORKSPACE reason=\"no owner/symbol/selector evidence supplied; prime maps workspace owners only\" frontier=A1.owner-map".to_string(),
         "A1=route-action(route=UNKNOWN_WORKSPACE,targetRole=path,projection=topology,codePolicy=disabled,avoid=direct-source-read|line-range-selector)!owner-map".to_string(),
@@ -265,7 +265,7 @@ fn render_prime_seed_text(project_root: &Path, owners: &[String]) -> String {
     }
     lines.push("entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)".to_string());
     lines.push("omit=items,blocks,code,full-test-list".to_string());
-    lines.push("avoid=raw-read,full-json,broad-fzf".to_string());
+    lines.push("avoid=raw-read,full-json,broad-lexical".to_string());
     lines.push(String::new());
     lines.join("\n")
 }

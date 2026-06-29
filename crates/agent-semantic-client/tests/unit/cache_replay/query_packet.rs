@@ -1,5 +1,5 @@
 use crate::cache_replay::{
-    query_packet_matches_request, search_fzf_packet_matches_request,
+    query_packet_matches_request, search_lexical_packet_matches_request,
     search_output_artifact_replay_safe,
 };
 use agent_semantic_client_core::{ClientMethod, ClientRequest};
@@ -73,18 +73,22 @@ fn query_packet_replay_requires_matching_owner_and_query() {
 }
 
 #[test]
-fn search_fzf_packet_replay_requires_matching_query() {
-    let request = fzf_request("cache replay");
-    let equals_request = fzf_equals_request("cache replay");
-    let code_request = fzf_code_request("cache replay");
+fn search_lexical_packet_replay_requires_matching_query() {
+    let request = lexical_request("cache replay");
+    let equals_request = lexical_equals_request("cache replay");
+    let code_request = lexical_code_request("cache replay");
 
-    assert!(search_fzf_packet_matches_request(&fzf_packet("cache replay"), &request).is_some());
     assert!(
-        search_fzf_packet_matches_request(&fzf_packet("cache replay"), &equals_request).is_some()
+        search_lexical_packet_matches_request(&lexical_packet("cache replay"), &request).is_some()
     );
-    assert!(search_fzf_packet_matches_request(&fzf_packet("cache"), &request).is_none());
     assert!(
-        search_fzf_packet_matches_request(&fzf_packet("cache replay"), &code_request).is_none()
+        search_lexical_packet_matches_request(&lexical_packet("cache replay"), &equals_request)
+            .is_some()
+    );
+    assert!(search_lexical_packet_matches_request(&lexical_packet("cache"), &request).is_none());
+    assert!(
+        search_lexical_packet_matches_request(&lexical_packet("cache replay"), &code_request)
+            .is_none()
     );
 }
 
@@ -94,7 +98,7 @@ fn search_packet_replay_accepts_graph_turbo_frontier() {
 [graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q budget=10\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:graph,Q:query\n\
-rank=Q frontier=Q.fzf\n";
+rank=Q frontier=Q.lexical\n";
 
     assert!(search_output_artifact_replay_safe(stdout.as_bytes()));
 }
@@ -136,10 +140,10 @@ pub fn serialize(value: Thing) -> String { format!(\"{value:?}\") }\n\
 #[test]
 fn search_packet_replay_rejects_obsolete_search_frontier() {
     let stdout = "\
-[search-fzf] q=cache view=hits\n\
+[search-obsolete] q=cache view=hits\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases: graph:{G=search,Q=query}\n\
-rank=Q frontier=Q.fzf\n";
+rank=Q frontier=Q.legacy\n";
 
     assert!(!search_output_artifact_replay_safe(stdout.as_bytes()));
 }
@@ -177,9 +181,9 @@ fn query_packet(owner_path: &str, query: &str) -> Value {
     })
 }
 
-fn fzf_request(query: &str) -> ClientRequest {
+fn lexical_request(query: &str) -> ClientRequest {
     ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
-        "fzf".to_string(),
+        "lexical".to_string(),
         query.to_string(),
         "owner".to_string(),
         "tests".to_string(),
@@ -189,25 +193,25 @@ fn fzf_request(query: &str) -> ClientRequest {
     ])
 }
 
-fn fzf_equals_request(query: &str) -> ClientRequest {
+fn lexical_equals_request(query: &str) -> ClientRequest {
     ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
-        "fzf".to_string(),
+        "lexical".to_string(),
         query.to_string(),
         "--view=seeds".to_string(),
         ".".to_string(),
     ])
 }
 
-fn fzf_code_request(query: &str) -> ClientRequest {
-    let mut request = fzf_request(query);
+fn lexical_code_request(query: &str) -> ClientRequest {
+    let mut request = lexical_request(query);
     request.forwarded_args.insert(2, "--code".to_string());
     request
 }
 
-fn fzf_packet(query: &str) -> Value {
+fn lexical_packet(query: &str) -> Value {
     json!({
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
-        "method": "search/fzf",
+        "method": "search/lexical",
         "query": query,
         "nodes": []
     })

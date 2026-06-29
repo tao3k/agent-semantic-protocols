@@ -139,7 +139,7 @@ fn prompt_output_replay_rejects_obsolete_compact_graph_grammar() {
     let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
-        "fzf".to_string(),
+        "lexical".to_string(),
         "GraphAlias".to_string(),
         "--view".to_string(),
         "seeds".to_string(),
@@ -147,14 +147,14 @@ fn prompt_output_replay_rejects_obsolete_compact_graph_grammar() {
     ]);
     write_prompt_output_artifact(
         &root,
-        "[search-fzf] q=GraphAlias alg=seed-frontier\n\
+        "[search-obsolete] q=GraphAlias alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 alias: graph:{G=search,Q=query}\n\
-Q=query:term(GraphAlias)!fzf\n\
+Q=query:term(GraphAlias)!legacy\n\
 G>{Q:matches}\n\
-rank=Q frontier=Q.fzf\n",
+rank=Q frontier=Q.legacy\n",
     );
-    let hit = prompt_generation_hit(&root, &request, "search/fzf");
+    let hit = prompt_generation_hit(&root, &request, "search/lexical");
 
     assert!(load_replay_artifact(&cache_root, &hit, &request).is_none());
     let _ = std::fs::remove_dir_all(root);
@@ -166,14 +166,14 @@ fn prompt_output_replay_rejects_stale_generation_file_hashes() {
     let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
-        "fzf".to_string(),
+        "lexical".to_string(),
         "parse_query".to_string(),
         "--view".to_string(),
         "seeds".to_string(),
         ".".to_string(),
     ]);
     write_prompt_output_artifact(&root, "owner:src/lib.rs read=src/lib.rs:1:3\n");
-    let hit = prompt_generation_hit(&root, &request, "search/fzf");
+    let hit = prompt_generation_hit(&root, &request, "search/lexical");
 
     std::fs::write(root.join("src/lib.rs"), "pub fn changed() {}\n").expect("mutate source");
 
@@ -217,7 +217,7 @@ fn search_packet_replay_prefers_cached_search_stdout_artifact() {
     let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
-        "fzf".to_string(),
+        "lexical".to_string(),
         "cache".to_string(),
         "--view".to_string(),
         "seeds".to_string(),
@@ -226,9 +226,9 @@ fn search_packet_replay_prefers_cached_search_stdout_artifact() {
     let stdout = "[graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q budget=10\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:graph,Q:query\n\
-Q=query:term(cache)!fzf\n\
+Q=query:term(cache)!lexical\n\
 G>{Q:matches}\n\
-rank=Q frontier=Q.fzf\n";
+rank=Q frontier=Q.lexical\n";
     write_search_output_artifact(&root, stdout);
     assert!(crate::cache_replay::search_output_artifact_replay_safe(
         stdout.as_bytes()
@@ -248,7 +248,7 @@ rank=Q frontier=Q.fzf\n";
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         project_root: root.to_path_buf(),
-        export_method: CacheExportMethod::from("search/fzf"),
+        export_method: CacheExportMethod::from("search/lexical"),
         schema_ids: vec![SemanticSchemaId::from(
             "agent.semantic-protocols.semantic-search-packet",
         )],
@@ -541,8 +541,8 @@ const PRIME_DECISION_PRIMER_RENDER_ABI: &str = concat!(
     "purpose=decision-primer;",
     "answer=false;",
     "code=false;",
-    "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
-    "ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code;",
+    "capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
+    "ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code;",
     "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
     "risk=broad-direct-read,manual-window-scan,repeat-prime;",
     "next=search pipe <question-or-feature-term> --view seeds"

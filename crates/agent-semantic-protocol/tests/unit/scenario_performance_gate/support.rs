@@ -804,23 +804,23 @@ pub(super) fn asp_rg_query_source_index_miss_skips_native_finder_gate() {
     let _ = fs::remove_dir_all(root);
 }
 
-pub(super) fn asp_fzf_source_index_warm_path_stays_inside_scenario_gate() {
+pub(super) fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
         .join("tests")
         .join("unit")
         .join("scenarios")
-        .join("asp_fzf_source_index_warm_path");
+        .join("asp_lexical_source_index_warm_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
 
-    let root = temp_project_root("scenario-fzf-source-index");
+    let root = temp_project_root("scenario-lexical-source-index");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     fs::create_dir_all(root.join("src")).expect("create source root");
     fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"scenario-fzf-source-index\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "[package]\nname = \"scenario-lexical-source-index\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
     )
     .expect("write package anchor");
     fs::write(
@@ -839,7 +839,7 @@ pub(super) fn asp_fzf_source_index_warm_path_stays_inside_scenario_gate() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "source_index_fixture",
             "owner",
             "items",
@@ -850,7 +850,7 @@ pub(super) fn asp_fzf_source_index_warm_path_stays_inside_scenario_gate() {
             "seeds",
         ])
         .output()
-        .expect("run asp rust search fzf");
+        .expect("run asp rust search lexical");
     assert!(
         output.status.success(),
         "stderr: {}",
@@ -858,7 +858,7 @@ pub(super) fn asp_fzf_source_index_warm_path_stays_inside_scenario_gate() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     for expected in [
-        "[search-fzf]",
+        "[search-lexical]",
         "source=source-index",
         "sourceTrace=sourceIndex:used",
         "finder:skipped",
@@ -866,21 +866,21 @@ pub(super) fn asp_fzf_source_index_warm_path_stays_inside_scenario_gate() {
     ] {
         assert!(
             stdout.contains(expected),
-            "source-index fzf scenario missing {expected:?}; stdout={stdout}"
+            "source-index lexical scenario missing {expected:?}; stdout={stdout}"
         );
     }
     assert!(
         !stdout.contains("sourceTrace=finder:used"),
-        "fzf warm SourceIndex path must not collect through native finder; stdout={stdout}"
+        "lexical warm SourceIndex path must not collect through native finder; stdout={stdout}"
     );
     assert!(
         !marker.exists(),
-        "source-index warm fzf should not spawn provider"
+        "source-index warm lexical should not spawn provider"
     );
     let collect_ms = source_trace_metric_ms(&stdout, "collectMs");
     assert!(
         collect_ms <= max_total_ms,
-        "source-index warm fzf exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        "source-index warm lexical exceeded benchmark max_total={} observed={}ms stdout={stdout}",
         benchmark.max_total,
         collect_ms
     );
@@ -888,14 +888,14 @@ pub(super) fn asp_fzf_source_index_warm_path_stays_inside_scenario_gate() {
     let performance_gate = serde_json::json!({
         "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
         "schemaVersion": "1",
-        "scenarioId": "asp-fzf-source-index-warm-path",
+        "scenarioId": "asp-lexical-source-index-warm-path",
         "languageId": "rust",
         "workspace": ".",
         "command": [
             "asp",
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "source_index_fixture",
             "owner",
             "items",
@@ -936,7 +936,7 @@ pub(super) fn asp_fzf_source_index_warm_path_stays_inside_scenario_gate() {
             "stdoutBytes": stdout.len()
         },
         "verdict": "pass",
-        "evidenceRefs": ["scenario:asp-fzf-source-index-warm-path"]
+        "evidenceRefs": ["scenario:asp-lexical-source-index-warm-path"]
     });
     assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);

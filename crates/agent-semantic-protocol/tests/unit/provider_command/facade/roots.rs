@@ -19,7 +19,7 @@ fn rust_search_facade_fans_out_multiple_trailing_scope_roots() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "--query-set",
             "reasonKind",
             "--query-set",
@@ -42,8 +42,8 @@ fn rust_search_facade_fans_out_multiple_trailing_scope_roots() {
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
         concat!(
-            "rs args=[search][fzf][--query-set][reasonKind][--query-set][RawBroadSearch][owner][tests][--view][seeds][crates/agent-semantic-hook]\n",
-            "rs args=[search][fzf][--query-set][reasonKind][--query-set][RawBroadSearch][owner][tests][--view][seeds][crates/agent-semantic-protocol]\n",
+            "rs args=[search][lexical][--query-set][reasonKind][--query-set][RawBroadSearch][owner][tests][--view][seeds][crates/agent-semantic-hook]\n",
+            "rs args=[search][lexical][--query-set][reasonKind][--query-set][RawBroadSearch][owner][tests][--view][seeds][crates/agent-semantic-protocol]\n",
         )
     );
     let _ = std::fs::remove_dir_all(root);

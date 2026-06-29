@@ -197,6 +197,46 @@
       "type": "integer",
       "minimum": 0
     },
+    "clientDbStructuralIndexGenerationCount": {
+      "description": "Number of structural index generations visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbStructuralIndexOwnerCount": {
+      "description": "Number of structural index owner rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbStructuralIndexSymbolCount": {
+      "description": "Number of structural index symbol rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbStructuralIndexDependencyUsageCount": {
+      "description": "Number of structural index dependency-usage rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbSourceIndexGenerationCount": {
+      "description": "Number of source-index generations visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbSourceIndexOwnerCount": {
+      "description": "Number of source-index owner rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbSourceIndexSelectorCount": {
+      "description": "Number of source-index selector rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbArtifactEventCount": {
+      "description": "Number of DB artifact event rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
     "clientDbRawSourceStored": {
       "description": "Diagnostic flag indicating whether the local SQLite client database contains cache rows marked as raw-source storage.",
       "type": "boolean"
@@ -219,12 +259,244 @@
     "clientDbForeignKeys": {
       "description": "Observed SQLite foreign_keys pragma for the local client database when runtime pragmas were inspected.",
       "type": "boolean"
+    },
+    "dbEngine": {
+      "$ref": "#/$defs/dbEngine"
     }
   },
   "$defs": {
     "identifier": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "dbEngine": {
+      "description": "Structured DB Engine state for analyzer-facing receipts. backend=sqlite-v1 is a transition adapter while futureBackend=turso records the replacement direction.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "futureBackend",
+        "layoutVersion",
+        "dbFileName",
+        "schemaVersion",
+        "durability",
+        "features",
+        "clientDir",
+        "dbPath",
+        "manifestPath",
+        "artifactPath",
+        "repoId",
+        "workspaceId",
+        "scopeId",
+        "sqliteReport"
+      ],
+      "properties": {
+        "backend": {
+          "const": "sqlite-v1"
+        },
+        "futureBackend": {
+          "const": "turso"
+        },
+        "layoutVersion": {
+          "const": "state-v2"
+        },
+        "dbFileName": {
+          "const": "client.sqlite3"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "durability": {
+          "const": "sqlite-file"
+        },
+        "features": {
+          "$ref": "#/$defs/dbEngineFeatures"
+        },
+        "clientDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dbPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifestPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repoId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sqliteReport": {
+          "$ref": "#/$defs/sqliteReport"
+        }
+      }
+    },
+    "dbEngineFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asyncIo",
+        "concurrentWrites",
+        "fts",
+        "vector",
+        "overlaySearch",
+        "sync",
+        "encryption"
+      ],
+      "properties": {
+        "asyncIo": {
+          "const": false
+        },
+        "concurrentWrites": {
+          "const": false
+        },
+        "fts": {
+          "const": false
+        },
+        "vector": {
+          "const": false
+        },
+        "overlaySearch": {
+          "const": false
+        },
+        "sync": {
+          "const": false
+        },
+        "encryption": {
+          "const": false
+        }
+      }
+    },
+    "sqliteReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dbPath",
+        "status",
+        "generationCount",
+        "syntaxRowGenerationCount",
+        "syntaxRowMatchCount",
+        "syntaxRowCaptureCount",
+        "structuralIndexGenerationCount",
+        "structuralIndexOwnerCount",
+        "structuralIndexSymbolCount",
+        "structuralIndexDependencyUsageCount",
+        "sourceIndexGenerationCount",
+        "sourceIndexOwnerCount",
+        "sourceIndexSelectorCount",
+        "artifactEventCount",
+        "rawSourceStored",
+        "runtimePragmas",
+        "reason"
+      ],
+      "properties": {
+        "dbPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["missing", "present", "invalid"]
+        },
+        "generationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "syntaxRowGenerationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "syntaxRowMatchCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "syntaxRowCaptureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structuralIndexGenerationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structuralIndexOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structuralIndexSymbolCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structuralIndexDependencyUsageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceIndexGenerationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceIndexOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceIndexSelectorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifactEventCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rawSourceStored": {
+          "type": "boolean"
+        },
+        "runtimePragmas": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sqliteRuntimePragmas"
+            }
+          ]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "sqliteRuntimePragmas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["journalMode", "synchronous", "busyTimeoutMs", "foreignKeys"],
+      "properties": {
+        "journalMode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synchronous": {
+          "type": "integer"
+        },
+        "busyTimeoutMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "foreignKeys": {
+          "type": "boolean"
+        }
+      }
     },
     "nativeProvenance": {
       "type": "object",

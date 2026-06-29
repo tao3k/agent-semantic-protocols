@@ -23,7 +23,7 @@ pub fn refresh_source_index(project_root: &Path) -> Result<SourceIndexRefreshRep
     let db_engine = ClientDbEngine::resolve(project_root)?;
     let db_path = db_engine.db_path().to_path_buf();
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
-    let mut db = db_engine.open_sqlite_or_create()?;
+    let mut db = db_engine.open_or_create()?;
     let schema_id = SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID);
     let schema_version = SemanticSchemaVersion::from(SOURCE_INDEX_SCHEMA_VERSION);
     let registry_fingerprint = provider_registry_fingerprint(&snapshot);
@@ -126,7 +126,7 @@ pub fn refresh_runtime_source_index(
         ));
     }
     let db_path = db_engine.db_path().to_path_buf();
-    let mut db = db_engine.open_sqlite_or_create()?;
+    let mut db = db_engine.open_or_create()?;
     let schema_id = SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID);
     let schema_version = SemanticSchemaVersion::from(SOURCE_INDEX_SCHEMA_VERSION);
     let registry_fingerprint =

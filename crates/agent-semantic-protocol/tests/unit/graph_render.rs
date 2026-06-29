@@ -15,10 +15,10 @@ fn sample_packet() -> serde_json::Value {
         "protocolVersion": "1",
         "languageId": "typescript",
         "providerId": "ts-harness",
-        "view": "fzf",
+        "view": "lexical",
         "query": "SemanticSearchOwnerFallback",
         "header": {
-            "kind": "search-fzf",
+            "kind": "search-lexical",
             "fields": {
                 "analysis": "structure",
                 "nativeSyntaxFacts": "skipped",
@@ -243,7 +243,7 @@ fn sample_graph_turbo_request_packet() -> serde_json::Value {
         "cache": {"enabled": true},
         "graph": {
             "nodes": [
-                {"id": "query:parser", "kind": "query", "role": "term", "value": "parser", "action": "fzf"},
+                {"id": "query:parser", "kind": "query", "role": "term", "value": "parser", "action": "lexical"},
                 {"id": "owner:cli", "kind": "owner", "role": "path", "value": "src/cli.rs", "action": "owner"},
                 {"id": "item:render", "kind": "item", "role": "symbol", "value": "render_graph", "action": "syntax"}
             ],
@@ -299,10 +299,10 @@ fn sample_graph_turbo_topology_request_packet() -> serde_json::Value {
 #[test]
 fn shared_renderer_projects_search_packet_into_compact_graph() {
     let output = render_search_graph_packet(&sample_packet(), GraphRenderOptions::default());
-    assert!(output.starts_with("[search-fzf] q=SemanticSearchOwnerFallback"));
+    assert!(output.starts_with("[search-lexical] q=SemanticSearchOwnerFallback"));
     assert!(output.contains("legend:"));
     assert!(output.contains("aliases: graph:{G=search"));
-    assert!(output.contains("Q=query:term(SemanticSearchOwnerFallback)!fzf"));
+    assert!(output.contains("Q=query:term(SemanticSearchOwnerFallback)!lexical"));
     assert!(output.contains("F=finding:finding(serde)!finding"));
     assert!(output.contains("F2=feature:feature(test)!cfg"));
     assert!(output.contains("O=owner:path(src/cli/semantic-search/owner-fallback.ts)!owner"));
@@ -380,9 +380,9 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
     assert!(output.contains("budget=handles:12"));
     assert!(output.contains("|decision purpose=decision-primer answer=false code=false"));
     assert!(output.contains(
-        "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query"
+        "capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query"
     ));
-    assert!(output.contains("ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code"));
+    assert!(output.contains("ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code"));
     assert!(
         output.contains("history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath")
     );
@@ -398,7 +398,7 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
     ));
     assert!(!output.contains("profiles="));
     assert!(output.contains("omit=items,blocks,code,full-test-list"));
-    assert!(output.contains("avoid=raw-read,full-json,broad-fzf"));
+    assert!(output.contains("avoid=raw-read,full-json,broad-lexical"));
     assert!(!output.contains("owner-rank-frontier"));
 }
 

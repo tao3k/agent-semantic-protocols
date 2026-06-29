@@ -717,7 +717,7 @@ fn search_json_decision_route(provider: &ActivatedProvider, argv: Vec<String>) -
         language_id: provider.language_id.clone(),
         provider_id: provider.provider_id.clone(),
         binary: "asp".to_string(),
-        kind: DecisionRouteKind::Fzf,
+        kind: DecisionRouteKind::Lexical,
         argv: provider.agent_facade_argv_from_provider_argv(argv),
         stdin_mode: None,
     }

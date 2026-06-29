@@ -9,6 +9,10 @@
     "backend",
     "futureBackend",
     "layoutVersion",
+    "dbFileName",
+    "schemaVersion",
+    "durability",
+    "features",
     "clientDir",
     "dbPath",
     "manifestPath",
@@ -27,6 +31,18 @@
     },
     "layoutVersion": {
       "const": "state-v2"
+    },
+    "dbFileName": {
+      "const": "client.sqlite3"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "durability": {
+      "const": "sqlite-file"
+    },
+    "features": {
+      "$ref": "#/$defs/engineFeatures"
     },
     "clientDir": {
       "type": "string",
@@ -60,6 +76,42 @@
     }
   },
   "$defs": {
+    "engineFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asyncIo",
+        "concurrentWrites",
+        "fts",
+        "vector",
+        "overlaySearch",
+        "sync",
+        "encryption"
+      ],
+      "properties": {
+        "asyncIo": {
+          "const": false
+        },
+        "concurrentWrites": {
+          "const": false
+        },
+        "fts": {
+          "const": false
+        },
+        "vector": {
+          "const": false
+        },
+        "overlaySearch": {
+          "const": false
+        },
+        "sync": {
+          "const": false
+        },
+        "encryption": {
+          "const": false
+        }
+      }
+    },
     "sqliteReport": {
       "type": "object",
       "additionalProperties": false,

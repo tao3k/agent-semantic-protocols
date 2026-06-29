@@ -129,7 +129,7 @@ fn provider_language_facades_forward_language_like_provider_args() {
         .args([
             "rust",
             "search",
-            "fzf",
+            "lexical",
             "--query",
             "--language",
             "owner",
@@ -154,7 +154,7 @@ fn provider_language_facades_forward_language_like_provider_args() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     for expected in [
         "search",
-        "fzf",
+        "lexical",
         "--query",
         "--language",
         "owner",

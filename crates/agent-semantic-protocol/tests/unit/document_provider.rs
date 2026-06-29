@@ -45,7 +45,7 @@ fn markdown_query_no_hit_returns_recovery_actions() {
     );
     assert!(
         stdout.contains(
-            "|next search-fzf=\"asp md search fzf py-harness --workspace . --view seeds\""
+            "|next search-lexical=\"asp md search lexical py-harness --workspace . --view seeds\""
         ),
         "{stdout}"
     );

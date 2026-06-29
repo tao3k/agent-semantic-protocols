@@ -138,7 +138,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         "{stdout}"
     );
     assert!(
-        stdout.contains("avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,direct-source-read,raw-read"),
+        stdout.contains("avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

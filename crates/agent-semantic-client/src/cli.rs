@@ -168,7 +168,7 @@ fn print_guide() {
     println!("|cmd providers=asp providers");
     println!("|cmd tools-doctor=asp tools doctor");
     println!("|cmd graph-turbo=asp wrap asp-graph-turbo -- help");
-    println!("|cmd graph-turbo-search=asp <language> search fzf <term> owner tests .");
+    println!("|cmd graph-turbo-search=asp <language> search lexical <term> owner tests .");
     println!("|cmd search-history=asp search history audit .");
     println!("|cmd guide=asp <language> guide --workspace .");
     println!("|cmd search-guide=asp <language> search guide --workspace .");

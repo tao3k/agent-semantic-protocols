@@ -32,6 +32,10 @@ fn default_template_round_trips_through_config_parser() {
     assert!(config.asp_session_policy.enabled);
     assert_eq!(config.asp_session_policy.resident_child_name, "asp-explore");
     assert_eq!(
+        config.asp_session_policy.resident_codex_agent_name,
+        "asp_explorer"
+    );
+    assert_eq!(
         config.asp_session_policy.main_allowed_asp_command_prefixes,
         [
             "help",
@@ -72,6 +76,7 @@ reuse = "reuse guide"
 
 [aspSessionPolicy]
 residentChildName = "asp-explore"
+residentCodexAgentName = "asp_explorer"
 mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org capture"]
 "#,
     )
@@ -113,6 +118,10 @@ mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org cap
     );
     assert!(config.asp_session_policy.enabled);
     assert_eq!(config.asp_session_policy.resident_child_name, "asp-explore");
+    assert_eq!(
+        config.asp_session_policy.resident_codex_agent_name,
+        "asp_explorer"
+    );
     assert_eq!(
         config.asp_session_policy.main_allowed_asp_command_prefixes,
         ["help", "agent session", "org recall", "org capture"]

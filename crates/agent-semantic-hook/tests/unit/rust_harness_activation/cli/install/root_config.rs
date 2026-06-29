@@ -47,12 +47,13 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
     assert_codex_config(&config, &root);
+    assert_codex_user_asp_explorer_role_config(&codex_home);
     assert_agent_config(&root);
     let parsed_config =
         toml::from_str::<toml::Value>(&config).expect("installed Codex config is valid TOML");
     assert_plugin_entries(&parsed_config);
     assert_no_codex_user_trust_config(&codex_home);
-    assert_codex_asp_explorer(&root, "gpt-5.3-codex-spark");
+    assert_codex_asp_explorer(&codex_home, "gpt-5.3-codex-spark");
     assert_retired_codex_split_subagents_removed(&root);
     assert_installed_activation(&root);
     let _ = std::fs::remove_dir_all(&root);
@@ -84,16 +85,18 @@ fn cli_install_accepts_existing_project_marketplace_source_when_root_matches() {
     );
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert!(stdout.contains("pluginMarketplace=asp-project"));
-    assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
+    assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
+    assert!(stdout.contains("subagent=.codex-home/agents/asp-explorer.toml"));
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
     let canonical_root = std::fs::canonicalize(&root).expect("canonical project root");
     assert!(config.contains("source = \".\""));
     assert!(!config.contains(&format!("source = \"{}\"", canonical_root.display())));
     assert!(!config.contains("last_updated ="));
-    assert_codex_asp_explorer_role_config(&config);
+    assert!(!config.contains("[agents.asp_explorer]"));
+    assert_codex_user_asp_explorer_role_config(&codex_home);
     assert!(config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
-    assert_codex_asp_explorer(&root, "gpt-5.3-codex-spark");
+    assert_codex_asp_explorer(&codex_home, "gpt-5.3-codex-spark");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -202,9 +205,10 @@ fn assert_install_stdout(stdout: &str) {
     assert!(!stdout.contains("pluginMarketplaceConfig="));
     assert!(stdout.contains("config=.codex/config.toml"));
     assert!(stdout.contains("projectConfig=.codex/config.toml"));
+    assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
     assert!(!stdout.contains("projectHookConfig="));
     assert!(!stdout.contains("trustConfig="));
-    assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
+    assert!(stdout.contains("subagent=.codex-home/agents/asp-explorer.toml"));
     assert!(!stdout.contains("subagents="));
     assert!(stdout.contains("binary=asp"));
     assert!(stdout.contains("binaryInstall=installed"));
@@ -241,10 +245,12 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
     );
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert!(stdout.contains("pluginScope=project"));
-    assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
+    assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
+    assert!(stdout.contains("subagent=.codex-home/agents/asp-explorer.toml"));
     assert!(!stdout.contains("subagents="));
     assert!(!stdout.contains(".codex/agents/asp-explorer-selector.toml"));
-    assert_codex_asp_explorer(&root, "gpt-5.4-mini");
+    assert_codex_user_asp_explorer_role_config(&codex_home);
+    assert_codex_asp_explorer(&codex_home, "gpt-5.4-mini");
     assert_retired_codex_split_subagents_removed(&root);
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
@@ -437,7 +443,7 @@ fn assert_codex_config(config: &str, root: &std::path::Path) {
     assert!(config.contains("source = \".\""));
     assert!(!config.contains(&format!("source = \"{}\"", canonical_root.display())));
     assert!(!config.contains("last_updated ="));
-    assert_codex_asp_explorer_role_config(config);
+    assert!(!config.contains("[agents.asp_explorer]"));
     assert!(config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
     assert!(config.contains("enabled = true"));
 }
@@ -455,7 +461,9 @@ fn assert_no_codex_user_trust_config(codex_home: &std::path::Path) {
     assert!(!config.contains("agent-semantic-protocol trusted hook state"));
 }
 
-fn assert_codex_asp_explorer_role_config(config: &str) {
+fn assert_codex_user_asp_explorer_role_config(codex_home: &std::path::Path) {
+    let config_path = codex_home.join("config.toml");
+    let config = std::fs::read_to_string(config_path).expect("read Codex user config");
     assert!(config.contains("[agents.asp_explorer]"));
     assert!(config.contains("description = "));
     assert!(config.contains("config_file = \"agents/asp-explorer.toml\""));
@@ -500,8 +508,8 @@ fn assert_claude_asp_explorer(root: &std::path::Path, model: &str) {
     }
 }
 
-fn assert_codex_asp_explorer(root: &std::path::Path, model: &str) {
-    let path = root.join(".codex/agents/asp-explorer.toml");
+fn assert_codex_asp_explorer(codex_home: &std::path::Path, model: &str) {
+    let path = codex_home.join("agents/asp-explorer.toml");
     let agent = std::fs::read_to_string(&path).expect("installed Codex ASP explorer agent");
     let parsed = toml::from_str::<toml::Value>(&agent).expect("Codex ASP explorer is valid TOML");
     let table = parsed
@@ -549,6 +557,7 @@ fn write_stale_codex_subagents(root: &std::path::Path) {
 
 fn assert_retired_codex_split_subagents_removed(root: &std::path::Path) {
     for stale in [
+        "asp-explorer.toml",
         "asp-explorer-owner.toml",
         "asp-explorer-rg.toml",
         "asp-explorer-selector.toml",
@@ -635,11 +644,11 @@ fn assert_installed_activation(root: &std::path::Path) {
         .find(|provider| provider.language_id == "rust")
         .expect("rust provider activation");
     assert_eq!(
-        rust_provider.routes.fzf.argv,
+        rust_provider.routes.lexical.argv,
         [
             "rs-harness",
             "search",
-            "fzf",
+            "lexical",
             "{query}",
             "owner",
             "tests",

@@ -42,12 +42,12 @@ fn codex_raw_search_nested_provider_source_root_routes_as_raw_search() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
     assert_eq!(decision.language_ids, vec!["rust"]);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Lexical);
     assert!(
         decision.routes[0]
             .argv
             .windows(2)
-            .any(|window| window[0] == "search" && window[1] == "fzf")
+            .any(|window| window[0] == "search" && window[1] == "lexical")
     );
     assert!(
         !decision.routes[0]

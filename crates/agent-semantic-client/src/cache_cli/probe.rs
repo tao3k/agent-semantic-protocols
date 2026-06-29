@@ -17,10 +17,10 @@ use crate::cache_cli::request::{
 };
 use crate::cache_replay::{
     ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay,
-    load_syntax_query_rows_replay_open, search_fzf_generation_matches_request,
+    load_syntax_query_rows_replay_open, search_lexical_generation_matches_request,
 };
 
-const FRESH_FZF_CANDIDATE_LIMIT: u32 = 20;
+const FRESH_LEXICAL_CANDIDATE_LIMIT: u32 = 20;
 
 pub(crate) struct ProviderCacheProbe {
     cache_report: CacheManifestReport,
@@ -116,12 +116,12 @@ pub(crate) fn provider_cache_probe(
             let provider = selected_provider?;
             let export_method = export_method.as_ref()?;
             if db_report.status != ClientDbStatus::Present
-                || !is_fresh_fzf_reuse_request(request, export_method)
+                || !is_fresh_lexical_reuse_request(request, export_method)
             {
                 return None;
             }
             sqlite_read_count += 1;
-            load_fresh_fzf_replay(
+            load_fresh_lexical_replay(
                 db,
                 cache_root,
                 project_root,
@@ -203,7 +203,7 @@ fn load_fresh_prime_replay(
     }
 }
 
-fn load_fresh_fzf_replay(
+fn load_fresh_lexical_replay(
     db: &ClientDb,
     cache_root: &Path,
     project_root: &Path,
@@ -221,12 +221,12 @@ fn load_fresh_fzf_replay(
                 export_method: export_method.clone(),
                 request_fingerprint: None,
             },
-            FRESH_FZF_CANDIDATE_LIMIT,
+            FRESH_LEXICAL_CANDIDATE_LIMIT,
         )
         .ok()?;
     for hit in hits {
         if generation_file_hashes_match(project_root, &hit)
-            && search_fzf_generation_matches_request(cache_root, &hit, request).is_some()
+            && search_lexical_generation_matches_request(cache_root, &hit, request).is_some()
         {
             return load_replay_artifact(cache_root, &hit, request);
         }
@@ -251,13 +251,16 @@ fn is_fresh_prime_reuse_request(
             .any(|arg| arg == "--json" || arg == "--code")
 }
 
-fn is_fresh_fzf_reuse_request(request: &ClientRequest, export_method: &CacheExportMethod) -> bool {
+fn is_fresh_lexical_reuse_request(
+    request: &ClientRequest,
+    export_method: &CacheExportMethod,
+) -> bool {
     request.method == ClientMethod::Search
-        && export_method.as_str() == "search/fzf"
+        && export_method.as_str() == "search/lexical"
         && request
             .forwarded_args
             .first()
-            .is_some_and(|arg| arg == "fzf")
+            .is_some_and(|arg| arg == "lexical")
         && request_wants_seed_view(&request.forwarded_args)
         && !request
             .forwarded_args

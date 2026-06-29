@@ -33,8 +33,8 @@ fn fast_search_usage(language_id: &str, subcommand: Option<&str>) -> String {
         Some("pipe") => format!(
             "usage: asp {language_id} search pipe <question-or-feature-term> [--selector SELECTOR] [--query TERMS] [--workspace PROJECT_ROOT] [--source auto|provider|finder|ingest] [--view seeds|graph-turbo-request] [scope...]\n\nBuilds an ASP-owned search frontier from an LLM-compressed code search seed. Use --selector with --query to bind an exact code owner and context terms without shell-joining query/search commands."
         ),
-        Some("fzf") => format!(
-            "usage: asp {language_id} search fzf <term-or-error> [items|tests|deps] [--view seeds|graph-turbo-request] [owner...]\n\nRuns bounded lexical/fuzzy recall and renders an ASP-owned search frontier."
+        Some("lexical") => format!(
+            "usage: asp {language_id} search lexical <term-or-error> [items|tests|deps] [--view seeds|graph-turbo-request] [owner...]\n\nRuns bounded lexical recall and renders an ASP-owned search frontier."
         ),
         Some("deps" | "dependency") => format!(
             "usage: asp {language_id} search deps <dependency-or-api> [api-term] [--workspace PROJECT_ROOT] [--view hits|seeds|public-external-types]\n\nReads current manifest dependency topology and renders dependency-owned next actions."
@@ -52,7 +52,7 @@ fn fast_search_usage(language_id: &str, subcommand: Option<&str>) -> String {
             "usage: asp {language_id} search owner <owner-path> items --query <symbol-or-a|b|c> --view seeds\n\nRanks owner-local items for an LLM-generated symbol/API query-set."
         ),
         _ => format!(
-            "usage: asp {language_id} search <pipe|fzf|deps|dependency|ingest|failure|reasoning|owner|guide|prime> ...\n\nUse --help after a search subcommand for focused usage.\nsearch deps: current manifest dependency topology and dependency-owned next actions."
+            "usage: asp {language_id} search <pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime> ...\n\nUse --help after a search subcommand for focused usage.\nsearch deps: current manifest dependency topology and dependency-owned next actions."
         ),
     }
 }

@@ -30,7 +30,7 @@ use agent_semantic_hook::{
     runtime_profiles_for_activation, subagent_deny_message, validate_claude_settings_json,
 };
 use agent_semantic_runtime::{project_activation_path, project_runtime_state, project_state_paths};
-use hook_runtime_agent_session::classify_main_session_asp_exploration;
+use hook_runtime_agent_session::{classify_main_session_asp_exploration, load_asp_session_policy};
 use hook_runtime_codex_plugin::{
     CodexPluginScope, codex_plugin_scope_arg, codex_project_plugin_cache_skill_path,
     install_codex_plugin_hooks, sync_codex_project_plugin_cache,
@@ -124,6 +124,13 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
+    let asp_session_policy = match load_asp_session_policy(&config_path) {
+        Ok(config) => config,
+        Err(error) => {
+            emit_hook_config_load_failure(client, event, emit, &config_path, &error)?;
+            return Ok(());
+        }
+    };
     let payload = match parse_payload(&stdin) {
         Ok(payload) => payload,
         Err(error) => {
@@ -152,7 +159,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             client,
             event,
             &runtime,
-            hook_config.asp_session_policy(),
+            &asp_session_policy,
             &payload,
         )?
     {

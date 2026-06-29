@@ -146,7 +146,7 @@ fn git_diff_patch_review_does_not_hide_later_source_dump() {
 }
 
 #[test]
-fn broad_raw_search_routes_to_fzf_frontier_when_supported() {
+fn broad_raw_search_routes_to_lexical_frontier_when_supported() {
     let decision = classify_hook(
         &polyglot_registry(),
         "codex",
@@ -160,12 +160,12 @@ fn broad_raw_search_routes_to_fzf_frontier_when_supported() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
     assert_eq!(decision.language_ids, vec!["typescript".to_string()]);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Lexical);
     assert!(
         decision.routes[0]
             .argv
             .windows(2)
-            .any(|window| window[0] == "search" && window[1] == "fzf")
+            .any(|window| window[0] == "search" && window[1] == "lexical")
     );
     assert!(
         !decision.routes[0]

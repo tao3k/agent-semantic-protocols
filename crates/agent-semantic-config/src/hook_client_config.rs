@@ -104,6 +104,8 @@ pub struct HookClientAspSessionPolicyConfig {
     pub enabled: bool,
     #[serde(default = "default_asp_session_policy_resident_child_name")]
     pub resident_child_name: String,
+    #[serde(default = "default_asp_session_policy_resident_codex_agent_name")]
+    pub resident_codex_agent_name: String,
     #[serde(default = "default_asp_session_policy_main_allowed_prefixes")]
     pub main_allowed_asp_command_prefixes: Vec<String>,
 }
@@ -113,6 +115,7 @@ impl Default for HookClientAspSessionPolicyConfig {
         Self {
             enabled: true,
             resident_child_name: default_asp_session_policy_resident_child_name(),
+            resident_codex_agent_name: default_asp_session_policy_resident_codex_agent_name(),
             main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
         }
     }
@@ -265,7 +268,7 @@ pub enum HookClientConfigRouteKind {
     Prime,
     Owner,
     Query,
-    Fzf,
+    Lexical,
     Read,
     Deps,
     Api,
@@ -353,6 +356,10 @@ fn default_asp_session_policy_resident_child_name() -> String {
     "asp-explore".to_string()
 }
 
+fn default_asp_session_policy_resident_codex_agent_name() -> String {
+    "asp_explorer".to_string()
+}
+
 fn default_asp_session_policy_main_allowed_prefixes() -> Vec<String> {
     [
         "help",
@@ -437,6 +444,10 @@ fn validate_asp_session_policy(config: &HookClientAspSessionPolicyConfig) -> Res
     validate_optional_non_empty(
         "aspSessionPolicy.residentChildName",
         Some(config.resident_child_name.as_str()),
+    )?;
+    validate_optional_non_empty(
+        "aspSessionPolicy.residentCodexAgentName",
+        Some(config.resident_codex_agent_name.as_str()),
     )?;
     for prefix in &config.main_allowed_asp_command_prefixes {
         validate_optional_non_empty(
