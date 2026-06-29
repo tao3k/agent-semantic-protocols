@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::ProjectContext;
-use agent_semantic_client_db::{ClientDb, ClientDbArtifactEvent};
+use agent_semantic_client_db::{ClientDb, ClientDbArtifactEvent, ClientDbEngine};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
     run_provider_process,
@@ -92,7 +92,9 @@ fn artifact_events_packet(
     project_context: &ProjectContext,
     artifact_dir: &Path,
 ) -> Result<Option<Bytes>, String> {
-    let db_path = ClientDb::default_path(project_context.state_layout().client_cache_dir());
+    let db_path = ClientDbEngine::sqlite_path_for_client_dir(
+        project_context.state_layout().client_cache_dir(),
+    );
     let artifact_file_count = artifact_file_count(artifact_dir)?;
     let mut events = ClientDb::lookup_artifact_events(&db_path, None, 1_000_000)?;
     let indexed_count = indexed_artifact_count(&events);

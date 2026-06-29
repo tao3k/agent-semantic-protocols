@@ -4,9 +4,8 @@ use agent_semantic_config::{
     HookClientAgentOrgArtifactsConfig, HookClientConfigDecision, HookClientConfigFile,
     HookClientConfigReasonKind, HookClientConfigRouteKind, HookClientConfigStdinMode,
     HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
-    default_hook_client_config_path, default_hook_client_config_template,
-    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
-    load_hook_client_config_file,
+    default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
+    load_asp_project_config_file, load_hook_client_config_file,
 };
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
@@ -18,22 +17,26 @@ use crate::command::path_like_token_matches;
 pub(crate) use crate::hook_config_agent_org::AgentOrgArtifactsArchiveWarning;
 pub(crate) use crate::hook_config_agent_org::AgentOrgArtifactsRecovery;
 use crate::hook_config_agent_org::CompiledAgentOrgArtifactsConfig;
+use crate::hook_config_global::default_global_client_config_path;
+use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     ReasonKind, StdinMode,
 };
+
 use crate::protocol_activation::HookRuntime;
 use crate::provider_manifest::project_agent_config_path;
 use crate::source_selector::collect_source_selector_matches;
 use crate::tool_action::{ToolAction, subject_for_action};
 
 #[derive(Debug, Default)]
-/// Compiled project-local hook rules loaded from `.codex/agent-semantic-protocol`.
+/// Compiled hook rules loaded from the global ASP state root.
 pub struct ClientHookConfig {
     rules: Vec<CompiledHookRule>,
     semantic_ast_patch_disabled: bool,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
+    recovery_prompt: CompiledRecoveryPromptConfig,
 }
 
 #[derive(Debug)]
@@ -122,17 +125,18 @@ struct RuleRoute {
     stdin_mode: Option<StdinMode>,
 }
 
-/// Return the versioned project-local hook config path.
-pub fn default_client_config_path(project_root: &str) -> PathBuf {
-    default_hook_client_config_path(project_root)
+/// Return the default global hook config path.
+pub fn default_client_config_path(_project_root: &str) -> PathBuf {
+    default_global_client_config_path()
+        .unwrap_or_else(|| PathBuf::from(".agent-semantic-protocols/hooks/config.toml"))
 }
 
-/// Render the seed project-local hook config file.
+/// Render the seed global hook config file.
 pub fn default_client_config_template() -> String {
     default_hook_client_config_template()
 }
 
-/// Render the seed project-local hook config file for active provider source extensions.
+/// Render the seed global hook config file for active provider source extensions.
 pub fn default_client_config_template_for_source_extensions<I, S>(source_extensions: I) -> String
 where
     I: IntoIterator<Item = S>,
@@ -141,18 +145,22 @@ where
     default_hook_client_config_template_for_source_extensions(source_extensions)
 }
 
-/// Load and compile project-local hook config rules.
+/// Load and compile hook config rules.
 pub fn load_client_config(path: &Path) -> Result<ClientHookConfig, String> {
     let parsed = load_hook_client_config_file(path)?;
     compile_config(parsed, None)
 }
 
-/// Load hook config plus ASP project policy from `.agents/asp.toml`.
+/// Load optional user hook config plus ASP project policy from `.agents/asp.toml`.
 pub fn load_client_config_for_project(
     path: &Path,
     project_root: &Path,
 ) -> Result<ClientHookConfig, String> {
-    let parsed = load_hook_client_config_file(path)?;
+    let parsed = if path.is_file() {
+        load_hook_client_config_file(path)?
+    } else {
+        HookClientConfigFile::default()
+    };
     let agent_config_path = project_agent_config_path(project_root);
     let agent_config = load_asp_project_config_file(&agent_config_path)?;
     compile_config(parsed, agent_config.hook.agent_org_artifacts)
@@ -161,6 +169,10 @@ pub fn load_client_config_for_project(
 impl ClientHookConfig {
     pub(crate) fn semantic_ast_patch_enabled(&self) -> bool {
         !self.semantic_ast_patch_disabled
+    }
+
+    pub(crate) fn recovery_prompt(&self) -> &CompiledRecoveryPromptConfig {
+        &self.recovery_prompt
     }
 
     pub(crate) fn agent_org_artifacts_recovery(
@@ -577,6 +589,7 @@ fn compile_config(
             .map(CompiledAgentOrgArtifactsConfig::try_from)
             .transpose()?
             .unwrap_or_else(CompiledAgentOrgArtifactsConfig::disabled),
+        recovery_prompt: config.recovery_prompt.into(),
     })
 }
 

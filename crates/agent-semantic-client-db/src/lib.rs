@@ -3,6 +3,7 @@
 //! SQLite-backed cache database surface for `agent-semantic-client`.
 
 pub mod db;
+pub mod engine;
 pub mod pragmas;
 mod source_index;
 mod structural_index;
@@ -16,6 +17,7 @@ pub use db::{
     ClientDbSyntaxNodeType, ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryLookup,
     ClientDbSyntaxQueryReplay,
 };
+pub use engine::{ClientDbBackend, ClientDbEngine};
 pub use pragmas::{ClientDbJournalMode, ClientDbRuntimePragmas};
 pub use source_index::{
     ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,

@@ -12,6 +12,7 @@ pub(super) fn run_hook_decision(root: &Path, event: &str, payload: Value) -> Val
     std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
     let mut child = asp_command()
         .current_dir(root)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "hook",

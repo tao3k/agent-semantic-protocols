@@ -43,7 +43,11 @@ fn search_pipe_keeps_query_symbols_without_fixed_generic_wordlist() {
         stdout.contains("strongCoverage=matched=ApiClient weak=API"),
         "{stdout}"
     );
-    assert!(stdout.contains("fdQuery=API|ApiClient"), "{stdout}");
+    assert!(
+        stdout.contains("nextCommand=asp rust search owner src/http/client.rs items --query 'API|ApiClient' --workspace . --view seeds"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("fdQuery="), "{stdout}");
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
@@ -86,10 +90,14 @@ fn search_pipe_wide_owner_axis_query_materializes_fd_without_protocol_terms() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("risk=package-drift"), "{stdout}");
     assert!(
-        stdout.contains("fdQuery=recovery|project|runtime|session|content|source|anchor"),
+        stdout.contains(
+            "nextCommand=asp fd -query 'recovery|project|runtime|session|content|source|anchor' --workspace ."
+        ),
         "{stdout}"
     );
-    assert!(stdout.contains("actionFrontier=A1.fd-query"), "{stdout}");
+    assert!(!stdout.contains("commandHandles="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
         !stdout.contains("fdQuery=query|rg|fd|owner|graph|turbo"),
         "{stdout}"
@@ -197,19 +205,9 @@ fn search_pipe_owner_drift_query_pack_precedes_fd_preview() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("packageCohesion=low"), "{stdout}");
     assert!(stdout.contains("fdPreview=ownerCandidates="), "{stdout}");
-    assert!(
-        stdout.contains("actionFrontier=A1.rg-query-set,A2.fd-query,A3.rg-query"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("recommendedNext=A1.owner-items"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("recommendedNext=A1.rg-query-set"),
-        "{stdout}"
-    );
     assert!(stdout.contains("nextCommand=asp rg -query"), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
@@ -255,13 +253,10 @@ fn search_pipe_owner_items_query_prefers_local_evidence_before_path_axes() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("ownerItems=src/search_pipe_graph_turbo_owner_rank.rs:ranked|candidate"),
+        stdout.contains("nextCommand=asp rust search owner src/search_pipe_graph_turbo_owner_rank.rs items --query 'ranked|candidate' --workspace . --view seeds"),
         "{stdout}"
     );
-    assert!(
-        !stdout.contains("ownerItems=src/search_pipe_graph_turbo_owner_rank.rs:graph|turbo"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("ownerItems="), "{stdout}");
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }

@@ -1,9 +1,11 @@
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::ClientDb;
 
 use crate::search_history::run_search_history;
+use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
 
 #[test]
 fn search_history_rejects_unknown_subcommand() {
@@ -18,8 +20,13 @@ fn search_history_rejects_unknown_subcommand() {
 
 #[test]
 fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
+    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("history-backfill");
-    let artifact_dir = root.join(".cache/agent-semantic-protocol/artifacts");
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
+    let artifact_dir = ResolvedState::resolve(&root)
+        .expect("state core")
+        .paths
+        .artifacts_dir;
     std::fs::create_dir_all(artifact_dir.join("prompt-output")).expect("create artifact dir");
     std::fs::write(
         artifact_dir.join("prompt-output/rust-search-prime-abc123.txt"),
@@ -124,15 +131,11 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
     .expect("write asp-graph-turbo");
     make_executable(&graph_turbo);
 
-    let previous_path = std::env::var_os("PATH");
-    let previous_prj_cache_home = std::env::var_os("PRJ_CACHE_HOME");
     let cache_root = root.join(".cache");
-    unsafe {
-        std::env::set_var("PATH", prepend_path(&bin_dir));
-        std::env::set_var("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path);
-        std::env::set_var("ASP_GRAPH_TURBO_ARGS_OUT", &args_path);
-        std::env::set_var("PRJ_CACHE_HOME", &cache_root);
-    }
+    let _path = EnvVarGuard::set("PATH", prepend_path(&bin_dir));
+    let _stdin = EnvVarGuard::set("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path);
+    let _args = EnvVarGuard::set("ASP_GRAPH_TURBO_ARGS_OUT", &args_path);
+    let _ignored_cache_home = EnvVarGuard::set("PRJ_CACHE_HOME", &cache_root);
 
     let result = run_search_history(
         &root,
@@ -144,27 +147,6 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
             "1".to_string(),
         ],
     );
-
-    match previous_path {
-        Some(path) => unsafe {
-            std::env::set_var("PATH", path);
-        },
-        None => unsafe {
-            std::env::remove_var("PATH");
-        },
-    }
-    unsafe {
-        std::env::remove_var("ASP_GRAPH_TURBO_STDIN_OUT");
-        std::env::remove_var("ASP_GRAPH_TURBO_ARGS_OUT");
-    }
-    match previous_prj_cache_home {
-        Some(path) => unsafe {
-            std::env::set_var("PRJ_CACHE_HOME", path);
-        },
-        None => unsafe {
-            std::env::remove_var("PRJ_CACHE_HOME");
-        },
-    }
 
     result.expect("run search history");
     let args = std::fs::read_to_string(&args_path).expect("read asp-graph-turbo args");

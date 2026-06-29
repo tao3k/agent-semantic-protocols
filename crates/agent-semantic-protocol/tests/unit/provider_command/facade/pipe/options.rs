@@ -115,16 +115,17 @@ fn search_pipe_selector_seed_renders_single_command_frontier_without_provider_sp
         "{stdout}"
     );
     assert!(
-        stdout.contains("actionFrontier=A1.query-code,A2.owner-items,A3.rg-query"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
-    assert!(
         stdout.contains(&format!(
             "nextCommand=asp rust query --selector '{selector}' --workspace . --code"
         )),
         "{stdout}"
     );
+    assert!(!stdout.contains("commandHandles="), "{stdout}");
+    assert!(
+        stdout.contains("actionFrontier=A1.query-code,A2.owner-items,A3.rg-query"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
     assert!(!stdout.contains("&&"), "{stdout}");
     assert!(
         !marker.exists(),
@@ -291,8 +292,7 @@ fn search_pipe_package_option_scopes_finder_frontier_without_provider_spawn() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("fdPreview=ownerCandidates=program.ts")
-            && stdout.contains("ownerItems=program.ts:"),
+        stdout.contains("fdPreview=ownerCandidates=program.ts"),
         "{stdout}"
     );
     assert!(
@@ -300,7 +300,8 @@ fn search_pipe_package_option_scopes_finder_frontier_without_provider_spawn() {
         "{stdout}"
     );
     assert!(!stdout.contains("src/server/program.ts"), "{stdout}");
-    assert!(stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
         !stdout.contains("query-code(selector=src/compiler/program.ts:"),
         "{stdout}"

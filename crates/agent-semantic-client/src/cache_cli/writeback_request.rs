@@ -7,6 +7,10 @@ use super::request::{has_tree_sitter_query, request_export_method};
 pub(super) fn request_prompt_output_writeback_method(
     request: &ClientRequest,
 ) -> Option<CacheExportMethod> {
+    if request.is_hook_direct_source_read() {
+        return None;
+    }
+
     match request.method {
         ClientMethod::Search if is_replayable_search_prompt_output(&request.forwarded_args) => {
             request_export_method(request)
@@ -106,8 +110,13 @@ fn is_replayable_search_prompt_output(args: &[String]) -> bool {
 
 fn is_replayable_query_prompt_output(args: &[String]) -> bool {
     !args.iter().any(|arg| arg == "--json")
+        && !has_code_output(args)
         && has_selector_query(args)
         && !has_tree_sitter_query(args)
+}
+
+fn has_code_output(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--code")
 }
 
 fn has_selector_query(args: &[String]) -> bool {

@@ -5,10 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use agent_semantic_client_core::{
-    ASP_PROVIDER_ACTIVATION_PATH_ENV, ProjectContext, ProviderRegistrySnapshot,
-};
-use agent_semantic_client_db::{ClientDb, ClientDbProviderCommandSelection};
+use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderRegistrySnapshot};
+use agent_semantic_client_db::{ClientDbEngine, ClientDbProviderCommandSelection};
 use agent_semantic_hook::{
     HookRuntime, ProviderCommandSelection, build_default_activation, discover_activation_path,
     load_or_sync_activation, project_agent_config_path, provider_command_selections,
@@ -43,9 +41,8 @@ fn ensure_generated_activation_provider_commands_current(
     }
     let runtime = load_or_sync_activation(&activation_path, project_root)?;
     let context_fingerprint = provider_command_selection_context_fingerprint(project_root)?;
-    let project_context = ProjectContext::resolve(project_root)?;
-    let db_path = ClientDb::default_path(project_context.state_layout().client_cache_dir());
-    let mut db = ClientDb::open_or_create(&db_path)?;
+    let db_engine = ClientDbEngine::resolve(project_root)?;
+    let mut db = db_engine.open_sqlite_or_create()?;
     if let Some(cached) =
         db.lookup_provider_command_selections(project_root, &context_fingerprint)?
         && cached.iter().all(cached_provider_executable_is_fresh)

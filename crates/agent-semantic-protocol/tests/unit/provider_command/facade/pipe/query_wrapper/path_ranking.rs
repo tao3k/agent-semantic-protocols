@@ -47,8 +47,13 @@ fn asp_fd_query_ranks_path_candidates_by_normalized_query_axis_coverage() {
         ),
         "{stdout}"
     );
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
     assert!(
-        stdout.contains("rankedEvidence=H1:compiler/moduleNameResolver.ts"),
+        stdout.contains(
+            "nextCommand=asp typescript search owner compiler/moduleNameResolver.ts items"
+        ),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -103,8 +108,11 @@ fn asp_fd_query_ranks_query_dense_owner_before_low_coverage_path() {
             .starts_with("ownerCandidates=semantic_sandtable/test_large_library_report_chain.py"),
         "{stdout}"
     );
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
     assert!(
-        stdout.contains("rankedEvidence=H1:semantic_sandtable/test_large_library_report_chain.py"),
+        stdout.contains("--workspace 'semantic_sandtable/test_large_library_report_chain.py'"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

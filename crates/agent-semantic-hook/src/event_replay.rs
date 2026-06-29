@@ -59,11 +59,63 @@ pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
     serde_json::to_string(&key).ok()
 }
 
-pub(crate) fn repeated_deny_message(decision: &HookDecision) -> String {
-    let reason = serde_json::to_value(decision.reason_kind)
+pub(crate) fn recovery_ref_for_replay_key(replay_key: &str) -> String {
+    let prefix = if is_source_access_replay_key(replay_key) {
+        "source-access"
+    } else {
+        "hook-deny"
+    };
+    format!("{prefix}:{}", replay_key_hash(replay_key))
+}
+
+pub(crate) fn is_source_access_replay_key(replay_key: &str) -> bool {
+    serde_json::from_str::<Value>(replay_key)
         .ok()
-        .and_then(|value| value.as_str().map(str::to_string))
-        .unwrap_or_else(|| "source-access".to_string());
+        .and_then(|value| {
+            value
+                .get("replayFamily")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .as_deref()
+        == Some("source-access-recovery")
+}
+
+pub(crate) fn compact_source_access_deny_message(
+    decision: &HookDecision,
+    recovery_ref: &str,
+) -> String {
+    let reason = replay_reason_label(decision);
+    if decision.fields.get("denyReplay").and_then(Value::as_str) == Some("repeated") {
+        return format!(
+            "ASP denied source access again (`{reason}`). Use the active recovery lane; do not retry raw source tools.\nrecoveryRef={recovery_ref}"
+        );
+    }
+
+    if decision
+        .fields
+        .get("subagentContext")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return format!(
+            "ASP denied source access (`{reason}`) inside asp-explore. Use ASP query/search routes and return compact `[asp-search-subagent]` evidence.\nrecoveryRef={recovery_ref}"
+        );
+    }
+
+    format!(
+        "ASP denied source access (`{reason}`). Use asp-explore for ASP search/query; start and register it once if no asp-explore session is registered.\nrecoveryRef={recovery_ref}"
+    )
+}
+
+pub(crate) fn should_compact_source_access_deny_message(decision: &HookDecision) -> bool {
+    !decision.fields.contains_key("configRuleId")
+        && (decision.message.starts_with("ASP hook blocked `")
+            || decision.message.starts_with("ASP denied `"))
+}
+
+pub(crate) fn repeated_deny_message(decision: &HookDecision) -> String {
+    let reason = replay_reason_label(decision);
     [
         format!("ASP hook already denied `{reason}` on this source-access lane."),
         "See @.agents/skills/agent-semantic-protocols/SKILL.md for the active ASP agent workflow."
@@ -77,4 +129,20 @@ pub(crate) fn repeated_deny_message(decision: &HookDecision) -> String {
             .to_string(),
     ]
     .join("\n")
+}
+
+fn replay_reason_label(decision: &HookDecision) -> String {
+    serde_json::to_value(decision.reason_kind)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "source-access".to_string())
+}
+
+fn replay_key_hash(replay_key: &str) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in replay_key.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
 }

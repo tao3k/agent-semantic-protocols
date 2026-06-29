@@ -263,7 +263,7 @@ def test_cli_records_and_analyzes_agent_session_from_messages(
                 str(messages_path),
                 "--agent-session-root",
                 str(session_root),
-                "--session-id",
+                "--child-session-id",
                 "cli-session",
                 "--scenario-id",
                 "rust.tokio-agent-observability",

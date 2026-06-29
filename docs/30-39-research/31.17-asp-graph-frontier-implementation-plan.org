@@ -402,8 +402,7 @@ asp typescript agent guide .
 asp python agent guide .
 printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"rg -n classify_hook -g '\''*.rs'\'' crates/agent-semantic-hook/src"}}' \
   | asp hook pre-tool --client codex \
-      --activation .cache/agent-semantic-protocol/hooks/activation.json \
-      --config .codex/agent-semantic-protocol/hooks/config.toml
+      --activation .cache/agent-semantic-protocol/hooks/activation.json
 #+end_src
 
 The hook runtime smoke returns a deny route with =argv=["asp","rust","query",

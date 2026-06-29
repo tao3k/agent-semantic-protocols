@@ -8,6 +8,7 @@ pub mod config;
 pub mod project_context;
 pub mod receipt;
 pub mod request;
+pub mod state_core;
 pub mod types;
 
 pub use activation::{
@@ -22,7 +23,7 @@ pub use cache_manifest::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheManifestReport, CacheManifestStatus,
     ClientCacheFileHash, ClientCacheGeneration, ClientCacheManifest, project_client_cache_dir,
-    project_client_cache_manifest_path,
+    project_client_cache_dir_read_only, project_client_cache_manifest_path,
 };
 pub use config::{BackendMode, ClientConfig, PrivacyMode};
 pub use project_context::{ProjectContext, StateLayout};
@@ -65,3 +66,6 @@ mod project_context_tests;
 #[cfg(test)]
 #[path = "../tests/unit/request.rs"]
 mod request_tests;
+#[cfg(test)]
+#[path = "../tests/unit/state_core.rs"]
+mod state_core_tests;

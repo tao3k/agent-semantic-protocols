@@ -29,17 +29,17 @@ fn asp_rg_query_reads_explicit_org_file_scope() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("sourceTrace=finder:used["), "{stdout}");
-    assert!(
-        stdout.contains("rankedEvidence=H1:docs/source-index.org"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
     assert!(
         stdout.contains("packages=docs/source-index.org"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("State layout materialization")
-            || stdout.contains("Runtime materialization uses a config-owned layout"),
+        stdout.contains(
+            "nextCommand=asp fd -query 'State|layout|materialization|Runtime|config-owned' --workspace docs/source-index.org"
+        ),
         "{stdout}"
     );
     assert!(

@@ -1,5 +1,11 @@
 //! Durable agent session and subagent registry.
 
+#[path = "agent_session_registry_args.rs"]
+mod agent_session_registry_args;
+
+use agent_session_registry_args::{
+    SessionArgs, SessionCommand, agent_usage, session_guide, session_usage,
+};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use std::{
@@ -47,6 +53,10 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         println!("{}", session_usage());
         return Ok(());
     }
+    if args.guide {
+        println!("{}", session_guide(args.command)?);
+        return Ok(());
+    }
 
     let project_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
@@ -70,111 +80,7 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         SessionCommand::Register => register_session(&conn, &db_path, &args),
         SessionCommand::List => list_sessions(&conn, &db_path, &args),
         SessionCommand::Show => show_session(&conn, &db_path, &args),
-    }
-}
-
-#[derive(Clone, Copy)]
-enum SessionCommand {
-    Register,
-    List,
-    Show,
-}
-
-struct SessionArgs {
-    help: bool,
-    command: SessionCommand,
-    state_root: Option<PathBuf>,
-    name: Option<String>,
-    session_id: Option<String>,
-    root_session_id: Option<String>,
-    parent_session_id: Option<String>,
-    role: Option<String>,
-    model: Option<String>,
-    status: Option<String>,
-    metadata_json: Option<String>,
-    all: bool,
-    json: bool,
-}
-
-impl SessionArgs {
-    fn parse(args: &[String]) -> Result<Self, String> {
-        let mut parsed = Self {
-            help: false,
-            command: SessionCommand::List,
-            state_root: None,
-            name: None,
-            session_id: None,
-            root_session_id: None,
-            parent_session_id: None,
-            role: None,
-            model: None,
-            status: None,
-            metadata_json: None,
-            all: false,
-            json: false,
-        };
-        let mut index = 0;
-        while index < args.len() {
-            let arg = &args[index];
-            match arg.as_str() {
-                "-h" | "--help" | "help" => parsed.help = true,
-                "register" | "add" | "upsert" if index == 0 => {
-                    parsed.command = SessionCommand::Register;
-                }
-                "list" | "ls" if index == 0 => parsed.command = SessionCommand::List,
-                "show" | "get" if index == 0 => parsed.command = SessionCommand::Show,
-                "--state-root" => {
-                    index += 1;
-                    parsed.state_root = Some(PathBuf::from(required_flag_value(
-                        args,
-                        index,
-                        "--state-root",
-                    )?));
-                }
-                "--name" => {
-                    index += 1;
-                    parsed.name = Some(non_empty_flag(args, index, "--name")?.to_string());
-                }
-                "--session-id" | "--session" => {
-                    index += 1;
-                    parsed.session_id =
-                        Some(non_empty_flag(args, index, arg.as_str())?.to_string());
-                }
-                "--root-session-id" | "--root" => {
-                    index += 1;
-                    parsed.root_session_id =
-                        Some(non_empty_flag(args, index, arg.as_str())?.to_string());
-                }
-                "--parent-session-id" | "--parent" => {
-                    index += 1;
-                    parsed.parent_session_id =
-                        Some(non_empty_flag(args, index, arg.as_str())?.to_string());
-                }
-                "--role" => {
-                    index += 1;
-                    parsed.role = Some(non_empty_flag(args, index, "--role")?.to_string());
-                }
-                "--model" => {
-                    index += 1;
-                    parsed.model = Some(non_empty_flag(args, index, "--model")?.to_string());
-                }
-                "--status" => {
-                    index += 1;
-                    parsed.status = Some(non_empty_flag(args, index, "--status")?.to_string());
-                }
-                "--metadata-json" => {
-                    index += 1;
-                    parsed.metadata_json =
-                        Some(non_empty_flag(args, index, "--metadata-json")?.to_string());
-                }
-                "--all" => parsed.all = true,
-                "--json" => parsed.json = true,
-                _ if arg.starts_with('-') => return Err(format!("unknown session flag `{arg}`")),
-                _ => return Err(format!("unknown session subcommand `{arg}`")),
-            }
-            index += 1;
-        }
-        Ok(parsed)
+        SessionCommand::Reuse => reuse_session(&conn, &db_path, &args),
     }
 }
 
@@ -195,8 +101,61 @@ struct SessionRecord {
     created_at: i64,
     #[serde(rename = "updatedAt")]
     updated_at: i64,
+    #[serde(rename = "lastSeenAt", skip_serializing_if = "Option::is_none")]
+    last_seen_at: Option<i64>,
+    #[serde(rename = "lastHeartbeatAt", skip_serializing_if = "Option::is_none")]
+    last_heartbeat_at: Option<i64>,
+    #[serde(rename = "expiresAt", skip_serializing_if = "Option::is_none")]
+    expires_at: Option<i64>,
+    #[serde(rename = "archivedAt", skip_serializing_if = "Option::is_none")]
+    archived_at: Option<i64>,
+    #[serde(rename = "lastToolEvent", skip_serializing_if = "Option::is_none")]
+    last_tool_event: Option<String>,
+    #[serde(rename = "lastCommand", skip_serializing_if = "Option::is_none")]
+    last_command: Option<String>,
+    #[serde(rename = "lastEvidenceRef", skip_serializing_if = "Option::is_none")]
+    last_evidence_ref: Option<String>,
     #[serde(rename = "metadataJson")]
     metadata_json: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RegisteredSession {
+    pub(crate) root_session_id: String,
+    pub(crate) session_id: String,
+    pub(crate) name: String,
+    pub(crate) role: String,
+    pub(crate) status: String,
+    pub(crate) expires_at: Option<i64>,
+}
+
+impl RegisteredSession {
+    fn from_record(record: SessionRecord) -> Self {
+        Self {
+            root_session_id: record.root_session_id,
+            session_id: record.session_id,
+            name: record.name,
+            role: record.role,
+            status: record.status,
+            expires_at: record.expires_at,
+        }
+    }
+
+    pub(crate) fn is_routable_at(&self, now: i64) -> bool {
+        session_status_is_routable(&self.status)
+            && self.expires_at.map_or(true, |expires| expires > now)
+    }
+}
+
+impl SessionRecord {
+    fn is_routable_at(&self, now: i64) -> bool {
+        session_status_is_routable(&self.status)
+            && self.expires_at.map_or(true, |expires| expires > now)
+    }
+}
+
+fn session_status_is_routable(status: &str) -> bool {
+    matches!(status, "active" | "idle")
 }
 
 #[derive(Serialize)]
@@ -212,11 +171,12 @@ struct SessionReport<'a> {
 fn register_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Result<(), String> {
     let platform_session = super::agent_session::current_agent_session();
     let session_id = args
-        .session_id
+        .child_session_id
         .clone()
         .or_else(|| platform_session.as_ref().map(|session| session.id.clone()))
         .ok_or_else(|| {
-            "asp agent session register requires --session-id or an agent session env".to_string()
+            "asp agent session register requires --child-session-id or an agent session env"
+                .to_string()
         })?;
     let root_session_id = args
         .root_session_id
@@ -232,6 +192,13 @@ fn register_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Re
     let status = args.status.as_deref().unwrap_or("active").to_string();
     let metadata_json = normalized_metadata(args.metadata_json.as_deref())?;
     let now = unix_timestamp()?;
+    if !args.replace
+        && let Some(existing) = session_by_name(conn, &root_session_id, &name)?
+        && existing.session_id != session_id
+        && existing.is_routable_at(now)
+    {
+        return print_reuse_session(db_path, Some(&root_session_id), existing, args.json);
+    }
 
     conn.execute(
         "INSERT INTO asp_agent_sessions (
@@ -244,8 +211,11 @@ fn register_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Re
             status,
             created_at,
             updated_at,
+            last_seen_at,
+            last_heartbeat_at,
+            expires_at,
             metadata_json
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9)
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?8, ?8, ?9, ?10)
         ON CONFLICT(root_session_id, name) DO UPDATE SET
             session_id = excluded.session_id,
             parent_session_id = excluded.parent_session_id,
@@ -253,6 +223,9 @@ fn register_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Re
             model = excluded.model,
             status = excluded.status,
             updated_at = excluded.updated_at,
+            last_seen_at = excluded.last_seen_at,
+            last_heartbeat_at = excluded.last_heartbeat_at,
+            expires_at = excluded.expires_at,
             metadata_json = excluded.metadata_json",
         params![
             root_session_id,
@@ -263,6 +236,7 @@ fn register_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Re
             args.model,
             status,
             now,
+            args.expires_at,
             metadata_json,
         ],
     )
@@ -294,7 +268,12 @@ fn list_sessions(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Resul
             .clone()
             .or_else(current_recall_session_id)
     };
-    let sessions = query_sessions(conn, root_filter.as_deref(), args.name.as_deref())?;
+    refresh_expired_sessions(conn)?;
+    let mut sessions = query_sessions(conn, root_filter.as_deref(), args.name.as_deref())?;
+    if args.active {
+        let now = unix_timestamp()?;
+        sessions.retain(|session| session.is_routable_at(now));
+    }
     if args.json {
         return print_json_report(db_path, root_filter.as_deref(), sessions);
     }
@@ -313,11 +292,34 @@ fn list_sessions(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Resul
     Ok(())
 }
 
+fn reuse_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Result<(), String> {
+    refresh_expired_sessions(conn)?;
+    let root_session_id = args
+        .root_session_id
+        .clone()
+        .or_else(current_recall_session_id)
+        .ok_or_else(|| {
+            "asp agent session reuse requires --root-session-id or agent session env".to_string()
+        })?;
+    let name = required_non_empty(args.name.as_deref(), "--name")?;
+    let Some(record) = session_by_name(conn, &root_session_id, name)? else {
+        return print_reuse_miss(db_path, Some(&root_session_id), name, "missing", args.json);
+    };
+    let now = unix_timestamp()?;
+    if record.is_routable_at(now) {
+        print_reuse_session(db_path, Some(&root_session_id), record, args.json)
+    } else {
+        let reason = record.status.clone();
+        print_reuse_miss(db_path, Some(&root_session_id), name, &reason, args.json)
+    }
+}
+
 fn show_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Result<(), String> {
-    let record = if let Some(session_id) = args.session_id.as_deref() {
+    refresh_expired_sessions(conn)?;
+    let record = if let Some(session_id) = args.child_session_id.as_deref() {
         session_by_id(conn, session_id)?
     } else {
-        let name = required_non_empty(args.name.as_deref(), "--name or --session-id")?;
+        let name = required_non_empty(args.name.as_deref(), "--name or --child-session-id")?;
         let root_session_id = args
             .root_session_id
             .clone()
@@ -344,6 +346,51 @@ fn show_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Result
     }
 }
 
+fn print_reuse_session(
+    db_path: &Path,
+    root_session_id: Option<&str>,
+    session: SessionRecord,
+    json: bool,
+) -> Result<(), String> {
+    if json {
+        return print_json_report(db_path, root_session_id, vec![session]);
+    }
+    println!(
+        "[agent-session-reuse] owner=rust status=\"found\" rootSession={} name=\"{}\" childSessionId=\"{}\" role=\"{}\" sessionStatus=\"{}\" db=\"{}\"",
+        root_session_id
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"*\"".to_string()),
+        escape_field(&session.name),
+        escape_field(&session.session_id),
+        escape_field(&session.role),
+        escape_field(&session.status),
+        db_path.display()
+    );
+    Ok(())
+}
+
+fn print_reuse_miss(
+    db_path: &Path,
+    root_session_id: Option<&str>,
+    name: &str,
+    reason: &str,
+    json: bool,
+) -> Result<(), String> {
+    if json {
+        return print_json_report(db_path, root_session_id, Vec::new());
+    }
+    println!(
+        "[agent-session-reuse] owner=rust status=\"miss\" rootSession={} name=\"{}\" reason=\"{}\" db=\"{}\"",
+        root_session_id
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"*\"".to_string()),
+        escape_field(name),
+        escape_field(reason),
+        db_path.display()
+    );
+    Ok(())
+}
+
 fn ensure_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS asp_agent_sessions (
@@ -357,6 +404,13 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
             status TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
+            last_seen_at INTEGER,
+            last_heartbeat_at INTEGER,
+            expires_at INTEGER,
+            archived_at INTEGER,
+            last_tool_event TEXT,
+            last_command TEXT,
+            last_evidence_ref TEXT,
             metadata_json TEXT NOT NULL DEFAULT '{}',
             UNIQUE(root_session_id, name)
         );
@@ -365,7 +419,35 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_parent
             ON asp_agent_sessions(parent_session_id);",
     )
-    .map_err(|error| format!("failed to initialize session registry schema: {error}"))
+    .map_err(|error| format!("failed to initialize session registry schema: {error}"))?;
+    ensure_session_column(conn, "last_seen_at", "INTEGER")?;
+    ensure_session_column(conn, "last_heartbeat_at", "INTEGER")?;
+    ensure_session_column(conn, "expires_at", "INTEGER")?;
+    ensure_session_column(conn, "archived_at", "INTEGER")?;
+    ensure_session_column(conn, "last_tool_event", "TEXT")?;
+    ensure_session_column(conn, "last_command", "TEXT")?;
+    ensure_session_column(conn, "last_evidence_ref", "TEXT")?;
+    Ok(())
+}
+
+fn ensure_session_column(conn: &Connection, name: &str, sql_type: &str) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(asp_agent_sessions)")
+        .map_err(|error| format!("failed to inspect session registry schema: {error}"))?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| format!("failed to inspect session registry columns: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed to read session registry columns: {error}"))?;
+    if columns.iter().any(|column| column == name) {
+        return Ok(());
+    }
+    conn.execute(
+        &format!("ALTER TABLE asp_agent_sessions ADD COLUMN {name} {sql_type}"),
+        [],
+    )
+    .map_err(|error| format!("failed to add session registry column `{name}`: {error}"))?;
+    Ok(())
 }
 
 fn query_sessions(
@@ -376,7 +458,7 @@ fn query_sessions(
     match (root_session_id, name) {
         (Some(root_session_id), Some(name)) => query_session_rows(
             conn,
-            "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, metadata_json
+            "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
              FROM asp_agent_sessions
              WHERE root_session_id = ?1 AND name = ?2
              ORDER BY updated_at DESC, name ASC",
@@ -384,7 +466,7 @@ fn query_sessions(
         ),
         (Some(root_session_id), None) => query_session_rows(
             conn,
-            "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, metadata_json
+            "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
              FROM asp_agent_sessions
              WHERE root_session_id = ?1
              ORDER BY updated_at DESC, name ASC",
@@ -392,7 +474,7 @@ fn query_sessions(
         ),
         (None, Some(name)) => query_session_rows(
             conn,
-            "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, metadata_json
+            "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
              FROM asp_agent_sessions
              WHERE name = ?1
              ORDER BY updated_at DESC, root_session_id ASC",
@@ -400,7 +482,7 @@ fn query_sessions(
         ),
         (None, None) => query_session_rows(
             conn,
-            "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, metadata_json
+            "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
              FROM asp_agent_sessions
              ORDER BY updated_at DESC, root_session_id ASC, name ASC",
             params![],
@@ -429,7 +511,7 @@ fn session_by_name(
     name: &str,
 ) -> Result<Option<SessionRecord>, String> {
     conn.query_row(
-        "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, metadata_json
+        "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
          FROM asp_agent_sessions
          WHERE root_session_id = ?1 AND name = ?2",
         params![root_session_id, name],
@@ -441,7 +523,7 @@ fn session_by_name(
 
 fn session_by_id(conn: &Connection, session_id: &str) -> Result<Option<SessionRecord>, String> {
     conn.query_row(
-        "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, metadata_json
+        "SELECT root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
          FROM asp_agent_sessions
          WHERE session_id = ?1",
         params![session_id],
@@ -449,6 +531,55 @@ fn session_by_id(conn: &Connection, session_id: &str) -> Result<Option<SessionRe
     )
     .optional()
     .map_err(|error| format!("failed to read session by id: {error}"))
+}
+
+pub(crate) fn current_registered_session(
+    project_root: &Path,
+) -> Result<Option<RegisteredSession>, String> {
+    let Some(session) = super::agent_session::current_agent_session() else {
+        return Ok(None);
+    };
+    let Some(conn) = open_existing_registry(project_root)? else {
+        return Ok(None);
+    };
+    session_by_id(&conn, &session.id).map(|record| record.map(RegisteredSession::from_record))
+}
+
+pub(crate) fn has_current_agent_session() -> bool {
+    super::agent_session::current_agent_session().is_some()
+}
+
+pub(crate) fn current_root_session_id() -> Option<String> {
+    current_recall_session_id()
+}
+
+pub(crate) fn asp_explore_session_for_current_root(
+    project_root: &Path,
+) -> Result<Option<RegisteredSession>, String> {
+    let Some(root_session_id) = current_recall_session_id() else {
+        return Ok(None);
+    };
+    let Some(conn) = open_existing_registry(project_root)? else {
+        return Ok(None);
+    };
+    session_by_name(&conn, &root_session_id, "asp-explore")
+        .map(|record| record.map(RegisteredSession::from_record))
+}
+
+fn open_existing_registry(project_root: &Path) -> Result<Option<Connection>, String> {
+    let db_path = agent_state_root_for_project(project_root).join(REGISTRY_DB_NAME);
+    if !db_path.is_file() {
+        return Ok(None);
+    }
+    let conn = Connection::open(&db_path).map_err(|error| {
+        format!(
+            "failed to open agent session registry `{}`: {error}",
+            db_path.display()
+        )
+    })?;
+    ensure_schema(&conn)?;
+    refresh_expired_sessions(&conn)?;
+    Ok(Some(conn))
 }
 
 fn session_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRecord> {
@@ -462,7 +593,14 @@ fn session_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionR
         status: row.get(6)?,
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
-        metadata_json: row.get(9)?,
+        last_seen_at: row.get(9)?,
+        last_heartbeat_at: row.get(10)?,
+        expires_at: row.get(11)?,
+        archived_at: row.get(12)?,
+        last_tool_event: row.get(13)?,
+        last_command: row.get(14)?,
+        last_evidence_ref: row.get(15)?,
+        metadata_json: row.get(16)?,
     })
 }
 
@@ -485,9 +623,15 @@ fn print_json_report(
     Ok(())
 }
 
+fn optional_i64_field(value: Option<i64>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "\"\"".to_string())
+}
+
 fn print_session_row(session: &SessionRecord) {
     println!(
-        "|session name=\"{}\" session=\"{}\" rootSession=\"{}\" parentSession={} role=\"{}\" model={} status=\"{}\" updatedAt={}",
+        "|session name=\"{}\" session=\"{}\" rootSession=\"{}\" parentSession={} role=\"{}\" model={} status=\"{}\" updatedAt={} lastSeenAt={} lastHeartbeatAt={} expiresAt={}",
         escape_field(&session.name),
         escape_field(&session.session_id),
         escape_field(&session.root_session_id),
@@ -495,7 +639,10 @@ fn print_session_row(session: &SessionRecord) {
         escape_field(&session.role),
         optional_field(session.model.as_deref()),
         escape_field(&session.status),
-        session.updated_at
+        session.updated_at,
+        optional_i64_field(session.last_seen_at),
+        optional_i64_field(session.last_heartbeat_at),
+        optional_i64_field(session.expires_at)
     );
 }
 
@@ -542,18 +689,18 @@ fn unix_timestamp() -> Result<i64, String> {
     i64::try_from(duration.as_secs()).map_err(|error| format!("timestamp overflow: {error}"))
 }
 
-fn required_flag_value<'a>(
-    args: &'a [String],
-    index: usize,
-    flag: &str,
-) -> Result<&'a str, String> {
-    args.get(index)
-        .map(String::as_str)
-        .ok_or_else(|| format!("{flag} requires a value"))
-}
-
-fn non_empty_flag<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str, String> {
-    required_non_empty(Some(required_flag_value(args, index, flag)?), flag)
+fn refresh_expired_sessions(conn: &Connection) -> Result<(), String> {
+    let now = unix_timestamp()?;
+    conn.execute(
+        "UPDATE asp_agent_sessions
+         SET status = 'expired', updated_at = ?1
+         WHERE expires_at IS NOT NULL
+           AND expires_at <= ?1
+           AND status IN ('active', 'idle')",
+        params![now],
+    )
+    .map_err(|error| format!("failed to refresh expired session rows: {error}"))?;
+    Ok(())
 }
 
 fn required_non_empty<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str, String> {
@@ -567,12 +714,4 @@ fn required_non_empty<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str,
 
 fn escape_field(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-fn agent_usage() -> &'static str {
-    "usage: asp agent <session> ..."
-}
-
-fn session_usage() -> &'static str {
-    "usage: asp agent session <register|list|show> [--state-root PATH] [--name NAME] [--session-id ID] [--root-session-id ID] [--parent-session-id ID] [--role ROLE] [--model MODEL] [--status STATUS] [--json]"
 }

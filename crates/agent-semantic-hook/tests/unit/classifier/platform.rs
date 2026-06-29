@@ -39,33 +39,33 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
         .as_str()
         .expect("permission decision reason");
     assert!(
-        reason.starts_with("ASP hook blocked `direct-source-read`"),
+        reason.starts_with("ASP denied `direct-source-read`"),
         "{reason}"
     );
-    assert!(reason.contains("one resident ASP search agent"), "{reason}");
-    assert!(reason.contains("call `send_input`"), "{reason}");
-    assert!(reason.contains("call `spawn_agent`"), "{reason}");
-    assert!(reason.contains("`agent_type=\"asp_explorer\"`"), "{reason}");
     assert!(
-        reason.contains("fall back to `agent_type=\"explorer\"`"),
+        reason.contains("registered `asp-explore` session"),
         "{reason}"
     );
-    assert!(reason.contains("`fork_context=false`"), "{reason}");
+    assert!(reason.contains("Return compact evidence only."), "{reason}");
+    assert!(!reason.contains("call `send_input`"), "{reason}");
+    assert!(!reason.contains("spawn_agent"), "{reason}");
+    assert!(!reason.contains("agent_type"), "{reason}");
+    assert!(
+        !reason.contains("fall back to `agent_type=\"explorer\"`"),
+        "{reason}"
+    );
+    assert!(!reason.contains("`fork_context=false`"), "{reason}");
     assert!(!reason.contains("fork_turns"), "{reason}");
     assert!(
-        reason.contains("Record the returned `agent-...` id"),
+        !reason.contains("Record the returned `agent-...` id"),
         "{reason}"
     );
-    assert!(reason.contains("`asp-search-subagent(role,action,evidence,missing,next,risk)`"));
-    assert!(reason.contains("Keep model and reasoning settings in Codex config"));
-    assert!(
-        reason.contains("If subagents are unavailable, run the selected safe route directly."),
-        "{reason}"
-    );
+    assert!(!reason.contains("Keep model and reasoning settings in Codex config"));
+    assert!(!reason.contains("If subagents are unavailable"), "{reason}");
     let system_message = response["systemMessage"].as_str().expect("system message");
     assert_eq!(system_message, reason);
     assert!(
-        system_message.contains("do not retry raw read/search commands on the same source"),
+        system_message.contains("Do not retry raw source tools."),
         "{system_message}"
     );
     assert!(
@@ -105,10 +105,10 @@ fn subagent_platform_response_does_not_prompt_nested_spawn() {
     assert!(!reason.contains("spawn_agent"), "{reason}");
     assert!(!reason.contains("agent_type"), "{reason}");
     assert!(
-        reason.contains("already running inside a subagent"),
+        reason.contains("registered `asp-explore` session"),
         "{reason}"
     );
-    assert!(reason.contains("`[asp-search-subagent]`"), "{reason}");
+    assert!(reason.contains("Return compact evidence only."), "{reason}");
     assert!(
         reason.contains(
             "asp typescript query --selector src/cli/agent-hooks.ts --workspace . --code"
@@ -333,7 +333,7 @@ fn platform_response_keeps_multi_language_agent_flows_separate() {
 #[test]
 fn platform_response_reflects_disabled_semantic_ast_patch_config() {
     let config_dir = std::env::temp_dir().join(format!(
-        "asp-hook-test-{}-{}",
+        "asp-hook-test-disabled-semantic-ast-patch-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -372,21 +372,29 @@ enabled = false
         .as_str()
         .expect("permission decision reason");
 
-    assert!(reason.contains("one resident ASP search agent"), "{reason}");
-    assert!(reason.contains("call `send_input`"), "{reason}");
-    assert!(reason.contains("call `spawn_agent`"), "{reason}");
-    assert!(reason.contains("`agent_type=\"asp_explorer\"`"), "{reason}");
     assert!(
-        reason.contains("fall back to `agent_type=\"explorer\"`"),
+        reason.starts_with("ASP denied `direct-source-read`"),
         "{reason}"
     );
-    assert!(reason.contains("`fork_context=false`"), "{reason}");
+    assert!(
+        reason.contains("registered `asp-explore` session"),
+        "{reason}"
+    );
+    assert!(reason.contains("Return compact evidence only."), "{reason}");
+    assert!(!reason.contains("call `send_input`"), "{reason}");
+    assert!(!reason.contains("spawn_agent"), "{reason}");
+    assert!(!reason.contains("agent_type"), "{reason}");
+    assert!(
+        !reason.contains("fall back to `agent_type=\"explorer\"`"),
+        "{reason}"
+    );
+    assert!(!reason.contains("`fork_context=false`"), "{reason}");
     assert!(!reason.contains("fork_turns"), "{reason}");
     assert!(
-        reason.contains("Record the returned `agent-...` id"),
+        !reason.contains("Record the returned `agent-...` id"),
         "{reason}"
     );
-    assert!(reason.contains("Keep model and reasoning settings in Codex config"));
+    assert!(!reason.contains("Keep model and reasoning settings in Codex config"));
     assert!(
         !reason.contains(
             "`ast-patch` is available for structural/mechanical edits after a provider dry-run receipt"
@@ -394,6 +402,68 @@ enabled = false
         "{reason}"
     );
 
+    let _ = fs::remove_dir_all(config_dir);
+}
+
+#[test]
+fn platform_response_uses_configured_recovery_prompt_template() {
+    let config_dir = std::env::temp_dir().join(format!(
+        "asp-hook-test-configured-recovery-prompt-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&config_dir).expect("config dir");
+    let config_path = config_dir.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[recoveryPrompt]
+template = "reason={reason}\nflow={agent_flow}\nroutes={routes}"
+codexAgentFlow = "configured asp-explore flow"
+"#,
+    )
+    .expect("write hook config");
+    let config = load_client_config(&config_path).expect("load hook config");
+    let runtime = registry();
+    let decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &runtime,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &json!({
+            "tool_name": "Read",
+            "tool_input": {"path": "src/cli/agent-hooks.ts"}
+        }),
+    });
+    let response = render_platform_response(&decision).unwrap();
+    let reason = response["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("permission decision reason");
+
+    assert!(reason.contains("reason=direct-source-read"), "{reason}");
+    assert!(
+        reason.contains("flow=configured asp-explore flow"),
+        "{reason}"
+    );
+    assert!(reason.contains("routes=```sh"), "{reason}");
+    assert!(
+        reason.contains(
+            "asp typescript query --selector src/cli/agent-hooks.ts --workspace . --code"
+        ),
+        "{reason}"
+    );
+    assert!(
+        !reason.contains("start the ASP explorer subagent"),
+        "{reason}"
+    );
     let _ = fs::remove_dir_all(config_dir);
 }
 

@@ -2,8 +2,13 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use agent_semantic_client_core::{CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId};
-use agent_semantic_client_db::{ClientDb, ClientDbGenerationLookup, ClientDbStatus};
+use agent_semantic_client_core::{
+    CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId,
+    state_core::{ResolvedState, SQLITE_V1_BACKEND, STATE_LAYOUT_VERSION, TURSO_BACKEND},
+};
+use agent_semantic_client_db::{
+    ClientDb, ClientDbBackend, ClientDbEngine, ClientDbGenerationLookup, ClientDbStatus,
+};
 use serde_json::json;
 
 #[test]
@@ -33,6 +38,43 @@ fn inspect_reports_missing_without_creating_db() {
     assert_eq!(report.syntax_row_capture_count, 0);
     assert!(!db_path.exists());
     assert!(report.runtime_pragmas.is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn db_engine_uses_state_core_client_dir_without_project_cache() {
+    let root = temp_root("engine-state-core");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    let state_home = root.join("home").join(".agent-semantic-protocols");
+    let state =
+        ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolve state core");
+    state.ensure_minimal_layout().expect("create state layout");
+    let engine = ClientDbEngine::from_resolved_state(&state);
+
+    assert_eq!(engine.backend(), ClientDbBackend::SqliteV1);
+    assert_eq!(engine.backend().as_str(), SQLITE_V1_BACKEND);
+    assert_eq!(engine.future_backend(), TURSO_BACKEND);
+    assert_eq!(engine.layout_version(), STATE_LAYOUT_VERSION);
+    assert_eq!(engine.client_dir(), state.paths.client_dir.as_path());
+    assert_eq!(engine.db_path(), state.paths.client_db_path.as_path());
+    assert_eq!(
+        engine.manifest_path(),
+        state.paths.client_manifest_json.as_path()
+    );
+    assert_eq!(engine.artifact_path(), state.paths.artifacts_dir.as_path());
+    assert_eq!(engine.repo_id(), state.repo.repo_id.as_str());
+    assert_eq!(engine.workspace_id(), state.workspace.workspace_id.as_str());
+    assert_eq!(engine.scope_id(), state.scope_id.to_string());
+    assert!(engine.db_path().starts_with(&state_home));
+    assert!(!root.join(".cache").join("agent-semantic-protocol").exists());
+
+    let missing = engine.inspect_sqlite();
+    assert_eq!(missing.status, ClientDbStatus::Missing);
+    assert!(!engine.db_path().exists());
+
+    let db = engine.open_sqlite_or_create().expect("open sqlite backend");
+    assert_eq!(db.path(), engine.db_path());
+    assert!(engine.db_path().is_file());
     let _ = std::fs::remove_dir_all(root);
 }
 

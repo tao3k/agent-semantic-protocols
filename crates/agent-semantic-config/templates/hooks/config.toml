@@ -1,0 +1,7 @@
+# Optional user hook config.
+# System hook policy is compiled into the hook runtime; this file is only for
+# explicit user-level additions.
+schemaId = "@CLIENT_HOOK_CONFIG_SCHEMA_ID@"
+schemaVersion = "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@"
+protocolId = "@HOOK_PROTOCOL_ID@"
+protocolVersion = "@HOOK_PROTOCOL_VERSION@"

@@ -1,7 +1,11 @@
 //! Runtime for the `asp hook` command surface.
 
+#[path = "hook_runtime_agent_session.rs"]
+mod hook_runtime_agent_session;
 #[path = "hook_runtime_codex_plugin.rs"]
 mod hook_runtime_codex_plugin;
+#[path = "hook_runtime_doctor.rs"]
+mod hook_runtime_doctor;
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
 #[path = "hook_runtime_stdin.rs"]
@@ -10,31 +14,28 @@ mod hook_runtime_stdin;
 mod hook_runtime_subagent;
 
 use super::{
-    codex_enforcement_report, ensure_protocol_binary_installed_for_path, org_capture,
-    payload_indicates_subagent_context, protocol_binary_on_path,
+    codex_enforcement_report, ensure_protocol_binary_installed_for_path,
+    payload_indicates_subagent_context, protocol_binary_on_path, run_org_state_sync,
 };
 use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
-    HOOK_TRIGGER_PROMPT_FILE_NAME, HookActivation, HookClassificationRequest, HookDecision,
-    ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, ReasonKind, RuntimeProviderHealthStatus,
-    append_hook_event_state, apply_repeated_deny_replay, classify_hook_with_config,
-    claude_hook_block, codex_user_trust_state_status, default_activation_path,
-    default_claude_settings_path, default_client_config_path,
-    default_client_config_template_for_source_extensions, default_hook_trigger_prompt_message,
+    HookClassificationRequest, HookDecision, ReasonKind, append_hook_event_state,
+    apply_repeated_deny_replay, classify_hook_with_config, claude_hook_block,
+    default_activation_path, default_claude_settings_path, default_client_config_path,
     discover_activation_path, has_recorded_subagent_context, load_activation, load_client_config,
-    load_client_config_for_project, load_or_refresh_default_activation, load_or_sync_activation,
-    merge_claude_settings, merge_hook_trigger_prompt_document, parse_payload,
-    record_active_context, remove_incompatible_hook_event_state,
-    remove_retired_codex_hook_cache_files, render_hook_trigger_prompt_document,
-    render_platform_response, runtime_profiles_for_activation, runtime_profiles_for_runtime,
-    subagent_deny_message, validate_claude_settings_json,
+    load_client_config_for_project, load_or_refresh_default_activation, merge_claude_settings,
+    parse_payload, record_active_context, remove_incompatible_hook_event_state,
+    remove_retired_codex_hook_cache_files, render_platform_response,
+    runtime_profiles_for_activation, subagent_deny_message, validate_claude_settings_json,
 };
 use agent_semantic_runtime::{project_activation_path, project_runtime_state, project_state_paths};
+use hook_runtime_agent_session::classify_main_session_asp_exploration;
 use hook_runtime_codex_plugin::{
     CodexPluginScope, codex_plugin_scope_arg, codex_project_plugin_cache_skill_path,
     install_codex_plugin_hooks, sync_codex_project_plugin_cache,
 };
+use hook_runtime_doctor::run_doctor;
 use hook_runtime_skill::{
     install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_plugin_skill,
     install_agent_semantic_protocols_skill,
@@ -44,7 +45,6 @@ use hook_runtime_subagent::{install_claude_asp_explorer_agent, subagent_model_ar
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -146,8 +146,14 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     if let Err(error) = annotate_payload_context(&project_root, &mut decision, &payload) {
         eprintln!("[agent-semantic-hook] failed to annotate hook payload context: {error}");
     }
-    if let Err(error) = apply_project_hook_trigger_prompt(&project_root, client, &mut decision) {
-        eprintln!("[agent-semantic-hook] failed to apply hook trigger prompt: {error}");
+    if decision.decision == DecisionKind::Allow
+        && let Some(agent_session_decision) =
+            classify_main_session_asp_exploration(&project_root, client, event, &runtime, &payload)?
+    {
+        decision = agent_session_decision;
+        if let Err(error) = annotate_payload_context(&project_root, &mut decision, &payload) {
+            eprintln!("[agent-semantic-hook] failed to annotate hook payload context: {error}");
+        }
     }
     if let Err(error) = apply_repeated_deny_replay(&project_root, &mut decision) {
         eprintln!("[agent-semantic-hook] failed to inspect hook replay state: {error}");
@@ -336,25 +342,6 @@ fn emit_decision(emit: &str, decision: &HookDecision) -> Result<(), String> {
     Ok(())
 }
 
-fn apply_project_hook_trigger_prompt(
-    project_root: &Path,
-    client: &str,
-    decision: &mut HookDecision,
-) -> Result<(), String> {
-    let reason = reason_kind_label(decision.reason_kind);
-    if decision.message != default_hook_trigger_prompt_message(reason, &decision.routes) {
-        return Ok(());
-    }
-    let prompt_path = hook_trigger_prompt_path(project_root, client);
-    if !prompt_path.is_file() {
-        return Ok(());
-    }
-    let prompt = fs::read_to_string(&prompt_path)
-        .map_err(|error| format!("failed to read {}: {error}", prompt_path.display()))?;
-    decision.message = render_hook_trigger_prompt_document(&prompt, reason, &decision.routes);
-    Ok(())
-}
-
 fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
     keys.iter()
         .find_map(|key| value.get(*key).and_then(serde_json::Value::as_str))
@@ -494,207 +481,6 @@ fn emit_hook_runtime_failure(
     emit_decision(emit, &decision)
 }
 
-fn run_doctor(args: &[String]) -> Result<(), String> {
-    let client = flag_value(args, "--client").unwrap_or("codex");
-    ensure_supported_client(client)?;
-    let project_root = project_root_arg(args)?;
-    let activation_path = flag_value(args, "--activation")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| default_activation_path(&project_root));
-    let runtime = load_or_sync_activation(&activation_path, &project_root)?;
-    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-    let config_path = if client == "claude" {
-        default_claude_settings_path(&project_root.to_string_lossy())
-    } else {
-        project_root.join(".codex").join("config.toml")
-    };
-    let config = fs::read_to_string(&config_path).unwrap_or_default();
-    let client_config_path = default_client_config_path(&project_root.to_string_lossy());
-    let hook_config = if client_config_path.is_file() {
-        Some(
-            load_client_config_for_project(&client_config_path, &project_root).map_err(
-                |error| {
-                    format!(
-                        "invalid client hook config {}: {error}",
-                        display_path(&project_root, &client_config_path)
-                    )
-                },
-            )?,
-        )
-    } else {
-        None
-    };
-    let client_config_status = if hook_config.is_some() {
-        "ok"
-    } else {
-        "missing"
-    };
-    let root_hook = if client == "claude" {
-        config.contains("asp hook") && config.contains("--client claude")
-    } else {
-        config.contains(ROOT_BLOCK_BEGIN) && config.contains(ROOT_BLOCK_END)
-    };
-    let hook_binary_path = protocol_binary_on_path();
-    let hook_binary = hook_binary_path.is_some();
-    let hook_binary_path = hook_binary_path
-        .as_ref()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "missing".to_string());
-    let enforcement = if client == "codex" {
-        Some(codex_enforcement_report(
-            &project_root,
-            root_hook,
-            hook_binary,
-        ))
-    } else {
-        None
-    };
-    let (classifier_probe, classifier_reason) = if client == "codex" {
-        if let Some(hook_config) = hook_config.as_ref() {
-            let probe_payload = serde_json::json!({
-                "tool_name": "functions.exec_command",
-                "tool_input": {
-                    "cmd": "sed -n '1,120p' src/lib.rs"
-                }
-            });
-            let decision = classify_hook_with_config(HookClassificationRequest {
-                registry: &runtime,
-                config: hook_config,
-                platform: client,
-                event: "PreToolUse",
-                payload: &probe_payload,
-            });
-            (
-                decision_kind_label(decision.decision),
-                reason_kind_label(decision.reason_kind),
-            )
-        } else {
-            ("unavailable", "client-config-missing")
-        }
-    } else {
-        ("not-applicable", "non-codex-client")
-    };
-    let trust_status = if client == "codex" {
-        codex_user_trust_state_status(&config_path).ok()
-    } else {
-        None
-    };
-    let trust = trust_status.as_ref().is_some_and(|status| status.trusted);
-    let project_trust = trust_status
-        .as_ref()
-        .is_some_and(|status| status.project_trusted);
-    let hook_state_trust = trust_status
-        .as_ref()
-        .is_some_and(|status| status.hook_state_trusted);
-    let trust_missing_count = trust_status
-        .as_ref()
-        .map(|status| status.missing_events.len())
-        .unwrap_or(0);
-    let trust_stale_count = trust_status
-        .as_ref()
-        .map(|status| status.stale_events.len())
-        .unwrap_or(0);
-    let trust_config = trust_status
-        .as_ref()
-        .map(|status| status.trust_config_path.display().to_string())
-        .unwrap_or_else(|| "unavailable".to_string());
-    println!(
-        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
-        runtime.providers.len(),
-        display_path(&project_root, &activation_path),
-        config_path.is_file(),
-        display_path(&project_root, &client_config_path),
-        client_config_status,
-        root_hook,
-        trust,
-        project_trust,
-        hook_state_trust,
-        trust_missing_count,
-        trust_stale_count,
-        trust_config,
-        hook_binary,
-        hook_binary_path,
-        classifier_probe,
-        classifier_reason,
-        enforcement
-            .as_ref()
-            .map(|report| report.status)
-            .unwrap_or("not-applicable"),
-        enforcement
-            .as_ref()
-            .map(|report| report.probe)
-            .unwrap_or("not-applicable"),
-        enforcement
-            .as_ref()
-            .map(|report| report.reason)
-            .unwrap_or("non-codex-client"),
-        HOOK_PROTOCOL_ID,
-    );
-    if let Some(report) = enforcement.as_ref()
-        && let Some(detail) = report.detail.as_ref()
-    {
-        println!(
-            "|enforcement status={} probe={} reason={} exitSuccess={} deny={} sentinel={} hookEvent={}",
-            report.status,
-            report.probe,
-            report.reason,
-            detail.status_success,
-            detail.saw_deny,
-            detail.saw_sentinel,
-            detail.saw_hook_event,
-        );
-    }
-    if client == "codex" && root_hook {
-        println!(
-            "|codex-app projectConfig={} projectTrust={} hookStateTrust={} reloadHint=restart-open-codex-app-thread-after-install",
-            display_path(&project_root, &config_path),
-            project_trust,
-            hook_state_trust,
-        );
-    }
-    if let Some(status) = trust_status.as_ref()
-        && !status.project_trusted
-    {
-        println!("|trust project=untrusted reason=project-not-trusted");
-    }
-    if let Some(status) = trust_status.as_ref()
-        && !status.missing_events.is_empty()
-    {
-        println!("|trust missing={}", status.missing_events.join(","));
-    }
-    if let Some(status) = trust_status.as_ref()
-        && !status.stale_events.is_empty()
-    {
-        println!("|trust stale={}", status.stale_events.join(","));
-    }
-    for provider in &runtime.providers {
-        let runtime_profile = runtime_profiles.providers.iter().find(|profile| {
-            profile.manifest_id == provider.manifest_id
-                && profile.language_id == provider.language_id
-                && profile.provider_id == provider.provider_id
-                && profile.binary == provider.binary
-        });
-        let runtime_profile_status = runtime_profile
-            .map(|profile| runtime_profile_status_label(profile.health.status))
-            .unwrap_or("missing");
-        let resolved_binary = runtime_profile
-            .and_then(|profile| profile.resolved_binary.as_deref())
-            .unwrap_or("missing");
-        println!(
-            "|provider language={} provider={} binary={} execution={} runtimeStatus={} resolvedBinary={} roots={} extensions={}",
-            provider.language_id,
-            provider.provider_id,
-            provider.binary,
-            provider.execution.as_str(),
-            runtime_profile_status,
-            resolved_binary,
-            provider.source_roots.join(","),
-            provider.source_extensions.join(","),
-        );
-    }
-    Ok(())
-}
-
 fn run_install(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     if client == "codex" {
@@ -730,7 +516,7 @@ fn run_install_for_client(
     timings.mark("args");
     let runtime_state = project_runtime_state(&project_root)?;
     timings.mark("runtime-state");
-    let org_state_sync = org_capture::run_org_state_sync(&project_root)?;
+    let org_state_sync = run_org_state_sync(&project_root)?;
     timings.mark("org-state");
     let binary_install = ensure_protocol_binary_installed_for_path()?;
     timings.mark("binary");
@@ -746,8 +532,11 @@ fn run_install_for_client(
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
-    install_default_client_config(&client_config_path, &activation)?;
-    timings.mark("client-config");
+    if client_config_path.is_file() {
+        load_client_config(&client_config_path)
+            .map_err(|error| format!("invalid user hook config: {error}"))?;
+    }
+    timings.mark("user-config");
     let (config_path, extra_config_receipt) = match client {
         "codex" => install_codex_plugin_hooks(&project_root, codex_plugin_scope, &subagent_model)?,
         "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
@@ -796,11 +585,19 @@ fn run_install_for_client(
         .as_ref()
         .map(|cache_path| format!(" pluginCache={}", display_path(&project_root, cache_path)))
         .unwrap_or_default();
+    let user_config_receipt = if client_config_path.is_file() {
+        format!(
+            " userConfig={} userConfigStatus=present",
+            display_path(&project_root, &client_config_path)
+        )
+    } else {
+        " userConfigStatus=missing".to_string()
+    };
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} agentConfig={} orgState={} orgStateSync={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} agentConfig={} orgState={} orgStateSync={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
-        display_path(&project_root, &client_config_path),
+        user_config_receipt,
         display_path(&project_root, &agent_config_path),
         display_path(&project_root, &runtime_state.protocol_home.join("org")),
         org_state_sync.status,
@@ -850,39 +647,6 @@ impl InstallTimings {
     }
 }
 
-fn hook_trigger_prompt_path(project_root: &Path, client: &str) -> PathBuf {
-    match client {
-        "codex" => project_root
-            .join(".codex")
-            .join("agent-semantic-protocol")
-            .join("hooks")
-            .join(HOOK_TRIGGER_PROMPT_FILE_NAME),
-        "claude" => project_root
-            .join(".claude")
-            .join("agent-semantic-protocol")
-            .join("hooks")
-            .join(HOOK_TRIGGER_PROMPT_FILE_NAME),
-        _ => unreachable!("client support checked before prompt path"),
-    }
-}
-
-fn install_hook_trigger_prompt(project_root: &Path, client: &str) -> Result<PathBuf, String> {
-    let path = hook_trigger_prompt_path(project_root, client);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    let existing = match fs::read_to_string(&path) {
-        Ok(contents) => Some(contents),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(format!("failed to read {}: {error}", path.display())),
-    };
-    let merged = merge_hook_trigger_prompt_document(existing.as_deref());
-    fs::write(&path, merged.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
-    Ok(path)
-}
-
 fn activation_relative_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
     let configured = PathBuf::from(project_root);
     let root = if configured.is_absolute() {
@@ -915,73 +679,11 @@ fn install_claude_project_hooks(
         .map_err(|error| format!("refusing to write invalid Claude settings JSON: {error}"))?;
     fs::write(&settings_path, merged.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", settings_path.display()))?;
-    let trigger_prompt_path = install_hook_trigger_prompt(project_root, "claude")?;
     let subagent_path = install_claude_asp_explorer_agent(project_root, subagent_model)?;
     Ok((
         settings_path,
-        format!(
-            " triggerPrompt={} subagent={}",
-            display_path(project_root, &trigger_prompt_path),
-            display_path(project_root, &subagent_path)
-        ),
+        format!(" subagent={}", display_path(project_root, &subagent_path)),
     ))
-}
-
-fn install_default_client_config(path: &Path, activation: &HookActivation) -> Result<(), String> {
-    let rendered = default_client_config_template_for_source_extensions(
-        activation.providers.iter().flat_map(|provider| {
-            provider
-                .coverage
-                .source_extensions
-                .iter()
-                .map(String::as_str)
-        }),
-    );
-    if path.is_file() {
-        let existing = fs::read_to_string(path)
-            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        load_client_config(path)
-            .map(|_| ())
-            .map_err(|error| format!("refusing to keep invalid client hook config: {error}"))?;
-        if should_refresh_generated_client_config(&existing) && existing != rendered {
-            fs::write(path, rendered.as_bytes())
-                .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
-            load_client_config(path)
-                .map(|_| ())
-                .map_err(|error| format!("generated invalid client hook config: {error}"))?;
-        }
-        return Ok(());
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::write(path, rendered.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
-    load_client_config(path)
-        .map(|_| ())
-        .map_err(|error| format!("generated invalid client hook config: {error}"))
-}
-
-fn should_refresh_generated_client_config(contents: &str) -> bool {
-    if !contents.contains("# Semantic agent client hook config.") {
-        return false;
-    }
-    let Ok(config) = toml::from_str::<toml::Value>(contents) else {
-        return false;
-    };
-    let Some(rules) = config.get("rules").and_then(toml::Value::as_array) else {
-        return false;
-    };
-    if rules.len() != 1 {
-        return false;
-    }
-    rules
-        .first()
-        .and_then(toml::Value::as_table)
-        .and_then(|rule| rule.get("id"))
-        .and_then(toml::Value::as_str)
-        == Some("deny-shell-source-argv")
 }
 
 fn project_root_arg(args: &[String]) -> Result<PathBuf, String> {
@@ -1008,35 +710,6 @@ fn display_path(project_root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-fn decision_kind_label(kind: DecisionKind) -> &'static str {
-    match kind {
-        DecisionKind::Allow => "allow",
-        DecisionKind::Block => "block",
-        DecisionKind::Deny => "deny",
-    }
-}
-
-fn reason_kind_label(kind: ReasonKind) -> &'static str {
-    match kind {
-        ReasonKind::None => "none",
-        ReasonKind::DirectSourceRead => "direct-source-read",
-        ReasonKind::BulkSourceDump => "bulk-source-dump",
-        ReasonKind::RawBroadSearch => "raw-broad-search",
-        ReasonKind::SourceDirectoryEnumeration => "source-directory-enumeration",
-        ReasonKind::AgentSearchJson => "agent-search-json",
-        ReasonKind::SemanticAstPatchRequired => "semantic-ast-patch-required",
-        ReasonKind::SubagentReceiptRequired => "subagent-receipt-required",
-    }
-}
-
-fn runtime_profile_status_label(status: RuntimeProviderHealthStatus) -> &'static str {
-    match status {
-        RuntimeProviderHealthStatus::Available => "available",
-        RuntimeProviderHealthStatus::Missing => "missing",
-        RuntimeProviderHealthStatus::Unexecutable => "unexecutable",
-    }
 }
 
 fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {

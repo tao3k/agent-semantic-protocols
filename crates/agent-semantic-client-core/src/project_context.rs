@@ -1,8 +1,8 @@
+//! Project-facing entry point for ASP state and cache paths.
+
 use std::path::{Path, PathBuf};
 
 use agent_semantic_config::{ProjectEnvStatus, ProjectRuntimeLayout, project_runtime_layout};
-
-use crate::AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE;
 
 /// Resolved project identity and state-layout roots for client-owned storage.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -94,25 +94,12 @@ impl StateLayout {
     }
 
     fn from_runtime_layout(layout: &ProjectRuntimeLayout) -> Result<Self, String> {
-        let state_root = layout.protocol_home.clone().ok_or_else(|| {
-            format!(
-                "failed to locate ASP state root for {}",
-                layout.requested_root.display()
-            )
-        })?;
-        let client_cache_dir = layout.client_cache_dir.clone().ok_or_else(|| {
-            format!(
-                "failed to locate ASP client cache dir for {}",
-                layout.requested_root.display()
-            )
-        })?;
-        let artifacts_dir = layout.artifacts_dir.clone().ok_or_else(|| {
-            format!(
-                "failed to locate ASP artifact dir for {}",
-                layout.requested_root.display()
-            )
-        })?;
-        let cache_manifest_path = client_cache_dir.join(AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE);
+        let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
+        resolved.ensure_minimal_layout()?;
+        let state_root = resolved.state_home.clone();
+        let client_cache_dir = resolved.paths.client_dir.clone();
+        let artifacts_dir = resolved.paths.artifacts_dir.clone();
+        let cache_manifest_path = resolved.paths.client_cache_manifest_path.clone();
 
         Ok(Self {
             state_root,

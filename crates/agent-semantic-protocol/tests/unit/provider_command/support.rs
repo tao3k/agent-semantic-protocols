@@ -1,7 +1,6 @@
+use agent_semantic_client_core::state_core::{ASP_STATE_HOME_ENV, ResolvedState};
 use agent_semantic_hook::{builtin_provider_manifests, provider_manifest_digest};
-use agent_semantic_runtime::{
-    project_activation_path, project_local_activation_path, project_state_paths,
-};
+use agent_semantic_runtime::{project_activation_path, project_local_activation_path};
 use serde_json::json;
 use std::env;
 use std::ffi::OsString;
@@ -195,10 +194,20 @@ pub(super) fn write_cache_manifest(root: &Path, manifest: serde_json::Value) -> 
     manifest_path
 }
 
-pub(super) fn cache_root(root: &Path) -> PathBuf {
-    project_state_paths(root)
-        .expect("project state paths")
-        .client_cache_dir
+pub(crate) fn cache_root(root: &Path) -> PathBuf {
+    resolved_state(root).paths.client_dir
+}
+
+pub(super) fn artifacts_root(root: &Path) -> PathBuf {
+    resolved_state(root).paths.artifacts_dir
+}
+
+pub(super) fn state_home(root: &Path) -> PathBuf {
+    root.join("home").join(".agent-semantic-protocols")
+}
+
+fn resolved_state(root: &Path) -> ResolvedState {
+    ResolvedState::resolve_with_state_home(root, state_home(root)).expect("resolved test state")
 }
 
 pub(super) fn cache_manifest_path(root: &Path) -> PathBuf {
@@ -217,6 +226,7 @@ pub(crate) fn asp_command(root: &Path) -> Command {
     command
         .current_dir(root)
         .env("HOME", root.join("home"))
+        .env(ASP_STATE_HOME_ENV, state_home(root))
         .env("ASP_MEMORY_ENGINE_AUTO_SOCKET", "0")
         .env_remove("ASP_MEMORY_ENGINE")
         .env_remove("ASP_MEMORY_ENGINE_SOCKET")

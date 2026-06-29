@@ -218,10 +218,37 @@ fn run_provider_owner_items_query(
     io::stderr()
         .write_all(output.stderr.as_ref())
         .map_err(|error| format!("failed to write provider stderr: {error}"))?;
+    let stdout = compact_provider_owner_items_stdout(output.stdout.as_ref());
     io::stdout()
-        .write_all(output.stdout.as_ref())
+        .write_all(stdout.as_ref())
         .map_err(|error| format!("failed to write provider stdout: {error}"))?;
     Ok(OwnerItemsSearchStep::Handled)
+}
+
+fn compact_provider_owner_items_stdout(stdout: &[u8]) -> Vec<u8> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .filter(|line| !default_search_internal_line(line))
+        .fold(String::new(), |mut rendered, line| {
+            rendered.push_str(line);
+            rendered.push('\n');
+            rendered
+        })
+        .into_bytes()
+}
+
+fn default_search_internal_line(line: &str) -> bool {
+    matches!(
+        line,
+        "actionFrontier=" | "recommendedNext=" | "rankedEvidence=" | "evidenceFrontier="
+    ) || line.starts_with("actionFrontier=")
+        || line.starts_with("recommendedNext=")
+        || line.starts_with("rankedEvidence=")
+        || line.starts_with("evidenceFrontier=")
+        || line.starts_with("commandHandles=")
+        || line.starts_with("treeSitterHandles=")
+        || line.starts_with("[graph-frontier]")
+        || line.starts_with("[route-graph]")
 }
 
 fn owner_path_exists(project_root: &Path, owner: &Path) -> bool {

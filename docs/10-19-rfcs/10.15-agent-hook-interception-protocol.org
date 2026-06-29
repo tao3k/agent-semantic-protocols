@@ -340,12 +340,14 @@ The classifier must operate primarily at the action layer:
   pattern must match the provider-declared language extensions before the raw
   search is treated as source-content access.
 
-Client-side hook customization is a typed config file, not a server process:
+Client-side hook customization is a typed global config file, not a server
+process:
 
-- default Codex path: =.codex/agent-semantic-protocol/hooks/config.toml=;
+- default path: =$ASP_STATE_HOME/hooks/config.toml=, falling back to
+  =$HOME/.agent-semantic-protocols/hooks/config.toml=;
 - install behavior: =asp install plugin --codex=
-  creates this file when missing, with schema metadata plus commented examples,
-  and preserves an existing valid project config;
+  creates this file when missing, with schema metadata plus configured examples,
+  and preserves an existing valid global config;
 - schema: =schemas/semantic-agent-hook-client-config.v1.schema.json=;
 - load timing: every =asp hook= invocation;
 - loader: the Rust runtime uses typed =serde= extraction through =figment=
@@ -359,11 +361,11 @@ Client-side hook customization is a typed config file, not a server process:
   become machine receipts;
 - rule receipts: config-derived decisions set =fields.configRuleId= to the
   matching rule id;
-- experimental switches: generated Codex client configs include
+- experimental switches: generated global client configs include
   =[experimental.semanticAstPatch] enabled = false=.  The built-in source
   =apply_patch= to semantic AST patch route is experimental; hook runtimes may
-  preserve retired behavior when the switch is absent, but generated
-  =.codex/agent-semantic-protocol/hooks/config.toml= must keep it disabled
+  preserve retired behavior when the switch is absent, but generated global
+  hook config must keep it disabled
   until the provider-native AST patch path is stable;
 - runtime schema mirror: the loader rejects schema-shape errors before
   classification, including invalid identifiers, empty min-length strings,
@@ -600,8 +602,9 @@ writes are a protocol violation, not only a logging defect.
 event logs as migratable cache, not durable policy.  If an existing
 =events.jsonl= contains a non-empty line with a retired =schemaId=, retired
 =protocolId=, or invalid JSON, install may remove that generated file and
-start a new current-protocol log.  The versioned project policy remains
-=.codex/agent-semantic-protocol/hooks/config.toml=.
+  start a new current-protocol log.  The versioned hook policy remains global
+under =$ASP_STATE_HOME/hooks/config.toml= or
+=$HOME/.agent-semantic-protocols/hooks/config.toml=.
 
 * Classifier
 

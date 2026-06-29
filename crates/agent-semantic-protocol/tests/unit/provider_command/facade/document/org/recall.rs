@@ -229,7 +229,7 @@ fn asp_org_recall_plans_uses_root_session_for_codex_subagent() {
             "register",
             "--name",
             "asp-explore-code",
-            "--session-id",
+            "--child-session-id",
             "codex-child-thread",
             "--root-session-id",
             "codex-parent-thread",

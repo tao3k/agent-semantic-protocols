@@ -4,9 +4,10 @@ use std::cmp::Reverse;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client_core::{LanguageId, project_client_cache_dir};
+use agent_semantic_client_core::{LanguageId, project_client_cache_dir_read_only};
 use agent_semantic_client_db::{
-    ClientDb, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner, ClientDbSourceIndexQueryKey,
+    ClientDb, ClientDbEngine, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
+    ClientDbSourceIndexQueryKey,
 };
 
 use super::model::{SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState};
@@ -40,8 +41,25 @@ pub fn lookup_source_index_in_cache(
     query: &str,
     limit: u32,
 ) -> Result<SourceIndexLookupResult, String> {
-    let cache_root = project_client_cache_dir(cache_project_root)?;
-    let db_path = ClientDb::default_path(&cache_root);
+    let cache_root = project_client_cache_dir_read_only(cache_project_root)?;
+    lookup_source_index_in_client_cache_dir(
+        &cache_root,
+        indexed_project_root,
+        language_id,
+        query,
+        limit,
+    )
+}
+
+/// Lookup source-index owners from an already resolved client cache directory.
+pub fn lookup_source_index_in_client_cache_dir(
+    cache_root: &Path,
+    indexed_project_root: &Path,
+    language_id: Option<&LanguageId>,
+    query: &str,
+    limit: u32,
+) -> Result<SourceIndexLookupResult, String> {
+    let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
     let Some(db) = ClientDb::open_read_only_existing(&db_path)? else {
         return Ok(source_index_lookup_result(
             db_path,

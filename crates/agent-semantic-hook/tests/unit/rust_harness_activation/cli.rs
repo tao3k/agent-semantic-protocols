@@ -15,6 +15,7 @@ fn cli_doctor_accepts_root_owned_rust_activation() {
     let root = temp_project_root("doctor-activation");
     let activation_path = write_root_owned_rust_activation(&root);
     let output = asp_command()
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .args([
             "hook",
             "doctor",
@@ -45,6 +46,7 @@ fn cli_doctor_reports_classifier_probe_for_codex_exec_command_source_dump() {
     let activation_path = write_root_owned_rust_activation(&root);
     write_default_client_hook_config(&root);
     let output = asp_command()
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .args([
             "hook",
             "doctor",
@@ -72,6 +74,7 @@ fn cli_hook_emits_decision_for_root_owned_rust_activation() {
     let root = temp_project_root("hook-activation");
     let activation_path = write_root_owned_rust_activation(&root);
     let mut child = asp_command()
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .args([
             "hook",
             "--client",
@@ -105,11 +108,20 @@ fn cli_hook_emits_decision_for_root_owned_rust_activation() {
     let reason = value["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission reason");
-    assert!(reason.contains("ASP hook blocked `direct-source-read`"));
-    assert!(reason.contains("spawn_agent"));
+    assert!(reason.starts_with("ASP denied source access (`direct-source-read`)"));
+    assert!(reason.contains("Use asp-explore"), "{reason}");
+    assert!(reason.contains("recoveryRef=source-access:"), "{reason}");
+    assert!(!reason.contains("spawn_agent"));
     let system_message = value["systemMessage"].as_str().expect("system message");
-    assert!(system_message.contains("asp rust query --selector src/lib.rs --workspace . --code"));
-    assert!(system_message.contains("do not retry raw read/search commands"));
+    assert!(system_message.starts_with("ASP denied source access (`direct-source-read`)"));
+    assert!(
+        system_message.contains("Use asp-explore"),
+        "{system_message}"
+    );
+    assert!(
+        system_message.contains("recoveryRef=source-access:"),
+        "{system_message}"
+    );
     assert!(context.contains("\"binary\":\"asp\""));
     assert!(context.contains("\"src/lib.rs\""));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
@@ -120,6 +132,7 @@ fn cli_hook_denies_codex_exec_command_source_dump() {
     let root = temp_project_root("hook-exec-command-source-dump");
     let activation_path = write_root_owned_rust_activation(&root);
     let mut child = asp_command()
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .args([
             "hook",
             "--client",
@@ -152,10 +165,18 @@ fn cli_hook_denies_codex_exec_command_source_dump() {
     assert!(context.contains("\"reasonKind\":\"bulk-source-dump\""));
     assert!(context.contains("\"toolName\":\"functions.exec_command\""));
     assert!(context.contains("\"src/lib.rs\""));
+    assert!(context.contains("\"recoveryRef\":\"source-access:"));
     let system_message = value["systemMessage"].as_str().expect("system message");
-    assert!(system_message.contains("do not retry raw read/search commands"));
-    assert!(system_message.contains("spawn_agent"));
-    assert!(system_message.contains("asp rust query --selector src/lib.rs --workspace . --code"));
+    assert!(system_message.starts_with("ASP denied source access (`bulk-source-dump`)"));
+    assert!(
+        system_message.contains("Use asp-explore"),
+        "{system_message}"
+    );
+    assert!(
+        system_message.contains("recoveryRef=source-access:"),
+        "{system_message}"
+    );
+    assert!(!system_message.contains("spawn_agent"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -176,6 +197,7 @@ fn cli_hook_discovers_parent_activation_from_child_workdir() {
 
     let mut child = asp_command()
         .current_dir(&child_dir)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["hook", "--client", "codex", "pre-tool"])
         .stdin(Stdio::piped())
@@ -207,6 +229,7 @@ fn cli_hook_can_emit_raw_decision_for_schema_tests() {
     let root = temp_project_root("hook-decision-activation");
     let activation_path = write_root_owned_rust_activation(&root);
     let mut child = asp_command()
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .args([
             "hook",
             "--client",
@@ -242,6 +265,7 @@ fn cli_hook_blocks_subagent_stop_without_search_receipt() {
     let root = temp_project_root("subagent-stop-activation");
     let activation_path = write_root_owned_rust_activation(&root);
     let mut child = asp_command()
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .args([
             "hook",
             "--client",

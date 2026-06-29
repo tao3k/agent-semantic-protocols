@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use super::graph::GraphTurboReceiptRequest;
-use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
+use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_next_command_line};
 
 pub(super) struct SelectorSeedSearchPipeRequest<'a> {
     pub(super) language_id: &'a str,
@@ -58,13 +58,9 @@ pub fn render_selector_seeded_search_pipe(
     output.push_str(
         "seedPlan=selector-query alg=asp-search-pipe-selector-v0 budget=frontier<=3 repeated=0\n",
     );
-    output.push_str(&format!(
-        "commandHandles=querySelector={};ownerItems={owner}:{};rgQuery={}\n",
-        shell_arg(selector),
-        compact_query_handle(query),
-        compact_query_handle(query)
-    ));
-    output.push_str(&render_action_rows(&actions));
+    output.push_str(&render_action_frontier_line(&actions));
+    output.push_str(&render_recommended_next_line(&actions));
+    output.push_str(&render_next_command_line(&actions));
     output.push_str("nextClasses=query-selector,owner-items,rg-query\n");
     output.push_str(
         "avoid=shell-and,manual-command-join,repeat-search-pipe,raw-read,direct-source-read\n",
@@ -73,6 +69,22 @@ pub fn render_selector_seeded_search_pipe(
         "sourceTrace=selectorSeed:used[owner={owner};symbol={symbol};workspace={workspace}]\n"
     ));
     output
+}
+
+fn render_action_frontier_line(actions: &[ActionNode]) -> String {
+    let frontier = actions
+        .iter()
+        .map(|action| format!("{}.{}", action.id, action.kind))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("actionFrontier={frontier}\n")
+}
+
+fn render_recommended_next_line(actions: &[ActionNode]) -> String {
+    actions
+        .first()
+        .map(|action| format!("recommendedNext={}.{}\n", action.id, action.kind))
+        .unwrap_or_else(|| "recommendedNext=-\n".to_string())
 }
 
 fn reject_unsupported_view(
@@ -198,30 +210,4 @@ fn display_project_root(project_root: &Path, locator_root: &Path) -> String {
     } else {
         project_root.display().to_string()
     }
-}
-
-fn compact_query_handle(query: &str) -> String {
-    query
-        .split_whitespace()
-        .take(6)
-        .collect::<Vec<_>>()
-        .join("|")
-}
-
-fn shell_arg(value: &str) -> String {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':'))
-    {
-        value.to_string()
-    } else {
-        shell_quote(value)
-    }
-}
-
-fn shell_quote(value: &str) -> String {
-    if value.is_empty() {
-        return "''".to_string();
-    }
-    format!("'{}'", value.replace('\'', "'\\''"))
 }

@@ -41,8 +41,7 @@ const RETIRED_MANAGED_BLOCKS: [(&str, &str); 5] = [
 const TOOL_SURFACE_MATCHER: &str = r"Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\.read|fs\.readFile|fs\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\read|fs\\readFile|fs\\readDirectory|functions\.read|functions\.read_file|functions\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\.exec_command|exec_command|command_execution|multi_tool_use\.parallel|Bash|Shell";
 const ASP_EXPLORER_ROLE_NAME: &str = "asp_explorer";
 const ASP_EXPLORER_CONFIG_FILE: &str = "agents/asp-explorer.toml";
-const ASP_EXPLORER_DESCRIPTION: &str =
-    "Read-only ASP search explorer for hook-safe evidence collection.";
+const ASP_EXPLORER_DESCRIPTION: &str = "ASP search/query evidence explorer.";
 
 #[derive(Debug)]
 /// Status of the Codex user trust entries required for project hooks.
@@ -343,7 +342,7 @@ fn codex_hook_command(hook_event: &str, project_root: &Path) -> String {
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
     format!(
-        "repo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nconfig=\"$repo_root/.codex/agent-semantic-protocol/hooks/config.toml\"\nexec asp hook {hook_event} --client codex --activation \"$activation\" --config \"$config\"\n"
+        "repo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec asp hook {hook_event} --client codex --activation \"$activation\"\n"
     )
 }
 
@@ -559,7 +558,7 @@ fn claude_hook_command(hook_event: &str, project_root: &Path) -> String {
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
     format!(
-        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nconfig=\"$repo_root/.codex/agent-semantic-protocol/hooks/config.toml\"\nexec asp hook {hook_event} --client claude --activation \"$activation\" --config \"$config\"\n"
+        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec asp hook {hook_event} --client claude --activation \"$activation\"\n"
     )
 }
 

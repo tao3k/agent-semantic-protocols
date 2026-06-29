@@ -113,10 +113,10 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
     assert!(
         decision
             .message
-            .starts_with("ASP hook blocked `direct-source-read`")
+            .starts_with("ASP denied `direct-source-read`")
     );
-    assert!(decision.message.contains("spawn_agent"));
-    assert!(decision.message.contains("asp-search-subagent"));
+    assert!(decision.message.contains("asp-explore"));
+    assert!(decision.message.contains("Return compact evidence only."));
     assert!(decision.message.contains(
         "asp rust query --selector '*.{rs,py}' --surface 'owners,tests' --workspace . --view seeds"
     ));

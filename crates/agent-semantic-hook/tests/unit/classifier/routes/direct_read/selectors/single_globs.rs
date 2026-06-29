@@ -38,10 +38,10 @@ fn structured_direct_read_source_glob_routes_to_provider_query() {
     assert!(
         decision
             .message
-            .starts_with("ASP hook blocked `direct-source-read`")
+            .starts_with("ASP denied `direct-source-read`")
     );
-    assert!(decision.message.contains("spawn_agent"));
-    assert!(decision.message.contains("asp-search-subagent"));
+    assert!(decision.message.contains("asp-explore"));
+    assert!(decision.message.contains("Return compact evidence only."));
     assert!(decision.message.contains(
         "asp typescript query --selector '*.ts' --surface 'owners,tests' --workspace . --view seeds"
     ));

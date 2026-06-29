@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_runtime::{
     project_cache_home_for_roots, project_local_activation_path,
     project_local_client_cache_manifest_path, project_root_for_activation_path,
@@ -22,7 +23,9 @@ pub(super) fn client_backend_cache_home(
     activation_root: &Path,
     project_root: &Path,
 ) -> Result<PathBuf, String> {
-    project_cache_home_for_roots(activation_root, project_root)
+    ResolvedState::resolve(project_root)
+        .map(|state| state.paths.client_dir)
+        .or_else(|_| project_cache_home_for_roots(activation_root, project_root))
 }
 
 pub(super) fn effective_project_root_and_args(

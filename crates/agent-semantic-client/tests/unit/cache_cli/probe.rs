@@ -1,4 +1,5 @@
 use crate::cache_cli::{generation_file_hashes_match, provider_cache_probe};
+use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard, artifacts_root_from_cache_root};
 use agent_semantic_client_core::{
     CacheArtifactId, CacheExportMethod, CacheStatus, ClientCacheFileHash, ClientCacheGeneration,
     ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderExecution, ProviderId,
@@ -93,7 +94,9 @@ fn hook_direct_source_read_bypasses_cache_probe() {
 
 #[test]
 fn tree_sitter_rows_replay_when_latest_unrelated_generation_is_stale() {
+    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("syntax-row-replay-beats-unrelated-stale-generation");
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src dir");
     let cache_root = ClientCacheManifest::inspect_project(&root)
@@ -251,7 +254,9 @@ rank=O frontier=O.owner\n";
 
 #[test]
 fn fzf_seed_probe_reuses_latest_fresh_matching_query_after_fingerprint_miss() {
+    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("fresh-fzf-reuse");
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src dir");
     std::fs::write(root.join("src/lib.rs"), "pub fn cached_fzf() {}\n").expect("write source");
@@ -457,19 +462,13 @@ fn hash_project_file(root: &std::path::Path, path: &str) -> ClientCacheFileHash 
 }
 
 fn write_search_output_artifact(cache_root: &std::path::Path, file_name: &str, stdout: &str) {
-    let search_output_dir = cache_root
-        .parent()
-        .expect("cache root parent")
-        .join("artifacts/search-output");
+    let search_output_dir = artifacts_root_from_cache_root(cache_root).join("search-output");
     std::fs::create_dir_all(&search_output_dir).expect("create search output dir");
     std::fs::write(search_output_dir.join(file_name), stdout).expect("write search output");
 }
 
 fn write_search_packet_artifact(cache_root: &std::path::Path, file_name: &str, query: &str) {
-    let search_dir = cache_root
-        .parent()
-        .expect("cache root parent")
-        .join("artifacts/search");
+    let search_dir = artifacts_root_from_cache_root(cache_root).join("search");
     std::fs::create_dir_all(&search_dir).expect("create search packet dir");
     let packet = json!({
         "schemaId": "agent.semantic-protocols.semantic-search-packet",

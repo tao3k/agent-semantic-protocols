@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use super::{gerbil_scheme_provider, rust_provider, temp_root};
 use crate::cache_cli::writeback::write_prompt_output_cache_after_provider_success;
+use crate::test_support::artifacts_root_from_cache_root;
 
 #[test]
 fn structural_index_packet_writeback_applies_refresh_rows() {
@@ -68,10 +69,8 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
     assert_eq!(copied_symbols.len(), 1);
     assert_eq!(copied_symbols[0].owner_path.as_str(), "src/unchanged.rs");
     assert!(
-        cache_root
-            .parent()
-            .expect("cache root parent")
-            .join("artifacts/structural-index/rust-index-2.json")
+        artifacts_root_from_cache_root(&cache_root)
+            .join("structural-index/rust-index-2.json")
             .exists()
     );
     let _ = std::fs::remove_dir_all(root);
@@ -122,10 +121,8 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
     assert_eq!(symbols.len(), 1);
     assert_eq!(symbols[0].owner_path.as_str(), "src/commands/search.ss");
     assert!(
-        cache_root
-            .parent()
-            .expect("cache root parent")
-            .join("artifacts/structural-index/gerbil-structural-1.json")
+        artifacts_root_from_cache_root(&cache_root)
+            .join("structural-index/gerbil-structural-1.json")
             .exists()
     );
     let _ = std::fs::remove_dir_all(root);

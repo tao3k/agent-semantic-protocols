@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
+use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_next_command_line};
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
 use super::search_pipe_owner_action::{
@@ -29,102 +29,10 @@ pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) dependency_action_targets: &'a [String],
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct DelegationHint {
-    target_actions: Vec<String>,
-}
-
-impl DelegationHint {
-    fn render_line(&self) -> String {
-        format!(
-            "subagentHint=profile=asp-explorer mode=resident instances=single reuse=send_input spawn=if-missing forkContext=false branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions={} maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence",
-            self.target_actions.join(",")
-        )
-    }
-}
-
-pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> String {
+pub(super) fn render_action_next_command(request: SearchPipeActionRequest<'_>) -> String {
     let scope_arg = display_scope_args(request.project_root, request.locator_root, request.scopes);
-    let command_handles = command_handles(&request);
-    let tree_sitter_handles = tree_sitter_handles(request.quality, request.ranked_compact);
     let actions = action_nodes(&request, &scope_arg);
-    let mut rendered = String::new();
-    rendered.push_str(&format!("commandHandles={command_handles}\n"));
-    rendered.push_str(&format!("treeSitterHandles={tree_sitter_handles}\n"));
-    if let Some(preview) = request.fd_preview {
-        rendered.push_str(&preview.render_line());
-        rendered.push('\n');
-    }
-    rendered.push_str(&render_action_rows(&actions));
-    if actions.is_empty() {
-        return rendered;
-    }
-    for hint in delegation_hints(request.quality, &actions) {
-        rendered.push_str(&hint.render_line());
-        rendered.push('\n');
-    }
-    if !request.quality.allow_query_selector {
-        rendered.push_str("reason=query-selector-low-confidence,owner-seed-base-required\n");
-        rendered.push_str(
-            "llmHint=after-fd-query-combine-owner-candidates-with-declaration-names-before-rg-query\n",
-        );
-    }
-    rendered
-}
-
-fn command_handles(request: &SearchPipeActionRequest<'_>) -> String {
-    let fd = request.quality.fd_query.as_deref().unwrap_or("-");
-    let rg = rg_query(request.quality, request.ranked_compact).unwrap_or_else(|| "-".to_string());
-    let owner =
-        owner_items_handle(request.quality, request.candidates).unwrap_or_else(|| "-".to_string());
-    format!("fdQuery={fd};rgQuery={rg};ownerItems={owner}")
-}
-
-fn tree_sitter_handles(quality: &SearchPipeQuality, compact: Option<&str>) -> String {
-    let fields = compact_symbols(compact, "field")
-        .into_iter()
-        .filter(|symbol| usable_query_term(symbol))
-        .collect::<Vec<_>>();
-    let mut handles = Vec::new();
-    if !fields.is_empty() {
-        handles.push(format!("interface-fields:{}", fields.join("|")));
-    }
-    if !quality.owner_seed_terms.is_empty() {
-        handles.push(format!(
-            "exported-declarations:{}",
-            quality.owner_seed_terms.join("|")
-        ));
-    }
-    if handles.is_empty() {
-        "-".to_string()
-    } else {
-        handles.join(";")
-    }
-}
-
-fn delegation_hints(quality: &SearchPipeQuality, actions: &[ActionNode]) -> Vec<DelegationHint> {
-    if quality.allow_query_selector {
-        return Vec::new();
-    }
-    let target_actions = actions
-        .iter()
-        .filter(|action| {
-            matches!(
-                action.kind.as_str(),
-                "fd-query"
-                    | "rg-query"
-                    | "rg-query-set"
-                    | "owner-items"
-                    | "treesitter-query"
-                    | "search-deps"
-            )
-        })
-        .map(|action| format!("{}.{}", action.id, action.kind))
-        .collect::<Vec<_>>();
-    if target_actions.is_empty() {
-        return Vec::new();
-    }
-    vec![DelegationHint { target_actions }]
+    render_next_command_line(&actions)
 }
 
 fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<ActionNode> {
@@ -169,6 +77,20 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
                 command_scope: command_scope_arg.to_string(),
             },
         });
+    }
+    if low_cohesion_fd_owner_discovery
+        && !pushed_preferred_owner_items
+        && request.fd_preview.is_none()
+        && let Some(handle) = owner_items_handle(request.quality, request.candidates)
+        && let Some((owner, query)) = handle.split_once(':')
+    {
+        actions.push(owner_items_action(
+            request.language_id,
+            scope_arg,
+            owner,
+            query,
+        ));
+        pushed_preferred_owner_items = true;
     }
     if low_cohesion_fd_owner_discovery
         && !pushed_preferred_owner_items

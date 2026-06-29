@@ -1,18 +1,15 @@
 use super::support::{
-    cache_root, provider, temp_project_root, write_activation, write_cache_manifest,
-    write_marker_provider,
+    artifacts_root, asp_command, cache_root, provider, temp_project_root, write_activation,
+    write_cache_manifest, write_marker_provider,
 };
 use serde_json::{Value, json};
-use std::env;
-use std::process::Command;
+
 #[test]
 fn cache_status_reports_missing_manifest_with_receipt() {
     let root = temp_project_root("cache-status-missing-manifest");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
+    let output = asp_command(&root)
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run cache status");
@@ -41,19 +38,19 @@ fn cache_status_reports_missing_manifest_with_receipt() {
         receipt["cacheRoot"]
             .as_str()
             .expect("cacheRoot")
-            .ends_with(".cache/agent-semantic-protocol/client")
+            .ends_with("/live/client")
     );
     assert!(
         receipt["cacheManifestPath"]
             .as_str()
             .expect("cacheManifestPath")
-            .ends_with(".cache/agent-semantic-protocol/client/cache-manifest.json")
+            .ends_with("/live/client/cache-manifest.json")
     );
     assert!(
         receipt["clientDbPath"]
             .as_str()
             .expect("clientDbPath")
-            .ends_with(".cache/agent-semantic-protocol/client/client.sqlite3")
+            .ends_with("/live/client/client.sqlite3")
     );
     assert_eq!(receipt["clientDbStatus"], "missing");
     assert_eq!(receipt["clientDbGenerationCount"], 0);
@@ -73,15 +70,13 @@ fn cache_status_reads_manifest_without_spawning_provider() {
     write_marker_provider(&bin_dir, "rs-harness", &called);
     write_activation(&root, &[provider("rust", Vec::new())]);
     write_cache_manifest(&root, valid_manifest(&root));
-    let artifact_path = cache_root(&root).join("search/rust-main-1.json");
+    let artifact_path = artifacts_root(&root).join("search/rust-main-1.json");
     std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
         .expect("create artifact dir");
     std::fs::write(&artifact_path, "{}").expect("write artifact");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run asp cache status");
@@ -119,15 +114,13 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     write_marker_provider(&bin_dir, "rs-harness", &called);
     write_activation(&root, &[provider("rust", Vec::new())]);
     write_cache_manifest(&root, valid_manifest(&root));
-    let artifact_path = cache_root(&root).join("search/rust-main-1.json");
+    let artifact_path = artifacts_root(&root).join("search/rust-main-1.json");
     std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
         .expect("create artifact dir");
     std::fs::write(&artifact_path, "{}").expect("write artifact");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import", "--receipt-json"])
         .output()
         .expect("run asp cache import");
@@ -168,10 +161,8 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
 
-    let status_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let status_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run asp cache status after import");
@@ -203,10 +194,8 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     assert_eq!(status_receipt["clientDbBusyTimeoutMs"], 5000);
     assert_eq!(status_receipt["clientDbForeignKeys"], true);
 
-    let invalidate_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let invalidate_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "invalidate", "--receipt-json"])
         .output()
         .expect("run asp cache invalidate");
@@ -267,10 +256,8 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
         "cache invalidate should keep artifact files for explicit cleanup policy"
     );
 
-    let status_after_invalidate = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let status_after_invalidate = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run asp cache status after invalidate");
@@ -301,10 +288,8 @@ fn cache_flush_syntax_rows_keeps_generations_without_spawning_provider() {
     write_activation(&root, &[provider("rust", Vec::new())]);
     write_cache_manifest(&root, valid_manifest(&root));
 
-    let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let import_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import", "--receipt-json"])
         .output()
         .expect("run asp cache import");
@@ -314,10 +299,8 @@ fn cache_flush_syntax_rows_keeps_generations_without_spawning_provider() {
         String::from_utf8_lossy(&import_output.stderr)
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "flush", "syntax-rows", "--receipt-json"])
         .output()
         .expect("run asp cache flush syntax rows");
@@ -360,9 +343,7 @@ fn cache_status_reports_invalid_manifest_without_polluting_receipt_stream() {
     manifest["generations"][0]["rawSourceStored"] = json!(true);
     write_cache_manifest(&root, manifest);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
+    let output = asp_command(&root)
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run cache status");

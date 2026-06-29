@@ -7,7 +7,6 @@ use crate::types::{
     CacheArtifactId, CacheGenerationId, CacheStatus, ClientCachePath, LanguageId, ProviderId,
     SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
 };
-use agent_semantic_config::project_client_cache_dir as config_project_client_cache_dir;
 use serde::{Deserialize, Serialize};
 
 /// Schema id for `agent-semantic-client-cache-manifest.v1`.
@@ -283,7 +282,21 @@ pub struct ClientCacheFileHash {
 /// `agent-semantic-config` owns project identity and state storage layout so
 /// client, hook, and provider receipts resolve the same manifest and SQLite DB.
 pub fn project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    config_project_client_cache_dir(project_root)
+    let resolved = crate::state_core::ResolvedState::resolve(project_root.as_ref())?;
+    resolved.ensure_minimal_layout()?;
+    Ok(resolved.paths.client_dir)
+}
+
+/// Return the client cache directory without creating or updating state files.
+///
+/// Hot read paths, such as source-index lookup, use this after a refresh has
+/// already created the layout so lookup latency is not dominated by manifest
+/// writes.
+pub fn project_client_cache_dir_read_only(
+    project_root: impl AsRef<Path>,
+) -> Result<PathBuf, String> {
+    let resolved = crate::state_core::ResolvedState::resolve(project_root.as_ref())?;
+    Ok(resolved.paths.client_dir)
 }
 
 /// Resolve the JSON cache manifest path for a project.

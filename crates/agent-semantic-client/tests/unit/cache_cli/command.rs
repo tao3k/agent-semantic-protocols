@@ -1,11 +1,12 @@
 use crate::cache_cli::run_cache;
+use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard, artifacts_root_from_cache_root};
 use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheArtifactId, CacheStatus,
     ClientCacheFileHash, ClientCacheGeneration, ClientCacheManifest, ClientCachePath, LanguageId,
-    ProviderId,
+    ProviderId, state_core::ResolvedState,
 };
 use agent_semantic_client_db::{
     ClientDb, ClientDbSourceIndexLookup, ClientDbSourceIndexQueryKey,
@@ -29,7 +30,9 @@ fn cache_usage_lists_flush() {
 
 #[test]
 fn cache_runtime_source_acquire_clones_versioned_source() {
+    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("runtime-source-acquire");
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     let upstream = root.join("upstream-gerbil");
     create_tagged_repo(&upstream, "v0.18.2");
 
@@ -54,12 +57,18 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
     )
     .expect("runtime source acquire");
 
-    let checkout_dir =
-        root.join(".cache/agent-semantic-protocol/client/runtime-source/gerbil-scheme/v0.18.2");
+    let checkout_dir = ResolvedState::resolve(&root)
+        .expect("state core")
+        .paths
+        .client_dir
+        .join("runtime-source")
+        .join("gerbil-scheme")
+        .join("v0.18.2");
     assert_eq!(
         std::fs::read_to_string(checkout_dir.join("runtime.ss")).expect("runtime source file"),
         ";; runtime source fixture\n"
     );
+    assert!(!root.join(".cache/agent-semantic-protocol").exists());
     let cache_root = ClientCacheManifest::inspect_project(&root)
         .cache_root
         .expect("cache root");
@@ -204,10 +213,8 @@ fn cache_import_replays_structural_index_artifact_into_db() {
         .expect("create cache dir");
     let manifest_bytes = serde_json::to_vec_pretty(&manifest).expect("manifest json");
     std::fs::write(&manifest_path, manifest_bytes).expect("write manifest");
-    let artifact_path = cache_root
-        .parent()
-        .expect("cache root parent")
-        .join("artifacts/structural-index/rust-index-import.json");
+    let artifact_path =
+        artifacts_root_from_cache_root(&cache_root).join("structural-index/rust-index-import.json");
     std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
         .expect("create artifact dir");
     let packet_bytes =

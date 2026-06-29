@@ -10,6 +10,6 @@ source = "."
 enabled = true
 
 [agents.asp_explorer]
-description = "Read-only ASP search explorer for hook-safe evidence collection."
+description = "ASP search/query evidence explorer."
 config_file = "agents/asp-explorer.toml"
 nickname_candidates = ["ASP owner", "ASP rg", "ASP selector", "ASP search"]

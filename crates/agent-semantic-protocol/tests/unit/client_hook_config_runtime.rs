@@ -311,7 +311,7 @@ stdinMode = "none"
 }
 
 fn write_config(root: &std::path::Path, content: &str) {
-    let config_path = root.join(".codex/agent-semantic-protocol/hooks/config.toml");
+    let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create config dir");
     std::fs::write(config_path, content).expect("write config");
@@ -408,6 +408,7 @@ fn run_hook_decision_with_args(
     let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(root)
         .args(args)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

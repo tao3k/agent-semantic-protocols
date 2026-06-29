@@ -1,14 +1,12 @@
 use serde_json::Value;
-use std::env;
-use std::process::Command;
 
 use super::fixtures::{
     sample_query_packet, sample_search_packet, valid_manifest_with_artifact,
     valid_query_manifest_with_artifact, valid_search_manifest_with_artifact,
 };
 use crate::provider_command::support::{
-    cache_root, provider, temp_project_root, write_activation, write_cache_manifest,
-    write_marker_provider,
+    artifacts_root, asp_command, provider, temp_project_root, write_activation,
+    write_cache_manifest, write_marker_provider,
 };
 
 fn assert_client_db_runtime_profile(receipt: &Value) {
@@ -25,11 +23,7 @@ fn client_search_receipt_reports_cache_hit_when_prompt_output_artifact_exists() 
     let called = root.join("provider-called");
     let cached_stdout = "cached prompt artifact\n";
     let artifact_id = "prompt-output/rust-prime.txt";
-    let artifact_path = cache_root(&root)
-        .parent()
-        .expect("cache root has parent")
-        .join("artifacts")
-        .join(artifact_id);
+    let artifact_path = artifacts_root(&root).join(artifact_id);
 
     std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
         .expect("create artifact dir");
@@ -38,10 +32,8 @@ fn client_search_receipt_reports_cache_hit_when_prompt_output_artifact_exists() 
     write_activation(&root, &[provider("rust", Vec::new())]);
     write_cache_manifest(&root, valid_manifest_with_artifact(&root, artifact_id));
 
-    let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let import_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import"])
         .output()
         .expect("run cache import");
@@ -51,10 +43,8 @@ fn client_search_receipt_reports_cache_hit_when_prompt_output_artifact_exists() 
         String::from_utf8_lossy(&import_output.stderr)
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -97,11 +87,7 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     let bin_dir = root.join(".bin");
     let called = root.join("provider-called");
     let artifact_id = "search/rust-main-1.json";
-    let artifact_path = cache_root(&root)
-        .parent()
-        .expect("cache root has parent")
-        .join("artifacts")
-        .join(artifact_id);
+    let artifact_path = artifacts_root(&root).join(artifact_id);
     std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
         .expect("create artifact dir");
     std::fs::write(
@@ -116,10 +102,8 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
         valid_search_manifest_with_artifact(&root, artifact_id),
     );
 
-    let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let import_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import"])
         .output()
         .expect("run cache import");
@@ -129,10 +113,8 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
         String::from_utf8_lossy(&import_output.stderr)
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env_remove("SEMANTIC_AGENT_PROTOCOL_BIN")
         .args([
             "rust",
@@ -174,10 +156,9 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     assert_eq!(receipt["stdoutBytes"], stdout.len());
 
     let root_arg = root.display().to_string();
-    let external_output = Command::new(env!("CARGO_BIN_EXE_asp"))
+    let external_output = asp_command(&root)
         .current_dir(root.parent().expect("root parent"))
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -229,11 +210,7 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     let bin_dir = root.join(".bin");
     let called = root.join("provider-called");
     let artifact_id = "query/rust-owner-items-1.json";
-    let artifact_path = cache_root(&root)
-        .parent()
-        .expect("cache root has parent")
-        .join("artifacts")
-        .join(artifact_id);
+    let artifact_path = artifacts_root(&root).join(artifact_id);
     std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
         .expect("create artifact dir");
     std::fs::write(
@@ -248,10 +225,8 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
         valid_query_manifest_with_artifact(&root, artifact_id),
     );
 
-    let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let import_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import"])
         .output()
         .expect("run cache import");
@@ -261,10 +236,8 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
         String::from_utf8_lossy(&import_output.stderr)
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -305,10 +278,9 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     assert_eq!(receipt["stdoutBytes"], stdout.len());
 
     let root_arg = root.display().to_string();
-    let external_output = Command::new(env!("CARGO_BIN_EXE_asp"))
+    let external_output = asp_command(&root)
         .current_dir(root.parent().expect("root parent"))
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",

@@ -24,7 +24,8 @@ pub use cli::{run_cli_args, run_cli_from_env};
 pub use source_index::{
     SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
     SourceIndexRefreshReport, SourceIndexSourceKind, lookup_source_index,
-    lookup_source_index_for_language, refresh_source_index,
+    lookup_source_index_for_language, lookup_source_index_in_client_cache_dir,
+    refresh_source_index,
 };
 
 #[cfg(test)]

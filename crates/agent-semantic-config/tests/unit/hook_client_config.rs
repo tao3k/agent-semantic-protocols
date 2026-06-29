@@ -2,15 +2,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, default_hook_client_config_path,
-    default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
-    load_asp_project_config_file, load_hook_client_config_file,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, default_hook_client_config_template,
+    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
+    load_hook_client_config_file,
 };
 
 #[test]
 fn default_template_round_trips_through_config_parser() {
     let root = temp_root("hook-client-template");
-    let config_path = default_hook_client_config_path(&root);
+    let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
     fs::write(&config_path, default_hook_client_config_template()).expect("write config");
 
@@ -20,43 +20,74 @@ fn default_template_round_trips_through_config_parser() {
         config.schema_id.as_deref(),
         Some(CLIENT_HOOK_CONFIG_SCHEMA_ID)
     );
-    assert_eq!(
-        config
-            .experimental
-            .get("semanticAstPatch")
-            .and_then(|feature| feature.get("enabled")),
-        Some(&false)
-    );
+    assert!(config.experimental.is_empty());
     assert!(config.agent_org_artifacts.is_none());
-    assert_eq!(config.rules.len(), 1);
-    let rule = config.rules.first().expect("default rule");
-    assert_eq!(rule.id, "deny-shell-source-argv");
+    assert!(config.recovery_prompt.template.is_none());
+    assert!(config.recovery_prompt.codex_agent_flow.is_none());
+    assert!(config.recovery_prompt.claude_agent_flow.is_none());
+    assert!(config.recovery_prompt.default_agent_flow.is_none());
+    assert!(config.agent_session_guide.register.is_none());
+    assert!(config.agent_session_guide.list.is_none());
+    assert!(config.agent_session_guide.show.is_none());
+    assert!(config.rules.is_empty());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn client_config_loads_recovery_prompt_template() {
+    let root = temp_root("hook-client-recovery-prompt");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[recoveryPrompt]
+template = "reason={reason}\nflow={agent_flow}\nroutes={routes}"
+codexAgentFlow = "codex flow from config"
+claudeAgentFlow = "claude flow from config"
+defaultAgentFlow = "default flow from config"
+
+[agentSessionGuide]
+register = "register guide"
+list = "list guide"
+show = "show guide"
+"#,
+    )
+    .expect("write config");
+
+    let config = load_hook_client_config_file(&config_path).expect("load config");
+
     assert_eq!(
-        rule.match_config.tool_any,
-        [
-            "Bash",
-            "shell",
-            "functions.exec_command",
-            "exec_command",
-            "command_execution"
-        ]
-    );
-    assert_eq!(rule.match_config.command_any, ["sed", "perl", "rg", "wl"]);
-    assert!(
-        rule.match_config
-            .argv_source_glob_any
-            .iter()
-            .any(|glob| glob == "**/*.rs")
-    );
-    assert!(
-        rule.match_config
-            .argv_source_glob_any
-            .iter()
-            .any(|glob| glob == "**/*.ssi")
+        config.recovery_prompt.template.as_deref(),
+        Some("reason={reason}\nflow={agent_flow}\nroutes={routes}")
     );
     assert_eq!(
-        rule.match_config.argv_source_exclude_flag_any,
-        ["--output", "--output-file", "--out", "-o"]
+        config.recovery_prompt.codex_agent_flow.as_deref(),
+        Some("codex flow from config")
+    );
+    assert_eq!(
+        config.recovery_prompt.claude_agent_flow.as_deref(),
+        Some("claude flow from config")
+    );
+    assert_eq!(
+        config.recovery_prompt.default_agent_flow.as_deref(),
+        Some("default flow from config")
+    );
+    assert_eq!(
+        config.agent_session_guide.register.as_deref(),
+        Some("register guide")
+    );
+    assert_eq!(
+        config.agent_session_guide.list.as_deref(),
+        Some("list guide")
+    );
+    assert_eq!(
+        config.agent_session_guide.show.as_deref(),
+        Some("show guide")
     );
     let _ = fs::remove_dir_all(root);
 }
@@ -117,9 +148,9 @@ maxReportedFiles = 3
 }
 
 #[test]
-fn template_source_globs_are_derived_from_source_extensions() {
+fn template_source_extensions_do_not_generate_user_rules() {
     let root = temp_root("hook-client-template-extensions");
-    let config_path = default_hook_client_config_path(&root);
+    let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
     fs::write(
         &config_path,
@@ -130,12 +161,7 @@ fn template_source_globs_are_derived_from_source_extensions() {
     .expect("write config");
 
     let config = load_hook_client_config_file(&config_path).expect("load config");
-    let rule = config.rules.first().expect("default rule");
-
-    assert_eq!(
-        rule.match_config.argv_source_glob_any,
-        ["*.ss", "**/*.ss", "*.scm", "**/*.scm", "*.sld", "**/*.sld"]
-    );
+    assert!(config.rules.is_empty());
     let _ = fs::remove_dir_all(root);
 }
 

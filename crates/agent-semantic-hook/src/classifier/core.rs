@@ -156,6 +156,7 @@ fn classify_tool_actions(
             event,
             action,
             config.semantic_ast_patch_enabled(),
+            config.recovery_prompt(),
         )
     }) {
         return Some(decision);
@@ -167,6 +168,7 @@ fn classify_tool_actions(
             event,
             action,
             config.semantic_ast_patch_enabled(),
+            config.recovery_prompt(),
         )
     }) {
         return Some(decision);
@@ -295,6 +297,7 @@ fn is_root_asp_command(value: &str) -> bool {
             | "cache"
             | "cloud"
             | "hook"
+            | "state"
             | "plugin"
             | "install"
             | "sync"
@@ -499,6 +502,7 @@ fn classify_command_action(
     event: &str,
     action: &ToolAction,
     semantic_ast_patch_enabled: bool,
+    recovery_prompt: &crate::hook_recovery_prompt::CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
     let command = action.command.as_deref()?;
     let tokens = action.command_tokens()?;
@@ -519,6 +523,7 @@ fn classify_command_action(
                 command,
                 &tokens,
                 semantic_ast_patch_enabled,
+                recovery_prompt,
             )
         })
         .or_else(|| {
@@ -529,6 +534,7 @@ fn classify_command_action(
                 action,
                 &tokens,
                 semantic_ast_patch_enabled,
+                recovery_prompt,
             )
         })
 }

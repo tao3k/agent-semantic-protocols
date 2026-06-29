@@ -8,10 +8,10 @@ mod layout;
 pub use hook_client_config::{
     AspProjectConfigFile, AspProjectHookConfig, CLIENT_HOOK_CONFIG_SCHEMA_ID,
     CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
-    HookClientAgentOrgArtifactsConfig, HookClientConfigDecision, HookClientConfigFile,
-    HookClientConfigReasonKind, HookClientConfigRouteKind, HookClientConfigStdinMode,
-    HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
-    default_hook_client_config_path, default_hook_client_config_template,
+    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig, HookClientConfigDecision,
+    HookClientConfigFile, HookClientConfigReasonKind, HookClientConfigRouteKind,
+    HookClientConfigStdinMode, HookClientRecoveryPromptConfig, HookClientRuleConfig,
+    HookClientRuleMatchConfig, HookClientRuleRouteConfig, default_hook_client_config_template,
     default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
     load_hook_client_config_file,
 };

@@ -43,7 +43,7 @@ fn reasoning_owner_query_is_asp_owned_and_does_not_spawn_provider() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[search-reasoning]"), "{stdout}");
+    assert!(stdout.starts_with("[search-owner]"), "{stdout}");
     assert!(
         stdout.contains(
             "I=item:symbol(render_fast_prime_search)@rust://src/lib.rs#item/fn/render_fast_prime_search!syntax"
@@ -267,7 +267,11 @@ fn owner_tests_and_owner_items_query_are_asp_owned() {
         "{owner_items_stdout}"
     );
     assert!(
-        owner_items_stdout.contains("frontier=Q.query,T.tests,O.owner,I.syntax"),
+        owner_items_stdout.contains("entries=owner-query(O,Q=>items+tests+dependency-usage)"),
+        "{owner_items_stdout}"
+    );
+    assert!(
+        !owner_items_stdout.contains("frontier="),
         "{owner_items_stdout}"
     );
     assert!(

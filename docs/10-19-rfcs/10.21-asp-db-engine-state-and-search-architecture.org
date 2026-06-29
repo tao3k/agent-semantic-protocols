@@ -1,0 +1,352 @@
+* One-sentence summary
+ASP should use Turso as the DB Engine v2 backend and use the lessons from =codebase-memory-mcp= to build a selector-first, overlay-aware, graph-routed code search substrate; the goal is fewer agent turns, not SQLite compatibility and not an MCP server.
+* Scope
+This report consolidates the DB Engine, state layout, code-search comparison, and Rust high-performance architecture workstream.
+
+It is scoped to:
+- Turso-backed DB Engine v2;
+- State Core v2 under =$HOME/.agent-semantic-protocols=;
+- code search, future writing search, dependency topology, and analyzer artifacts;
+- dynamic overlay search for dirty code;
+- Rust command/package boundaries;
+- Python production graph algorithms and Julia research loops;
+- comparison with =codebase-memory-mcp=.
+
+It is explicitly not scoped to:
+- designing an agent MCP server;
+- making line numbers executable identity;
+- storing every dirty edit as durable DB rows;
+- replacing provider-owned native parser authority with one global tree-sitter bundle;
+- directly adding =tantivy= as a second long-lived ASP product backend.
+* Evidence snapshot
+Local ASP evidence:
+- =crates/agent-semantic-client-db= is currently a =rusqlite= SQLite surface. It opens =client.sqlite3=, configures WAL-oriented pragmas, imports cache generations, source index, structural index, syntax query replay, provider command selections, and artifact events.
+- Structural and source index imports already have good transaction seams: generation row, stale-row clear, owner/symbol/dependency/selector writes, commit, stats lookup.
+- Structural packet parsing refuses =rawSourceStored=true= and rejects raw source fields such as =body=, =code=, =content=, =snippet=, and =sourceText=.
+- =crates/agent-semantic-client-core/src/state_core.rs= already defines =ASP_STATE_HOME=, default =.agent-semantic-protocols=, =state-v2=, =repo_id=, =workspace_id=, =scope_id=, =futureBackend=turso=, and =projects/by-id/<repo_id>/workspaces/<workspace_id>/live/client/client.sqlite3=.
+- =crates/agent-semantic-runtime/src/state.rs= and =asp paths= still expose a project-local =.cache/agent-semantic-protocol= layout. That split is the current migration seam.
+- Python =asp_graph_turbo.rank_frontier= already does production graph ranking with score collection, read-memory suppression, query-token coverage, kind budgets, read-loop second pass, and receipt construction.
+- Julia analyzers already study artifact/search flow data, but current artifacts still lack strong session/prompt/action/parent timestamps and recommendedNext adoption status.
+
+Local =codebase-memory-mcp= evidence under =.data/codebase-memory-mcp=:
+- =src/mcp/mcp.c= registers =search_graph=, =query_graph=, =trace_path=, =get_code_snippet=, =get_architecture=, and =search_code= in one tool surface.
+- =get_code_snippet= tells callers to use =search_graph= first when exact qualified name is unknown.
+- =search_graph= exposes lexical BM25 query, regex/name filters, label/file/degree filters, connected-node inclusion, and =semantic_query=.
+- =src/store/store.c= stores =projects=, =file_hashes=, =nodes=, =edges=, =project_summaries=, =node_vectors=, and =token_vectors=.
+- It creates =nodes_fts= over name, qualified name, label, and file path, then backfills it with =cbm_camel_split(name)=.
+- =bm25_search= uses a two-step FTS5 query to let FTS drive early termination, then joins/filters/boosts top candidates by project and structural label.
+- =search_code= is still grep scan over indexed files plus graph enrichment; it is not a selector-first overlay system.
+
+External source context, observed 2026-06-29:
+- Turso Database is a Rust, in-process SQL database compatible with SQLite at the API/query layer, but its README still marks the database as beta.
+- Turso features and roadmap include async I/O, MVCC / concurrent writes, vector search, encryption, CDC, sync, and Tantivy-backed FTS.
+- Turso compatibility is not complete SQLite parity. Its FTS implementation is not SQLite FTS5; it is a Turso-owned search layer.
+- The Codebase-Memory paper and repository center the product around tree-sitter/LSP-enriched graph indexing and tool-guided search. The useful lesson for ASP is the search substrate and playbook, not MCP identity.
+* State Core v2 layout
+The default durable state root must be:
+#+begin_src text
+$ASP_STATE_HOME, otherwise $HOME/.agent-semantic-protocols
+#+end_src
+
+Project-local =.cache/agent-semantic-protocol= should be treated as legacy/evidence during migration. It must not remain the default DB Engine v2 home.
+
+Target layout:
+#+begin_src text
+$ASP_STATE_HOME/
+  VERSION
+  state.json
+  registry/
+    events.jsonl
+  aliases/
+    by-display-name/
+      <display-name>.json
+  projects/
+    by-id/
+      <repo_id>/
+        project.json
+        manifests/
+          project-manifest.json
+        workspaces/
+          <workspace_id>/
+            workspace.json
+            scopes/
+              default/
+                scope.json
+            live/
+              client/
+                manifest.json
+                client.turso
+                client.sqlite3
+                cache-manifest.json
+              overlays/
+                sessions/
+                  <session_id>/
+                    overlay.json
+                    dirty-files.json
+                    search-index/
+                    subagents/
+                      <subagent_id>/
+              receipts/
+                search/
+                query/
+                route/
+                render/
+            artifacts/
+              providers/
+                <language_id>/<provider_id>/generations/<generation_id>/
+              analyzers/
+                python/
+                julia/
+              org/
+              reports/
+              exports/
+            locks/
+            tmp/
+#+end_src
+
+Identity rules:
+- =repo_id= is derived from git remote URL when available, then git common dir, then git dir, then canonical path.
+- =workspace_id= includes =repo_id=, checkout root, and git dir. Git worktrees share repo identity but not workspace identity.
+- =scope_id= starts as =default= and leaves room for named mono-repo slices.
+- Display names are aliases only. They are never storage authority.
+- Project-local cache is recorded as =projectLocalCache= evidence only.
+
+The manifest must be enough for Python and Julia to recover provenance:
+#+begin_src json
+{
+  "layoutVersion": "state-v2",
+  "repoId": "repo-...",
+  "workspaceId": "workspace-...",
+  "scopeId": "default",
+  "backend": "turso",
+  "generationManifestPath": ".../live/client/cache-manifest.json",
+  "dbPath": ".../live/client/client.turso",
+  "artifactPath": ".../artifacts",
+  "overlayRoot": ".../live/overlays",
+  "receiptRoot": ".../live/receipts"
+}
+#+end_src
+* DB Engine v2 read model
+The DB Engine is the product boundary. Providers and commands write schema-valid facts into it; search, query, recall, artifact review, and future writing workflows read from it.
+
+Core tables:
+- =repo=, =workspace=, =scope=, =session=, =subagent=.
+- =generation= with language/provider/schema/source hashes, source artifact ids, and visibility state.
+- =file_snapshot= with path, hash, size, mtime, language, and generation.
+- =entity= with =entity_id=, =selector=, =owner_path=, =qualified_name=, =kind=, =signature=, =source_hash=, =display_range=, and provider ids.
+- =entity_document= with field-weighted search text: name, qualified name, signature, doc summary, dependency terms, route terms, and provider-built identifier expansions.
+- =identifier_term= with camelCase, snake_case, path segment, API, manifest, and dependency expansions.
+- =edge= with typed graph edges: contains, defines, imports, calls, tests, configures, routes, dependencies, Org references, and analyzer-derived relations.
+- =dependency= and =dependency_usage= with manifest and lockfile provenance.
+- =test_coverage= and =failure_evidence= for routing from errors to selectors.
+- =org_reference= for RFC/ADR/contract/writing links to selectors.
+- =search_receipt=, =route_receipt=, =render_receipt=, and =plan_trace=.
+- =artifact_event= and =analyzer_run= for Python/Julia replay and metrics.
+
+Dynamic overlay tables:
+- =overlay_namespace= keyed by =repo_id=, =workspace_id=, =scope_id=, =session_id=, =subagent_id=, and =base_generation_id=.
+- =overlay_file_delta= for dirty file hashes, deleted paths, and patch receipts.
+- =overlay_entity_delta= for changed/deleted selectors and temporary overlay-local entities.
+- =overlay_search_document= for in-memory or checkpointed lexical search documents.
+
+Default searchable rows must point only at current stable generations plus selected accepted overlays. Stale generations may remain as audit evidence, but they must not return as default actionable evidence.
+* Search backend decision
+Persisted generations should use Turso FTS/BM25 over ASP entity documents.
+
+Dynamic code should not be pushed into the durable Turso DB on every dirty edit. The router should merge:
+#+begin_src text
+agent memory / prior receipt anchors
+-> active overlay search
+-> dirty-file provider parse
+-> stable Turso FTS/BM25
+-> semantic/vector fallback
+-> Python graph fusion
+-> compact render
+#+end_src
+
+Tantivy dependency rule:
+- ASP should not directly introduce =tantivy= as a second product search backend.
+- Persisted search uses Turso FTS.
+- Dynamic overlay search should use the same Turso-owned Tantivy-backed semantics when that boundary is exposed or vendorable from Turso.
+- If that boundary is not stable, ASP keeps a small adapter/control implementation for experiments and falls back to current search only as a migration lane.
+- =fzf= should stop being agent-facing ranking after parity. It can remain as a human interactive affordance or temporary migration control.
+
+Replacement gates:
+- recall@k, MRR, nDCG, false-positive-at-1;
+- warm overlay update latency;
+- dirty-buffer indexing cost;
+- selector stability across edits;
+- field-hit metadata quality for graph fusion;
+- parity against current =fzf= on path/name discovery.
+* FTS/BM25 plus identifier search versus fzf
+=fzf= is strong for interactive fuzzy narrowing, path discovery, and human recall. It is weak as an agent search substrate:
+- no durable field weights;
+- no BM25-style term/document scoring;
+- no stable receipt explaining why a candidate won;
+- no first-class camelCase/snake_case/path-segment expansion;
+- no native concept of generation freshness or overlay visibility;
+- no graph-fusion metadata.
+
+FTS/BM25 plus identifier search is better for the agent loop because it can return:
+- selector-first entities;
+- field hits by name, qualified name, signature, doc text, dependency, and route terms;
+- deterministic identifier tokenization;
+- current-generation filtering;
+- structured rank features for Python graph fusion;
+- replayable receipts for Julia research.
+
+The dynamic-code caveat is real: dirty code changes too fast for every edit to become a durable DB write. The answer is overlay search, not line-number search. Overlay documents are keyed by selector/source hash when possible, and by temporary overlay-local entity ids when not.
+* Search playbook and turn reduction
+=codebase-memory-mcp= wins today on productized few-turn search. Its playbook is direct:
+#+begin_src text
+search_graph / semantic_query / query_graph / search_code
+-> trace_path when relationship evidence is needed
+-> get_code_snippet when bounded source evidence is needed
+#+end_src
+
+ASP can beat that only if its default command returns a better evidence packet, not a larger JSON blob.
+
+Target ASP playbook:
+#+begin_src text
+intent + memory
+-> router chooses skip | resume | refine
+-> selector/owner/dependency/test/org anchors
+-> overlay + stable Turso FTS + native parser proof
+-> Python graph fusion
+-> compact render with recommended next exact actions
+#+end_src
+
+One-turn target:
+- If memory already contains a valid selector, jump directly to freshness check and exact action.
+- If intent maps to an owner/dependency/test/Org anchor, skip broad lexical retrieval.
+- If lexical retrieval is needed, return ranked selectors plus a compact proof and the next exact command in one packet.
+
+Two-turn target:
+- Turn 1 returns =EvidencePacket= with top selectors, graph paths, proof sections, and bounded snippets when safe.
+- Turn 2 executes exact selector action or asks for a specific larger disclosure.
+
+The router must not force every request through cold retrieval. Agent memory and prior receipts are first-class inputs.
+* No line-number identity
+Line ranges are display hints, not executable identity.
+
+Executable identity must be:
+- provider selector;
+- native fact id;
+- entity id;
+- generation id + source hash;
+- overlay namespace + overlay-local entity id when the stable selector is unavailable.
+
+The render may include =displayRange= and =sourceLocatorHint= for readability, but follow-up commands must use selectors and provider-owned query forms.
+* Tree-sitter plus native query combinator
+The Codebase-Memory paper validates the value of tree-sitter-scale structural indexing. ASP should not reject that lesson just because ASP has native providers. The better design is a combinator:
+#+begin_src text
+tree-sitter-compatible S-expression query
+-> coarse structural candidates
+-> native provider query-lang proof
+-> dependency/test/Org topology expansion
+-> Python graph fusion
+-> compact render
+#+end_src
+
+This can be cheaper than multiple agent turns because the whole combinator is one command and one receipt. It only pays off if receipts preserve the proof boundaries:
+- =structuralProof=: grammar id, query AST hash, captures, predicate results, structural spans, candidate counts.
+- =nativeProof=: provider id, selector, semantic facts, omitted facts, rejection reasons, source fingerprint, exact locator.
+- =fusionProof=: graph seeds, edge types, rank inputs, diversity decisions, confidence, final action source.
+
+The planner should store =PlanTrace= for every considered combinator route:
+- route choice;
+- internal stage latencies;
+- candidate counts;
+- proof gain;
+- fallback reason;
+- graph confidence;
+- final action source.
+
+Julia should compute =combinator_win_rate= by comparing one combinator packet against the shortest non-combinator path for the same prompt class.
+* Compact render contract
+The agent should not read raw JSON unless it asks for debug output. JSON wastes tokens and hides priority.
+
+The render contract should be schema-backed, compact, and progressively disclosed:
+- top line: route, confidence, freshness, generation/overlay state;
+- ranked selectors with stable ids;
+- proof summary per selector;
+- graph paths only when they change the decision;
+- exact =recommendedNext= command;
+- =avoid= and stale/overlay warnings;
+- optional =more= handles for larger disclosure.
+
+ASP's existing compact graph ideas such as =frontier=, =routeGraph=, =G1/G2/G3=, and =S1/S2= are directionally right, but they need a unified schema. The command layer should not hand-roll render formats per language.
+
+Render should live in Rust to reduce harness burden. Harnesses should emit facts; Rust should render facts into the agent prompt surface.
+* Rust high-performance architecture
+The command layer under =crates/agent-semantic-protocol/src/command/*= should become thin: argument parsing, policy checks, and handoff only. Heavy work belongs in focused crates:
+- =agent-semantic-state-core= or existing client-core state module: identity, manifests, State Core v2.
+- =agent-semantic-db-engine=: Turso backend, schema migration, transactions, receipts, stable generations.
+- =agent-semantic-search-core=: lexical/semantic/selector search, overlay merge, field-hit metadata.
+- =agent-semantic-router=: evidence-state routing, memory skip/resume/refine, route receipts.
+- =agent-semantic-render=: schema-backed compact graph render.
+- =agent-semantic-provider-bridge=: provider worker protocol, process pools, packet validation.
+
+The core feature is that a language harness only implements native parsing and ecosystem facts. It does not implement high-performance search, cache invalidation, graph ranking, route planning, or DB layout.
+
+Tokio/process design:
+- persistent provider worker pools per =language_id/provider_id= where possible;
+- =tokio::process= with length-delimited JSON or JSONL protocol;
+- backpressure, cancellation, and timeout scopes;
+- bounded concurrency by provider, workspace, and CPU-heavy parse class;
+- =Semaphore= gates for DB writers, overlay index updates, provider workers, and render fanout;
+- cancellation for abandoned agent branches;
+- warm DB connections and prepared statements behind a backend trait;
+- =spawn_blocking= only around unavoidable CPU-bound or blocking library calls;
+- batch writes for generation imports and overlay checkpoints;
+- in-memory hot maps for overlay selector deltas, with durable writes only for replayable receipts and accepted checkpoints.
+
+The performance goal is:
+#+begin_src text
+harness packet -> Rust validation -> DB/overlay projection -> graph/search router
+-> compact evidence render -> exact selector action
+#+end_src
+* Python and Julia interface
+Julia should be able to analyze =DB + dynamic JSON= without forcing every volatile fact into DB.
+
+DB Engine responsibilities:
+- stable generations, graph/topology rows, receipts, and metrics;
+- =PlanTrace= and =SearchStage= with candidate counts, latencies, route choices, proof gain, fallback reason, and final action source;
+- artifact links to generation, session, prompt/action, and provider command ids;
+- bounded dynamic overlay JSON when normalization is not worth it.
+
+Julia responsibilities:
+- replay route decisions without re-running providers;
+- test graph algorithms, combinator thresholds, diversity budgets, and abstention rules;
+- measure warm-context skips, overlay wins, false skips, and combinator win rate;
+- publish reproducible notebooks.
+
+Python responsibilities:
+- implement selected graph algorithms from Julia experiments;
+- run production graph fusion and diversity ranking;
+- return compact receipts to Rust for storage and render.
+* Migration plan
+1. Stabilize State Core v2 as the only default state root.
+2. Add DB Engine trait and Turso backend prototype beside SQLite v1.
+3. Project current source/structural index rows into =entity=, =entity_document=, =edge=, and =receipt= tables.
+4. Build Turso FTS/BM25 persisted generation search.
+5. Build overlay lexical search with Turso-owned Tantivy semantics or a controlled adapter.
+6. Replace agent-facing =fzf= search with selector-first lexical packets after parity gates.
+7. Move heavy search/render/router code out of =command/*=.
+8. Add =PlanTrace= and analyzer tables for Julia replay.
+9. Add compact render schema and enforce it across languages.
+10. Run codebase-memory-mcp comparison benchmarks: turn count, recall@k, false-positive-at-1, token cost, and edit-overlay freshness.
+* Open risks
+- Turso is still beta. ASP needs a backend trait and a SQLite v1 migration/control lane until Turso FTS, transactions, and multi-process behavior are proven under ASP workloads.
+- Turso FTS boundary may not expose a stable reusable Rust package for overlay search. That requires an adapter experiment before replacing =fzf=.
+- Dynamic overlays can become too complex if every dirty edit is normalized. Only replayable receipts and accepted checkpoints should be durable by default.
+- Native parser coverage is uneven across languages. Tree-sitter-compatible fallback must remain a first-class coarse structural stage, then native providers add proof where available.
+- A richer compact render can become its own dialect. It needs a schema and tests, not ad hoc text.
+* References
+- [[https://github.com/tursodatabase/turso][tursodatabase/turso]]
+- [[https://docs.turso.tech/guides/code-indexing][Turso code indexing guide]]
+- [[https://github.com/quickwit-oss/tantivy][Tantivy]]
+- [[https://github.com/DeusData/codebase-memory-mcp][codebase-memory-mcp]]
+- [[https://arxiv.org/html/2603.27277v1][Codebase-Memory paper]]
+- [[file:10.18-turso-native-client-db-engine.org][10.18 Turso native client DB Engine]]
+- [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]]

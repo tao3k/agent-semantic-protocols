@@ -17,6 +17,19 @@ const ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS: u64 = 10;
 const ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS: u64 = 250;
 const JULIA_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 
+fn refresh_source_index(root: &std::path::Path) {
+    let output = asp_command(root)
+        .args(["cache", "source-index", "refresh"])
+        .output()
+        .expect("run asp cache source-index refresh");
+    assert!(
+        output.status.success(),
+        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[derive(Clone, Copy)]
 struct FacadePerformanceProvider {
     language: &'static str,
@@ -500,7 +513,7 @@ fn search_pipe_generic_action_query_skips_source_index_inside_phase_gate() {
         &root,
         &[provider("rust", vec![provider_path.display().to_string()])],
     );
-    agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
+    refresh_source_index(&root);
 
     let output = asp_command(&root)
         .args([

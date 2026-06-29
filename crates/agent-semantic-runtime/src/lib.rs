@@ -7,7 +7,8 @@ pub mod state;
 
 pub use runtime_source::{
     RuntimeSourceCheckout, RuntimeSourceSpec, ensure_runtime_source_checkout,
-    runtime_source_checkout_dir,
+    ensure_runtime_source_checkout_in_client_cache, runtime_source_checkout_dir,
+    runtime_source_checkout_dir_in_client_cache,
 };
 pub use state::{
     ProjectRuntimeState, ProjectStatePaths, discover_project_activation_path,

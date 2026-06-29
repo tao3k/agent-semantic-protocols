@@ -75,6 +75,8 @@ CLI    → validates facts version
 A daemon bug cannot corrupt the agent contract.
 
 ** Lifecycle
+The resident =asp-explore= session is an agent-session routing handle, not a provider daemon lifecycle command. Once the root session has registered an =asp-explore= child session id, later ASP search/query work should query the host session status for that child id when the runtime exposes a status API. If the host reports active/running, the root should wait or send follow-up to the same child. If host status is unavailable, the root should resume or send follow-up to the same child session id before considering replacement. A replacement is only valid when the host reports the child session is deleted or unrecoverable, and the child should not be closed while the root session remains active.
+
 
 The semantic-language protocol does not expose daemon lifecycle commands.
 Providers may keep private developer controls for starting, stopping, or
@@ -159,6 +161,8 @@ Use prime output to choose search axes:
 Spawn read-only subagents only after selecting axes.
 
 ## Phase 3: focused multi-pipe or bounded single-view
+The one-command subagent guidance in this section applies to bounded evidence branches. It does not make the registered =asp-explore= child a one-shot worker. The root agent should keep that resident child session available, query host status when available, and resume it by session id for later ASP search/query turns.
+
 
 Subagents use focused commands, not broad searches.  Prefer one multi-pipe
 command per subagent when evidence surfaces are predictable:

@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+
+use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
 use crate::{ActivatedProvider, DecisionRoute};
 
 pub const HOOK_TRIGGER_PROMPT_FILE_NAME: &str = "hook_trigger_prompt.md";
@@ -14,8 +17,9 @@ pub(crate) fn source_access_recovery_message(
     _providers: &[&ActivatedProvider],
     routes: &[DecisionRoute],
     _semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> String {
-    default_hook_trigger_prompt_message_for_platform(platform, reason, routes)
+    default_hook_trigger_prompt_message_for_platform(platform, reason, routes, recovery_prompt)
 }
 
 pub fn hook_trigger_prompt_document() -> &'static str {
@@ -23,19 +27,23 @@ pub fn hook_trigger_prompt_document() -> &'static str {
 }
 
 pub fn default_hook_trigger_prompt_message(reason: &str, routes: &[DecisionRoute]) -> String {
-    default_hook_trigger_prompt_message_for_platform("codex", reason, routes)
+    let recovery_prompt = CompiledRecoveryPromptConfig::default();
+    default_hook_trigger_prompt_message_for_platform("codex", reason, routes, &recovery_prompt)
 }
 
 fn default_hook_trigger_prompt_message_for_platform(
     platform: &str,
     reason: &str,
     routes: &[DecisionRoute],
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> String {
+    let document = recovery_prompt.template().unwrap_or(HOOK_TRIGGER_PROMPT_MD);
     render_hook_trigger_prompt_document_for_platform(
-        HOOK_TRIGGER_PROMPT_MD,
+        document,
         platform,
         reason,
         routes,
+        recovery_prompt,
     )
 }
 
@@ -44,7 +52,22 @@ pub fn render_hook_trigger_prompt_document(
     reason: &str,
     routes: &[DecisionRoute],
 ) -> String {
-    render_hook_trigger_prompt_document_for_platform(document, "codex", reason, routes)
+    let recovery_prompt = CompiledRecoveryPromptConfig::default();
+    render_hook_trigger_prompt_document_for_platform(
+        document,
+        "codex",
+        reason,
+        routes,
+        &recovery_prompt,
+    )
+}
+
+pub fn materialize_hook_trigger_prompt_agent_flow_for_client(
+    document: &str,
+    client: &str,
+) -> String {
+    let platform = effective_recovery_platform(client);
+    document.replace("{agent_flow}", default_agent_flow_markdown(&platform))
 }
 
 fn render_hook_trigger_prompt_document_for_platform(
@@ -52,9 +75,11 @@ fn render_hook_trigger_prompt_document_for_platform(
     platform: &str,
     reason: &str,
     routes: &[DecisionRoute],
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> String {
     let managed = section_body(document, MANAGED_BEGIN, MANAGED_END).unwrap_or(document);
-    let mut rendered = render_hook_trigger_prompt_template(managed, platform, reason, routes);
+    let mut rendered =
+        render_hook_trigger_prompt_template(managed, platform, reason, routes, recovery_prompt);
     if let Some(user_extensions) = runtime_user_extensions(document) {
         rendered.push_str("\n\n");
         rendered.push_str(user_extensions);
@@ -84,21 +109,50 @@ fn render_hook_trigger_prompt_template(
     platform: &str,
     reason: &str,
     routes: &[DecisionRoute],
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> String {
+    let platform = effective_recovery_platform(platform);
+    let agent_flow = recovery_prompt
+        .agent_flow_for(&platform)
+        .unwrap_or_else(|| default_agent_flow_markdown(&platform));
     template
         .trim_matches('\n')
         .replace("{reason}", reason)
-        .replace("{agent_flow}", agent_flow_markdown(platform))
+        .replace("{agent_flow}", agent_flow)
         .replace("{routes}", &routes_markdown(routes))
 }
 
-fn agent_flow_markdown(platform: &str) -> &'static str {
+fn effective_recovery_platform(platform: &str) -> Cow<'_, str> {
+    let platform = platform.trim();
+    if !platform.is_empty()
+        && !platform.eq_ignore_ascii_case("unknown")
+        && !platform.eq_ignore_ascii_case("auto")
+    {
+        return Cow::Borrowed(platform);
+    }
+
+    match (
+        non_empty_env("CODEX_THREAD_ID"),
+        non_empty_env("CLAUDE_CODE_SESSION_ID")
+            .or_else(|| non_empty_env("CLAUDE_CODE_REMOTE_SESSION_ID")),
+    ) {
+        (Some(_), None) => Cow::Borrowed("codex"),
+        (None, Some(_)) => Cow::Borrowed("claude"),
+        _ => Cow::Borrowed(platform),
+    }
+}
+
+fn non_empty_env(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
+fn default_agent_flow_markdown(platform: &str) -> &'static str {
     if platform.eq_ignore_ascii_case("codex") {
-        "Codex: use one resident ASP search agent for this main task. If an ASP search agent thread is already open, call `send_input` on that recorded agent id with the safe route below and wait for `asp-search-subagent(role,action,evidence,missing,next,risk)`. Do not create another search agent for another `actionFrontier` item in the same main task.\nIf no ASP search agent is open, call `spawn_agent` once with `agent_type=\"asp_explorer\"` when the project role is available, otherwise fall back to `agent_type=\"explorer\"`; pass `fork_context=false` and a self-contained ASP Explorer branch prompt. Keep model and reasoning settings in Codex config. Record the returned `agent-...` id in the parent reasoning ledger and reuse it with `send_input` for later ASP searches.\nIf subagents are unavailable, run the selected safe route directly."
+        "Codex: delegate the lookup to `spawn_agent` with the ASP route below when available; otherwise run the route directly and return compact evidence only."
     } else if platform.eq_ignore_ascii_case("claude") {
-        "Claude: run the selected safe route directly in this thread. Use Claude-native helper agents only when that client exposes them for this session."
+        "Claude: run the ASP route below directly and return compact evidence only."
     } else {
-        "Run the selected safe route directly. Use a resident search agent only when the active client exposes one for this session."
+        "Run the ASP route below directly and return compact evidence only."
     }
 }
 

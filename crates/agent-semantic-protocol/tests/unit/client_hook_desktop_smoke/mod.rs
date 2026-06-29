@@ -136,10 +136,9 @@ fn write_hook_fixture(root: &Path) {
     )
     .expect("write activation");
 
-    fs::create_dir_all(root.join(".codex/agent-semantic-protocol/hooks"))
-        .expect("create config dir");
+    fs::create_dir_all(root.join(".agent-semantic-protocols/hooks")).expect("create config dir");
     fs::write(
-        root.join(".codex/agent-semantic-protocol/hooks/config.toml"),
+        root.join(".agent-semantic-protocols/hooks/config.toml"),
         CLIENT_CONFIG,
     )
     .expect("write client config");
@@ -202,8 +201,7 @@ fn spawn_hook_event(root: &Path, event: &str) -> std::process::Child {
         .arg("codex")
         .arg("--activation")
         .arg(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
-        .arg("--config")
-        .arg(root.join(".codex/agent-semantic-protocol/hooks/config.toml"))
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

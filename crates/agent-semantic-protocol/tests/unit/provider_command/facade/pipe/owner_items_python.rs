@@ -92,11 +92,11 @@ fn python_owner_items_hits_view_uses_provider_owned_fast_path() {
                 .contains("structuralSelector=python://src/pkg/service.py#item/function/fetch")
             && stdout.contains("displayLineRange=1:2")
             && stdout.contains("sourceLocatorHint=src/pkg/service.py:1:2")
-            && stdout.contains("actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code")
-            && stdout.contains("recommendedNext=A1.item-skeleton")
             && stdout.contains("reason=owner-item-skeleton-ready"),
         "{stdout}"
     );
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
         !stdout.contains("read=src/pkg/service.py:1:2"),
         "line range must not remain an executable read selector: {stdout}"

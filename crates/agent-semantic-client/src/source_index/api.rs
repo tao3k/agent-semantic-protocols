@@ -9,7 +9,7 @@ use agent_semantic_client_core::{
     CacheGenerationId, LanguageId, ProjectContext, ProviderId, ProviderRegistrySnapshot,
     ResolvedProvider, SemanticSchemaId, SemanticSchemaVersion,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbSourceIndexStats};
+use agent_semantic_client_db::{ClientDbEngine, ClientDbSourceIndexStats};
 
 use super::collect::collect_source_index_files;
 use super::config::{SOURCE_INDEX_FILE_LIMIT, SOURCE_INDEX_SCHEMA_ID, SOURCE_INDEX_SCHEMA_VERSION};
@@ -20,9 +20,10 @@ use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
 pub fn refresh_source_index(project_root: &Path) -> Result<SourceIndexRefreshReport, String> {
     let project_context = ProjectContext::resolve(project_root)?;
     project_context.require_inside_workspace(project_root)?;
-    let db_path = ClientDb::default_path(project_context.state_layout().client_cache_dir());
+    let db_engine = ClientDbEngine::resolve(project_root)?;
+    let db_path = db_engine.db_path().to_path_buf();
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
-    let mut db = ClientDb::open_or_create(&db_path)?;
+    let mut db = db_engine.open_sqlite_or_create()?;
     let schema_id = SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID);
     let schema_version = SemanticSchemaVersion::from(SOURCE_INDEX_SCHEMA_VERSION);
     let registry_fingerprint = provider_registry_fingerprint(&snapshot);
@@ -94,7 +95,8 @@ pub fn refresh_runtime_source_index(
 ) -> Result<SourceIndexRefreshReport, String> {
     let project_context = ProjectContext::resolve(project_root)?;
     project_context.require_inside_workspace(project_root)?;
-    let client_cache_dir = project_context.state_layout().client_cache_dir();
+    let db_engine = ClientDbEngine::resolve(project_root)?;
+    let client_cache_dir = db_engine.client_dir();
     let checkout_root = fs::canonicalize(checkout_root).map_err(|error| {
         format!(
             "failed to resolve runtime source checkout {}: {error}",
@@ -123,8 +125,8 @@ pub fn refresh_runtime_source_index(
             language_id
         ));
     }
-    let db_path = ClientDb::default_path(client_cache_dir);
-    let mut db = ClientDb::open_or_create(&db_path)?;
+    let db_path = db_engine.db_path().to_path_buf();
+    let mut db = db_engine.open_sqlite_or_create()?;
     let schema_id = SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID);
     let schema_version = SemanticSchemaVersion::from(SOURCE_INDEX_SCHEMA_VERSION);
     let registry_fingerprint =

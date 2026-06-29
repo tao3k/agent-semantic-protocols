@@ -1,7 +1,9 @@
-use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
+use agent_semantic_client_core::{
+    ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId, state_core::ResolvedState,
+};
 use agent_semantic_hook::{build_default_activation, write_activation};
 
-use crate::test_support::CACHE_TEST_LOCK;
+use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
 
 #[test]
 fn cached_activation_loader_refreshes_stale_provider_command_prefix() {
@@ -22,18 +24,12 @@ fn cached_activation_loader_refreshes_stale_provider_command_prefix() {
     write_activation(&activation_path, &activation).expect("write initial activation");
     write_python_provider_config(&root, "./provider-v2");
 
-    let previous_activation_path = std::env::var_os(ASP_PROVIDER_ACTIVATION_PATH_ENV);
-    let previous_cache_home = std::env::var_os("PRJ_CACHE_HOME");
-    unsafe {
-        std::env::set_var(ASP_PROVIDER_ACTIVATION_PATH_ENV, &activation_path);
-        std::env::set_var("PRJ_CACHE_HOME", root.join(".cache-home"));
-    }
+    let _activation_path = EnvVarGuard::set(ASP_PROVIDER_ACTIVATION_PATH_ENV, &activation_path);
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
+    let _ignored_cache_home = EnvVarGuard::set("PRJ_CACHE_HOME", root.join(".cache-home"));
 
     let snapshot = crate::activation_cache::load_provider_registry_snapshot(&root, &root, true)
         .expect("snapshot");
-
-    restore_env_var(ASP_PROVIDER_ACTIVATION_PATH_ENV, previous_activation_path);
-    restore_env_var("PRJ_CACHE_HOME", previous_cache_home);
 
     let provider = snapshot
         .provider_for_language(&LanguageId::from("python"))
@@ -49,15 +45,15 @@ fn cached_activation_loader_refreshes_stale_provider_command_prefix() {
     let rewritten = std::fs::read_to_string(&activation_path).expect("read rewritten activation");
     assert!(rewritten.contains(&expected_prefix));
     assert!(!rewritten.contains(&provider_v1.display().to_string()));
-    let db_path = root
-        .join(".cache-home")
-        .join("agent-semantic-protocol")
-        .join("client")
-        .join("client.sqlite3");
+    let db_path = ResolvedState::resolve(&root)
+        .expect("state core")
+        .paths
+        .client_db_path;
     assert!(
         db_path.is_file(),
         "provider selection cache DB should exist"
     );
+    assert!(!root.join(".cache-home").exists());
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -89,15 +85,5 @@ fn write_executable(path: &std::path::Path) {
             .permissions();
         permissions.set_mode(0o755);
         std::fs::set_permissions(path, permissions).expect("set executable permissions");
-    }
-}
-
-fn restore_env_var(name: &str, previous: Option<std::ffi::OsString>) {
-    unsafe {
-        if let Some(value) = previous {
-            std::env::set_var(name, value);
-        } else {
-            std::env::remove_var(name);
-        }
     }
 }

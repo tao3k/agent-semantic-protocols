@@ -37,7 +37,20 @@ pub fn runtime_source_checkout_dir(
     version_key: &str,
 ) -> Result<PathBuf, String> {
     let state = project_runtime_state(project_root)?;
-    let mut dir = state.client_cache_dir;
+    runtime_source_checkout_dir_in_client_cache(
+        state.client_cache_dir,
+        state_namespace,
+        version_key,
+    )
+}
+
+/// Resolve a runtime source checkout below an already-resolved client cache directory.
+pub fn runtime_source_checkout_dir_in_client_cache(
+    client_cache_dir: impl AsRef<Path>,
+    state_namespace: &str,
+    version_key: &str,
+) -> Result<PathBuf, String> {
+    let mut dir = client_cache_dir.as_ref().to_path_buf();
     for segment in state_namespace.split('/') {
         dir.push(safe_path_segment(segment)?);
     }
@@ -52,6 +65,26 @@ pub fn ensure_runtime_source_checkout(
 ) -> Result<RuntimeSourceCheckout, String> {
     let checkout_dir =
         runtime_source_checkout_dir(project_root, &spec.state_namespace, &spec.checkout)?;
+    ensure_runtime_source_checkout_at(checkout_dir, spec)
+}
+
+/// Clone or fetch a runtime source below an already-resolved client cache directory.
+pub fn ensure_runtime_source_checkout_in_client_cache(
+    client_cache_dir: impl AsRef<Path>,
+    spec: &RuntimeSourceSpec,
+) -> Result<RuntimeSourceCheckout, String> {
+    let checkout_dir = runtime_source_checkout_dir_in_client_cache(
+        client_cache_dir,
+        &spec.state_namespace,
+        &spec.checkout,
+    )?;
+    ensure_runtime_source_checkout_at(checkout_dir, spec)
+}
+
+fn ensure_runtime_source_checkout_at(
+    checkout_dir: PathBuf,
+    spec: &RuntimeSourceSpec,
+) -> Result<RuntimeSourceCheckout, String> {
     let parent = checkout_dir.parent().ok_or_else(|| {
         format!(
             "runtime source path has no parent: {}",

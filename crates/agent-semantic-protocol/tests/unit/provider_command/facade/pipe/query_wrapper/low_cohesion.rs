@@ -35,13 +35,13 @@ fn asp_fd_query_avoids_owner_items_when_package_cohesion_is_low() {
             && stdout.contains("risk=single-flat-or-recall,broad-scope,low-package-cohesion"),
         "{stdout}"
     );
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
     assert!(
-        !stdout.contains("recommendedNext=A1.owner-items"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("actionFrontier=A1.scoped-rg-query,A2.owner-items")
-            && stdout.contains("recommendedNext=A1.scoped-rg-query"),
+        stdout
+            .contains("nextCommand=asp rg -query 'scope|gate|query' -query 'wrapper|cache|index'"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

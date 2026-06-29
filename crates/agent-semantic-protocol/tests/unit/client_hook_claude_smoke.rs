@@ -47,12 +47,178 @@ fn claude_install_writes_project_settings_hooks() {
         .join("agent-semantic-protocol")
         .join("hooks")
         .join("hook_trigger_prompt.md");
-    let prompt = std::fs::read_to_string(&prompt_path).expect("read hook trigger prompt");
-    assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN"));
-    assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-BEGIN"));
-    assert!(prompt.contains("{agent_flow}"));
-    assert!(!prompt.contains("spawn_agent"));
-    assert!(!prompt.contains("asp-search-subagent"));
+    assert!(
+        !prompt_path.exists(),
+        "hook trigger prompt is hook-crate system policy, not an installed user/project file"
+    );
+}
+
+#[test]
+fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000001",
+        "019f126d-0000-7000-8000-000000000101",
+    );
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000001")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(decision["reasonKind"].as_str(), Some("raw-broad-search"));
+    assert_eq!(
+        decision["fields"]["agentSessionRoute"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionLifecycle"].as_str(),
+        Some("resident")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionStatusCheck"].as_str(),
+        Some("query-host-status-then-resume")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionAction"].as_str(),
+        Some("reuse-resident-child")
+    );
+    assert_eq!(
+        decision["fields"]["childSessionId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000101")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionResumeId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000101")
+    );
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("Reuse or resume the registered resident asp-explore child session"));
+    assert!(message.contains("do not spawn another asp-explore session"));
+    assert!(message.contains("do not close it after the result"));
+    assert!(message.contains("query the host session status"));
+    assert!(message.contains("If the host reports active/running"));
+    assert!(message.contains("Only create a replacement when the host reports"));
+    assert!(message.contains("019f126d-0000-7000-8000-000000000101"));
+}
+
+#[test]
+fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000002")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["fields"]["agentSessionRoute"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionLifecycle"].as_str(),
+        Some("resident")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionStatusCheck"].as_str(),
+        Some("query-host-status-then-resume")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionAction"].as_str(),
+        Some("start-resident-child")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionBootstrap"].as_str(),
+        Some("session-start-reminder")
+    );
+    assert_eq!(
+        decision["fields"]["rootSessionId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000002")
+    );
+    assert!(decision["fields"].get("childSessionId").is_none());
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("ASP session-start bootstrap required"));
+    assert!(message.contains("no registered active asp-explore child session"));
+    assert!(message.contains("--child-session-id <child-session-id>"));
+    assert!(message.contains("do not create duplicate asp-explore sessions"));
+    assert!(message.contains("After registration, retry the original tool command"));
+}
+
+#[test]
+fn codex_main_session_requires_asp_explore_before_non_registry_tool() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("cargo test -p agent-semantic-protocol codex_"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000004")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["fields"]["agentSessionBootstrap"].as_str(),
+        Some("session-start-reminder")
+    );
+    assert_eq!(
+        decision["fields"]["rootSessionId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000004")
+    );
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("ASP session-start bootstrap required"));
+    assert!(message.contains("After registration, retry the original tool command"));
+}
+
+#[test]
+fn codex_main_session_allows_agent_session_register_bootstrap() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload(
+            "asp agent session register --name asp-explore --child-session-id child --role asp-explore",
+        ),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000005")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("allow"));
+}
+
+#[test]
+fn codex_asp_explore_session_can_run_asp_query() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000003",
+        "019f126d-0000-7000-8000-000000000103",
+    );
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        &[
+            ("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000103"),
+            (
+                "ASP_ROOT_SESSION_ID",
+                "019f126d-0000-7000-8000-000000000003",
+            ),
+        ],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("allow"));
 }
 
 #[test]
@@ -76,8 +242,14 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
     assert!(root.join(".codex/agents/asp-explorer.toml").is_file());
     let codex_agent =
         std::fs::read_to_string(root.join(".codex/agents/asp-explorer.toml")).expect("read agent");
-    assert!(codex_agent.contains("fork_context=false"));
+    assert!(codex_agent.contains("description = \"ASP search/query evidence explorer.\""));
+    assert!(codex_agent.contains("[asp-search-subagent]"));
+    assert!(!codex_agent.contains("fork_context=false"));
     assert!(!codex_agent.contains("fork_turns"));
+    assert!(!codex_agent.contains("rootSessionId"));
+    assert!(!codex_agent.contains("childSessionId"));
+    assert!(!codex_agent.contains("CODEX_THREAD_ID"));
+    assert!(!codex_agent.contains("ASP_ROOT_SESSION_ID"));
     assert!(
         !root
             .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
@@ -121,7 +293,9 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
         }),
     );
     let message = decision["message"].as_str().expect("decision message");
-    assert!(message.contains("spawn_agent"), "{message}");
+    assert!(message.starts_with("ASP denied source access (`direct-source-read`)"));
+    assert!(message.contains("Use asp-explore"), "{message}");
+    assert!(message.contains("recoveryRef="), "{message}");
 }
 
 #[test]
@@ -186,11 +360,10 @@ fn claude_platform_response_uses_hook_specific_permission_decision() {
     let reason = response["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission reason");
-    assert!(reason.contains("ASP hook blocked"), "{reason}");
+    assert!(reason.contains("ASP denied"), "{reason}");
     assert!(reason.contains("direct-source-read"), "{reason}");
-    assert!(reason.contains("Claude:"), "{reason}");
-    assert!(reason.contains("asp rust query --selector"));
-    assert!(reason.contains("--code"));
+    assert!(reason.contains("Use asp-explore"), "{reason}");
+    assert!(reason.contains("recoveryRef="), "{reason}");
     assert!(!reason.contains("spawn_agent"), "{reason}");
     assert!(!reason.contains("asp_explorer"), "{reason}");
     assert!(response.get("agentHookDecision").is_none());
@@ -222,8 +395,8 @@ fn claude_platform_response_compacts_repeated_denied_source_lane() {
     let reason = second["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission reason");
-    assert!(reason.starts_with("ASP hook already denied `direct-source-read`"));
-    assert!(reason.contains("Follow the previous recovery route"));
+    assert!(reason.starts_with("ASP denied source access again (`direct-source-read`)"));
+    assert!(reason.contains("Use the active recovery lane"));
     assert!(!reason.contains("## Agent Flow"));
     let context = second["hookSpecificOutput"]["additionalContext"]
         .as_str()
@@ -273,10 +446,9 @@ fn claude_platform_response_compacts_cross_action_source_access_lane() {
     let first_reason = first["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("first permission reason");
-    assert!(
-        first_reason.contains("Use the language harness"),
-        "{first_reason}"
-    );
+    assert!(first_reason.starts_with("ASP denied source access (`raw-broad-search`)"));
+    assert!(first_reason.contains("Use asp-explore"), "{first_reason}");
+    assert!(first_reason.contains("recoveryRef="), "{first_reason}");
     let first_context = first["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("first decision context");
@@ -285,7 +457,7 @@ fn claude_platform_response_compacts_cross_action_source_access_lane() {
         .as_str()
         .expect("second permission reason");
     assert!(
-        second_reason.starts_with("ASP hook already denied `direct-source-read`"),
+        second_reason.starts_with("ASP denied source access again (`direct-source-read`)"),
         "{second_reason}"
     );
     let context = second["hookSpecificOutput"]["additionalContext"]
@@ -423,6 +595,7 @@ fn install_codex_hooks(root: &Path, codex_home: &Path) -> String {
         .arg(root)
         .env("PATH", prepend_path(&root.join(".bin")))
         .env("CODEX_HOME", codex_home)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")
         .output()
         .expect("run asp install plugin");
@@ -436,6 +609,14 @@ fn install_codex_hooks(root: &Path, codex_home: &Path) -> String {
 }
 
 fn run_codex_pre_tool_decision(root: &Path, payload: Value) -> Value {
+    run_codex_pre_tool_decision_with_env(root, payload, &[])
+}
+
+fn run_codex_pre_tool_decision_with_env(
+    root: &Path,
+    payload: Value,
+    envs: &[(&str, &str)],
+) -> Value {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
         .args([
@@ -443,10 +624,13 @@ fn run_codex_pre_tool_decision(root: &Path, payload: Value) -> Value {
         ])
         .arg("--activation")
         .arg(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
-        .arg("--config")
-        .arg(root.join(".codex/agent-semantic-protocol/hooks/config.toml"))
         .current_dir(root)
-        .env_remove("PRJ_CACHE_HOME")
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME");
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -468,6 +652,43 @@ fn run_codex_pre_tool_decision(root: &Path, payload: Value) -> Value {
     serde_json::from_slice(&output.stdout).expect("parse hook stdout")
 }
 
+fn register_asp_explore_session(root: &Path, root_session_id: &str, child_session_id: &str) {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--name",
+            "asp-explore",
+            "--child-session-id",
+            child_session_id,
+            "--role",
+            "asp-explore",
+        ])
+        .current_dir(root)
+        .env("PATH", prepend_path(&root.join(".bin")))
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("register asp-explore session");
+    assert!(
+        output.status.success(),
+        "register asp-explore session failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn codex_asp_query_payload(command: &str) -> Value {
+    json!({
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": command
+        }
+    })
+}
+
 fn run_claude_pre_tool_decision(root: &Path, payload: Value, extra_args: &[&str]) -> Value {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
@@ -475,9 +696,8 @@ fn run_claude_pre_tool_decision(root: &Path, payload: Value, extra_args: &[&str]
         .args(extra_args)
         .arg("--activation")
         .arg(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
-        .arg("--config")
-        .arg(root.join(".codex/agent-semantic-protocol/hooks/config.toml"))
         .current_dir(root)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

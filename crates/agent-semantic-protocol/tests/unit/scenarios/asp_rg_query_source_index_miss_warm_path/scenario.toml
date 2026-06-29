@@ -1,0 +1,15 @@
+id = "asp-rg-query-source-index-miss-warm-path"
+title = "ASP rg query miss stops at Rust SQL SourceIndex"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-RG-SOURCE-INDEX-MISS-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",
+]
+agent_goal = "After SourceIndex refresh, asp rg -query miss should return a compact SourceIndex miss receipt, skip native finder and provider process work, and guide the agent to refine or refresh instead of scanning."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp rg -query missing_symbol --workspace .",
+  "sourceTrace=sourceIndex:miss",
+  "finder:skipped",
+]
+inputs = "inputs"
+expected = "expected"

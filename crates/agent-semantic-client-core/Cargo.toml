@@ -6,6 +6,7 @@ description = "Core request, route, cache, and receipt contracts for the agent s
 license = "MIT"
 
 [dependencies]
+sha2 = "0.10"
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }

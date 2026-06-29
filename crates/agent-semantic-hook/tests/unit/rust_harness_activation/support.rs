@@ -139,8 +139,7 @@ pub(super) fn write_root_owned_rust_activation(root: &std::path::Path) -> PathBu
 
 pub(super) fn write_default_client_hook_config(root: &std::path::Path) -> PathBuf {
     let path = root
-        .join(".codex")
-        .join("agent-semantic-protocol")
+        .join(".agent-semantic-protocols")
         .join("hooks")
         .join("config.toml");
     std::fs::create_dir_all(path.parent().expect("client hook config parent"))

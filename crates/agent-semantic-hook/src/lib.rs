@@ -13,6 +13,8 @@ mod event_state;
 mod executable;
 mod hook_config;
 mod hook_config_agent_org;
+mod hook_config_global;
+mod hook_recovery_prompt;
 mod profile_registry;
 mod protocol;
 mod protocol_activation;
@@ -32,7 +34,8 @@ pub use crate::activation_store::{
 pub use classifier::{
     HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, classify_hook,
     classify_hook_with_config, default_hook_trigger_prompt_message, hook_trigger_prompt_document,
-    merge_hook_trigger_prompt_document, render_hook_trigger_prompt_document,
+    materialize_hook_trigger_prompt_agent_flow_for_client, merge_hook_trigger_prompt_document,
+    render_hook_trigger_prompt_document,
 };
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
@@ -51,6 +54,7 @@ pub use hook_config::{
     default_client_config_template_for_source_extensions, load_client_config,
     load_client_config_for_project,
 };
+pub use hook_config_global::default_global_client_config_path;
 pub use profile_registry::remove_retired_codex_hook_cache_files;
 pub use protocol::{
     ActionPolicy, AgentHookError, CommandTemplate, DecisionKind, DecisionRoute, DecisionRouteKind,

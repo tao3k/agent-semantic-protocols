@@ -53,17 +53,38 @@ fn cli_hook_replay_compacts_repeated_source_dump_lane() {
 
     assert_eq!(first["decision"], "deny");
     assert_eq!(first["fields"]["denyReplay"], "record");
+    assert!(
+        first["fields"]["recoveryRef"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("source-access:"))
+    );
+    let first_message = first["message"].as_str().expect("first replay message");
+    assert!(first_message.starts_with("ASP denied source access (`bulk-source-dump`)"));
+    assert!(first_message.contains("Use asp-explore"), "{first_message}");
+    assert!(
+        first_message.contains("recoveryRef=source-access:"),
+        "{first_message}"
+    );
     assert_eq!(second["decision"], "deny");
     assert_eq!(second["reasonKind"], "bulk-source-dump");
     assert_eq!(second["fields"]["denyReplay"], "repeated");
+    assert_eq!(
+        first["fields"]["recoveryRef"],
+        second["fields"]["recoveryRef"]
+    );
     let message = second["message"].as_str().expect("replay message");
-    assert!(message.starts_with("ASP hook already denied `bulk-source-dump`"));
-    assert!(message.contains("Follow the previous recovery route"));
+    assert!(message.starts_with("ASP denied source access again (`bulk-source-dump`)"));
+    assert!(message.contains("recoveryRef=source-access:"));
+    assert!(!message.contains("Follow the previous recovery route"));
     assert!(!message.contains("## Agent Flow"));
     assert_eq!(second["routes"][0]["argv"][4], "src/lib.rs:1:40");
 
     let event = last_hook_event(&root);
     assert_eq!(event["fields"]["denyReplay"], "repeated");
+    assert_eq!(
+        event["fields"]["recoveryRef"],
+        second["fields"]["recoveryRef"]
+    );
     assert!(
         event["denyReplayKey"]
             .as_str()

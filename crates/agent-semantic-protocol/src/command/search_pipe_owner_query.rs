@@ -24,14 +24,10 @@ pub(super) fn render_owner_query_frontier(
     };
     let display_owner = display_path(locator_root, &owner_path);
     let item_matches = find_owner_query_matches(language_id, &owner_path, query);
-    let mut rendered = String::from(
-        "[search-reasoning] q=owner-query alg=asp-fast-owner-query-v1\n\
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
-aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
-    );
+    let mut rendered = String::new();
     let _ = writeln!(
         rendered,
-        "Q=query:term({query})!query;T=test:path({display_owner})!tests;O=owner:path({display_owner})!owner;"
+        "[search-owner] q={query} owner={display_owner} selector=items alg=asp-fast-owner-query-v1"
     );
     let language = if language_id.is_empty() {
         "code"
@@ -47,57 +43,42 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
             term.replace(char::is_whitespace, "-")
         )
     };
-    for (index, item_match) in item_matches.iter().enumerate() {
-        let item_id = numbered_id("I", index);
+    for item_match in &item_matches {
         let structural_selector = structural_selector_for(item_match.kind, &item_match.term);
         let source_locator_hint =
             format!("{}:{}:{}", display_owner, item_match.start, item_match.end);
+        let item_label = item_label(&item_matches, item_match);
         let _ = writeln!(
             rendered,
-            "{item_id}=item:symbol({})@{structural_selector}!syntax;",
-            item_match.term
+            "{item_label}=item:symbol({})@{}!syntax",
+            item_match.term, structural_selector
         );
         if let Some(pattern) =
             owner_query_tree_sitter_pattern(language_id, item_match.kind, &item_match.term)
         {
             let _ = writeln!(
                 rendered,
-                "syntax {item_id} selector={structural_selector} displayLineRange={}:{} sourceLocatorHint={source_locator_hint} pattern='{pattern}'",
-                item_match.start, item_match.end
+                "syntax {item_label} selector={} displayLineRange={}:{} sourceLocatorHint={} pattern='{}'",
+                structural_selector, item_match.start, item_match.end, source_locator_hint, pattern
             );
         }
+        let tree_sitter =
+            owner_query_tree_sitter_pattern(language_id, item_match.kind, &item_match.term)
+                .map(|_| " treeSitter=available")
+                .unwrap_or("");
+        let _ = writeln!(
+            rendered,
+            "|item symbol={} kind={} structuralSelector={} displayLineRange={}:{} sourceLocatorHint={} reason=owner-item-skeleton-ready{}",
+            item_match.term,
+            item_match.kind,
+            structural_selector,
+            item_match.start,
+            item_match.end,
+            source_locator_hint,
+            tree_sitter
+        );
     }
-    let mut edge_targets = vec![
-        "Q:matches".to_string(),
-        "T:covers".to_string(),
-        "O:selects".to_string(),
-    ];
-    edge_targets.extend(
-        numbered_ids("I", item_matches.len())
-            .into_iter()
-            .map(|id| format!("{id}:contains")),
-    );
-    let _ = writeln!(rendered, "G>{{{}}}", edge_targets.join(","));
-    let mut rank = vec!["Q".to_string(), "T".to_string(), "O".to_string()];
-    rank.extend(numbered_ids("I", item_matches.len()));
-    let frontier = rank
-        .iter()
-        .map(|id| match id.as_str() {
-            "Q" => "Q.query".to_string(),
-            "T" => "T.tests".to_string(),
-            "O" => "O.owner".to_string(),
-            other => format!("{other}.syntax"),
-        })
-        .collect::<Vec<_>>();
-    let _ = writeln!(
-        rendered,
-        "rank={} frontier={}",
-        rank.join(","),
-        frontier.join(",")
-    );
     if item_matches.is_empty() {
-        let _ = writeln!(rendered, "actionFrontier=A1.scoped-rg-query");
-        let _ = writeln!(rendered, "recommendedNext=A1.scoped-rg-query");
         let _ = writeln!(
             rendered,
             "nextCommand=asp rg -query {} {}",
@@ -109,11 +90,6 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         let structural_selector = structural_selector_for(item_match.kind, &item_match.term);
         let _ = writeln!(
             rendered,
-            "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code"
-        );
-        let _ = writeln!(rendered, "recommendedNext=A1.item-skeleton");
-        let _ = writeln!(
-            rendered,
             "nextCommand=asp {language} query --from-hook item-skeleton --selector {} --workspace . --names-only",
             shell_arg(&structural_selector)
         );
@@ -123,6 +99,18 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
     }
     rendered.push_str("entries=owner-query(O,Q=>items+tests+dependency-usage)\n");
     rendered
+}
+
+fn item_label(matches: &[OwnerQueryMatch], item_match: &OwnerQueryMatch) -> String {
+    let index = matches
+        .iter()
+        .position(|candidate| std::ptr::eq(candidate, item_match))
+        .unwrap_or(0);
+    if index == 0 {
+        "I".to_string()
+    } else {
+        format!("I{}", index + 1)
+    }
 }
 
 fn shell_arg(value: &str) -> String {
@@ -797,16 +785,4 @@ fn display_path(project_root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-fn numbered_ids(prefix: &str, count: usize) -> Vec<String> {
-    (0..count).map(|index| numbered_id(prefix, index)).collect()
-}
-
-fn numbered_id(prefix: &str, index: usize) -> String {
-    if index == 0 {
-        prefix.to_string()
-    } else {
-        format!("{prefix}{}", index + 1)
-    }
 }

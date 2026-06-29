@@ -1,6 +1,6 @@
 //! Language provider command facade.
 
-use super::document_provider;
+use super::document_language_facade;
 use super::graph::GraphTurboReceiptRequest;
 use agent_semantic_hook::{
     HookRuntime, default_activation_path, discover_activation_path, load_or_sync_activation,
@@ -143,10 +143,17 @@ fn suggested_language_facade_for_request(
 
 fn load_activation_for_language_message() -> Option<HookRuntime> {
     let cwd = env::current_dir().ok()?;
-    let activation_path =
-        discover_activation_path(&cwd).unwrap_or_else(|| default_activation_path(&cwd));
+    let activation_path = provider_activation_path(&cwd);
     let text = fs::read_to_string(activation_path).ok()?;
     parse_hook_activation(&text).ok()
+}
+
+fn provider_activation_path(invocation_root: &Path) -> PathBuf {
+    if env::var_os("PRJ_CACHE_HOME").is_some() {
+        return default_activation_path(invocation_root);
+    }
+    discover_activation_path(invocation_root)
+        .unwrap_or_else(|| default_activation_path(invocation_root))
 }
 
 pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
@@ -237,8 +244,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         return Err("--frontier-receipt-out is supported only for search commands".to_string());
     }
 
-    if document_provider::is_document_language(language_id) && is_help(&command_args) {
-        return document_provider::run_language_command(language_id, &command_args);
+    if document_language_facade::is_document_language(language_id) && is_help(&command_args) {
+        return document_language_facade::run_document_language_help(language_id, &command_args);
     }
     if is_help(&command_args) {
         println!("{}", provider_usage());
@@ -250,39 +257,12 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let discovered_activation_path = discover_activation_path(&invocation_root);
-    if document_provider::is_document_language(language_id) {
-        let activation_root = discovered_activation_path
-            .as_deref()
-            .and_then(|path| {
-                load_activation(path)
-                    .ok()
-                    .map(|runtime| activation_project_root(path, &runtime.project_root))
-            })
-            .unwrap_or_else(|| invocation_root.clone());
-        let config = AspConfig::load(&invocation_root, &activation_root);
-        if !config.language_enabled(language_id) {
-            return Err(format!("language `{language_id}` is disabled by asp.toml"));
-        }
-        if is_search_pipe_command(&command_args) {
-            let cache_home = client_backend_cache_home(&activation_root, &activation_root)?;
-            return run_asp_fast_search_command(
-                &command_args,
-                FastSearchContext {
-                    language_id,
-                    project_root: &activation_root,
-                    locator_root: &invocation_root,
-                    cache_home: &cache_home,
-                    config: &config,
-                    provider_context: None,
-                    frontier_receipt: frontier_receipt.as_ref(),
-                },
-            );
-        }
-        return document_provider::run_language_command_with_config(
+    if document_language_facade::is_document_language(language_id) {
+        return document_language_facade::run_document_language_command(
             language_id,
             &command_args,
-            &config,
+            &invocation_root,
+            frontier_receipt.as_ref(),
         );
     }
     validate_provider_command(&command_args)?;
@@ -300,8 +280,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         return result;
     }
 
-    let activation_path =
-        discovered_activation_path.unwrap_or_else(|| default_activation_path(&invocation_root));
+    let activation_path = provider_activation_path(&invocation_root);
     let runtime = load_activation(&activation_path)?;
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
     let config = AspConfig::load(&invocation_root, &activation_root);
@@ -338,7 +317,23 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         .providers
         .iter()
         .find(|provider| provider.language_id == language_id)
-        .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
+        .ok_or_else(|| {
+            let active_languages = runtime
+                .providers
+                .iter()
+                .map(|provider| provider.language_id.as_str())
+                .collect::<Vec<_>>()
+                .join("|");
+            format!(
+                "no activated provider for language {language_id}; activation={}; activeLanguages={}",
+                activation_path.display(),
+                if active_languages.is_empty() {
+                    "none".to_string()
+                } else {
+                    active_languages
+                }
+            )
+        })?;
     if is_search_dependency_seed(&provider_args) {
         if !provider.search_capabilities.dependency_topology {
             return run_search_dependency_seed_command(
@@ -684,11 +679,6 @@ fn is_version(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some("version" | "--version" | "-V")
     )
-}
-
-fn is_search_pipe_command(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("search"))
-        && matches!(args.get(1).map(String::as_str), Some("pipe"))
 }
 
 fn fast_search_needs_provider_context(

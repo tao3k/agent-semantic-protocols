@@ -1,4 +1,5 @@
 use crate::cache_replay::{load_replay_artifact, structured_evidence_artifact_path};
+use crate::test_support::{artifacts_root_from_cache_root, v2_cache_root};
 use agent_semantic_client_core::{
     CacheArtifactId, CacheExportMethod, ClientCacheFileHash, ClientMethod, ClientRequest,
     LanguageId, ProviderId, SemanticSchemaId,
@@ -10,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn structured_evidence_artifacts_use_schema_owned_json_families() {
-    let cache_file = Path::new("/tmp/project/.cache/agent-semantic-protocol/client.sqlite");
+    let cache_file = Path::new("/tmp/project/workspaces/workspace/live/client");
 
     for artifact_id in [
         "relation-plan/owner-flow.json",
@@ -46,7 +47,7 @@ fn structured_evidence_artifacts_reject_prompt_output_and_unsafe_paths() {
 #[test]
 fn structured_evidence_artifacts_prevent_prompt_stdout_replay() {
     let root = temp_root("structured-evidence-no-prompt-replay");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     write_source(&root);
     write_prompt_output_artifact(&root, "safe prompt stdout\n");
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
@@ -119,7 +120,7 @@ fn write_source(root: &Path) {
 }
 
 fn write_prompt_output_artifact(root: &Path, stdout: &str) {
-    let prompt_dir = root.join("artifacts/prompt-output");
+    let prompt_dir = artifacts_root_from_cache_root(&v2_cache_root(root)).join("prompt-output");
     std::fs::create_dir_all(&prompt_dir).expect("create prompt artifact dir");
     std::fs::write(prompt_dir.join("stale.txt"), stdout).expect("write prompt artifact");
 }

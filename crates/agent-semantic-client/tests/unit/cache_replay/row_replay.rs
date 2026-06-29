@@ -1,4 +1,5 @@
 use crate::cache_replay::load_replay_artifact;
+use crate::test_support::{artifacts_root_from_cache_root, v2_cache_root};
 use agent_semantic_client_core::{
     CacheArtifactId, CacheExportMethod, ClientCacheFileHash, ClientCacheGeneration,
     ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderId, SemanticSchemaId,
@@ -12,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[test]
 fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing() {
     let root = temp_root("syntax-row-replay");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     let db_path = ClientDb::default_path(&cache_root);
     write_syntax_replay_sources(&root);
     let generation = syntax_generation(&root);
@@ -69,7 +70,7 @@ fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing
 #[test]
 fn semantic_tree_sitter_query_row_replay_rejects_stale_source_hashes() {
     let root = temp_root("syntax-row-replay-stale");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     let db_path = ClientDb::default_path(&cache_root);
     write_syntax_replay_sources(&root);
     let generation = syntax_generation(&root);
@@ -100,7 +101,7 @@ fn semantic_tree_sitter_query_row_replay_rejects_stale_source_hashes() {
 #[test]
 fn semantic_tree_sitter_query_row_replay_does_not_fallback_to_prompt_stdout() {
     let root = temp_root("syntax-row-replay-no-prompt-fallback");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     let db_path = ClientDb::default_path(&cache_root);
     write_syntax_replay_sources(&root);
     let generation = syntax_generation(&root);
@@ -135,7 +136,7 @@ fn semantic_tree_sitter_query_row_replay_does_not_fallback_to_prompt_stdout() {
 #[test]
 fn prompt_output_replay_rejects_obsolete_compact_graph_grammar() {
     let root = temp_root("prompt-output-obsolete-graph");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
         "fzf".to_string(),
@@ -162,7 +163,7 @@ rank=Q frontier=Q.fzf\n",
 #[test]
 fn prompt_output_replay_rejects_stale_generation_file_hashes() {
     let root = temp_root("prompt-output-stale-generation-hash");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
         "fzf".to_string(),
@@ -183,7 +184,7 @@ fn prompt_output_replay_rejects_stale_generation_file_hashes() {
 #[test]
 fn hook_direct_source_read_prompt_output_artifact_does_not_replay() {
     let root = temp_root("hook-direct-source-read-prompt-replay");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Query, &root).with_forwarded_args(vec![
         "--from-hook".to_string(),
@@ -213,7 +214,7 @@ fn hook_direct_source_read_prompt_output_artifact_does_not_replay() {
 #[test]
 fn search_packet_replay_prefers_cached_search_stdout_artifact() {
     let root = temp_root("search-output-replay");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
         "fzf".to_string(),
@@ -489,13 +490,14 @@ fn temp_root(name: &str) -> std::path::PathBuf {
 }
 
 fn write_prompt_output_artifact(root: &std::path::Path, stdout: &str) {
-    let prompt_dir = root.join("artifacts/prompt-output");
+    let prompt_dir = artifacts_root_from_cache_root(&v2_cache_root(root)).join("prompt-output");
     std::fs::create_dir_all(&prompt_dir).expect("create prompt artifact dir");
     std::fs::write(prompt_dir.join("stale.txt"), stdout).expect("write prompt artifact");
 }
 
 fn write_search_output_artifact(root: &std::path::Path, stdout: &str) {
-    let search_output_dir = root.join("artifacts/search-output");
+    let search_output_dir =
+        artifacts_root_from_cache_root(&v2_cache_root(root)).join("search-output");
     std::fs::create_dir_all(&search_output_dir).expect("create search output artifact dir");
     std::fs::write(search_output_dir.join("cached.txt"), stdout)
         .expect("write search output artifact");

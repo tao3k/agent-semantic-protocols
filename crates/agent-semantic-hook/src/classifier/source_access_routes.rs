@@ -5,6 +5,7 @@ use crate::command::{
     looks_like_command_transcript, path_like_tokens, raw_search_plan, search_query_route,
     search_query_route_for_selector, selector_query_route,
 };
+use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
 use crate::source_selector::source_selector_base;
 use crate::{
     ActivatedProvider, DecisionRoute, DecisionRouteKind, HookDecision, HookRuntime,
@@ -22,6 +23,7 @@ pub(super) fn classify_direct_read_action(
     event: &str,
     action: &ToolAction,
     semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
     fn directory_path_matches_provider(
         project_root: &str,
@@ -142,6 +144,7 @@ pub(super) fn classify_direct_read_action(
             &providers,
             &routes,
             semantic_ast_patch_enabled,
+            recovery_prompt,
         );
         return Some(deny_for_action(
             platform,
@@ -179,6 +182,7 @@ pub(super) fn classify_direct_read_action(
         event,
         action,
         semantic_ast_patch_enabled,
+        recovery_prompt,
         collect_direct_read_matches(registry, direct_read_selectors.iter().map(String::as_str)),
     )
 }
@@ -191,6 +195,7 @@ pub(super) fn classify_source_read_command(
     command: &str,
     tokens: &[String],
     semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
     let intent = command_intent(tokens);
     if intent == CommandIntent::VcsDiffReview {
@@ -211,6 +216,7 @@ pub(super) fn classify_source_read_command(
                 matches,
                 Some(inline_source_read_paths),
                 semantic_ast_patch_enabled,
+                recovery_prompt,
             ));
         }
     }
@@ -222,6 +228,7 @@ pub(super) fn classify_source_read_command(
             event,
             action,
             semantic_ast_patch_enabled,
+            recovery_prompt,
             collect_direct_read_matches(registry, action_path_selectors(action, tokens)),
         ),
         CommandIntent::ContentDump => {
@@ -239,6 +246,7 @@ pub(super) fn classify_source_read_command(
                 matches,
                 Some(subject_paths),
                 semantic_ast_patch_enabled,
+                recovery_prompt,
             ))
         }
         _ => None,
@@ -315,6 +323,7 @@ fn content_dump_decision(
     matches: Vec<DirectReadMatch<'_>>,
     subject_paths: Option<Vec<String>>,
     semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> HookDecision {
     let routes = direct_read_routes(&matches);
     let providers = providers_from_matches(&matches);
@@ -324,6 +333,7 @@ fn content_dump_decision(
         &providers,
         &routes,
         semantic_ast_patch_enabled,
+        recovery_prompt,
     );
     let mut subject = subject_for_action(action);
     if let Some(paths) = subject_paths {
@@ -347,14 +357,20 @@ fn direct_read_decision(
     event: &str,
     action: &ToolAction,
     semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
     matches: Vec<DirectReadMatch<'_>>,
 ) -> Option<HookDecision> {
     if matches.is_empty() {
         return None;
     }
     let routes = direct_read_routes(&matches);
-    let message =
-        direct_read_decision_message(platform, &matches, &routes, semantic_ast_patch_enabled);
+    let message = direct_read_decision_message(
+        platform,
+        &matches,
+        &routes,
+        semantic_ast_patch_enabled,
+        recovery_prompt,
+    );
     Some(deny_for_action(
         platform,
         event,
@@ -414,6 +430,7 @@ fn direct_read_decision_message(
     matches: &[DirectReadMatch<'_>],
     routes: &[DecisionRoute],
     semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> String {
     let providers = providers_from_matches(matches);
     source_access_recovery_message(
@@ -422,6 +439,7 @@ fn direct_read_decision_message(
         &providers,
         routes,
         semantic_ast_patch_enabled,
+        recovery_prompt,
     )
 }
 
@@ -463,6 +481,7 @@ pub(super) fn classify_raw_search_command(
     action: &ToolAction,
     tokens: &[String],
     semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
     if command_intent(tokens) != CommandIntent::RawSearch {
         return None;
@@ -493,6 +512,7 @@ pub(super) fn classify_raw_search_command(
         &raw_search_providers,
         &routes,
         semantic_ast_patch_enabled,
+        recovery_prompt,
     );
     Some(deny_for_action(
         platform,

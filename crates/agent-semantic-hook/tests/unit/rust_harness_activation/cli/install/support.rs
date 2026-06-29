@@ -1,6 +1,7 @@
 use crate::rust_harness_activation::support::{asp_command, temp_project_root};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) fn git_project_root(name: &str) -> PathBuf {
     let root = temp_project_root(name);
@@ -13,8 +14,17 @@ pub(super) fn git_project_root(name: &str) -> PathBuf {
 pub(super) fn protocol_command() -> Command {
     let mut command = asp_command();
     command.env("ASP_ORG_REPO_URL", local_test_org_repo());
+    command.env("ASP_STATE_HOME", isolated_asp_state_home());
     command.env_remove("PRJ_CACHE_HOME");
     command
+}
+
+fn isolated_asp_state_home() -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("asp-test-state-{}-{nonce}", std::process::id()))
 }
 
 pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 4] {

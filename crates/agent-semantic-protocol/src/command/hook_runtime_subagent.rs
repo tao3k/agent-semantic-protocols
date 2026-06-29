@@ -94,7 +94,7 @@ fn remove_stale_agent_files(parent: &Path, file_names: &[&str]) -> Result<(), St
 fn codex_asp_explorer_agent(subagent_model: &str) -> Result<String, String> {
     Ok(format!(
         r#"name = "asp_explorer"
-description = "Read-only ASP search explorer for codebase mapping, query-pack construction, and hook-safe evidence collection."
+description = "ASP search/query evidence explorer."
 nickname_candidates = ["ASP owner", "ASP rg", "ASP selector", "ASP search"]
 model = {}
 model_reasoning_effort = "medium"
@@ -112,7 +112,7 @@ fn claude_asp_explorer_agent(subagent_model: &str) -> Result<String, String> {
     Ok(format!(
         r#"---
 name: asp-explorer
-description: Read-only ASP search explorer for codebase mapping, query-pack construction, fan-out axes, and hook-safe evidence collection.
+description: ASP search/query evidence explorer.
 tools: Bash, Read, Glob, Grep
 model: {}
 permissionMode: plan
@@ -127,34 +127,14 @@ maxTurns: 8
 }
 
 fn asp_explorer_instructions() -> &'static str {
-    r#"You are an ASP search explorer.
+    r#"You are the ASP explorer.
 
 Do not edit files.
-Do not run broad raw source reads.
-Use ASP provider commands before source reads.
-You are normally spawned with fork_context=false; parent/task context must arrive in the initial branch prompt or later send_input messages.
-Treat your own CODEX_THREAD_ID as the child agent thread id. For parent-task memory, the parent prompt must include rootSessionId=<parent CODEX_THREAD_ID or Claude session id> and childSessionId=<spawned agent id when known>.
-If rootSessionId is present, use it for ASP Org recall with `asp org recall plans --session <rootSessionId>` or by setting ASP_ROOT_SESSION_ID before running recall. Bare `asp org recall plans` is only valid when ASP_ROOT_SESSION_ID is already set or the current thread is the root task session.
-If rootSessionId is missing and bare recall has no session match, report `missing=rootSessionId` instead of selecting an unrelated recency fallback.
-Use at most one search prime and at most one search pipe per task.
-After prime, the immediate next ASP command must be search pipe.
-Compress broad prose into 2-4 stable terms before search pipe; prefer symbols, owners, paths, and error terms over long natural phrases.
-If search pipe returns queryQuality=low or query-selector-low-confidence, do not read code; follow recommendedNext, nextClasses, fdPreview, rg-query, or owner-items.
-If search pipe returns nextCommand or an exact query-selector, run that query --selector --code before additional owner/search commands.
-If a hook denies read-before-pipe, repeated-search-pipe, or command-budget exhaustion, stop retrying that command and answer from the current frontier plus missing facts.
-
-Resident search-agent control is owned by the parent agent or client runtime, not by this custom agent file.
-Spawn-only controls such as fork_context belong on the parent spawn_agent call, not as custom-agent TOML keys.
-The parent should keep exactly one ASP search agent thread per main task and record its agent id in the parent reasoning tree or receipt ledger.
-The parent should also record child agent ids in Org properties such as CHILD_SESSION_ID or SUBAGENT_SESSION_ID while keeping SESSION_ID as the root/main task session.
-For later ASP searches in the same main task, the parent should reuse that thread with send_input instead of spawning another search agent.
-Only spawn a new ASP search agent when no recorded agent id exists, the recorded thread is closed, or the user explicitly asks for independent parallel agents.
-The resident search agent receives explicit prompts with the action id, branch purpose, parent-known evidence, missing facts, risk, and allowed ASP command group.
-Do not assume hidden sibling context, shared session memory outside this thread, or automatic parent state transfer.
-Do not spawn child subagents yourself. Fill the assigned reasoning branch with compact evidence and return a receipt to the parent for synthesis and main-model verification.
+Use ASP provider commands before source reads, and prefer parser-owned owner, selector, and query-language routes.
+Follow ASP recommendedNext or nextCommand when present; stop retrying a command after a hook denial.
+Return compact evidence for the assigned branch; do not spawn subagents.
 
 Prefer:
-- asp <language> search prime --workspace . --view seeds
 - asp <language> search pipe '<question-or-feature-term>' --workspace . --view seeds
 - asp fd -query '<owner-or-path terms>' .
 - asp rg -query '<content-or-error terms>' .

@@ -128,16 +128,13 @@ fn search_pipe_seeds_promotes_matching_dependency_route() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("actionFrontier=A1.search-deps"), "{stdout}");
     assert_compact_search_action_contract(&stdout);
-    assert!(
-        stdout.contains("recommendedNext=A1.search-deps"),
-        "{stdout}"
-    );
     assert!(
         stdout.contains("nextCommand=asp rust search deps serde --workspace . --view seeds"),
         "{stdout}"
     );
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -185,10 +182,7 @@ fn search_pipe_does_not_promote_dependency_route_from_natural_tree_word() {
         !stdout.contains("search-deps(dependency=tree-sitter"),
         "{stdout}"
     );
-    assert!(
-        !stdout.contains("recommendedNext=A1.search-deps"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -233,10 +227,7 @@ fn search_pipe_does_not_promote_dependency_route_from_meta_audit_query() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(!stdout.contains("search-deps(dependency="), "{stdout}");
-    assert!(
-        !stdout.contains("recommendedNext=A1.search-deps"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -281,10 +272,7 @@ fn search_pipe_does_not_promote_dependency_route_from_negative_meta_query_with_l
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(!stdout.contains("search-deps(dependency="), "{stdout}");
-    assert!(
-        !stdout.contains("recommendedNext=A1.search-deps"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 

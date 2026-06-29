@@ -63,22 +63,17 @@ fn typescript_owner_items_query_set_renders_item_selectors_without_provider() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("frontier=Q.query,T.tests,O.owner,I.syntax,I2.syntax,I3.syntax"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code"),
+        stdout.contains("|item symbol=Fiber kind=interface structuralSelector=typescript://packages/effect/src/Fiber.ts#item/interface/Fiber"),
         "{stdout}"
     );
     assert_compact_search_action_contract(&stdout);
     assert!(
-        stdout.contains("recommendedNext=A1.item-skeleton"),
-        "{stdout}"
-    );
-    assert!(
         stdout.contains("nextCommand=asp typescript query --from-hook item-skeleton --selector 'typescript://packages/effect/src/Fiber.ts#item/interface/Fiber' --workspace . --names-only"),
         "{stdout}"
     );
+    assert!(!stdout.contains("frontier="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
         !stdout.contains("nextCommand=asp typescript query --selector packages/effect/src/Fiber.ts:1:3 --workspace . --code"),
         "{stdout}"
@@ -300,7 +295,7 @@ fn typescript_owner_items_uses_query_axis_window_when_declaration_name_is_weak()
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("I=item:symbol(query-axis:plugin+container+config)@typescript://packages/vite/src/node/server/pluginContainer.ts#item/context/query-axis:plugin+container+config!syntax"),
+        stdout.contains("|item symbol=query-axis:plugin+container+config kind=context structuralSelector=typescript://packages/vite/src/node/server/pluginContainer.ts#item/context/query-axis:plugin+container+config"),
         "{stdout}"
     );
     assert!(
@@ -311,14 +306,7 @@ fn typescript_owner_items_uses_query_axis_window_when_declaration_name_is_weak()
         stdout.contains("nextCommand=asp typescript query --from-hook item-skeleton --selector 'typescript://packages/vite/src/node/server/pluginContainer.ts#item/context/query-axis:plugin+container+config' --workspace . --names-only"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("recommendedNext=A1.item-skeleton"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("recommendedNext=scoped-rg-query"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
         !marker.exists(),
         "TypeScript owner-items fast path should not spawn provider"
@@ -381,10 +369,7 @@ fn typescript_owner_items_uses_barrel_export_when_owner_path_matches_query_axis(
         stdout.contains("reason=owner-item-skeleton-ready"),
         "{stdout}"
     );
-    assert!(
-        !stdout.contains("recommendedNext=scoped-rg-query"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
         !marker.exists(),
         "TypeScript owner-items fast path should not spawn provider"

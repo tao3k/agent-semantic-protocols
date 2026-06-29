@@ -12,11 +12,12 @@ use crate::cache_cli::writeback::{
     maybe_write_search_output_artifact, search_output_file_hashes,
     write_search_packet_cache_after_provider_success,
 };
+use crate::test_support::v2_cache_root;
 
 #[test]
 fn search_output_writeback_adds_replay_ready_stdout_artifact() {
     let root = temp_root("search-output-writeback");
-    let cache_root = root.join("client");
+    let cache_root = v2_cache_root(&root);
     let mut generation = ClientCacheGeneration {
         generation_id: CacheGenerationId::from("rust-search-fzf-abc123"),
         language_id: LanguageId::from("rust"),

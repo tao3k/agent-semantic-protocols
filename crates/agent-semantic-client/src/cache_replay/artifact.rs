@@ -7,7 +7,9 @@ use agent_semantic_client_core::{
     ByteCount, CacheArtifactId, ClientCacheFileHash, ClientMethod, ClientRequest, LanguageId,
     ProviderId, syntax_query_ast_abi_fingerprint,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbGenerationHit, ClientDbSyntaxQueryLookup};
+use agent_semantic_client_db::{
+    ClientDb, ClientDbEngine, ClientDbGenerationHit, ClientDbSyntaxQueryLookup,
+};
 use bytes::Bytes;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -245,7 +247,19 @@ pub(crate) fn replay_artifact_path(
     }) {
         return None;
     }
-    Some(cache_root.parent()?.join("artifacts").join(relative))
+    Some(replay_artifacts_root(cache_root)?.join(relative))
+}
+
+fn replay_artifacts_root(cache_root: &Path) -> Option<PathBuf> {
+    let live_dir = cache_root.parent()?;
+    if cache_root.file_name().and_then(|name| name.to_str()) == Some("client")
+        && live_dir.file_name().and_then(|name| name.to_str()) == Some("live")
+    {
+        return live_dir
+            .parent()
+            .map(|workspace_dir| workspace_dir.join("artifacts"));
+    }
+    None
 }
 
 pub(crate) fn structured_evidence_artifact_path(
@@ -367,7 +381,7 @@ pub(crate) fn load_syntax_query_rows_replay(
     request: &ClientRequest,
 ) -> Option<ProviderCacheReplay> {
     let lookup = syntax_query_rows_lookup(
-        &ClientDb::default_path(cache_root),
+        &ClientDbEngine::sqlite_path_for_client_dir(cache_root),
         language_id,
         provider_id,
         project_root,

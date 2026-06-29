@@ -14,10 +14,14 @@ mod runtime;
 mod trust;
 
 fn write_client_config(root: &std::path::Path, content: &str) {
-    let config_path = root.join(".codex/agent-semantic-protocol/hooks/config.toml");
+    let config_path = asp_state_home(root).join("hooks/config.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create config dir");
     std::fs::write(config_path, content).expect("write client config");
+}
+
+fn asp_state_home(root: &std::path::Path) -> std::path::PathBuf {
+    root.join(".agent-semantic-protocols")
 }
 
 fn write_codex_project_config(root: &std::path::Path) {
@@ -93,6 +97,7 @@ fn run_doctor_with_env(
         ".",
     ]);
     command.env("CODEX_HOME", root.join(".codex-home"));
+    command.env("ASP_STATE_HOME", asp_state_home(root));
     for (key, value) in envs {
         command.env(key, value);
     }

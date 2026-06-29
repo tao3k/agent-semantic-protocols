@@ -11,6 +11,19 @@ use crate::provider_command::support::{
 
 use super::assert_graph_turbo_request_contract;
 
+fn refresh_source_index(root: &std::path::Path) {
+    let output = asp_command(root)
+        .args(["cache", "source-index", "refresh"])
+        .output()
+        .expect("run asp cache source-index refresh");
+    assert!(
+        output.status.success(),
+        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[test]
 fn asp_fd_and_rg_query_help_are_public_query_set_surfaces() {
     let root = temp_project_root("asp-query-wrapper-help");
@@ -80,7 +93,7 @@ fn asp_rg_query_uses_source_index_before_native_finder() {
     .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
-    agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
+    refresh_source_index(&root);
     let _ = std::fs::remove_file(&marker);
 
     let output = asp_command(&root)
@@ -132,7 +145,7 @@ fn asp_fd_query_uses_source_index_before_native_finder() {
     .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
-    agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
+    refresh_source_index(&root);
     let _ = std::fs::remove_file(&marker);
 
     let output = asp_command(&root)
@@ -219,13 +232,10 @@ fn asp_rg_query_marks_single_broad_or_as_recall_probe() {
         stdout.contains("nativeArgs=pass-through count=2"),
         "{stdout}"
     );
-    assert!(stdout.contains("rankedEvidence="), "{stdout}");
-    assert!(stdout.contains("evidenceFrontier="), "{stdout}");
-    assert!(
-        stdout.contains("actionFrontier=A1.fd-query,A2.multi-clause-rg-query"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
         stdout.contains("nextCommand=asp fd -query 'Fiber|Queue|Runtime' --workspace ."),
         "{stdout}"
@@ -313,10 +323,10 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         stdout.contains("packageCohesion=high packages=effect.ts"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("actionFrontier=A1.fd-query,A2.multi-clause-rg-query"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
     assert!(!stdout.contains("[graph-frontier]"), "{stdout}");
     assert_eq!(
         stdout
@@ -326,7 +336,6 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         1,
         "{stdout}"
     );
-    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
         stdout.contains("nextClasses=owner-items,query-selector,fd-query"),
         "{stdout}"

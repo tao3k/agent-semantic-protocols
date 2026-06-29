@@ -325,12 +325,14 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     );
     println!("query={query}");
     if candidates.is_empty() {
+        let compact_source_trace = compact_source_trace(&source_trace);
+        let empty_reason = query_wrapper_empty_reason(empty_reason, &source_trace);
         print_query_wrapper_empty_receipt(
             surface,
             scopes,
             queries,
             terms,
-            &compact_source_trace(&source_trace),
+            &compact_source_trace,
             surface.avoid(quality),
             empty_reason,
         );
@@ -435,6 +437,20 @@ fn compact_source_trace(source_trace: &[SearchPipeSourceTrace]) -> String {
         .map(SearchPipeSourceTrace::compact)
         .collect::<Vec<_>>()
         .join(",")
+}
+
+fn query_wrapper_empty_reason<'a>(
+    fallback: &'a str,
+    source_trace: &[SearchPipeSourceTrace],
+) -> &'a str {
+    if source_trace
+        .iter()
+        .any(|trace| trace.source == "sourceIndex" && trace.status == "miss")
+    {
+        "source-index-miss"
+    } else {
+        fallback
+    }
 }
 
 fn has_exact_owner_candidate(surface: QueryWrapperSurface, candidates: &[Candidate]) -> bool {

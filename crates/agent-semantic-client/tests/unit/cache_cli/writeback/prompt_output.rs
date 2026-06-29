@@ -4,6 +4,21 @@ use agent_semantic_client_core::{
 
 use super::{gerbil_scheme_provider, python_provider, rust_provider, temp_root};
 use crate::cache_cli::writeback::write_prompt_output_cache_after_provider_success;
+use crate::test_support::artifacts_root_from_cache_root;
+
+fn prompt_output_artifact_dir(root: &std::path::Path) -> std::path::PathBuf {
+    let cache_report = ClientCacheManifest::inspect_project(root);
+    let cache_root = cache_report.cache_root.expect("cache root");
+    artifacts_root_from_cache_root(&cache_root).join("prompt-output")
+}
+
+fn prompt_output_artifact_dir_is_empty(root: &std::path::Path) -> bool {
+    match std::fs::read_dir(prompt_output_artifact_dir(root)) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => panic!("prompt-output artifact dir: {error}"),
+    }
+}
 
 #[test]
 fn owner_items_search_writeback_replays_prompt_output_artifact() {
@@ -46,10 +61,7 @@ fn owner_items_search_writeback_replays_prompt_output_artifact() {
     assert_eq!(probe.sqlite_write_count, 2);
     let cache_report = ClientCacheManifest::inspect_project(&root);
     let cache_root = cache_report.cache_root.expect("cache root");
-    let analysis_dir = cache_root
-        .parent()
-        .expect("cache root parent")
-        .join("artifacts/analysis-metadata");
+    let analysis_dir = artifacts_root_from_cache_root(&cache_root).join("analysis-metadata");
     let analysis_entries = std::fs::read_dir(&analysis_dir)
         .expect("analysis metadata dir")
         .collect::<Result<Vec<_>, _>>()
@@ -129,7 +141,7 @@ fn query_selector_code_output_is_not_written_to_prompt_cache() {
     );
 
     assert!(probe.is_none());
-    assert!(!root.join("artifacts/prompt-output").exists());
+    assert!(prompt_output_artifact_dir_is_empty(&root));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -204,7 +216,7 @@ fn hook_direct_source_read_code_output_is_not_written_to_prompt_cache() {
     );
 
     assert!(probe.is_none());
-    assert!(!root.join("artifacts/prompt-output").exists());
+    assert!(prompt_output_artifact_dir_is_empty(&root));
     let _ = std::fs::remove_dir_all(root);
 }
 

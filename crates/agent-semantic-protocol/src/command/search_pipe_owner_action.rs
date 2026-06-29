@@ -131,10 +131,43 @@ fn low_cohesion_role_owner_handle(
         if !secondary_intent {
             return None;
         }
-    } else if !has_secondary_competitor && !secondary_intent {
+    } else if !has_secondary_competitor
+        && !secondary_intent
+        && !single_preview_owner_has_strong_local_evidence(quality, preview, owner)
+    {
         return None;
     }
-    owner_items_handle(quality, candidates)
+    let handle = owner_items_handle(quality, candidates)?;
+    if single_preview_owner_has_strong_local_evidence(quality, preview, owner) {
+        return narrow_owner_items_handle(&handle, 2);
+    }
+    Some(handle)
+}
+
+fn single_preview_owner_has_strong_local_evidence(
+    quality: &SearchPipeQuality,
+    preview: &FdQueryPreview,
+    owner: &str,
+) -> bool {
+    preview.owner_candidates.len() == 1
+        && preview
+            .owner_candidates
+            .first()
+            .is_some_and(|candidate| candidate == owner)
+        && quality
+            .best_owner
+            .as_ref()
+            .is_some_and(|coverage| coverage.matched.len() >= 4)
+}
+
+fn narrow_owner_items_handle(handle: &str, limit: usize) -> Option<String> {
+    let (owner, query) = handle.split_once(':')?;
+    let terms = query
+        .split('|')
+        .filter(|term| !term.is_empty())
+        .take(limit)
+        .collect::<Vec<_>>();
+    (!terms.is_empty()).then(|| format!("{owner}:{}", terms.join("|")))
 }
 
 fn strong_owner_seed_count(quality: &SearchPipeQuality) -> usize {

@@ -117,26 +117,17 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     assert!(!stdout.contains("frontierActions="), "{stdout}");
     assert!(!stdout.contains("pipeCommands="), "{stdout}");
     assert!(!stdout.contains("conditionalActions="), "{stdout}");
-    assert!(
-        stdout.contains("commandHandles=fdQuery=HookDecision|ClientReceipt;rgQuery=HookDecision|ClientReceipt|hookdecision|clientreceipt;ownerItems=src/lib.rs:HookDecision|ClientReceipt|hookdecision|clientreceipt"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("treeSitterHandles=exported-declarations:HookDecision|ClientReceipt"),
-        "{stdout}"
-    );
     assert_compact_search_action_contract(&stdout);
     assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
-    assert!(
-        stdout.contains("actionFrontier=A1.query-code,A2.fd-query,A3.rg-query,A4.owner-items,A5.treesitter-query"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
     assert!(
         stdout.contains("nextCommand=asp rust query --selector src/lib.rs:")
             && stdout.contains(" --workspace . --code"),
         "{stdout}"
     );
+    assert!(!stdout.contains("commandHandles="), "{stdout}");
+    assert!(!stdout.contains("treeSitterHandles="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(!stdout.contains("subagentHint="), "{stdout}");
     assert!(
         !stdout.contains("R1=>asp rust search reasoning"),
@@ -190,10 +181,7 @@ fn search_pipe_marks_missing_path_terms_as_non_selectors() {
         "{stdout}"
     );
     assert!(stdout.contains("ownerSeedTerms=HookDecision"), "{stdout}");
-    assert!(
-        stdout.contains("treeSitterHandles=exported-declarations:HookDecision"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("treeSitterHandles="), "{stdout}");
     assert!(
         !stdout.contains("ownerSeedTerms=t/unit-tests.ss"),
         "{stdout}"
@@ -202,10 +190,7 @@ fn search_pipe_marks_missing_path_terms_as_non_selectors() {
         !stdout.contains("treeSitterHandles=exported-declarations:t/unit-tests.ss"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("commandHandles=fdQuery=t/unit-tests.ss|HookDecision;"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("commandHandles="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -256,17 +241,13 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("lang=gerbil-scheme"), "{stdout}");
-    assert!(stdout.contains("ownerItems=gerbil.pkg:"), "{stdout}");
     assert!(stdout.contains("src/main.ss"), "{stdout}");
-    assert!(stdout.contains("fdQuery=gerbil.pkg"), "{stdout}");
-    assert!(stdout.contains("rgQuery=local|alias"), "{stdout}");
     assert!(
-        stdout.contains("recommendedNext=A1.owner-items")
-            || stdout.contains("recommendedNext=A2.owner-items"),
+        stdout.contains("nextCommand=asp gerbil-scheme search owner gerbil.pkg items"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("reason=query-selector-low-confidence,owner-seed-base-required"),
+        stdout.contains("fdPreview=ownerCandidates=build.ss,gerbil.pkg,src/main.ss"),
         "{stdout}"
     );
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
@@ -331,15 +312,10 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
     );
     assert!(!stdout.contains("[graph-frontier]"), "{stdout}");
     assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
-    assert!(
-        stdout.contains("actionFrontier=A1.query-code,A2.fd-query,A3.rg-query,A4.owner-items,A5.treesitter-query"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(!stdout.contains("subagentHint="), "{stdout}");
-    assert!(
-        stdout.contains("treeSitterHandles=exported-declarations:Fiber|Queue|Scope"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("treeSitterHandles="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -396,8 +372,12 @@ fn search_pipe_splits_api_compounds_before_seed_quality_analysis() {
         "{stdout}"
     );
     assert!(stdout.contains("queryQuality=medium reason=ok"), "{stdout}");
-    assert!(stdout.contains("fdQuery=BufMut|advance_mut"), "{stdout}");
-    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
+    assert!(
+        stdout.contains("nextCommand=asp rust query --selector"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("fdQuery="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
@@ -443,13 +423,13 @@ fn search_pipe_preserves_rust_path_compounds_as_precise_symbol_terms() {
         stdout.contains("strongCoverage=matched=Handle::enter weak=-"),
         "{stdout}"
     );
-    assert!(stdout.contains("fdQuery=Handle::enter|Tokio"), "{stdout}");
     assert!(
         stdout.contains(
             "nextCommand=asp rust search owner src/runtime/handle.rs items --query 'Tokio|guard|runtime' --workspace . --view seeds"
         ),
         "{stdout}"
     );
+    assert!(!stdout.contains("fdQuery="), "{stdout}");
     assert!(
         stdout.contains("nextCommand=") && stdout.contains(" --workspace ."),
         "{stdout}"
@@ -517,15 +497,12 @@ fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("recommendedNext=A1.search-deps"),
-        "{stdout}"
-    );
-    assert!(
         stdout.contains(
             "nextCommand=asp gerbil-scheme search deps git.cons.io/mighty-gerbils/gerbil-poo"
         ),
         "{stdout}"
     );
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
         stdout.contains("finderHandles=") && stdout.contains("poo"),
         "{stdout}"
@@ -609,26 +586,13 @@ fn search_pipe_auto_clauses_suppress_cross_package_selector_drift() {
     assert!(stdout.contains("long-field-signatures:concept"), "{stdout}");
     assert!(!stdout.contains("through:context"), "{stdout}");
     assert!(!stdout.contains("smoke:context"), "{stdout}");
-    assert!(
-        stdout.contains("fdQuery=real_gxi.rs|marlin-gerbil-scheme|marlin-org-workflow"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("rgQuery=-;ownerItems=-"), "{stdout}");
     assert!(stdout.contains("risk=package-drift"), "{stdout}");
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
-    assert!(
-        !stdout.contains("recommendedNext=A1.query-code"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("recommendedNext=A1.rg-query-set")
-            || stdout.contains("recommendedNext=A1.fd-query"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("reason=query-selector-low-confidence,owner-seed-base-required"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("subagentHint="), "{stdout}");
+    assert!(stdout.contains("nextCommand=asp "), "{stdout}");
+    assert!(!stdout.contains("fdQuery="), "{stdout}");
+    assert!(!stdout.contains("rgQuery="), "{stdout}");
+    assert!(!stdout.contains("ownerItems="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
+    assert!(stdout.contains("fdPreview=ownerCandidates="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

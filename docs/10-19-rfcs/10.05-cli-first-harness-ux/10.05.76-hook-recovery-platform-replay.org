@@ -10,9 +10,10 @@ previous replay key was too specific: it included the exact reason, tool
 surface, subject, and route argv, so the hook repeated a full recovery prompt
 even though the agent had already received the safe ASP route.
 
-The recovery prompt was also hard-coded for Codex. That leaked Codex-only
-instructions such as resident ASP explorer agents into Claude hook output,
-where those tools are not part of the active client surface.
+The recovery prompt was also hard-coded in the Rust classifier. That made
+client behavior drift-prone: platform-specific prose, session registration
+hints, and ASP explorer guidance could not be updated from the same global hook
+configuration that owns common agent policy.
 
 * Decision
 
@@ -23,18 +24,97 @@ where those tools are not part of the active client surface.
   same session, transcript, platform, and working directory.
 - Keep the deny decision intact. Replay compaction only changes the advisory
   prose returned to the agent.
-- Render recovery guidance from the hook platform. Codex output may mention the
-  resident ASP search agent flow. Claude output must route the agent directly
-  to the safe command and must not mention Codex-only =spawn_agent=,
-  =send_input=, or =asp_explorer= behavior.
+- Render recovery guidance from the configured recovery template. The default
+  template lives in global hook config under =$ASP_STATE_HOME/hooks/config.toml=,
+  falling back to =$HOME/.agent-semantic-protocols/hooks/config.toml= when
+  =ASP_STATE_HOME= is unset. Project-local hook config may overlay the template
+  only for repository-specific policy.
+- Keep platform/session detection deterministic instead of priority ordered. If
+  exactly one known agent session environment variable is present, use that
+  platform flow: =CODEX_THREAD_ID= for Codex, =CLAUDE_CODE_SESSION_ID= or
+  =CLAUDE_CODE_REMOTE_SESSION_ID= for Claude Code. If none are present, keep the
+  generic flow. Multiple platform session ids are ambiguous and should not be
+  guessed into a priority winner.
+
+* Runtime Output
+The runtime stores =denyReplayKey= for machine replay and exposes a shorter stable =recoveryRef= for agent-facing recovery. Source-access denials in the same replay family should return compact prose keyed by =recoveryRef= on both first and repeated denials; repeated denials must not resend the full recovery template.
+
+Org artifact archive pressure remains available as structured hook fields. It should only be appended to user-visible hook messages on =session-start= so ordinary allow, post-tool, and source-access deny responses stay focused on the active recovery lane.
+
+* Agent Session Flow
+
+The happy path is deterministic and session-scoped:
+
+1. =session-start= resolves the root =SESSION_ID= from the active agent
+   environment. Codex uses =CODEX_THREAD_ID=. Claude Code uses its Claude
+   session environment when present. If no supported session environment is
+   present, ASP must not guess a root session.
+2. If the registry has no active =asp-explore= child under the root session,
+   the session-start guidance asks the main agent to create an =asp-explore=
+   subagent.
+3. The main agent registers the returned child session id:
+
+   #+begin_src sh
+   asp agent session register \
+     --name asp-explore \
+     --child-session-id <child-session-id> \
+     --role asp-explore
+   #+end_src
+
+   The normal same-session command omits =--root-session-id= and
+   =--parent-session-id= because ASP resolves both from the active agent
+   environment. Explicit root or parent ids are reserved for cross-session
+   repair and replay.
+4. On =pre-tool=, a root/main agent search or query command such as =asp rg= or
+   =asp org query= checks the registry. If an active =asp-explore= child exists,
+   ASP denies the root search and tells the agent to delegate the command to
+   that child session. If no child exists, ASP denies the root search and asks
+   the agent to create/register =asp-explore= first.
+5. The =asp-explore= child is allowed to run ASP search/query commands because
+   its registered role is =asp-explore=.
+6. On =post-tool=, ASP records compact query evidence: command, summary,
+   =nextCommand=, evidence refs, heartbeat, and checkpoint evidence.
+7. The main agent consumes only compact evidence and keeps responsibility for
+   final judgment, edits, recovery, and checkpointing.
+
+* Recovery Paths
+
+Recovery guidance is intentionally attached to the wrong path, not the happy
+path. A correct session-start or pre-tool message stays short; detailed
+instructions are exposed through =--help= and =--guide=.
+
+| Situation | Response |
+| Root agent runs ASP search/query and =asp-explore= exists | Deny the root search and return the registered child session id/name to delegate to. |
+| Root agent runs ASP search/query and no child exists | Deny the root search and return the minimal create/register instruction. |
+| Registered child is missing or stale | Ask the main agent to recreate =asp-explore= and register the returned child session id. |
+| Current session has role =asp-explore= | Allow ASP search/query. |
+| Current session has another role | Deny broad search/query and point to =asp agent session show --name asp-explore --guide= or =asp agent session list --guide=. |
+
+The CLI owns two distinct recovery surfaces:
+
+- =--help= is syntax-level recovery.
+- =--guide= is agent-flow recovery.
 
 * Contract
 
-The hook runtime already receives the client platform as part of classification.
-Recovery text must use that platform before considering environment-variable
-fallbacks such as =SESSION_ID= or =CODEX_SESSION_ID=. Environment variables can
-help identify sessions, but they should not override an explicit client
-platform from the hook invocation.
+Recovery text is data, not classifier logic. The classifier selects one
+configured template, fills the available safe route and replay metadata, then
+appends the configured platform flow. The built-in Codex flow is intentionally
+small: start the =asp-explore= subagent, register the returned child session
+with =asp agent session register --name asp-explore --child-session-id
+<child-session-id> --role asp-explore=, and keep root-agent ASP usage to
+session/checkpoint/recovery commands.
+
+Default recovery prose must live in the generated hook =config.toml= template:
+=[recoveryPrompt]= owns deny recovery output and =[agentSessionGuide]= owns
+=asp agent session --guide= output. Rust code may select
+and interpolate configured fields, but must not own long agent-facing guide
+text.
+
+Session environment variables identify the active agent runtime and root session
+without requiring a visible session flag. Explicit root or child session ids
+remain an escape hatch for cross-session lookup, not the normal same-session
+path.
 
 The replay key for source-access recovery intentionally ignores the exact
 blocked action, language ids, provider ids, and route argv. A broad shell source

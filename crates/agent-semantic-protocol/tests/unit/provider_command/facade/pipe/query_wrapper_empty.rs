@@ -153,22 +153,14 @@ fn asp_fd_query_prefers_exact_gerbil_path_owner_items() {
         stdout.contains("ownerCandidates=gerbil-poo/cli.ss"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("actionFrontier=A1.owner-items,A2.scoped-rg-query"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("recommendedNext=A1.owner-items"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
     assert!(
         stdout.contains(
             "nextCommand=asp gerbil-scheme search owner gerbil-poo/cli.ss items --query 'cli.ss|gerbil-poo' --workspace .data --view seeds"
         ),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("recommendedNext=A1.scoped-rg-query"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

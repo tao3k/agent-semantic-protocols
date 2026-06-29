@@ -64,46 +64,53 @@ fn state_layout_uses_single_client_cache_interface() {
     fs::create_dir_all(&package).expect("create package dir");
 
     let layout = StateLayout::resolve(&package).expect("state layout");
+    let resolved = crate::state_core::ResolvedState::resolve(&package).expect("resolved state");
 
-    assert_eq!(
-        layout.state_root(),
-        root.join(".cache/agent-semantic-protocol").as_path()
-    );
+    assert_eq!(layout.state_root(), resolved.state_home.as_path());
     assert_eq!(
         layout.client_cache_dir(),
-        root.join(".cache/agent-semantic-protocol/client").as_path()
+        resolved.paths.client_dir.as_path()
     );
     assert_eq!(
         layout.cache_manifest_path(),
-        root.join(".cache/agent-semantic-protocol/client/cache-manifest.json")
-            .as_path()
+        resolved.paths.client_cache_manifest_path.as_path()
     );
     assert_eq!(
         layout.artifacts_dir(),
-        root.join(".cache/agent-semantic-protocol/artifacts")
-            .as_path()
+        resolved.paths.artifacts_dir.as_path()
     );
+    assert!(!root.join(".cache").join("agent-semantic-protocol").exists());
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn state_layout_matches_config_runtime_layout() {
+fn state_layout_uses_state_core_instead_of_config_runtime_cache_layout() {
     let root = temp_root("config-runtime-layout");
     fs::create_dir_all(root.join(".git")).expect("create git marker");
     let layout = project_runtime_layout(&root);
     let state_layout = StateLayout::resolve(&root).expect("state layout");
+    let resolved = crate::state_core::ResolvedState::resolve(&root).expect("resolved state");
 
-    assert_eq!(
+    assert_ne!(
         Some(state_layout.state_root()),
         layout.protocol_home.as_deref()
     );
-    assert_eq!(
+    assert_ne!(
         Some(state_layout.client_cache_dir()),
         layout.client_cache_dir.as_deref()
     );
-    assert_eq!(
+    assert_ne!(
         Some(state_layout.artifacts_dir()),
         layout.artifacts_dir.as_deref()
+    );
+    assert_eq!(state_layout.state_root(), resolved.state_home.as_path());
+    assert_eq!(
+        state_layout.client_cache_dir(),
+        resolved.paths.client_dir.as_path()
+    );
+    assert_eq!(
+        state_layout.artifacts_dir(),
+        resolved.paths.artifacts_dir.as_path()
     );
     let _ = fs::remove_dir_all(root);
 }

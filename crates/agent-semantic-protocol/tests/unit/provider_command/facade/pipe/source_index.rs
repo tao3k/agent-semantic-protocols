@@ -2,6 +2,19 @@ use crate::provider_command::support::{
     asp_command, prepend_path, provider, temp_project_root, write_activation, write_marker_provider,
 };
 
+fn refresh_source_index(root: &std::path::Path) {
+    let output = asp_command(root)
+        .args(["cache", "source-index", "refresh"])
+        .output()
+        .expect("run asp cache source-index refresh");
+    assert!(
+        output.status.success(),
+        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[test]
 fn search_pipe_auto_uses_rust_sql_source_index_before_finder() {
     let root = temp_project_root("search-pipe-source-index");
@@ -20,7 +33,7 @@ fn search_pipe_auto_uses_rust_sql_source_index_before_finder() {
     .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
-    agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
+    refresh_source_index(&root);
     let _ = std::fs::remove_file(&marker);
 
     let output = asp_command(&root)
@@ -81,7 +94,7 @@ fn search_pipe_skips_source_index_for_generic_action_query() {
     .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
-    agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
+    refresh_source_index(&root);
     let _ = std::fs::remove_file(&marker);
 
     let output = asp_command(&root)

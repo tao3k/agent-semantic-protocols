@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, temp_project_root,
+    artifacts_root, asp_command, make_executable, prepend_path, temp_project_root,
 };
 
 #[test]
@@ -118,19 +118,28 @@ fn search_history_audit_reads_prompt_output_command_artifacts() {
     let root = temp_project_root("search-history-audit");
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let expected_artifacts_root = artifacts_root(&root);
+    std::fs::create_dir_all(&expected_artifacts_root).expect("create expected artifacts root");
+    let expected_artifacts_root_canonical = expected_artifacts_root
+        .canonicalize()
+        .unwrap_or_else(|_| expected_artifacts_root.clone());
     let graph_turbo = bin_dir.join("asp-graph-turbo");
     std::fs::write(
         &graph_turbo,
-        "#!/bin/sh\n\
-         test \"$1\" = timeline || { echo expected timeline >&2; exit 2; }\n\
-         case \"$2\" in */.cache/agent-semantic-protocol/artifacts) ;; *) echo bad artifact dir >&2; exit 2 ;; esac\n\
+        format!(
+            "#!/bin/sh\n\
+         test \"$1\" = timeline || {{ echo expected timeline >&2; exit 2; }}\n\
+         test \"$2\" = '{}' || test \"$2\" = '{}' || {{ echo bad artifact dir >&2; exit 2; }}\n\
          echo '[graph-turbo-timeline] fake=true events=3 actions=3 sessions=1 rounds=1'\n\
          echo '[graph-turbo-owner-collapse] collapsible=1 actions=1'\n\
          echo '[graph-turbo-owner-action] decision=collapse replacement=promote-to-owner-query-item-test-frontier'\n",
+            expected_artifacts_root.display(),
+            expected_artifacts_root_canonical.display()
+        ),
     )
     .expect("write fake asp-graph-turbo");
     make_executable(&graph_turbo);
-    let artifact_dir = root.join(".cache/agent-semantic-protocol/artifacts/prompt-output");
+    let artifact_dir = artifacts_root(&root).join("prompt-output");
     std::fs::create_dir_all(&artifact_dir).expect("create artifact dir");
     write_command_artifact(
         &artifact_dir.join("rust-search-owner-a.command.json"),

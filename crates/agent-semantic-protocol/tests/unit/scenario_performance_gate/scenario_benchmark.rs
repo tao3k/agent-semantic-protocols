@@ -24,6 +24,11 @@ fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
 }
 
 #[test]
+fn asp_rg_query_source_index_miss_skips_native_finder_gate() {
+    super::support::asp_rg_query_source_index_miss_skips_native_finder_gate();
+}
+
+#[test]
 fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
     super::support::asp_fd_query_source_index_warm_path_stays_inside_scenario_gate();
 }

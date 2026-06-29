@@ -1,12 +1,11 @@
 use serde_json::Value;
-use std::env;
-use std::process::Command;
 
 use super::fixtures::valid_manifest;
 use crate::provider_command::support::{
-    CACHE_SOURCE_PATH, CACHE_SOURCE_SHA256, cache_root, make_executable, provider,
-    temp_project_root, write_activation, write_cache_manifest, write_cache_source_fixture,
-    write_echo_provider, write_marker_provider, write_stdout_stderr_provider,
+    CACHE_SOURCE_PATH, CACHE_SOURCE_SHA256, artifacts_root, asp_command, cache_root,
+    make_executable, provider, temp_project_root, write_activation, write_cache_manifest,
+    write_cache_source_fixture, write_echo_provider, write_marker_provider,
+    write_stdout_stderr_provider,
 };
 
 const PRIME_DECISION_LINE: &str = "|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"";
@@ -29,10 +28,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     write_stdout_stderr_provider(&bin_dir, "rs-harness", &stdout_text, "");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let first_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let first_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -108,11 +105,7 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
             artifact_id.starts_with("prompt-output/") && artifact_id.ends_with(".command.json")
         })
         .expect("prompt-output command artifact id");
-    let command_artifact_path = cache_root(&root)
-        .parent()
-        .expect("cache parent")
-        .join("artifacts")
-        .join(command_artifact_id);
+    let command_artifact_path = artifacts_root(&root).join(command_artifact_id);
     let command_artifact: Value = serde_json::from_slice(
         &std::fs::read(command_artifact_path).expect("read command artifact"),
     )
@@ -136,10 +129,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert!(argv.iter().any(|arg| arg.as_str() == Some("prime")));
 
     write_marker_provider(&bin_dir, "rs-harness", &called);
-    let second_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let second_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -172,10 +163,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert_eq!(second_receipt["sqliteReadCount"], 2);
     assert_eq!(second_receipt["sqliteWriteCount"], 0);
 
-    let invalidate_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let invalidate_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "invalidate", "--receipt-json"])
         .output()
         .expect("run cache invalidate");
@@ -195,10 +184,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert_eq!(invalidate_receipt["providerProcessesSpawned"], 0);
 
     write_stdout_stderr_provider(&bin_dir, "rs-harness", &stdout_after_invalidate, "");
-    let third_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let third_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -227,10 +214,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert_eq!(third_receipt["providerProcessesSpawned"], 1);
 
     write_marker_provider(&bin_dir, "rs-harness", &called_after_invalidate);
-    let fourth_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let fourth_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -266,10 +251,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert_eq!(fourth_receipt["sqliteWriteCount"], 0);
 
     write_marker_provider(&bin_dir, "rs-harness", &different_args_called);
-    let fifth_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let fifth_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -309,10 +292,8 @@ fn client_search_receipt_reports_warm_provider_when_matching_generation_exists()
     write_activation(&root, &[provider("rust", Vec::new())]);
     write_cache_manifest(&root, valid_manifest(&root));
 
-    let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let import_output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import"])
         .output()
         .expect("run asp cache import");
@@ -322,10 +303,8 @@ fn client_search_receipt_reports_warm_provider_when_matching_generation_exists()
         String::from_utf8_lossy(&import_output.stderr)
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -397,10 +376,8 @@ esac
     }
     write_activation(&search_root, &[provider("rust", Vec::new())]);
 
-    let first_search = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&search_root)
+    let first_search = asp_command(&search_root)
         .env("PATH", &search_bin_dir)
-        .env("PRJ_CACHE_HOME", search_root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -456,10 +433,8 @@ esac
         search_manifest_text.contains("analysis-metadata/"),
         "{search_manifest_text}"
     );
-    let second_search = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&search_root)
+    let second_search = asp_command(&search_root)
         .env("PATH", &search_bin_dir)
-        .env("PRJ_CACHE_HOME", search_root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -537,10 +512,8 @@ esac
     }
     write_activation(&query_root, &[provider("rust", Vec::new())]);
 
-    let first_query = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&query_root)
+    let first_query = asp_command(&query_root)
         .env("PATH", &query_bin_dir)
-        .env("PRJ_CACHE_HOME", query_root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -615,10 +588,8 @@ esac
         "{manifest_text}"
     );
 
-    let second_query = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&query_root)
+    let second_query = asp_command(&query_root)
         .env("PATH", &query_bin_dir)
-        .env("PRJ_CACHE_HOME", query_root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -686,10 +657,8 @@ esac
     make_executable(&provider_path);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -773,10 +742,8 @@ esac
     make_executable(&provider_path);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let first = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let first = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -838,10 +805,8 @@ esac
     );
     assert!(provider_args.contains("--json"), "{provider_args}");
 
-    let second = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let second = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -956,10 +921,8 @@ esac
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let query = "(function_item name: (identifier) @function.name)";
-    let first = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let first = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -1004,10 +967,8 @@ esac
     let provider_arg_count = provider_args.lines().count();
     assert_eq!(provider_arg_count, 2);
 
-    let second = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let second = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -1044,10 +1005,7 @@ esac
     );
     assert!(second_receipt["packetBytes"].as_u64().unwrap_or_default() > 0);
 
-    let syntax_artifact_dir = cache_root(&root)
-        .parent()
-        .expect("cache root parent")
-        .join("artifacts/semantic-tree-sitter-query");
+    let syntax_artifact_dir = artifacts_root(&root).join("semantic-tree-sitter-query");
     let mut removed_artifact_count = 0;
     for entry in std::fs::read_dir(&syntax_artifact_dir).expect("read syntax artifact dir") {
         let path = entry.expect("syntax artifact entry").path();
@@ -1056,10 +1014,8 @@ esac
     }
     assert!(removed_artifact_count > 0);
 
-    let third = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let third = asp_command(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",

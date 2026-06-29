@@ -20,11 +20,11 @@ edition = "2024"
     .expect("write manifest");
 
     let cache_dir = project_client_cache_dir(&package_root).expect("client cache dir");
+    let resolved =
+        crate::state_core::ResolvedState::resolve(&package_root).expect("resolved state");
 
-    assert_eq!(
-        cache_dir,
-        root.join(".cache/agent-semantic-protocol/client")
-    );
+    assert_eq!(cache_dir, resolved.paths.client_dir);
+    assert!(!root.join(".cache").join("agent-semantic-protocol").exists());
     let _ = fs::remove_dir_all(root);
 }
 

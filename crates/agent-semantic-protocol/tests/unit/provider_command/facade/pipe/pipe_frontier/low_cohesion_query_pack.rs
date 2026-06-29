@@ -47,11 +47,9 @@ fn low_cohesion_query_pack_precedes_global_fd_discovery() {
         stdout.contains("riskFactors=flat-query,owner-drift"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("actionFrontier=A1.rg-query-set,A2.fd-query,A3.rg-query")
-            && stdout.contains("recommendedNext=A1.rg-query-set"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("nextCommand=asp rg -query"), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -113,13 +111,11 @@ fn low_cohesion_query_pack_materializes_dominant_owner_package_scope() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("packageCohesion=low"), "{stdout}");
     assert!(
-        stdout.contains("actionFrontier=A1.rg-query-set,A2.fd-query,A3.rg-query"),
-        "{stdout}"
-    );
-    assert!(
         stdout.contains("nextCommand=asp rg -query")
             && stdout.contains("--workspace crates/agent-semantic-protocol"),
         "{stdout}"
     );
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

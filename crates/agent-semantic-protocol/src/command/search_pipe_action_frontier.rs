@@ -225,27 +225,12 @@ impl ActionNode {
     }
 }
 
-pub(super) fn render_action_rows(actions: &[ActionNode]) -> String {
-    let mut rendered = String::new();
-    if actions.is_empty() {
-        rendered.push_str("actionFrontier=-\n");
-        rendered.push_str("recommendedNext=-\n");
-        return rendered;
-    }
-    rendered.push_str(&format!(
-        "actionFrontier={}\n",
-        actions
-            .iter()
-            .map(|action| format!("{}.{}", action.id, action.kind))
-            .collect::<Vec<_>>()
-            .join(",")
-    ));
-    let first = actions.first().expect("non-empty actions");
-    rendered.push_str(&format!("recommendedNext={}.{}\n", first.id, first.kind));
-    if let Some(command) = first.materialized_command() {
-        rendered.push_str(&format!("nextCommand={command}\n"));
-    }
-    rendered
+pub(super) fn render_next_command_line(actions: &[ActionNode]) -> String {
+    actions
+        .iter()
+        .find_map(ActionNode::materialized_command)
+        .map(|command| format!("nextCommand={command}\n"))
+        .unwrap_or_else(|| "nextCommand=-\n".to_string())
 }
 
 fn repeated_query_args(queries: &[String]) -> String {

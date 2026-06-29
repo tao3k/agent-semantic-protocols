@@ -2,14 +2,12 @@
 
 use std::path::PathBuf;
 
-use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
+use super::search_pipe_action_frontier::{ActionNode, ActionRoute};
 use super::search_pipe_model::Candidate;
 use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_query_budget::specific_search_term;
 use super::search_query_wrapper_candidates::{owner_candidates, rg_scope_next};
-use super::search_query_wrapper_model::{
-    QueryWrapperQuality, QueryWrapperSurface, display_terms, shell_arg,
-};
+use super::search_query_wrapper_model::{QueryWrapperQuality, QueryWrapperSurface, shell_arg};
 
 pub(super) fn query_display(queries: &[String]) -> String {
     queries.join(" + ")
@@ -38,10 +36,6 @@ pub(super) fn print_query_wrapper_refinement_frontier(
 ) {
     print!(
         "{}",
-        render_query_wrapper_evidence_rows(surface, queries, terms, candidates)
-    );
-    print!(
-        "{}",
         render_query_wrapper_next_command(surface, scopes, queries, terms, candidates, quality)
     );
     println!("reason=query-selector-low-confidence,clause-cohesion-required");
@@ -64,6 +58,10 @@ pub(super) fn print_query_wrapper_empty_receipt(
     if reason == "query-too-broad" {
         println!(
             "refineHint=use path-or-symbol terms first; example: asp fd -query 'path-or-symbol|error-code' --workspace <scope>"
+        );
+    } else if reason == "source-index-miss" {
+        println!(
+            "refineHint=SourceIndex miss in indexed workspace; refresh the index or retry with owner/path/symbol terms"
         );
     }
     println!("avoid={avoid}");
@@ -91,29 +89,11 @@ pub(super) fn render_query_wrapper_next_command(
     candidates: &[Candidate],
     quality: &QueryWrapperQuality,
 ) -> String {
-    render_action_rows(&query_wrapper_action_nodes(
-        surface, scopes, queries, terms, candidates, quality,
-    ))
-}
-
-pub(super) fn render_query_wrapper_evidence_rows(
-    surface: QueryWrapperSurface,
-    queries: &[String],
-    terms: &[String],
-    candidates: &[Candidate],
-) -> String {
-    let fd_query = fd_query_for_surface(surface, queries, terms);
-    let multi_clause_queries = multi_clause_queries(queries, terms);
-    let evidence = evidence_preview(candidates);
-    let owner = owner_candidates(candidates)
+    query_wrapper_action_nodes(surface, scopes, queries, terms, candidates, quality)
         .into_iter()
-        .next()
-        .unwrap_or_else(|| "-".to_string());
-    format!(
-        "rankedEvidence={evidence}\nevidenceFrontier={evidence}\ncommandHandles=fdQuery={};rgQuery={};ownerItems={owner}\n",
-        shell_arg(&fd_query),
-        repeated_query_args(&multi_clause_queries),
-    )
+        .find_map(|action| action.materialized_command())
+        .map(|command| format!("nextCommand={command}\n"))
+        .unwrap_or_else(|| "nextCommand=-\n".to_string())
 }
 
 fn query_wrapper_action_nodes(
@@ -398,6 +378,9 @@ fn query_wrapper_empty_next_command(
             command_scope
         );
     }
+    if reason == "source-index-miss" {
+        return "asp cache source-index refresh".to_string();
+    }
     match surface {
         QueryWrapperSurface::Fd => format!(
             "asp rg {} --workspace {}",
@@ -524,17 +507,4 @@ fn shell_arg_if_needed(value: &str) -> String {
     } else {
         shell_arg(value)
     }
-}
-
-fn evidence_preview(candidates: &[Candidate]) -> String {
-    let mut seen = std::collections::BTreeSet::new();
-    let handles = candidates
-        .iter()
-        .filter(|candidate| seen.insert(candidate.path.clone()))
-        .map(|candidate| candidate.path.clone())
-        .take(8)
-        .enumerate()
-        .map(|(index, path)| format!("H{}:{path}", index + 1))
-        .collect::<Vec<_>>();
-    display_terms(&handles)
 }

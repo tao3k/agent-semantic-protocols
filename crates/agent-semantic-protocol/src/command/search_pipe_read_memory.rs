@@ -12,9 +12,7 @@ pub(super) fn read_loop_memory_selectors(
     locator_root: &Path,
     scopes: &[PathBuf],
 ) -> Vec<String> {
-    let path = cache_home
-        .join("agent-semantic-protocol")
-        .join("read-loop-memory.json");
+    let path = read_loop_memory_path(cache_home);
     let Ok(text) = fs::read_to_string(path) else {
         return Vec::new();
     };
@@ -35,6 +33,16 @@ pub(super) fn read_loop_memory_selectors(
         }
     }
     selector_scope_variants(selectors, project_root, locator_root, scopes)
+}
+
+fn read_loop_memory_path(cache_home: &Path) -> PathBuf {
+    let direct = cache_home.join("read-loop-memory.json");
+    if direct.exists() {
+        return direct;
+    }
+    cache_home
+        .join("agent-semantic-protocol")
+        .join("read-loop-memory.json")
 }
 
 fn memory_project_matches(memory: &Value, project_root: &Path) -> bool {

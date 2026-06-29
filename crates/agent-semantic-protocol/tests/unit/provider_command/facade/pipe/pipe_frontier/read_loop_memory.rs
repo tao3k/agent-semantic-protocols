@@ -1,5 +1,5 @@
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation,
+    asp_command, cache_root, prepend_path, provider, temp_project_root, write_activation,
     write_stdout_stderr_provider,
 };
 use serde_json::Value;
@@ -15,7 +15,7 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         "pub struct Scalar;\npub struct Snapshot {\n    pub scalars: Vec<Scalar>,\n}\npub struct Other {\n    pub queued: Vec<Scalar>,\n}\n",
     )
     .expect("write package source");
-    let memory_dir = root.join(".cache/agent-semantic-protocol");
+    let memory_dir = cache_root(&root);
     std::fs::create_dir_all(&memory_dir).expect("create read memory dir");
     std::fs::write(
         memory_dir.join("read-loop-memory.json"),
@@ -32,7 +32,6 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
 
     let request_output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -61,7 +60,6 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
 
     let seeds_output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -100,7 +98,8 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         !stdout.contains("nextCommand=asp rust query --selector src/lib.rs:1:15"),
         "{stdout}"
     );
-    assert!(stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -20,17 +20,15 @@ protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
 
 [[rules]]
-id = "deny-rust-rg"
+id = "deny-custom-command"
 event = "pre-tool"
 decision = "deny"
 reasonKind = "raw-broad-search"
-languageIds = ["rust"]
 message = "custom config deny"
 
 [rules.match]
 tool = "Bash"
-commandAny = ["rg"]
-pathGlobAny = ["**/*.rs"]
+commandContainsAny = ["custom-config-deny"]
 
 [[rules.routes]]
 providerId = "rs-harness"
@@ -45,13 +43,13 @@ stdinMode = "pipe-candidates"
     let decision = run_hook_decision(
         &root,
         &activation_path,
-        json!({"tool_name": "Bash", "tool_input": {"command": "rg Foo src/lib.rs"}}),
+        json!({"tool_name": "Bash", "tool_input": {"command": "printf custom-config-deny"}}),
     );
 
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["reasonKind"], "raw-broad-search");
     assert_eq!(decision["message"], "custom config deny");
-    assert_eq!(decision["languageIds"], json!(["rust"]));
+    assert_eq!(decision["languageIds"], json!([]));
     assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
     assert_eq!(decision["routes"][0]["binary"], "asp");
     assert_eq!(
@@ -346,7 +344,7 @@ decision = "block"
 }
 
 fn write_config(root: &std::path::Path, content: &str) {
-    let config_path = root.join(".codex/agent-semantic-protocol/hooks/config.toml");
+    let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create config dir");
     std::fs::write(config_path, content).expect("write config");
@@ -442,6 +440,7 @@ fn run_hook_decision_with_args(
     let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(root)
         .args(args)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

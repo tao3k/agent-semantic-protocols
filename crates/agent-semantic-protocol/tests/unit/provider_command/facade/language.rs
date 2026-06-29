@@ -231,7 +231,7 @@ fn language_facade_uses_manifest_child_as_provider_project_hint() {
         std::fs::canonicalize(&child_dir).expect("canonical child root")
     );
     let receipt: serde_json::Value = serde_json::from_slice(&output.stderr).expect("receipt JSON");
-    let expected_cache_root = root.join(".cache/agent-semantic-protocol/client");
+    let expected_cache_root = crate::provider_command::support::cache_root(&root);
     std::fs::create_dir_all(&expected_cache_root).expect("create expected cache root");
     assert_eq!(
         std::fs::canonicalize(PathBuf::from(

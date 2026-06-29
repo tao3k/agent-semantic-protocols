@@ -49,10 +49,11 @@ fn cli_install_prefers_git_toplevel_cache_over_prj_cache_home() {
 fn cli_install_preserves_existing_client_hook_config() {
     let root = git_project_root("install-preserves-client-config");
     let codex_home = root.join(".codex-home");
+    let asp_state_home = root.join(".asp-state-home");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
-    let client_config_path = root.join(".codex/agent-semantic-protocol/hooks/config.toml");
+    let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
     let custom_config = r#"schemaId = "agent.semantic-protocols.hook.client-config"
@@ -69,6 +70,7 @@ decision = "deny"
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
@@ -85,13 +87,14 @@ decision = "deny"
 }
 
 #[test]
-fn cli_install_refreshes_generated_client_hook_config_from_activation_extensions() {
-    let root = git_project_root("install-refreshes-generated-client-config");
+fn cli_install_preserves_existing_user_hook_config_without_regeneration() {
+    let root = git_project_root("install-preserves-user-hook-config");
     let codex_home = root.join(".codex-home");
+    let asp_state_home = root.join(".asp-state-home");
     let provider_path = write_fake_provider_binary(&root, "gslph");
     let protocol_bin_dir = root.join(".agent-bin");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
-    let client_config_path = root.join(".codex/agent-semantic-protocol/hooks/config.toml");
+    let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
     std::fs::write(
@@ -121,6 +124,7 @@ argvSourceGlobAny = [
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
@@ -132,9 +136,9 @@ argvSourceGlobAny = [
 
     let client_config = std::fs::read_to_string(&client_config_path).expect("read client config");
     assert!(client_config.contains("\"*.ss\", \"**/*.ss\""));
-    assert!(client_config.contains("\"*.ssi\", \"**/*.ssi\""));
     assert!(client_config.contains("\"*.scm\", \"**/*.scm\""));
-    assert!(client_config.contains("\"*.sld\", \"**/*.sld\""));
+    assert!(!client_config.contains("\"*.ssi\", \"**/*.ssi\""));
+    assert!(!client_config.contains("\"*.sld\", \"**/*.sld\""));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 

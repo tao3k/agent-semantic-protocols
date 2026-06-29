@@ -102,6 +102,40 @@ activation, and Org recall code.
 
 * State root selection
 
+Phase 1 State Core uses exactly one executable state-root override:
+=ASP_STATE_HOME=. When it is set, every durable client DB, manifest, and
+artifact path is resolved under that directory. When it is unset, ASP uses
+=$HOME/.agent-semantic-protocols=. =PRJ_CACHE_HOME= is not part of the v2
+contract and must not affect State Core resolution.
+
+The old project-local =<git-toplevel>/.cache/agent-semantic-protocol= path is
+diagnostic evidence only. =asp state locate= may report that the path exists so
+an operator can audit old data, but Phase 1 must not read it as a fallback,
+copy data from it, or silently migrate it.
+
+* Crate ownership and command boundary
+
+State Core is owned by =agent-semantic-client-core=. The
+=agent-semantic-protocol= command layer must stay a thin public facade: parse
+CLI arguments, call the package-owned service, and render the returned typed
+report. It must not reconstruct state-root paths, compute repo/workspace
+identity, choose DB/artifact directories, or own source-index refresh/search
+algorithms.
+
+The intended ownership split is:
+
+#+begin_src text
+agent-semantic-protocol::command -> CLI parsing, dispatch, compact rendering
+agent-semantic-client-core      -> state root, repo/workspace/scope identity, manifests
+agent-semantic-client-db        -> SQLite v1 source-index/client DB storage services
+future Turso DB package         -> Turso backend implementation behind State Core paths
+#+end_src
+
+New state commands should therefore expose package interfaces instead of
+adding heavy implementation into =crates/agent-semantic-protocol/src/command/*=.
+When a command needs new behavior, first define the typed service boundary in
+the owning crate, then call it from the command facade.
+
 The v2 state-root selection order should be:
 
 #+begin_src text
@@ -158,6 +192,11 @@ repo_id -> workspace_id -> scope_id -> generation_id -> provider_id ->
 search_receipt_id -> selector/snippet/artifact
 #+end_src
 
+Global hook defaults live under the same state root:
+#+begin_src text
+$ASP_STATE_HOME/hooks/config.toml
+#+end_src
+When =ASP_STATE_HOME= is unset, the default path is =$HOME/.agent-semantic-protocols/hooks/config.toml=. This file owns common hook policy and recovery prompt templates that are not project-specific. Project-local hook config may still overlay it for repository-specific rules, but common agent-session behavior should not be copied into each project.
 * Identity model
 
 ** Repository identity
@@ -251,6 +290,30 @@ minimum audit bridge from a future question back to the exact ASP run that
 produced the evidence.
 
 * Proposed directory layout
+
+The minimum Phase 1 layout is:
+#+begin_src text
+$ASP_STATE_HOME/
+  VERSION
+  state.json
+  registry/events.jsonl
+  aliases/by-display-name/
+  projects/by-id/<repo_id>/
+    project.json
+    workspaces/<workspace_id>/
+      workspace.json
+      live/client/
+        manifest.json
+        client.sqlite3
+        cache-manifest.json
+      artifacts/
+#+end_src
+
+The =live/client/manifest.json= file is the State Core manifest. It records
+=layoutVersion=, =backend=sqlite-v1=, =futureBackend=turso=, =repoId=,
+=workspaceId=, =scopeId=, =dbPath=, =artifactPath=, and the cache generation
+manifest path. Turso must consume this manifest later rather than define a
+different root layout.
 
 The global state root should be organized by identity, not by display name:
 
@@ -807,6 +870,20 @@ receipts without explicit user action. Derived indexes can be rebuilt from
 provider artifacts and static hashes, so they can have shorter retention.
 
 * Acceptance criteria
+
+- =asp state locate --json= validates against
+  =schemas/semantic-state-locate-report.v1.schema.json=.
+- =repo_id= is derived from git remote, git common dir/git dir, or canonical
+  root path fallback; display names are aliases only.
+- =workspace_id= is derived from concrete checkout/worktree root, git dir, and
+  =repo_id=; main checkout and linked worktree share =repo_id= but differ in
+  =workspace_id=.
+- =project name=, display labels, and line ranges are never executable state
+  identity.
+- v2 client DB paths resolve to
+  =$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/live/client/client.sqlite3=.
+- Existing project-local cache may be reported as =projectLocalCache= evidence
+  but must not be selected as a v2 fallback.
 
 - one ASP command can resolve cwd to state root, repo id, workspace id, and
   candidate scope ids;

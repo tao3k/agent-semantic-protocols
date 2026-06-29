@@ -13,9 +13,10 @@ fn org_facade_search_pipe_uses_document_element_chain() {
             "search",
             "pipe",
             "execution mode",
+            "--workspace",
+            ".",
             "--view",
             "graph-turbo-request",
-            ".",
         ])
         .output()
         .expect("run asp org search pipe");
@@ -46,9 +47,10 @@ fn md_facade_search_pipe_uses_document_element_chain() {
             "search",
             "pipe",
             "runtime activation",
+            "--workspace",
+            ".",
             "--view",
             "graph-turbo-request",
-            ".",
         ])
         .output()
         .expect("run asp md search pipe");

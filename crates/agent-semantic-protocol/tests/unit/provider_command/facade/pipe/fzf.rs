@@ -5,6 +5,19 @@ use serde_json::Value;
 
 use super::assert_graph_turbo_request_contract;
 
+fn refresh_source_index(root: &std::path::Path) {
+    let output = asp_command(root)
+        .args(["cache", "source-index", "refresh"])
+        .output()
+        .expect("run asp cache source-index refresh");
+    assert!(
+        output.status.success(),
+        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[test]
 fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
     let root = temp_project_root("search-fzf-fast-facade");
@@ -70,7 +83,7 @@ fn fzf_seeds_use_source_index_before_native_finder() {
     .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
-    agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
+    refresh_source_index(&root);
     let _ = std::fs::remove_file(&marker);
 
     let output = asp_command(&root)

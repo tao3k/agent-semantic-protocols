@@ -10,7 +10,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use agent_semantic_runtime::{ensure_project_hook_cache_dir, ensure_project_hook_state_dir};
 use serde_json::{Value, json};
 
-use crate::event_replay::{deny_replay_key, repeated_deny_message};
+use crate::event_replay::{
+    compact_source_access_deny_message, deny_replay_key, is_source_access_replay_key,
+    recovery_ref_for_replay_key, repeated_deny_message, should_compact_source_access_deny_message,
+};
 use crate::protocol::{HOOK_PROTOCOL_ID, HookDecision};
 
 pub(crate) const HOOK_EVENT_STATE_FILE: &str = "events.jsonl";
@@ -47,12 +50,23 @@ pub fn apply_repeated_deny_replay(
         "denyReplayKey".to_string(),
         Value::String(replay_key.clone()),
     );
+    let recovery_ref = recovery_ref_for_replay_key(&replay_key);
+    decision.fields.insert(
+        "recoveryRef".to_string(),
+        Value::String(recovery_ref.clone()),
+    );
+    let source_access_replay = is_source_access_replay_key(&replay_key);
+    let compact_first_source_access_replay =
+        source_access_replay && should_compact_source_access_deny_message(decision);
 
     if !has_recent_matching_deny(project_root, &replay_key)? {
         decision.fields.insert(
             "denyReplay".to_string(),
             Value::String("record".to_string()),
         );
+        if compact_first_source_access_replay {
+            decision.message = compact_source_access_deny_message(decision, &recovery_ref);
+        }
         return Ok(false);
     }
 
@@ -60,7 +74,11 @@ pub fn apply_repeated_deny_replay(
         "denyReplay".to_string(),
         Value::String("repeated".to_string()),
     );
-    decision.message = repeated_deny_message(decision);
+    decision.message = if source_access_replay {
+        compact_source_access_deny_message(decision, &recovery_ref)
+    } else {
+        repeated_deny_message(decision)
+    };
     Ok(true)
 }
 

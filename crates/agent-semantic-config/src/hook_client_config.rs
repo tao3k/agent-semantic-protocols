@@ -1,4 +1,4 @@
-//! Parses project-local `asp` hook client configuration from TOML.
+//! Parses global `asp` hook client configuration from TOML.
 
 use figment::{
     Figment,
@@ -7,12 +7,12 @@ use figment::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
-/// Schema id for project-local hook client config.
+/// Schema id for hook client config.
 pub const CLIENT_HOOK_CONFIG_SCHEMA_ID: &str = "agent.semantic-protocols.hook.client-config";
-/// Schema version for project-local hook client config.
+/// Schema version for hook client config.
 pub const CLIENT_HOOK_CONFIG_SCHEMA_VERSION: &str = "1";
 
 const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.hook";
@@ -40,6 +40,8 @@ const DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS: &[&str] = &[
     ".markdown",
 ];
 
+const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../templates/hooks/config.toml");
+
 /// Parsed and validated project-local hook client config.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -57,7 +59,37 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
     #[serde(default)]
+    pub recovery_prompt: HookClientRecoveryPromptConfig,
+    #[serde(default)]
+    pub agent_session_guide: HookClientAgentSessionGuideConfig,
+    #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
+}
+
+/// Optional hook recovery prompt template and per-client agent-flow fragments.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientRecoveryPromptConfig {
+    #[serde(default)]
+    pub template: Option<String>,
+    #[serde(default)]
+    pub codex_agent_flow: Option<String>,
+    #[serde(default)]
+    pub claude_agent_flow: Option<String>,
+    #[serde(default)]
+    pub default_agent_flow: Option<String>,
+}
+
+/// Optional agent-facing guide text for session registry recovery.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAgentSessionGuideConfig {
+    #[serde(default)]
+    pub register: Option<String>,
+    #[serde(default)]
+    pub list: Option<String>,
+    #[serde(default)]
+    pub show: Option<String>,
 }
 
 /// Parsed ASP project config from `.agents/asp.toml`.
@@ -226,22 +258,12 @@ pub enum HookClientConfigStdinMode {
     Unknown,
 }
 
-/// Return the versioned project-local hook config path.
-pub fn default_hook_client_config_path(project_root: impl AsRef<Path>) -> PathBuf {
-    project_root
-        .as_ref()
-        .join(".codex")
-        .join("agent-semantic-protocol")
-        .join("hooks")
-        .join("config.toml")
-}
-
-/// Render the seed project-local hook config file.
+/// Render the seed global hook config file.
 pub fn default_hook_client_config_template() -> String {
     default_hook_client_config_template_for_source_extensions(DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS)
 }
 
-/// Render the seed project-local hook config file for active provider source extensions.
+/// Render the seed global hook config file for active provider source extensions.
 pub fn default_hook_client_config_template_for_source_extensions<I, S>(
     source_extensions: I,
 ) -> String
@@ -250,37 +272,18 @@ where
     S: AsRef<str>,
 {
     let argv_source_globs = render_argv_source_globs(source_extensions);
-    format!(
-        r#"# Semantic agent client hook config.
-# Loaded by `asp hook` on every client hook invocation.
-# Generated rules extend the built-in classifier with configurable shell argv evidence.
-schemaId = "{CLIENT_HOOK_CONFIG_SCHEMA_ID}"
-schemaVersion = "{CLIENT_HOOK_CONFIG_SCHEMA_VERSION}"
-protocolId = "{HOOK_PROTOCOL_ID}"
-protocolVersion = "{HOOK_PROTOCOL_VERSION}"
-
-# AST patch routing is experimental and disabled for generated Codex hook configs.
-[experimental.semanticAstPatch]
-enabled = false
-
-[[rules]]
-id = "deny-shell-source-argv"
-enabled = true
-event = "pre-tool"
-priority = 80
-decision = "deny"
-reasonKind = "bulk-source-dump"
-message = "Use the language harness instead of shell argv source reads."
-
-[rules.match]
-toolAny = ["Bash", "shell", "functions.exec_command", "exec_command", "command_execution"]
-commandAny = ["sed", "perl", "rg", "wl"]
-argvSourceGlobAny = [
-{argv_source_globs}
-]
-argvSourceExcludeFlagAny = ["--output", "--output-file", "--out", "-o"]
-"#
-    )
+    DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE
+        .replace(
+            "@CLIENT_HOOK_CONFIG_SCHEMA_ID@",
+            CLIENT_HOOK_CONFIG_SCHEMA_ID,
+        )
+        .replace(
+            "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@",
+            CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
+        )
+        .replace("@HOOK_PROTOCOL_ID@", HOOK_PROTOCOL_ID)
+        .replace("@HOOK_PROTOCOL_VERSION@", HOOK_PROTOCOL_VERSION)
+        .replace("@ARGV_SOURCE_GLOBS@", &argv_source_globs)
 }
 
 fn render_argv_source_globs<I, S>(source_extensions: I) -> String
@@ -356,8 +359,32 @@ fn hook_client_config_metadata_defaults() -> HookClientConfigMetadataDefaults {
 fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
+    validate_recovery_prompt(&config.recovery_prompt)?;
+    validate_agent_session_guide(&config.agent_session_guide)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules)
+}
+
+fn validate_recovery_prompt(config: &HookClientRecoveryPromptConfig) -> Result<(), String> {
+    validate_optional_non_empty("recoveryPrompt.template", config.template.as_deref())?;
+    validate_optional_non_empty(
+        "recoveryPrompt.codexAgentFlow",
+        config.codex_agent_flow.as_deref(),
+    )?;
+    validate_optional_non_empty(
+        "recoveryPrompt.claudeAgentFlow",
+        config.claude_agent_flow.as_deref(),
+    )?;
+    validate_optional_non_empty(
+        "recoveryPrompt.defaultAgentFlow",
+        config.default_agent_flow.as_deref(),
+    )
+}
+
+fn validate_agent_session_guide(config: &HookClientAgentSessionGuideConfig) -> Result<(), String> {
+    validate_optional_non_empty("agentSessionGuide.register", config.register.as_deref())?;
+    validate_optional_non_empty("agentSessionGuide.list", config.list.as_deref())?;
+    validate_optional_non_empty("agentSessionGuide.show", config.show.as_deref())
 }
 
 fn validate_protocol(config: &HookClientConfigFile) -> Result<(), String> {

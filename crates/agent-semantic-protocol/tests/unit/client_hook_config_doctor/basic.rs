@@ -9,7 +9,8 @@ fn doctor_reports_missing_client_hook_config() {
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
-    assert!(stdout.contains("clientConfig=.codex/agent-semantic-protocol/hooks/config.toml"));
+    assert!(stdout.contains("clientConfig="));
+    assert!(stdout.contains(".agent-semantic-protocols/hooks/config.toml"));
     assert!(stdout.contains("clientConfigStatus=missing"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }

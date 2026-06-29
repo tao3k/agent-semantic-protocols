@@ -13,15 +13,6 @@ impl FdQueryPreview {
             && self.package_clusters.is_empty()
             && self.rg_scope_next.is_empty()
     }
-
-    pub(super) fn render_line(&self) -> String {
-        format!(
-            "fdPreview=ownerCandidates={} packageClusters={} parserIndexNext=owner-items rgScopeNext={}",
-            display_terms(&self.owner_candidates),
-            display_terms(&self.package_clusters),
-            display_terms(&self.rg_scope_next),
-        )
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

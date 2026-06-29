@@ -51,7 +51,7 @@ def test_cli_records_live_agent_session_without_sdk(
                 "Explain Tokio IO readiness.",
                 "--agent-session-root",
                 str(session_root),
-                "--session-id",
+                "--child-session-id",
                 "live-cli-session",
                 "--scenario-id",
                 "rust.tokio-live-agent-observability",

@@ -164,17 +164,11 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
     assert!(stdout.contains("seedWhenKnownSymbolCount=0"), "{stdout}");
     assert!(stdout.contains("seedWhenKnownSelectorCount=0"), "{stdout}");
     assert!(
-        stdout.contains("actionFrontier=A1.rg-query-set,A2.fd-query,A3.rg-query"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("recommendedNext=A1.rg-query-set"),
-        "{stdout}"
-    );
-    assert!(
         stdout.contains("nextCommand=asp rg -query") && stdout.contains(" --workspace ."),
         "{stdout}"
     );
+    assert!(!stdout.contains("actionFrontier="), "{stdout}");
+    assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert_evidence_edges_reference_visible_nodes(&stdout);
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);

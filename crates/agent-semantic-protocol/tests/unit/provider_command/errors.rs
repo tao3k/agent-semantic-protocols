@@ -3,7 +3,7 @@ use super::support::{
 };
 
 #[test]
-fn missing_activation_is_reported_before_provider_spawn() {
+fn missing_provider_binary_is_reported_before_provider_spawn() {
     let root = temp_project_root("missing-activation");
     std::fs::write(
         root.join("Cargo.toml"),
@@ -15,7 +15,7 @@ fn missing_activation_is_reported_before_provider_spawn() {
 
     let output = asp_command(&root)
         .env_remove("PATH")
-        .args(["rust", "search", "prime", "."])
+        .args(["rust", "guide"])
         .output()
         .expect("run asp rust search");
 
@@ -26,18 +26,12 @@ fn missing_activation_is_reported_before_provider_spawn() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("failed to read activation"), "{stderr}");
     assert!(
-        stderr.contains(".cache/agent-semantic-protocol/hooks/activation.json"),
+        stderr.contains("provider binary `rs-harness` for language `rust` must be installed"),
         "{stderr}"
     );
     assert!(
-        stderr.contains("failed to sync generated activation"),
-        "{stderr}"
-    );
-    assert!(
-        stderr
-            .contains("expected PATH to contain at least one executable semantic provider binary"),
+        stderr.contains("run `asp install language rust`"),
         "{stderr}"
     );
     let _ = std::fs::remove_dir_all(root);

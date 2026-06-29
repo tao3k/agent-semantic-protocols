@@ -13,6 +13,6 @@ mod source_access_routes;
 pub use core::{HookClassificationRequest, classify_hook, classify_hook_with_config};
 pub use recovery::{
     HOOK_TRIGGER_PROMPT_FILE_NAME, default_hook_trigger_prompt_message,
-    hook_trigger_prompt_document, merge_hook_trigger_prompt_document,
-    render_hook_trigger_prompt_document,
+    hook_trigger_prompt_document, materialize_hook_trigger_prompt_agent_flow_for_client,
+    merge_hook_trigger_prompt_document, render_hook_trigger_prompt_document,
 };

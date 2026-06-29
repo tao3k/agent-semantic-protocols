@@ -481,7 +481,7 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert!(
-        decision.message.contains("ASP Org Archive Warning:"),
+        !decision.message.contains("ASP Org Archive Warning:"),
         "{}",
         decision.message
     );
@@ -511,21 +511,6 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
     let expected_archive_command = format!(
         "asp org archive done --artifacts-root {} --archive-dir archives",
         artifacts_path.display()
-    );
-    assert!(
-        decision.message.contains(&expected_recall_command),
-        "{}",
-        decision.message
-    );
-    assert!(
-        decision.message.contains(&expected_command),
-        "{}",
-        decision.message
-    );
-    assert!(
-        decision.message.contains(&expected_archive_command),
-        "{}",
-        decision.message
     );
     assert_eq!(
         decision
@@ -600,7 +585,7 @@ enabled = true
     });
 
     assert_eq!(decision.decision, DecisionKind::Allow);
-    assert!(decision.message.contains("ASP Org Archive Warning:"));
+    assert!(!decision.message.contains("ASP Org Archive Warning:"));
     assert_eq!(
         decision
             .fields
@@ -613,8 +598,28 @@ enabled = true
         rendered
             .get("systemMessage")
             .and_then(|message| message.as_str())
-            .is_some_and(|message| message.contains("ASP Org Archive Warning:")),
+            .is_none_or(|message| !message.contains("ASP Org Archive Warning:")),
         "{rendered}"
+    );
+
+    let session_start = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "session-start",
+        payload: &json!({}),
+    });
+
+    assert_eq!(session_start.decision, DecisionKind::Allow);
+    assert!(session_start.message.contains("ASP Org Archive Warning:"));
+    let rendered_session_start =
+        render_platform_response(&session_start).expect("render session-start decision");
+    assert!(
+        rendered_session_start
+            .get("systemMessage")
+            .and_then(|message| message.as_str())
+            .is_some_and(|message| message.contains("ASP Org Archive Warning:")),
+        "{rendered_session_start}"
     );
 
     let _ = fs::remove_dir_all(root);

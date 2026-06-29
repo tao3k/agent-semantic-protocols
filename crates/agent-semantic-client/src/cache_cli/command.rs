@@ -13,8 +13,8 @@ use agent_semantic_client_core::{
     ClientCacheManifest, ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt, LanguageId,
     ProjectContext, ProviderId, ProviderRegistrySnapshot, StateLayout,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbReport};
-use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout};
+use agent_semantic_client_db::{ClientDb, ClientDbEngine, ClientDbReport};
+use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout_in_client_cache};
 use serde_json::json;
 
 use super::structural_index_import::import_structural_index_artifacts;
@@ -33,7 +33,9 @@ pub(crate) fn run_cache(
             if subcommand == "runtime-source" && action == "acquire" =>
         {
             let spec = parse_runtime_source_acquire_args(rest)?;
-            let checkout = ensure_runtime_source_checkout(project_root, &spec)?;
+            let state_layout = cache_state_layout(project_root)?;
+            let checkout =
+                ensure_runtime_source_checkout_in_client_cache(state_layout.client_cache_dir(), &spec)?;
             let source_index_report = refresh_runtime_source_index(
                 project_root,
                 &checkout.checkout_dir,
@@ -107,7 +109,9 @@ pub(crate) fn run_cache(
             let db_report = cache_report
                 .cache_root
                 .as_ref()
-                .map(|cache_root| ClientDb::inspect(ClientDb::default_path(cache_root)));
+                .map(|cache_root| {
+                    ClientDb::inspect(ClientDbEngine::sqlite_path_for_client_dir(cache_root))
+                });
             let mut receipt = ClientReceipt::cache_status(provenance, &cache_report);
             if let Some(db_report) = &db_report {
                 apply_db_report_to_receipt(&mut receipt, db_report);
@@ -164,7 +168,7 @@ pub(crate) fn run_cache(
             let cache_report = ClientCacheManifest::inspect_project(project_root);
             let manifest = ClientCacheManifest::load_from_path(state_layout.cache_manifest_path())?;
             let cache_root = state_layout.client_cache_dir();
-            let db_path = ClientDb::default_path(cache_root);
+            let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
             let mut db = ClientDb::open_or_create(db_path.clone())?;
             db.import_manifest(&manifest)?;
             let structural_index_imported_count =
@@ -313,7 +317,7 @@ pub(crate) fn run_cache(
                 .as_ref()
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_root = state_layout.client_cache_dir();
-            let db_path = ClientDb::default_path(cache_root);
+            let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
             let flushed_syntax_rows = ClientDb::flush_syntax_query_rows(&db_path)?;
             let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
             let db_report = ClientDb::inspect(db_path);
@@ -366,7 +370,7 @@ pub(crate) fn run_cache(
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_report = ClientCacheManifest::inspect_project(project_root);
             let cache_root = state_layout.client_cache_dir();
-            let db_path = ClientDb::default_path(cache_root);
+            let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
             let db_invalidated_generation_count =
                 ClientDb::invalidate_generations_for_project(&db_path, project_root)?;
             let manifest_invalidated_generation_count =

@@ -2,9 +2,16 @@
 
 mod agent_session;
 mod agent_session_registry;
+
+pub(crate) use agent_session_registry::{
+    RegisteredSession, asp_explore_session_for_current_root, current_registered_session,
+    current_root_session_id, has_current_agent_session,
+};
+pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;
 mod client_backend_worker;
 mod dispatch;
+mod document_language_facade;
 mod document_provider;
 mod gerbil_check_cache;
 mod graph;

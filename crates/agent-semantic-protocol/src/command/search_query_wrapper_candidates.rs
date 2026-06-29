@@ -222,7 +222,10 @@ fn collect_source_index_query_candidates(
         QueryWrapperSurface::Rg => QUERY_CANDIDATE_LIMIT as u32,
     };
     let result = lookup_source_index_for_language(project_root, None, &query, limit).ok()?;
-    if result.state != SourceIndexLookupState::Hit {
+    if matches!(
+        result.state,
+        SourceIndexLookupState::MissingDb | SourceIndexLookupState::EmptyIndex
+    ) {
         return None;
     }
     let mut candidates = result
@@ -231,9 +234,6 @@ fn collect_source_index_query_candidates(
         .filter(|candidate| source_index_candidate_in_roots(project_root, roots, &candidate.path))
         .map(source_index_candidate)
         .collect::<Vec<_>>();
-    if candidates.is_empty() {
-        return None;
-    }
     candidates
         .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, axis_terms));
     let candidate_count = candidates.len();

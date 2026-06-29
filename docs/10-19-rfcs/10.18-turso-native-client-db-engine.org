@@ -697,6 +697,35 @@ Default backend switch remains blocked until:
 
 * Implementation sketch
 
+State Core owns the durable layout before the Turso engine is introduced.
+Phase 1 therefore keeps the current SQLite backend and only changes where the
+client DB and artifacts live. The State Core manifest records
+=backend=sqlite-v1= and =futureBackend=turso= so the later engine migration
+has an explicit handoff point.
+
+The Turso DB Engine must consume the State Core manifest and paths:
+#+begin_src text
+$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/live/client/manifest.json
+$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/live/client/client.sqlite3
+$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/artifacts/
+#+end_src
+
+It must not introduce a second project identity model, use project display
+names as executable identity, or restore project-local cache fallback. Old
+=.cache/agent-semantic-protocol= data remains audit evidence until a later,
+explicit migration RFC.
+
+The Turso migration also must not make
+=crates/agent-semantic-protocol/src/command/*= the DB engine owner. Command
+modules are public facade code: they may parse CLI arguments, dispatch to a
+typed service, and render compact output. DB open/refresh/search, source-index
+lookup, manifest interpretation, backend selection, and later Turso/Tantivy
+integration belong in package-owned services below the command layer. The first
+target owners are =agent-semantic-client-core= for State Core identity/paths
+and =agent-semantic-client-db= for SQLite v1 source-index/client DB services;
+the Turso package consumes those service contracts rather than replacing them
+with command-local implementation.
+
 ** Phase 0 - RFC and source survey
 
 - Keep this RFC as the ASP DB Engine v2 decision owner.
@@ -717,7 +746,7 @@ Default backend switch remains blocked until:
 - Keep the existing =ClientDb= API stable where possible.
 - Add an explicit engine enum:
   - =sqlite-v1= -> =client.sqlite3=;
-  - =turso-v2= -> =client.turso=.
+  - =turso= -> =client.turso=.
 
 ** Phase 2 - Parity tests and benchmark port
 
@@ -740,7 +769,7 @@ Default backend switch remains blocked until:
 - Keep SQLite v1 default until the Turso backend has receipts that show a
   concrete advantage and acceptable maturity risk.
 - If the advantage is strong but maturity is still risky, expose an
-  opt-in =ASP_CLIENT_DB_ENGINE=turso-v2= path.
+  opt-in =ASP_CLIENT_DB_ENGINE=turso= path.
 - Promote only after CI, sandtable, real-project evidence, and rebuild
   receipts agree.
 

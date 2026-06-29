@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::search_pipe_action_model::PipeAction;
-use super::search_pipe_actions::{SearchPipeActionRequest, render_action_frontier};
+use super::search_pipe_actions::{SearchPipeActionRequest, render_action_next_command};
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_quality_model::SearchPipeQuality;
 use super::search_pipe_seed_decision::SeedActionIntent;
@@ -71,7 +71,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     } else {
         None
     };
-    let action_frontier_lines = render_action_frontier(SearchPipeActionRequest {
+    let next_command_line = render_action_next_command(SearchPipeActionRequest {
         language_id,
         project_root,
         locator_root,
@@ -85,13 +85,36 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         read_memory_selectors,
         dependency_action_targets,
     });
+    let fd_preview_line = fd_preview
+        .as_ref()
+        .filter(|preview| !preview.is_empty())
+        .map(render_fd_preview_line)
+        .unwrap_or_default();
     format!(
         "seedPlan=seed-query alg=asp-search-pipe-v1 budget=frontier<=3 repeated=0\n\
-{action_frontier_lines}\
+{fd_preview_line}\
+{next_command_line}\
 nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector\n\
 omit=source,full-candidate-list,raw-finder-output,generated-files,long-field-signatures\n\
 avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,direct-source-read,raw-read\n",
     )
+}
+
+fn render_fd_preview_line(preview: &super::search_query_wrapper_model::FdQueryPreview) -> String {
+    format!(
+        "fdPreview=ownerCandidates={} packageClusters={} rgScopeNext={}\n",
+        display_preview_terms(&preview.owner_candidates),
+        display_preview_terms(&preview.package_clusters),
+        display_preview_terms(&preview.rg_scope_next),
+    )
+}
+
+fn display_preview_terms(values: &[String]) -> String {
+    if values.is_empty() {
+        "-".to_string()
+    } else {
+        values.join(",")
+    }
 }
 
 fn skip_fd_preview_for_action_meta_query(
