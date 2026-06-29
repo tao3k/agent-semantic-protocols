@@ -13,7 +13,7 @@ use agent_semantic_client_core::{
     ClientCacheManifest, ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt, LanguageId,
     ProjectContext, ProviderId, ProviderRegistrySnapshot, StateLayout,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbEngine, ClientDbReport};
+use agent_semantic_client_db::{ClientDb, ClientDbEngine, ClientDbEngineReport, ClientDbReport};
 use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout_in_client_cache};
 use serde_json::json;
 
@@ -106,12 +106,12 @@ pub(crate) fn run_cache(
                 .as_ref()
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_report = ClientCacheManifest::inspect_project(project_root);
-            let db_report = cache_report
-                .cache_root
+            let db_engine_report = ClientDbEngine::resolve(project_root)
+                .ok()
+                .map(|engine| engine.inspect());
+            let db_report = db_engine_report
                 .as_ref()
-                .map(|cache_root| {
-                    ClientDb::inspect(ClientDbEngine::sqlite_path_for_client_dir(cache_root))
-                });
+                .map(|report| &report.sqlite_report);
             let mut receipt = ClientReceipt::cache_status(provenance, &cache_report);
             if let Some(db_report) = &db_report {
                 apply_db_report_to_receipt(&mut receipt, db_report);
@@ -132,7 +132,7 @@ pub(crate) fn run_cache(
             };
             println!(
                 "[asp-cache] status={} route=local-cache activation={} providers={} cacheRoot={} manifest={} generations={} rawSourceStored={}",
-                cache_status_line(&cache_report, db_report.as_ref()),
+                cache_status_line(&cache_report, db_report),
                 activation,
                 provider_count,
                 display_optional_path(cache_report.cache_root.as_deref()),
@@ -145,7 +145,8 @@ pub(crate) fn run_cache(
                 display_optional_path(cache_report.manifest_path.as_deref()),
                 cache_report.status.as_str()
             );
-            print_db_status(db_report.as_ref());
+            print_db_engine_status(db_engine_report.as_ref());
+            print_db_status(db_report);
             print_cache_reason(&cache_report);
             println!("|reason phase=phase-1-client-db-sql arrow=false providerCommands=0");
             if snapshot.is_err() {
@@ -609,6 +610,28 @@ fn cache_status_line(
             Some(report) if report.status == ClientDbStatus::Invalid => "invalid",
             Some(_) | None => "unimported",
         },
+    }
+}
+
+fn print_db_engine_status(engine_report: Option<&ClientDbEngineReport>) {
+    if let Some(engine_report) = engine_report {
+        println!(
+            "|dbEngine backend={} futureBackend={} layoutVersion={} repoId={} workspaceId={} scopeId={} clientDir={} manifestPath={} dbPath={} artifactPath={}",
+            engine_report.backend,
+            engine_report.future_backend,
+            engine_report.layout_version,
+            engine_report.repo_id,
+            engine_report.workspace_id,
+            engine_report.scope_id,
+            engine_report.client_dir.display(),
+            engine_report.manifest_path.display(),
+            engine_report.db_path.display(),
+            engine_report.artifact_path.display()
+        );
+    } else {
+        println!(
+            "|dbEngine backend=unavailable futureBackend=unavailable layoutVersion=unavailable repoId=unavailable workspaceId=unavailable scopeId=unavailable clientDir=unavailable manifestPath=unavailable dbPath=unavailable artifactPath=unavailable"
+        );
     }
 }
 

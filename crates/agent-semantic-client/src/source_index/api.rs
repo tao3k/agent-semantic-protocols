@@ -9,7 +9,7 @@ use agent_semantic_client_core::{
     CacheGenerationId, LanguageId, ProjectContext, ProviderId, ProviderRegistrySnapshot,
     ResolvedProvider, SemanticSchemaId, SemanticSchemaVersion,
 };
-use agent_semantic_client_db::{ClientDbEngine, ClientDbSourceIndexStats};
+use agent_semantic_client_db::{ClientDb, ClientDbEngine, ClientDbSourceIndexStats};
 
 use super::collect::collect_source_index_files;
 use super::config::{SOURCE_INDEX_FILE_LIMIT, SOURCE_INDEX_SCHEMA_ID, SOURCE_INDEX_SCHEMA_VERSION};

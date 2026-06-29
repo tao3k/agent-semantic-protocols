@@ -148,6 +148,7 @@ fn guide_text_for(
         SessionCommand::Register => guide.register.as_deref(),
         SessionCommand::List => guide.list.as_deref(),
         SessionCommand::Show => guide.show.as_deref(),
+        SessionCommand::Reuse => guide.reuse.as_deref(),
     }
     .filter(|value| !value.trim().is_empty())
 }
@@ -158,6 +159,7 @@ fn agent_session_guide_has_any_text(
     guide_text_for(guide, SessionCommand::Register).is_some()
         || guide_text_for(guide, SessionCommand::List).is_some()
         || guide_text_for(guide, SessionCommand::Show).is_some()
+        || guide_text_for(guide, SessionCommand::Reuse).is_some()
 }
 
 fn load_agent_session_guide() -> agent_semantic_config::HookClientAgentSessionGuideConfig {
@@ -212,6 +214,12 @@ List registered child sessions for the current root session."
         show: Some(
             "asp agent session show guide\n\
 Show one registered child session by --name or --child-session-id."
+                .to_string(),
+        ),
+        reuse: Some(
+            "asp agent session reuse guide\n\
+Reuse an existing routable child session for the current root before starting another.\n\
+asp agent session reuse --name asp-explore --json"
                 .to_string(),
         ),
     }

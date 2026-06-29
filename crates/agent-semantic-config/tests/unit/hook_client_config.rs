@@ -29,6 +29,19 @@ fn default_template_round_trips_through_config_parser() {
     assert!(config.agent_session_guide.register.is_none());
     assert!(config.agent_session_guide.list.is_none());
     assert!(config.agent_session_guide.show.is_none());
+    assert!(config.asp_session_policy.enabled);
+    assert_eq!(config.asp_session_policy.resident_child_name, "asp-explore");
+    assert_eq!(
+        config.asp_session_policy.main_allowed_asp_command_prefixes,
+        [
+            "help",
+            "--help",
+            "-h",
+            "agent session",
+            "org recall",
+            "org capture"
+        ]
+    );
     assert!(config.rules.is_empty());
     let _ = fs::remove_dir_all(root);
 }
@@ -55,6 +68,11 @@ defaultAgentFlow = "default flow from config"
 register = "register guide"
 list = "list guide"
 show = "show guide"
+reuse = "reuse guide"
+
+[aspSessionPolicy]
+residentChildName = "asp-explore"
+mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org capture"]
 "#,
     )
     .expect("write config");
@@ -88,6 +106,16 @@ show = "show guide"
     assert_eq!(
         config.agent_session_guide.show.as_deref(),
         Some("show guide")
+    );
+    assert_eq!(
+        config.agent_session_guide.reuse.as_deref(),
+        Some("reuse guide")
+    );
+    assert!(config.asp_session_policy.enabled);
+    assert_eq!(config.asp_session_policy.resident_child_name, "asp-explore");
+    assert_eq!(
+        config.asp_session_policy.main_allowed_asp_command_prefixes,
+        ["help", "agent session", "org recall", "org capture"]
     );
     let _ = fs::remove_dir_all(root);
 }

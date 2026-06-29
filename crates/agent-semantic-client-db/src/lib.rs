@@ -17,7 +17,7 @@ pub use db::{
     ClientDbSyntaxNodeType, ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryLookup,
     ClientDbSyntaxQueryReplay,
 };
-pub use engine::{ClientDbBackend, ClientDbEngine};
+pub use engine::{ClientDbBackend, ClientDbEngine, ClientDbEngineReport};
 pub use pragmas::{ClientDbJournalMode, ClientDbRuntimePragmas};
 pub use source_index::{
     ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,

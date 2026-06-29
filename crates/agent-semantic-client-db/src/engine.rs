@@ -6,6 +6,7 @@ use agent_semantic_client_core::state_core::{
     CLIENT_DB_FILE, ResolvedState, SQLITE_V1_BACKEND, STATE_LAYOUT_VERSION, STATE_MANIFEST_FILE,
     TURSO_BACKEND,
 };
+use serde::Serialize;
 
 use crate::db::{ClientDb, ClientDbReport};
 
@@ -39,6 +40,23 @@ pub struct ClientDbEngine {
     repo_id: String,
     workspace_id: String,
     scope_id: String,
+}
+
+/// DB Engine diagnostic report for CLI and analyzer-facing receipts.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientDbEngineReport {
+    pub backend: &'static str,
+    pub future_backend: &'static str,
+    pub layout_version: &'static str,
+    pub client_dir: PathBuf,
+    pub db_path: PathBuf,
+    pub manifest_path: PathBuf,
+    pub artifact_path: PathBuf,
+    pub repo_id: String,
+    pub workspace_id: String,
+    pub scope_id: String,
+    pub sqlite_report: ClientDbReport,
 }
 
 impl ClientDbEngine {
@@ -92,6 +110,24 @@ impl ClientDbEngine {
     #[must_use]
     pub fn inspect_sqlite(&self) -> ClientDbReport {
         ClientDb::inspect(&self.db_path)
+    }
+
+    /// Inspect the current engine selection and active SQLite v1 adapter.
+    #[must_use]
+    pub fn inspect(&self) -> ClientDbEngineReport {
+        ClientDbEngineReport {
+            backend: self.backend.as_str(),
+            future_backend: self.future_backend,
+            layout_version: self.layout_version,
+            client_dir: self.client_dir.clone(),
+            db_path: self.db_path.clone(),
+            manifest_path: self.manifest_path.clone(),
+            artifact_path: self.artifact_path.clone(),
+            repo_id: self.repo_id.clone(),
+            workspace_id: self.workspace_id.clone(),
+            scope_id: self.scope_id.clone(),
+            sqlite_report: self.inspect_sqlite(),
+        }
     }
 
     /// Current backend selected for this engine.

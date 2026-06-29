@@ -1,14 +1,14 @@
-#+TITLE: RFC 10.18 - ASP DB Engine v2 and Turso backend
+#+TITLE: RFC 10.18 - ASP DB Engine v1 and Turso backend
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-28
 #+OPTIONS: toc:2
 
 * One-sentence summary
 
-ASP should define its own DB Engine v2 as the durable substrate for search,
+ASP should define its own DB Engine as the durable substrate for search,
 state, dependency topology, artifact evidence, and future writing workflows;
-Turso Database is a high-leverage backend candidate for that engine, not the
-identity of the solution itself.
+Turso Database is the target backend that should fully replace the current
+=rusqlite=/SQLite v1 adapter once the DB Engine gates pass.
 
 * Motivation
 
@@ -35,11 +35,43 @@ the agent loop:
 - agent-friendly DB introspection surfaces.
 
 The compatibility target is therefore a validation baseline, not the product
-goal. ASP can intentionally create a v2 DB Engine format that is not readable by
-SQLite when an engine feature pays for that boundary. The design question is
-not "should ASP use Turso"; it is "what DB Engine does ASP need, and can the
-Turso backend satisfy it with decisive advantages."
+goal. ASP can intentionally create a Turso DB Engine format that is not readable
+by SQLite when an engine feature pays for that boundary. The design question is
+not "should ASP use Turso"; it is "what DB Engine does ASP need, and how does
+the Turso backend satisfy it while replacing the current =rusqlite= adapter."
 
+* Backend replacement contract
+The new architecture target is a Turso-backed DB Engine, not an indefinite
+multi-backend matrix. The current =rusqlite= adapter and =client.sqlite3= file
+are phase-1 compatibility scaffolding:
+- keep =sqlite-v1= only as the active backend while State Core, manifests,
+  source-index paths, and command boundaries are being stabilized;
+- record =futureBackend=turso= as the migration direction, not as a parallel
+  optional mode;
+- remove =rusqlite= from the production DB Engine path after Turso satisfies
+  schema, source-index, structural-index, artifact-event, receipt, inspect,
+  benchmark, and recovery gates;
+- do not preserve =rusqlite= as a long-lived fallback once the Turso cutover is
+  accepted;
+- keep any fallback/control behavior before cutover as explicit validation
+  scaffolding, not as part of the target architecture.
+
+This also means ASP should use Turso-owned FTS/BM25 and search facilities for
+durable indexed generations once the backend is active. Dynamic dirty-code
+overlay search may reuse Turso's search implementation only through the DB
+Engine boundary; ASP should not introduce =tantivy= as a second product backend
+alongside Turso.
+* Phase 1 implementation checkpoint
+ASP now has a DB Engine facade before any Turso backend switch:
+- =crates/agent-semantic-client-db/src/engine.rs= owns =ClientDbEngine= and =ClientDbBackend=.
+- The active backend token is =sqlite-v1=, implemented by the existing =ClientDb= rusqlite adapter and schema version 1.
+- The recorded future backend token is =turso=, without a =v2= suffix.
+- =ClientDbEngineReport= exposes backend, future backend, layout version, repo/workspace/scope ids, client dir, manifest path, DB path, artifact path, and the active SQLite adapter report.
+- =schemas/semantic-db-engine-report.v1.schema.json= fixes the analyzer-facing JSON shape for that report during the =sqlite-v1= transition.
+- Engine resolution consumes State Core paths, including =live/client/client.sqlite3=, =live/client/manifest.json=, and the paired workspace artifact path.
+- Production client cache/source-index/writeback/replay/history paths now go through the DB Engine facade or its client-dir path helper instead of spelling =client.sqlite3= from command-facing code.
+- =asp cache status= renders a compact =|dbEngine= row so CLI consumers and analyzers can recover the DB Engine contract without reverse-engineering =client.sqlite3= paths.
+This checkpoint deliberately does not add Turso as a dependency. The next Turso phase must implement the replacement backend behind this facade rather than changing State Core layout, keeping =rusqlite= as a permanent peer, or reintroducing project-local cache as a fallback.
 * Source context
 
 Current ASP contract:
@@ -82,7 +114,7 @@ Current analyzer research context:
 Related code-search reference context:
 - RFC 10.20 studies =codebase-memory-mcp= as an external code-search substrate. Its useful lesson for ASP is the durable pre-indexed graph, FTS/BM25, semantic/vector retrieval, graph traversal, snippet retrieval, and benchmark playbook behind the MCP adapter.
 - The report explicitly rejects making an agent MCP server the ASP architecture. MCP can be a future adapter over stable ASP commands and receipts; it must not own indexing, ranking, project identity, or artifact layout.
-- DB Engine v2 should therefore include code-search generations, files, entities, edges, terms, optional vectors, snippets, receipts, and dynamic JSON locators as engine-level read-models.
+- DB Engine v1 should therefore include code-search generations, files, entities, edges, terms, optional vectors, snippets, receipts, and dynamic JSON locators as engine-level read-models.
 - The stronger ASP advantage is native provider analysis. Rust, Python, Julia, TypeScript, Org, Gerbil, and future providers should bring their ecosystem facts into the same DB read-model: package metadata, imports, tests, route ownership, manifests, contracts, notebooks, and analyzer receipts.
 Turso-first lexical search update:
 - RFC 10.20 narrows the text-search backend decision. The preferred DB Engine experiment should use Turso-backed FTS/BM25 over ASP entity documents.
@@ -150,9 +182,9 @@ Primary references:
 
 * Decision framing
 
-** The solution is ASP DB Engine v2
+** The solution is ASP DB Engine v1
 
-The v2 project should be scoped as:
+The DB Engine v1 project should be scoped as:
 
 #+begin_src text
 ASP DB Engine contract -> typed state/fact/artifact tables ->
@@ -211,7 +243,7 @@ without depending on one agent client's server lifecycle.
 
 ** Compatibility-only migration is rejected
 
-The v2 project should not be scoped as:
+The DB Engine v1 project should not be scoped as:
 
 #+begin_src text
 rusqlite API parity -> same tables -> same sync calls -> same benchmark names
@@ -594,7 +626,7 @@ Acceptance:
 
 ** Non-goal: MCP / agent DB inspection as core architecture
 
-Turso CLI MCP mode is out of scope for DB Engine v2 experiments. It may be a
+Turso CLI MCP mode is out of scope for DB Engine v1 experiments. It may be a
 future external adapter over stable ASP commands, but it should not shape the
 engine schema, state root, provider protocol, search protocol, analyzer
 interface, writing workflow, or acceptance gates.
@@ -620,7 +652,7 @@ Experiment:
 Acceptance:
 
 - destructive migrations are explicit and tested;
-- runtime report distinguishes SQLite mode from ASP DB Engine v2 Turso backend
+- runtime report distinguishes SQLite mode from ASP DB Engine v1 Turso backend
   mode.
 
 * Experiment matrix
@@ -635,7 +667,7 @@ Acceptance:
 | E5 | Vector/FTS rank input | search frontier rows | Improve owner selection | Better recall without parser drift |
 | E6 | DBSP derived views | latest generation / frontier view | Reduce warm aggregation cost | Faster warm path or fewer queries |
 | E7 | Sync prototype | metadata-only subset | Future cloud/cross-agent state | Local-first preserved |
-| E8 | Encryption prototype | whole v2 DB file | Protect local metadata | clear wrong-key diagnostics |
+| E8 | Encryption prototype | whole Turso DB file | Protect local metadata | clear wrong-key diagnostics |
 | E10 | Engine static dependency topology | manifests / lockfiles / usage facts | Stable search planning without line identity | Hash-bound warm path |
 | E11 | Analyzer research interface | action/event/search/route read-models | Julia/Python algorithm loop | Reproducible experiment receipts |
 | E12 | Code-search read-model | native provider selectors / entities / dependency facts / test reachability / snippets / receipts | Make code search a DB Engine feature, not MCP-tool behavior | No executable line-range identity |
@@ -684,11 +716,11 @@ SQLite v1 compatibility does not:
 Default backend switch remains blocked until:
 
 - all current DB unit tests pass through the Turso backend adapter or have
-  intentional v2 replacements;
+  intentional DB Engine v1 replacements;
 - benchmark receipts exist for SQLite v1 and the Turso backend;
-- runtime reports distinguish =sqlite-v1= from =asp-db-engine-v2/turso=;
+- runtime reports distinguish =sqlite-v1= from =asp-db-engine-v1/turso=;
 - failure modes are agent-readable;
-- the v2 DB can be rebuilt from provider artifacts and file hashes;
+- the Turso DB can be rebuilt from provider artifacts and file hashes;
 - no executable path uses =path:start:end= or display line ranges as identity;
 - analyzer experiment receipts are append-only and cite the exact engine
   snapshot, algorithm id, parameters, and metric definitions;
@@ -728,7 +760,7 @@ with command-local implementation.
 
 ** Phase 0 - RFC and source survey
 
-- Keep this RFC as the ASP DB Engine v2 decision owner.
+- Keep this RFC as the ASP DB Engine decision owner.
 - Do not change the public search contract yet.
 - Record exact Turso version, feature flags, and linked compatibility document
   before each experiment run.
@@ -788,7 +820,7 @@ with command-local implementation.
 
 * Initial recommendation
 
-Start with the ASP DB Engine v2 boundary plus a scratch Turso backend behind an
+Start with the ASP DB Engine v1 boundary plus a scratch Turso backend behind an
 opt-in feature flag, then run three experiments in order:
 
 1. E1/E2 schema + hot-path parity, to bound migration cost.
@@ -800,7 +832,7 @@ If neither E3 nor E4 produces a durable ASP Engine advantage, do not promote the
 Turso backend. If either does, proceed to vector/FTS ranking and sync/encryption
 as second-wave backend capability experiments.
 * Provider performance receipt update
-DB Engine v2 must make provider execution performance observable at fine granularity. The goal is not only faster storage; the goal is to stop paying cold command-line harness cost for every small agent query.
+DB Engine v1 must make provider execution performance observable at fine granularity. The goal is not only faster storage; the goal is to stop paying cold command-line harness cost for every small agent query.
 
 Every search/query/render receipt should record a stage breakdown:
 #+begin_src text

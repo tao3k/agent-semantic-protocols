@@ -2,10 +2,18 @@
 
 #[path = "agent_session_registry_args.rs"]
 mod agent_session_registry_args;
+#[path = "agent_session_registry_render.rs"]
+mod agent_session_registry_render;
+#[path = "agent_session_registry_tool_event.rs"]
+mod agent_session_registry_tool_event;
 
 use agent_session_registry_args::{
     SessionArgs, SessionCommand, agent_usage, session_guide, session_usage,
 };
+use agent_session_registry_render::{
+    escape_field, print_json_report, print_reuse_miss, print_reuse_session, print_session_row,
+};
+pub(crate) use agent_session_registry_tool_event::record_current_session_tool_event;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use std::{
@@ -156,16 +164,6 @@ impl SessionRecord {
 
 fn session_status_is_routable(status: &str) -> bool {
     matches!(status, "active" | "idle")
-}
-
-#[derive(Serialize)]
-struct SessionReport<'a> {
-    owner: &'static str,
-    #[serde(rename = "dbPath")]
-    db_path: &'a str,
-    #[serde(rename = "rootSessionId", skip_serializing_if = "Option::is_none")]
-    root_session_id: Option<&'a str>,
-    sessions: Vec<SessionRecord>,
 }
 
 fn register_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Result<(), String> {
@@ -346,51 +344,6 @@ fn show_session(conn: &Connection, db_path: &Path, args: &SessionArgs) -> Result
     }
 }
 
-fn print_reuse_session(
-    db_path: &Path,
-    root_session_id: Option<&str>,
-    session: SessionRecord,
-    json: bool,
-) -> Result<(), String> {
-    if json {
-        return print_json_report(db_path, root_session_id, vec![session]);
-    }
-    println!(
-        "[agent-session-reuse] owner=rust status=\"found\" rootSession={} name=\"{}\" childSessionId=\"{}\" role=\"{}\" sessionStatus=\"{}\" db=\"{}\"",
-        root_session_id
-            .map(|value| format!("\"{}\"", escape_field(value)))
-            .unwrap_or_else(|| "\"*\"".to_string()),
-        escape_field(&session.name),
-        escape_field(&session.session_id),
-        escape_field(&session.role),
-        escape_field(&session.status),
-        db_path.display()
-    );
-    Ok(())
-}
-
-fn print_reuse_miss(
-    db_path: &Path,
-    root_session_id: Option<&str>,
-    name: &str,
-    reason: &str,
-    json: bool,
-) -> Result<(), String> {
-    if json {
-        return print_json_report(db_path, root_session_id, Vec::new());
-    }
-    println!(
-        "[agent-session-reuse] owner=rust status=\"miss\" rootSession={} name=\"{}\" reason=\"{}\" db=\"{}\"",
-        root_session_id
-            .map(|value| format!("\"{}\"", escape_field(value)))
-            .unwrap_or_else(|| "\"*\"".to_string()),
-        escape_field(name),
-        escape_field(reason),
-        db_path.display()
-    );
-    Ok(())
-}
-
 fn ensure_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS asp_agent_sessions (
@@ -555,6 +508,7 @@ pub(crate) fn current_root_session_id() -> Option<String> {
 
 pub(crate) fn asp_explore_session_for_current_root(
     project_root: &Path,
+    session_name: &str,
 ) -> Result<Option<RegisteredSession>, String> {
     let Some(root_session_id) = current_recall_session_id() else {
         return Ok(None);
@@ -562,7 +516,7 @@ pub(crate) fn asp_explore_session_for_current_root(
     let Some(conn) = open_existing_registry(project_root)? else {
         return Ok(None);
     };
-    session_by_name(&conn, &root_session_id, "asp-explore")
+    session_by_name(&conn, &root_session_id, session_name)
         .map(|record| record.map(RegisteredSession::from_record))
 }
 
@@ -602,54 +556,6 @@ fn session_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionR
         last_evidence_ref: row.get(15)?,
         metadata_json: row.get(16)?,
     })
-}
-
-fn print_json_report(
-    db_path: &Path,
-    root_session_id: Option<&str>,
-    sessions: Vec<SessionRecord>,
-) -> Result<(), String> {
-    let report = SessionReport {
-        owner: "rust",
-        db_path: &db_path.display().to_string(),
-        root_session_id,
-        sessions,
-    };
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&report)
-            .map_err(|error| format!("failed to render session json: {error}"))?
-    );
-    Ok(())
-}
-
-fn optional_i64_field(value: Option<i64>) -> String {
-    value
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "\"\"".to_string())
-}
-
-fn print_session_row(session: &SessionRecord) {
-    println!(
-        "|session name=\"{}\" session=\"{}\" rootSession=\"{}\" parentSession={} role=\"{}\" model={} status=\"{}\" updatedAt={} lastSeenAt={} lastHeartbeatAt={} expiresAt={}",
-        escape_field(&session.name),
-        escape_field(&session.session_id),
-        escape_field(&session.root_session_id),
-        optional_field(session.parent_session_id.as_deref()),
-        escape_field(&session.role),
-        optional_field(session.model.as_deref()),
-        escape_field(&session.status),
-        session.updated_at,
-        optional_i64_field(session.last_seen_at),
-        optional_i64_field(session.last_heartbeat_at),
-        optional_i64_field(session.expires_at)
-    );
-}
-
-fn optional_field(value: Option<&str>) -> String {
-    value
-        .map(|value| format!("\"{}\"", escape_field(value)))
-        .unwrap_or_else(|| "\"\"".to_string())
 }
 
 fn current_recall_session_id() -> Option<String> {
@@ -710,8 +616,4 @@ fn required_non_empty<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str,
     } else {
         Ok(value.trim())
     }
-}
-
-fn escape_field(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
 }

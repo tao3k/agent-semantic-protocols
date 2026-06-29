@@ -75,7 +75,17 @@ CLI    → validates facts version
 A daemon bug cannot corrupt the agent contract.
 
 ** Lifecycle
+Root-agent ASP usage is limited to session routing, recovery, and checkpoint commands: =asp agent session ...=, =asp org recall ...=, and =asp org capture ...=. ASP search/query/evidence commands run in the resident =asp-explore= child session, and other ASP maintenance commands should not run from the root session during routed work.
+
 The resident =asp-explore= session is an agent-session routing handle, not a provider daemon lifecycle command. Once the root session has registered an =asp-explore= child session id, later ASP search/query work should query the host session status for that child id when the runtime exposes a status API. If the host reports active/running, the root should wait or send follow-up to the same child. If host status is unavailable, the root should resume or send follow-up to the same child session id before considering replacement. A replacement is only valid when the host reports the child session is deleted or unrecoverable, and the child should not be closed while the root session remains active.
+
+Hook stages:
+
+#+begin_src text
+session-start -> emit bootstrap guidance when root has no active asp-explore child
+pre-tool      -> deny root ASP search/query/evidence commands and route to resident child
+post-tool     -> update child session heartbeat, last command, and compact evidence ref
+#+end_src
 
 
 The semantic-language protocol does not expose daemon lifecycle commands.

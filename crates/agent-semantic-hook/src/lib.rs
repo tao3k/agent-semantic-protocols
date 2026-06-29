@@ -50,7 +50,7 @@ pub use event_state::{
     remove_incompatible_hook_event_state,
 };
 pub use hook_config::{
-    ClientHookConfig, default_client_config_path, default_client_config_template,
+    AspSessionPolicy, ClientHookConfig, default_client_config_path, default_client_config_template,
     default_client_config_template_for_source_extensions, load_client_config,
     load_client_config_for_project,
 };

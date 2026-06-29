@@ -13,6 +13,7 @@ Follow ASP recommendedNext or nextCommand when present; stop retrying a command 
 Return compact evidence for the assigned branch; do not spawn subagents.
 This agent is a resident ASP exploration session. The root agent should reuse or resume this same session by session id for later ASP search/query work, including after waits or timeouts. Do not close this agent after returning evidence, and do not create duplicate asp-explore agents for the same root session.
 When a wait times out, the root agent should query the host session status for this session id when such a runtime status API is available. Active or running means wait or send follow-up to this same session. If status lookup is unavailable, try resume/follow-up on this same session id before considering replacement. Replacement is only for a host-confirmed deleted or unrecoverable child session.
+The root agent ASP command surface is intentionally narrow: use `asp agent session ...` for session routing, `asp org recall ...` for recovery, and `asp org capture ...` for checkpoint/spec entries. ASP search/query/evidence commands belong in this resident asp-explore session; other ASP maintenance commands should not run from the root session during routed work.
 
 Prefer:
 - asp <language> search pipe '<question-or-feature-term>' --workspace . --view seeds

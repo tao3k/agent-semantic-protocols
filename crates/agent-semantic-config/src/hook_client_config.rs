@@ -63,6 +63,8 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub agent_session_guide: HookClientAgentSessionGuideConfig,
     #[serde(default)]
+    pub asp_session_policy: HookClientAspSessionPolicyConfig,
+    #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
 }
 
@@ -90,6 +92,30 @@ pub struct HookClientAgentSessionGuideConfig {
     pub list: Option<String>,
     #[serde(default)]
     pub show: Option<String>,
+    #[serde(default)]
+    pub reuse: Option<String>,
+}
+
+/// Hook policy for ASP command routing inside agent sessions.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAspSessionPolicyConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_asp_session_policy_resident_child_name")]
+    pub resident_child_name: String,
+    #[serde(default = "default_asp_session_policy_main_allowed_prefixes")]
+    pub main_allowed_asp_command_prefixes: Vec<String>,
+}
+
+impl Default for HookClientAspSessionPolicyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            resident_child_name: default_asp_session_policy_resident_child_name(),
+            main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
+        }
+    }
 }
 
 /// Parsed ASP project config from `.agents/asp.toml`.
@@ -323,6 +349,24 @@ fn normalize_source_extension(source_extension: &str) -> Option<String> {
     }
 }
 
+fn default_asp_session_policy_resident_child_name() -> String {
+    "asp-explore".to_string()
+}
+
+fn default_asp_session_policy_main_allowed_prefixes() -> Vec<String> {
+    [
+        "help",
+        "--help",
+        "-h",
+        "agent session",
+        "org recall",
+        "org capture",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
 /// Load, parse, and validate project-local hook config.
 pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
     if !path.is_file() {
@@ -361,6 +405,7 @@ fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_recovery_prompt(&config.recovery_prompt)?;
     validate_agent_session_guide(&config.agent_session_guide)?;
+    validate_asp_session_policy(&config.asp_session_policy)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules)
 }
@@ -384,7 +429,22 @@ fn validate_recovery_prompt(config: &HookClientRecoveryPromptConfig) -> Result<(
 fn validate_agent_session_guide(config: &HookClientAgentSessionGuideConfig) -> Result<(), String> {
     validate_optional_non_empty("agentSessionGuide.register", config.register.as_deref())?;
     validate_optional_non_empty("agentSessionGuide.list", config.list.as_deref())?;
-    validate_optional_non_empty("agentSessionGuide.show", config.show.as_deref())
+    validate_optional_non_empty("agentSessionGuide.show", config.show.as_deref())?;
+    validate_optional_non_empty("agentSessionGuide.reuse", config.reuse.as_deref())
+}
+
+fn validate_asp_session_policy(config: &HookClientAspSessionPolicyConfig) -> Result<(), String> {
+    validate_optional_non_empty(
+        "aspSessionPolicy.residentChildName",
+        Some(config.resident_child_name.as_str()),
+    )?;
+    for prefix in &config.main_allowed_asp_command_prefixes {
+        validate_optional_non_empty(
+            "aspSessionPolicy.mainAllowedAspCommandPrefixes[]",
+            Some(prefix.as_str()),
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_protocol(config: &HookClientConfigFile) -> Result<(), String> {

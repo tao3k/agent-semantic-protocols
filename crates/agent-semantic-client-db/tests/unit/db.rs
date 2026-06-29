@@ -71,6 +71,45 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
     let missing = engine.inspect_sqlite();
     assert_eq!(missing.status, ClientDbStatus::Missing);
     assert!(!engine.db_path().exists());
+    let engine_report = engine.inspect();
+    assert_eq!(engine_report.backend, SQLITE_V1_BACKEND);
+    assert_eq!(engine_report.future_backend, TURSO_BACKEND);
+    assert_eq!(engine_report.layout_version, STATE_LAYOUT_VERSION);
+    assert_eq!(engine_report.db_path, state.paths.client_db_path);
+    assert_eq!(
+        engine_report.manifest_path,
+        state.paths.client_manifest_json
+    );
+    assert_eq!(engine_report.artifact_path, state.paths.artifacts_dir);
+    assert_eq!(engine_report.sqlite_report.status, ClientDbStatus::Missing);
+    let engine_report_json =
+        serde_json::to_value(&engine_report).expect("serialize db engine report");
+    assert_eq!(engine_report_json["backend"], SQLITE_V1_BACKEND);
+    assert_eq!(engine_report_json["futureBackend"], TURSO_BACKEND);
+    assert_eq!(engine_report_json["layoutVersion"], STATE_LAYOUT_VERSION);
+    assert_eq!(engine_report_json["repoId"], state.repo.repo_id.as_str());
+    assert_eq!(
+        engine_report_json["workspaceId"],
+        state.workspace.workspace_id.as_str()
+    );
+    assert_eq!(engine_report_json["scopeId"], state.scope_id.to_string());
+    assert_eq!(
+        engine_report_json["sqliteReport"]["status"],
+        ClientDbStatus::Missing.as_str()
+    );
+    assert_eq!(
+        engine_report_json["sqliteReport"]["runtimePragmas"],
+        serde_json::Value::Null
+    );
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/semantic-db-engine-report.v1.schema.json"
+    ))
+    .expect("parse db engine report schema");
+    assert_eq!(
+        schema["$id"],
+        "https://agent-semantic-protocols.local/schemas/semantic-db-engine-report.v1.schema.json"
+    );
+    assert_eq!(schema["properties"]["futureBackend"]["const"], TURSO_BACKEND);
 
     let db = engine.open_sqlite_or_create().expect("open sqlite backend");
     assert_eq!(db.path(), engine.db_path());

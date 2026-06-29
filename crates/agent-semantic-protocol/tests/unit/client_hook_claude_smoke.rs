@@ -107,6 +107,38 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
 }
 
 #[test]
+fn codex_main_session_denies_asp_query_when_asp_explore_is_expired() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_expired_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000006",
+        "019f126d-0000-7000-8000-000000000106",
+    );
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000006")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["fields"]["agentSessionRoute"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionAction"].as_str(),
+        Some("start-resident-child")
+    );
+    assert!(decision["fields"].get("childSessionId").is_none());
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("no registered active asp-explore child session"));
+    assert!(message.contains("do not create duplicate asp-explore sessions"));
+}
+
+#[test]
 fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -153,6 +185,38 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
 }
 
 #[test]
+fn codex_session_start_bootstraps_missing_asp_explore() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_hook_decision_with_env(
+        &root,
+        "session-start",
+        json!({"source": "session-start-smoke"}),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000020")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("allow"));
+    assert_eq!(
+        decision["fields"]["agentSessionBootstrap"].as_str(),
+        Some("session-start-reminder")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionAction"].as_str(),
+        Some("start-resident-child")
+    );
+    assert_eq!(
+        decision["fields"]["rootSessionId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000020")
+    );
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("ASP session-start bootstrap"));
+    assert!(message.contains("--child-session-id <child-session-id>"));
+    assert!(message.contains("Do not create duplicate asp-explore sessions"));
+}
+
+#[test]
 fn codex_main_session_requires_asp_explore_before_non_registry_tool() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -196,6 +260,44 @@ fn codex_main_session_allows_agent_session_register_bootstrap() {
 }
 
 #[test]
+fn codex_main_session_allows_agent_session_reuse_lookup() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("asp agent session reuse --name asp-explore --json"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000007")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("allow"));
+}
+
+#[test]
+fn codex_main_session_allows_recovery_without_asp_explore_registered() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    for command in [
+        "asp org recall plans",
+        "asp org capture --contract agent.plan.v1 --title plan --target-file plan.org --no-confirm",
+    ] {
+        let decision = run_codex_pre_tool_decision_with_env(
+            &root,
+            codex_asp_query_payload(command),
+            &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000009")],
+        );
+        assert_eq!(
+            decision["decision"].as_str(),
+            Some("allow"),
+            "command should not require asp-explore child: {command}\ndecision: {decision}"
+        );
+    }
+}
+
+#[test]
 fn codex_asp_explore_session_can_run_asp_query() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -219,6 +321,149 @@ fn codex_asp_explore_session_can_run_asp_query() {
     );
 
     assert_eq!(decision["decision"].as_str(), Some("allow"));
+}
+
+#[test]
+fn codex_asp_explore_post_tool_records_session_evidence() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000030",
+        "019f126d-0000-7000-8000-000000000130",
+    );
+
+    let decision = run_codex_hook_decision_with_env(
+        &root,
+        "post-tool",
+        json!({
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp rust query src/lib.rs --workspace . --code"
+            },
+            "tool_result": {
+                "evidenceRef": "asp-evidence:test-post-tool"
+            }
+        }),
+        &[
+            ("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000130"),
+            (
+                "ASP_ROOT_SESSION_ID",
+                "019f126d-0000-7000-8000-000000000030",
+            ),
+        ],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("allow"));
+    let report = show_agent_session_json(&root, "019f126d-0000-7000-8000-000000000130");
+    let session = &report["sessions"][0];
+    assert_eq!(session["lastToolEvent"].as_str(), Some("post-tool"));
+    assert_eq!(
+        session["lastCommand"].as_str(),
+        Some("asp rust query src/lib.rs --workspace . --code")
+    );
+    assert_eq!(
+        session["lastEvidenceRef"].as_str(),
+        Some("asp-evidence:test-post-tool")
+    );
+    assert!(
+        session["lastHeartbeatAt"].as_i64().is_some(),
+        "post-tool should refresh heartbeat: {report}"
+    );
+}
+
+#[test]
+fn codex_main_session_denies_non_recovery_asp_command_when_asp_explore_registered() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000006",
+        "019f126d-0000-7000-8000-000000000106",
+    );
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("asp install plugin --codex ."),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000006")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["fields"]["mainSessionAspPolicy"].as_str(),
+        Some("session-checkpoint-recovery-only")
+    );
+    assert_eq!(
+        decision["fields"]["blockedAspFacade"].as_str(),
+        Some("install")
+    );
+    assert_eq!(
+        decision["fields"]["childSessionId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000106")
+    );
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("Main-session ASP usage is limited"));
+    assert!(message.contains("asp agent session ..."));
+    assert!(message.contains("asp org recall ..."));
+    assert!(message.contains("asp org capture ..."));
+}
+
+#[test]
+fn codex_main_session_allows_configured_main_asp_command_prefix() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    write_hook_config(
+        &root,
+        r#"
+[aspSessionPolicy]
+mainAllowedAspCommandPrefixes = [
+  "help",
+  "agent session",
+  "org recall",
+  "org capture",
+  "install plugin",
+]
+"#,
+    );
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("asp install plugin --codex ."),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000008")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("allow"));
+}
+
+#[test]
+fn codex_main_session_allows_recovery_checkpoint_and_session_commands() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000007",
+        "019f126d-0000-7000-8000-000000000107",
+    );
+
+    for command in [
+        "asp agent session list",
+        "asp org recall plans",
+        "asp org capture --contract agent.plan.v1 --title plan --target-file plan.org --no-confirm",
+    ] {
+        let decision = run_codex_pre_tool_decision_with_env(
+            &root,
+            codex_asp_query_payload(command),
+            &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000007")],
+        );
+        assert_eq!(
+            decision["decision"].as_str(),
+            Some("allow"),
+            "command should be allowed: {command}\ndecision: {decision}"
+        );
+    }
 }
 
 #[test]
@@ -617,11 +862,18 @@ fn run_codex_pre_tool_decision_with_env(
     payload: Value,
     envs: &[(&str, &str)],
 ) -> Value {
+    run_codex_hook_decision_with_env(root, "pre-tool", payload, envs)
+}
+
+fn run_codex_hook_decision_with_env(
+    root: &Path,
+    event: &str,
+    payload: Value,
+    envs: &[(&str, &str)],
+) -> Value {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
-        .args([
-            "hook", "pre-tool", "--client", "codex", "--emit", "decision",
-        ])
+        .args(["hook", event, "--client", "codex", "--emit", "decision"])
         .arg("--activation")
         .arg(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
         .current_dir(root)
@@ -635,7 +887,7 @@ fn run_codex_pre_tool_decision_with_env(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let mut child = command.spawn().expect("spawn asp hook pre-tool");
+    let mut child = command.spawn().expect("spawn asp hook");
     child
         .stdin
         .as_mut()
@@ -653,18 +905,43 @@ fn run_codex_pre_tool_decision_with_env(
 }
 
 fn register_asp_explore_session(root: &Path, root_session_id: &str, child_session_id: &str) {
+    register_asp_explore_session_with_extra_args(root, root_session_id, child_session_id, &[]);
+}
+
+fn register_expired_asp_explore_session(
+    root: &Path,
+    root_session_id: &str,
+    child_session_id: &str,
+) {
+    register_asp_explore_session_with_extra_args(
+        root,
+        root_session_id,
+        child_session_id,
+        &["--expires-at", "1"],
+    );
+}
+
+fn register_asp_explore_session_with_extra_args(
+    root: &Path,
+    root_session_id: &str,
+    child_session_id: &str,
+    extra_args: &[&str],
+) {
+    let mut args = vec![
+        "agent",
+        "session",
+        "register",
+        "--name",
+        "asp-explore",
+        "--child-session-id",
+        child_session_id,
+        "--role",
+        "asp-explore",
+    ];
+    args.extend_from_slice(extra_args);
+
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "agent",
-            "session",
-            "register",
-            "--name",
-            "asp-explore",
-            "--child-session-id",
-            child_session_id,
-            "--role",
-            "asp-explore",
-        ])
+        .args(args)
         .current_dir(root)
         .env("PATH", prepend_path(&root.join(".bin")))
         .env("CODEX_THREAD_ID", root_session_id)
@@ -678,6 +955,41 @@ fn register_asp_explore_session(root: &Path, root_session_id: &str, child_sessio
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn show_agent_session_json(root: &Path, child_session_id: &str) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "agent",
+            "session",
+            "show",
+            "--child-session-id",
+            child_session_id,
+            "--json",
+        ])
+        .current_dir(root)
+        .env("PATH", prepend_path(&root.join(".bin")))
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("show agent session");
+    assert!(
+        output.status.success(),
+        "show agent session failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).expect("parse agent session show json")
+}
+
+fn write_hook_config(root: &Path, contents: &str) {
+    let config_path = root
+        .join(".agent-semantic-protocols")
+        .join("hooks")
+        .join("config.toml");
+    std::fs::create_dir_all(config_path.parent().expect("hook config parent"))
+        .expect("create hook config dir");
+    std::fs::write(config_path, contents).expect("write hook config");
 }
 
 fn codex_asp_query_payload(command: &str) -> Value {

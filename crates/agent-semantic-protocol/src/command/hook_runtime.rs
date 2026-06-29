@@ -147,8 +147,14 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         eprintln!("[agent-semantic-hook] failed to annotate hook payload context: {error}");
     }
     if decision.decision == DecisionKind::Allow
-        && let Some(agent_session_decision) =
-            classify_main_session_asp_exploration(&project_root, client, event, &runtime, &payload)?
+        && let Some(agent_session_decision) = classify_main_session_asp_exploration(
+            &project_root,
+            client,
+            event,
+            &runtime,
+            hook_config.asp_session_policy(),
+            &payload,
+        )?
     {
         decision = agent_session_decision;
         if let Err(error) = annotate_payload_context(&project_root, &mut decision, &payload) {

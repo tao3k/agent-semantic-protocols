@@ -44,6 +44,7 @@ dependencies = [
  "criterion",
  "rusqlite",
  "rust-lang-project-harness 0.1.2",
+ "serde",
  "serde_json",
 ]
 

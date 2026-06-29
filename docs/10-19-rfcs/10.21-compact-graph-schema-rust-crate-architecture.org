@@ -254,7 +254,7 @@ This is where the native-parser model matters. A language provider may emit rich
 There are three plausible migration strategies:
 - =A. File-level cleanup inside command=: split large command files but keep responsibilities where they are. This reduces local file size but does not fix ownership or testability.
 - =B. Contract-first extraction=: introduce =agent-semantic-contracts= and move search/render/db/provider semantics behind typed APIs, leaving command modules as request adapters. This is the recommended path because it changes the dependency graph, not just the file layout.
-- =C. Full rewrite of command/search=: create new crates and replace the command layer in one migration. This is clean on paper but too risky while search contracts, DB Engine v2, and provider transport are still moving.
+- =C. Full rewrite of command/search=: create new crates and replace the command layer in one migration. This is clean on paper but too risky while search contracts, DB Engine v1, and provider transport are still moving.
 
 The recommended path is B with compatibility receipts. Extract one command family at a time, and require each extraction to leave behind:
 - a typed library API that tests can call without spawning =asp=;
@@ -288,7 +288,7 @@ The Rust core should optimize for one property: every interactive agent search s
 The recommended dependency posture is:
 - =tokio=, =tokio-util=, =futures-util=, and =bytes= are the provider transport and async orchestration base. They own child-process I/O, framed packets, timeouts, cancellation, bounded fan-out, and async DB calls.
 - =tracing= remains required for stage receipts and live performance diagnosis. Every hot path stage must emit structured spans keyed by project id, workspace id, session id, route id, provider id, generation id, selector id, and cache hit kind.
-- =turso= is the preferred DB Engine v2 experiment once its local async API, MVCC/concurrent-write behavior, and FTS/vector roadmap satisfy ASP's benchmark gates. =rusqlite= remains the compatibility control until that gate is passed.
+- =turso= is the preferred DB Engine v1 replacement path once its local async API, MVCC/concurrent-write behavior, and FTS/vector roadmap satisfy ASP's benchmark gates. =rusqlite= remains the compatibility control until that gate is passed.
 - Turso-backed FTS/BM25 is the preferred persisted lexical backend. Dynamic overlay search should reuse the Turso-owned Tantivy-backed search layer without inserting every dirty edit into the durable Turso DB generation. Direct =tantivy= must remain outside the product dependency graph except for non-product benchmark/control experiments.
 - =moka= is the preferred bounded async cache candidate for hot selector/proof/render caches because the cache itself is concurrent and futures-aware. Values should normally be stored behind =Arc= to avoid expensive clones.
 - =rayon= is the preferred CPU executor for bounded batch CPU work such as token projection, source fingerprinting, static index rebuilds, graph feature extraction, and expensive score fusion. Tokio worker threads must not become the CPU pool.
@@ -476,7 +476,7 @@ The render crate owns the following invariants:
 - Alias, =G*= relation group, =S*= selector group, route, and frontier syntax are controlled by =semantic-compact-graph-render.v2= and tested as fixtures.
 - The renderer must not invent graph facts. It may hide, order, alias, summarize, or omit only facts already present in validated packets.
 * DB Engine interaction
-DB Engine v2 should persist the full contract surface without leaking it into prompt stdout:
+DB Engine v1 should persist the full contract surface without leaking it into prompt stdout:
 - stable base generations
 - dynamic overlay namespaces
 - search packets

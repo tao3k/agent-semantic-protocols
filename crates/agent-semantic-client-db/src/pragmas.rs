@@ -4,11 +4,13 @@ use std::path::Path;
 use std::time::Duration;
 
 use rusqlite::Connection;
+use serde::Serialize;
 
 const CLIENT_DB_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// SQLite journal mode observed on a local client DB connection.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
 pub struct ClientDbJournalMode(String);
 
 impl ClientDbJournalMode {
@@ -19,7 +21,8 @@ impl ClientDbJournalMode {
 }
 
 /// Runtime SQLite pragma values observed on a local client DB connection.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientDbRuntimePragmas {
     pub journal_mode: ClientDbJournalMode,
     pub synchronous: i64,

@@ -13,7 +13,7 @@ It is intentionally scoped to:
 - graph-backed search over symbols, files, snippets, dependencies, routes, and call edges;
 - search evidence that agents can use without reading whole files;
 - state and artifact layout needed by Rust, Python, Julia, Org, and future writing workflows;
-- experiments that can justify an ASP DB Engine v2 and Turso backend prototype.
+- experiments that can justify an ASP DB Engine v1 and Turso backend prototype.
 
 It is intentionally not scoped to:
 - making ASP an MCP server;
@@ -893,7 +893,7 @@ Indexes are targeted at agent retrieval:
 - URL path lookup for route-style cross-service search;
 - FTS refresh for text search.
 
-ASP should treat this as strong evidence that DB Engine v2 needs a first-class code-search read-model. Current cache rows and provider command selections are not enough. The DB has to expose indexed generations, stable code identities, graph edges, dependency facts, snippet locators, and query receipts as ordinary state.
+ASP should treat this as strong evidence that DB Engine v1 needs a first-class code-search read-model. Current cache rows and provider command selections are not enough. The DB has to expose indexed generations, stable code identities, graph edges, dependency facts, snippet locators, and query receipts as ordinary state.
 
 ** Search surface
 The external tool surface combines several retrieval modes:
@@ -1183,7 +1183,7 @@ The executable identity must be one of:
 
 This rule is stronger than "try not to rely on line numbers." It is a protocol boundary. Code changes quickly; line-based search identity decays quickly. A future writing workflow that cites unstable lines will produce misleading edits and bad provenance.
 
-** DB Engine v2 must include code-search read-models
+** DB Engine v1 must include code-search read-models
 RFC 10.18 should treat code search as one of the decisive reasons to create an ASP DB Engine. A useful first model is:
 
 | table / model | purpose |
@@ -1379,7 +1379,7 @@ A minimal ASP experiment does not need to implement all of =codebase-memory-mcp=
 * Acceptance criteria
 ASP should treat this research as accepted only when:
 - a code-search RFC or schema defines selector-first identity;
-- DB Engine v2 has a code-search read-model proposal;
+- DB Engine v1 has a code-search read-model proposal;
 - global state root layout can trace code-search receipts and snippets;
 - search results expose line ranges only as display hints;
 - Python can consume the DB graph without bespoke path guessing;
@@ -1408,4 +1408,4 @@ state-root artifact layout -> Rust prototype -> Python graph execution ->
 Julia research report -> real-project benchmark -> optimization loop
 #+end_src
 
-The migration case for DB Engine v2 and Turso becomes much stronger if it delivers this search substrate. A backend swap without code-search improvement is not enough. The value comes from stable selectors, durable graph/dependency facts, replayable receipts, and analyzer-friendly DB plus dynamic JSON interfaces.
+The migration case for DB Engine v1 and Turso becomes much stronger if it delivers this search substrate. A backend swap without code-search improvement is not enough. The value comes from stable selectors, durable graph/dependency facts, replayable receipts, and analyzer-friendly DB plus dynamic JSON interfaces.

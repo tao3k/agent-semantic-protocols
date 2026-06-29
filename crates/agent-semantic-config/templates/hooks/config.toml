@@ -1,7 +1,19 @@
 # Optional user hook config.
-# System hook policy is compiled into the hook runtime; this file is only for
-# explicit user-level additions.
+# Hook defaults are compiled into the runtime; this file exposes the user-level
+# overrides that should be easy to audit.
 schemaId = "@CLIENT_HOOK_CONFIG_SCHEMA_ID@"
 schemaVersion = "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@"
 protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
+
+[aspSessionPolicy]
+enabled = true
+residentChildName = "asp-explore"
+mainAllowedAspCommandPrefixes = [
+  "help",
+  "--help",
+  "-h",
+  "agent session",
+  "org recall",
+  "org capture",
+]

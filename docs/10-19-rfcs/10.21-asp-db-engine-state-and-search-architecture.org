@@ -1,10 +1,14 @@
 * One-sentence summary
-ASP should use Turso as the DB Engine v2 backend and use the lessons from =codebase-memory-mcp= to build a selector-first, overlay-aware, graph-routed code search substrate; the goal is fewer agent turns, not SQLite compatibility and not an MCP server.
+ASP should use Turso as the DB Engine backend that fully replaces
+=rusqlite=/SQLite v1, while using the lessons from =codebase-memory-mcp= to
+build a selector-first, overlay-aware, graph-routed code search substrate; the
+goal is fewer agent turns, not SQLite compatibility and not an MCP server.
 * Scope
 This report consolidates the DB Engine, state layout, code-search comparison, and Rust high-performance architecture workstream.
 
 It is scoped to:
-- Turso-backed DB Engine v2;
+- Turso-backed DB Engine v1 as the complete replacement for the current
+  =rusqlite=/SQLite v1 client DB path;
 - State Core v2 under =$HOME/.agent-semantic-protocols=;
 - code search, future writing search, dependency topology, and analyzer artifacts;
 - dynamic overlay search for dirty code;
@@ -42,14 +46,31 @@ External source context, observed 2026-06-29:
 - Turso features and roadmap include async I/O, MVCC / concurrent writes, vector search, encryption, CDC, sync, and Tantivy-backed FTS.
 - Turso compatibility is not complete SQLite parity. Its FTS implementation is not SQLite FTS5; it is a Turso-owned search layer.
 - The Codebase-Memory paper and repository center the product around tree-sitter/LSP-enriched graph indexing and tool-guided search. The useful lesson for ASP is the search substrate and playbook, not MCP identity.
+* Phase 1 implementation checkpoint
+The first DB Engine implementation step is now an ASP-owned facade in =crates/agent-semantic-client-db=:
+- =ClientDbEngine= resolves State Core paths and exposes backend, future backend, layout version, repo/workspace/scope identity, DB path, manifest path, client dir, and artifact path.
+- =ClientDbBackend::SqliteV1= is the current concrete backend token and maps to =backend="sqlite-v1"=.
+- =futureBackend= remains =turso=. This is a migration signal, not an active backend claim.
+- =ClientDbEngineReport= exposes backend, future backend, layout version, repo/workspace/scope ids, client dir, manifest path, DB path, artifact path, and the active SQLite adapter report.
+- =schemas/semantic-db-engine-report.v1.schema.json= fixes the analyzer-facing JSON shape for this report during the =sqlite-v1= transition.
+- The existing =ClientDb= remains the SQLite adapter over =rusqlite= and current schema version 1.
+- Production client source-index refresh/lookup, provider activation cache, cache CLI maintenance, writeback, replay, and history audit now obtain DB file paths through the DB Engine facade or its client-dir path helper.
+- =asp cache status= renders a compact =|dbEngine= row so CLI consumers and analyzers can recover the DB Engine contract without reverse-engineering =client.sqlite3= paths.
+- DB Engine tests assert the resolved path is State Core =live/client/client.sqlite3= under =$ASP_STATE_HOME= and that project-local =.cache/agent-semantic-protocol= is not created or selected.
+This checkpoint intentionally does not add the Turso crate, async runtime plumbing, FTS/BM25 tables, overlay search, or migration from old project-local cache. Those are the next backend-specific phases behind the same facade. The target cutover replaces =rusqlite=/SQLite v1 entirely; =sqlite-v1= is only the phase-1 validation backend, not a long-lived production fallback.
 * State Core v2 layout
 The default durable state root must be:
 #+begin_src text
 $ASP_STATE_HOME, otherwise $HOME/.agent-semantic-protocols
 #+end_src
 
-Project-local =.cache/agent-semantic-protocol= should be treated as legacy/evidence during migration. It must not remain the default DB Engine v2 home.
+Project-local =.cache/agent-semantic-protocol= should be treated as legacy/evidence during migration. It must not remain the default DB Engine home.
 
+During phase 1, =live/client/client.sqlite3= exists because =sqlite-v1= is still
+the active validation backend. In the target Turso cutover, =client.turso=
+replaces that file in the production DB Engine path. A retained SQLite file may
+only be an explicit migration artifact or benchmark/control fixture, not the
+default runtime DB.
 Target layout:
 #+begin_src text
 $ASP_STATE_HOME/
@@ -76,7 +97,6 @@ $ASP_STATE_HOME/
               client/
                 manifest.json
                 client.turso
-                client.sqlite3
                 cache-manifest.json
               overlays/
                 sessions/
@@ -126,7 +146,7 @@ The manifest must be enough for Python and Julia to recover provenance:
   "receiptRoot": ".../live/receipts"
 }
 #+end_src
-* DB Engine v2 read model
+* DB Engine v1 read model
 The DB Engine is the product boundary. Providers and commands write schema-valid facts into it; search, query, recall, artifact review, and future writing workflows read from it.
 
 Core tables:

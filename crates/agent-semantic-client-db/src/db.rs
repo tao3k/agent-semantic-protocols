@@ -8,6 +8,7 @@ use agent_semantic_client_core::{
     ClientCacheGeneration, ClientCacheManifest, ClientDbStatus, LanguageId, ProviderId,
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params, params_from_iter};
+use serde::{Serialize, Serializer};
 
 use crate::pragmas::{
     ClientDbRuntimePragmas, configure_readable_connection, configure_writable_connection,
@@ -33,9 +34,11 @@ pub const AGENT_SEMANTIC_CLIENT_DB_FILE: &str = "client.sqlite3";
 pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 
 /// Read-only diagnostic summary for a local SQLite client DB path.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClientDbReport {
     pub db_path: PathBuf,
+    #[serde(serialize_with = "serialize_client_db_status")]
     pub status: ClientDbStatus,
     pub generation_count: u32,
     pub syntax_row_generation_count: u32,
@@ -52,6 +55,16 @@ pub struct ClientDbReport {
     pub raw_source_stored: bool,
     pub runtime_pragmas: Option<ClientDbRuntimePragmas>,
     pub reason: Option<String>,
+}
+
+fn serialize_client_db_status<S>(
+    status: &ClientDbStatus,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(status.as_str())
 }
 
 /// Named lookup request for one provider cache generation probe.

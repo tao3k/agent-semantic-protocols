@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-db-engine-report.v1.schema.json",
+  "title": "Semantic DB Engine Report",
+  "description": "Analyzer-facing DB Engine diagnostic report. Phase 1 reports sqlite-v1 as the active validation backend and turso as the replacement target.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "backend",
+    "futureBackend",
+    "layoutVersion",
+    "clientDir",
+    "dbPath",
+    "manifestPath",
+    "artifactPath",
+    "repoId",
+    "workspaceId",
+    "scopeId",
+    "sqliteReport"
+  ],
+  "properties": {
+    "backend": {
+      "const": "sqlite-v1"
+    },
+    "futureBackend": {
+      "const": "turso"
+    },
+    "layoutVersion": {
+      "const": "state-v2"
+    },
+    "clientDir": {
+      "type": "string",
+      "pattern": "/live/client$"
+    },
+    "dbPath": {
+      "type": "string",
+      "pattern": "/live/client/client\\.sqlite3$"
+    },
+    "manifestPath": {
+      "type": "string",
+      "pattern": "/live/client/manifest\\.json$"
+    },
+    "artifactPath": {
+      "type": "string",
+      "pattern": "/artifacts$"
+    },
+    "repoId": {
+      "type": "string",
+      "pattern": "^repo-[0-9a-f]{16}$"
+    },
+    "workspaceId": {
+      "type": "string",
+      "pattern": "^workspace-[0-9a-f]{16}$"
+    },
+    "scopeId": {
+      "const": "default"
+    },
+    "sqliteReport": {
+      "$ref": "#/$defs/sqliteReport"
+    }
+  },
+  "$defs": {
+    "sqliteReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dbPath",
+        "status",
+        "generationCount",
+        "syntaxRowGenerationCount",
+        "syntaxRowMatchCount",
+        "syntaxRowCaptureCount",
+        "structuralIndexGenerationCount",
+        "structuralIndexOwnerCount",
+        "structuralIndexSymbolCount",
+        "structuralIndexDependencyUsageCount",
+        "sourceIndexGenerationCount",
+        "sourceIndexOwnerCount",
+        "sourceIndexSelectorCount",
+        "artifactEventCount",
+        "rawSourceStored",
+        "runtimePragmas",
+        "reason"
+      ],
+      "properties": {
+        "dbPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["missing", "present", "invalid"]
+        },
+        "generationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "syntaxRowGenerationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "syntaxRowMatchCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "syntaxRowCaptureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structuralIndexGenerationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structuralIndexOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structuralIndexSymbolCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structuralIndexDependencyUsageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceIndexGenerationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceIndexOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceIndexSelectorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifactEventCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rawSourceStored": {
+          "type": "boolean"
+        },
+        "runtimePragmas": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sqliteRuntimePragmas"
+            }
+          ]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "sqliteRuntimePragmas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "journalMode",
+        "synchronous",
+        "busyTimeoutMs",
+        "foreignKeys"
+      ],
+      "properties": {
+        "journalMode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synchronous": {
+          "type": "integer"
+        },
+        "busyTimeoutMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "foreignKeys": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
