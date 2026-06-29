@@ -56,7 +56,8 @@ jobs:
         if: ${{ matrix.os != 'windows-latest' }}
         uses: astral-sh/setup-uv@v5
         with:
-          enable-cache: true
+          # Avoid setup-uv post-job cache pruning failures after asp smoke tests.
+          enable-cache: false
 
       - name: Set up Python
         if: ${{ matrix.os != 'windows-latest' }}
