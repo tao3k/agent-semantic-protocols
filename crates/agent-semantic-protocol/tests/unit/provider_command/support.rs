@@ -14,14 +14,14 @@ pub(super) const CACHE_SOURCE_TEXT: &str = "struct CacheReplay;\n";
 pub(super) const CACHE_SOURCE_SHA256: &str =
     "96bc4a7e16de4a4843d4cdf330fabd1448993732fc6a3bec97fed6393a79ecae";
 
-pub(super) struct ProviderSpec {
+pub(crate) struct ProviderSpec {
     language_id: &'static str,
     command_prefix: Vec<String>,
     owner_items: bool,
     dependency_topology: bool,
 }
 
-pub(super) fn provider(language_id: &'static str, command_prefix: Vec<String>) -> ProviderSpec {
+pub(crate) fn provider(language_id: &'static str, command_prefix: Vec<String>) -> ProviderSpec {
     ProviderSpec {
         language_id,
         command_prefix,
@@ -54,7 +54,7 @@ pub(super) fn provider_with_dependency_topology(
     }
 }
 
-pub(super) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
+pub(crate) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
     let activation_path =
         project_activation_path(root).unwrap_or_else(|_| project_local_activation_path(root));
     write_activation_to(root, &activation_path, providers);
@@ -212,7 +212,7 @@ pub(super) fn write_cache_source_fixture(root: &Path) {
     std::fs::write(source_path, CACHE_SOURCE_TEXT).expect("write source fixture");
 }
 
-pub(super) fn asp_command(root: &Path) -> Command {
+pub(crate) fn asp_command(root: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
         .current_dir(root)
@@ -229,7 +229,7 @@ pub(super) fn home_local_bin(root: &Path) -> PathBuf {
     root.join("home").join(".local/bin")
 }
 
-pub(super) fn prepend_path(path_prefix: &Path) -> OsString {
+pub(crate) fn prepend_path(path_prefix: &Path) -> OsString {
     let mut paths = vec![path_prefix.to_path_buf()];
     if let Some(path) = env::var_os("PATH") {
         paths.extend(env::split_paths(&path));
@@ -237,7 +237,7 @@ pub(super) fn prepend_path(path_prefix: &Path) -> OsString {
     env::join_paths(paths).expect("join PATH")
 }
 
-pub(super) fn temp_project_root(name: &str) -> PathBuf {
+pub(crate) fn temp_project_root(name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -258,7 +258,7 @@ pub(super) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
     );
 }
 
-pub(super) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path) {
+pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path) {
     write_provider_script(
         bin_dir,
         binary,

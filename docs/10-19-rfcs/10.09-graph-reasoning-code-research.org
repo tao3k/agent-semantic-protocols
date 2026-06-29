@@ -598,3 +598,65 @@ the Rust command shape is tested.
   concrete enough to guide schema and provider experiments.
 - Evaluation uses token size, tool-call count, repeated-search rate, raw-read
   fallback, and two-search evidence success rather than only final task score.
+* Combinator planner research update
+RFC 10.20 changes the graph research target. The question is no longer only which handles =search prime= should expose. The new question is:
+#+begin_src text
+When should ASP choose a one-call combinator plan
+instead of jump, native-only, or lexical-only search?
+#+end_src
+
+The combinator planner is internally multi-stage but externally one agent-visible action:
+#+begin_src text
+intent or receipt anchor
+-> structural candidates
+-> native proof / rejection
+-> lexical seeds
+-> graph fusion
+-> selector-first evidence packet
+#+end_src
+
+The graph layer decides whether this longer internal path pays for itself. It should optimize for external evidence quality, not for the shortest internal graph traversal.
+
+Production Python responsibilities:
+- query-conditioned typed personalized PageRank over selectors, providers, owners, dependencies, tests, Org headings, receipts, and overlays;
+- constrained path search for relation questions such as source-to-test, dependency-to-wrapper, policy-to-owner, and heading-to-selector;
+- bounded beam expansion over typed meta-paths, with hard caps on broad fan-out;
+- submodular / MMR-style diversity so one owner, package, or capture family does not dominate the packet;
+- candidate-stage accounting for structural, native, lexical, and graph reductions;
+- confidence and abstention policy that falls back to native/lexical search when the combinator adds cost without proof;
+- replayable =PlanTrace= emission for analyzer and Julia research.
+
+Julia research responsibilities:
+- reconstruct search sessions from DB receipts and artifact JSON;
+- compare structural-only, native-only, lexical-only, and combinator routes on the same prompt classes;
+- evaluate graph algorithms offline: typed PageRank variants, constrained shortest path, Steiner-style connector search, beam search, community-aware rerank, learning-to-rank, and bandit route selection;
+- measure candidate reduction, proof gain, false-positive-at-1, false-negative-at-k, token cost, latency, and edit/test feedback;
+- publish notebooks that recommend production Python algorithm changes with replayable receipt ids.
+
+Initial algorithm candidates:
+| Algorithm | Production use |
+| typed personalized PageRank | General fusion from mixed seeds and prior receipts. |
+| constrained shortest path | Explain relation evidence such as dependency -> wrapper -> test. |
+| bounded typed beam search | Explore graph neighborhoods without uncontrolled fan-out. |
+| submodular coverage / MMR | Keep packet diverse across owners, kinds, dependencies, and tests. |
+| route-selection bandit | Learn when combinator beats native/lexical/jump routes. |
+| learning-to-rank over receipts | Later-stage reranker trained from edit/test success. |
+
+The main acceptance metric is:
+#+begin_src text
+combinator_win_rate =
+  prompts where one combinator packet reaches better actionable evidence
+  than the shortest non-combinator path
+#+end_src
+
+Supporting metrics:
+- =turns_to_actionable_snippet=;
+- =external_commands_to_action=;
+- =candidate_reduction_per_stage=;
+- =proof_gain_per_stage=;
+- =graph_confidence_at_1=;
+- =broad_read_avoided=;
+- =false_skip_rate=;
+- =edit_success_after_packet=.
+
+This makes Codebase-Memory a useful observation point. Its graph-backed path shows that prebuilt structural graph tools reduce search thrash. ASP's research goal is to prove when the native-parser + structural-combinator + Python graph path is better, and to make Julia's offline analysis decide which graph policies deserve to become Python production behavior.

@@ -12,11 +12,8 @@ use super::search_pipe_args::{
     parse_fzf_args, parse_ingest_args, parse_owner_only_args, parse_owner_query_args,
     parse_search_pipe_args,
 };
-use super::search_pipe_candidates::{
-    collect_candidates, parse_ingest_candidates, read_piped_stdin,
-};
+use super::search_pipe_candidates::{parse_ingest_candidates, read_piped_stdin};
 use super::search_pipe_dependency_facts::dependency_matches_query;
-use super::search_pipe_dependency_seed_cache::collect_cached_dependency_facts;
 use super::search_pipe_failure::run_search_failure_command;
 use super::search_pipe_model::SearchPipeSourceTrace;
 use super::search_pipe_owner_items_fast::{
@@ -254,9 +251,6 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
             language_id: context.language_id,
             project_root: &project_root,
-            cache_home: context.cache_home,
-            config: context.config,
-            provider_context: context.provider_context,
             query: &pipe_args.seed_query,
             source: pipe_args.source,
             view: &pipe_args.view,
@@ -448,9 +442,6 @@ fn elapsed_millis(duration: Duration) -> u64 {
 struct DependencyManifestFastAcquisitionRequest<'a> {
     language_id: &'a str,
     project_root: &'a Path,
-    cache_home: &'a Path,
-    config: &'a AspConfig,
-    provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     query: &'a str,
     source: SourceSpec,
     view: &'a str,
@@ -462,9 +453,6 @@ fn dependency_manifest_fast_acquisition(
     let DependencyManifestFastAcquisitionRequest {
         language_id,
         project_root,
-        cache_home,
-        config,
-        provider_context,
         query,
         source,
         view,
@@ -475,16 +463,10 @@ fn dependency_manifest_fast_acquisition(
     {
         return None;
     }
-    let seed = collect_cached_dependency_facts(
+    let facts = super::search_pipe_dependency_facts::collect_manifest_dependency_facts(
         language_id,
         project_root,
-        cache_home,
-        config,
-        provider_context,
-        Some(query),
-        &[],
     );
-    let facts = seed.facts;
     let matched_manifest_facts = facts
         .iter()
         .filter(|fact| fact.source == "manifest")
@@ -494,8 +476,8 @@ fn dependency_manifest_fast_acquisition(
         return None;
     }
     let mut manifest_fields = BTreeMap::new();
-    manifest_fields.insert("seedCache".to_string(), Value::from(seed.cache_status));
-    manifest_fields.insert("topology".to_string(), Value::from(seed.topology_source));
+    manifest_fields.insert("seedCache".to_string(), Value::from("bypass"));
+    manifest_fields.insert("topology".to_string(), Value::from("asp-owned"));
     Some(CandidateAcquisition {
         candidates: Vec::new(),
         candidate_sources: vec!["manifest".to_string(), "finder".to_string()],
@@ -672,29 +654,15 @@ fn run_search_fzf_command(args: &[String], context: &FastSearchContext<'_>) -> R
         );
         return Ok(());
     }
-    let candidates = collect_candidates(
+    let acquisition = collect_search_pipe_candidates(
         context.language_id,
         context.project_root,
         context.locator_root,
         &pipe_args.query,
         &pipe_args.owners,
+        SourceSpec::Auto,
         context.config,
     )?;
-    let acquisition = CandidateAcquisition {
-        candidate_sources: vec!["finder".to_string()],
-        source_trace: vec![SearchPipeSourceTrace::new(
-            "finder",
-            if candidates.is_empty() {
-                "empty"
-            } else {
-                "used"
-            },
-            candidates.len(),
-            usize::from(candidates.is_empty()),
-            candidates.len(),
-        )],
-        candidates,
-    };
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         context.project_root,
@@ -703,6 +671,11 @@ fn run_search_fzf_command(args: &[String], context: &FastSearchContext<'_>) -> R
         context.config,
         context.provider_context,
     )?;
+    let source_label = acquisition
+        .candidate_sources
+        .first()
+        .map(String::as_str)
+        .unwrap_or("auto");
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: context.project_root,
@@ -712,7 +685,7 @@ fn run_search_fzf_command(args: &[String], context: &FastSearchContext<'_>) -> R
         query: Some(&pipe_args.query),
         candidates: &acquisition.candidates,
         pipes: &pipe_args.pipes,
-        source: "finder",
+        source: source_label,
         candidate_sources: &acquisition.candidate_sources,
         source_trace: &acquisition.source_trace,
         scopes: &pipe_args.owners,

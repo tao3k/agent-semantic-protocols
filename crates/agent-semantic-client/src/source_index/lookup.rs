@@ -49,17 +49,14 @@ pub fn lookup_source_index_in_cache(
             Vec::new(),
         ));
     };
-    if db.summary()?.source_index_owner_count == 0 {
-        return Ok(source_index_lookup_result(
-            db_path,
-            SourceIndexLookupState::EmptyIndex,
-            Vec::new(),
-        ));
-    }
     let candidates =
         lookup_source_index_candidates(&db, indexed_project_root, language_id, query, limit)?;
     let state = if candidates.is_empty() {
-        SourceIndexLookupState::Miss
+        if db.summary()?.source_index_owner_count == 0 {
+            SourceIndexLookupState::EmptyIndex
+        } else {
+            SourceIndexLookupState::Miss
+        }
     } else {
         SourceIndexLookupState::Hit
     };

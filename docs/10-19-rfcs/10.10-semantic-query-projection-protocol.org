@@ -425,3 +425,21 @@ a migration message instead of maintaining a parallel compact fixture runner.
 - Feed real search-flow receipts back into token-cost reports so projection
   quality is measured by fewer commands, smaller prompts, and more precise next
   actions.
+* Progressive disclosure boundary
+Projection exists so the agent can ask for more structure without turning every search result into a source dump or a JSON packet. The prompt-facing projection should answer one question at a time:
+#+begin_src text
+What is the selected native node?
+Why is it relevant?
+What exact expansion can recover more context?
+What was omitted?
+#+end_src
+
+The default projection must therefore be selector-first and compact. It may render a native outline, a compact code row, or a bounded snippet, but it must not expose the full packet JSON in normal stdout. JSON is still the replay and validation contract; it is just the wrong prompt shape because repeated keys, nested metadata, debug fields, and large arrays consume tokens without improving the next decision.
+
+Expansion actions are the bridge between compact prompt text and full machine state:
+- =expand-owner= recovers owner-local declarations, tests, imports, and dependencies.
+- =expand-path= recovers a bounded relation path that explains why two nodes are connected.
+- =expand-snippet= recovers parser-owned code for one exact selector.
+- =expand-receipt= recovers the full JSON/DB artifact for audit, replay, or Julia/Python analysis.
+
+The renderer must make omissions visible enough for safe reasoning, but not verbose enough to become a second packet. A good omission says what kind of fact was withheld and how to expand it; it does not inline every withheld fact.

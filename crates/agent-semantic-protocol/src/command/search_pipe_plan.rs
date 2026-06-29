@@ -8,7 +8,7 @@ use super::search_pipe_actions::{SearchPipeActionRequest, render_action_frontier
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_quality_model::SearchPipeQuality;
 use super::search_pipe_seed_decision::SeedActionIntent;
-use super::search_query_wrapper_preview::{fd_query_preview, fd_query_preview_from_candidates};
+use super::search_query_wrapper_preview::fd_query_preview_from_candidates;
 use super::{search_pipe_model::Candidate, search_pipe_projection::candidate_selector};
 
 pub(super) struct SearchPipePlanRequest<'a> {
@@ -67,12 +67,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         && !candidates.is_empty()
         && !skip_fd_preview_for_action_meta_query(&quality, candidates)
     {
-        fd_query_preview_from_candidates(candidates).or_else(|| {
-            quality
-                .fd_query
-                .as_deref()
-                .and_then(|query| fd_query_preview(project_root, locator_root, scopes, query))
-        })
+        fd_query_preview_from_candidates(candidates)
     } else {
         None
     };

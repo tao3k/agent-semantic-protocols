@@ -74,6 +74,14 @@ activation, and Org recall code.
   guessing;
 - make analyzer experiment receipts reproducible across Python production graph
   work and Julia algorithm research;
+- keep the state root usable from local CLI, hooks, providers, Python, and
+  Julia without an agent MCP server;
+- make code-search generations, receipts, snippet locators, dependency facts,
+  and dynamic JSON artifacts traceable across repository/workspace/scope
+  identity;
+- preserve native language ecosystem evidence such as Cargo metadata, Python
+  import/test facts, Julia Project/Manifest and notebook outputs, TypeScript
+  compiler/package facts, Org contracts, and analyzer receipts;
 - keep raw source text out of state by default;
 - support future Turso-native client DB, CDC, static dependency topology,
   vector/FTS ranking inputs, and sync/encryption experiments.
@@ -85,6 +93,10 @@ activation, and Org recall code.
 - do not make network sync required for local state lookup;
 - do not require a monorepo to define one language package;
 - do not make provider-local caches authoritative over Rust-owned client state;
+- do not make an agent MCP server the state owner, control plane, or identity
+  boundary;
+- do not let line ranges become executable code-search or writing-evidence
+  identity;
 - do not include =PRJ_CACHE_HOME= in the v2 state-root contract;
 - do not require v2 implementations to read or write project-local cache roots.
 
@@ -109,6 +121,42 @@ $HOME/.agent-semantic-protocols
 This keeps ASP state outside edited repositories while preserving local-first
 behavior. Future XDG-style aliases can be added, but the user-facing ASP path
 should be stable and easy to inspect.
+
+The state root is a local protocol substrate, not an agent MCP server work
+directory. MCP adapters, if they exist later, should resolve projects through
+the same =ASP_STATE_HOME= and registry tables instead of creating their own
+session-scoped state or cache layout.
+
+RFC 10.20 adds a code-search-specific pressure test for this layout. The state
+root must be able to locate search generations, receipts, snippets, dynamic
+JSON payloads, and analyzer outputs without asking the agent to remember a
+project-local cache path:
+
+#+begin_src text
+$ASP_STATE_HOME/
+  registry/
+    repos/
+    workspaces/
+    scopes/
+  db/
+    asp.db
+  artifacts/
+    code-search/
+      generations/
+      receipts/
+      snippets/
+      dynamic-json/
+    analyzer/
+      python/
+      julia/
+#+end_src
+
+The physical layout can still evolve, but the trace must be stable:
+
+#+begin_src text
+repo_id -> workspace_id -> scope_id -> generation_id -> provider_id ->
+search_receipt_id -> selector/snippet/artifact
+#+end_src
 
 * Identity model
 

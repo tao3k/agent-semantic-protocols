@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use agent_semantic_client_core::{
@@ -179,7 +180,11 @@ fn write_generation(
 }
 
 fn clear_rows(tx: &Transaction<'_>, generation_id: &CacheGenerationId) -> Result<(), String> {
-    for table in ["source_index_owner", "source_index_selector"] {
+    for table in [
+        "source_index_owner_key",
+        "source_index_owner",
+        "source_index_selector",
+    ] {
         tx.execute(
             &format!("DELETE FROM {table} WHERE generation_id = ?1"),
             params![generation_id.as_str()],
@@ -205,6 +210,18 @@ fn write_owners(tx: &Transaction<'_>, import: &ClientDbSourceIndexImport) -> Res
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )
         .map_err(|error| format!("failed to prepare source owner insert: {error}"))?;
+    let mut insert_owner_key = tx
+        .prepare(
+            "INSERT INTO source_index_owner_key (
+                generation_id,
+                query_key,
+                owner_ordinal,
+                owner_path,
+                language_id,
+                provider_id
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .map_err(|error| format!("failed to prepare source owner key insert: {error}"))?;
     for (owner_ordinal, owner) in import.owners.iter().enumerate() {
         let search_projection = source_index_search_projection(
             [owner.owner_path.as_str(), owner.source_kind.as_str()],
@@ -223,8 +240,40 @@ fn write_owners(tx: &Transaction<'_>, import: &ClientDbSourceIndexImport) -> Res
                 search_projection.search_text.as_str(),
             ])
             .map_err(|error| format!("failed to write source owner row: {error}"))?;
+        for query_key in source_index_owner_query_keys(owner) {
+            insert_owner_key
+                .execute(params![
+                    import.generation_id.as_str(),
+                    query_key.as_str(),
+                    usize_to_i64(owner_ordinal),
+                    owner.owner_path.as_str(),
+                    owner.language_id.as_ref().map(|value| value.as_str()),
+                    owner.provider_id.as_ref().map(|value| value.as_str()),
+                ])
+                .map_err(|error| format!("failed to write source owner key row: {error}"))?;
+        }
     }
     Ok(())
+}
+
+fn source_index_owner_query_keys(
+    owner: &super::types::ClientDbSourceIndexOwner,
+) -> BTreeSet<String> {
+    let mut query_keys = BTreeSet::new();
+    for value in [owner.owner_path.as_str(), owner.source_kind.as_str()] {
+        insert_source_index_owner_query_key(&mut query_keys, value);
+    }
+    for query_key in &owner.query_keys {
+        insert_source_index_owner_query_key(&mut query_keys, query_key.as_str());
+    }
+    query_keys
+}
+
+fn insert_source_index_owner_query_key(query_keys: &mut BTreeSet<String>, value: &str) {
+    let value = value.trim();
+    if !value.is_empty() {
+        query_keys.insert(value.to_ascii_lowercase());
+    }
 }
 
 fn write_selectors(tx: &Transaction<'_>, import: &ClientDbSourceIndexImport) -> Result<(), String> {

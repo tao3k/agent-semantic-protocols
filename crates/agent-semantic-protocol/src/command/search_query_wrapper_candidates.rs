@@ -2,15 +2,18 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
+use agent_semantic_client::{SourceIndexLookupState, lookup_source_index_for_language};
 use serde_json::Value;
 
 use super::search_config::AspConfig;
 use super::search_language_files::language_neutral_search_file_spec;
-use super::search_pipe_model::Candidate;
+use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
 use super::search_pipe_native_finder::{
     NativeFinderCollectionRequest, NativeFinderSurface, collect_native_finder_candidates,
 };
+use super::search_pipe_source::{source_index_candidate, source_index_trace};
 use super::search_query_wrapper_candidate_scan::{
     QUERY_CANDIDATE_LIMIT, QueryCandidateAppend, append_query_candidates,
     augment_package_path_candidates, query_candidate_priority,
@@ -20,6 +23,8 @@ use super::search_query_wrapper_model::{QueryWrapperClause, QueryWrapperSurface}
 pub(super) struct QueryCandidateCollection {
     pub(super) candidates: Vec<Candidate>,
     pub(super) trace_fields: BTreeMap<String, Value>,
+    pub(super) source_trace: Vec<SearchPipeSourceTrace>,
+    pub(super) candidate_sources: Vec<String>,
 }
 
 pub(super) struct QueryCandidateRequest<'a> {
@@ -46,14 +51,10 @@ impl QueryCandidateCollection {
         Self {
             candidates: Vec::new(),
             trace_fields,
+            source_trace: Vec::new(),
+            candidate_sources: vec!["finder".to_string()],
         }
     }
-}
-
-pub(super) fn collect_query_candidates(
-    request: QueryCandidateRequest<'_>,
-) -> Result<Vec<Candidate>, String> {
-    collect_query_candidate_collection(request).map(|collection| collection.candidates)
 }
 
 pub(super) fn collect_query_candidate_collection(
@@ -102,6 +103,12 @@ pub(super) fn collect_query_candidate_collection(
     };
     let accept_all_files = !scopes.is_empty();
     let axis_terms = query_axis_terms(clauses);
+    if native_args.is_empty()
+        && let Some(collection) =
+            collect_source_index_query_candidates(surface, project_root, &roots, terms, &axis_terms)
+    {
+        return Ok(collection);
+    }
     if !fd_query_prefers_internal_scan(surface, terms, native_args)
         && let Some(mut collection) =
             collect_native_finder_candidates(NativeFinderCollectionRequest {
@@ -124,6 +131,8 @@ pub(super) fn collect_query_candidate_collection(
             return Ok(QueryCandidateCollection {
                 candidates: Vec::new(),
                 trace_fields: collection.provenance.trace_fields(0),
+                source_trace: Vec::new(),
+                candidate_sources: vec!["finder".to_string()],
             });
         }
         if !collection.candidates.is_empty() {
@@ -151,6 +160,8 @@ pub(super) fn collect_query_candidate_collection(
             return Ok(QueryCandidateCollection {
                 candidates,
                 trace_fields,
+                source_trace: Vec::new(),
+                candidate_sources: vec!["finder".to_string()],
             });
         }
     }
@@ -189,6 +200,67 @@ pub(super) fn collect_query_candidate_collection(
     Ok(QueryCandidateCollection {
         candidates,
         trace_fields,
+        source_trace: Vec::new(),
+        candidate_sources: vec!["finder".to_string()],
+    })
+}
+
+fn collect_source_index_query_candidates(
+    surface: QueryWrapperSurface,
+    project_root: &Path,
+    roots: &[PathBuf],
+    terms: &[String],
+    axis_terms: &[String],
+) -> Option<QueryCandidateCollection> {
+    if !project_root.is_dir() || terms.is_empty() {
+        return None;
+    }
+    let started_at = Instant::now();
+    let query = terms.join(" ");
+    let limit = match surface {
+        QueryWrapperSurface::Fd => 16,
+        QueryWrapperSurface::Rg => QUERY_CANDIDATE_LIMIT as u32,
+    };
+    let result = lookup_source_index_for_language(project_root, None, &query, limit).ok()?;
+    if result.state != SourceIndexLookupState::Hit {
+        return None;
+    }
+    let mut candidates = result
+        .candidates
+        .iter()
+        .filter(|candidate| source_index_candidate_in_roots(project_root, roots, &candidate.path))
+        .map(source_index_candidate)
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates
+        .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, axis_terms));
+    let candidate_count = candidates.len();
+    Some(QueryCandidateCollection {
+        candidates,
+        trace_fields: BTreeMap::new(),
+        source_trace: vec![
+            source_index_trace(&result, candidate_count, started_at),
+            SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0),
+        ],
+        candidate_sources: vec!["source-index".to_string()],
+    })
+}
+
+fn source_index_candidate_in_roots(project_root: &Path, roots: &[PathBuf], path: &str) -> bool {
+    let candidate_path = Path::new(path);
+    let candidate_abs = if candidate_path.is_absolute() {
+        candidate_path.to_path_buf()
+    } else {
+        project_root.join(candidate_path)
+    };
+    roots.iter().any(|root| {
+        if root.is_file() {
+            candidate_abs == *root
+        } else {
+            candidate_abs.starts_with(root)
+        }
     })
 }
 

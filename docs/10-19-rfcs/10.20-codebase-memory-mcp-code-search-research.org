@@ -1,0 +1,1411 @@
+#+TITLE: RFC 10.20 - codebase-memory-mcp Code Search Research
+#+DATE: 2026-06-28
+#+STATUS: Draft
+
+* One-sentence summary
+The important lesson from =codebase-memory-mcp= is not "ASP should become an MCP server"; it is that agent-grade code search needs a durable pre-indexed graph, text / semantic / structural retrieval layers, stable code identity, and replayable search receipts that can feed ASP search, dependency analysis, and future writing workflows.
+
+* Scope
+This note records research against =codebase-memory-mcp= for the ASP code-search and DB Engine workstream.
+
+It is intentionally scoped to:
+- code search and code retrieval;
+- graph-backed search over symbols, files, snippets, dependencies, routes, and call edges;
+- search evidence that agents can use without reading whole files;
+- state and artifact layout needed by Rust, Python, Julia, Org, and future writing workflows;
+- experiments that can justify an ASP DB Engine v2 and Turso backend prototype.
+
+It is intentionally not scoped to:
+- making ASP an MCP server;
+- copying =codebase-memory-mcp= tool names as ASP public contract;
+- making line numbers executable identity;
+- replacing provider-owned parser authority with one global grammar bundle;
+- storing every volatile code fact in the DB.
+
+* Source snapshot
+External repository snapshot:
+
+#+begin_src text
+repo: https://github.com/DeusData/codebase-memory-mcp
+local checkout: .data/codebase-memory-mcp
+snapshot commit: acee801
+observed date: 2026-06-28
+#+end_src
+
+Primary references:
+- [[https://github.com/DeusData/codebase-memory-mcp][codebase-memory-mcp repository]]
+- [[https://arxiv.org/abs/2603.27277][Codebase-Memory arXiv preprint]]
+
+Local source evidence used for this note:
+- =README.md= describes the system as a local code-intelligence engine for agents, with tree-sitter indexing, hybrid LSP enrichment, graph search, semantic search, and MCP tools.
+- =docs/EVALUATION_PLAN.md= defines the graph-tool playbook around =search_graph=, tracing, snippet retrieval, architecture retrieval, =search_code=, and =semantic_query=.
+- =docs/BENCHMARK.md= records multi-language benchmark tasks, including text search rows mapped to =search_code= and several =PARTIAL= outcomes.
+- =internal/cbm/sqlite_writer.c= and =src/store/store.c= define the durable graph schema around projects, file hashes, nodes, edges, summaries, and vectors.
+- =src/store/store.c= defines indexes for node label, node name, node file, edge source, edge target, edge type, and generated URL paths.
+- =src/mcp/mcp.c= contains BM25 / FTS-backed query execution for the MCP-facing search path.
+- =src/pipeline= contains indexing and FTS refresh code for graph search state.
+
+This is enough to treat =codebase-memory-mcp= as a concrete reference system for code-search substrate design, while still treating its own benchmark claims as external claims that ASP must reproduce independently.
+
+* Core finding
+The core product surface of =codebase-memory-mcp= is code search. MCP is the delivery adapter. The architectural value is the persistent index behind that adapter:
+
+#+begin_src text
+source tree -> tree-sitter / LSP enrichment -> graph DB / FTS / vectors ->
+search tools -> snippets / paths / architecture summaries -> agent answer
+#+end_src
+
+For ASP, the equivalent center should be:
+
+#+begin_src text
+provider-owned parser facts -> ASP DB Engine read-model ->
+search/query/recall/writing commands -> stable receipts -> agent action
+#+end_src
+
+That difference matters. ASP already has a protocol-first, CLI-first, provider-neutral shape. The opportunity is to absorb the search-substrate lessons without inheriting MCP-server identity, session coupling, or tool-list-driven architecture.
+
+The stronger ASP opportunity is native language analysis. =codebase-memory-mcp=
+builds one broad code graph from vendored parsers, LSP enrichment, SQLite,
+FTS, vectors, and MCP tools. ASP can build a typed multi-layer evidence graph
+from provider-owned language implementations:
+
+#+begin_src text
+intent -> native provider facts -> ecosystem/dependency/test facts ->
+typed graph expansion -> ranked evidence bundle -> selector-first action
+#+end_src
+
+This is the path to fewer agent turns. The agent should not start from file
+names, grep rows, or line ranges. It should state an intent, receive a compact
+evidence plan, and then operate on stable selectors, dependency facts, graph
+paths, snippets, and receipts.
+
+* Search-layer verdict
+** Current winner by productized fewer-turn search
+On today's implemented surface, =codebase-memory-mcp= is ahead for productized
+few-turn repository search.
+
+The reason is concrete: its MCP-facing search layer is already organized as a
+small playbook:
+
+#+begin_src text
+search_graph / semantic_query / query_graph / search_code ->
+trace_path when relationship evidence is needed ->
+get_code_snippet when bounded source evidence is needed
+#+end_src
+
+Local source evidence:
+- =src/mcp/mcp.c= registers =search_graph=, =query_graph=, =trace_path=,
+  =get_code_snippet=, =search_code=, and dispatches those names through one MCP
+  handler table.
+- =get_code_snippet= explicitly guides the caller to use =search_graph= first
+  when the exact symbol is not known.
+- =search_graph= accepts a lexical query, regex name pattern, label filters,
+  connected-node inclusion, and =semantic_query=.
+- =search_code= is implemented as graph-augmented code search rather than raw
+  workspace grep.
+- =src/store/store.c= creates a =nodes_fts= FTS5 index over node names,
+  qualified names, labels, and file paths, and registers a camelCase splitter
+  for identifier search.
+- =src/mcp/mcp.c= builds FTS5 MATCH expressions and orders candidates with
+  BM25 before applying project/file filtering and result shaping.
+- The graph DB stores =nodes= and =edges=, plus =node_vectors= and
+  =token_vectors= for semantic retrieval.
+
+This means an agent can often complete orientation in two or three calls:
+
+#+begin_src text
+search_graph(query or semantic_query) -> get_code_snippet(qualified_name)
+search_graph(name_pattern) -> trace_path(source,target)
+search_code(query) -> search_graph/get_code_snippet refinement
+#+end_src
+
+That is a real advantage. ASP should copy this degree of product integration.
+
+** Current winner by search identity and granularity
+ASP is stronger in search identity and potential granularity.
+
+ASP's search output already carries provider-owned selectors and route
+metadata. Evidence from the current repository:
+- Rust owner search over =crates/agent-semantic-client-db/src/structural_index/packet.rs= returns structural selectors such as =rust://...#item/function/parse_dependency_rows= and marks line ranges only as display/source hints.
+- The same Rust structural packet owner exposes separate parsing paths for
+  symbols, dependencies, and owners.
+- Python =asp_graph_turbo= already exposes production graph algorithm owners:
+  =pagerank.py= contains =graph_turbo_typed_personalized_pagerank=, and
+  =diversity.py= contains =rank_nodes=.
+- =rank_nodes= ranks graph candidates with kind budgets, seen selector
+  filtering, query-token coverage repair, and semantic-fact coverage repair.
+- ASP search receipts already expose route quality concepts such as
+  =queryPack=, =scopeQuality=, =clauseCoverage=, =packageCohesion=,
+  =recommendedNext=, =actionFrontier=, and =avoid=.
+
+This is more agent-native than =path:start:end=. It gives ASP a better long-term
+identity layer:
+
+#+begin_src text
+native selector -> provider fact -> graph node -> ranked evidence -> snippet
+#+end_src
+
+The gap is not capability theory. The gap is productization: ASP has strong
+pieces, but they are not yet fused into one default search playbook as cleanly
+as =codebase-memory-mcp='s MCP tool flow.
+
+** Current winner by language semantics
+ASP has the stronger architecture for true language semantics.
+
+=codebase-memory-mcp= is not "unparsed." It is heavily parsed: it uses
+tree-sitter and selected Hybrid LSP enrichment. The difference is authority.
+Its graph is a central product-owned index. ASP's design can let each provider
+own semantics through the native ecosystem:
+- Rust can use Cargo, rust-analyzer/rustdoc-style facts, crate features, tests,
+  benches, and workspace metadata.
+- Python can use import/package metadata, pyproject/uv constraints, pytest
+  reachability, type-checker output, and policy gates.
+- Julia can use Project/Manifest facts, JuliaSyntax, method/module relations,
+  and notebook research outputs.
+- TypeScript can use compiler/tsserver facts, package-manager lockfiles, route
+  and component ownership, and test runner evidence.
+- Org can expose contracts, decisions, headings, links, and writing evidence.
+
+This is lower granularity in the way agents need: not just "the symbol is at
+this line," but "this selector belongs to this dependency, is covered by this
+test, is constrained by this policy, and is cited by this decision."
+
+** Bottom line
+The fair verdict is:
+* FTS/BM25, Tantivy, and fzf
+The practical answer is not to replace =fzf= everywhere. ASP should add an indexed lexical-search backend, with =tantivy= as the strongest Rust-native candidate, while keeping =fzf= as an interactive / fallback candidate selector.
+
+The gap is architectural:
+- =fzf= is a fuzzy candidate selector over an already-collected candidate set. It is useful for small lists, interactive narrowing, cache replay matching, and fallback ranking when no durable index exists. It does not give ASP a persistent inverted index, IDF weighting, field boosts, document-length normalization, identifier-aware tokenization, or stable query statistics.
+- FTS/BM25 is a retrieval layer over indexed documents. It can rank by term rarity, document length, field importance, and structured query terms. That is better for agent intent such as "find the owner of async cache replay", "where is provider command selection indexed", or "search camelCase identifier fragments across symbols and docs".
+- camelCase / identifier splitting is critical for code search. Queries such as =provider command selection= should match =ProviderCommandSelection=, =provider_command_selection=, path segments, headings, and symbol qualified names without requiring the agent to guess the exact spelling.
+- =tantivy= is appropriate when ASP wants a Rust-native, embedded Lucene-style index over provider-owned entity documents. It should index selectors, symbol names, qualified names, doc comments, Org headings, dependency names, package paths, error names, route names, and short snippets. It should not become parser authority.
+
+The target shape should be:
+#+begin_src text
+native providers -> entity documents -> indexed lexical backend ->
+candidate selector ids -> Python graph rank/diversity ->
+bounded snippets / receipts -> agent action
+#+end_src
+
+The important boundary is that =tantivy= returns candidate identities, not executable source locations. The executable identity stays ASP-native:
+#+begin_src text
+selector | entity id | dependency id | artifact id | receipt id
+#+end_src
+Line ranges may remain display hints only.
+
+ASP should therefore introduce a =TextSearchBackend= / =LexicalSearchBackend= seam before depending on =tantivy= directly from public search code:
+- baseline backend: current scanner / candidate collection / =fzf= compatible ranking;
+- experiment backend: =tantivy= index over DB Engine entity documents;
+- future backend: Turso / SQLite FTS backend if the DB Engine makes that cheaper;
+- common output: selector-first candidate packets with field-hit metadata, score, generation id, and index freshness.
+
+The adoption test should be empirical. Do not remove =fzf= until =tantivy= wins these measurements on real ASP workflows:
+- fewer commands to reach edit-ready evidence;
+- better recall@k and MRR / nDCG for identifier, dependency, API, Org-heading, and doc-comment queries;
+- lower broad-read count and lower repeated-search count;
+- acceptable warm-update latency after file edits;
+- bounded index size under monorepos;
+- stable behavior when code moves but selectors remain provider-resolvable;
+- clean interop with Python graph ranking and Julia research notebooks.
+
+Decision:
+#+begin_src text
+prefer Turso-backed FTS as the ASP DB Engine lexical-search experiment;
+use a Turso/Tantivy-derived hot search backend for dynamic overlays;
+deprecate fzf as a search/ranking backend once the new backend proves parity;
+promote indexed lexical search only after recall/latency/turn-count receipts prove it.
+#+end_src
+
+* Turso as the preferred FTS/BM25 substrate
+Turso can own the indexed lexical-search storage layer if ASP keeps parser authority outside the database.
+
+The target is not:
+#+begin_src text
+raw source file -> Turso FTS -> executable line result
+#+end_src
+
+The target is:
+#+begin_src text
+changed source -> native provider parse -> stable entity document ->
+Turso table row + FTS index -> selector/entity candidate ->
+graph rank/diversity -> snippet/receipt
+#+end_src
+
+Dynamic code should be handled through generations, hashes, tombstones, and deterministic projections:
+- every indexed row carries =project_id=, =workspace_id=, =provider_id=, =source_path=, =source_hash=, =entity_id=, =selector=, =kind=, =qualified_name=, =signature=, =display_range=, =generation_id=, and =indexed_at=;
+- volatile code text lives as bounded snippets or dynamic JSON artifacts, not as the only durable identity;
+- changed files are re-parsed by their native provider, then upsert their entity rows under a new generation;
+- deleted or missing files tombstone their old entity rows and remove them from search-visible generations;
+- stale rows remain auditable through receipts but are excluded from default search;
+- query results must return selector/entity ids first, with line ranges only as display hints.
+
+CamelCase identifier search should be prepared before indexing, not left to accidental tokenizer behavior. ASP should store a provider-built search text field such as:
+#+begin_src text
+search_name_text =
+  original identifier +
+  camel split tokens +
+  snake/kebab/path tokens +
+  qualified-name segments +
+  provider aliases
+#+end_src
+
+Example:
+#+begin_src text
+ProviderCommandSelection ->
+ProviderCommandSelection provider command selection provider_command_selection
+#+end_src
+
+Then Turso FTS/BM25 can weight fields by agent value:
+- =name_tokens= highest weight;
+- =qualified_name_tokens= high weight;
+- =dependency_name= and =package_path= high weight for dependency queries;
+- =signature_tokens= medium weight;
+- =doc_heading= / =org_heading= medium weight;
+- =snippet_tokens= lower weight;
+- =source_path_tokens= low weight except path-intent queries.
+
+The dynamic-code problem is therefore not "can FTS index changing files." It can. The ASP problem is making each refresh selector-first, provider-owned, auditable, and cheap:
+#+begin_src text
+file hash changed -> provider emits entity delta ->
+DB transaction writes new generation rows ->
+FTS-visible view points to current generation ->
+search receipts record generation/index freshness
+#+end_src
+
+This makes Turso the preferred place to combine:
+- relational project/workspace/source generation state;
+- FTS/BM25 over provider-built code-search text;
+- vector rows for semantic retrieval when useful;
+- CDC/change receipts for analyzer and Julia/Python research loops;
+- single-file local state under the ASP state root.
+
+Independent =tantivy= remains useful only if Turso's FTS is too immature, not available in the target build, or too restrictive for custom tokenization and update latency. The abstraction should therefore be backend-neutral while the first DB Engine experiment should be Turso-first.
+
+* One-turn and two-turn intent-to-snippet design
+=codebase-memory-mcp= can often reach a snippet in two or three calls because its product surface is a fixed playbook:
+#+begin_src text
+search_graph / semantic_query / search_code -> get_code_snippet
+search_graph -> trace_path -> get_code_snippet
+#+end_src
+
+ASP should beat this by collapsing retrieval, graph expansion, and snippet packing into one selector-first evidence packet.
+
+The target surface is:
+#+begin_src text
+intent -> lexical/semantic/structural retrieval -> typed graph rank ->
+selector candidates -> bounded snippets -> evidence receipt
+#+end_src
+
+The result should not be a file list. It should be an =IntentEvidencePacket=:
+- parsed intent facets: symbol/API, dependency, behavior, owner, test, policy, document, writing target;
+- top candidates with stable =selector= / =entity_id=;
+- bounded parser-owned snippets for the top candidates;
+- graph paths that explain why the candidate is relevant;
+- dependency, package, caller/callee, test reachability, and contract facts when available;
+- field-hit metadata from Turso FTS/BM25 and optional semantic retrieval;
+- Python graph-rank explanation: seed source, edge types, diversity budget, coverage repair, confidence;
+- freshness metadata: project generation, source hash, index generation, stale/tombstone status;
+- next action when confidence is low, expressed as a receipt-driven refinement rather than a new broad search.
+
+This is how ASP gets to one turn:
+#+begin_src text
+user intent -> ASP returns best selector + snippet + why + next edit/query action
+#+end_src
+
+This is how ASP gets to two turns when ambiguous:
+#+begin_src text
+turn 1: intent -> disambiguation packet with 2-5 evidence-backed candidates
+turn 2: receipt refinement -> exact selector + bounded snippet/action packet
+#+end_src
+
+In a hook-integrated workflow, the first search can be precomputed from the user prompt before the model asks for it. From the agent's perspective that makes the first usable evidence packet effectively zero extra search turns.
+
+The native-parser advantage is that ASP can pack facts that =codebase-memory-mcp= usually has to discover through separate tool calls:
+- selectors remain stable when lines move;
+- provider entity documents already know signatures, definitions, imports, exports, doc comments, attributes, routes, tests, and package metadata;
+- dependency usage is an indexed fact, not a text coincidence;
+- test reachability and policy facts can be attached to the same candidate;
+- Org contracts, RFC headings, and writing evidence can be ranked in the same packet as code selectors;
+- snippets are AST / provider-node bounded, not line-window guesses.
+
+Python graph algorithms should own the production fusion step:
+- seed the graph from Turso FTS/BM25, semantic vectors, explicit selectors, package facts, and prior receipts;
+- run typed personalized PageRank over provider/entity/dependency/test/document edges;
+- apply kind budgets so one file or one package does not dominate the packet;
+- repair missing query-token coverage and semantic-fact coverage before returning;
+- diversify candidates across owner, kind, dependency, and test evidence;
+- emit a confidence score and abstain into a receipt refinement when the evidence is weak.
+
+The DB read-model needed for this is:
+#+begin_src text
+entity_documents       stable selector/entity facts and search text
+entity_edges           caller/callee/import/export/owns/tests/contracts links
+snippet_spans          provider-node bounded excerpts, not executable line ids
+search_receipts        intent, generation, retrieval seeds, graph decisions
+intent_refinements     user/agent disambiguation over a prior receipt
+#+end_src
+
+Acceptance should be measured by agent-loop metrics, not just search latency:
+- =turns_to_first_actionable_snippet=;
+- =commands_to_confident_selector=;
+- =false_positive_at_1= and =false_negative_at_5=;
+- broad source reads avoided;
+- token size of returned evidence packet;
+- warm update latency after edit;
+- stale-result rate after file movement;
+- edit success rate after using the returned selector.
+
+The concrete benchmark target should be:
+#+begin_src text
+one-turn success for direct owner/API/dependency/test/doc queries;
+two-turn success for ambiguous architecture or behavior queries;
+zero extra search turn when the hook precomputes the initial packet from prompt intent.
+#+end_src
+
+If ASP only adds FTS/BM25, it will copy =codebase-memory-mcp='s two-call flow. If ASP adds native entity projection plus Python graph fusion plus bounded snippet packing, it can make the default search result itself edit-ready evidence.
+
+* Context-resumable search and memory-aware topology
+The one-turn target must not become a rigid full-flow requirement. In real agent work, the model already carries context: recent selectors, prior search receipts, open edit intent, failed tests, known packages, and user-stated constraints. The DB also stores project generations, search receipts, graph paths, and artifact evidence. A good ASP search layer should exploit that state instead of re-running retrieval from zero.
+
+The search router should therefore choose one of three modes:
+#+begin_src text
+skip    enough trusted context exists; jump directly to selector/snippet/action
+resume  prior receipt or memory anchor exists; continue from that graph frontier
+refine  context is insufficient; run lexical/semantic/structural retrieval
+#+end_src
+
+This changes the metric from "how many search calls" to "how much new evidence is needed." A direct search flow is only one case:
+#+begin_src text
+cold intent -> retrieve -> graph rank -> snippet
+#+end_src
+
+The warm path should be:
+#+begin_src text
+agent memory + DB receipt -> validate freshness -> topology jump -> snippet/action
+#+end_src
+
+Examples:
+- If the agent memory already contains a stable selector and the DB says its =source_hash= / =generation_id= is current, ASP should skip FTS and return the bounded snippet or edit action.
+- If memory contains a package, owner, or dependency but not the exact selector, ASP should resume from the stored topology neighborhood and graph-rank candidates inside that subgraph.
+- If a prior search receipt ended with ambiguous candidates, the next user message should refine against that receipt id instead of starting a new workspace search.
+- If a test failure or policy receipt is active, the seed should be the failing test / policy node and its graph neighborhood, not a text query.
+- If the prompt is a writing task, Org/RFC/document nodes should become first-class topology seeds alongside code nodes.
+
+The graph/topology layer is the jump mechanism. It should store and rank reusable frontiers:
+- selector -> owner file / package / module / dependency / tests;
+- dependency -> import sites / wrappers / public APIs / policy gates;
+- test -> covered selectors / failures / fixtures / related docs;
+- Org heading -> referenced selectors / decisions / artifacts;
+- prior receipt -> candidates / rejected routes / chosen action / freshness.
+
+The agent-facing packet should expose why search was skipped or resumed:
+#+begin_src text
+mode=skip|resume|refine
+anchor=selector|receipt|dependency|test|org-heading|artifact
+freshness=current|stale|unknown
+graph_frontier=[...]
+new_retrieval=false|partial|full
+#+end_src
+
+This is where ASP can be stronger than a stateless code search tool. =codebase-memory-mcp= can be good at the cold path. ASP can make the warm path much shorter because the protocol sees both sides:
+#+begin_src text
+LLM context / agent memory + DB receipts / topology + native parser selectors
+#+end_src
+
+The router must still be conservative. It may skip retrieval only when:
+- the anchor identity is selector-first, not line-number-first;
+- the source/index generation is current or explicitly accepted as stale evidence;
+- the requested intent is compatible with the prior receipt's scope;
+- the graph frontier has enough coverage for the current query terms or semantic facets;
+- the packet records the skipped retrieval path for replay and audit.
+
+Acceptance metrics for this warm-path design:
+- =new_retrieval_avoided_rate=;
+- =context_jump_success_rate=;
+- =stale_anchor_rejection_rate=;
+- =receipt_refinement_success_rate=;
+- =turns_from_memory_anchor_to_action=;
+- =false_skip_rate= where ASP trusted context that should have been refreshed.
+
+The vision is that ASP search is not a command sequence. It is an evidence-state machine. Cold search, warm resume, and direct jump are all valid, and the graph/topology store decides which one is justified.
+
+* Stable base index and dynamic overlay
+The phrase =intent -> Turso FTS/BM25 + semantic/selector seeds= must not mean that every dirty edit is synchronously written into the durable DB search index. In agent work a project can have many sessions, worktrees, and subagents editing different versions of the same files. Treating that churn as one global FTS index would be expensive, stale-prone, and semantically wrong.
+
+ASP needs a two-layer search substrate:
+#+begin_src text
+stable base index     durable project generation in Turso DB / FTS / graph tables
+dynamic overlay       per session / worktree / subagent dirty evidence
+#+end_src
+
+The stable base index is for slower-changing facts:
+- git / worktree base generation;
+- manifests, dependencies, packages, public symbols, stable provider entities;
+- Org/RFC/document headings and contracts;
+- last accepted source hashes and selector projections;
+- graph topology that is reusable across sessions.
+
+The dynamic overlay is for high-churn facts:
+- active dirty files and buffers;
+- subagent-specific edits and speculative paths;
+- changed selectors, deleted selectors, new local symbols;
+- short snippets, patch summaries, and parse deltas;
+- active test failures, policy failures, and edit receipts.
+
+Dynamic overlay records must be namespaced:
+#+begin_src text
+project_id / workspace_id / worktree_id / session_id / subagent_id / base_generation
+#+end_src
+
+They must not overwrite the stable project index until a checkpoint accepts them. The router should merge evidence in this order:
+#+begin_src text
+agent memory / prior receipt ->
+active overlay exact anchors ->
+dirty-file provider parse / token map ->
+stable Turso FTS/BM25 and graph index ->
+semantic/vector fallback
+#+end_src
+
+This keeps BM25 in the right place. Turso FTS/BM25 is valuable for the stable base corpus and for cold or broad queries. It is not the default first step for every prompt when the agent already has context or when the requested evidence is inside a dirty overlay.
+
+No line number identity is allowed in either layer:
+- stable rows use selector/entity ids with display ranges as hints;
+- overlay rows use selector/entity ids when resolvable, otherwise temporary overlay-local ids tied to a file hash and patch receipt;
+- AST spans may help build snippets, but they are not durable action identity;
+- line ranges remain display-only and can be invalidated by edits.
+
+Overlay persistence should be cheap:
+- store patch receipt, source hash, and bounded snippet, not every AST node;
+- debounce or batch writes on save/checkpoint/hook boundary;
+- keep hot token maps in memory when possible;
+- persist only enough overlay state to replay or recover a session;
+- compact accepted overlay rows into a new stable DB generation when the edit path is merged.
+
+For dynamic overlays, =tantivy= should not be treated as a separate product index. It should be treated as the hot-search engine that shares the same analyzer, field model, tokenization contract, and scoring expectations as Turso FTS.
+
+The preferred implementation order is:
+#+begin_src text
+durable accepted state        -> Turso DB + Turso FTS/BM25
+dynamic session overlay       -> Turso/Tantivy-derived hot search backend
+legacy fuzzy candidate search -> removed after parity receipts
+#+end_src
+
+If Turso exposes a stable reusable Rust search package for its FTS layer, ASP should depend on that. If the FTS implementation is only available through private Turso internals, ASP should depend on =tantivy= directly while matching Turso's analyzer contract and keeping a compatibility test against Turso FTS query results.
+
+This gives one lexical-search family instead of two unrelated ranking systems:
+#+begin_src text
+Turso FTS for persisted generations
+Turso/Tantivy hot index for overlays
+same provider-built identifier tokens
+same field-weight contract
+same selector-first result packet
+#+end_src
+
+Under this design =fzf= should not remain a search backend. Its role, if any, is limited to a temporary legacy adapter during migration or a human-only interactive UI affordance. Agent-facing ASP search should converge on the Turso/Tantivy lexical backend plus Python graph fusion.
+
+* Paper reread: tree-sitter as coarse structure, native parser as proof
+The Codebase-Memory paper's strongest lesson is not that tree-sitter is more semantically precise than native provider parsers. It is the opposite: tree-sitter is useful because it is a portable, fast, error-tolerant, cross-language structural substrate that can cheaply materialize a broad graph before the agent asks a question.
+
+The paper's implementation uses tree-sitter across 66 languages to extract definitions, calls, imports, references, routes, tests, and relationship edges, then stores them in SQLite and exposes structural tools to agents. It reports the win in exactly the place ASP cares about: graph-native questions avoid repeated grep/read loops and reduce tool calls and tokens. The paper also records the limits: full source context, exhaustive call-site grep, macro-heavy code, runtime behavior, reflection, and dynamic dispatch remain weak spots.
+
+For ASP this implies a hybrid search theorem:
+#+begin_src text
+tree-sitter S-expression = portable coarse structural filter
+native provider query    = semantic proof and selector/action authority
+Python graph fusion      = ranking, diversity, topology, and evidence policy
+#+end_src
+
+Tree-sitter should not replace native parsers. Native parsers should not ignore tree-sitter's query shape. The best design is a query combinator that lets agents ask one intent while ASP compiles it into multiple cooperating filters.
+
+The combinator should have four stages:
+#+begin_src text
+intent
+-> structural pattern candidates from tree-sitter-compatible S-expression
+-> native provider refinement through language query/projection facts
+-> graph/topology rank and bounded snippet/action packet
+#+end_src
+
+Example:
+#+begin_src text
+intent: "find async cache refresh functions that update dependency rows"
+
+tree-sitter layer:
+  (function_item
+    name: (identifier) @fn.name
+    (#match? @fn.name "refresh|update|sync"))
+
+native Rust layer:
+  requires async=true
+  requires calls or writes dependency-row projection
+  requires selector freshness and workspace package ownership
+
+graph layer:
+  rank by dependency edge, owner package, prior receipt, test reachability
+#+end_src
+
+This is stronger than either layer alone:
+- tree-sitter-compatible S-expression gives a compact cross-language pattern vocabulary that LLMs and humans can write;
+- native provider query language proves the facts that tree-sitter cannot: imports, type-only constructs, cfg/features, macro boundaries, scope, ownership, dependency/test reachability, and edit safety;
+- graph fusion prevents the result from becoming a flat capture list;
+- selector-first snippets prevent line-number drift from becoming action identity.
+
+The current ASP artifact evidence suggests this is underused. RFC 10.11 already records that provider artifact histories contained very few semantic-tree-sitter-query packets compared with owner search and direct-source-read commands. That should be treated as a product failure, not as evidence that S-expression queries are unimportant. Agents do not use the feature because the default command surface does not make the compositional path cheaper than owner search or bounded reads.
+
+The user-facing search surface should therefore expose query composition, not raw tree-sitter as an advanced side path:
+#+begin_src text
+asp <language> search intent "<intent>"
+  --struct '(...)'
+  --native '<provider query or catalog id>'
+  --combine intersect|union|subtract|rerank
+  --emit evidence-packet
+#+end_src
+
+The packet must record both proofs:
+#+begin_src text
+structuralProof:
+  grammarId, queryAstHash, capture names, predicate results, match spans
+nativeProof:
+  providerId, selector, semantic facts, omitted facts, exactRead/action locator
+fusionProof:
+  graph seeds, edge types, rank inputs, diversity decisions, confidence
+#+end_src
+
+The default combinator policy should be:
+- =intersect= for edit-ready evidence: candidate must satisfy both structural and native proof;
+- =rerank= for discovery: tree-sitter broad candidates are promoted/demoted by native facts and graph topology;
+- =subtract= for negative searches: structural pattern minus native exclusion facts;
+- =fallback= only when the native provider cannot prove the requested facet, with =compatibilityLevel=approximate=.
+
+This also gives Julia and artifact analysis a better research dataset. Instead of only measuring commands such as owner search or direct reads, artifacts should preserve:
+- structural query AST hashes and capture coverage;
+- native refinement predicates and rejection reasons;
+- candidate counts at each combinator stage;
+- time and token cost per stage;
+- whether the final action came from structural-only, native-only, or combined evidence;
+- false-positive and false-negative rates after edit/test feedback.
+
+The research question for Julia becomes concrete:
+#+begin_src text
+Which combinator policy minimizes turns_to_actionable_snippet
+while preserving selector precision and edit success?
+#+end_src
+
+This is the place where ASP should exceed Codebase-Memory. Codebase-Memory shows that broad tree-sitter structural graphs are useful. ASP can add native semantic proof, dynamic overlay state, selector identity, and graph-turbo ranking on top of the same structural vocabulary.
+
+* Making combinator search the default path
+The combinator only has value if it is one agent-visible action. It must not become:
+#+begin_src text
+agent writes tree-sitter query -> agent runs native query -> agent runs graph query -> agent asks for snippet
+#+end_src
+
+That would lengthen the node path and lose to simpler owner search. The product shape must be:
+#+begin_src text
+agent intent -> one ASP combinator planner call -> evidence packet
+#+end_src
+
+Inside that one call ASP may run several stages:
+#+begin_src text
+memory/receipt anchors
+-> tree-sitter-compatible structural filter
+-> native provider proof/rejection
+-> Turso/Tantivy lexical seeds
+-> Python graph fusion
+-> bounded selector/snippet/action packet
+#+end_src
+
+The external contract stays one command. The internal path may be longer only when it reduces external turns, tokens, false positives, or broad reads.
+
+The default planner should choose among four routes:
+| Route | When |
+| =jump= | Trusted memory/receipt selector is fresh enough; skip retrieval. |
+| =native= | Exact selector/owner/dependency/test anchor already exists. |
+| =lexical= | Query is mostly name/text/path/doc and structural proof adds little. |
+| =combinator= | Intent has both shape and semantic facets, so structural filter plus native proof can reduce ambiguity. |
+
+The combinator route should be automatic for intents such as:
+- "find wrappers around this dependency";
+- "find async functions that call/write/update X";
+- "find tests covering owners that import package Y";
+- "find API usages inside route/controller/provider layers";
+- "find RFC/doc headings that cite a selector or dependency";
+- "find code matching a syntactic shape but constrained by package, test, policy, or ownership."
+
+It should not be automatic when:
+- the prompt already contains a fresh exact selector;
+- memory has a valid prior receipt with a chosen frontier;
+- a simple dependency or owner query has enough confidence;
+- the tree-sitter pattern would be broad and native proof cannot reduce it;
+- the expected packet would exceed token/cost budgets.
+
+The planner must emit a =PlanTrace= in the receipt:
+#+begin_src text
+route=jump|native|lexical|combinator
+external_calls=1
+internal_stages=structural,native,lexical,graph
+candidate_counts=structural:842,native:37,graph:5
+proof_gain=structural_filter_ratio,native_rejection_ratio,graph_confidence
+fallback_reason=none|low-confidence|too-broad|stale-anchor|unsupported-native-proof
+#+end_src
+
+This gives Julia and artifact analysis a direct observation point. The problem today is not merely that S-expression search exists but is unused. The observable problem is:
+#+begin_src text
+agent chose owner/direct-read path
+because combinator route was not the cheapest visible path to edit-ready evidence
+#+end_src
+
+The fix is command affordance plus measurable proof:
+- the guide should advertise combinator intent as the default evidence route for shape+semantic tasks;
+- hook recovery should recommend a combinator evidence packet before raw read or manual owner fan-out;
+- catalog queries should generate common S-expression fragments so agents rarely hand-write raw query source;
+- output should include the top snippet/action, not just captures;
+- receipts should compare combinator vs simpler routes on the same prompt class.
+
+The replacement gate is not "does the combinator find more facts." It is:
+#+begin_src text
+Does one combinator call reach a more accurate actionable snippet
+than the shortest owner/search/read path?
+#+end_src
+
+Metrics:
+- =turns_to_actionable_snippet=;
+- =external_commands_to_action=;
+- =candidate_reduction_per_stage=;
+- =native_rejection_precision=;
+- =graph_confidence_at_1=;
+- =broad_read_avoided=;
+- =token_cost_to_first_selector=;
+- =edit_success_after_packet=.
+
+If the internal graph path is longer but the external packet is edit-ready, the combinator wins. If the internal path is longer and returns only more choices, it loses and should fall back to native or lexical search.
+
+* Agent-facing graph render comparison
+Codebase-Memory and ASP optimize different parts of the agent-facing surface.
+
+Codebase-Memory's advantage is product flow clarity:
+#+begin_src text
+search_graph / search_code -> trace_path or get_code_snippet
+#+end_src
+
+That is easy for an agent to use because each tool name carries a concrete action. The graph is presented as an operational tool sequence: search, trace, retrieve snippet. The downside is that the default surface is still tool-result shaped. It can expose more structured data than an agent needs for the next decision, and the agent may still need a second call to get the exact snippet.
+
+ASP's compact graph render has a stronger token and protocol model:
+#+begin_src text
+aliases -> typed nodes -> typed edges -> rank -> frontier -> omit/avoid
+#+end_src
+
+This is better for a prompt-facing render because:
+- aliases remove repeated paths and field names;
+- typed edges preserve relation meaning without JSON nesting;
+- =rank= tells attention order without forcing the model to infer it;
+- =frontier= tells the next safe action;
+- =omit= and =avoid= say what was intentionally left out and what not to do;
+- structural selectors remain executable identity while line ranges stay display hints.
+
+The risk in ASP is over-rendering. If the render exposes too many graph ids, route states, topology facts, candidate lists, and analyzer metrics, the agent spends context reconstructing the graph instead of choosing the next action. The render must remain an attention interface, not a graph dump.
+
+The target agent surface should have three layers:
+#+begin_src text
+L0 answer/frontier: best selector/snippet/action and why
+L1 compact graph: aliases, few edges, rank, frontier, omit/avoid
+L2 machine receipt: full JSON/DB artifact for replay, validation, Julia analysis
+#+end_src
+
+Only L0/L1 belong in normal stdout. L2 belongs in artifacts and DB receipts. JSON is excellent for validators and analysis, but it is a poor prompt surface because it repeats keys, exposes irrelevant nesting, and makes the model spend tokens parsing structure that the renderer could project into a compact decision grammar.
+
+The render should therefore follow progressive disclosure:
+#+begin_src text
+default: top 1-3 evidence nodes + action frontier
+expand owner: owner-local items/tests/dependencies
+expand path: bounded relation path or trace
+expand snippet: parser-owned bounded source projection
+expand receipt: machine JSON only on explicit request
+#+end_src
+
+This is where ASP should differ from Codebase-Memory. Codebase-Memory shows the value of a small fixed tool path. ASP should keep that product clarity but render a stronger one-call evidence packet:
+#+begin_src text
+search/combinator -> compact evidence graph -> exact frontier action
+#+end_src
+
+The best render is not the most complete graph. It is the smallest graph slice that lets the agent make the next correct move without guessing.
+
+| dimension | current better implementation | reason |
+|-----------+-------------------------------+--------|
+| Fewer-turn search today | =codebase-memory-mcp= | integrated graph/search/snippet tool playbook is already complete |
+| Stable executable identity | ASP | provider-owned structural selectors are stronger than qualified-name plus line hints |
+| Text/identifier search | =codebase-memory-mcp= | FTS5 BM25 plus camelCase splitter is implemented and exposed |
+| Semantic/vector retrieval | =codebase-memory-mcp= today | =semantic_query= is already wired into search tools |
+| Graph algorithms | ASP potential and partial implementation | Python has PageRank/diversity owners; not yet fully wired into default search |
+| Language ecosystem facts | ASP | native providers can attach package/test/type/doc facts with provenance |
+| Agent routing metadata | ASP | search packets expose next action, avoid rules, clause coverage, and route quality |
+| End-to-end product maturity | =codebase-memory-mcp= | one installed binary exposes a coherent agent-facing search surface |
+
+ASP should not claim it is already better end to end. The correct claim is:
+
+#+begin_src text
+codebase-memory-mcp is better packaged today for few-turn search.
+ASP can be better at finer-grained, native, evidence-backed search if it
+productizes its selector-first provider graph and Python/Julia loop.
+#+end_src
+
+* What ASP should learn
+** Learn the product shape
+The biggest lesson is the compact tool loop. ASP should make the default search
+path obvious:
+
+#+begin_src text
+intent search -> graph/entity candidates -> snippet/evidence bundle -> action
+#+end_src
+
+This should be one normal path, not a set of features the agent manually
+discovers.
+
+** Learn the identifier text search
+The FTS/BM25 + camelCase splitter is a practical detail worth copying. Agents
+often search for partial API phrases, mixed-case names, and route-like tokens.
+ASP should expose indexed text search over provider-owned entities:
+- symbol names;
+- qualified/native selectors;
+- dependency names;
+- test names;
+- docs headings;
+- route paths;
+- artifact titles.
+
+The result must still return selectors and evidence receipts, not only text
+matches.
+
+** Learn semantic_query as a first-class axis
+Embedding search should not be a separate toy command. It should be one axis
+inside the normal search packet, alongside lexical, structural, dependency, and
+graph axes. =codebase-memory-mcp= gets this right by letting =search_graph=
+accept =semantic_query=.
+
+ASP should model:
+
+#+begin_src text
+query_terms + structural_filters + dependency_filters + semantic_terms ->
+candidate set -> Python graph rank -> selector evidence bundle
+#+end_src
+
+** Learn caller guidance
+The external tool descriptions are agent-useful: when exact symbol identity is
+missing, =get_code_snippet= tells the caller to use =search_graph= first. ASP
+already has =recommendedNext= and =avoid= fields; it should make the default
+few-turn recipe just as explicit.
+
+** Do not copy the weak identity boundary
+The external graph stores =qualified_name=, =file_path=, =start_line=, and
+=end_line= in =nodes=. That is useful for display and snippet retrieval, but it
+is not enough as ASP executable identity.
+
+ASP must keep:
+
+#+begin_src text
+structural selector / provider fact id / dependency fact id / receipt id
+#+end_src
+
+as the executable identity, with line ranges only as display hints.
+
+* Required ASP response
+To beat =codebase-memory-mcp= on search, ASP needs to close the productization
+gap without giving up native provider authority.
+
+** R1: One default search playbook
+Add a first-class search flow:
+
+#+begin_src text
+asp search intent <text>
+  -> query set
+  -> graph/entity/dependency/doc candidates
+  -> Python rank/diversity
+  -> evidence bundle
+  -> snippet/action selectors
+#+end_src
+
+The CLI name can change, but the product behavior should not be optional.
+
+** R2: Entity FTS/BM25 read-model
+Build an indexed text read-model over provider entities, not raw files. It
+should support:
+- camelCase / snake_case / path token splitting;
+- field boosts for symbol, selector, dependency, route, test, heading, and
+  artifact title;
+- project/scope filters;
+- result receipts with candidate counts and fallback reasons.
+
+** R3: Semantic axis inside normal search
+Add semantic candidates as an input to the same search receipt instead of a
+separate workflow.
+
+** R4: Python graph rank in the warm path
+Use =asp_graph_turbo= for typed personalized PageRank, diversity, query-token
+coverage repair, semantic-fact coverage repair, and frontier receipts.
+
+** R5: Julia benchmark loop
+Use =AspGraphsSearch.jl= to compare:
+- command count;
+- broad-read count;
+- raw grep count;
+- selector coverage;
+- exact evidence success;
+- edit/test success;
+- token estimate;
+- latency.
+
+** R6: Native provider facts as the differentiator
+Every provider should emit ecosystem facts that =codebase-memory-mcp= cannot
+reliably infer from general tree-sitter alone:
+- package ownership;
+- import/dependency edges;
+- test reachability;
+- type/checker evidence;
+- framework route/component facts;
+- documentation and decision links.
+
+* External design observed
+** Runtime and indexing
+=codebase-memory-mcp= presents itself as a local static binary with a RAM-first indexing pipeline. The README claims very fast full-repo indexing, including a Linux-kernel-scale benchmark, and emphasizes local-only processing.
+
+The indexing strategy is broad:
+- tree-sitter parsing across many languages;
+- hybrid LSP enrichment for selected languages;
+- graph construction for files, symbols, calls, routes, and cross-service links;
+- incremental file hashing;
+- graph UI and architecture views;
+- optional semantic vectors and summaries.
+
+The important ASP lesson is not "bundle every grammar." The useful lesson is that the agent should search a pre-indexed semantic surface before asking for raw files. ASP can keep language authority inside Rust, TypeScript, Python, Julia, Gerbil, Org, and future providers while still converging their outputs into one DB read-model.
+
+** Storage model
+The local source shows a compact graph schema:
+- =projects= records indexed project identity;
+- =file_hashes= records file freshness inputs;
+- =nodes= records code and architecture entities;
+- =edges= records typed relationships;
+- =project_summaries= records generated summary state;
+- =node_vectors= and =token_vectors= support semantic retrieval;
+- FTS tables and indexes support fast text search over graph nodes.
+
+Indexes are targeted at agent retrieval:
+- node lookup by label, name, and file;
+- edge lookup by source, target, and type;
+- URL path lookup for route-style cross-service search;
+- FTS refresh for text search.
+
+ASP should treat this as strong evidence that DB Engine v2 needs a first-class code-search read-model. Current cache rows and provider command selections are not enough. The DB has to expose indexed generations, stable code identities, graph edges, dependency facts, snippet locators, and query receipts as ordinary state.
+
+** Search surface
+The external tool surface combines several retrieval modes:
+- =search_graph= for graph entity search by label, name, degree, scope, and relationships;
+- =trace_call_path= / =trace_path= for traversal between graph nodes;
+- =query_graph= for expressive graph queries;
+- =get_code_snippet= for bounded source context retrieval;
+- =get_architecture= for summarized project orientation;
+- =search_code= for graph-indexed text search;
+- =semantic_query= for vector / semantic retrieval.
+
+This is directly relevant to ASP subcommands. ASP search should not be only "find text." The public model should converge on:
+- structural search;
+- dependency search;
+- graph-context search;
+- text search over indexed facts;
+- semantic search over indexed facts and summaries;
+- snippet retrieval by stable selector;
+- writing-oriented evidence search.
+
+The ASP command surface should make the fan-out/fan-in step explicit. A single
+agent intent often contains several independent semantic axes:
+- source owner;
+- dependency/API ownership;
+- tests and fixtures;
+- route or call path;
+- policy and hook constraints;
+- prior docs/RFC decisions;
+- writing evidence.
+
+The search protocol should let the runtime fan out bounded query groups,
+collect evidence receipts, and fan in to one decision packet. This can run with
+multi-agent or tool-parallel acceleration, but the protocol must also work
+sequentially.
+
+** Ranking model
+The README describes a hybrid semantic ranking system that combines vector search with lexical, structural, AST, API, type, decorator, data-flow, similarity, module proximity, and graph diffusion signals. The exact implementation details need separate verification, but the design direction is sound for ASP:
+
+#+begin_src text
+candidate generation -> structural filters -> graph expansion ->
+ranking features -> bounded snippets -> receipt
+#+end_src
+
+ASP should not hide this behind one opaque rank number. Search receipts should expose enough metadata for Python and Julia to evaluate and improve ranking:
+- mode used;
+- query terms;
+- structural selector;
+- provider id;
+- language id;
+- index generation;
+- candidate count;
+- graph expansion depth;
+- rank feature summary;
+- snippet source;
+- fallback reason;
+- latency;
+- token estimate.
+
+** Evaluation signal
+The external preprint reports better answer quality, fewer tokens, and fewer tool calls than file-by-file exploration. That claim matches ASP's own direction, but ASP should not accept it as proof for our codebase.
+
+The useful part is the evaluation shape:
+- compare answer quality;
+- count tool calls;
+- count bytes and tokens;
+- measure latency;
+- require exact snippet evidence;
+- test multiple languages;
+- include structural discovery, call tracing, architecture questions, and text search.
+
+ASP should run the same shape of evaluation against its own command surface and real projects. The pass criterion is not "we have an MCP tool." The pass criterion is that an agent can answer and edit with fewer broad reads, fewer raw file searches, stable selectors, and replayable receipts.
+
+* Native provider advantage
+ASP's search advantage should come from the fact that each language provider is
+allowed to bring its real ecosystem into the graph. Parser output alone is not
+the ceiling.
+
+| provider family | ecosystem facts that should enter ASP search |
+|-----------------+----------------------------------------------|
+| Rust | Cargo metadata, features, crates, rustdoc/rust-analyzer-derived symbols, tests, benches, workspace members |
+| Python | import graph, package metadata, pyproject/uv/pip constraints, test discovery, type-checker output, policy checks |
+| Julia | Project/Manifest state, JuliaSyntax facts, package graph, method/module relationships, Pluto research outputs |
+| TypeScript | tsserver/TypeScript compiler facts, package manager lockfiles, route/component ownership, test runners |
+| Org / docs | headings, links, contracts, decision records, artifact references, writing evidence |
+| Gerbil/Scheme | package/module graph, compile/test entrypoints, runtime/library ownership |
+
+This creates a different graph than a parser-only codebase index:
+
+#+begin_src text
+code structure graph
+  + dependency/ecosystem graph
+  + test/reachability graph
+  + docs/decision graph
+  + artifact/action graph
+  + search receipt graph
+#+end_src
+
+The goal is not to index more text. The goal is to expose more trustworthy
+edges from the user's intent to executable evidence.
+
+* Graph comparison
+** codebase-memory-mcp graph
+The external graph is strong as a single local code-intelligence substrate:
+- it indexes files and symbols into =nodes=;
+- it stores relationships in =edges=;
+- it adds file hashes for freshness;
+- it adds FTS and vector-related tables for retrieval;
+- it exposes graph tools such as =search_graph=, =query_graph=, trace tools,
+  snippet retrieval, architecture retrieval, text search, and semantic query;
+- it records cross-service and route-like edges.
+
+This is valuable because it compresses broad file exploration into graph
+retrieval. It is especially useful for an MCP client because the agent can call
+high-level tools instead of scanning the repository.
+
+The limitation for ASP is that this graph is primarily a product-owned index.
+It is not the same as provider-owned semantic authority. It also does not make
+ASP's selector-first identity, artifact registry, hook constraints, Org
+contracts, Python production graph ranking, or Julia research notebooks part of
+the core protocol.
+
+** ASP graph
+ASP should treat graph as a typed evidence fabric, not one table pair:
+
+| graph layer | owner | search value |
+|-------------+-------+--------------|
+| Source structure | language providers | symbols, owners, selectors, snippets |
+| Dependency topology | providers plus DB Engine | API ownership, static warm-path planning |
+| Test/reachability | providers plus Python | "what validates this edit" evidence |
+| Runtime/action receipts | Rust/client/hook | what the agent already tried and why |
+| Docs/contracts | Org provider | decisions, RFCs, SDD contracts, writing evidence |
+| Ranking/execution | Python =asp_graph_turbo= | PageRank, diversity, frontiers, receipts |
+| Research/evaluation | Julia =AspGraphsSearch.jl= | algorithm studies, notebooks, ablations |
+
+This graph can be stronger because the edges have provenance. A Rust edge from
+Cargo metadata, a Python edge from import/test discovery, a Julia edge from
+Project/Manifest and JuliaSyntax, and an Org edge from a contract heading are
+not just strings in one index. They are provider-owned facts with different
+freshness and trust levels.
+
+** Comparison decision
+ASP should not copy =codebase-memory-mcp='s graph one-for-one. The right target
+is a heterogeneous graph with typed edge families and explicit evidence:
+
+#+begin_src text
+CBM: source index -> nodes/edges -> MCP graph tools
+ASP: native facts -> typed evidence graph -> search receipts -> agent action
+#+end_src
+
+The benchmark should compare outcomes:
+- fewer agent turns from intent to evidence;
+- fewer broad reads;
+- fewer raw grep calls;
+- higher selector coverage;
+- better test/reachability evidence;
+- better explanation of why a result ranked highly;
+- replayable Python/Julia analysis.
+
+* Intent-to-evidence loop
+The search product goal is:
+
+#+begin_src text
+intent -> evidence -> action
+#+end_src
+
+The agent should spend fewer turns discovering where to look. A good ASP search
+packet should contain:
+- inferred intent class;
+- independent semantic axes to explore;
+- provider/language scopes;
+- candidate owners;
+- dependency and test reachability hints;
+- graph path candidates;
+- selector-first snippets;
+- prior docs/artifact evidence;
+- fallback reason when the index is stale or incomplete.
+
+The receipt should make each step auditable:
+
+#+begin_src text
+intent_id -> query_set_id -> generation_id -> candidate_set_id ->
+ranked_evidence_id -> selector/snippet/action
+#+end_src
+
+This is where ASP can outperform a tool-list model. The agent should not decide
+manually whether to call text search, graph search, dependency search, or doc
+search. The protocol should return a query set and evidence frontier that
+already separates those axes.
+
+* Python production algorithms
+Python is the right production runtime for graph execution because ASP already
+has =packages/python/asp_graph_turbo= and it can run practical graph algorithms
+over DB rows and receipt artifacts.
+
+Current evidence from ASP search shows real owners such as:
+- =src/asp_graph_turbo/pagerank.py=;
+- =src/asp_graph_turbo/diversity.py=;
+- =src/asp_graph_turbo/frontier_receipt.py=;
+- =src/asp_graph_turbo/algorithm_evidence.py=;
+- =src/asp_graph_turbo/evidence_reliability.py=.
+
+The Python implementation track should include:
+- typed personalized PageRank over provider/entity/test/doc nodes;
+- relation-specific weights for imports, calls, owns, tests, docs, and prior
+  action receipts;
+- diversity/MMR-style result selection so the agent gets independent evidence
+  axes instead of ten near-duplicates;
+- bounded graph expansion with frontier receipts;
+- test reachability and dependency path ranking;
+- stale-index and low-confidence fallbacks;
+- DB read-model input and artifact receipt output.
+
+Python should optimize the warm path:
+
+#+begin_src text
+DB rows + dynamic JSON receipts -> graph candidates -> ranked evidence bundle
+#+end_src
+
+It should not become a parser authority. It executes ranking and graph
+algorithms over facts owned by the language providers and DB Engine.
+
+* Julia research loop
+Julia should remain the algorithm research lane. Current ASP search evidence
+points to =analyzers/AspGraphsSearch.jl=, research docs, and notebooks such as
+search strategy graph and search optimization studies.
+
+Julia should use DB plus dynamic JSON because not every volatile fact deserves
+a schema migration. The stable DB gives joins; dynamic JSON gives experiment
+surface:
+
+#+begin_src text
+DB: identity, generations, nodes, edges, receipts, metrics
+JSON: provider payloads, ranking traces, ablation inputs, notebook outputs
+#+end_src
+
+Julia research should focus on:
+- ranking ablation across lexical, structural, dependency, graph, and receipt
+  features;
+- typed heterogeneous graph experiments;
+- community/cluster analysis for module and package boundaries;
+- search-flow analysis from intent to selected evidence;
+- benchmark replay against =codebase-memory-mcp=-style tasks;
+- token/tool-call reduction studies;
+- Pluto reports that Python can later turn into production algorithms.
+
+This gives ASP a clean loop:
+
+#+begin_src text
+Julia explores -> docs/report captures result -> Python implements stable
+algorithm -> Rust/DB Engine exposes receipt -> Julia evaluates again
+#+end_src
+
+* Native search experiments
+The next search experiments should be native-provider experiments, not just DB
+backend experiments.
+
+| id | experiment | native advantage tested |
+|----+------------+-------------------------|
+| N20.1 | Rust Cargo/API owner search | dependency graph plus structural selectors beat text-only search |
+| N20.2 | Python import/test reachability | import graph and test discovery reduce turns to valid evidence |
+| N20.3 | Julia package/method research | Julia provider facts plus notebooks improve rank experiments |
+| N20.4 | TypeScript component/route ownership | compiler/package facts narrow source owners and tests |
+| N20.5 | Org decision-to-code search | RFC/contract evidence joins with source selectors |
+| N20.6 | Cross-language dependency search | DB Engine links package facts across providers |
+| N20.7 | Intent fan-out/fan-in | one intent creates bounded independent evidence receipts |
+| N20.8 | Python graph algorithm receipt | PageRank/diversity frontier becomes replayable evidence |
+| N20.9 | Julia algorithm ablation | notebook proves which rank features reduce broad reads |
+
+* Implications for ASP
+** The search identity rule
+ASP must not use line ranges as executable search identity.
+
+Line ranges are allowed only as display hints:
+
+#+begin_src text
+displayRange = { path, start_line, end_line }
+#+end_src
+
+The executable identity must be one of:
+- provider-owned structural selector;
+- source-index symbol id;
+- syntax node id with file hash and provider generation;
+- dependency fact id;
+- graph node id in the ASP DB Engine;
+- snippet locator tied to a selector and content hash;
+- explicit fallback receipt that says no stable identity was available.
+
+This rule is stronger than "try not to rely on line numbers." It is a protocol boundary. Code changes quickly; line-based search identity decays quickly. A future writing workflow that cites unstable lines will produce misleading edits and bad provenance.
+
+** DB Engine v2 must include code-search read-models
+RFC 10.18 should treat code search as one of the decisive reasons to create an ASP DB Engine. A useful first model is:
+
+| table / model | purpose |
+|---------------+---------|
+| =code_search_generations= | repo, workspace, scope, provider, language, git state, started/finished timestamps |
+| =code_search_files= | file identity, hash, size, language, package scope, source availability |
+| =code_search_entities= | symbols, modules, tests, routes, docs, config entities, provider selectors |
+| =code_search_edges= | calls, imports, owns, tests, depends-on, route-to-handler, doc-to-code |
+| =code_search_terms= | FTS/BM25/token fields over stable entities, not raw file dumps |
+| =code_search_vectors= | optional embeddings or semantic vectors keyed by entity/snippet id |
+| =code_search_snippets= | snippet locator, selector, content hash, display range, artifact pointer |
+| =code_search_receipts= | query, mode, candidate counts, rank metadata, fallback, latency, selected evidence |
+| =code_search_dynamic_blobs= | JSON artifact locator for volatile or experimental facts |
+
+Not all facts should go into normalized DB tables. Code changes too quickly, and research features evolve. The DB should own stable identity, freshness, selectors, graph links, and query receipts. Volatile provider payloads and experimental Julia/Python features can live as dynamic JSON artifacts referenced by DB rows.
+
+** State root implications
+RFC 10.19's global state root should make code-search artifacts easy to discover without knowing the original project cache path.
+
+The logical layout should support:
+
+#+begin_src text
+$ASP_STATE_HOME/
+  registry/
+    repos/
+    workspaces/
+    scopes/
+  db/
+    asp.db
+    asp-turso.db
+  artifacts/
+    code-search/
+      generations/
+      receipts/
+      snippets/
+      dynamic-json/
+    analyzer/
+      julia/
+      python/
+#+end_src
+
+This is logical, not necessarily the final physical directory split. The invariant is that every artifact can be traced through:
+
+#+begin_src text
+repo_id -> workspace_id -> scope_id -> generation_id -> provider_id ->
+search_receipt_id -> selector/snippet/artifact
+#+end_src
+
+That gives Python and Julia a stable input graph while allowing fast-moving code details to remain in dynamic JSON.
+
+** Dependencies are high-value static facts
+Dependency topology is more static than code bodies. It should be a priority DB read-model:
+- package manifests;
+- dependency names and versions;
+- owner packages;
+- import/use edges;
+- API usage candidates;
+- reverse dependency paths;
+- test reachability through dependency usage;
+- language provider evidence.
+
+This improves search because many agent questions are really dependency questions:
+- "Who owns this API?"
+- "Where is this package used?"
+- "What tests cover this dependency?"
+- "Which provider command should inspect this library?"
+- "What downstream writing needs this dependency context?"
+
+Unlike raw code snippets, dependency facts can be cached aggressively and reused across search, recall, install/help guidance, analyzer reports, and future writing.
+
+** Future writing search
+Writing workflows need search even more than one-off code edits. Specs, RFCs, docs, release notes, and Org plans need durable evidence packs:
+- source selectors, not line ranges;
+- dependency facts;
+- prior decision docs;
+- benchmark receipts;
+- artifact provenance;
+- analyzer summaries;
+- open questions and rejected alternatives.
+
+ASP should expose a writing-oriented search path that produces evidence bundles:
+
+#+begin_src text
+writing intent -> query set -> code/doc/dependency search ->
+ranked evidence bundle -> durable receipt -> generated document/edit
+#+end_src
+
+This is where the global state root matters. A later writing run should recover why a paragraph or decision exists, what search generated it, and which selectors or artifacts were cited.
+
+** Julia and Python analyzer boundary
+The DB plus dynamic JSON design is especially useful for analyzers:
+
+Python should own production graph implementations:
+- graph-turbo candidate retrieval;
+- sparse graph backends;
+- typed PageRank / reachability;
+- diversity ranking;
+- router decisions;
+- read-loop guards;
+- production receipts.
+
+Julia should own algorithm research:
+- ranking experiments;
+- graph metrics;
+- search-flow analysis;
+- benchmark exploration;
+- feature ablation;
+- Pluto reports;
+- comparison against external systems such as =codebase-memory-mcp=.
+
+Julia does not need every raw fact in the DB. It needs stable joins:
+
+#+begin_src text
+DB tables for identity / generations / graph edges / receipts
+dynamic JSON artifacts for volatile provider payloads and experiment details
+#+end_src
+
+That gives Julia a clean research interface without turning every experiment into a schema migration.
+
+** MCP server boundary
+The external project proves that MCP can be a useful distribution surface for agent tools. It does not prove that ASP should be architected as an MCP server.
+
+For ASP:
+- MCP adapter is optional;
+- CLI and hook receipts remain first-class;
+- provider authority remains parser-owned;
+- DB Engine owns durable state;
+- search identity is selector-first;
+- state root is independent of any agent server lifecycle.
+
+If an MCP adapter exists later, it should wrap stable ASP commands and return ASP receipts. It should not own indexing, ranking, state identity, or artifact layout.
+
+* Proposed ASP search model
+** Search modes
+ASP should define shared search modes before optimizing provider-specific behavior:
+
+| mode | primary use | identity required |
+|------+-------------+-------------------|
+| =structural_search= | symbols, modules, handlers, tests | structural selector or entity id |
+| =dependency_search= | package usage, API ownership, reverse deps | dependency fact id |
+| =graph_context_search= | call/import/ownership/test paths | graph node/edge ids |
+| =code_text_search= | text terms over indexed files/entities | entity/snippet locator |
+| =semantic_code_search= | conceptual retrieval | entity/snippet locator plus rank metadata |
+| =snippet_retrieval= | bounded source evidence | selector plus content hash |
+| =writing_evidence_search= | docs/spec/RFC generation | evidence bundle id |
+
+** Receipt contract
+Every search command should be able to emit a receipt with:
+- =query_id=;
+- =mode=;
+- =workspace_id=;
+- =scope_id=;
+- =provider_id=;
+- =language_id=;
+- =generation_id=;
+- =index_freshness=;
+- =candidate_count=;
+- =selected_count=;
+- =rank_features=;
+- =graph_expansion=;
+- =selectors=;
+- =display_ranges=;
+- =dynamic_json_artifacts=;
+- =latency_ms=;
+- =token_estimate=;
+- =fallback_reason=.
+
+This is the interface that lets Rust serve the agent loop, Python improve graph execution, and Julia analyze long-term ranking behavior.
+
+** Minimal v1 experiment
+A minimal ASP experiment does not need to implement all of =codebase-memory-mcp=. It should prove the boundary:
+
+1. Index one representative ASP repository scope into DB Engine rows.
+2. Store stable selectors, file hashes, dependency facts, graph edges, and snippets.
+3. Run structural, dependency, text, and graph-context searches.
+4. Emit receipts with candidate counts, latency, selected selectors, and fallback reasons.
+5. Let Python read the DB and run graph ranking over the same ids.
+6. Let Julia read the DB plus dynamic JSON receipts and generate an analysis report.
+7. Compare against a raw file-search baseline by command count, broad-read count, token estimate, latency, and edit success.
+
+* Experiment matrix
+| id | experiment | success criterion |
+|----+------------+-------------------|
+| E20.1 | Reproduce the external search taxonomy on ASP commands | ASP has matching local modes for graph, snippet, text, semantic, dependency, and writing search |
+| E20.2 | DB Engine code-search read-model prototype | One scope can persist generations, entities, edges, snippets, receipts, and dynamic JSON locators |
+| E20.3 | Selector-first snippet retrieval | No successful snippet result relies on line range identity |
+| E20.4 | Dependency static-fact acceleration | Dependency/API ownership queries avoid broad raw source search on warm path |
+| E20.5 | Python graph-turbo integration | Python can rank DB graph candidates and write a receipt back to artifacts |
+| E20.6 | Julia research notebook | Julia can join DB rows with dynamic JSON and evaluate rank/search quality |
+| E20.7 | Writing evidence bundle | A doc/RFC writing run can recover selectors, dependencies, receipts, and source artifacts |
+| E20.8 | Turso backend trial | Turso backend shows measurable benefit for concurrent index writes, query latency, or vector/FTS experiments |
+
+* Acceptance criteria
+ASP should treat this research as accepted only when:
+- a code-search RFC or schema defines selector-first identity;
+- DB Engine v2 has a code-search read-model proposal;
+- global state root layout can trace code-search receipts and snippets;
+- search results expose line ranges only as display hints;
+- Python can consume the DB graph without bespoke path guessing;
+- Julia can consume DB plus dynamic JSON without requiring all volatile facts to be normalized;
+- at least one real-project benchmark compares ASP search against broad file exploration;
+- the implementation remains usable without an agent MCP server.
+
+* Risks
+- A single DB schema can become too rigid for fast-moving provider facts.
+  Mitigation: normalize identity, freshness, graph, dependency, and receipts; keep volatile payloads in dynamic JSON artifacts.
+- Semantic search can become opaque and hard to debug.
+  Mitigation: expose rank feature summaries and fallback reasons in receipts.
+- Text search can regress into line-based grep.
+  Mitigation: require entity/snippet locators and treat line ranges as display-only.
+- MCP tool design can leak into core architecture.
+  Mitigation: keep MCP as a future adapter over CLI/provider/DB receipts.
+- Benchmark claims can become cargo-cult targets.
+  Mitigation: reproduce the evaluation shape on ASP projects and record receipts in docs/artifacts.
+
+* Decision
+Create a dedicated ASP code-search research track from this RFC:
+
+#+begin_src text
+RFC 10.20 -> shared search schema -> DB Engine read-model ->
+state-root artifact layout -> Rust prototype -> Python graph execution ->
+Julia research report -> real-project benchmark -> optimization loop
+#+end_src
+
+The migration case for DB Engine v2 and Turso becomes much stronger if it delivers this search substrate. A backend swap without code-search improvement is not enough. The value comes from stable selectors, durable graph/dependency facts, replayable receipts, and analyzer-friendly DB plus dynamic JSON interfaces.

@@ -1,0 +1,15 @@
+id = "asp-fd-query-source-index-warm-path"
+title = "ASP fd query uses Rust SQL SourceIndex before native finder"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FD-SOURCE-INDEX-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",
+]
+agent_goal = "After SourceIndex refresh, asp fd -query should resolve the candidate through Rust-owned SourceIndex, skip native finder and provider process work, and return compact next-action guidance."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp fd -query source_index_fixture --workspace .",
+  "sourceTrace=sourceIndex:used",
+  "finder:skipped",
+]
+inputs = "inputs"
+expected = "expected"

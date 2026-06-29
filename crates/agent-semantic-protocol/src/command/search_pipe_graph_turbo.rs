@@ -138,27 +138,56 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         topology_membership_enabled.then_some(dependency_root),
     );
     let topology_submodule_count = project_submodule_paths(dependency_root).len();
-    let dependency_seed = collect_cached_dependency_facts(
-        language_id,
-        dependency_root,
-        cache_home,
-        config,
-        provider_context_for_dependency_seed(
-            surface,
+    let dependency_seed = if include_deps(&surfaces) {
+        collect_cached_dependency_facts(
             language_id,
-            provider_context,
-            &surfaces,
+            dependency_root,
+            cache_home,
+            config,
+            provider_context_for_dependency_seed(
+                surface,
+                language_id,
+                provider_context,
+                &surfaces,
+                query,
+                &graph_candidates,
+            ),
             query,
             &graph_candidates,
-        ),
-        query,
-        &graph_candidates,
-    );
+        )
+    } else {
+        let manifest_facts = super::search_pipe_dependency_facts::collect_manifest_dependency_facts(
+            language_id,
+            dependency_root,
+        );
+        if should_auto_include_dependency_surface(query, &surfaces, &manifest_facts) {
+            surfaces.push("deps".to_string());
+            collect_cached_dependency_facts(
+                language_id,
+                dependency_root,
+                cache_home,
+                config,
+                provider_context_for_dependency_seed(
+                    surface,
+                    language_id,
+                    provider_context,
+                    &surfaces,
+                    query,
+                    &graph_candidates,
+                ),
+                query,
+                &graph_candidates,
+            )
+        } else {
+            super::search_pipe_dependency_seed_cache::CachedDependencyFacts {
+                cache_status: "skipped",
+                topology_source: "not-requested",
+                facts: Vec::new(),
+            }
+        }
+    };
     let dependency_seed_cache_status = dependency_seed.cache_status;
     let dependency_facts = dependency_seed.facts;
-    if should_auto_include_dependency_surface(query, &surfaces, &dependency_facts) {
-        surfaces.push("deps".to_string());
-    }
     let profile = profile_for_surfaces(&surfaces);
     let include_owner_context = include_owner_context(&surfaces);
     let include_items = include_items(&surfaces);

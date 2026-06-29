@@ -1505,3 +1505,71 @@ Evidence rules:
    type-only facts through the TypeScript Compiler API.  Python follows for
    indentation-sensitive AST/token projection.  Julia remains the cache-payoff
    lane after validated exports and replay gates land.
+* Combinator execution mode
+The tree-sitter-compatible query ABI should become a first-class component of a combined search/query plan, not an isolated expert-only command.
+
+The combined model is:
+#+begin_src text
+tree-sitter-compatible query -> structural candidates
+native provider query        -> semantic proof / rejection
+graph fusion                 -> ranking / diversity / evidence packet
+#+end_src
+
+Tree-sitter-compatible S-expression patterns are the portable structural filter. They are cheap, compact, cross-language, and familiar to both LLMs and engineers. Native provider query language is the authority layer. It proves language-specific facts such as imports, type-only constructs, cfg/features, macros, scope, workspace ownership, dependency facts, test reachability, and edit safety.
+
+The public protocol should support a compiled combinator plan:
+#+begin_src json
+{
+  "structural": {
+    "kind": "tree-sitter-compatible",
+    "queryAstHash": "sha256:...",
+    "captures": ["function.name", "call.target"],
+    "predicates": ["match", "eq"]
+  },
+  "native": {
+    "kind": "provider-query",
+    "providerId": "rust",
+    "requires": ["async", "dependency-write", "selector-fresh"]
+  },
+  "combine": "intersect",
+  "emit": "intent-evidence-packet"
+}
+#+end_src
+
+Combination policies:
+| Policy | Meaning |
+| =intersect= | Return edit-ready evidence only when structural and native proofs agree. |
+| =rerank= | Use structural matches as broad candidates, then rank by native facts and graph topology. |
+| =union= | Use for discovery when either structural or native evidence is useful but mark proof strength. |
+| =subtract= | Remove candidates that match an exclusion pattern or native rejection fact. |
+| =fallback= | Allow structural-only evidence only with =compatibilityLevel=approximate=. |
+
+Every combined result must preserve both proof trails:
+- =structuralProof= records grammar id, query AST hash, captures, predicates, and structural spans.
+- =nativeProof= records provider id, selector, semantic facts, omitted facts, source fingerprint, and exact read/action locator.
+- =fusionProof= records graph seeds, edge types, rank inputs, diversity decisions, and confidence.
+
+The agent-facing surface should avoid exposing this as a separate raw query lane. The default search path should be able to compile intent, catalog ids, and optional S-expression fragments into the same combinator packet. Raw S-expression input is still valuable, but it should feed the planner rather than bypass native proof.
+
+Acceptance for this mode is artifact-based. Provider artifacts must record:
+- structural query AST hash and capture coverage;
+- native refinement predicates and rejection reasons;
+- candidate counts before and after each combinator stage;
+- latency and token cost per stage;
+- final action source: structural-only, native-only, or combined;
+- edit/test feedback for false-positive and false-negative measurement.
+
+This closes the current adoption gap recorded in this RFC: semantic-tree-sitter-query packets were rare in provider artifacts because the workflow made owner search and bounded reads cheaper than compositional syntax search. The replacement target is a planner where structural S-expression queries are the coarse filter, native query projection is the authority proof, and graph fusion returns selector-first evidence.
+* Provider author boundary
+This RFC is also the language-harness author contract. A provider author should focus on native language parsing and honest capability declaration; ASP core owns the cross-language search, cache, graph, render, trust, and DB performance architecture.
+
+The minimal native provider should emit:
+- provider manifest with language id, provider id, version, schema versions, and capability modes;
+- source fingerprints and parser-owned selector identities;
+- declaration/import/scope/dependency/test/diagnostic facts it can prove;
+- syntax query or selector proof responses;
+- exact read locators for parser-owned selectors.
+
+The provider should not implement ASP's global search ranking, graph frontier, compact graph render, prompt token budget, DB cache layout, overlay merge, or trust-cache policy. Those remain Rust-owned so a lightweight language harness can be plugged into ASP and immediately inherit the shared high-performance architecture.
+
+Tree-sitter-compatible packets are the portable syntax ABI, not a requirement that every provider use tree-sitter as its implementation. Preferred providers use native parser/compiler ecosystems and project-manager facts, then project their results into this ABI. Tree-sitter runtime fallback is acceptable when no native provider exists, but it must declare weaker authority and may not claim dependency, scope, type, project, or edit-safety proof unless a native or hybrid proof confirms it.

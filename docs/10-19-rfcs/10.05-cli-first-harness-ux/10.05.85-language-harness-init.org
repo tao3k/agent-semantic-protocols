@@ -1,0 +1,229 @@
+#+TITLE: RFC 10.05.85 - Language Harness Init
+#+AUTHOR: ASP maintainers
+#+DATE: 2026-06-28
+
+* Problem
+
+Adding a new language provider should not require a contributor to learn the
+entire ASP Rust architecture first. The contributor should implement native
+parser truth and a small provider contract; ASP should supply the project
+layout, schema copies, guide documents, smoke fixtures, and validation commands
+that connect the harness to the Rust high-performance search flow.
+
+The failure mode to avoid is a per-language ecosystem where each harness
+invents its own command layout, JSON packet shape, search ranking, prompt
+rendering, cache invalidation, and performance story. That would make native
+parser support accurate but expensive to maintain.
+
+* Public command
+
+Canonical command:
+
+#+begin_src sh
+asp init --language <language-id> --out <directory>
+#+end_src
+
+Optional flags:
+
+#+begin_src sh
+asp init --language <language-id> \
+  --provider-id <provider-id> \
+  --runtime rust|python|node|julia|generic \
+  --parser native|tree-sitter|hybrid \
+  --out <directory> \
+  --schema-version current \
+  --force
+#+end_src
+
+The command should be a thin CLI adapter. It parses arguments, normalizes ids,
+calls a typed init service, prints the generated paths, and writes an init
+receipt. It should not contain provider lifecycle, search ranking, graph
+fusion, or schema interpretation logic.
+
+The first version should prefer one canonical spelling, =asp init --language=.
+Do not add extra aliases until the command has real user evidence.
+
+* Generated directory
+
+Given:
+
+#+begin_src sh
+asp init --language zig --runtime rust --out languages/zig-language-project-harness
+#+end_src
+
+ASP should generate:
+
+#+begin_src text
+languages/zig-language-project-harness/
+  asp-language.toml
+  README.org
+  AGENTS.md
+  docs/
+    HARNESS_GUIDE.org
+    PROVIDER_CONTRACT.org
+    SEARCH_INTEGRATION.org
+    PERFORMANCE_RECEIPTS.org
+  schemas/
+    provider-capabilities.v1.schema.json
+    provider-snapshot.v1.schema.json
+    provider-diff.v1.schema.json
+    provider-query.v1.schema.json
+    provider-locate.v1.schema.json
+    provider-health.v1.schema.json
+    search-packet.v1.schema.json
+    compact-graph.v1.schema.json
+  src/
+    main.<runtime-ext>
+    contract.<runtime-ext>
+    parser.<runtime-ext>
+  tests/
+    fixtures/
+      minimal.<language-ext-or-txt>
+    snapshots/
+    contract_smoke.<runtime-ext>
+  examples/
+    query-selector.json
+    query-symbol.json
+    snapshot-request.json
+    diff-request.json
+  .asp/
+    init-receipt.json
+#+end_src
+
+The exact runtime filenames may vary, but the contract documents and manifest
+names should be stable across languages. Stability is what lets agents learn
+one harness creation workflow.
+
+* Manifest
+
+=asp-language.toml= is the source of truth for Rust integration:
+
+#+begin_src toml
+language_id = "zig"
+provider_id = "zig-native"
+runtime = "rust"
+parser_mode = "native"
+
+[command]
+argv = ["cargo", "run", "--quiet", "--"]
+cwd = "."
+protocol = "jsonl"
+
+[schemas]
+capabilities = "provider-capabilities.v1"
+snapshot = "provider-snapshot.v1"
+diff = "provider-diff.v1"
+query = "provider-query.v1"
+locate = "provider-locate.v1"
+health = "provider-health.v1"
+
+[capabilities]
+snapshot = true
+diff = true
+query_selector = true
+query_symbol = true
+query_dependency = false
+locate = true
+health = true
+stable_selectors = true
+display_ranges_are_hints = true
+
+[performance]
+warm_worker = true
+batch_query = true
+incremental_diff = true
+max_startup_ms = 500
+max_warm_query_ms = 50
+#+end_src
+
+This manifest should be validated before the provider is executed. Rust should
+key warm-worker reuse on manifest hash, executable digest, schema versions,
+trust decision, project id, worktree id, language id, provider id, base
+generation id, and overlay generation id.
+
+* Agent guide
+
+The generated =AGENTS.md= and =docs/HARNESS_GUIDE.org= should be written for an
+agent implementing the harness. They should define the work in terms of native
+provider facts:
+
+- implement =capabilities= first;
+- parse one fixture and emit schema-valid =snapshot=;
+- implement stable selector generation before source rendering;
+- implement =locate= with display ranges as hints only;
+- implement =query= for selector and symbol before dependency or test graph;
+- implement =diff= after stable snapshot selectors exist;
+- keep provider output compact and typed;
+- never return whole-file source dumps as the default search path;
+- use provider-owned extension fields only for language-specific facts.
+
+The guide should not make the harness responsible for FTS, graph ranking,
+prompt rendering, DB layout, or global project identity. Those are supplied by
+Rust ASP once the harness contract is valid.
+
+* Validation commands
+
+The init command should print the next commands:
+
+#+begin_src sh
+asp language doctor --manifest languages/zig-language-project-harness/asp-language.toml
+asp language check --manifest languages/zig-language-project-harness/asp-language.toml
+asp language smoke --manifest languages/zig-language-project-harness/asp-language.toml \
+  --fixture languages/zig-language-project-harness/tests/fixtures/minimal.zig
+#+end_src
+
+These commands are the gate into the high-performance path. A provider is not
+registered for normal search until:
+
+- manifest validates;
+- schema packets validate;
+- =capabilities= returns language/provider ids and schema versions;
+- =snapshot= returns selector-first entities for the fixture;
+- =locate= resolves at least one selector;
+- =health= returns startup/query timing;
+- line ranges are present only as display metadata;
+- a receipt records provider execution lane and timing fields.
+
+* High-performance integration
+
+=asp init --language= should make the fast path obvious:
+
+#+begin_src text
+generated harness
+-> manifest validation
+-> trust gate
+-> warm provider transport
+-> snapshot/diff/query packets
+-> search-core normalization
+-> Turso generation and overlay state
+-> Python graph bridge
+-> Rust compact render
+#+end_src
+
+The harness author only writes the native parser and provider contract. Rust
+supplies lifecycle, caching, trust, overlays, Turso-backed stable search,
+Turso-owned Tantivy-backed dynamic overlay search, Python graph fusion, compact
+rendering, and receipts.
+
+* Acceptance
+
+- =asp init --language <name> --out <dir>= is deterministic and does not depend
+  on network access.
+- The generated harness can pass =doctor= without custom user edits when the
+  selected runtime toolchain exists.
+- The skeleton can emit schema-valid placeholder packets before the parser is
+  implemented, so an agent can iterate one contract at a time.
+- The guide explains the minimal native facts required to enter search.
+- The generated schema copies are version-pinned and include provenance.
+- The init receipt records command args, generated files, schema versions,
+  template version, and next validation commands.
+- The command layer stays thin; scaffolding logic lives in a client-core/init
+  service and template rendering package.
+
+* Non-goals
+
+- Do not generate a complete parser.
+- Do not create an MCP server.
+- Do not make the language harness own global ranking or rendering.
+- Do not register an unvalidated provider into normal search.
+- Do not use line ranges as executable identity.

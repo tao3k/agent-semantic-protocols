@@ -65,52 +65,61 @@ fn is_gerbil_owner_path(path: &Path) -> bool {
 }
 
 pub(crate) fn collect_gerbil_owner_items(source: &str) -> Vec<GerbilOwnerItem> {
-    let mut items = Vec::new();
     let lines: Vec<&str> = source.lines().collect();
+    let mut items = Vec::with_capacity(lines.len().saturating_mul(2));
     for (line_index, line) in lines.iter().enumerate() {
         let line_no = line_index + 1;
         let trimmed = line.trim_start();
-        let form_end_line = gerbil_top_level_form_end_line(&lines, line_index);
+        let mut form_end_line = None;
         if trimmed.starts_with("(package:") {
+            let end_line = cached_form_end_line(&mut form_end_line, &lines, line_index);
             items.push(GerbilOwnerItem {
                 name: "gerbil.pkg".to_string(),
                 kind: "package",
                 start_line: line_no,
-                end_line: form_end_line,
+                end_line,
                 language_kind: "package-form",
             });
         }
-        if let Some((head, name)) = gerbil_definition_item(trimmed) {
+        let definition_item = gerbil_definition_item(trimmed);
+        if let Some((head, name)) = definition_item.as_ref() {
+            let end_line = cached_form_end_line(&mut form_end_line, &lines, line_index);
             items.push(GerbilOwnerItem {
-                name,
+                name: name.clone(),
                 kind: definition_kind(head),
                 start_line: line_no,
-                end_line: form_end_line,
+                end_line,
                 language_kind: "definition",
             });
         }
         if trimmed.starts_with("(export") {
+            let end_line = cached_form_end_line(&mut form_end_line, &lines, line_index);
             for name in symbols_after_head(trimmed).into_iter().take(12) {
                 items.push(GerbilOwnerItem {
                     name,
                     kind: "export",
                     start_line: line_no,
-                    end_line: form_end_line,
+                    end_line,
                     language_kind: "module-export",
                 });
             }
         }
-        for name in call_heads(trimmed) {
-            items.push(GerbilOwnerItem {
-                name,
-                kind: "call",
-                start_line: line_no,
-                end_line: line_no,
-                language_kind: "call",
-            });
-        }
+        push_call_heads(
+            trimmed,
+            line_no,
+            definition_item.as_ref().map(|(_, name)| name.as_str()),
+            &mut items,
+        );
     }
     dedupe_items(items)
+}
+
+fn cached_form_end_line(
+    form_end_line: &mut Option<usize>,
+    lines: &[&str],
+    line_index: usize,
+) -> usize {
+    *form_end_line.get_or_insert_with(|| gerbil_top_level_form_end_line(lines, line_index))
 }
 
 fn gerbil_top_level_form_end_line(lines: &[&str], start_index: usize) -> usize {
@@ -204,8 +213,12 @@ fn definition_kind(head: &str) -> &'static str {
     }
 }
 
-fn call_heads(line: &str) -> Vec<String> {
-    let mut calls = Vec::new();
+fn push_call_heads(
+    line: &str,
+    line_no: usize,
+    declared_name: Option<&str>,
+    items: &mut Vec<GerbilOwnerItem>,
+) {
     let bytes = line.as_bytes();
     let mut index = 0;
     while index < bytes.len() {
@@ -217,12 +230,23 @@ fn call_heads(line: &str) -> Vec<String> {
         if let Some((head, _)) = next_symbol(after)
             && !head.is_empty()
             && !head.starts_with(';')
+            && is_inline_call_symbol(head)
+            && declared_name != Some(head)
         {
-            calls.push(head.to_string());
+            items.push(GerbilOwnerItem {
+                name: head.to_string(),
+                kind: "call",
+                start_line: line_no,
+                end_line: line_no,
+                language_kind: "call",
+            });
         }
         index += 1;
     }
-    calls
+}
+
+fn is_inline_call_symbol(head: &str) -> bool {
+    head.len() >= 3 || head.starts_with('.')
 }
 
 fn symbols_after_head(line: &str) -> Vec<String> {
@@ -260,7 +284,7 @@ fn next_symbol(input: &str) -> Option<(&str, &str)> {
 }
 
 fn dedupe_items(items: Vec<GerbilOwnerItem>) -> Vec<GerbilOwnerItem> {
-    let mut seen = std::collections::BTreeSet::new();
+    let mut seen = std::collections::HashSet::with_capacity(items.len());
     items
         .into_iter()
         .filter(|item| seen.insert((item.name.clone(), item.start_line)))

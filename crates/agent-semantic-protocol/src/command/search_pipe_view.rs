@@ -132,6 +132,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             if include_pipe_plan && let Some(query) = query {
                 let quality = analyze_search_pipe_quality(language_id, query, candidates);
                 print_search_pipe_header(SearchPipeHeader {
+                    surface,
                     language_id,
                     project_root,
                     locator_root,
@@ -295,6 +296,37 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
             },
         );
         print_search_pipe_header(SearchPipeHeader {
+            surface,
+            language_id,
+            project_root,
+            locator_root,
+            view: "seeds",
+            source,
+            query,
+            quality,
+            source_trace: &render_trace,
+        });
+    }
+    if !include_pipe_plan
+        && source == "source-index"
+        && let Some(query) = query
+    {
+        let quality = quality.as_ref().expect("quality is computed with query");
+        let render_trace = render_phase_source_trace(
+            source_trace,
+            RenderPhaseTimings {
+                total: render_started_at.elapsed(),
+                quality: quality_elapsed,
+                graph: graph_elapsed,
+                receipt: receipt_elapsed,
+                seed: seed_elapsed,
+                compact: compact_elapsed,
+                projection: projection_elapsed,
+                plan: plan_elapsed,
+            },
+        );
+        print_search_pipe_header(SearchPipeHeader {
+            surface,
             language_id,
             project_root,
             locator_root,
@@ -377,6 +409,7 @@ fn elapsed_millis(duration: Duration) -> u64 {
 }
 
 struct SearchPipeHeader<'a> {
+    surface: &'a str,
     language_id: &'a str,
     project_root: &'a Path,
     locator_root: &'a Path,
@@ -389,6 +422,7 @@ struct SearchPipeHeader<'a> {
 
 fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
     let SearchPipeHeader {
+        surface,
         language_id,
         project_root,
         locator_root,
@@ -399,7 +433,7 @@ fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
         source_trace,
     } = header;
     println!(
-        "[search-pipe] lang={language_id} view={view} source={source} ranker=graph-turbo:owner-query"
+        "[{surface}] lang={language_id} view={view} source={source} ranker=graph-turbo:owner-query"
     );
     println!("query={query}");
     if let Some(workspace) = workspace_label(project_root, locator_root) {

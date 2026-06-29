@@ -78,6 +78,8 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
         })?
     };
     let collect_elapsed = collect_started_at.elapsed();
+    let source_trace = candidate_collection.source_trace;
+    let candidate_sources = candidate_collection.candidate_sources;
     let candidates = candidate_collection.candidates;
     let quality_started_at = Instant::now();
     let quality =
@@ -103,6 +105,8 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
         view: &wrapper_args.view,
         native_args: &wrapper_args.native_args,
         trace_fields,
+        source_trace,
+        candidate_sources,
         empty_reason: broad_gate
             .as_ref()
             .map(|gate| gate.reason)
@@ -252,6 +256,8 @@ struct QueryWrapperViewRequest<'a> {
     view: &'a str,
     native_args: &'a [String],
     trace_fields: std::collections::BTreeMap<String, serde_json::Value>,
+    source_trace: Vec<SearchPipeSourceTrace>,
+    candidate_sources: Vec<String>,
     empty_reason: &'a str,
 }
 
@@ -269,6 +275,8 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         view,
         native_args,
         trace_fields,
+        source_trace,
+        candidate_sources,
         empty_reason,
     } = request;
     let language_id = "query-wrapper";
@@ -278,20 +286,11 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         .iter()
         .map(|clause| clause.raw.clone())
         .collect::<Vec<_>>();
-    let source_trace = vec![
-        SearchPipeSourceTrace::new(
-            surface.source_name(),
-            if candidates.is_empty() {
-                "empty"
-            } else {
-                "used"
-            },
-            candidates.len(),
-            usize::from(candidates.is_empty()),
-            candidates.len(),
-        )
-        .with_fields(trace_fields),
-    ];
+    let source_trace = query_wrapper_source_trace(surface, candidates, source_trace, trace_fields);
+    let source_label = candidate_sources
+        .first()
+        .map(String::as_str)
+        .unwrap_or_else(|| surface.source_name());
     if view == "graph-turbo-request" {
         let action_frontier =
             query_wrapper_action_frontier(surface, scopes, queries, terms, candidates, quality);
@@ -306,8 +305,8 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
             candidates,
             precomputed_quality: None,
             pipes: &pipes,
-            source: "finder",
-            candidate_sources: &["finder".to_string()],
+            source: source_label,
+            candidate_sources: &candidate_sources,
             source_trace: &source_trace,
             provider_facts: &ProviderGraphFacts::default(),
             provider_context: None,
@@ -319,9 +318,10 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         return Ok(());
     }
     println!(
-        "[search-{}] view=seeds querySet={} source=finder ranker=graph-turbo:owner-query",
+        "[search-{}] view=seeds querySet={} source={} ranker=graph-turbo:owner-query",
         surface.label(),
         terms.len(),
+        source_label,
     );
     println!("query={query}");
     if candidates.is_empty() {
@@ -330,7 +330,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
             scopes,
             queries,
             terms,
-            &source_trace[0].compact(),
+            &compact_source_trace(&source_trace),
             surface.avoid(quality),
             empty_reason,
         );
@@ -368,7 +368,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     if !quality.risks.is_empty() {
         println!("risk={}", display_terms(&quality.risks));
     }
-    println!("sourceTrace={}", source_trace[0].compact());
+    println!("sourceTrace={}", compact_source_trace(&source_trace));
     if surface == QueryWrapperSurface::Fd {
         println!(
             "ownerCandidates={}",
@@ -399,6 +399,42 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     println!("nextClasses={}", surface.next_classes(quality));
     println!("avoid={}", surface.avoid(quality));
     Ok(())
+}
+
+fn query_wrapper_source_trace(
+    surface: QueryWrapperSurface,
+    candidates: &[Candidate],
+    mut source_trace: Vec<SearchPipeSourceTrace>,
+    trace_fields: std::collections::BTreeMap<String, serde_json::Value>,
+) -> Vec<SearchPipeSourceTrace> {
+    if source_trace.is_empty() {
+        return vec![
+            SearchPipeSourceTrace::new(
+                surface.source_name(),
+                if candidates.is_empty() {
+                    "empty"
+                } else {
+                    "used"
+                },
+                candidates.len(),
+                usize::from(candidates.is_empty()),
+                candidates.len(),
+            )
+            .with_fields(trace_fields),
+        ];
+    }
+    if let Some(first) = source_trace.first_mut() {
+        first.fields.extend(trace_fields);
+    }
+    source_trace
+}
+
+fn compact_source_trace(source_trace: &[SearchPipeSourceTrace]) -> String {
+    source_trace
+        .iter()
+        .map(SearchPipeSourceTrace::compact)
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn has_exact_owner_candidate(surface: QueryWrapperSurface, candidates: &[Candidate]) -> bool {

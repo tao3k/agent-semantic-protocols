@@ -1,0 +1,838 @@
+* One-sentence summary
+ASP should turn compact graph render from CLI-owned formatting code into a schema-owned Rust contract stack: language providers emit facts, search/routing builds typed graph/frontier packets, a dedicated render crate emits compact prompt text, and the DB Engine stores replayable receipts.
+* Core magic: Rust as cross-language query optimizer
+The central performance claim is not that Rust can make a language harness CLI process itself fast. A CLI process still has startup cost, environment cost, parser loading cost, stdout cost, and JSON cost. The central claim is that Rust can make the overall agent search loop faster by calling those CLIs much less often, with much narrower requests, and by reusing their native facts across many agent turns.
+
+The killer feature is:
+#+begin_src text
+natural-language intent
+  -> Rust query planner / router
+  -> DB and overlay candidate narrowing
+  -> minimal native harness proof call
+  -> selector-first compact graph render
+#+end_src
+
+The language harness is not the search engine. The harness is the native fact and proof oracle. Rust owns the cross-language search engine around it:
+- intent decomposition;
+- project/worktree/session topology;
+- stable source and structural index;
+- dependency topology cache;
+- Turso lexical candidate narrowing, including the Turso-owned Tantivy-backed FTS/search layer where available;
+- overlay merge for dirty code;
+- graph ranking and action frontier;
+- prompt-facing compact render;
+- receipt storage and replay.
+
+This changes the cost model:
+#+begin_src text
+bad path:
+agent intent -> broad CLI search -> JSON/source dump -> agent repeats
+
+target path:
+agent intent -> Rust narrows candidates -> one native proof call ->
+selector/frontier render -> edit or exact expansion
+#+end_src
+
+The Rust layer speeds up search by removing whole classes of harness calls:
+- if DB receipts already prove a selector and freshness is valid, Rust jumps directly to the frontier;
+- if Turso's Tantivy-backed search layer can narrow lexical candidates to a small owner set, Rust asks the harness only to prove native semantics;
+- if dependency topology is cached, Rust routes dependency questions without re-running a provider scan;
+- if only an overlay-local dirty selector changed, Rust invalidates and re-proves that selector instead of re-indexing the project;
+- if the agent only needs a compact graph decision, Rust renders =L0/L1= without asking the harness for source text.
+
+This is the ASP picture: language harnesses compile native code facts; Rust composes, caches, ranks, and renders those facts into the fewest possible agent turns.
+* Language harness contract
+A language harness author should not have to understand ASP's high-performance search architecture. The public contract should be: implement native language facts well, declare capabilities honestly, and ASP will lift the provider into the shared high-performance pipeline.
+
+The minimal provider contract is:
+#+begin_src text
+manifest     -> language id, provider id, version, schema versions, capabilities
+identity     -> file fingerprints, selector ids, source fingerprints
+facts        -> declarations, imports, scopes, dependencies, diagnostics, tests
+proof        -> selector/symbol/query result with native parser authority
+read locator -> exact source transport for one parser-owned selector
+#+end_src
+
+The harness should not own:
+- cross-language query planning;
+- workspace-wide search ranking;
+- Turso/Tantivy indexing;
+- overlay merge;
+- graph routing;
+- compact graph render;
+- action frontier policy;
+- prompt token budgeting;
+- DB receipt layout;
+- trust-cache strategy.
+
+Those are Rust/ASP core responsibilities. This keeps provider implementation light: a user can add a language by writing a normal CLI harness that emits schema-valid packets, and ASP can immediately use Rust-owned search, cache, graph, render, and DB acceleration around it.
+* Native-first authority model
+ASP differs from a pure tree-sitter system because each serious language provider should use the native parser/compiler ecosystem whenever possible. Native providers can prove facts tree-sitter usually cannot prove: project references, macro/cfg boundaries, type-only imports, package topology, dependency surfaces, test reachability, formatter-safe projections, and edit safety.
+
+Tree-sitter remains useful, but it is a fallback or portable syntax layer, not the default semantic authority:
+| Provider mode | Allowed authority |
+| =native-parser= | syntax, selectors, project facts, dependency facts, edit-safety facts the native provider can prove |
+| =hybrid= | tree-sitter-compatible shape plus native proof for promoted facts |
+| =tree-sitter-runtime= | portable syntax captures and structural candidates only |
+| =fallback-only= | low-confidence syntax discovery until a native provider exists |
+
+The provider manifest must declare the mode per capability. A tree-sitter fallback may produce structural candidates, but Rust must not treat those candidates as semantic proof until a native provider or an explicit hybrid proof confirms them.
+* Heavy work stays in Rust
+Python, Julia, and other languages may still optimize their own work. Python can implement graph algorithms, Julia can run research notebooks, and a language harness can cache parser state internally. Those optimizations are valuable, but the interactive agent search hot path should converge through Rust-owned contracts.
+
+Rust is the integration substrate because it owns the shared invariants:
+- one DB Engine and artifact state model;
+- one trust and capability policy;
+- one schema validation layer;
+- one cross-language query planner;
+- one high-performance lexical/overlay/index layer;
+- one graph/action frontier contract;
+- one compact render path.
+
+The language harness performs the language-specific work. Rust performs the system work.
+* CLI facade and schema-to-Rust boundary
+The current CLI command layer is too heavy. A quick structure audit of =crates/agent-semantic-protocol/src/command= shows about 31k lines under the command directory, with large modules such as =hook_runtime.rs=, =query_owner.rs=, =search_pipe_graph_turbo.rs=, =search_pipe_owner_query.rs=, =provider.rs=, =ast_patch.rs=, =search_pipe_view.rs=, and =search_pipe_source.rs=. That shape is a warning sign: a command package has become a convenient implementation sink.
+
+The CLI package should be a very thin interface. Its allowed responsibilities are:
+- define the command grammar and parse argv;
+- materialize cwd, environment, stdin/stdout/stderr handles, and user-selected output view;
+- call one typed library API;
+- print already-rendered output bytes or JSON packets returned by the library;
+- map typed errors to exit codes;
+- preserve explicit compatibility shims only while a migration RFC says they exist.
+
+The CLI package must not own:
+- schema interpretation or ad hoc =serde_json::Value= crawling;
+- provider manifest semantics;
+- language-specific search keywords or ranking rules;
+- project/language inference policy beyond forwarding argv/cwd to a registry API;
+- search candidate generation, graph fusion, or route planning;
+- compact graph render grammar;
+- DB/cache generation logic;
+- trust policy;
+- action materialization.
+
+Current evidence shows exactly the kinds of logic that should be moved out:
+- =root_language_facade.rs= infers a language from path-like arguments and project markers. That belongs in a language registry / provider capability crate, not in command parsing.
+- =search_pipe_query_evidence.rs= contains language-specific declaration keyword matching for Rust, TypeScript, Python, and Julia. That belongs in provider-emitted facts or a schema-driven lexical projection layer, not in CLI search code.
+- =hook_runtime.rs= recursively walks arbitrary JSON keys such as path/file/selector to discover source-like values. That should be typed schema deserialization plus contract-owned source locator extraction, not heuristic JSON traversal in command code.
+
+The replacement boundary should be schema-first:
+#+begin_src text
+schemas/*.json
+  -> agent-semantic-contracts Rust types
+  -> typed provider/search/render packets
+  -> command facade prints packet or compact render
+#+end_src
+
+=agent-semantic-contracts= should own:
+- schema ids and versions;
+- generated or hand-maintained Rust structs/enums matching shared schemas;
+- validation and compatibility helpers;
+- typed source locators, selectors, provider ids, language ids, generation ids, route ids, and receipt ids;
+- a single packet envelope used across language providers whenever the shared schema is enough.
+
+Language-specific extensions should be narrow and explicit. The normal path should not be "each language gets its own command implementation." The normal path should be:
+#+begin_src text
+ProviderPacket<CommonFacts, ProviderExtension>
+SearchPacket<CommonEntity, CommonEdge, ProviderExtension>
+RenderPacket<CommonGraphFacts>
+#+end_src
+
+Most languages should fit the common contract: declarations, imports, scopes, dependencies, diagnostics, tests, selectors, source fingerprints, entity documents, and proof receipts. A special language should add a provider-owned extension only when the shared schema cannot express a real semantic fact. The command layer should not know that extension exists unless it is passing through a typed packet or rendering a contract-defined field.
+
+This implies a concrete crate split:
+| Crate | New or existing | Owns |
+| =agent-semantic-protocol= | existing | binary entrypoint, argv grammar, exit codes, stdout/stderr plumbing |
+| =agent-semantic-contracts= | new | schema-to-Rust packets, ids, locators, validation |
+| =agent-semantic-language-registry= | new or folded into config/core | language id registry, provider capabilities, extension/marker routing |
+| =agent-semantic-search-core= | new | query planning, candidate generation, lexical/entity matching, route plans |
+| =agent-semantic-render= | new | compact graph render IR and text grammar |
+| =agent-semantic-db-engine= | new | generation DB, overlays, receipts, search indexes |
+| =agent-semantic-provider-transport= | existing | process/session transport only, not provider semantics |
+| =agent-semantic-hook= | existing | hook trust/runtime policy and hook packet contracts |
+
+The dependency direction should be:
+#+begin_src text
+agent-semantic-protocol
+  -> contracts
+  -> language-registry
+  -> search-core
+  -> render
+  -> db-engine
+  -> provider-transport
+
+provider-transport -> contracts
+search-core        -> contracts, db-engine, language-registry
+render             -> contracts
+db-engine          -> contracts
+hook               -> contracts, config/runtime
+#+end_src
+
+The CLI must not become a back edge. If =agent-semantic-protocol/src/command/foo.rs= needs to understand provider facts, graph edges, schema fields, or language-specific search behavior, that is a crate-boundary bug.
+
+The migration should use thinness gates:
+- no new command module may contain broad =serde_json::Value= traversal unless it is a temporary adapter with an RFC-linked deletion path;
+- no command module may introduce a new per-language match table for search semantics;
+- search/ranking/render tests should move to library crates, leaving CLI tests as parser/exit-code/stdout contract smokes;
+- command modules should trend toward small files that delegate after parsing, with large existing files split by moving logic out rather than by creating more command submodules;
+- every extracted crate must expose an API that can be called by tests without spawning the CLI.
+
+The target command flow is:
+#+begin_src text
+clap argv
+  -> CommandRequest typed from argv/cwd/stdin
+  -> library Execute trait
+  -> CommandResponse { exit_code, stdout_packet_or_render, stderr_events }
+  -> print
+#+end_src
+
+This is also the right fix for language coverage. The cost of adding a language should be provider facts plus capability declaration, not another command subtree. The shared JSON schema to Rust mapping should cover the common path; provider extensions should be exceptional, typed, and invisible to the CLI unless a specific command explicitly asks for that provider-owned view.
+Reflection correction: the right conclusion is narrower than "make the CLI empty." Some command logic is a real product surface: argv grammar, help text, compatibility aliases, output view flags, stdin/stdout behavior, exit-code mapping, and user-facing error wording. Those should stay in =agent-semantic-protocol=. The failure mode is when command modules become the place where ASP implements semantic facts, provider contracts, graph ranking, schema interpretation, or language-specific search rules.
+
+The refined boundary is:
+#+begin_src text
+CLI owns command affordance.
+Contracts own packet meaning.
+Registry owns provider/language capability routing.
+Search core owns query planning and candidate evidence.
+Render owns prompt-facing projection.
+DB Engine owns generations, overlays, receipts, and indexes.
+#+end_src
+
+The target command flow is:
+#+begin_src text
+argv/cwd/stdin
+  -> CommandRequest
+  -> library Execute
+  -> CommandResponse { exit_code, stdout, stderr_events }
+  -> print
+#+end_src
+
+The CLI may still own:
+- command names, flags, aliases, and deprecation messages;
+- validation that depends only on argv shape;
+- selecting a user-requested view such as compact, JSON, or receipt;
+- printing bytes returned by render/search/provider libraries;
+- feature-gated compatibility routes during a documented migration.
+
+It should not own:
+- broad =serde_json::Value= traversal for schema semantics;
+- provider manifest meaning;
+- language-specific declaration/search/ranking tables;
+- graph fusion or graph-router policy;
+- compact graph line grammar;
+- DB generation and overlay invalidation;
+- trust and capability decisions beyond passing the request to the trust/runtime layer.
+
+The schema-to-Rust design also needs a careful boundary. It should not be naive "generate structs from every JSON schema and everything is solved." JSON Schema is the external compatibility contract; Rust types are the internal execution contract. Some packet structs can be generated, but ASP still needs hand-designed domain types for selectors, source locators, provider ids, language ids, generation ids, proof status, action handles, and typed extension envelopes.
+
+The target is:
+#+begin_src text
+schemas/*.json
+  -> agent-semantic-contracts
+      schema ids, version checks, packet envelopes, domain ids,
+      validation, compatibility adapters
+  -> search/render/db/provider crates
+  -> CLI facade
+#+end_src
+
+Most language data should travel through common packets:
+#+begin_src text
+ProviderPacket<CommonFacts, ProviderExtension>
+SearchPacket<CommonEntity, CommonEdge, ProviderExtension>
+RenderPacket<CommonGraphFacts>
+#+end_src
+
+This is where the native-parser model matters. A language provider may emit richer facts than the common schema, but the extension must be:
+- provider-owned and versioned;
+- typed at the contracts boundary;
+- ignored safely by generic search/render paths unless a route explicitly opts in;
+- carried into receipts so Python/Julia analysis can replay it without reading CLI-specific code;
+- unavailable to the CLI as ad hoc conditionals.
+
+There are three plausible migration strategies:
+- =A. File-level cleanup inside command=: split large command files but keep responsibilities where they are. This reduces local file size but does not fix ownership or testability.
+- =B. Contract-first extraction=: introduce =agent-semantic-contracts= and move search/render/db/provider semantics behind typed APIs, leaving command modules as request adapters. This is the recommended path because it changes the dependency graph, not just the file layout.
+- =C. Full rewrite of command/search=: create new crates and replace the command layer in one migration. This is clean on paper but too risky while search contracts, DB Engine v2, and provider transport are still moving.
+
+The recommended path is B with compatibility receipts. Extract one command family at a time, and require each extraction to leave behind:
+- a typed library API that tests can call without spawning =asp=;
+- a CLI smoke test that covers argv, exit code, and stdout shape only;
+- a schema or contract test for packets crossing crate boundaries;
+- a receipt showing old route and new route return equivalent selector/action evidence;
+- a deletion issue or RFC section for any remaining untyped adapter.
+
+This implies a concrete crate split:
+| Crate | New or existing | Owns |
+| =agent-semantic-protocol= | existing | binary entrypoint, argv grammar, exit codes, stdout/stderr plumbing |
+| =agent-semantic-contracts= | new | schema ids, domain ids, packet envelopes, typed locators, validation |
+| =agent-semantic-language-registry= | new or folded into config/core | language id registry, provider capabilities, marker and extension routing |
+| =agent-semantic-search-core= | new | query planning, candidate evidence, lexical/entity matching, route plans |
+| =agent-semantic-render= | new | compact graph render IR and text grammar |
+| =agent-semantic-db-engine= | new | generation DB, overlays, receipts, search indexes |
+| =agent-semantic-provider-transport= | existing | process/session transport only, not provider semantics |
+| =agent-semantic-hook= | existing | hook trust/runtime policy and hook packet contracts |
+
+The key dependency rule is that =agent-semantic-protocol= can call these crates, but they cannot call back into command modules. If a library API needs a helper from =src/command=, the helper is in the wrong package.
+
+Thinness gates should be enforced during review:
+- no new command module may introduce per-language semantic match tables;
+- no new command module may interpret schema fields through arbitrary JSON traversal except as a named legacy adapter;
+- search/ranking/render tests should move to library crates;
+- CLI tests should assert command affordance only;
+- every extracted implementation should expose timing and receipt fields so the performance architecture can measure whether the extraction improved the hot path.
+* Rust high-performance dependency and algorithm stack
+The Rust core should optimize for one property: every interactive agent search should do the minimum fresh work required to produce selector-first evidence. Tokio is necessary, but it is not the whole performance story. The architecture needs explicit runtime lanes, bounded queues, cache generations, and graph/index algorithms that prevent broad provider calls.
+
+The recommended dependency posture is:
+- =tokio=, =tokio-util=, =futures-util=, and =bytes= are the provider transport and async orchestration base. They own child-process I/O, framed packets, timeouts, cancellation, bounded fan-out, and async DB calls.
+- =tracing= remains required for stage receipts and live performance diagnosis. Every hot path stage must emit structured spans keyed by project id, workspace id, session id, route id, provider id, generation id, selector id, and cache hit kind.
+- =turso= is the preferred DB Engine v2 experiment once its local async API, MVCC/concurrent-write behavior, and FTS/vector roadmap satisfy ASP's benchmark gates. =rusqlite= remains the compatibility control until that gate is passed.
+- Turso-backed FTS/BM25 is the preferred persisted lexical backend. Dynamic overlay search should reuse the Turso-owned Tantivy-backed search layer without inserting every dirty edit into the durable Turso DB generation. Direct =tantivy= must remain outside the product dependency graph except for non-product benchmark/control experiments.
+- =moka= is the preferred bounded async cache candidate for hot selector/proof/render caches because the cache itself is concurrent and futures-aware. Values should normally be stored behind =Arc= to avoid expensive clones.
+- =rayon= is the preferred CPU executor for bounded batch CPU work such as token projection, source fingerprinting, static index rebuilds, graph feature extraction, and expensive score fusion. Tokio worker threads must not become the CPU pool.
+- =petgraph= may be useful for prototypes and tests, but the production hot graph should use compact typed adjacency arrays, CSR-like edge tables, small top-k heaps, bitsets, and typed node ids. The prompt hot path needs predictable allocation and bounded traversal, not a general-purpose graph object.
+- =dashmap= or lock-heavy concurrent maps should not be introduced as a default design primitive. Use actor-owned state, immutable snapshots, =Arc= snapshots, or small sharded locks first. Add a concurrent map only where profiling shows it beats the lane/actor model.
+
+The Tokio usage model should be lane-based:
+#+begin_src text
+async I/O lane
+  provider stdin/stdout/stderr, Turso async DB, timers, cancellation
+
+blocking compatibility lane
+  short sync filesystem/rusqlite/legacy calls via spawn_blocking
+  guarded by semaphores and never used for long-lived workers
+
+CPU lane
+  Rayon pools for indexing, fingerprinting, tokenization, graph scoring
+
+index writer lane
+  one bounded actor per project/index namespace
+  batches writes, commits generations, publishes read snapshots
+
+provider worker lane
+  warm provider sessions keyed by executable digest, manifest hash,
+  trust profile, workspace id, and capability class
+#+end_src
+
+This is the "extreme Tokio" rule: use Tokio to keep the system responsive, cancellable, and backpressured; do not use Tokio as the place where every expensive thing runs. In practice:
+- every fan-out route must acquire a =Semaphore= permit by lane and provider;
+- every provider call must have a timeout, cancellation token, and receipt;
+- every queue between planner, provider, DB, indexer, graph, and render must be bounded;
+- =spawn_blocking= is allowed only for short blocking compatibility calls, not persistent workers or CPU-heavy graph/index tasks;
+- warm provider workers should be long-lived sessions or dedicated process actors, not repeated CLI startups;
+- child stdout/stderr must be framed and streamed, not collected as unbounded strings;
+- dirty-overlay writes must be debounced or checkpointed, not committed to the persisted FTS index on every edit.
+
+The hot search algorithm should be a staged cascade:
+#+begin_src text
+intent/context
+  -> receipt/anchor skip check
+  -> overlay dirty selector check
+  -> persisted generation FTS/BM25 and identifier-token narrowing
+  -> dependency/topology jump
+  -> minimal native provider proof
+  -> bounded graph fusion
+  -> L0/L1 compact render
+#+end_src
+
+The cascade is mandatory because no single backend should run for every prompt:
+- if the agent already has a fresh selector or prior receipt frontier, Rust should skip retrieval and render the next action directly;
+- if only dirty overlay files changed, Rust should parse/prove those files and merge them over the stable generation;
+- if lexical search is needed, Rust should search entity documents, not source lines, using field weights for symbol name, qualified name, path segment, signature, doc comment, dependency name, test name, and camelCase/snake_case expansions;
+- if the graph is needed, Rust should run bounded multi-source frontier expansion over typed edges such as owner, import, call, test, route, contract, artifact, and prior-receipt edges;
+- if native semantics are needed, Rust should ask the harness for proof on a small candidate set, not ask the harness to perform global search.
+
+The production graph algorithm should therefore be a bounded router, not a general offline graph-analysis engine. Python may own richer graph algorithms, and Julia may own algorithm research, but Rust's interactive path needs:
+- multi-source weighted frontier expansion with hard candidate budgets;
+- cached reachability and dependency-neighborhood summaries;
+- top-k score fusion with diversity constraints;
+- negative evidence and avoid-lists for routes already rejected in the current session;
+- generation-aware invalidation so stale edges are never returned as actionable proof;
+- compact render decisions that expose only the next useful frontier unless the agent explicitly expands.
+
+The DB/index algorithm should be generation-based:
+#+begin_src text
+base_generation
+  files(source_hash)
+  entities(selector_id, entity_id, qualified_name, signature, search_text)
+  edges(src_entity, dst_entity, edge_kind, confidence, provider_id)
+  receipts(route_id, proof refs, render refs, timing)
+
+overlay_namespace
+  session/worktree/subagent/base_generation
+  dirty file hashes, changed selector ids, temporary entity ids, proof deltas
+#+end_src
+
+Persisted search returns only the current stable generation by default. Overlay evidence is merged in memory or through bounded session-scoped rows. Accepting an overlay compacts it into a new stable generation; rejecting it keeps only audit evidence. This avoids the failure mode where ten agent sessions constantly rewrite the same global FTS index.
+
+The first implementation gate should be benchmark-driven. Before adding more dependencies, ASP should measure:
+- warm exact-selector path with no provider call;
+- warm receipt-frontier render;
+- Turso/SQLite hot DB lookup;
+- Tantivy/Turso overlay search update and query latency;
+- warm provider proof call latency by language;
+- graph frontier expansion latency and allocation count;
+- L0/L1 render byte size and token estimate;
+- end-to-end command count from intent to actionable selector.
+
+The target is not "more async" or "more crates". The target is fewer cold provider calls, fewer broad searches, fewer JSON/source dumps, bounded memory, stable selectors, and compact evidence in one turn.
+
+Primary implementation references for this section:
+- [[https://docs.rs/tokio/latest/tokio/runtime/struct.Builder.html][Tokio Runtime Builder]]
+- [[https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html][Tokio spawn_blocking]]
+- [[https://docs.rs/tokio/latest/tokio/sync/struct.Semaphore.html][Tokio Semaphore]]
+- [[https://docs.turso.tech/sdk/rust/quickstart][Turso Rust SDK quickstart]]
+- [[https://docs.rs/tantivy/][Tantivy docs]]
+- [[https://docs.rs/moka/latest/moka/future/struct.Cache.html][Moka future cache]]
+* Problem
+The current direction is correct: language harnesses should stay light and should not each implement agent-facing compact graph rendering. Rust should own the shared render path so every provider benefits from the same prompt contract, line grammar, locator policy, and progressive disclosure behavior.
+
+The current Rust package layout does not yet enforce that boundary. The workspace has separate crates such as =agent-semantic-client=, =agent-semantic-client-core=, =agent-semantic-client-db=, =agent-semantic-runtime=, =agent-semantic-provider-transport=, =agent-semantic-tree-sitter=, =agent-semantic-hook=, and =agent-semantic-protocol=. That is nominally modular, but search, graph routing, action frontier, render decisions, CLI presentation, and some schema assumptions still concentrate inside the protocol/CLI surface.
+
+This creates the same long-term failure mode as putting render code into each language harness:
+- CLI modules become the easiest place to add every new responsibility.
+- Schema files exist but do not own Rust type boundaries.
+- Search/ranking, prompt render, DB receipt storage, and command materialization are harder to test in isolation.
+- Future Turso DB Engine work risks becoming another large package rather than a clean storage contract.
+- Provider authors cannot easily tell which facts they must emit and which facts Rust will render.
+* Existing evidence
+The repository already has =schemas/semantic-compact-graph-render.v1.schema.json=. Its required top-level fields include =schemaId=, =schemaVersion=, =protocolId=, =protocolVersion=, =renderKind=, =rendererOwner=, =sourcePacketSchemaId=, =viewHeaderContract=, =lineGrammar=, =locatorPolicy=, =searchRoot=, =headerFields=, =reasoningProfileContracts=, =actionSpecs=, and =relationSpecs=.
+
+That proves the right conceptual direction: compact graph render is a schema-contract surface, not ad hoc stdout. The missing piece is the Rust architecture that makes the schema executable:
+#+begin_src text
+schema JSON -> Rust contract types -> packet validation -> render IR ->
+compact ARI stdout -> action materializer / DB receipt
+#+end_src
+
+The DB Engine RFC also creates a migration window. If ASP is going to move stable search state, overlays, render receipts, and code-search generations into a new engine, the crate boundaries must be corrected at the same time.
+* Non-goals
+- Do not move language-native parsing into Rust core. Providers still own native facts, selectors, source fingerprints, package/dependency surfaces, and compact code projection where native parser authority is required.
+- Do not make an MCP server the architecture. MCP can be an adapter over commands and receipts only.
+- Do not make JSON the prompt surface. JSON remains the schema/receipt/replay shape; compact render remains the agent-facing stdout shape.
+- Do not preserve old crate boundaries when they exist only because code grew there first.
+* Target crate boundaries
+The target design is a small set of crates with one reason to change each:
+
+| Crate | Owns | Must not own |
+| =agent-semantic-contracts= | Versioned Rust types generated or hand-bound from =schemas/=, schema ids, validation helpers, version negotiation, fixture loading | CLI, DB, provider execution, render style |
+| =agent-semantic-render= | Typed render IR, compact graph line grammar, aliases, =L0/L1= stdout projection, omission/avoid rendering, progressive expansion handles | Query planning, graph ranking, DB persistence, provider parsing |
+| =agent-semantic-search-core= | Query plan model, route graph, action frontier, typed graph inputs, graph/router contracts, materializable action model | CLI text, DB backend implementation, language-native parsing |
+| =agent-semantic-db-engine= | DB Engine traits, generations, overlays, Turso/SQLite backend adapters, receipt storage, search read-models | Prompt render policy, language parser facts, CLI argument parsing |
+| =agent-semantic-provider-transport= | Provider process protocol, capability discovery, provider packet transport | Search ranking, render, DB schema |
+| =agent-semantic-client-core= | Stable client API that composes contracts, DB engine, transport, search, and render | Concrete CLI commands, hook policy |
+| =agent-semantic-protocol= | Thin =asp= CLI adapter, argv parsing, command dispatch, stdout/stderr policy | Contract definitions, graph algorithms, DB storage internals, render grammar ownership |
+
+The exact crate names can change during implementation, but the dependency direction cannot:
+#+begin_src text
+contracts
+  -> render
+  -> search-core
+  -> client-core
+  -> protocol CLI
+
+contracts
+  -> db-engine
+  -> client-core
+
+contracts
+  -> provider-transport
+  -> client-core
+#+end_src
+
+No crate below =agent-semantic-protocol= should depend on the CLI crate. The CLI should be replaceable by tests, Python/Julia analysis, or a future MCP adapter without losing render/schema behavior.
+* Compact graph schema split
+The existing =semantic-compact-graph-render.v1.schema.json= should become the render template contract, not the only graph schema. The schema family should be split by responsibility:
+
+| Schema | Purpose |
+| =semantic-search-packet.v2.schema.json= | Search result packet with route graph, ranked evidence, action frontier, omissions, receipts, and source packet provenance |
+| =semantic-compact-graph-render.v2.schema.json= | Render template, line grammar, locator policy, alias grammar, relation/action specs |
+| =semantic-render-ir.v1.schema.json= | Machine-checkable intermediate render object consumed by =agent-semantic-render= before stdout serialization |
+| =semantic-action-frontier.v1.schema.json= | Materializable action contracts independent of CLI command strings |
+| =semantic-render-receipt.v1.schema.json= | =L0/L1/L2= render metrics, expansion receipts, stdout bytes, token estimate, alias/node/edge counts |
+
+Versioned schema changes must follow the normal RFC path: RFC -> shared schema -> language alignment -> Rust implementation/tests -> sandtable/real-project evidence.
+* Data flow
+Language providers produce facts; they do not render the final compact graph:
+#+begin_src text
+provider native facts
+  -> provider packet transport
+  -> contracts validation
+  -> search-core route graph/action frontier
+  -> render IR
+  -> compact ARI stdout
+  -> materialized action or expansion
+  -> DB Engine receipt
+#+end_src
+
+Dynamic code and concurrent agent sessions must enter through overlay facts and receipts, not by forcing every dirty edit through a global persistent FTS row. The render path consumes merged stable/overlay facts and outputs one compact decision surface.
+* Render contract rules
+The render crate owns the following invariants:
+- =L0= is the first screen: best selector, bounded evidence, next action, confidence, and why.
+- =L1= is the compact graph: aliases, typed relation groups, rank, omission, avoid, and expansion handles.
+- =L2= is never normal stdout: full JSON packet, DB rows, replay artifacts, metrics, and analysis facts.
+- Line ranges are display/source transport hints. Parser-owned selectors, semantic handles, native fact ids, or compiled query recipes are executable identity.
+- Alias, =G*= relation group, =S*= selector group, route, and frontier syntax are controlled by =semantic-compact-graph-render.v2= and tested as fixtures.
+- The renderer must not invent graph facts. It may hide, order, alias, summarize, or omit only facts already present in validated packets.
+* DB Engine interaction
+DB Engine v2 should persist the full contract surface without leaking it into prompt stdout:
+- stable base generations
+- dynamic overlay namespaces
+- search packets
+- render IR
+- render receipts
+- action expansion receipts
+- materialized command receipts
+- schema version and compatibility metadata
+
+The DB layer stores =L2=. The render layer chooses =L0/L1=. Python and Julia read =L2= for analysis and algorithm research; agents read =L0/L1= for the next decision.
+* Migration plan
+** Phase 0: inventory and freeze new responsibilities
+- Mark =agent-semantic-protocol= search/render modules as extraction candidates.
+- For new compact graph behavior, require a schema/RFC note before adding CLI-local structs.
+- Add fixture snapshots that describe current =search= render behavior as the compatibility baseline.
+** Phase 1: contract crate
+- Create =agent-semantic-contracts=.
+- Embed schema ids and schema files.
+- Define or generate Rust types for search packet, render template, render IR, action frontier, and render receipt.
+- Add JSON-schema validation tests and round-trip fixture tests.
+** Phase 2: render crate
+- Move compact graph aliasing, line grammar, omission/avoid rendering, and =L0/L1= projection into =agent-semantic-render=.
+- CLI commands call the render crate instead of formatting graph/search output directly.
+- Language harnesses remain unchanged except for emitting richer validated facts.
+** Phase 3: search-core extraction
+- Move route graph, action frontier, graph-router data model, and materializable action contracts into =agent-semantic-search-core=.
+- Keep Python =asp_graph_turbo= as an algorithm/runtime lane where appropriate, but make its packet boundary explicit and schema-validated.
+** Phase 4: DB Engine extraction
+- Replace storage-specific assumptions with =agent-semantic-db-engine= traits and backend adapters.
+- Keep =agent-semantic-client-db= as a compatibility backend or migrate it into the engine crate deliberately.
+- Add Turso-backed experiments only after the contract and receipt model are stable.
+** Phase 5: CLI thinning
+- =agent-semantic-protocol= should parse argv, call client-core, and print renderer output.
+- New CLI features must not add schema, DB, graph, or provider responsibilities directly to the CLI crate.
+* Test gates
+- Schema gate: every packet/render fixture validates against the declared schema id and version.
+- Render gate: compact graph render snapshots are generated from render IR, not from ad hoc CLI strings.
+- Materializer gate: every prompt-visible frontier maps to a typed action before any command string is created.
+- DB gate: every render receipt persists schema id, packet id, source generation, overlay namespace, and expansion handle ids.
+- Provider gate: language harnesses can emit facts without depending on render crates.
+- Dependency gate: =agent-semantic-protocol= may depend on client/render/search crates; lower-level crates must not depend on the CLI crate.
+* Success criteria
+The migration is successful when:
+- adding a new compact graph field starts in =schemas/= and =agent-semantic-contracts=, not inside a CLI command module;
+- a language provider can improve facts without touching render code;
+- a render change can be snapshot-tested without starting provider processes or opening the DB;
+- DB Engine can store and replay search/render receipts without knowing stdout syntax;
+- Python and Julia can analyze the same =L2= receipt that the CLI compressed into =L0/L1=;
+- the CLI crate shrinks toward orchestration and stops being the default home for search, graph, render, DB, and provider concerns.
+* Design recommendation
+Use the DB Engine migration to enforce the boundary change. If ASP migrates to Turso while leaving render/search/schema logic concentrated in =agent-semantic-protocol=, the storage layer may improve but the architecture will still accumulate responsibilities in the wrong place.
+
+The higher-standard architecture is schema-first and crate-owned:
+#+begin_src text
+schemas + contracts -> search-core -> render -> client-core -> CLI
+                   \-> db-engine ----/
+provider facts ------/
+#+end_src
+
+This keeps language harnesses light, keeps agent prompt output compact, gives Julia/Python a stable analysis interface, and makes future DB/search improvements composable instead of another round of package growth.
+* Performance architecture is part of the boundary
+This refactor must not only move code into cleaner crates. It must change the execution shape that currently makes language harnesses expensive.
+
+The compatibility path today is command-line oriented: the Rust client shells out to provider/harness commands, receives text/JSON packets, routes them through search/render code, and then writes cache or receipts. That is a good bootstrap contract because every language can join with a simple executable. It is not a sufficient high-performance architecture for agent search, especially when a session issues many small selector, dependency, graph, and snippet queries.
+
+The new architecture therefore treats provider execution as a first-class performance lane:
+#+begin_src text
+cold CLI process       -> compatibility and trust bootstrap
+warm provider worker   -> repeated project/session queries
+embedded Rust lane     -> Rust-native search, render, DB, Turso/Tantivy overlay
+analysis lane          -> Python/Julia offline or batched algorithm work
+#+end_src
+
+No lane may bypass schema validation or trust decisions. The difference is how often expensive work is repeated. Cold CLI may pay process startup, environment discovery, and handshake on every call. Warm workers amortize startup, parse/index initialization, provider manifest validation, project topology discovery, and trust-gate setup across many requests. Embedded lanes remove the process boundary when the implementation is already Rust-native.
+* Provider execution lanes
+** Cold CLI lane
+The cold lane is the durable compatibility fallback:
+- every language harness remains callable as a command;
+- stdout/stderr behavior stays reproducible for tests and debugging;
+- trust bootstrap can inspect the exact executable, argv, environment, and working directory;
+- failures are isolated to one process.
+
+This lane is allowed to be slower. It should not be the default path for repeated agent search once trust, provider identity, project identity, and source generation are known.
+** Warm worker lane
+The warm lane is the default target for high-volume provider queries. It keeps a long-lived provider process per =project_id/worktree_id/language_id/provider_id= where the provider can hold parser state, dependency topology, source fingerprints, and native indexes.
+
+The wire protocol should be framed and schema-valid:
+#+begin_src text
+open -> handshake(provider manifest, schema versions, trust token)
+load -> project/worktree/source generation
+query -> selector/dependency/syntax/search request
+delta -> changed/deleted source fingerprints
+close -> receipt and shutdown reason
+#+end_src
+
+The payload can stay JSON while the schema is stabilizing, but the transport boundary should be ready for compact binary frames when measurement proves JSON serialization is a bottleneck. The important contract is not the encoding; it is that the request/response is typed, cancellable, replayable, and not reconstructed from human stdout.
+
+* Rust-native harness execution fabric
+The performance goal is not "rewrite every language in Rust". The goal is to make Rust the control plane and hot data plane that every =languages/*-harness= can plug into.
+
+The current bottleneck shape is:
+
+#+begin_src text
+agent intent -> CLI command -> language harness process -> JSON packet ->
+Rust command logic -> Python graph rank -> compact search/render output
+#+end_src
+
+The target shape is:
+
+#+begin_src text
+agent intent/context
+-> Rust search plan and trust gate
+-> Rust generation/overlay cache
+-> warm language harness workers for native facts
+-> Turso stable FTS plus Turso-owned Tantivy-backed overlay search
+-> Python graph worker over typed graph batches
+-> Rust render IR and compact graph stdout
+#+end_src
+
+Rust wins here because it can own lifecycle, concurrency, state locality, backpressure, cancellation, schema validation, and cache invalidation without asking each language harness to reimplement those systems. The language harness remains responsible for native parser truth: symbols, selectors, signatures, imports, tests, diagnostics, local query semantics, and source fingerprints. Python remains responsible for production graph algorithms. Julia remains responsible for offline algorithm research and replayable evaluation. Rust owns the execution fabric that makes those pieces cheap to combine.
+
+** Harness contract should be thin
+
+Every language harness should expose a narrow, versioned contract:
+
+- =capabilities= :: language id, provider id, schema versions, native query features, parser version, and project discovery support.
+- =snapshot= :: stable generation facts for files, selectors, entities, imports, tests, diagnostics, dependency edges, and source hashes.
+- =diff= :: dirty overlay facts: changed files, deleted selectors, added temporary selectors, parse-delta summaries, and invalidation hints.
+- =query= :: provider-native proof for selector, symbol, dependency, AST/S-expression, semantic query, or test reachability.
+- =locate= :: selector-first source locator with display range as a hint only.
+- =health= :: startup, parse, query, stdout/stderr, schema, trust, and cache metrics.
+
+The harness should not own global FTS, graph ranking, prompt rendering, project identity, state root layout, trust policy, or agent-facing command UX. Those are Rust-owned services. This is the core reason a new harness can be lightweight while still entering a high-performance architecture.
+
+** Rust execution fabric
+
+Rust should add a shared execution layer below =crates/agent-semantic-protocol/src/command=. The command package should become a thin adapter: parse CLI args, call a typed service, print compact output, and write receipts. Heavy behavior should move into focused crates.
+
+Proposed crate boundaries:
+
+| Crate | Owns |
+| =agent-semantic-client-core= | command-independent application services, route orchestration, receipt writing |
+| =agent-semantic-exec-fabric= | Tokio runtime policy, worker pools, cancellation, backpressure, batching, timeouts |
+| =agent-semantic-provider-contract= | provider capability, snapshot, diff, query, locate, health packet types |
+| =agent-semantic-provider-transport= | JSONL/framed IPC, warm process lifecycle, schema negotiation, stderr capture |
+| =agent-semantic-search-core= | intent planning, selector seeds, query composition, overlay merge, lexical result normalization |
+| =agent-semantic-db-engine= | Turso generations, project/worktree/session identity, receipts, stable FTS views |
+| =agent-semantic-overlay-search= | Turso-owned Tantivy-backed dynamic overlay adapter, not direct product =tantivy= |
+| =agent-semantic-graph-bridge= | long-lived Python graph worker protocol and typed graph batch exchange |
+| =agent-semantic-render-core= | compact graph schema, render IR, expansion handles, token-budgeted stdout |
+| =agent-semantic-cli= | command definitions only |
+
+Existing packages can be migrated toward these names gradually, but ownership must become real. A module is not modular if command code still owns provider startup, graph fusion, render policy, and DB write decisions.
+
+** Warm worker model
+
+The decisive optimization is to stop treating every search as a cold CLI subprocess chain. Rust should maintain warm workers keyed by:
+
+#+begin_src text
+project_id, worktree_id, language_id, provider_id,
+provider_manifest_hash, executable_digest,
+schema_versions, trust_decision_ref,
+base_generation_id, overlay_generation_id
+#+end_src
+
+Rust can then reuse workers when trust, schema, executable, and generation inputs are still valid. A worker invalidates on manifest change, executable digest change, schema mismatch, trust policy change, source generation rollover, crash, or explicit provider health failure.
+
+Tokio should be used as the primary execution substrate:
+
+- bounded =mpsc= queues per provider and per project;
+- =Semaphore= limits for CPU-heavy parse/query fanout;
+- cancellation tokens for losing search branches;
+- timeout classes for cold startup, warm query, graph rank, DB write, and render;
+- =watch= or =broadcast= channels for generation and overlay changes;
+- structured task groups for fan-out/fan-in search plans;
+- backpressure from stdout/render/token budgets back to query expansion.
+
+CPU-heavy local work, such as packet validation over large batches, snippet materialization, or render IR construction, should use explicit blocking pools or Rayon-style parallelism. It must not block the async scheduler.
+
+** Search pipeline
+
+The target hot path is:
+
+1. Rust receives intent plus agent context and prior receipts.
+2. Rust decides =skip=, =resume=, =refine=, or =cold-search= from receipt anchors and freshness facts.
+3. Rust builds selector and semantic seeds from memory, stable Turso FTS/BM25, dynamic overlay search, and native provider capability hints.
+4. Rust fans out only the missing proof queries to warm language workers.
+5. Providers return compact typed facts, not source dumps.
+6. Rust normalizes facts into shared selector/entity/edge/search packet shapes.
+7. Python graph worker ranks on typed graph batches and returns frontier decisions.
+8. Rust render-core emits a compact graph with expansion handles.
+9. Rust stores receipts with stage timing, cache decisions, generation ids, and rejection reasons.
+
+This is why the Rust -> Python split can be faster than either side alone. Python sees a smaller, typed, pre-filtered graph instead of raw source and repeated filesystem work. Rust avoids owning graph algorithm research, but controls when Python runs, how much data it receives, and when a prior frontier is strong enough to skip graph rank.
+
+** Dynamic overlay performance
+
+Dynamic code is too volatile for synchronous durable DB insertion on every edit. The hot path should maintain:
+
+- stable Turso generation for accepted checkpoints;
+- session/worktree overlay namespace for dirty changes;
+- in-memory token/entity maps for active dirty files;
+- bounded overlay receipts for replay;
+- Turso-owned Tantivy-backed overlay search for lexical candidate narrowing;
+- selector invalidation maps keyed by source hash and provider diff output.
+
+Overlay merge order should be:
+
+#+begin_src text
+agent context anchors
+-> prior receipt frontier
+-> active dirty overlay
+-> stable Turso FTS/BM25
+-> semantic/vector fallback
+-> provider-native proof
+-> Python graph fusion
+#+end_src
+
+The performance rule is strict: dynamic overlay search can avoid durable writes, but it cannot avoid freshness accounting. A fast stale selector is worse than a slower abstention.
+
+** Data exchange shape
+
+Cross-language exchange should minimize copies and token waste:
+
+- JSONL/framed JSON remains the compatibility baseline.
+- Large graph batches should have an upgrade path to Arrow IPC, MessagePack, or another typed batch format when JSON serialization becomes the bottleneck.
+- Providers should return ids, hashes, selectors, edge kinds, and bounded snippets, not full files.
+- Rust should store render IR and receipts; stdout should be the compact L0/L1 projection, never the full JSON packet by default.
+- Python graph should receive typed tables or compact adjacency batches, not provider-specific JSON blobs.
+
+This keeps the native harness ecosystem useful while preventing every language from inventing a private performance format.
+
+** Kill feature
+
+The ASP-specific advantage is:
+
+#+begin_quote
+A language author implements only native parser truth once; Rust gives that harness project identity, trust gates, warm execution, overlay search, Turso generations, Python graph fusion, compact rendering, receipts, and research replay.
+#+end_quote
+
+Tree-sitter-only systems can be broad, but they cannot cheaply import every language ecosystem's native facts. A pure per-language CLI system can be accurate, but it pays cold process and duplicated infrastructure costs. ASP's architecture should make native facts cheap enough to use on every search turn.
+
+** Refactor acceptance gates
+
+The refactor is not successful until these are measurable:
+
+- =crates/agent-semantic-protocol/src/command/*= contains no provider lifecycle, graph ranking, render policy, or DB generation ownership beyond thin adapters.
+- Warm search path does not spawn a language process when a valid worker exists.
+- Dirty overlay search does not write every edit into the durable Turso generation.
+- Python graph rank can be skipped when receipt/context anchors are sufficient and freshness gates pass.
+- Every provider query returns selector-first evidence; line ranges are display hints only.
+- Search receipts record =providerStartMs=, =providerHandshakeMs=, =providerQueryMs=, =changeDetectMs=, =ftsSearchMs=, =overlayMergeMs=, =graphRankMs=, =renderIrMs=, and =totalMs=.
+- Julia replay can distinguish algorithm failure from execution-shape failure by reading the same receipts Python production used.
+- Replacing =fzf= is gated on recall@k, MRR/nDCG, dirty-update latency, stale-selector rate, token-to-actionable-selector, and false-positive-at-1.
+
+The first implementation milestone should be a receipt-only shadow path: keep current commands working, but record enough stage timing and worker identity to prove where the actual latency sits. Only then should provider warm pools, overlay search, and graph worker reuse become default behavior.
+
+** External language harness bootstrap
+
+The Rust execution fabric needs an onboarding surface for third-party language
+ecosystems. RFC 10.05.85 defines =asp init --language <name> --out <dir>= as
+that surface.
+
+This is part of the performance architecture, not just a developer convenience.
+The generated harness must contain enough contract material for Rust to admit it
+into the fast path:
+
+- =asp-language.toml= with language id, provider id, runtime, parser mode,
+  command argv, schema versions, capability flags, and performance hints;
+- version-pinned schema copies for capabilities, snapshot, diff, query, locate,
+  health, search packets, and compact graph output;
+- agent-facing guide documents that tell a coding agent to implement native
+  parser facts, not private search infrastructure;
+- fixtures and smoke tests that prove selector-first evidence before graph
+  ranking;
+- init receipts that record generated files, template version, schema versions,
+  and next validation commands.
+
+The CLI remains thin. =asp init= should call a client-core init service and a
+template renderer. Provider registration should happen only after
+=asp language doctor/check/smoke= proves the manifest, schemas, capabilities,
+snapshot, locate, and health packets. This keeps external harnesses cheap to
+write while still letting Rust provide trust gates, warm workers, overlay
+search, Turso generations, Python graph fusion, compact render, and replayable
+receipts.
+** Embedded Rust lane
+Rust-owned capabilities should not go through a provider process just to satisfy a historical command shape. Compact graph render, search-core routing, DB Engine reads, Turso/Tantivy overlay search, action materialization, and Rust-native structural index access should be in-process Rust calls behind crate contracts.
+
+This is the lane where the DB Engine migration should pay most visibly: stable generation lookup, overlay merge, lexical search, graph ranking, render IR construction, and receipt persistence should be measured as separate Rust stages without shell overhead.
+** Analysis lane
+Python and Julia should consume stored =L2= packets and receipts for algorithm work, not sit in the interactive hot path unless the current command explicitly requests analysis. Julia remains the research lane; Python graph algorithms can be promoted to production only through schema-valid packets, benchmark evidence, and clear latency budgets.
+* Fine-grained performance contract
+Performance gates must move from whole-command elapsed time to stage-level receipts. Each search/query/render command should be able to report:
+- =routePlanMs=
+- =trustGateMs=
+- =providerStartMs=
+- =providerHandshakeMs=
+- =providerQueryMs=
+- =providerParseMs=
+- =changeDetectMs=
+- =dbReadMs=
+- =dbWriteMs=
+- =ftsSearchMs=
+- =overlayMergeMs=
+- =graphRankMs=
+- =renderIrMs=
+- =stdoutRenderMs=
+- =materializeActionMs=
+- =totalMs=
+- =cacheHitKind=
+- =providerExecutionLane=
+- =sourceGenerationId=
+- =overlayGenerationId=
+- =trustDecisionRef=
+
+The key rule is: no optimization is accepted unless the receipt shows which stage improved and which stage remained the bottleneck. A faster stdout renderer does not solve cold provider startup. A faster DB read does not solve repeated trust discovery. A faster provider parser does not solve broad lexical reruns.
+* Change detection and cache granularity
+The warm path should be selector/entity-generation based, not file-line based. The DB Engine and provider workers should agree on:
+- source file hash and parser source fingerprint;
+- provider manifest hash and schema version;
+- dependency topology fingerprint;
+- selector/entity ids that changed, disappeared, or became stale;
+- overlay-local dirty ids for unaccepted edits;
+- project/worktree/session/subagent namespace.
+
+Invalidation should prefer the smallest safe unit:
+#+begin_src text
+unchanged source fingerprint -> reuse provider fact rows
+changed file hash            -> reparse one owner file
+changed selector fingerprint -> invalidate selector-local facts
+changed dependency topology  -> invalidate dependency-derived graph edges
+changed provider manifest    -> invalidate provider-owned facts
+changed trust profile        -> re-run trust gate before reuse
+#+end_src
+
+Line ranges remain display hints. A line-range change alone is not a stable invalidation key; parser-owned selector/source fingerprints are.
+* Trust gate performance
+Trust gates are part of the hot path and must be measured. The correct model is not to skip trust for speed, but to cache trust decisions at the right identity:
+#+begin_src text
+provider executable digest
+argv capability class
+workspace/project trust profile
+schema version
+provider manifest hash
+environment policy fingerprint
+command/action capability
+#+end_src
+
+Warm workers may reuse a trust decision only while all of those inputs remain stable. Every reused decision must leave a =trustDecisionRef= in the performance receipt. If any input changes, the warm lane falls back to trust refresh or cold CLI bootstrap.
+* Performance migration gates
+The DB migration is not complete until these gates exist:
+- cold-vs-warm benchmark for provider transport;
+- source-index warm path benchmark for selector/dependency/search queries;
+- trust-gate cache benchmark with stable and invalidated trust profiles;
+- DB read/write benchmark for stable generations and overlays;
+- render IR benchmark independent of provider execution;
+- full agent search scenario benchmark that reports stage timings and token/stdout size.
+
+The existing local hot-path and scenario-performance work should be treated as seeds, not closure. The new acceptance standard is stage-level evidence with regression thresholds for both latency and correctness.

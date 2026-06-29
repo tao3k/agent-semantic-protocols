@@ -1459,6 +1459,18 @@ impl ClientDb {
               ON source_index_owner(owner_path);
             CREATE INDEX IF NOT EXISTS source_index_owner_language_idx
               ON source_index_owner(language_id, provider_id);
+            CREATE TABLE IF NOT EXISTS source_index_owner_key (
+                generation_id TEXT NOT NULL
+                    REFERENCES source_index_generation(generation_id) ON DELETE CASCADE,
+                query_key TEXT NOT NULL,
+                owner_ordinal INTEGER NOT NULL,
+                owner_path TEXT NOT NULL,
+                language_id TEXT,
+                provider_id TEXT,
+                PRIMARY KEY (generation_id, query_key, owner_ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS source_index_owner_key_lookup_idx
+              ON source_index_owner_key(generation_id, query_key, language_id, owner_ordinal);
             CREATE TABLE IF NOT EXISTS source_index_selector (
                 generation_id TEXT NOT NULL
                     REFERENCES source_index_generation(generation_id) ON DELETE CASCADE,

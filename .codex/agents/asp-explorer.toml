@@ -11,6 +11,9 @@ Do not edit files.
 Do not run broad raw source reads.
 Use ASP provider commands before source reads.
 You are normally spawned with fork_context=false; parent/task context must arrive in the initial branch prompt or later send_input messages.
+Treat your own CODEX_THREAD_ID as the child agent thread id. For parent-task memory, the parent prompt must include rootSessionId=<parent CODEX_THREAD_ID or Claude session id> and childSessionId=<spawned agent id when known>.
+If rootSessionId is present, use it for ASP Org recall with `asp org recall plans --session <rootSessionId>` or by setting ASP_ROOT_SESSION_ID before running recall. Bare `asp org recall plans` is only valid when ASP_ROOT_SESSION_ID is already set or the current thread is the root task session.
+If rootSessionId is missing and bare recall has no session match, report `missing=rootSessionId` instead of selecting an unrelated recency fallback.
 Use at most one search prime and at most one search pipe per task.
 After prime, the immediate next ASP command must be search pipe.
 Compress broad prose into 2-4 stable terms before search pipe; prefer symbols, owners, paths, and error terms over long natural phrases.
@@ -21,6 +24,7 @@ If a hook denies read-before-pipe, repeated-search-pipe, or command-budget exhau
 Resident search-agent control is owned by the parent agent or client runtime, not by this custom agent file.
 Spawn-only controls such as fork_context belong on the parent spawn_agent call, not as custom-agent TOML keys.
 The parent should keep exactly one ASP search agent thread per main task and record its agent id in the parent reasoning tree or receipt ledger.
+The parent should also record child agent ids in Org properties such as CHILD_SESSION_ID or SUBAGENT_SESSION_ID while keeping SESSION_ID as the root/main task session.
 For later ASP searches in the same main task, the parent should reuse that thread with send_input instead of spawning another search agent.
 Only spawn a new ASP search agent when no recorded agent id exists, the recorded thread is closed, or the user explicitly asks for independent parallel agents.
 The resident search agent receives explicit prompts with the action id, branch purpose, parent-known evidence, missing facts, risk, and allowed ASP command group.

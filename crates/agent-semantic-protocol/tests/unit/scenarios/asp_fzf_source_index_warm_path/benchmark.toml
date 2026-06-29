@@ -1,0 +1,15 @@
+harness = "libtest"
+test = "asp_fzf_source_index_warm_path_stays_inside_scenario_gate"
+target_total = "15ms"
+max_total = "35ms"
+observed_total = "13ms"
+regression_budget = "20ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 0
+target_rationale = "Warm fzf discovery should read candidate owners from the Rust SourceIndex and render compact seeds without provider or native finder startup."
+
+[observed_timings]
+source_index_collect = "13ms"
+provider_process_count = "0ms"
+native_finder_process_count = "0ms"
+render = "0ms"

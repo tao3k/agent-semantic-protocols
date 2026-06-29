@@ -1,0 +1,16 @@
+id = "asp-fzf-source-index-warm-path"
+title = "ASP search fzf uses SourceIndex before native finder on warm path"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FZF-SOURCE-INDEX-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",
+]
+agent_goal = "Keep the agent-facing asp rust search fzf entrypoint on the Rust-owned SourceIndex warm path so broad fzf discovery does not spawn providers or native finders."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp rust search fzf source_index_fixture owner items tests --workspace . --view seeds",
+  "sourceTrace=sourceIndex:used",
+  "finder:skipped",
+]
+inputs = "inputs"
+expected = "expected"
+command = "asp rust search fzf source_index_fixture owner items tests --workspace . --view seeds"

@@ -79,6 +79,48 @@ Current analyzer research context:
   missing =recommendedNext= adoption status, missing route graph state, missing
   candidate counts, and no stable place to store experiment outputs.
 
+Related code-search reference context:
+- RFC 10.20 studies =codebase-memory-mcp= as an external code-search substrate. Its useful lesson for ASP is the durable pre-indexed graph, FTS/BM25, semantic/vector retrieval, graph traversal, snippet retrieval, and benchmark playbook behind the MCP adapter.
+- The report explicitly rejects making an agent MCP server the ASP architecture. MCP can be a future adapter over stable ASP commands and receipts; it must not own indexing, ranking, project identity, or artifact layout.
+- DB Engine v2 should therefore include code-search generations, files, entities, edges, terms, optional vectors, snippets, receipts, and dynamic JSON locators as engine-level read-models.
+- The stronger ASP advantage is native provider analysis. Rust, Python, Julia, TypeScript, Org, Gerbil, and future providers should bring their ecosystem facts into the same DB read-model: package metadata, imports, tests, route ownership, manifests, contracts, notebooks, and analyzer receipts.
+Turso-first lexical search update:
+- RFC 10.20 narrows the text-search backend decision. The preferred DB Engine experiment should use Turso-backed FTS/BM25 over ASP entity documents.
+- Direct =tantivy= integration should not become an ASP product dependency. When Turso FTS is available and can satisfy tokenizer, update-latency, and field-weighting requirements, ASP should consume the Turso-owned Tantivy-backed search layer instead of building an independent Tantivy backend.
+- Dynamic code must not be indexed as raw source lines. Providers should emit stable entity rows with =source_hash=, =generation_id=, =entity_id=, =selector=, =qualified_name=, =signature=, =display_range=, and provider-built identifier search text.
+- CamelCase / snake_case / path-segment expansion should be computed by ASP providers or the DB Engine projection layer before insertion into the FTS index, so query behavior is deterministic across backends.
+- The search-visible view should point only at the current generation; stale rows should be tombstoned or retained as audit evidence, never returned as default actionable evidence.
+Memory-aware search update:
+- RFC 10.20 adds context-resumable search. The DB Engine must store enough evidence state for the router to choose =skip=, =resume=, or =refine= instead of forcing every prompt through a cold retrieval flow.
+- Search receipts should record anchors, candidate sets, graph frontiers, rejected routes, selected actions, index generations, source hashes, and freshness decisions.
+- Topology rows should make common jumps cheap: selector to owner/package/dependency/tests, dependency to import sites and wrappers, test to covered selectors, Org heading to referenced selectors, and prior receipt to its active frontier.
+- The router may skip FTS/BM25 only when the anchor is selector-first, freshness is current or explicitly stale-accepted, and the prior receipt scope matches the current intent.
+- Analyzer tables should expose warm-path metrics such as =new_retrieval_avoided_rate=, =context_jump_success_rate=, =receipt_refinement_success_rate=, and =false_skip_rate=.
+Dynamic overlay update:
+- Turso FTS/BM25 should index the stable base generation and accepted checkpoints. It must not be treated as the synchronous global index for every dirty edit produced by concurrent sessions or subagents.
+- The DB Engine should define overlay namespaces by =project_id=, =workspace_id=, =worktree_id=, =session_id=, =subagent_id=, and =base_generation=.
+- Overlay state should store dirty-file hashes, patch receipts, changed/deleted selector ids, bounded snippets, parse-delta summaries, active test/policy failures, and temporary overlay-local entity ids when stable selectors are not yet available.
+- The search router should merge memory, receipt anchors, active overlays, dirty-file provider parses, stable Turso FTS/BM25, and semantic/vector fallback in that order.
+- Durable DB writes for overlays should be debounced, batched, or checkpointed. Hot token maps and speculative parse deltas may remain in memory; only replayable receipts and bounded evidence need persistence.
+- Accepted overlays should compact into a new stable generation. Rejected overlays remain session-scoped audit evidence and must not pollute the project-wide search-visible view.
+Turso/Tantivy search dependency update:
+- The DB Engine should converge on one lexical-search family. Persisted generations use Turso FTS/BM25; dynamic overlays should use the same Turso-owned Tantivy-backed search semantics without inserting every dirty edit into the durable Turso DB generation.
+- If Turso exposes a stable reusable Rust search package for its FTS layer, ASP should depend on that package for overlay search. If Turso does not expose that boundary yet, ASP should add an adapter around Turso's FTS/search implementation or keep direct =tantivy= usage only in non-product benchmark/control experiments. Direct =tantivy= must not replace =fzf= as a second long-lived ASP search backend.
+- =fzf= should be removed as an agent-facing search/ranking backend after parity. It may exist only as a temporary migration adapter or human interactive affordance.
+- The replacement gate should compare =fzf= and Turso/Tantivy overlay search on recall@k, MRR/nDCG, warm update latency, dirty-buffer indexing cost, selector stability after edits, and false-positive-at-1.
+- The DB Engine must not expose two conflicting ranking semantics. All lexical results should return selector-first packets with shared field-hit metadata and graph-fusion inputs.
+Combinator query receipt update:
+- RFC 10.11 and RFC 10.20 define a combined search plan where tree-sitter-compatible S-expression patterns provide coarse structural candidates, native provider queries provide semantic proof, and Python graph fusion ranks the evidence packet.
+- The DB Engine should store =structuralProof=, =nativeProof=, and =fusionProof= as separate receipt sections instead of collapsing them into one search score.
+- Structural proof rows should include grammar id, query AST hash, captures, predicate results, structural spans, and candidate counts.
+- Native proof rows should include provider id, selector, semantic facts, omitted facts, rejection reasons, source fingerprint, and exact read/action locator.
+- Fusion proof rows should include graph seeds, edge types, rank inputs, diversity decisions, confidence, and final action source.
+- Analyzer and Julia research tables should expose candidate counts, latency, token cost, false positives, false negatives, and edit/test feedback per combinator stage.
+Default planner metric update:
+- The DB Engine should store =PlanTrace= for every search packet that considered a combinator route, including route choice, internal stages, external command count, candidate counts per stage, proof gain, fallback reason, graph confidence, and final action source.
+- Analyzer tables should compute =combinator_win_rate= by comparing one combinator packet against the shortest non-combinator path for the same prompt class.
+- Julia research notebooks should be able to replay route decisions and test alternative graph policies without re-running providers against source.
+- The production Python graph layer should consume this feedback loop to update route thresholds, diversity budgets, and abstention rules.
 External Turso source context, current as of 2026-06-28:
 
 - Turso Database is an in-process SQL database written in Rust and compatible
@@ -92,7 +134,8 @@ External Turso source context, current as of 2026-06-28:
 - Turso features and roadmap include =BEGIN CONCURRENT= / MVCC, CDC, async I/O,
   vector support, improved schema management, encryption at rest, DBSP
   incremental computation, Tantivy-backed FTS, multi-process WAL coordination,
-  sync push/pull, and a CLI MCP server.
+  sync push/pull, and a CLI MCP server. The CLI MCP server is recorded only as
+  an ecosystem fact; it is not an ASP architecture input.
 - Compatibility is real but not complete. The compatibility document lists
   partial query language, PRAGMA, and C API support; it also documents
   Turso-specific PRAGMAs such as CDC capture, encryption keys, MVCC checkpoint
@@ -133,6 +176,38 @@ The engine owns:
 Turso is a backend implementation of this ASP DB Engine. SQLite v1 is the
 current backend. Future backends are allowed only if they implement the same
 engine contract and preserve parser/provider authority.
+
+RFC 10.20 adds a concrete code-search pressure test for this boundary: a
+backend migration is valuable only if it improves selector-first search,
+durable graph/dependency facts, snippet locators, search receipts, and the
+DB-plus-dynamic-JSON interface used by Python and Julia analyzers.
+
+** Agent MCP server is not the architecture
+
+ASP should not be designed as an agent MCP server. The project boundary is:
+
+#+begin_src text
+local CLI / hook / provider protocol -> ASP DB Engine -> artifact registry ->
+search/query/recall/writing workflows
+#+end_src
+
+An MCP server can exist later as an adapter over stable ASP commands and typed
+receipts, but it must not own:
+
+- project identity;
+- provider authority;
+- search identity;
+- artifact storage;
+- cache invalidation;
+- graph ranking;
+- analyzer experiment state;
+- writing workflow state.
+
+This matters because MCP server design pulls the system toward session RPC,
+tool advertisement, and client-specific affordances. ASP needs the opposite
+center of gravity: parser-owned facts, durable local state, reproducible CLI
+receipts, and backend-visible engine contracts that Python and Julia can replay
+without depending on one agent client's server lifecycle.
 
 ** Compatibility-only migration is rejected
 
@@ -517,28 +592,17 @@ Acceptance:
 - receipts explain encryption state without leaking keys;
 - tests cover wrong-key and missing-key diagnostics.
 
-** MCP / agent DB inspection
+** Non-goal: MCP / agent DB inspection as core architecture
 
-Opportunity:
+Turso CLI MCP mode is out of scope for DB Engine v2 experiments. It may be a
+future external adapter over stable ASP commands, but it should not shape the
+engine schema, state root, provider protocol, search protocol, analyzer
+interface, writing workflow, or acceptance gates.
 
-- Turso CLI MCP mode is directly relevant to agent workflows;
-- it can become a debug surface for local DB inspection, not the production ASP
-  command API.
-
-Experiment:
-
-- expose a read-only MCP inspection profile over a scratch client DB;
-- map MCP tools to safe diagnostics:
-  - list tables;
-  - describe schema;
-  - query status views;
-  - inspect latest generation rows.
-
-Acceptance:
-
-- MCP cannot mutate project cache unless explicitly configured for a sandbox;
-- production commands still use typed ASP APIs, not natural-language SQL;
-- diagnostic sessions produce artifact receipts.
+The DB Engine must stay testable and useful through local CLI receipts, typed
+provider facts, and durable artifact registries. Agent-client-specific server
+lifecycles are not evidence identity and are not required for Python or Julia
+analysis.
 
 ** Turso-specific safety PRAGMAs
 
@@ -572,9 +636,9 @@ Acceptance:
 | E6 | DBSP derived views | latest generation / frontier view | Reduce warm aggregation cost | Faster warm path or fewer queries |
 | E7 | Sync prototype | metadata-only subset | Future cloud/cross-agent state | Local-first preserved |
 | E8 | Encryption prototype | whole v2 DB file | Protect local metadata | clear wrong-key diagnostics |
-| E9 | MCP diagnostic profile | scratch DB only | Agent-friendly inspection | Read-only, receipt-backed |
 | E10 | Engine static dependency topology | manifests / lockfiles / usage facts | Stable search planning without line identity | Hash-bound warm path |
 | E11 | Analyzer research interface | action/event/search/route read-models | Julia/Python algorithm loop | Reproducible experiment receipts |
+| E12 | Code-search read-model | native provider selectors / entities / dependency facts / test reachability / snippets / receipts | Make code search a DB Engine feature, not MCP-tool behavior | No executable line-range identity |
 
 * Metrics
 
@@ -706,3 +770,66 @@ opt-in feature flag, then run three experiments in order:
 If neither E3 nor E4 produces a durable ASP Engine advantage, do not promote the
 Turso backend. If either does, proceed to vector/FTS ranking and sync/encryption
 as second-wave backend capability experiments.
+* Provider performance receipt update
+DB Engine v2 must make provider execution performance observable at fine granularity. The goal is not only faster storage; the goal is to stop paying cold command-line harness cost for every small agent query.
+
+Every search/query/render receipt should record a stage breakdown:
+#+begin_src text
+routePlanMs
+trustGateMs
+providerStartMs
+providerHandshakeMs
+providerQueryMs
+providerParseMs
+changeDetectMs
+dbReadMs
+dbWriteMs
+ftsSearchMs
+overlayMergeMs
+graphRankMs
+renderIrMs
+stdoutRenderMs
+materializeActionMs
+totalMs
+#+end_src
+
+The receipt should also record:
+- =providerExecutionLane= with values such as =cold-cli=, =warm-worker=, =embedded-rust=, or =analysis-lane=;
+- =cacheHitKind= for source facts, selector facts, dependency topology, route plan, graph rank, lexical search, render IR, and trust decision reuse;
+- =providerSessionId= for warm workers;
+- =providerManifestHash= and =providerExecutableDigest=;
+- =sourceGenerationId=, =overlayGenerationId=, and =baseGenerationId=;
+- =trustDecisionRef= and the trust inputs that allowed reuse;
+- =schemaVersion= for every packet and receipt section.
+
+The DB Engine should store warm-worker lifecycle rows:
+| Field | Purpose |
+| =providerSessionId= | stable id for a long-lived worker |
+| =projectId/worktreeId/languageId/providerId= | worker namespace |
+| =openedAt/closedAt= | lifecycle timing |
+| =schemaVersions= | negotiated packet versions |
+| =trustDecisionRef= | trust-gate reuse boundary |
+| =sourceGenerationId= | loaded base generation |
+| =overlayGenerationId= | active dirty overlay |
+| =startupMs/handshakeMs= | amortized cold cost |
+| =closeReason= | normal, invalidated, crashed, trust-refresh, schema-mismatch |
+
+Turso experiments should be evaluated against this receipt surface. A backend is not better merely because one query is faster; it must improve the right stage without hiding correctness cost. For example, Turso FTS can improve =ftsSearchMs=, but it does not remove =providerStartMs= unless provider execution moved to warm or embedded lanes. A Turso-owned Tantivy-backed overlay adapter can improve dirty-buffer search, but it does not solve stale selectors unless =changeDetectMs= and selector invalidation are accurate.
+
+Trust gates are part of performance, not a separate policy afterthought. Reused trust decisions must be explicit DB facts keyed by provider executable digest, argv capability class, workspace trust profile, schema version, provider manifest hash, environment policy fingerprint, and command/action capability. If any of those inputs change, the DB Engine must force trust refresh before returning warm-path evidence.
+
+Analyzer tables should expose =cold_start_avoided_rate=, =warm_worker_hit_rate=, =trust_reuse_rate=, =trust_refresh_rate=, =provider_startup_amortized_ms=, =stage_bottleneck_rank=, =selector_invalidation_precision=, and =stale_fact_return_rate=. Julia can use these receipts to distinguish algorithm failure from execution-shape failure.
+* Rust crate architecture boundary
+RFC 10.21 owns the Rust crate architecture for compact graph schema, render IR, search-core extraction, and CLI thinning. This DB Engine RFC should not make the storage layer responsible for prompt render policy or graph-routing ownership.
+
+The DB Engine stores =L2= evidence: schema-valid packets, render IR, render receipts, search receipts, overlays, generations, and replay metadata. The render crate chooses =L0/L1= prompt output. The CLI should compose those layers through client-core rather than becoming the owner of schema, render, graph, and DB behavior.
+* Agent render observability update
+The DB Engine should store render receipts separately from prompt stdout. Prompt stdout is =L0/L1= compact render; the DB stores the full =L2= replay surface.
+
+Render receipts should include =renderLayer=, =stdoutBytes=, =estimatedPromptTokens=, =aliasCount=, =visibleNodeCount=, =visibleEdgeCount=, =frontierCount=, =omissionCount=, =avoidCount=, =expansionHandles=, and =jsonSuppressed=true= for normal search output.
+
+Expansion receipts should record which handle was opened, the source packet generation, the selector/source fingerprint, returned bytes, returned token estimate, and whether the expansion changed the chosen action.
+
+Analyzer tables should compare render variants on =tokens_to_actionable_selector=, =first_frontier_adoption_rate=, =expansion_needed_rate=, =wrong_expansion_rate=, =broad_read_avoided_rate=, and =json_request_rate=.
+
+Julia research should replay render receipts beside search receipts so algorithm experiments can evaluate not only ranking quality, but also whether the graph projection was too wide, too narrow, or missing the relation that the agent needed. Python production ranking should consume this feedback as a render budget and confidence boundary. More graph does not automatically mean better search; the router should widen the render only when confidence, ambiguity, or omitted-risk warrants it.

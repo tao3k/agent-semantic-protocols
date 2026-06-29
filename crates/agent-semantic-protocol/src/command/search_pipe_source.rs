@@ -530,12 +530,17 @@ fn source_index_trace_prefix(
         .unwrap_or_default()
 }
 
-fn source_index_trace(
+pub(super) fn source_index_trace(
     result: &SourceIndexLookupResult,
     candidate_count: usize,
     started_at: Instant,
 ) -> SearchPipeSourceTrace {
-    let mut fields = elapsed_fields(started_at.elapsed());
+    let elapsed = started_at.elapsed();
+    let mut fields = elapsed_fields(elapsed);
+    fields.insert(
+        "collectMs".to_string(),
+        Value::from(elapsed_millis(elapsed)),
+    );
     fields.insert("state".to_string(), Value::from(result.state.as_str()));
     fields.insert(
         "dbPath".to_string(),
@@ -566,7 +571,9 @@ fn source_index_trace_status(state: &SourceIndexLookupState) -> &'static str {
     }
 }
 
-fn source_index_candidate(candidate: &agent_semantic_client::SourceIndexCandidate) -> Candidate {
+pub(super) fn source_index_candidate(
+    candidate: &agent_semantic_client::SourceIndexCandidate,
+) -> Candidate {
     let line_count = candidate.line_count.unwrap_or(1).max(1) as usize;
     Candidate {
         path: candidate.path.clone(),

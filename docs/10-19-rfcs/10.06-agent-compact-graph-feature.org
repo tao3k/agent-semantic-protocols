@@ -1660,3 +1660,40 @@ belongs outside the normal graph frontier and requires an explicit fallback
 reason when represented in read packets.
 * Compact search action row contract
 This section supersedes older examples that treated =actionRank= or =[route-graph]= rows as part of default agent-facing seed output. Default search stdout exposes one compact action surface. When =actionFrontier= is rendered in =--view seeds= or facade stdout, the same output must not also render =[route-graph]=, =actionRank=, or full action detail rows such as =A1=fd-query(...)!finder-owner=. Those details belong to typed graph-turbo packets, explicit debug/advisory views, or tests that validate packet materialization. Seeds stdout keeps only =actionFrontier=A1.kind,A2.kind=, =recommendedNext=A1.kind=, and an optional materialized =nextCommand= display line derived from typed actions.
+* Rust schema and crate ownership
+RFC 10.21 owns the Rust engineering boundary for compact graph schema and render modularization. This RFC defines the agent-facing compact graph semantics; RFC 10.21 defines how those semantics become schema-owned Rust contracts, render IR, render crates, search-core crates, and DB receipts instead of CLI-local formatting code.
+
+Any new compact graph field that changes aliases, relation groups, selector groups, frontier actions, omission/avoid rows, or expansion handles must update the shared schema and Rust contract boundary before adding CLI render behavior.
+* Agent-facing render layers
+The compact graph render is the normal prompt surface for search. It is not a JSON dump, a debug graph, or a full analyzer receipt. JSON packets remain the machine contract for validators, DB storage, replay, Python graph ranking, and Julia research, but normal stdout should expose only the smallest evidence slice that lets the agent choose the next correct action.
+
+The render has three layers:
+#+begin_src text
+L0 answer/frontier  -> best selector, bounded evidence, next action, and why
+L1 compact graph    -> aliases, typed edges, rank, omissions, avoid rules
+L2 machine receipt  -> full packet JSON, DB rows, replay artifacts, metrics
+#+end_src
+Only =L0= and a bounded =L1= are prompt-facing by default. =L2= is reachable by explicit receipt/debug expansion and by analyzer pipelines; it must not be pasted into the prompt path just because the data exists.
+
+The useful product lesson from graph-rich search systems is action clarity: search returns a candidate, path tracing explains a relation, and snippet retrieval materializes bounded source. ASP should keep that clarity, but render it as one compact evidence packet whenever possible:
+#+begin_src text
+search/combinator -> compact evidence graph -> exact frontier action
+#+end_src
+The agent should not need to read a broad JSON object to know whether to inspect an owner, expand a relation path, retrieve a snippet, or stop searching. The prompt-facing row must already separate evidence from next action.
+
+The default graph slice should fit the current decision, not the repository:
+- show the top 1-3 evidence nodes unless confidence requires more
+- show only typed edges that explain the selected frontier
+- preserve parser-owned selectors and source fingerprints
+- keep line ranges as display/source transport hints, never action identity
+- name omitted facts and unsafe next actions explicitly
+- provide expansion handles for owner, path, snippet, and receipt
+
+If the agent needs more context, it should expand progressively:
+#+begin_src text
+expand owner   -> owner-local items, tests, dependencies, imports
+expand path    -> bounded relation path or trace explanation
+expand snippet -> parser-owned source projection for one selector
+expand receipt -> machine JSON / DB replay only on explicit request
+#+end_src
+This makes =frontier=, =routeGraph=, =G*= relation groups, and =S*= selector groups a compression language for attention. They are useful only while they reduce the next decision. When they become topology telemetry, ablation metadata, or route-state exhaust, they belong in the receipt layer.
