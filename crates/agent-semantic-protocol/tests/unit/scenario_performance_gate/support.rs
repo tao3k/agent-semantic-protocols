@@ -38,6 +38,8 @@ const REQUIRED_PERFORMANCE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-RG-SOURCE-INDEX-MISS-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-PROVIDER-FACTS-001",
+    "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SOURCE-INDEX-LOOKUP-COLD-001",
+    "RUST-AGENT-ASP-FUNCTIONAL-GRAPH-ROUTE-EVIDENCE-RANK-COLD-001",
     "GERBIL-SCHEME-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
     "JULIA-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
     "ORG-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
@@ -110,8 +112,26 @@ fn assert_dynamic_overlay_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
+#[cfg(feature = "turso-overlay")]
+fn assert_turso_overlay_benchmark_contract(benchmark: &SharedBenchmarkToml) {
+    assert_eq!(benchmark.route_source.as_deref(), Some("turso-overlay"));
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
 fn assert_selector_seed_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(benchmark.route_source.as_deref(), Some("selector-seed"));
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
+fn assert_evidence_graph_rank_benchmark_contract(benchmark: &SharedBenchmarkToml) {
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("evidence-graph-rank")
+    );
     assert_eq!(benchmark.max_provider_process_count, Some(0));
     assert_eq!(benchmark.max_stdout_bytes, Some(4096));
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
@@ -486,6 +506,356 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
     assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(super) fn asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_source_index_lookup_adapter_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_source_index_query_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-source-index-lookup-adapter-cold");
+    let bin_dir = root.join(".tmp").join("provider-bin");
+    let marker = root.join("provider-called");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-source-index-lookup-adapter-cold\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn source_index_lookup_adapter_fixture() {}\npub fn unrelated() {}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    refresh_source_index(&root);
+    let _ = fs::remove_file(&marker);
+
+    let language = agent_semantic_client::LanguageId::from("rust");
+    let cache_root = crate::provider_command::support::cache_root(&root);
+    let lookup_started_at = Instant::now();
+    let lookup = agent_semantic_search::lookup_source_index_in_client_cache_dir(
+        agent_semantic_search::SourceIndexClientCacheLookupRequest {
+            cache_root: &cache_root,
+            indexed_project_root: &root,
+            language_id: Some(&language),
+            query: "source_index_lookup_adapter_fixture",
+            limit: 256,
+        },
+    )
+    .expect("lookup source index through search adapter");
+    let lookup_elapsed = lookup_started_at.elapsed();
+    let lookup_ms = lookup_elapsed.as_millis();
+    assert_eq!(
+        lookup.state,
+        agent_semantic_client::SourceIndexLookupState::Hit
+    );
+    assert!(
+        lookup
+            .candidates
+            .iter()
+            .any(|candidate| candidate.path == "src/lib.rs"),
+        "lookup candidates={:?}",
+        lookup.candidates
+    );
+    assert!(
+        lookup
+            .candidates
+            .iter()
+            .all(|candidate| candidate.query_keys.iter().all(|key| !key.contains(":1:"))),
+        "source-index lookup adapter must not expose line-range identity in query keys; candidates={:?}",
+        lookup.candidates
+    );
+    assert!(
+        !marker.exists(),
+        "source-index lookup adapter cold functional gate must not spawn provider during lookup"
+    );
+    assert!(
+        lookup_ms <= max_total_ms,
+        "source-index lookup adapter cold functional path exceeded benchmark max_total={} observed={}ms candidates={:?}",
+        benchmark.max_total,
+        lookup_ms,
+        lookup.candidates
+    );
+
+    let lookup_duration = duration_literal(lookup_elapsed);
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-source-index-lookup-adapter-cold-functional-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "agent_semantic_search::lookup_source_index_in_client_cache_dir"
+        ],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxNativeFinderProcessCount": 0,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "requireSourceIndexHit": true,
+            "allowedFirstRoutes": ["source-index"],
+            "forbiddenRoutes": ["prime", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": lookup_duration,
+            "providerProcessCount": 0,
+            "providerElapsed": "0ms",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0ms",
+            "sourceIndexHit": true,
+            "sourceIndexDuration": lookup_duration,
+            "firstRoute": "source-index",
+            "executedRoutes": ["source-index"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": lookup_duration,
+            "stdoutBytes": 0
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-source-index-lookup-adapter-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(super) fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_evidence_graph_rank_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_evidence_graph_rank_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let nodes = vec![
+        agent_semantic_search::EvidenceGraphRankNode {
+            ordinal: 0,
+            id: "structural-owner:generation:src/lib.rs".to_string(),
+            kind: "structural-owner".to_string(),
+            label: "src/lib.rs".to_string(),
+            path: Some("src/lib.rs".to_string()),
+            selector: None,
+            query_keys: vec!["lib".to_string()],
+            outgoing_edge_count: 8,
+        },
+        agent_semantic_search::EvidenceGraphRankNode {
+            ordinal: 1,
+            id: "selector:rust://src/lib.rs#item/struct/EvidenceFixture".to_string(),
+            kind: "selector".to_string(),
+            label: "EvidenceFixture".to_string(),
+            path: Some("src/lib.rs".to_string()),
+            selector: Some("rust://src/lib.rs#item/struct/EvidenceFixture".to_string()),
+            query_keys: vec!["EvidenceFixture".to_string(), "serde".to_string()],
+            outgoing_edge_count: 0,
+        },
+        agent_semantic_search::EvidenceGraphRankNode {
+            ordinal: 2,
+            id: "symbol:rust://src/lib.rs#item/impl/Serialize".to_string(),
+            kind: "symbol".to_string(),
+            label: "Serialize impl".to_string(),
+            path: Some("src/lib.rs".to_string()),
+            selector: Some("rust://src/lib.rs#item/impl/Serialize".to_string()),
+            query_keys: vec!["serde".to_string()],
+            outgoing_edge_count: 2,
+        },
+    ];
+    assert!(
+        nodes.iter().all(|node| !node.id.contains(":1:")
+            && !node.selector.as_deref().unwrap_or("").contains(":1:")),
+        "EvidenceGraph rank nodes must not encode executable line ranges"
+    );
+
+    let started_at = Instant::now();
+    let ranked = agent_semantic_search::rank_evidence_graph_nodes(nodes, "serde EvidenceFixture");
+    let elapsed = started_at.elapsed();
+    let elapsed_ms = elapsed.as_millis();
+    assert_eq!(
+        ranked[0].node.selector.as_deref(),
+        Some("rust://src/lib.rs#item/struct/EvidenceFixture")
+    );
+    assert_eq!(ranked[0].score.term_hits, 2);
+    assert_eq!(ranked[0].score.selector_bonus, 1);
+    assert!(
+        ranked.iter().all(|ranked| ranked.score.topology_bonus <= 8),
+        "topology bonus must stay bounded; ranked={ranked:?}"
+    );
+    assert!(
+        elapsed_ms <= max_total_ms,
+        "EvidenceGraph rank cold functional path exceeded benchmark max_total={} observed={}ms ranked={ranked:?}",
+        benchmark.max_total,
+        elapsed_ms
+    );
+
+    let observed_total = duration_literal(elapsed);
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-evidence-graph-rank-cold-functional-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "agent_semantic_search::rank_evidence_graph_nodes"
+        ],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxNativeFinderProcessCount": 0,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "requireSelectorFirst": true,
+            "requireBoundedTopologyBonus": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "nativeFinderProcessCount": 0,
+            "firstRoute": benchmark.route_source,
+            "executedRoutes": [benchmark.route_source],
+            "selectorFirst": true,
+            "maxTopologyBonus": ranked.iter().map(|node| node.score.topology_bonus).max().unwrap_or(0),
+            "executableLineRangeSelectorCount": 0,
+            "stdoutBytes": 0,
+            "fallbackReason": benchmark.fallback_reason
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-evidence-graph-rank-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["selectorFirst"], true);
+}
+
+#[cfg(feature = "turso-overlay")]
+pub(super) fn asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_turso_overlay_search_adapter_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_turso_overlay_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-turso-overlay-search-adapter-cold");
+    let db_path = root.join("live").join("client").join("client.sqlite3");
+    fs::create_dir_all(db_path.parent().expect("client db parent")).expect("create client dir");
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .expect("build tokio runtime");
+    runtime
+        .block_on(agent_semantic_search::bootstrap_turso_overlay_search_store(
+            &db_path,
+        ))
+        .expect("bootstrap turso overlay search store");
+    runtime
+        .block_on(agent_semantic_search::upsert_turso_overlay_search_document(
+            &db_path,
+            &agent_semantic_search::TursoOverlaySearchDocument {
+                repo_id: "repo-1".to_string(),
+                workspace_id: "workspace-1".to_string(),
+                session_id: "session-1".to_string(),
+                base_generation: "dirty-1".to_string(),
+                document_id: "overlay-owner".to_string(),
+                selector: Some("rust://src/lib.rs#item/function/overlay_owner".to_string()),
+                document: "dynamic turso_overlay_fixture_token owner".to_string(),
+            },
+        ))
+        .expect("upsert turso overlay search document");
+
+    let search_started_at = Instant::now();
+    let hits = runtime
+        .block_on(agent_semantic_search::search_turso_overlay_documents(
+            &db_path,
+            "turso_overlay_fixture_token",
+            8,
+        ))
+        .expect("search turso overlay documents");
+    let search_elapsed = search_started_at.elapsed();
+    let search_ms = search_elapsed.as_millis();
+
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert_eq!(hits[0].document_id, "overlay-owner");
+    assert_eq!(
+        hits[0].selector.as_deref(),
+        Some("rust://src/lib.rs#item/function/overlay_owner")
+    );
+    assert!(
+        search_ms <= max_total_ms,
+        "turso overlay search adapter cold functional path exceeded benchmark max_total={} observed={}ms hits={:?}",
+        benchmark.max_total,
+        search_ms,
+        hits
+    );
+
+    let search_duration = duration_literal(search_elapsed);
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-turso-overlay-search-adapter-cold-functional-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "agent_semantic_search::search_turso_overlay_documents"
+        ],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxNativeFinderProcessCount": 0,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "requireOverlayHit": true,
+            "allowedFirstRoutes": ["turso-overlay"],
+            "forbiddenRoutes": ["client", "command", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": search_duration,
+            "providerProcessCount": 0,
+            "providerElapsed": "0ms",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0ms",
+            "overlayHit": true,
+            "overlaySearchDuration": search_duration,
+            "firstRoute": "turso-overlay",
+            "executedRoutes": ["turso-overlay"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": search_duration,
+            "stdoutBytes": 0
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-turso-overlay-search-adapter-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["overlayHit"], true);
     let _ = fs::remove_dir_all(root);
 }
 

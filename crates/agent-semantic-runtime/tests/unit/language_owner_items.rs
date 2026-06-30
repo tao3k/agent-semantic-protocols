@@ -4,9 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsDispatchPlan,
+    LanguageOwnerItemsProviderOutput, LanguageOwnerItemsRuntimeOutcome,
     compact_language_owner_items_stdout, language_owner_items_failure,
-    read_language_owner_items_cache, run_language_owner_items_dispatch_plan,
-    write_language_owner_items_cache,
+    read_language_owner_items_cache, resolve_language_owner_items_runtime_outcome,
+    run_language_owner_items_dispatch_plan, write_language_owner_items_cache,
 };
 
 #[test]
@@ -89,6 +90,108 @@ fn owner_items_cache_round_trip_is_owned_by_runtime() {
         read_language_owner_items_cache(&request).expect("read cache"),
         Some(b"owner-items\n".to_vec())
     );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_runtime_outcome_uses_cache_before_provider_output() {
+    let root = temp_root("owner-items-cache-outcome");
+    let cache_home = root.join(".cache");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
+    let args = vec!["items".to_string()];
+    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let request = LanguageOwnerItemsCacheRequest {
+        language_id: "rust",
+        args: &args,
+        invocation: &invocation,
+        owner: std::path::Path::new("src/lib.rs"),
+        project_root: &root,
+        cache_home: &cache_home,
+    };
+    write_language_owner_items_cache(&request, b"cached owner-items\n").expect("write cache");
+
+    let outcome =
+        resolve_language_owner_items_runtime_outcome(&request, true, None).expect("resolve cache");
+    assert_eq!(
+        outcome,
+        LanguageOwnerItemsRuntimeOutcome::Handled {
+            stdout: b"cached owner-items\n".to_vec(),
+            stderr: Vec::new(),
+            cache_hit: true,
+        }
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_runtime_outcome_compacts_and_caches_provider_success() {
+    let root = temp_root("owner-items-provider-outcome");
+    let cache_home = root.join(".cache");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
+    let args = vec!["items".to_string()];
+    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let request = LanguageOwnerItemsCacheRequest {
+        language_id: "rust",
+        args: &args,
+        invocation: &invocation,
+        owner: std::path::Path::new("src/lib.rs"),
+        project_root: &root,
+        cache_home: &cache_home,
+    };
+
+    let outcome = resolve_language_owner_items_runtime_outcome(
+        &request,
+        true,
+        Some(LanguageOwnerItemsProviderOutput {
+            status_success: true,
+            stdout: b"actionFrontier=internal\npublic owner item\n",
+            stderr: b"provider note\n",
+        }),
+    )
+    .expect("resolve provider output");
+    assert_eq!(
+        outcome,
+        LanguageOwnerItemsRuntimeOutcome::Handled {
+            stdout: b"public owner item\n".to_vec(),
+            stderr: b"provider note\n".to_vec(),
+            cache_hit: false,
+        }
+    );
+    assert_eq!(
+        read_language_owner_items_cache(&request).expect("read cache"),
+        Some(b"public owner item\n".to_vec())
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_runtime_outcome_unsupported_when_missing_owner_fails() {
+    let root = temp_root("owner-items-missing-owner-outcome");
+    let cache_home = root.join(".cache");
+    let args = vec!["items".to_string()];
+    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let request = LanguageOwnerItemsCacheRequest {
+        language_id: "rust",
+        args: &args,
+        invocation: &invocation,
+        owner: std::path::Path::new("src/missing.rs"),
+        project_root: &root,
+        cache_home: &cache_home,
+    };
+
+    let outcome = resolve_language_owner_items_runtime_outcome(
+        &request,
+        false,
+        Some(LanguageOwnerItemsProviderOutput {
+            status_success: false,
+            stdout: b"",
+            stderr: b"missing owner\n",
+        }),
+    )
+    .expect("resolve missing owner output");
+    assert_eq!(outcome, LanguageOwnerItemsRuntimeOutcome::Unsupported);
     let _ = fs::remove_dir_all(root);
 }
 

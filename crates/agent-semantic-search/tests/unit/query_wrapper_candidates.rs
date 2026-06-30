@@ -4,10 +4,38 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     QueryCandidateAppend, QueryWrapperCandidate, QueryWrapperCandidateSurface,
-    QueryWrapperScanConfig, QueryWrapperSourceIndexLookup, QueryWrapperSourceIndexRequest,
+    QueryWrapperQualityCandidate, QueryWrapperScanConfig, QueryWrapperSearchClause,
+    QueryWrapperSourceIndexLookup, QueryWrapperSourceIndexRequest, analyze_query_wrapper_quality,
     append_query_candidates, augment_package_path_candidates,
     collect_query_wrapper_source_index_candidates, query_candidate_priority,
+    query_wrapper_axis_terms, query_wrapper_candidate_matches_term, query_wrapper_package_key,
+    query_wrapper_terms,
 };
+
+#[test]
+fn query_wrapper_terms_split_and_dedupe_raw_queries() {
+    assert_eq!(
+        query_wrapper_terms("CacheStatus cache_status,cacheStatus|owner"),
+        vec![
+            "cachestatus".to_string(),
+            "cache_status".to_string(),
+            "owner".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn query_wrapper_axis_terms_expand_identifier_components() {
+    let terms = query_wrapper_axis_terms("CacheStatus cache_status HTTPServer");
+
+    assert!(terms.contains(&"cachestatus".to_string()));
+    assert!(terms.contains(&"cache".to_string()));
+    assert!(terms.contains(&"status".to_string()));
+    assert!(terms.contains(&"cache_status".to_string()));
+    assert!(terms.contains(&"httpserver".to_string()));
+    assert!(terms.contains(&"http".to_string()));
+    assert!(terms.contains(&"server".to_string()));
+}
 
 #[test]
 fn query_wrapper_scan_respects_ignore_dirs_and_language_files() {
@@ -117,6 +145,122 @@ fn query_candidate_priority_prefers_axis_coverage_and_runtime_source() {
 
     assert!(src_priority < test_priority);
     assert!(src_priority < partial_priority);
+}
+
+#[test]
+fn query_wrapper_quality_flags_broad_noisy_flat_recall() {
+    let clauses = vec![QueryWrapperSearchClause {
+        id: 1,
+        terms: vec![
+            "search".to_string(),
+            "provider".to_string(),
+            "owner".to_string(),
+            "policy".to_string(),
+        ],
+        axis_terms: Vec::new(),
+    }];
+    let candidates = vec![
+        QueryWrapperQualityCandidate {
+            path: "analyzers/julia/search_owner.jl".to_string(),
+            symbol: "search_owner".to_string(),
+            text: "provider owner policy".to_string(),
+        },
+        QueryWrapperQualityCandidate {
+            path: "packages/client/runtime/search.rs".to_string(),
+            symbol: "search_runtime".to_string(),
+            text: "provider search".to_string(),
+        },
+        QueryWrapperQualityCandidate {
+            path: "packages/protocol/command/search.rs".to_string(),
+            symbol: "owner_policy".to_string(),
+            text: "owner policy".to_string(),
+        },
+        QueryWrapperQualityCandidate {
+            path: "docs/search/provider.org".to_string(),
+            symbol: String::new(),
+            text: "search provider".to_string(),
+        },
+        QueryWrapperQualityCandidate {
+            path: "languages/python/search_provider.py".to_string(),
+            symbol: "provider".to_string(),
+            text: "provider".to_string(),
+        },
+    ];
+
+    let quality = analyze_query_wrapper_quality(&[], &clauses, &clauses[0].terms, &candidates);
+
+    assert_eq!(quality.query_pack_quality, "low");
+    assert_eq!(quality.scope_quality, "low");
+    assert_eq!(quality.package_cohesion, "low");
+    assert!(!quality.allow_query_selector);
+    assert!(quality.risks.contains(&"single-flat-or-recall".to_string()));
+    assert!(quality.risks.contains(&"broad-scope".to_string()));
+    assert!(quality.risks.contains(&"low-package-cohesion".to_string()));
+    assert!(quality.risks.contains(&"generic-terms".to_string()));
+    assert!(quality.risks.contains(&"noisy-candidates".to_string()));
+    assert_eq!(quality.noise, vec!["analyzers/julia".to_string()]);
+    assert_eq!(
+        query_wrapper_package_key("packages/client/runtime/search.rs"),
+        "packages/client/runtime"
+    );
+    assert!(query_wrapper_candidate_matches_term(
+        &candidates[0],
+        "owner"
+    ));
+}
+
+#[test]
+fn query_wrapper_quality_allows_focused_multi_clause_selector() {
+    let clauses = vec![
+        QueryWrapperSearchClause {
+            id: 1,
+            terms: vec!["state".to_string(), "manifest".to_string()],
+            axis_terms: Vec::new(),
+        },
+        QueryWrapperSearchClause {
+            id: 2,
+            terms: vec!["workspace".to_string(), "identity".to_string()],
+            axis_terms: Vec::new(),
+        },
+    ];
+    let candidates = vec![
+        QueryWrapperQualityCandidate {
+            path: "crates/agent-semantic-client-core/src/state_core.rs".to_string(),
+            symbol: "write_state_manifest".to_string(),
+            text: "state manifest workspace identity".to_string(),
+        },
+        QueryWrapperQualityCandidate {
+            path: "crates/agent-semantic-client-core/src/state_identity.rs".to_string(),
+            symbol: "workspace_identity".to_string(),
+            text: "workspace identity state".to_string(),
+        },
+    ];
+    let terms = clauses
+        .iter()
+        .flat_map(|clause| clause.terms.iter().cloned())
+        .collect::<Vec<_>>();
+
+    let quality = analyze_query_wrapper_quality(
+        &[std::path::PathBuf::from(
+            "crates/agent-semantic-client-core",
+        )],
+        &clauses,
+        &terms,
+        &candidates,
+    );
+
+    assert_eq!(quality.query_pack_quality, "high");
+    assert_eq!(quality.scope_quality, "high");
+    assert_eq!(quality.package_cohesion, "high");
+    assert!(quality.allow_query_selector);
+    assert!(quality.risks.is_empty());
+    assert_eq!(quality.clause_coverages.len(), 2);
+    assert!(
+        quality
+            .clause_coverages
+            .iter()
+            .all(|coverage| coverage.missing.is_empty())
+    );
 }
 
 #[test]

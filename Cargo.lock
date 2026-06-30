@@ -95,6 +95,8 @@ dependencies = [
  "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tokio",
  "turso",
 ]
 
@@ -107,6 +109,8 @@ dependencies = [
  "bytes",
  "criterion",
  "rust-lang-project-harness 0.1.2",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -201,6 +205,8 @@ dependencies = [
 name = "agent-semantic-search"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-client-core",
+ "agent-semantic-client-db",
  "agent-semantic-hook",
  "agent-semantic-provider-transport",
  "bytes",
@@ -208,6 +214,7 @@ dependencies = [
  "orgize",
  "rust-lang-project-harness 0.1.2",
  "serde_json",
+ "tokio",
  "turso",
  "which 8.0.4",
 ]

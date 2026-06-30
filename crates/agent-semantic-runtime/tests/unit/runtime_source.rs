@@ -5,8 +5,8 @@ use std::{
 };
 
 use super::{
-    RuntimeSourceSpec, ensure_runtime_source_checkout, runtime_source_checkout_dir,
-    runtime_source_index_context, runtime_source_registry_fingerprint,
+    RuntimeSourceSpec, collect_runtime_source_index_files, ensure_runtime_source_checkout,
+    runtime_source_checkout_dir, runtime_source_index_context, runtime_source_registry_fingerprint,
 };
 
 #[test]
@@ -81,6 +81,35 @@ fn runtime_source_index_context_rejects_checkouts_outside_client_cache() {
             .expect_err("checkout outside cache must fail");
 
     assert!(error.contains("outside ASP client cache"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn runtime_source_index_files_are_collected_by_runtime() {
+    let root = temp_root("runtime-source-index-files");
+    fs::create_dir_all(root.join("src/nested")).expect("create runtime source dir");
+    fs::create_dir_all(root.join(".git")).expect("create git dir");
+    fs::write(root.join("src/lib.rs"), "pub fn runtime_fixture() {}\n").expect("write rust file");
+    fs::write(root.join("src/nested/mod.rs"), "pub mod nested {}\n").expect("write nested rust");
+    fs::write(root.join("src/readme.md"), "# ignored\n").expect("write ignored extension");
+    fs::write(root.join(".git/ignored.rs"), "pub fn ignored() {}\n").expect("write vcs file");
+
+    let files = collect_runtime_source_index_files(&root, "rust", "rs-harness", 8)
+        .expect("collect runtime source index files");
+
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].path, root.join("src/lib.rs"));
+    assert_eq!(files[0].language_id, "rust");
+    assert_eq!(files[0].provider_id, "rs-harness");
+    assert_eq!(files[1].path, root.join("src/nested/mod.rs"));
+
+    let limited = collect_runtime_source_index_files(&root, "rust", "rs-harness", 1)
+        .expect("collect limited runtime source index files");
+    assert_eq!(limited.len(), 1);
+
+    let unknown = collect_runtime_source_index_files(&root, "unknown", "unknown-harness", 8)
+        .expect("collect unknown language runtime source index files");
+    assert!(unknown.is_empty());
     let _ = fs::remove_dir_all(root);
 }
 

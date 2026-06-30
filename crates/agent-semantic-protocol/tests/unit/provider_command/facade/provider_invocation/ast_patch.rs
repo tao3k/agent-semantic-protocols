@@ -58,11 +58,12 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
         .arg("--quiet")
         .arg("--manifest-path")
         .arg(&harness_manifest)
+        .arg("--target-dir")
+        .arg(&harness_target_dir)
         .arg("--features")
         .arg("cli,search")
         .arg("--bin")
         .arg("rs-harness")
-        .env("CARGO_TARGET_DIR", &harness_target_dir)
         .output()
         .expect("build rs-harness");
     assert!(

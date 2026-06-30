@@ -5,9 +5,9 @@ use super::provider_process::{provider_invocation_with_profile, run_provider_com
 use super::search_config::AspConfig;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use agent_semantic_runtime::{
-    LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, compact_language_owner_items_stdout,
-    language_owner_items_failure, language_owner_path_exists, read_language_owner_items_cache,
-    write_language_owner_items_cache,
+    LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsProviderOutput,
+    LanguageOwnerItemsRuntimeOutcome, language_owner_path_exists,
+    resolve_language_owner_items_runtime_outcome,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,9 +57,14 @@ pub(super) fn dispatch_language_owner_items(
         project_root: request.project_root,
         cache_home: request.cache_home,
     };
-    if let Some(cached) = read_language_owner_items_cache(&cache_request)? {
+    if let LanguageOwnerItemsRuntimeOutcome::Handled { stdout, stderr, .. } =
+        resolve_language_owner_items_runtime_outcome(&cache_request, existing_owner_path, None)?
+    {
+        io::stderr()
+            .write_all(stderr.as_ref())
+            .map_err(|error| format!("failed to write cached provider stderr: {error}"))?;
         io::stdout()
-            .write_all(cached.as_ref())
+            .write_all(stdout.as_ref())
             .map_err(|error| format!("failed to write cached provider stdout: {error}"))?;
         return Ok(LanguageOwnerItemsDispatchResult::Handled);
     }
@@ -71,39 +76,27 @@ pub(super) fn dispatch_language_owner_items(
         request.cache_home,
         Vec::new(),
     )?;
-    if !output.status.success() {
-        if !existing_owner_path {
-            return Ok(LanguageOwnerItemsDispatchResult::Unsupported);
+    match resolve_language_owner_items_runtime_outcome(
+        &cache_request,
+        existing_owner_path,
+        Some(LanguageOwnerItemsProviderOutput {
+            status_success: output.status.success(),
+            stdout: output.stdout.as_ref(),
+            stderr: output.stderr.as_ref(),
+        }),
+    )? {
+        LanguageOwnerItemsRuntimeOutcome::Handled { stdout, stderr, .. } => {
+            io::stderr()
+                .write_all(stderr.as_ref())
+                .map_err(|error| format!("failed to write provider stderr: {error}"))?;
+            io::stdout()
+                .write_all(stdout.as_ref())
+                .map_err(|error| format!("failed to write provider stdout: {error}"))?;
+            Ok(LanguageOwnerItemsDispatchResult::Handled)
         }
-        return Err(language_owner_items_failure(
-            "provider-owned owner-items failed",
-            request.owner,
-            output.stderr.as_ref(),
-            existing_owner_path,
-        ));
-    }
-    if output
-        .stdout
-        .iter()
-        .all(|byte| byte.is_ascii_whitespace() || *byte == 0)
-    {
-        if !existing_owner_path {
-            return Ok(LanguageOwnerItemsDispatchResult::Unsupported);
+        LanguageOwnerItemsRuntimeOutcome::Unsupported => {
+            Ok(LanguageOwnerItemsDispatchResult::Unsupported)
         }
-        return Err(language_owner_items_failure(
-            "provider-owned owner-items produced empty output",
-            request.owner,
-            output.stderr.as_ref(),
-            existing_owner_path,
-        ));
+        LanguageOwnerItemsRuntimeOutcome::Failed(message) => Err(message),
     }
-    io::stderr()
-        .write_all(output.stderr.as_ref())
-        .map_err(|error| format!("failed to write provider stderr: {error}"))?;
-    let stdout = compact_language_owner_items_stdout(output.stdout.as_ref());
-    write_language_owner_items_cache(&cache_request, stdout.as_ref())?;
-    io::stdout()
-        .write_all(stdout.as_ref())
-        .map_err(|error| format!("failed to write provider stdout: {error}"))?;
-    Ok(LanguageOwnerItemsDispatchResult::Handled)
 }

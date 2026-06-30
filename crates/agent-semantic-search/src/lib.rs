@@ -6,6 +6,7 @@ mod document_candidates;
 mod dynamic_candidates;
 mod dynamic_overlay;
 mod dynamic_search;
+mod evidence_graph_rank;
 mod lexical_overlay;
 mod native_finder;
 mod pipe_candidates;
@@ -17,8 +18,11 @@ mod query_wrapper_scan;
 mod search_language_files;
 mod search_lexical_replay;
 mod search_packet_replay;
+mod source_index_lookup;
 mod source_index_rank;
 mod syntax_query_replay;
+#[cfg(feature = "turso-overlay")]
+mod turso_overlay_search;
 
 pub use document_candidates::{
     DocumentSearchCandidate, DocumentSearchCandidateCollection, DocumentSearchCandidateRequest,
@@ -33,6 +37,10 @@ pub use dynamic_search::{
     DynamicOwnerItem, DynamicOwnerItemsRequest, DynamicOwnerPath, DynamicOwnerQuery,
     DynamicSearchLanguage, DynamicSearchRoots, render_dynamic_owner_items_code,
     render_dynamic_owner_items_frontier,
+};
+pub use evidence_graph_rank::{
+    EvidenceGraphRankNode, EvidenceGraphRankScore, EvidenceGraphRankedNode,
+    evidence_graph_rank_terms, rank_evidence_graph_nodes,
 };
 pub use lexical_overlay::{
     LexicalOverlayCandidateHit, LexicalOverlayDocument, LexicalOverlaySearchHit,
@@ -64,9 +72,12 @@ pub use query_packet_replay::{
     QueryPacketReplayRequest, query_packet_matches_request, render_query_packet_stdout,
 };
 pub use query_wrapper_candidates::{
-    QueryWrapperCandidateCollection, QueryWrapperSearchClause, QueryWrapperSearchRequest,
-    QueryWrapperSearchSourceIndexTrace, QueryWrapperSearchSurface,
-    collect_query_wrapper_candidate_collection,
+    QueryWrapperCandidateCollection, QueryWrapperClauseCoverage, QueryWrapperQuality,
+    QueryWrapperQualityCandidate, QueryWrapperSearchClause, QueryWrapperSearchRequest,
+    QueryWrapperSearchSourceIndexTrace, QueryWrapperSearchSurface, analyze_query_wrapper_quality,
+    collect_query_wrapper_candidate_collection, query_wrapper_axis_terms,
+    query_wrapper_candidate_matches_term, query_wrapper_package_clusters,
+    query_wrapper_package_key, query_wrapper_terms,
 };
 pub use query_wrapper_scan::{
     QUERY_WRAPPER_CANDIDATE_LIMIT, QueryCandidateAppend, QueryWrapperCandidate,
@@ -84,12 +95,23 @@ pub use search_lexical_replay::{
 pub use search_packet_replay::{
     output_with_delegation_hint_lines, search_output_artifact_replay_safe,
 };
+pub use source_index_lookup::{
+    SourceIndexClientCacheLookupRequest, SourceIndexLookupRequest, lookup_source_index,
+    lookup_source_index_for_language, lookup_source_index_in_cache,
+    lookup_source_index_in_client_cache_dir,
+};
 pub use source_index_rank::{
-    SourceIndexRankCandidate, rank_source_index_candidates, source_index_lookup_terms,
+    SourceIndexRankCandidate, rank_source_index_candidates, reorder_source_index_candidates,
+    source_index_lookup_terms,
 };
 pub use syntax_query_replay::{
     SyntaxQueryReplayCapture, SyntaxQueryRowsReplay, render_semantic_tree_sitter_query_rows_stdout,
     render_semantic_tree_sitter_query_stdout,
+};
+#[cfg(feature = "turso-overlay")]
+pub use turso_overlay_search::{
+    TursoOverlaySearchDocument, TursoOverlaySearchHit, bootstrap_turso_overlay_search_store,
+    search_turso_overlay_documents, upsert_turso_overlay_search_document,
 };
 
 #[cfg(test)]

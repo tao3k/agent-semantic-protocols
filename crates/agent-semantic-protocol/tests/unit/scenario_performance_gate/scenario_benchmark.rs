@@ -19,6 +19,24 @@ fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate() {
 }
 
 #[test]
+fn asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_gate(
+    );
+}
+
+#[test]
+fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[cfg(feature = "turso-overlay")]
+#[test]
+fn asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate(
+    );
+}
+
+#[test]
 fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate() {
     super::support::asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate();
 }

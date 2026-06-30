@@ -12,13 +12,19 @@ use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
     CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH,
     CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDb, ClientDbBackend, ClientDbEngine,
-    ClientDbGenerationLookup, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
-    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
-    ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest,
+    ClientDbGenerationLookup, ClientDbSourceIndexCandidateLookup,
+    ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
+    ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner,
+    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest,
     ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource,
-    ClientDbSourceIndexSourceKind, ClientDbStatus, build_source_index_import,
-    client_db_source_index_file_count, client_db_source_index_generation_id,
-    source_index_relative_path, source_index_scope_dirs,
+    ClientDbSourceIndexSourceKind, ClientDbStatus, ClientDbStructuralDependencyUsage,
+    ClientDbStructuralIndexImport, ClientDbStructuralKind, ClientDbStructuralLocator,
+    ClientDbStructuralName, ClientDbStructuralOwner, ClientDbStructuralPath,
+    ClientDbStructuralQueryKey, ClientDbStructuralSource, ClientDbStructuralSymbol,
+    assemble_source_index_import, build_source_index_import, client_db_source_index_file_count,
+    client_db_source_index_generation_id, client_db_source_index_registry_evidence_hash,
+    client_db_source_index_scope_dir_evidence_hash, source_index_evidence_graph,
+    source_index_relative_path, source_index_scope_dirs, structural_index_evidence_graph,
 };
 use serde_json::json;
 
@@ -52,6 +58,70 @@ fn inspect_reports_missing_without_creating_db() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[cfg(feature = "turso-backend")]
+#[tokio::test(flavor = "current_thread")]
+async fn turso_backend_bootstrap_smoke_creates_local_file_without_cutover() {
+    let root = temp_root("turso-bootstrap-smoke");
+    let sqlite_path = root.join("client.sqlite3");
+
+    let report = agent_semantic_client_db::bootstrap_turso_client_db(&sqlite_path)
+        .await
+        .expect("bootstrap Turso client DB");
+
+    assert_eq!(report.backend, TURSO_BACKEND);
+    assert_eq!(report.status, "bootstrap-smoke");
+    assert_eq!(report.db_file_name, "client.turso");
+    assert_eq!(report.schema_version, 1);
+    assert_eq!(report.schema_bootstrap, "ready");
+    assert_eq!(report.reason, None);
+    assert_eq!(report.db_path, root.join("client.turso"));
+    assert!(report.db_path.exists());
+    assert!(
+        !sqlite_path.exists(),
+        "Turso smoke must not create SQLite file"
+    );
+    agent_semantic_client_db::upsert_turso_search_document(
+        &sqlite_path,
+        &agent_semantic_client_db::TursoClientDbSearchDocument {
+            namespace: "stable".to_string(),
+            document_id: "doc:fixture".to_string(),
+            entity_id: "selector:rust://src/lib.rs#item/struct/TursoFixture".to_string(),
+            selector: Some("rust://src/lib.rs#item/struct/TursoFixture".to_string()),
+            document: "TursoFixture implements a searchable DB engine smoke document".to_string(),
+        },
+    )
+    .await
+    .expect("upsert Turso search document row");
+    agent_semantic_client_db::upsert_turso_overlay_document(
+        &sqlite_path,
+        &agent_semantic_client_db::TursoClientDbOverlayDocument {
+            repo_id: "repo-fixture".to_string(),
+            workspace_id: "workspace-fixture".to_string(),
+            session_id: "session-fixture".to_string(),
+            base_generation: "generation-fixture".to_string(),
+            document_id: "overlay:fixture".to_string(),
+            selector: Some("rust://src/lib.rs#item/struct/TursoFixture".to_string()),
+            document: "dirty overlay document for dynamic search smoke".to_string(),
+        },
+    )
+    .await
+    .expect("upsert Turso overlay document row");
+    let hits = agent_semantic_client_db::search_turso_documents(&sqlite_path, "TursoFixture", 8)
+        .await
+        .expect("search Turso documents");
+    assert!(
+        hits.iter()
+            .any(|hit| hit.source == "stable" && hit.document_id == "doc:fixture"),
+        "hits={hits:?}"
+    );
+    assert!(
+        hits.iter()
+            .any(|hit| hit.source == "overlay" && hit.document_id == "overlay:fixture"),
+        "hits={hits:?}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn source_index_import_builder_owns_owner_selector_projection() {
     assert_eq!(
@@ -79,6 +149,22 @@ fn source_index_import_builder_owns_owner_selector_projection() {
     );
     assert_eq!(client_db_source_index_file_count(7), 7);
     assert_eq!(client_db_source_index_file_count(usize::MAX), u32::MAX);
+    let registry_evidence = client_db_source_index_registry_evidence_hash("provider-registry");
+    assert_eq!(
+        registry_evidence.path,
+        CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH
+    );
+    assert_eq!(registry_evidence.byte_len, "provider-registry".len() as u64);
+    assert_eq!(registry_evidence.mtime_ms, 0);
+    assert_eq!(registry_evidence.sha256.len(), 64);
+    let scope_dir_evidence = client_db_source_index_scope_dir_evidence_hash("src", 3, 4);
+    assert_eq!(scope_dir_evidence.path, "@scope/dir/src");
+    assert_eq!(
+        scope_dir_evidence.sha256,
+        CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256
+    );
+    assert_eq!(scope_dir_evidence.byte_len, 3);
+    assert_eq!(scope_dir_evidence.mtime_ms, 4);
 
     let root = temp_root("source-index-import-builder");
 
@@ -119,6 +205,67 @@ fn source_index_import_builder_owns_owner_selector_projection() {
     assert_eq!(selector.symbol.as_deref(), Some("lib"));
     assert_eq!(selector.end_line, 1);
     assert_eq!(selector.source.as_str(), "rust-sql-source-index");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_import_assembly_owns_file_hashes_and_scope_evidence() {
+    let root = temp_root("source-index-import-assembly");
+    let src = root.join("src");
+    std::fs::create_dir_all(&src).expect("create source dir");
+    std::fs::write(src.join("lib.rs"), "pub fn db_owned_import_assembly() {}\n")
+        .expect("write source file");
+
+    let import = assemble_source_index_import(ClientDbSourceIndexImportAssemblyRequest {
+        generation_id: CacheGenerationId::from("source-index-assembly"),
+        project_root: root.clone(),
+        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        file_text_bytes_limit: 4096,
+        previous_file_hashes: None,
+        registry_fingerprint: "provider-registry".to_string(),
+        extra_scope_dirs: Vec::new(),
+        files: vec![ClientDbSourceIndexScopeFile {
+            path: src.join("lib.rs"),
+            language_id: LanguageId::from("rust"),
+            provider_id: ProviderId::from("rs-harness"),
+        }],
+    })
+    .expect("assemble source index import");
+
+    assert_eq!(import.file_hashes.len(), 4);
+    assert!(
+        import
+            .file_hashes
+            .iter()
+            .any(|hash| hash.path == "src/lib.rs")
+    );
+    assert!(
+        import
+            .file_hashes
+            .iter()
+            .any(|hash| { hash.path == CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH })
+    );
+    assert!(
+        import
+            .file_hashes
+            .iter()
+            .any(|hash| hash.path == "@scope/dir/src")
+    );
+    assert!(
+        import
+            .file_hashes
+            .iter()
+            .any(|hash| hash.path == "@scope/dir/.")
+    );
+    assert_eq!(import.owners.len(), 1);
+    assert!(
+        import.owners[0]
+            .query_keys
+            .iter()
+            .any(|key| key.as_str() == "db_owned_import_assembly")
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -273,6 +420,195 @@ fn source_index_lookup_dto_contract_is_db_owned() {
     );
 }
 
+#[test]
+fn source_index_candidate_lookup_is_db_owned_and_deduplicated() {
+    let root = temp_root("source-index-candidate-lookup");
+    let db_path = root.join("client.sqlite3");
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let import = source_index_import_fixture(&root, "source-index-test");
+    db.refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
+        import,
+        file_count: 1,
+    })
+    .expect("refresh source index");
+
+    let hit = db
+        .lookup_source_index_candidates(&ClientDbSourceIndexCandidateLookup {
+            project_root: root.clone(),
+            language_id: Some(LanguageId::from("rust")),
+            query_keys: vec![
+                ClientDbSourceIndexQueryKey::from("source_index_fixture"),
+                ClientDbSourceIndexQueryKey::from("lib"),
+            ],
+            limit: 8,
+        })
+        .expect("lookup source index candidates");
+
+    assert_eq!(hit.state, ClientDbSourceIndexLookupState::Hit);
+    assert_eq!(hit.candidates.len(), 1);
+    assert_eq!(hit.candidates[0].path, "src/lib.rs");
+
+    let miss = db
+        .lookup_source_index_candidates(&ClientDbSourceIndexCandidateLookup {
+            project_root: root.clone(),
+            language_id: Some(LanguageId::from("rust")),
+            query_keys: vec![ClientDbSourceIndexQueryKey::from("not_present")],
+            limit: 8,
+        })
+        .expect("lookup source index miss");
+    assert_eq!(miss.state, ClientDbSourceIndexLookupState::Miss);
+    assert!(miss.candidates.is_empty());
+
+    let empty_db_path = root.join("empty.sqlite3");
+    let empty_db = ClientDb::open_or_create(&empty_db_path).expect("open empty db");
+    let empty = empty_db
+        .lookup_source_index_candidates(&ClientDbSourceIndexCandidateLookup {
+            project_root: root.clone(),
+            language_id: Some(LanguageId::from("rust")),
+            query_keys: vec![ClientDbSourceIndexQueryKey::from("source_index_fixture")],
+            limit: 8,
+        })
+        .expect("lookup empty source index");
+    assert_eq!(empty.state, ClientDbSourceIndexLookupState::EmptyIndex);
+    assert!(empty.candidates.is_empty());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn evidence_graph_projects_source_index_without_line_identity() {
+    let root = temp_root("evidence-graph-source");
+    let import = source_index_import_fixture(&root, "source-index-test");
+
+    let graph = source_index_evidence_graph(&import);
+
+    assert_eq!(
+        graph.schema_id,
+        agent_semantic_client_db::CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_ID
+    );
+    assert_eq!(
+        graph.schema_version,
+        agent_semantic_client_db::CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_VERSION
+    );
+    assert_eq!(graph.generation_id, "source-index-test");
+    assert_eq!(graph.project_root, root);
+    assert!(graph.nodes.iter().any(|node| {
+        node.kind == "source-owner" && node.id == "source-owner:source-index-test:src/lib.rs"
+    }));
+    let selector = graph
+        .nodes
+        .iter()
+        .find(|node| node.kind == "selector")
+        .expect("selector node");
+    assert_eq!(selector.selector.as_deref(), Some("rust://src/lib.rs#file"));
+    assert_eq!(selector.id, "selector:rust://src/lib.rs#file");
+    assert!(!selector.id.contains(":1:"));
+    let json = serde_json::to_value(&graph).expect("serialize evidence graph");
+    assert_eq!(
+        json["schemaId"],
+        "agent.semantic-protocols.evidence-graph-read-model"
+    );
+    assert_eq!(json["schemaVersion"], "1");
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/semantic-evidence-graph-read-model.v1.schema.json"
+    ))
+    .expect("parse evidence graph schema");
+    assert_eq!(
+        schema["properties"]["schemaId"]["const"],
+        "agent.semantic-protocols.evidence-graph-read-model"
+    );
+    assert_eq!(
+        schema["$id"],
+        "https://agent-semantic-protocols.local/schemas/semantic-evidence-graph-read-model.v1.schema.json"
+    );
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == "contains-selector"
+            && edge.from == "source-owner:source-index-test:src/lib.rs"
+            && edge.to == "selector:rust://src/lib.rs#file"
+    }));
+}
+
+#[test]
+fn evidence_graph_projects_structural_index_symbols_and_dependencies() {
+    let root = temp_root("evidence-graph-structural");
+    let import = ClientDbStructuralIndexImport {
+        generation_id: CacheGenerationId::from("structural-index-test"),
+        language_id: LanguageId::from("rust"),
+        provider_id: ProviderId::from("rs-harness"),
+        provider_version: None,
+        export_method: None,
+        project_root: root.clone(),
+        package_root: None,
+        schema_id: SemanticSchemaId::from("agent.semantic-protocols.semantic-structural-index"),
+        schema_version: SemanticSchemaVersion::from("1"),
+        source_artifact_id: None,
+        file_hashes: vec![ClientCacheFileHash {
+            path: "src/lib.rs".to_string(),
+            sha256: "0123456789abcdef".repeat(4),
+            byte_len: 27,
+            mtime_ms: 42,
+        }],
+        owners: vec![ClientDbStructuralOwner {
+            owner_path: ClientDbStructuralPath::from("src/lib.rs"),
+            owner_kind: ClientDbStructuralKind::from("file"),
+            source_authority: ClientDbStructuralSource::from("provider"),
+            start_line: Some(1),
+            end_line: Some(9),
+            query_keys: vec![ClientDbStructuralQueryKey::from("lib")],
+        }],
+        symbols: vec![ClientDbStructuralSymbol {
+            owner_path: ClientDbStructuralPath::from("src/lib.rs"),
+            name: ClientDbStructuralName::from("EvidenceFixture"),
+            kind: ClientDbStructuralKind::from("struct"),
+            visibility: None,
+            source_locator: Some(ClientDbStructuralLocator::from(
+                "rust://src/lib.rs#item/struct/EvidenceFixture",
+            )),
+            query_keys: vec![ClientDbStructuralQueryKey::from("EvidenceFixture")],
+        }],
+        dependency_usages: vec![ClientDbStructuralDependencyUsage {
+            owner_path: ClientDbStructuralPath::from("src/lib.rs"),
+            package_name: ClientDbStructuralName::from("serde"),
+            package_version: None,
+            api_name: Some(ClientDbStructuralName::from("Serialize")),
+            import_path: None,
+            manifest_path: None,
+            lockfile_hash: None,
+            source: ClientDbStructuralSource::from("provider"),
+            source_locator: Some(ClientDbStructuralLocator::from(
+                "rust://src/lib.rs#use/serde/Serialize",
+            )),
+            query_keys: vec![ClientDbStructuralQueryKey::from("serde")],
+        }],
+    };
+
+    let graph = structural_index_evidence_graph(&import);
+
+    assert_eq!(graph.generation_id, "structural-index-test");
+    assert!(graph.nodes.iter().any(|node| {
+        node.kind == "structural-owner"
+            && node.id == "structural-owner:structural-index-test:src/lib.rs"
+    }));
+    assert!(graph.nodes.iter().any(|node| {
+        node.kind == "symbol"
+            && node.selector.as_deref() == Some("rust://src/lib.rs#item/struct/EvidenceFixture")
+            && !node.id.contains(":1:")
+    }));
+    assert!(graph.nodes.iter().any(|node| {
+        node.kind == "dependency-usage"
+            && node.label == "serde::Serialize"
+            && node.selector.as_deref() == Some("rust://src/lib.rs#use/serde/Serialize")
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == "defines-symbol"
+            && edge.from == "structural-owner:structural-index-test:src/lib.rs"
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.kind == "uses-dependency"
+            && edge.from == "structural-owner:structural-index-test:src/lib.rs"
+    }));
+}
+
 fn source_index_import_fixture(
     root: &std::path::Path,
     generation_id: &str,
@@ -346,6 +682,11 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
     assert_eq!(engine_report.future_backend_report.backend, TURSO_BACKEND);
     assert_eq!(engine_report.future_backend_report.status, "planned");
     assert_eq!(
+        engine_report.future_backend_report.db_file_name,
+        "client.turso"
+    );
+    assert_eq!(engine_report.future_backend_report.schema_version, 1);
+    assert_eq!(
         engine_report.future_backend_report.schema_bootstrap,
         "pending-cutover"
     );
@@ -363,6 +704,18 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
     assert!(engine_report.future_backend_report.features.fts);
     assert!(engine_report.future_backend_report.features.overlay_search);
     assert!(engine_report.future_backend_report.features.sync);
+    assert_eq!(
+        engine_report.future_backend_report.db_path,
+        engine.db_path().with_file_name("client.turso")
+    );
+    assert_eq!(
+        ClientDbEngine::turso_path_for_client_dir(engine.client_dir()),
+        engine_report.future_backend_report.db_path
+    );
+    assert_eq!(
+        ClientDbEngine::inspect_turso_client_dir(engine.client_dir()),
+        engine_report.future_backend_report
+    );
     assert_eq!(engine_report.db_path, state.paths.client_db_path);
     assert_eq!(
         engine_report.manifest_path,
@@ -396,6 +749,10 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
     assert_eq!(
         engine_report_json["futureBackendReport"]["schemaBootstrap"],
         "pending-cutover"
+    );
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["schemaVersion"],
+        1
     );
     assert_eq!(
         engine_report_json["futureBackendReport"]["durability"],

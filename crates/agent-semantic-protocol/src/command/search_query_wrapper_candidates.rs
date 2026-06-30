@@ -8,6 +8,7 @@ use agent_semantic_search::{
     QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
     QueryWrapperSearchSurface, QueryWrapperSourceIndexCandidate, QueryWrapperSourceIndexLookup,
     collect_query_wrapper_candidate_collection as collect_search_query_wrapper_candidate_collection,
+    query_wrapper_axis_terms, query_wrapper_terms,
 };
 use serde_json::Value;
 
@@ -204,7 +205,7 @@ pub(super) fn query_clauses(queries: &[String]) -> Vec<QueryWrapperClause> {
                 id: index + 1,
                 raw: raw.clone(),
                 terms,
-                axis_terms: query_axis_terms_for_raw(raw),
+                axis_terms: query_wrapper_axis_terms(raw),
             })
         })
         .collect()
@@ -223,76 +224,7 @@ pub(super) fn unique_clause_terms(clauses: &[QueryWrapperClause]) -> Vec<String>
 }
 
 fn query_terms(query: &str) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    query
-        .split(|character: char| character == '|' || character == ',' || character.is_whitespace())
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .map(str::to_ascii_lowercase)
-        .filter(|term| seen.insert(term.clone()))
-        .collect()
-}
-
-pub(super) fn candidate_matches_term(candidate: &Candidate, term: &str) -> bool {
-    let lower =
-        format!("{} {} {}", candidate.path, candidate.symbol, candidate.text).to_ascii_lowercase();
-    lower.contains(term)
-}
-
-fn query_axis_terms_for_raw(raw: &str) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    raw.split(|character: char| character == '|' || character == ',' || character.is_whitespace())
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .flat_map(expanded_query_terms)
-        .filter(|term| seen.insert(term.clone()))
-        .collect()
-}
-
-fn expanded_query_terms(raw: &str) -> Vec<String> {
-    let normalized = raw.to_ascii_lowercase();
-    let normalized_filter = normalized.clone();
-    std::iter::once(normalized)
-        .chain(
-            identifier_components(raw)
-                .into_iter()
-                .filter(move |component| component.len() >= 2 && component != &normalized_filter),
-        )
-        .collect()
-}
-
-fn identifier_components(raw: &str) -> Vec<String> {
-    let chars = raw.chars().collect::<Vec<_>>();
-    let mut components = Vec::new();
-    let mut current = String::new();
-    for (index, character) in chars.iter().enumerate() {
-        if !character.is_alphanumeric() {
-            push_component(&mut components, &mut current);
-            continue;
-        }
-        let previous = index
-            .checked_sub(1)
-            .and_then(|previous| chars.get(previous));
-        let next = chars.get(index + 1);
-        let uppercase_boundary = character.is_uppercase()
-            && previous.is_some_and(|previous| {
-                previous.is_lowercase()
-                    || previous.is_ascii_digit()
-                    || (previous.is_uppercase() && next.is_some_and(|next| next.is_lowercase()))
-            });
-        if uppercase_boundary {
-            push_component(&mut components, &mut current);
-        }
-        current.push(character.to_ascii_lowercase());
-    }
-    push_component(&mut components, &mut current);
-    components
-}
-
-fn push_component(components: &mut Vec<String>, current: &mut String) {
-    if !current.is_empty() {
-        components.push(std::mem::take(current));
-    }
+    query_wrapper_terms(query)
 }
 
 pub(super) fn owner_candidates(candidates: &[Candidate]) -> Vec<String> {

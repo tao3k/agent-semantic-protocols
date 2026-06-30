@@ -1,7 +1,6 @@
 //! Public refresh API for the Rust SQL source index.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
 
 use agent_semantic_client_core::{
@@ -9,14 +8,18 @@ use agent_semantic_client_core::{
     ProviderRegistrySnapshot, SemanticSchemaId, SemanticSchemaVersion,
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbEngine, ClientDbSourceIndexRefreshRequest, client_db_source_index_file_count,
-    client_db_source_index_generation_id,
+    ClientDb, ClientDbEngine, ClientDbSourceIndexImportAssemblyRequest,
+    ClientDbSourceIndexRefreshRequest, client_db_source_index_file_count,
+    client_db_source_index_generation_id, source_index_file_hashes,
+    source_index_import_with_file_hashes,
 };
-use agent_semantic_runtime::runtime_source_index_context;
+use agent_semantic_runtime::{collect_runtime_source_index_files, runtime_source_index_context};
 
 use super::collect::collect_source_index_files;
-use super::config::{SOURCE_INDEX_FILE_LIMIT, SOURCE_INDEX_SCHEMA_ID, SOURCE_INDEX_SCHEMA_VERSION};
-use super::import::{source_index_file_hashes, source_index_import_with_file_hashes};
+use super::config::{
+    SOURCE_INDEX_FILE_BYTES_LIMIT, SOURCE_INDEX_FILE_LIMIT, SOURCE_INDEX_PROVIDER_ID,
+    SOURCE_INDEX_SCHEMA_ID, SOURCE_INDEX_SCHEMA_VERSION,
+};
 use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
 
 /// Refresh the Rust SQL source index for a project without storing raw source.
@@ -62,9 +65,17 @@ pub fn refresh_runtime_source_index(
 
     let files = collect_runtime_source_index_files(
         &runtime_context.checkout_root,
-        language_id,
-        provider_id,
-    )?;
+        language_id.as_str(),
+        provider_id.as_str(),
+        SOURCE_INDEX_FILE_LIMIT,
+    )?
+    .into_iter()
+    .map(|file| SourceIndexScopeFile {
+        path: file.path,
+        language_id: LanguageId::from(file.language_id),
+        provider_id: ProviderId::from(file.provider_id),
+    })
+    .collect::<Vec<_>>();
     if files.is_empty() {
         return Err(format!(
             "runtime source index found no source files in {} for language {}",
@@ -131,7 +142,7 @@ impl SourceIndexRefreshContext {
             request.files,
             request.previous_file_hashes,
             &request.registry.fingerprint,
-            &request.registry.scope_dirs,
+            request.registry.scope_dirs.iter().map(String::as_str),
         )?;
         if let Some(stats) = self.db.reusable_source_index_generation(
             request.index_root,
@@ -148,9 +159,18 @@ impl SourceIndexRefreshContext {
         }
         let generation_id = client_db_source_index_generation_id();
         let import = source_index_import_with_file_hashes(
-            request.index_root,
-            generation_id,
-            request.files,
+            ClientDbSourceIndexImportAssemblyRequest {
+                generation_id,
+                project_root: request.index_root.to_path_buf(),
+                schema_id: self.schema_id.clone(),
+                schema_version: self.schema_version.clone(),
+                selector_source: SOURCE_INDEX_PROVIDER_ID.into(),
+                file_text_bytes_limit: SOURCE_INDEX_FILE_BYTES_LIMIT,
+                previous_file_hashes: None,
+                registry_fingerprint: request.registry.fingerprint.clone(),
+                extra_scope_dirs: request.registry.scope_dirs.iter().cloned().collect(),
+                files: request.files.to_vec(),
+            },
             file_hashes,
         )?;
         let report = self
@@ -199,7 +219,7 @@ fn try_reuse_source_index_scope(
         &files,
         Some(previous_file_hashes),
         &scope.registry.fingerprint,
-        &scope.registry.scope_dirs,
+        scope.registry.scope_dirs.iter().map(String::as_str),
     ) {
         Ok(file_hashes) => file_hashes,
         Err(_) => return Ok(None),
@@ -233,95 +253,4 @@ fn source_index_refresh_report(
         file_count,
         reused_generation,
     )
-}
-
-fn collect_runtime_source_index_files(
-    checkout_root: &Path,
-    language_id: &LanguageId,
-    provider_id: &ProviderId,
-) -> Result<Vec<SourceIndexScopeFile>, String> {
-    let mut files = Vec::new();
-    collect_runtime_source_index_files_from_dir(
-        checkout_root,
-        language_id,
-        provider_id,
-        &mut files,
-    )?;
-    files.sort_by(|left, right| left.path.cmp(&right.path));
-    files.truncate(SOURCE_INDEX_FILE_LIMIT);
-    Ok(files)
-}
-
-fn collect_runtime_source_index_files_from_dir(
-    dir: &Path,
-    language_id: &LanguageId,
-    provider_id: &ProviderId,
-    files: &mut Vec<SourceIndexScopeFile>,
-) -> Result<(), String> {
-    if files.len() >= SOURCE_INDEX_FILE_LIMIT {
-        return Ok(());
-    }
-    let mut entries = fs::read_dir(dir)
-        .map_err(|error| {
-            format!(
-                "failed to read runtime source dir {}: {error}",
-                dir.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("failed to read runtime source dir entry: {error}"))?;
-    entries.sort_by_key(std::fs::DirEntry::path);
-    for entry in entries {
-        if files.len() >= SOURCE_INDEX_FILE_LIMIT {
-            break;
-        }
-        let path = entry.path();
-        let file_type = entry.file_type().map_err(|error| {
-            format!(
-                "failed to inspect runtime source file type {}: {error}",
-                path.display()
-            )
-        })?;
-        if file_type.is_dir() {
-            if !runtime_source_dir_is_skipped(&path) {
-                collect_runtime_source_index_files_from_dir(
-                    &path,
-                    language_id,
-                    provider_id,
-                    files,
-                )?;
-            }
-        } else if file_type.is_file() && runtime_source_file_matches(language_id, &path) {
-            files.push(SourceIndexScopeFile {
-                path,
-                language_id: language_id.clone(),
-                provider_id: provider_id.clone(),
-            });
-        }
-    }
-    Ok(())
-}
-
-fn runtime_source_dir_is_skipped(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| matches!(name, ".git" | ".hg" | ".svn"))
-}
-
-fn runtime_source_file_matches(language_id: &LanguageId, path: &Path) -> bool {
-    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
-        return false;
-    };
-    let extension = extension.to_ascii_lowercase();
-    match language_id.as_str() {
-        "gerbil-scheme" => matches!(extension.as_str(), "ss" | "scm" | "sld" | "sch" | "scheme"),
-        "julia" => extension == "jl",
-        "python" => extension == "py",
-        "rust" => extension == "rs",
-        "typescript" => matches!(
-            extension.as_str(),
-            "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs"
-        ),
-        _ => false,
-    }
 }

@@ -3,7 +3,6 @@
 mod api;
 mod collect;
 mod config;
-mod import;
 mod lookup;
 mod model;
 

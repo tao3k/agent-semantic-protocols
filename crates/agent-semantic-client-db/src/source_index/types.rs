@@ -1,12 +1,13 @@
 //! Public value types for Rust-owned SQL source index rows.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
     SemanticSchemaVersion,
 };
+use sha2::{Digest, Sha256};
 
 pub const CLIENT_DB_SOURCE_INDEX_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-source-index";
 pub const CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION: &str = "1";
@@ -28,6 +29,32 @@ pub fn client_db_source_index_generation_id() -> CacheGenerationId {
 #[must_use]
 pub fn client_db_source_index_file_count(file_count: usize) -> u32 {
     file_count.min(u32::MAX as usize) as u32
+}
+
+#[must_use]
+pub fn client_db_source_index_registry_evidence_hash(
+    registry_fingerprint: &str,
+) -> ClientCacheFileHash {
+    ClientCacheFileHash {
+        path: CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH.to_string(),
+        sha256: format!("{:x}", Sha256::digest(registry_fingerprint.as_bytes())),
+        byte_len: registry_fingerprint.len().min(u64::MAX as usize) as u64,
+        mtime_ms: 0,
+    }
+}
+
+#[must_use]
+pub fn client_db_source_index_scope_dir_evidence_hash(
+    relative_dir: &str,
+    byte_len: u64,
+    mtime_ms: u64,
+) -> ClientCacheFileHash {
+    ClientCacheFileHash {
+        path: format!("{CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX}{relative_dir}"),
+        sha256: CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256.to_string(),
+        byte_len,
+        mtime_ms,
+    }
 }
 
 macro_rules! source_index_value_type {
@@ -109,6 +136,22 @@ pub struct ClientDbSourceIndexImportRequest {
     pub selector_source: ClientDbSourceIndexSource,
     pub file_hashes: Vec<ClientCacheFileHash>,
     pub files: Vec<ClientDbSourceIndexImportFile>,
+}
+
+/// Request for assembling source-index file hashes and import rows from
+/// workspace files without storing raw source text in durable rows.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbSourceIndexImportAssemblyRequest {
+    pub generation_id: CacheGenerationId,
+    pub project_root: PathBuf,
+    pub schema_id: SemanticSchemaId,
+    pub schema_version: SemanticSchemaVersion,
+    pub selector_source: ClientDbSourceIndexSource,
+    pub file_text_bytes_limit: u64,
+    pub previous_file_hashes: Option<Vec<ClientCacheFileHash>>,
+    pub registry_fingerprint: String,
+    pub extra_scope_dirs: Vec<String>,
+    pub files: Vec<ClientDbSourceIndexScopeFile>,
 }
 
 /// Rust-owned owner row retained for index-first broad search.
@@ -213,6 +256,32 @@ pub struct ClientDbSourceIndexLookupResult {
     pub candidates: Vec<ClientDbSourceIndexCandidate>,
 }
 
+/// Request for looking up source-index candidates through a project state root.
+pub struct ClientDbSourceIndexProjectLookupRequest<'a> {
+    pub cache_project_root: &'a Path,
+    pub indexed_project_root: &'a Path,
+    pub language_id: Option<&'a LanguageId>,
+    pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
+    pub limit: u32,
+}
+
+/// Request for looking up source-index candidates from an already resolved
+/// client cache directory.
+pub struct ClientDbSourceIndexClientDirLookupRequest<'a> {
+    pub client_dir: &'a Path,
+    pub indexed_project_root: &'a Path,
+    pub language_id: Option<&'a LanguageId>,
+    pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
+    pub limit: u32,
+}
+
+/// DB-owned source-index candidate lookup result without path projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbSourceIndexCandidateLookupResult {
+    pub state: ClientDbSourceIndexLookupState,
+    pub candidates: Vec<ClientDbSourceIndexCandidate>,
+}
+
 /// Rust-owned selector row retained for exact owner-local expansion.
 ///
 /// `selector_id` is the stable structural selector identity. Line fields are
@@ -305,6 +374,15 @@ pub struct ClientDbSourceIndexLookup {
     pub project_root: PathBuf,
     pub language_id: Option<LanguageId>,
     pub query: ClientDbSourceIndexQueryKey,
+    pub limit: u32,
+}
+
+/// Lookup request for a multi-key Rust-owned source-index candidate query.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbSourceIndexCandidateLookup {
+    pub project_root: PathBuf,
+    pub language_id: Option<LanguageId>,
+    pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
 }
 

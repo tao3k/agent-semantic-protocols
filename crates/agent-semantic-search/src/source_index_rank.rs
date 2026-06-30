@@ -53,6 +53,37 @@ pub fn rank_source_index_candidates(
         .collect()
 }
 
+/// Reorder source-index candidates by the shared source-index ranking policy
+/// without making the search crate depend on the concrete DB/client DTO.
+#[must_use]
+pub fn reorder_source_index_candidates<Candidate>(
+    candidates: Vec<Candidate>,
+    query: &str,
+    mut path: impl FnMut(&Candidate) -> String,
+    mut query_keys: impl FnMut(&Candidate) -> Vec<String>,
+) -> Vec<Candidate> {
+    let ranked = rank_source_index_candidates(
+        candidates
+            .iter()
+            .enumerate()
+            .map(|(ordinal, candidate)| SourceIndexRankCandidate {
+                ordinal,
+                path: path(candidate),
+                query_keys: query_keys(candidate),
+            })
+            .collect(),
+        query,
+    );
+    let mut candidates = candidates
+        .into_iter()
+        .map(Some)
+        .collect::<Vec<Option<Candidate>>>();
+    ranked
+        .into_iter()
+        .filter_map(|candidate| candidates.get_mut(candidate.ordinal).and_then(Option::take))
+        .collect()
+}
+
 type SourceIndexCandidateSortKey = (Reverse<usize>, usize);
 
 fn source_index_candidate_sort_key(

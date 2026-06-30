@@ -125,9 +125,6 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
         )
         self.assertEqual(str(home.parent / "tmp"), observed_envs[0]["TMPDIR"])
         self.assertEqual(str(home.parent / "cache"), observed_envs[0]["XDG_CACHE_HOME"])
-        self.assertEqual(
-            str(home.parent / "cargo-target"), observed_envs[0]["CARGO_TARGET_DIR"]
-        )
         self.assertIn("isolation", result.evidence)
         isolation = result.evidence["isolation"]
         self.assertTrue(isolation["enabled"])

@@ -1,0 +1,15 @@
+id = "asp-turso-overlay-search-adapter-cold-functional-path"
+title = "ASP search crate resolves Turso overlay documents through the DB Engine adapter on a cold fixture"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-TURSO-OVERLAY-COLD-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-DYNAMIC-OVERLAY-001",
+]
+agent_goal = "Keep dirty-code overlay search owned by agent-semantic-search: after a cold Turso local-file bootstrap, the adapter must write and read transient overlay documents through the DB Engine seam without command/client fallback or executable line-range identity."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::bootstrap_turso_overlay_search_store",
+  "agent_semantic_search::search_turso_overlay_documents",
+  "providerProcessCount=0",
+]
+inputs = "inputs"
+expected = "expected"

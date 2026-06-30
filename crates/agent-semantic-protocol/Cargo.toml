@@ -42,3 +42,6 @@ rs-harness = { path = "../../languages/rust-lang-project-harness/rs-harness" }
 rust-lang-project-harness = { workspace = true }
 toml = "0.9"
 insta = "1"
+
+[features]
+turso-overlay = ["agent-semantic-search/turso-overlay"]

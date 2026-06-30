@@ -36,6 +36,26 @@ pub struct LanguageOwnerItemsCacheRequest<'a> {
     pub cache_home: &'a Path,
 }
 
+/// Provider process output projected into runtime-owned owner-items policy.
+pub struct LanguageOwnerItemsProviderOutput<'a> {
+    pub status_success: bool,
+    pub stdout: &'a [u8],
+    pub stderr: &'a [u8],
+}
+
+/// Runtime decision after applying owner-items cache, compaction, and
+/// fail-closed policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LanguageOwnerItemsRuntimeOutcome {
+    Handled {
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
+        cache_hit: bool,
+    },
+    Unsupported,
+    Failed(String),
+}
+
 /// Run owner-items dispatch through the shared provider-owned policy.
 ///
 /// The command layer supplies the provider adapter, but the runtime owns the
@@ -108,6 +128,62 @@ pub fn write_language_owner_items_cache(
     fs::create_dir_all(parent)
         .map_err(|error| format!("failed to create owner-items cache dir: {error}"))?;
     fs::write(path, stdout).map_err(|error| format!("failed to write owner-items cache: {error}"))
+}
+
+/// Resolve cached or fresh provider output through runtime-owned owner-items
+/// policy. Command layers provide process output and perform final I/O only.
+pub fn resolve_language_owner_items_runtime_outcome(
+    request: &LanguageOwnerItemsCacheRequest<'_>,
+    existing_owner_path: bool,
+    provider_output: Option<LanguageOwnerItemsProviderOutput<'_>>,
+) -> Result<LanguageOwnerItemsRuntimeOutcome, String> {
+    if let Some(cached) = read_language_owner_items_cache(request)? {
+        return Ok(LanguageOwnerItemsRuntimeOutcome::Handled {
+            stdout: cached,
+            stderr: Vec::new(),
+            cache_hit: true,
+        });
+    }
+    let Some(output) = provider_output else {
+        return Ok(LanguageOwnerItemsRuntimeOutcome::Unsupported);
+    };
+    if !output.status_success {
+        if !existing_owner_path {
+            return Ok(LanguageOwnerItemsRuntimeOutcome::Unsupported);
+        }
+        return Ok(LanguageOwnerItemsRuntimeOutcome::Failed(
+            language_owner_items_failure(
+                "provider-owned owner-items failed",
+                request.owner,
+                output.stderr,
+                existing_owner_path,
+            ),
+        ));
+    }
+    if output
+        .stdout
+        .iter()
+        .all(|byte| byte.is_ascii_whitespace() || *byte == 0)
+    {
+        if !existing_owner_path {
+            return Ok(LanguageOwnerItemsRuntimeOutcome::Unsupported);
+        }
+        return Ok(LanguageOwnerItemsRuntimeOutcome::Failed(
+            language_owner_items_failure(
+                "provider-owned owner-items produced empty output",
+                request.owner,
+                output.stderr,
+                existing_owner_path,
+            ),
+        ));
+    }
+    let stdout = compact_language_owner_items_stdout(output.stdout);
+    write_language_owner_items_cache(request, stdout.as_ref())?;
+    Ok(LanguageOwnerItemsRuntimeOutcome::Handled {
+        stdout,
+        stderr: output.stderr.to_vec(),
+        cache_hit: false,
+    })
 }
 
 /// Compact language harness stdout into the bounded `owner-items` cache shape.

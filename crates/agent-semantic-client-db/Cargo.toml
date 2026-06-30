@@ -10,6 +10,7 @@ agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 rusqlite = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 turso = { workspace = true, optional = true }
 
 [features]
@@ -26,3 +27,4 @@ rust-lang-project-harness = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 rust-lang-project-harness = { workspace = true }
+tokio = { workspace = true }

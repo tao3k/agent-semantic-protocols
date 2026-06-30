@@ -6,6 +6,8 @@ description = "Search orchestration services for ASP agent-facing queries."
 license = "MIT"
 
 [dependencies]
+agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+agent-semantic-client-db = { path = "../agent-semantic-client-db" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 bytes = { workspace = true }
@@ -20,5 +22,7 @@ rust-lang-project-harness = { workspace = true }
 
 [dev-dependencies]
 rust-lang-project-harness = { workspace = true }
+tokio = { workspace = true }
+
 [features]
-turso-overlay = []
+turso-overlay = ["agent-semantic-client-db/turso-backend"]

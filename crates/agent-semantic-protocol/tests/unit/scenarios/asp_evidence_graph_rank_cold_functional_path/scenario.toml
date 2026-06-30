@@ -1,0 +1,14 @@
+id = "asp-evidence-graph-rank-cold-functional-path"
+title = "ASP EvidenceGraph ranking keeps selector-first graph-route seeds inside a scenario gate"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-GRAPH-ROUTE-EVIDENCE-RANK-COLD-001",
+]
+agent_goal = "Keep the EvidenceGraph graph-route ranking seam owned by agent-semantic-search: a cold functional fixture must rank selector-bearing, query-key matched evidence above broad owner hits, keep topology as a bounded tie-breaker, avoid provider/native finder work, and keep line ranges out of executable identity."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::rank_evidence_graph_nodes",
+  "selectorFirst=true",
+  "requireBoundedTopologyBonus=true",
+]
+inputs = "inputs"
+expected = "expected"

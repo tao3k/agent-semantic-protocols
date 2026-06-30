@@ -4,7 +4,6 @@
 
 mod graph_render;
 pub mod language_owner_items;
-mod provider_workspace_scope;
 mod runtime_source;
 pub mod state;
 
@@ -14,19 +13,18 @@ pub use graph_render::{
 };
 pub use language_owner_items::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsDispatchPlan,
+    LanguageOwnerItemsProviderOutput, LanguageOwnerItemsRuntimeOutcome,
     compact_language_owner_items_stdout, language_owner_items_failure, language_owner_path_exists,
     language_owner_source_path, read_language_owner_items_cache,
-    run_language_owner_items_dispatch_plan, write_language_owner_items_cache,
-};
-pub use provider_workspace_scope::{
-    PROVIDER_WORKSPACE_SCOPE_SCHEMA_ID, ProviderWorkspaceScope, ProviderWorkspaceScopeFile,
-    ProviderWorkspaceScopePacket, provider_workspace_scope, provider_workspace_scope_from_stdout,
+    resolve_language_owner_items_runtime_outcome, run_language_owner_items_dispatch_plan,
+    write_language_owner_items_cache,
 };
 pub use runtime_source::{
-    RuntimeSourceCheckout, RuntimeSourceIndexContext, RuntimeSourceSpec,
-    ensure_runtime_source_checkout, ensure_runtime_source_checkout_in_client_cache,
-    runtime_source_checkout_dir, runtime_source_checkout_dir_in_client_cache,
-    runtime_source_index_context, runtime_source_registry_fingerprint,
+    RuntimeSourceCheckout, RuntimeSourceIndexContext, RuntimeSourceIndexFile, RuntimeSourceSpec,
+    collect_runtime_source_index_files, ensure_runtime_source_checkout,
+    ensure_runtime_source_checkout_in_client_cache, runtime_source_checkout_dir,
+    runtime_source_checkout_dir_in_client_cache, runtime_source_index_context,
+    runtime_source_registry_fingerprint,
 };
 pub use state::{
     ProjectRuntimeState, ProjectStatePaths, discover_project_activation_path,

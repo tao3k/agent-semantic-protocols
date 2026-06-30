@@ -174,6 +174,14 @@ impl ClientDbEngine {
         Self::db_path_for_client_dir(client_dir)
     }
 
+    /// Return the planned Turso DB path below an already resolved client directory.
+    #[must_use]
+    pub fn turso_path_for_client_dir(client_dir: impl AsRef<Path>) -> PathBuf {
+        TursoClientDbEngineBackend
+            .inspect(&Self::db_path_for_client_dir(client_dir))
+            .db_path
+    }
+
     /// Open the current DB Engine backend for an already resolved client directory.
     pub fn open_or_create_client_dir(client_dir: impl AsRef<Path>) -> Result<ClientDb, String> {
         SqliteClientDbEngineBackend.open_or_create(&Self::db_path_for_client_dir(client_dir))
@@ -191,6 +199,12 @@ impl ClientDbEngine {
     #[must_use]
     pub fn inspect_client_dir(client_dir: impl AsRef<Path>) -> ClientDbReport {
         SqliteClientDbEngineBackend.inspect(&Self::db_path_for_client_dir(client_dir))
+    }
+
+    /// Inspect the planned Turso DB Engine backend for an already resolved client directory.
+    #[must_use]
+    pub fn inspect_turso_client_dir(client_dir: impl AsRef<Path>) -> TursoClientDbEngineReport {
+        TursoClientDbEngineBackend.inspect(&Self::db_path_for_client_dir(client_dir))
     }
 
     /// Return the DB manifest path below an already resolved client directory.

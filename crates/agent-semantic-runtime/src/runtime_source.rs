@@ -37,6 +37,14 @@ pub struct RuntimeSourceIndexContext {
     pub registry_fingerprint: String,
 }
 
+/// Runtime-source file prepared for source-index import.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSourceIndexFile {
+    pub path: PathBuf,
+    pub language_id: String,
+    pub provider_id: String,
+}
+
 /// Resolve the ASP-managed checkout directory for a runtime source version.
 pub fn runtime_source_checkout_dir(
     project_root: impl AsRef<Path>,
@@ -137,6 +145,102 @@ pub fn runtime_source_registry_fingerprint(
         language_id,
         provider_id
     )
+}
+
+/// Collect source files from an ASP-managed runtime source checkout.
+pub fn collect_runtime_source_index_files(
+    checkout_root: impl AsRef<Path>,
+    language_id: &str,
+    provider_id: &str,
+    limit: usize,
+) -> Result<Vec<RuntimeSourceIndexFile>, String> {
+    let mut files = Vec::new();
+    collect_runtime_source_index_files_from_dir(
+        checkout_root.as_ref(),
+        language_id,
+        provider_id,
+        limit,
+        &mut files,
+    )?;
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+    files.truncate(limit);
+    Ok(files)
+}
+
+fn collect_runtime_source_index_files_from_dir(
+    dir: &Path,
+    language_id: &str,
+    provider_id: &str,
+    limit: usize,
+    files: &mut Vec<RuntimeSourceIndexFile>,
+) -> Result<(), String> {
+    if files.len() >= limit {
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(dir)
+        .map_err(|error| {
+            format!(
+                "failed to read runtime source dir {}: {error}",
+                dir.display()
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed to read runtime source dir entry: {error}"))?;
+    entries.sort_by_key(std::fs::DirEntry::path);
+    for entry in entries {
+        if files.len() >= limit {
+            break;
+        }
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|error| {
+            format!(
+                "failed to inspect runtime source file type {}: {error}",
+                path.display()
+            )
+        })?;
+        if file_type.is_dir() {
+            if !runtime_source_dir_is_skipped(&path) {
+                collect_runtime_source_index_files_from_dir(
+                    &path,
+                    language_id,
+                    provider_id,
+                    limit,
+                    files,
+                )?;
+            }
+        } else if file_type.is_file() && runtime_source_file_matches(language_id, &path) {
+            files.push(RuntimeSourceIndexFile {
+                path,
+                language_id: language_id.to_string(),
+                provider_id: provider_id.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn runtime_source_dir_is_skipped(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| matches!(name, ".git" | ".hg" | ".svn"))
+}
+
+fn runtime_source_file_matches(language_id: &str, path: &Path) -> bool {
+    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
+        return false;
+    };
+    let extension = extension.to_ascii_lowercase();
+    match language_id {
+        "gerbil-scheme" => matches!(extension.as_str(), "ss" | "scm" | "sld" | "sch" | "scheme"),
+        "julia" => extension == "jl",
+        "python" => extension == "py",
+        "rust" => extension == "rs",
+        "typescript" => matches!(
+            extension.as_str(),
+            "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs"
+        ),
+        _ => false,
+    }
 }
 
 fn ensure_runtime_source_checkout_at(

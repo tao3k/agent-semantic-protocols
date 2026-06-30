@@ -252,6 +252,7 @@
         "backend",
         "status",
         "dbFileName",
+        "schemaVersion",
         "schemaBootstrap",
         "durability",
         "features",
@@ -295,6 +296,9 @@
             "string",
             "null"
           ]
+        },
+        "schemaVersion": {
+          "const": 1
         }
       }
     },

@@ -7,6 +7,7 @@ pub mod cache_artifact;
 pub mod cache_manifest;
 pub mod config;
 pub mod project_context;
+pub mod provider_scope;
 pub mod receipt;
 pub mod request;
 pub mod state_core;
@@ -31,6 +32,10 @@ pub use cache_manifest::{
 };
 pub use config::{BackendMode, ClientConfig, PrivacyMode};
 pub use project_context::{ProjectContext, StateLayout};
+pub use provider_scope::{
+    normalize_project_path, project_child_path, provider_ignores_path,
+    provider_supports_source_file, relative_project_path, scoped_child_path,
+};
 pub use receipt::{
     AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID, AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID,
     ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbFutureBackendReportReceipt,
@@ -74,6 +79,9 @@ mod cache_manifest_tests;
 #[cfg(test)]
 #[path = "../tests/unit/project_context.rs"]
 mod project_context_tests;
+#[cfg(test)]
+#[path = "../tests/unit/provider_scope.rs"]
+mod provider_scope_tests;
 #[cfg(test)]
 #[path = "../tests/unit/request.rs"]
 mod request_tests;

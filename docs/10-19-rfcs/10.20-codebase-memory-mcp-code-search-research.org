@@ -79,6 +79,60 @@ names, grep rows, or line ranges. It should state an intent, receive a compact
 evidence plan, and then operate on stable selectors, dependency facts, graph
 paths, snippets, and receipts.
 
+** Follow-up: code as reasoning over the search graph
+The follow-up requirement is captured in [[file:10.22-smolagents-code-as-reasoning-evidence-graph.org][10.22 smolagents code-as-reasoning EvidenceGraph]].
+
+=codebase-memory-mcp= productizes the durable graph-search side: indexed nodes, BM25/semantic lookup, path tracing, snippet retrieval, and an agent playbook. ASP should add the executable reasoning side: each route decision should be a typed action over the evidence graph, recorded in a reasoning tree, linked to native parser selectors, and fed back into graph-route scoring.
+
+This matters most on large Rust workspaces. A graph search can find likely files and symbols, but an ASP code-as-reasoning action should also prove which Cargo target, feature path, owner selector, dependency edge, and test proximity made a candidate authoritative. The target is not just better recall; it is fewer turns from intent to an exact selector and next command.
+** Reflection: why EvidenceGraph is the current search optimum
+The recent Codebase-Memory paper is strong evidence that the agent-search bottleneck is structural, not merely lexical. Its reported result is not just faster lookup; it shows that pre-materialized code structure can preserve most answer quality while cutting token and tool-call cost by an order of magnitude. The important implication for ASP is that the search layer must stop treating grep rows, file reads, and line ranges as the primary unit of navigation.
+
+However, the same paper also shows the boundary of a static graph. Its graph-native path is strongest for caller ranking, hub detection, dependency traversal, and impact-style questions. It is weaker when the answer requires full source context, exhaustive text matching, macro-heavy language behavior, or dirty working-tree state that has not been safely re-indexed. That is exactly where ASP should not copy the system one-for-one.
+
+The ASP thesis should be:
+#+begin_src text
+Search optimum = selector-first EvidenceGraph + query planner + progressive render
+#+end_src
+
+EvidenceGraph is the best current target because it is the only model that can join all of the evidence an agent actually needs:
+- stable native-parser facts: symbols, owners, selectors, imports, call edges, tests, dependencies;
+- stable DB facts: source generations, package/project identity, artifacts, accepted receipts;
+- dynamic overlay facts: dirty files, temporary snippets, recent failures, subagent observations, uncommitted edits;
+- reasoning facts: which route was tried, which route failed, which selector produced the decisive observation, which next command was accepted;
+- retrieval facts: BM25/identifier hits, semantic seeds, structural graph paths, snippets, and render receipts.
+
+The fundamental optimization is not "use graph search first." It is to make every search request go through a graph-route planner:
+#+begin_src text
+intent
+  -> lexical / identifier / semantic seeds
+  -> native selector expansion
+  -> dependency / test / artifact topology expansion
+  -> dynamic overlay reconciliation
+  -> Python production ranking
+  -> compact nextCommand / selector evidence
+  -> reasoning-tree receipt
+#+end_src
+
+This is where ASP can be stronger than Codebase-Memory. Codebase-Memory proves the value of persistent structure, but ASP can attach stronger language authority through native parsers and provider-owned schemas. It can also avoid the static-graph trap by keeping dirty, high-churn facts in overlay search instead of forcing every transient edit into Turso. The DB should store stable graph-route inputs and accepted receipts; the overlay should carry volatile evidence until it becomes worth promoting.
+
+CORE-Bench strengthens the same conclusion from another angle: agentic code retrieval is not isolated snippet matching. It is requirement-driven repository search over concrete repository state, edit locations, broader context, and dense in-repository distractors. That maps directly to ASP's EvidenceGraph goal: one request can need code, tests, docs, configs, dependency facts, prior failures, and write-path context at the same time.
+
+The runtime division should stay strict:
+- Rust owns the high-performance substrate: parser calls, schema validation, DB/overlay reads, Turso-backed stable search, dynamic overlay search, command orchestration, and compact render.
+- Python owns production graph-route algorithms: fusion, ranking, pruning, stale-route suppression, recovery ranking, and next-action scoring receipts.
+- Julia is offline only: replay large session batches, evaluate which topology jumps reduce turns, mine ranking failures, design graph metrics, and feed validated candidate algorithms back to Python.
+
+The benchmark target should therefore move beyond recall@k. ASP should measure:
+- intent-to-authoritative-selector turn count;
+- first-packet owner / selector / nextCommand correctness;
+- token and byte size of rendered evidence;
+- latency across cold DB, warm DB, and dirty overlay paths;
+- stale-route suppression success after failed searches;
+- whether dependency/test/artifact topology changes the top-ranked route;
+- whether Julia offline replay can explain Python ranking improvements or regressions.
+
+This is the actual "YOYO" advantage: the system should get better because every search produces route evidence, every route evidence updates the EvidenceGraph, Python can use that evidence in production ranking, and Julia can replay it offline to discover better topology jumps.
 * Search-layer verdict
 ** Current winner by productized fewer-turn search
 On today's implemented surface, =codebase-memory-mcp= is ahead for productized

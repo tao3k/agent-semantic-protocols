@@ -1,9 +1,13 @@
-use std::path::Path;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 use crate::db::ClientDb;
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion,
+    project_client_cache_dir_read_only,
 };
+
+use crate::ClientDbEngine;
 
 use super::lookup::{
     latest_source_index_generation_owners, lookup_source_index_owners,
@@ -14,11 +18,53 @@ use super::storage::{
     reusable_source_index_generation_stats,
 };
 use super::types::{
-    ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
-    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorLookup,
-    ClientDbSourceIndexStats,
+    ClientDbSourceIndexCandidate, ClientDbSourceIndexCandidateLookup,
+    ClientDbSourceIndexCandidateLookupResult, ClientDbSourceIndexClientDirLookupRequest,
+    ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexLookupResult,
+    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner,
+    ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexRefreshReport,
+    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
+    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexStats,
 };
+
+/// Lookup source-index candidates from a project's resolved client DB.
+pub fn lookup_source_index_from_project(
+    request: ClientDbSourceIndexProjectLookupRequest<'_>,
+) -> Result<ClientDbSourceIndexLookupResult, String> {
+    let client_dir = project_client_cache_dir_read_only(request.cache_project_root)?;
+    lookup_source_index_from_client_dir(ClientDbSourceIndexClientDirLookupRequest {
+        client_dir: &client_dir,
+        indexed_project_root: request.indexed_project_root,
+        language_id: request.language_id,
+        query_keys: request.query_keys,
+        limit: request.limit,
+    })
+}
+
+/// Lookup source-index candidates from an already resolved client DB directory.
+pub fn lookup_source_index_from_client_dir(
+    request: ClientDbSourceIndexClientDirLookupRequest<'_>,
+) -> Result<ClientDbSourceIndexLookupResult, String> {
+    let db_path = ClientDbEngine::db_path_for_client_dir(request.client_dir);
+    let Some(db) = ClientDbEngine::open_read_only_existing_client_dir(request.client_dir)? else {
+        return Ok(source_index_lookup_result(
+            db_path,
+            ClientDbSourceIndexLookupState::MissingDb,
+            Vec::new(),
+        ));
+    };
+    let lookup = db.lookup_source_index_candidates(&ClientDbSourceIndexCandidateLookup {
+        project_root: request.indexed_project_root.to_path_buf(),
+        language_id: request.language_id.cloned(),
+        query_keys: request.query_keys,
+        limit: request.limit,
+    })?;
+    Ok(source_index_lookup_result(
+        db_path,
+        lookup.state,
+        lookup.candidates,
+    ))
+}
 
 impl ClientDb {
     /// Replace Rust-owned source index rows for one cache generation.
@@ -132,6 +178,25 @@ impl ClientDb {
         lookup_source_index_owners(self, lookup)
     }
 
+    /// Return deduplicated source-index candidates for a multi-key lookup and
+    /// classify whether the latest DB generation was hit, missed, or empty.
+    pub fn lookup_source_index_candidates(
+        &self,
+        lookup: &ClientDbSourceIndexCandidateLookup,
+    ) -> Result<ClientDbSourceIndexCandidateLookupResult, String> {
+        let candidates = lookup_source_index_candidates(self, lookup)?;
+        let state = if candidates.is_empty() {
+            if self.summary()?.source_index_owner_count == 0 {
+                ClientDbSourceIndexLookupState::EmptyIndex
+            } else {
+                ClientDbSourceIndexLookupState::Miss
+            }
+        } else {
+            ClientDbSourceIndexLookupState::Hit
+        };
+        Ok(ClientDbSourceIndexCandidateLookupResult { state, candidates })
+    }
+
     /// Return Rust-owned source selectors matching a structured lookup from
     /// the freshest matching source index generation.
     pub fn lookup_source_index_selectors(
@@ -139,6 +204,63 @@ impl ClientDb {
         lookup: &ClientDbSourceIndexSelectorLookup,
     ) -> Result<Vec<ClientDbSourceIndexSelector>, String> {
         lookup_source_index_selectors(self, lookup)
+    }
+}
+
+fn lookup_source_index_candidates(
+    db: &ClientDb,
+    lookup: &ClientDbSourceIndexCandidateLookup,
+) -> Result<Vec<ClientDbSourceIndexCandidate>, String> {
+    if lookup.limit == 0 || lookup.query_keys.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut seen = BTreeSet::new();
+    let mut candidates = Vec::new();
+    for query in &lookup.query_keys {
+        if candidates.len() >= lookup.limit as usize {
+            break;
+        }
+        let remaining = lookup.limit.saturating_sub(candidates.len() as u32);
+        let owners = lookup_source_index_owners(
+            db,
+            &ClientDbSourceIndexLookup {
+                project_root: lookup.project_root.clone(),
+                language_id: lookup.language_id.clone(),
+                query: query.clone(),
+                limit: remaining,
+            },
+        )?;
+        append_unique_source_index_candidates(&mut candidates, &mut seen, owners, lookup.limit);
+    }
+    Ok(candidates)
+}
+
+fn append_unique_source_index_candidates(
+    candidates: &mut Vec<ClientDbSourceIndexCandidate>,
+    seen: &mut BTreeSet<String>,
+    owners: Vec<ClientDbSourceIndexOwner>,
+    limit: u32,
+) {
+    for owner in owners {
+        let candidate = ClientDbSourceIndexCandidate::from(owner);
+        if candidates.len() >= limit as usize {
+            break;
+        }
+        if seen.insert(candidate.path.clone()) {
+            candidates.push(candidate);
+        }
+    }
+}
+
+fn source_index_lookup_result(
+    db_path: PathBuf,
+    state: ClientDbSourceIndexLookupState,
+    candidates: Vec<ClientDbSourceIndexCandidate>,
+) -> ClientDbSourceIndexLookupResult {
+    ClientDbSourceIndexLookupResult {
+        db_path,
+        state,
+        candidates,
     }
 }
 

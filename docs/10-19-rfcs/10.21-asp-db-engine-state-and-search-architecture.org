@@ -22,6 +22,27 @@ It is explicitly not scoped to:
 - storing every dirty edit as durable DB rows;
 - replacing provider-owned native parser authority with one global tree-sitter bundle;
 - directly adding =tantivy= as a second long-lived ASP product backend.
+* Terminology bridge: graph-route and reasoning tree
+This architecture depends on the terminology defined in [[file:10.22-smolagents-code-as-reasoning-evidence-graph.org][10.22 smolagents code-as-reasoning EvidenceGraph]].
+
+=graph-route= is the topology-backed search/navigation read-model. It chooses a next command, selector, owner, dependency, test, or recovery route from the current evidence state. It should be compact, ranked, and directly actionable by an agent. This is the production home for ASP topology theory: the route layer should use typed topology edges, neighborhood expansion, centrality, bridge nodes, dependency/test proximity, stale-route suppression, and high-value topology jumps to reduce search turns. The DB Engine should persist enough stable graph-route inputs to make repeated searches cheaper across sessions: source generations, selectors, symbols, dependencies, topology edges, search receipts, render receipts, accepted next actions, and suppression signals for repeated low-value routes.
+
+=reasoning tree= is the causal run trace. It records how a specific agent session or subagent branch moved from intent to plan, action, observation, error, recovery, evidence, and answer. It is not the route itself. It can produce route signals, but it remains run evidence. The Turso-backed DB Engine v1 should store bounded metadata for reasoning runs and steps, while volatile or bulky details stay in dynamic JSON overlay artifacts.
+
+=EvidenceGraph= is the join point. Stable codebase facts, DB generations, dynamic overlays, and reasoning-step metadata become typed nodes and edges. =graph-route= reads and ranks this substrate; =reasoning tree= appends new evidence to it.
+
+Topology data belongs on the graph-route side of the architecture. Reasoning trees may add dynamic edge weights such as "this route failed", "this selector produced the decisive observation", or "this recovery branch succeeded", but they should not become the canonical topology. The canonical topology is built from provider-native parser facts, dependency/test/Org/artifact facts, DB generations, and bounded overlay facts.
+
+Python and Julia are both part of the topology-backed route algorithm system, but they must not share runtime authority. Python owns production graph-route algorithms: fusion, scoring, pruning, suppression, recovery ranking, next-action ranking, and compact scoring receipts. Julia is strictly offline research and analysis: graph-algorithm optimization, topology metric design, DB/overlay data analysis, ranking-failure studies, and algorithm-quality experiments. Its concrete deliverables are large session replay, measurement of which topology jumps actually reduce search turns, ranking-failure mining, and candidate algorithm notes that Python can implement and validate in production. Julia does not execute runtime route decisions. A route improvement should flow from Julia research to Python production implementation to Rust-validated receipt/render output.
+
+The production loop is:
+#+begin_src text
+ReasoningTree -> EvidenceGraph/overlay -> GraphRoute -> compact render/nextCommand -> ReasoningTree
+#+end_src
+
+This prevents two bad designs:
+- treating every reasoning branch as durable route state, which would pollute the DB under fast-changing code;
+- treating graph-route as a full replay log, which would waste tokens and hide the next actionable selector.
 * Evidence snapshot
 Local ASP evidence:
 - =crates/agent-semantic-client-db= is currently a =rusqlite= SQLite surface. It opens =client.sqlite3=, configures WAL-oriented pragmas, imports cache generations, source index, structural index, syntax query replay, provider command selections, and artifact events.
@@ -54,7 +75,7 @@ The first DB Engine implementation step is now an ASP-owned facade in =crates/ag
 - Command-facing Rust code uses engine-level calls such as =ClientDbEngine::open_or_create= and =ClientDbEngine::inspect_backend=; =sqlite-v1= names stay inside the adapter/report boundary.
 - =ClientDbBackend::SqliteV1= is the current concrete backend token and maps to =backend="sqlite-v1"=.
 - =futureBackend= remains =turso=. This is a migration signal, not an active backend claim.
-- =ClientDbEngineReport= exposes backend, future backend, layout version, DB file name, schema version, durability, feature flags, repo/workspace/scope ids, client dir, manifest path, DB path, artifact path, a reportable Turso future backend skeleton, and the active SQLite adapter report.
+- =ClientDbEngineReport= exposes backend, future backend, layout version, DB file name, schema version, durability, feature flags, repo/workspace/scope ids, client dir, manifest path, DB path, artifact path, a trait-backed planned Turso backend report, and the active SQLite adapter report.
 - =schemas/semantic-db-engine-report.v1.schema.json= fixes the analyzer-facing JSON shape for this report during the =sqlite-v1= transition.
 - The existing =ClientDb= remains the SQLite adapter over =rusqlite= and current schema version 1.
 - Production client source-index refresh/lookup, provider activation cache, cache CLI maintenance, writeback, replay, and history audit now obtain DB paths and open/inspect operations through the DB Engine facade or its client-dir helpers.
@@ -63,9 +84,43 @@ The first DB Engine implementation step is now an ASP-owned facade in =crates/ag
 - =schemas/agent-semantic-client-receipt.v1.schema.json= carries the receipt-side =dbEngine= contract with =backend=sqlite-v1=, =futureBackend=turso=, =layoutVersion=state-v2=, repo/workspace/scope ids, State Core paths, and the active SQLite report.
 - The compact =|dbEngine= row is a CLI shorthand only; the receipt JSON is the analyzer-facing contract for DB/state progress.
 - DB Engine tests assert the resolved path is State Core =live/client/client.sqlite3= under =$ASP_STATE_HOME= and that project-local =.cache/agent-semantic-protocol= is not created or selected.
-- The phase-2 DB Engine skeleton now reports =futureBackendReport= for =turso=. It is not active yet; it records the planned =client.turso= file, =pending-cutover= bootstrap state, =turso-local-file= durability, and capability flags for async I/O, concurrent writes, FTS, overlay search, and sync.
+- The next DB Engine checkpoint now reports =futureBackendReport= for =turso= through the same =ClientDbEngineBackend= trait boundary as the active SQLite adapter. It is not active yet; it records the planned =client.turso= file, backend schema version =1=, =pending-cutover= bootstrap state, =turso-local-file= durability, and capability flags for async I/O, concurrent writes, FTS, overlay search, and sync.
 - =agent-semantic-client-db= owns a feature-gated =turso-backend= dependency gate so Turso API integration compiles in the DB crate that will own the backend, not indirectly through the client command crate.
+- The first executable Turso checkpoint is now =bootstrap_turso_client_db= behind the =turso-backend= feature. It opens a local =client.turso= file through the Turso Rust API, applies =asp_db_engine_bootstrap= with backend schema version =1=, creates the first target schema tables for =asp_graph_entity=, =asp_search_document=, and =asp_overlay_document=, and returns a =bootstrap-smoke= report with =schemaBootstrap=ready=. The DB crate also owns the first feature-gated Turso document adapter: =upsert_turso_search_document=, =upsert_turso_overlay_document=, and =search_turso_documents=. The feature-gated smoke test writes stable and overlay documents through those APIs and reads both back through the adapter, proving that graph-route entities, stable search documents, and dynamic overlay documents have an executable Turso schema and read path before cutover. This read path is a DB-owned adapter seam, not the final Tantivy/FTS/BM25 implementation. The active backend remains =sqlite-v1=; the smoke gate proves the DB crate can create, write, and read the target backend before any active traffic migration.
 This checkpoint intentionally does not switch active DB traffic to Turso, add async runtime plumbing, create FTS/BM25 tables, or migrate old project-local cache. Those are the next backend-specific phases behind the same facade. The target cutover replaces =rusqlite=/SQLite v1 entirely; =sqlite-v1= is only the validation backend, not a long-lived production fallback.
+* M3 EvidenceGraph read-model checkpoint
+The first M3 implementation step is now a DB-owned read-model projection in =agent-semantic-client-db=:
+- =source_index_evidence_graph= projects =ClientDbSourceIndexImport= owner and selector rows into =source-owner= and =selector= nodes plus =contains-selector= edges.
+- =structural_index_evidence_graph= projects =ClientDbStructuralIndexImport= owner, symbol, and dependency-usage rows into =structural-owner=, =symbol=, and =dependency-usage= nodes plus =defines-symbol= and =uses-dependency= edges.
+- =schemas/semantic-evidence-graph-read-model.v1.schema.json= fixes the analyzer-facing read-model shape and explicitly rejects line-range-shaped node ids. Display line fields remain compatibility hints in source/structural rows, not executable EvidenceGraph identity.
+- The projection is intentionally an in-memory read-model over existing import DTOs. It does not create Turso tables yet, does not route agent commands, and does not change command output. The purpose is to make the target graph substrate concrete before adding persisted Turso =entity=, =entity_document=, =edge=, dependency, test, and route receipt tables.
+- Unit gates assert that source-index selectors use stable selector ids such as =rust://...#file=, structural symbols use provider locators where available, dependency usages become typed nodes, and no node id is derived from line ranges.
+* M4/M6 EvidenceGraph ranking checkpoint
+The first search-side bridge from M3 into route planning now lives in =agent-semantic-search=:
+- =evidence_graph_rank= defines a language-neutral =EvidenceGraphRankNode= DTO and =rank_evidence_graph_nodes= policy. It accepts graph read-model nodes, intent text, query keys, selector presence, and outgoing edge counts without depending on =agent-semantic-client-db=.
+- Ranking is selector-first and topology-aware: term hits dominate, selector-bearing nodes win ties, topology degree is only a bounded tie-breaker, and stable input order is preserved after those signals.
+- This is not yet the Python production graph router and not a command render change. It is the Rust-side scoring seam that Python ranking, Turso persisted graph tables, and compact render can share without reintroducing search policy into =command/= or =client=.
+- Unit gates prove selector/query-key matches beat broad owner hits, topology only breaks ties, and identifier-axis tokenization stays language neutral.
+- The first scenario gate for this seam is =asp_evidence_graph_rank_cold_functional_path=. It constructs a cold EvidenceGraph fixture and times only =agent_semantic_search::rank_evidence_graph_nodes=, proving selector-first graph-route seed ranking, bounded topology bonus, zero provider/native-finder work, no executable line-range identity, and millisecond-scale runtime. This closes the gap where EvidenceGraph ranking had only unit tests but no scenario performance contract.
+* Client shrinkage and runtime ownership checkpoint
+This checkpoint fixes the crate-boundary direction for the next implementation phase.
+
+=agent-semantic-client= must not become the long-lived owner of DB/search/runtime algorithms. Its acceptable responsibilities are compatibility facades, client receipts, cache command affordances, and orchestration seams that have not yet moved to their owning crates. New durable responsibilities must be pushed down:
+- State identity and provider/path scope rules belong to =agent-semantic-client-core=.
+- DB Engine, source-index DTOs, imports, lookups, schema bootstrap, and EvidenceGraph read-model projection belong to =agent-semantic-client-db=.
+- Source-index query tokenization, candidate ranking, DB-backed lookup adapter, lexical overlay, dynamic candidate collection, and future graph-route scoring seams belong to =agent-semantic-search=.
+- Harness dispatch policy, owner-items cache keys, runtime source identity, warm process policy, timeout/cancellation, compact stdout policy, and fail-closed provider errors belong to =agent-semantic-runtime=.
+- Local provider workspace walking and command-line provider filesystem scope belong to =agent-semantic-client-local-cli=.
+
+The current code checkpoint moves source-index lookup policy out of =agent-semantic-client/src/source_index/lookup.rs= into =agent-semantic-search/src/source_index_lookup.rs=. The client file remains only as a compatibility re-export. This is a transitional public-surface shim, not a permission to add new source-index lookup behavior to =agent-semantic-client=.
+
+=agent-semantic-runtime= is not allowed to remain a validation shell. Existing runtime ownership already includes language-harness owner-items dispatch policy, source-path existence checks, cache key construction, compact stdout filtering, and fail-closed failure rendering. The next runtime milestone must make warm harness process lifecycle, batch dispatch, timeout/cancellation receipts, and cold functional scenario gates runtime-owned as well. Command code should supply provider adapters and render final CLI output; it should not own runtime policy.
+
+The next runtime checkpoint moves owner-items provider output policy into =agent-semantic-runtime=. =resolve_language_owner_items_runtime_outcome= now owns cache-first lookup, provider success compaction, cache writeback, empty-output handling, provider failure handling, unsupported missing-owner behavior, and the runtime outcome shape. =command/language_owner_items.rs= remains responsible for provider invocation and final stdout/stderr writes only. Runtime unit gates prove cache-before-provider behavior, fresh provider compaction/writeback, and missing-owner unsupported fallback; scenario gates continue to prove cold owner-items and hot cache behavior through the public CLI.
+
+The scenario priority is corrected: cold functional gates come first. A cold scenario proves that a clean workspace can resolve provider capability, invoke the harness through the runtime boundary, produce the shared schema, and avoid legacy fallback. Hot-path gates are second-order latency regressions over an already proven cold contract. Millisecond hot gates are still required, but they do not replace cold functional gates.
+
+The first search-owner cold functional gate for this checkpoint is =asp_source_index_lookup_adapter_cold_functional_path=. It builds a fresh source-index fixture, refreshes the client DB, then verifies =agent_semantic_search::lookup_source_index_in_client_cache_dir= directly. The gate proves that source-index lookup policy is owned by =agent-semantic-search=, uses the DB Engine/State Core client DB path, avoids provider/native-finder work during lookup, keeps line ranges out of executable identity, and stays inside the scenario millisecond budget.
 * Dynamic search implementation checkpoint
 - Dynamic dirty-code search is a separate Rust-side orchestration boundary, not a DB write path and not an ASP-owned language parser.
 - High-performance search has a fixed responsibility split:
@@ -73,14 +128,48 @@ This checkpoint intentionally does not switch active DB traffic to Turso, add as
   - Rust ASP owns the wrapper around those CLIs: provider discovery, manifest/capability validation, trust gates, process lifecycle, warm worker reuse, timeout/cancellation, batch dispatch, stdout/stderr contract validation, cache/writeback, overlay merge, DB Engine ingestion, graph bridge inputs, receipt emission, and compact agent rendering.
   - Python owns production graph algorithms over normalized ASP facts; Julia owns offline/research algorithms and artifact analysis. Neither replaces harness parser truth.
 This split is the core performance architecture. The win is not that ASP reimplements each language faster; the win is that each harness does only the native semantic work, while Rust amortizes process startup, normalizes packets once, caches stable generations, keeps dirty overlays cheap, and renders compact evidence without forcing every agent turn through cold provider startup or raw source scans.
+* M0 closure checkpoint
+The current M0 patchset is a boundary-stabilization checkpoint, not a Turso cutover. Its purpose is to make the staged architecture auditable before M1/M2 work continues.
+The staged M0 scope is:
+- =agent-semantic-client-core= owns State Core/provider path authority.
+- =agent-semantic-client-db= owns DB Engine contracts, source-index DB DTOs, source-index import assembly, source-index refresh reports, source-index lookup state, source-index candidate de-duplication, and the trait-backed planned =turso= backend report.
+- =agent-semantic-client-local-cli= owns provider CLI process scope for =workspace-scope= execution, packet parsing, and projection of provider-relative files into existing unignored workspace paths.
+- =agent-semantic-runtime= owns runtime-source checkout identity, registry fingerprinting, runtime checkout source-file collection, graph-render process transport, and language owner-items runtime/cache helpers.
+- =agent-semantic-search= owns dynamic overlay/search primitives, source-index acquisition/rank policy, native finder orchestration, query-wrapper candidate collection, query-wrapper quality/risk/noise/package-cohesion analysis, replay-safety checks, and compact dynamic owner-items rendering.
+- =agent-semantic-protocol/src/command= remains the CLI parse/dispatch/render layer for these paths. It may map protocol DTOs into owning-crate DTOs, but it must not reacquire DB lookup loops, provider workspace-scope packet projection, runtime checkout scanning, query-wrapper quality policy, or source-index import assembly.
+
+The staged M0 validation evidence is:
+- =direnv exec . cargo fmt --check=
+- =direnv exec . cargo test -p agent-semantic-client-db source_index=
+- =direnv exec . cargo test -p agent-semantic-client-local-cli workspace_scope=
+- =direnv exec . cargo test -p agent-semantic-runtime runtime_source=
+- =direnv exec . cargo test -p agent-semantic-search query_wrapper=
+- =direnv exec . cargo check -p agent-semantic-client --lib --keep-going=
+- =direnv exec . cargo check -p agent-semantic-protocol --lib --keep-going=
+- =direnv exec . cargo test -p agent-semantic-protocol --test unit_test scenario_performance_gate::scenario_benchmark=
+- =git diff --check && git diff --cached --check=
+- staged/unstaged scans for dead-code allowance attributes, version-suffixed Turso backend tokens, retired =fzf= routes, retired inline Gerbil owner-items routes, and target-directory override environment usage must stay empty.
+
+The current M0 patchset intentionally excludes:
+- active Turso traffic and schema bootstrap;
+- dynamic overlay implementation through Turso-owned search semantics;
+- replacing the public =actionFrontier= render contract;
+- agent MCP server design;
+- automatic migration from project-local =.cache/agent-semantic-protocol=;
+- unrelated dirty language submodule state;
+- unstaged updates to =10.20-codebase-memory-mcp-code-search-research.org= unless they are explicitly pulled into a later checkpoint.
+
+Any M1/M2 work should start from this closure line: if a change touches source-index DB contracts, provider CLI scope, runtime source files, query-wrapper quality, or command render policy, it must update the owning crate first and only then adapt =command/= or =client= facades.
 - Owner-local search must be a =language owner-items= contract, not a Rust-owner contract. The common schema covers the dominant cross-language shape: owner path, item kind, item name, stable selector, display range, source hash/generation, provider id, and optional provider extension fields. Rust, TypeScript, Python, Julia, Gerbil, Org-derived code blocks, and future languages should all enter the same Rust cache/render/graph pipeline through this schema. Language-specific facts belong in provider-owned extension fields or provider schemas; they must not fork the ASP route or cache format unless the common schema cannot represent the capability.
-- =crates/agent-semantic-search= owns dynamic search primitives: dirty overlay documents, lexical candidate projection, lexical replay packet/request matching, query owner-items packet replay matching/rendering, search packet replay-safety grammar, prompt-output replay fingerprint/safety rules, delegation-hint projection, syntax-query compact replay rendering, document-element candidate collection, document auto/finder fallback acquisition, finder-backed search-pipe acquisition, failure-message candidate acquisition, source-index acquisition policy, pipe/query-wrapper candidate collection, owner-items overlay ranking, and compact dynamic owner-items rendering. These services may filter and render owner-local items that were supplied by a =languages/*-harness= command/interface, document-language parser service, finder/native search adapter, source-index lookup DTO, or by a schema-valid overlay artifact. They must not scan source text with ASP-owned per-language syntax rules.
-- =crates/agent-semantic-client= is not the search engine. Its remaining responsibilities are client-facing cache/receipt/history/source-index services, provider dispatch/cache writeback, and facades that consume the search crate. Search algorithms, overlay matching, native finder orchestration, document/finder acquisition policy, query-wrapper candidate collection, and owner-items dynamic rendering must not be added back to the client crate.
-- Source-index service code that still lives in =crates/agent-semantic-client= must be shaped as a migration seam, not as a growing client subsystem. Lookup APIs use named request DTOs for cache root, indexed root, language scope, query, and limit so DB/search owner crates can consume the contract without preserving broad positional call sites. Search-time source-index query tokenization and ranking now live in =agent-semantic-search= through a lightweight rank DTO, while =agent-semantic-client= only maps DB owner rows into ranking inputs and back to DB-owned lookup DTOs. Durable source-index import packet assembly now lives in =agent-semantic-client-db=: it owns owner/selector row projection, selector id construction, line-count projection, and query-key extraction. Source-index schema/provider tokens also live in =agent-semantic-client-db= as =CLIENT_DB_SOURCE_INDEX_SCHEMA_ID=, =CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION=, and =CLIENT_DB_SOURCE_INDEX_PROVIDER_ID=; client collection limits may stay in =agent-semantic-client= because they control transient IO, not row identity. Source-index generation and refresh-count identity also live in =agent-semantic-client-db= as =client_db_source_index_generation_id= and =client_db_source_index_file_count=. Source-index evidence tokens also live in =agent-semantic-client-db= as =CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH=, =CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX=, and =CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256=; client may still read metadata to fill evidence rows, but must not define the evidence schema. Source-index path identity rules also live in =agent-semantic-client-db=: =source_index_relative_path= defines slash-normalized source-index row paths, and =source_index_scope_dirs= defines the scope-directory evidence set from =ClientDbSourceIndexScopeFile= rows. The DB crate also owns refresh result projection for generation writes: =ClientDbSourceIndexRefreshReport= carries DB write semantics, while =ClientDbSourceIndexRefreshResult= adds the concrete DB path for public receipts without requiring =agent-semantic-client= to copy refresh fields locally. Source-index lookup result DTOs also live in =agent-semantic-client-db=: =ClientDbSourceIndexLookupState=, =ClientDbSourceIndexCandidate=, =ClientDbSourceIndexSourceKind=, and =ClientDbSourceIndexLookupResult= define the DB facade contract; =agent-semantic-client= may re-export them for API compatibility, but must not own their semantics. Source-index scope-file reuse DTOs and owner-row reconstruction also live in =agent-semantic-client-db=: =ClientDbSourceIndexScopeFile= and =ClientDb::latest_source_index_scope_files= define how the latest DB owner generation is converted back into refresh inputs. Provider registry fingerprint and scope-dir traversal now live in =agent-semantic-client-core= as =ProviderRegistrySnapshot::evidence=, because they derive from activation/provider identity rather than source-index refresh orchestration. =agent-semantic-client= still owns workspace/provider-facing collection, file hash evidence, bounded transient text reads, early reuse checks that avoid rereading text, and receipt rendering. Refresh APIs now use an explicit context/phase split: =SourceIndexRefreshContext= owns DB path, client cache dir, DB handle, schema id, and schema version; registry evidence is consumed as a DTO; generation refresh is a named phase over index root, files, previous hashes, and registry evidence. The next package-boundary move should reduce =agent-semantic-client= to a facade around source-index collection and receipt emission.
+- =crates/agent-semantic-search= owns dynamic search primitives: dirty overlay documents, lexical candidate projection, lexical replay packet/request matching, query owner-items packet replay matching/rendering, search packet replay-safety grammar, prompt-output replay fingerprint/safety rules, delegation-hint projection, syntax-query compact replay rendering, document-element candidate collection, document auto/finder fallback acquisition, finder-backed search-pipe acquisition, failure-message candidate acquisition, source-index acquisition policy, pipe/query-wrapper candidate collection, query-wrapper quality/risk/noise/package-cohesion analysis, owner-items overlay ranking, and compact dynamic owner-items rendering. These services may filter and render owner-local items that were supplied by a =languages/*-harness= command/interface, document-language parser service, finder/native search adapter, source-index lookup DTO, or by a schema-valid overlay artifact. They must not scan source text with ASP-owned per-language syntax rules.
+- =crates/agent-semantic-client= is not the search engine and should keep shrinking as ownership becomes clearer. Its remaining responsibilities are client-facing cache/receipt/history services, provider dispatch/cache writeback facades, and temporary compatibility shims that consume =client-db=, =client-core=, =client-local-cli=, =agent-semantic-runtime=, and =agent-semantic-search=. Source-index DB contracts belong to =client-db=, including file hash computation, registry/scope evidence hashes, text-limited import assembly, multi-key lookup, candidate de-duplication, and =hit=/=miss=/=empty-index= classification. State/provider path authority belongs to =client-core=. Provider CLI process scope belongs to =client-local-cli=, including =workspace-scope= execution, packet parsing, and projection of provider-relative scope files into existing unignored workspace paths. Runtime source identity/process transport belongs to =agent-semantic-runtime=, including runtime-source checkout identity, registry fingerprinting, and runtime checkout source-file collection for source-index refresh. Search algorithms belong to =agent-semantic-search=. Search algorithms, overlay matching, native finder orchestration, document/finder acquisition policy, query-wrapper candidate collection/quality, runtime source identity, runtime checkout file collection, graph render transport, source-index DB import assembly, source-index DB lookup state, provider workspace-scope packet projection, and owner-items dynamic rendering must not be added back to the client crate.
+- =crates/agent-semantic-runtime= must not remain an empty shell. It owns language-neutral runtime boundaries that are neither DB state nor search ranking: runtime source identity, registry fingerprints, process/transport evidence, graph-render process receipts, timeout/cancellation policy, and stable runtime DTOs consumed by command/render layers. It should not own parser truth, DB schema, or search ranking algorithms.
+- Source-index service code that still lives in =crates/agent-semantic-client= must be shaped as a migration seam, not as a growing client subsystem. Lookup APIs use named request DTOs for cache root, indexed root, language scope, query, and limit so DB/search owner crates can consume the contract without preserving broad positional call sites. Search-time source-index query tokenization, ranking, and concrete-candidate reorder policy now live in =agent-semantic-search= through =source_index_lookup_terms=, =rank_source_index_candidates=, and =reorder_source_index_candidates=, while =agent-semantic-client= only maps DB owner rows into ranking inputs and back to DB-owned lookup DTOs. Durable source-index import packet assembly now lives in =agent-semantic-client-db=: it owns owner/selector row projection, selector id construction, line-count projection, and query-key extraction. Source-index schema/provider tokens also live in =agent-semantic-client-db= as =CLIENT_DB_SOURCE_INDEX_SCHEMA_ID=, =CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION=, and =CLIENT_DB_SOURCE_INDEX_PROVIDER_ID=; client collection limits may stay in =agent-semantic-client= because they control transient IO, not row identity. Source-index generation and refresh-count identity also live in =agent-semantic-client-db= as =client_db_source_index_generation_id= and =client_db_source_index_file_count=. Source-index evidence tokens and evidence-row shape also live in =agent-semantic-client-db= as =CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH=, =CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX=, =CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256=, =client_db_source_index_registry_evidence_hash=, and =client_db_source_index_scope_dir_evidence_hash=; client may still read metadata to supply byte length and mtime, but must not define the evidence schema, path, digest, or witness row shape. Source-index path identity rules also live in =agent-semantic-client-db=: =source_index_relative_path= defines slash-normalized source-index row paths, and =source_index_scope_dirs= defines the scope-directory evidence set from =ClientDbSourceIndexScopeFile= rows. The DB crate also owns refresh result projection for generation writes: =ClientDbSourceIndexRefreshReport= carries DB write semantics, while =ClientDbSourceIndexRefreshResult= adds the concrete DB path for public receipts without requiring =agent-semantic-client= to copy refresh fields locally. Source-index lookup result DTOs also live in =agent-semantic-client-db=: =ClientDbSourceIndexLookupState=, =ClientDbSourceIndexCandidate=, =ClientDbSourceIndexSourceKind=, and =ClientDbSourceIndexLookupResult= define the DB facade contract; =agent-semantic-client= may re-export them for API compatibility, but must not own their semantics. Source-index scope-file reuse DTOs and owner-row reconstruction also live in =agent-semantic-client-db=: =ClientDbSourceIndexScopeFile= and =ClientDb::latest_source_index_scope_files= define how the latest DB owner generation is converted back into refresh inputs. Provider registry fingerprint and scope-dir traversal now live in =agent-semantic-client-core= as =ProviderRegistrySnapshot::evidence=, because they derive from activation/provider identity rather than source-index refresh orchestration. =agent-semantic-client= still owns workspace/provider-facing collection, file hash IO, bounded transient text reads, early reuse checks that avoid rereading text, and receipt rendering. Refresh APIs now use an explicit context/phase split: =SourceIndexRefreshContext= owns DB path, client cache dir, DB handle, schema id, and schema version; registry evidence is consumed as a DTO; generation refresh is a named phase over index root, files, previous hashes, and registry evidence. The next package-boundary move should reduce =agent-semantic-client= to a facade around source-index collection and receipt emission.
 - Cache replay artifact path safety is a client-core contract, not client orchestration. =agent-semantic-client-core= owns =replay_artifact_path=, =replay_artifacts_root=, and =structured_evidence_artifact_path= because those functions encode the State Core =live/client -> artifacts= layout and safe artifact-id grammar. =agent-semantic-client= may still load files, check sizes, validate file hashes, query DB replay rows, and assemble the final replay receipt, but it must not define artifact-id trust rules locally.
 - Graph render process execution is a runtime transport contract. =agent-semantic-runtime= owns =run_graph_render_packet*= and the renderer receipt request because those functions choose the ASP binary, provider transport limits, stdin mode, stdout/stderr capture, and strict receipt failure semantics. =agent-semantic-client= may request graph packet replay and apply search-output safety/hint rules, but it must not own graph renderer process policy.
 - Runtime-source index identity is runtime-owned, not client-owned. =agent-semantic-runtime= owns =runtime_source_index_context= and =runtime_source_registry_fingerprint= because the canonical checkout root, client-cache containment check, and runtime-source registry fingerprint are runtime source semantics. =agent-semantic-client= may collect bounded source-index files and pass the runtime context into =agent-semantic-client-db=, but it must not synthesize runtime-source identity rules.
-- Provider-manifest file boundary logic, including source extensions, config filenames, project markers, and dependency markers, is client-owned rather than command-owned. Command modules may ask for =language_file_spec=, but they must not define language ecosystems or maintain their own extension tables.
+- Provider =workspace-scope= execution and packet parsing are local provider transport semantics. =agent-semantic-client-local-cli= owns =provider_workspace_scope=, =provider_workspace_scope_from_stdout=, schema-id/status handling, and provider-default language/provider inheritance. =agent-semantic-client= may project a supported packet into source-index scope files after path containment and ignore checks, but it must not construct provider CLI requests or parse provider workspace-scope JSON itself.
+- Pure provider-manifest path rules are client-core contracts, not client orchestration and not command-owned language tables. =agent-semantic-client-core::provider_scope= owns source-extension matching, ignored-prefix matching, project-relative path normalization, and safe scoped child-path construction because those rules derive from activation/provider manifest identity. =agent-semantic-client= may still perform transient workspace IO for source-index collection and apply these rules, but it must not define its own provider path grammar. Command modules may ask for =language_file_spec=, but they must not define language ecosystems or maintain their own extension tables.
 - =search owner <path> items --workspace . --view seeds= no longer requires =--query=. An empty query means "enumerate bounded owner-local structural anchors" for the selected owner, but the anchors must come from a language harness/interface. The provider capability flag may optimize schema routing, but it must not block dispatch to the language harness CLI. If the harness returns no owner-items contract for an existing owner, the route fails closed instead of synthesizing language facts.
 - =query <path> items --workspace . --code= should become the code projection over the same harness/interface item set. Until that interface exists for a language, ASP must not use client/protocol hard-coded parsing as a compatibility shortcut.
 - Dynamic output should be marked with =alg=asp-dynamic-owner-items-v1= or =source=dynamic-owner-items= only when it is rendering harness/interface facts or overlay facts, not when ASP guessed declarations from raw source.
@@ -112,7 +201,7 @@ Initial acceptance gates:
 - Dynamic overlay root path: workspace walk, language predicate filtering, and overlay projection must stay in low double-digit milliseconds on focused roots and must not produce line-range executable identity. The =asp_dynamic_overlay_search_pipe_warm_path= scenario fixes this as a real CLI gate for =asp rust search pipe ... --source finder= with =route_source=dynamic-overlay=, zero provider processes, bounded stdout, and no fallback.
 - Search pipe candidate collection: query tokenization, path-query detection, owner-root resolution, native finder routing, dynamic overlay routing, ignore handling, language file predicates, and provenance projection belong to the dedicated =agent-semantic-search= crate. =agent-semantic-protocol/src/command= may only adapt CLI config into =SearchPipeCandidateRequest= and render returned candidates. =agent-semantic-client= must not become the replacement monolith for command-heavy search logic; existing client search primitives are migration seams to be moved into narrower owner crates as M4/M5 continues. Native fd/rg/exa finder execution is now an =agent-semantic-search= responsibility rather than a client facade responsibility.
 - Pipe ingest candidate projection: newline/NUL record splitting, =path:line[:column]:text= parsing, path normalization, and compact symbol projection belong to =agent-semantic-client=. =agent-semantic-protocol/src/command/search_pipe_candidates.rs= may read stdin and convert client candidates into the render model, but it must not own byte-level ingest parsing or path-resolution algorithms.
-- Query-wrapper candidate collection: source-index lookup/filter/projection, fallback fd/rg filesystem scanning, package-path augmentation, candidate priority, language-neutral file filtering, and provider-manifest file boundary resolution belong to =agent-semantic-search=. The command layer may convert protocol query clauses into =QueryWrapperSearchRequest= and render compact traces, but it must not own recursive filesystem search, package expansion, source-index candidate projection, native finder routing, or cohesive candidate filtering. =agent-semantic-client= no longer owns native finder, query-wrapper scan, or language file-spec primitives.
+- Query-wrapper candidate collection: term splitting, identifier-axis expansion, source-index lookup/filter/projection, fallback fd/rg filesystem scanning, package-path augmentation, candidate priority, language-neutral file filtering, provider-manifest file boundary resolution, and query-wrapper quality/risk/noise/package-cohesion analysis belong to =agent-semantic-search=. The command layer may convert protocol query clauses into =QueryWrapperSearchRequest= / quality DTOs and render compact traces, but it must not own recursive filesystem search, package expansion, source-index candidate projection, native finder routing, query-axis construction, cohesive candidate filtering, or query-quality policy. =agent-semantic-client= no longer owns native finder, query-wrapper scan, or language file-spec primitives.
 - Cache status/import/flush/invalidate DB paths: DB open/inspect must go through =ClientDbEngine= facade helpers so the Turso cutover can change backend implementation without command-level rewrites.
 - Per-language matrix: Rust, TypeScript, and Python now have both cold functional =owner-items-provider= gates and hot cache =owner-items-cache= gates. Julia and Gerbil Scheme now have cold functional gates and still need hot cache gates. Org still needs an owner-items-compatible provider route or schema bridge because its current manifest owner route is =asp org query --selector ... --view metadata= rather than =search owner <path> items --view seeds=. Special language facts may add provider-owned extension fields, but the route, receipt, and performance fields must use the shared contract.
 
@@ -408,17 +497,148 @@ Python responsibilities:
 - implement selected graph algorithms from Julia experiments;
 - run production graph fusion and diversity ranking;
 - return compact receipts to Rust for storage and render.
-* Migration plan
-1. Stabilize State Core v2 as the only default state root.
-2. Add DB Engine trait and Turso backend prototype beside SQLite v1.
-3. Project current source/structural index rows into =entity=, =entity_document=, =edge=, and =receipt= tables.
-4. Build Turso FTS/BM25 persisted generation search.
-5. Build overlay lexical search with Turso-owned Tantivy semantics or a controlled adapter.
-6. Replace agent-facing =fzf= search with selector-first lexical packets after parity gates.
-7. Move heavy search/render/router code out of =command/*=.
-8. Add =PlanTrace= and analyzer tables for Julia replay.
-9. Add compact render schema and enforce it across languages.
-10. Run codebase-memory-mcp comparison benchmarks: turn count, recall@k, false-positive-at-1, token cost, and edit-overlay freshness.
+* Audit-driven implementation roadmap
+The current RFC already has the right architectural direction, but the implementation must be sequenced so that ASP does not create a second monolith while replacing SQLite v1. The audit verdict is:
+- the DB Engine facade and State Core v2 path model exist, but active storage is still =sqlite-v1= and =futureBackend=turso= is only a reportable skeleton;
+- source-index and structural-index transaction seams are good enough to project into an EvidenceGraph schema, but the current rows are not yet the target read model;
+- dynamic search has an owner boundary in =agent-semantic-search=, but overlay search still needs a Turso-owned Tantivy-semantics path or a controlled adapter before =fzf= can be retired for agent ranking;
+- =crates/agent-semantic-protocol/src/command/*= is still the main risk area. Command modules may parse CLI args and render receipts, but provider lifecycle, runtime policy, DB state, dynamic search, graph routing, and render schema must live in owner crates;
+- Python production ranking and Julia offline replay are directionally defined, but the DB/overlay receipts still need enough =PlanTrace= and =SearchStage= fields to make turn-reduction experiments reproducible.
+
+** M0: freeze the shared contracts before backend work
+Owners: =schemas/=, =agent-semantic-client-db=, =agent-semantic-client-core=, =agent-semantic-search=, =agent-semantic-runtime=.
+
+Deliverables:
+1. versioned schemas for DB Engine report, client receipts, EvidenceGraph rows, overlay namespace, =PlanTrace=, =SearchStage=, owner-items packets, graph-route request/response, and compact render packets;
+2. explicit rule that display line ranges are hints only, while executable identity is selector/entity/generation/overlay id;
+3. command-thinness contract for every touched file under =crates/agent-semantic-protocol/src/command/*=;
+4. schema validation tests that fail if command code invents language facts, raw-source row identity, or per-language inline parsers.
+
+Exit gate:
+- existing SQLite-backed flows still pass through the DB Engine facade and emit schema-valid =dbEngine= receipts;
+- no new public search behavior is allowed without a schema or RFC section for its packet shape.
+
+** M1: close State Core v2 and DB Engine facade migration
+Owners: =agent-semantic-client-core= and =agent-semantic-client-db=.
+
+Deliverables:
+1. make =$ASP_STATE_HOME= / =$HOME/.agent-semantic-protocols= the default state root for all DB Engine paths;
+2. ensure =asp paths=, cache status/import/flush/invalidate, source-index refresh, writeback, replay, and history audit obtain DB paths through =ClientDbEngine= or State Core helpers;
+3. record project-local =.cache/agent-semantic-protocol= only as migration/evidence, not as active DB authority;
+4. keep =sqlite-v1= as the validation backend while proving every public receipt can survive the later Turso cutover without command rewrites.
+
+Exit gate:
+- scenario tests prove no project-local cache is created for DB Engine state;
+- =ClientReceipt.dbEngine= and =semantic-db-engine-report.v1= are sufficient for Python and Julia to locate DB, artifact, overlay, and receipt roots.
+
+** M2: implement Turso as the active DB Engine backend
+Owner: =agent-semantic-client-db=.
+
+Deliverables:
+1. promote the feature-gated Turso skeleton into a real backend adapter behind =ClientDbEngineBackend=;
+2. create =client.turso= in the State Core =live/client= path and move active DB traffic behind the Turso adapter;
+3. implement migrations for stable generations, source index, structural index, provider command selections, artifact events, receipts, and analyzer events;
+4. treat =sqlite-v1= as a migration/control fixture only after cutover, not a long-lived product fallback;
+5. verify transaction, concurrent read/write, multi-process, and failure recovery behavior under ASP workloads before replacing default traffic.
+
+Exit gate:
+- Turso-backed cache status/import/lookup/replay flows pass the same receipt/schema gates as SQLite v1;
+- cutover can be toggled at the DB Engine adapter boundary without changing command modules.
+
+** M3: project stable data into the EvidenceGraph read model
+Owners: =agent-semantic-client-db= and provider harnesses.
+
+Deliverables:
+1. map source/structural index generations into =entity=, =entity_document=, =identifier_term=, =edge=, =dependency=, =test_coverage=, =failure_evidence=, =org_reference=, and receipt tables;
+2. keep raw source out of durable DB rows unless a provider-owned artifact contract explicitly allows bounded text;
+3. build field-weighted entity documents for name, qualified name, signature, doc summary, dependency terms, route terms, and provider-built identifier expansions;
+4. expose generation freshness and visibility so stale generations cannot become default actionable evidence.
+
+Exit gate:
+- a stable selector can be recovered from DB state without line-number identity;
+- graph-route inputs include enough field-hit metadata for Python ranking and enough provenance for Julia replay.
+
+** M4: replace agent-facing fuzzy search with stable FTS plus dynamic overlay
+Owners: =agent-semantic-search= and =agent-semantic-client-db=.
+
+Deliverables:
+1. implement persisted Turso FTS/BM25 over =entity_document= and =identifier_term=;
+2. implement dirty-code overlay namespaces with overlay file/entity/search documents keyed by session/subagent/base generation;
+3. consume Turso-owned Tantivy search semantics for overlay search when the boundary is exposed; otherwise keep a controlled adapter or benchmark lane rather than adding =tantivy= as a second product backend;
+4. merge agent memory, prior receipts, active overlays, stable Turso FTS, semantic seeds, and native parser proof before ranking;
+5. retire =fzf= from agent-facing ranking only after parity on recall, false-positive-at-1, selector stability, dirty-buffer latency, and field-hit receipt quality.
+
+Exit gate:
+- dirty overlays do not require durable DB writes on every edit;
+- overlay candidates carry selector or overlay-local entity identity, not executable line ranges;
+- =fzf= remains only a human/debug/migration affordance after parity.
+
+** M5: harden runtime/provider bridge performance
+Owners: =agent-semantic-runtime=, =agent-semantic-client-local-cli=, and language harnesses.
+
+Deliverables:
+1. move provider lifecycle, owner-items cache policy, graph-render process execution, runtime source identity, timeout/cancellation, and process receipts into runtime/local-cli owner crates;
+2. keep =languages/*-harness= responsible only for parser truth, ecosystem facts, stable selectors, query/snapshot/diff/owner-items contracts, and provider schemas;
+3. add warm worker pools, bounded concurrency, backpressure, cancellation, and batch dispatch where provider protocols allow it;
+4. fail closed when a language lacks a provider-owned owner-items interface instead of resurrecting Rust inline parsers.
+
+Exit gate:
+- cold owner-items functional gates exist for every supported language;
+- hot cache gates prove provider respawn is avoided where supported;
+- command modules only adapt CLI args and render returned packets.
+
+** M6: implement graph-route planner and Python production ranking
+Owners: =agent-semantic-search=, =agent-semantic-router= or equivalent route module, Python analyzer/runtime bridge, and Rust render.
+
+Deliverables:
+1. define a graph-route request that joins intent, memory anchors, stable DB facts, active overlays, provider selector facts, dependency/test/artifact topology, and prior route receipts;
+2. implement route stages: seed, selector expansion, topology expansion, overlay reconciliation, Python production ranking, compact render, and receipt write;
+3. have Python return ranked candidates, suppressions, recovery routes, diversity choices, scoring receipts, and confidence;
+4. store every considered route as =PlanTrace= / =SearchStage= with candidate counts, latencies, proof gain, fallback reason, and final action source.
+
+Exit gate:
+- one-turn path returns actionable selector/owner/nextCommand when memory or topology is sufficient;
+- two-turn path returns exact selector action on the second turn without broad raw search;
+- failed or stale routes are suppressed in subsequent packets.
+
+** M7: unify compact render and progressive disclosure
+Owners: Rust render crate/module and schemas.
+
+Deliverables:
+1. define compact EvidencePacket / GraphRoute render schema;
+2. render top-line route/confidence/freshness, ranked selectors, proof summaries, relevant graph paths, warnings, and exact =recommendedNext=;
+3. expose =more= handles for larger disclosure and replay/audit, instead of dumping full JSON by default;
+4. ensure graph-route, reasoning-tree, and EvidenceGraph terms are consistent across 10.20, 10.21, and 10.22.
+
+Exit gate:
+- agent-facing output is compact, schema-backed, progressively disclosed, and language-neutral;
+- JSON remains available for debug/analyzer use but is not the default prompt surface.
+
+** M8: make Julia replay useful, but keep it offline
+Owners: Julia analyzers and DB/overlay receipt contracts.
+
+Deliverables:
+1. export DB snapshots plus dynamic JSON overlays for reproducible offline replay;
+2. replay large session batches without re-running providers;
+3. evaluate which topology jumps reduce turns, where ranking fails, where warm-context skips are valid, and where combinator routes beat non-combinator routes;
+4. publish candidate algorithm notes and metrics that Python can implement and validate.
+
+Exit gate:
+- Julia can explain a Python ranking improvement or regression from stored receipts and overlays;
+- no Julia component is required for runtime route execution.
+
+** M9: run comparison benchmarks before declaring the new architecture done
+Owners: Rust scenario tests, Python ranking metrics, Julia replay notebooks.
+
+Benchmark matrix:
+1. codebase-memory-style repository search: turn count, recall@k, false-positive-at-1, token cost, and relationship/path-trace quality;
+2. dirty overlay search: update latency, selector stability, stale result suppression, and no forced durable write per edit;
+3. large Rust workspace simulation: intent-to-owner, intent-to-selector, dependency/test proximity ranking, and nextCommand correctness;
+4. cross-language owner-items: Rust, TypeScript, Python, Julia, Org/Markdown, and Gerbil Scheme cold/hot gates;
+5. compact render: rendered byte count, first actionable selector, recommendedNext adoption, and progressive-disclosure correctness.
+
+Exit gate:
+- ASP demonstrates a measurable path to fewer turns than the current flow and a plausible route to beat codebase-memory-mcp on selector authority, dirty overlay freshness, and compact evidence quality.
 * Open risks
 - Turso is still beta. ASP needs a backend trait and a SQLite v1 migration/control lane until Turso FTS, transactions, and multi-process behavior are proven under ASP workloads.
 - Turso FTS boundary may not expose a stable reusable Rust package for overlay search. That requires an adapter experiment before replacing =fzf=.
@@ -433,3 +653,7 @@ Python responsibilities:
 - [[https://arxiv.org/html/2603.27277v1][Codebase-Memory paper]]
 - [[file:10.18-turso-native-client-db-engine.org][10.18 Turso native client DB Engine]]
 - [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]]
+* Turso overlay search adapter checkpoint
+The first executable Turso overlay search checkpoint now lives in =agent-semantic-search=, not =agent-semantic-client= or =command/=. The feature-gated =turso-overlay= search adapter exposes search-owned =TursoOverlaySearchDocument= and =TursoOverlaySearchHit= DTOs, wraps DB-owned =bootstrap_turso_client_db=, =upsert_turso_overlay_document=, and =search_turso_documents= internally, and filters results to overlay hits before returning them to callers. This keeps client-db row types behind the search boundary while proving that dirty-code overlay search can consume Turso-owned search semantics through the DB Engine seam.
+
+The cold functional gate =asp_turso_overlay_search_adapter_cold_functional_path= is feature-gated behind =agent-semantic-protocol/turso-overlay=. It bootstraps a fresh Turso local-file fixture, upserts one transient overlay document, searches it through =agent_semantic_search::search_turso_overlay_documents=, requires =routeSource=turso-overlay=, zero provider processes, zero native finder processes, no executable line-range identity, and a 25ms max query budget. This is the first scenario-style Turso overlay performance gate. It deliberately measures the search adapter call, not =cargo run= or command startup.

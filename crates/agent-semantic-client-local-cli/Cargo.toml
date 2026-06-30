@@ -9,6 +9,8 @@ license = "MIT"
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [build-dependencies]
 rust-lang-project-harness = { workspace = true }
