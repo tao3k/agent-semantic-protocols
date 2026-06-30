@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 #[allow(clippy::module_inception)]
 #[path = "../../src/command/hook_runtime_skill.rs"]
 mod hook_runtime_skill;

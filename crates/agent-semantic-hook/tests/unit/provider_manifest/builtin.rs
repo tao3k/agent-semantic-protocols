@@ -77,6 +77,7 @@ fn builtin_manifests_include_document_language_providers() {
     assert_eq!(org.provider_id, "orgize");
     assert_eq!(org.binary, "asp");
     assert_eq!(org.execution.as_str(), "embedded");
+    assert!(org.search_capabilities.owner_items);
     assert!(org.source.default_extensions.contains(&".org".to_string()));
     assert_eq!(
         org.routes.query.as_ref().expect("org query route").argv,
@@ -95,12 +96,14 @@ fn builtin_manifests_include_document_language_providers() {
         [
             "asp",
             "org",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "{path}",
+            "items",
+            "--workspace",
+            "{projectRoot}",
             "--view",
-            "metadata",
-            "{projectRoot}"
+            "seeds"
         ]
     );
     assert_eq!(
@@ -120,6 +123,7 @@ fn builtin_manifests_include_document_language_providers() {
     assert_eq!(md.provider_id, "orgize");
     assert_eq!(md.binary, "asp");
     assert_eq!(md.execution.as_str(), "embedded");
+    assert!(md.search_capabilities.owner_items);
     assert!(md.source.default_extensions.contains(&".md".to_string()));
     assert_eq!(
         md.routes.query.as_ref().expect("md query route").argv,
@@ -138,12 +142,14 @@ fn builtin_manifests_include_document_language_providers() {
         [
             "asp",
             "md",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "{path}",
+            "items",
+            "--workspace",
+            "{projectRoot}",
             "--view",
-            "metadata",
-            "{projectRoot}"
+            "seeds"
         ]
     );
     assert_eq!(

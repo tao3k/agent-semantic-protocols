@@ -1,0 +1,13 @@
+id = "asp-typescript-owner-items-cold-functional-path"
+title = "ASP typescript search owner items executes ts-harness owner-items on cold path"
+policy_ids = ["TYPESCRIPT-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001"]
+agent_goal = "Prove the first asp typescript search owner <path> items request executes the language harness owner-items interface and returns shared owner/item evidence before any hot cache optimization is considered."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp typescript search owner app/src/model.ts items --query dynamicOwnerItemIndex --workspace . --view seeds",
+  "alg=ts-harness-owner-items",
+  "item:symbol(dynamicOwnerItemIndex)",
+]
+inputs = "inputs"
+expected = "expected"
+command = "asp typescript search owner app/src/model.ts items --query dynamicOwnerItemIndex --workspace . --view seeds"

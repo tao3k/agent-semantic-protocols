@@ -11,8 +11,9 @@ agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+agent-semantic-search = { path = "../agent-semantic-search" }
 agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
-orgize = { path = "../../languages/orgize", features = ["md"] }
+orgize = { workspace = true }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -25,9 +26,9 @@ tree-sitter = { workspace = true }
 tree-sitter-julia = "0.23.1"
 tree-sitter-python = "0.25.0"
 tree-sitter-typescript = "0.23.2"
-ignore = { version = "0.4.26", features = ["simd-accel"] }
+ignore = { workspace = true }
 libc = "0.2"
-which = "8.0.3"
+which = { workspace = true }
 
 [[bin]]
 name = "asp"

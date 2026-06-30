@@ -2,6 +2,9 @@
 
 use std::collections::BTreeMap;
 
+use agent_semantic_search::{
+    IngestSearchCandidate, NativeFinderCandidate, QueryWrapperCandidate, SearchPipeCandidate,
+};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -13,6 +16,62 @@ pub(super) struct Candidate {
     pub(super) text: String,
     pub(super) source: String,
     pub(super) confidence: String,
+}
+
+impl From<NativeFinderCandidate> for Candidate {
+    fn from(candidate: NativeFinderCandidate) -> Self {
+        Self {
+            path: candidate.path,
+            line: candidate.line,
+            end_line: candidate.end_line,
+            symbol: candidate.symbol,
+            text: candidate.text,
+            source: candidate.source,
+            confidence: candidate.confidence,
+        }
+    }
+}
+
+impl From<SearchPipeCandidate> for Candidate {
+    fn from(candidate: SearchPipeCandidate) -> Self {
+        Self {
+            path: candidate.path,
+            line: candidate.line,
+            end_line: candidate.end_line,
+            symbol: candidate.symbol,
+            text: candidate.text,
+            source: candidate.source,
+            confidence: candidate.confidence,
+        }
+    }
+}
+
+impl From<QueryWrapperCandidate> for Candidate {
+    fn from(candidate: QueryWrapperCandidate) -> Self {
+        Self {
+            path: candidate.path,
+            line: candidate.line,
+            end_line: candidate.end_line,
+            symbol: candidate.symbol,
+            text: candidate.text,
+            source: candidate.source,
+            confidence: candidate.confidence,
+        }
+    }
+}
+
+impl From<IngestSearchCandidate> for Candidate {
+    fn from(candidate: IngestSearchCandidate) -> Self {
+        Self {
+            path: candidate.path,
+            line: candidate.line,
+            end_line: candidate.end_line,
+            symbol: candidate.symbol,
+            text: candidate.text,
+            source: candidate.source,
+            confidence: candidate.confidence,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

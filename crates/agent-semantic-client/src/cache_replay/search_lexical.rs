@@ -1,14 +1,15 @@
-//! Search fzf replay matching for cache artifact reuse.
+//! Search lexical replay matching for cache artifact reuse.
 
 use std::fs;
 use std::path::Path;
 
-use agent_semantic_client_core::ClientMethod;
-use agent_semantic_client_core::ClientRequest;
+use agent_semantic_client_core::{ClientMethod, ClientRequest, replay_artifact_path};
 use agent_semantic_client_db::ClientDbGenerationHit;
+use agent_semantic_search::{
+    SearchLexicalReplayRequest, search_lexical_packet_matches_request as search_packet_matches,
+};
 use serde_json::Value;
 
-use super::artifact::replay_artifact_path;
 use super::limits::MAX_CACHE_REPLAY_ARTIFACT_BYTES;
 
 pub(crate) fn search_lexical_generation_matches_request(
@@ -31,33 +32,12 @@ pub(crate) fn search_lexical_packet_matches_request(
     packet: &Value,
     request: &ClientRequest,
 ) -> Option<()> {
-    if request.method != ClientMethod::Search
-        || request
-            .forwarded_args
-            .iter()
-            .any(|arg| arg == "--json" || arg == "--code")
-    {
-        return None;
-    }
-    if string_field(packet, "schemaId")? != "agent.semantic-protocols.semantic-search-packet" {
-        return None;
-    }
-    if string_field(packet, "method")? != "search/lexical" {
-        return None;
-    }
-    if string_field(packet, "query")? != request_search_lexical_query(&request.forwarded_args)? {
-        return None;
-    }
-    Some(())
-}
-
-fn request_search_lexical_query(forwarded_args: &[String]) -> Option<&str> {
-    forwarded_args.windows(2).find_map(|window| {
-        (window[0] == "lexical" && !window[1].starts_with('-') && window[1] != ".")
-            .then_some(window[1].as_str())
-    })
-}
-
-fn string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
-    value.get(key)?.as_str()
+    search_packet_matches(
+        packet,
+        SearchLexicalReplayRequest {
+            is_search_method: request.method == ClientMethod::Search,
+            forwarded_args: &request.forwarded_args,
+        },
+    )
+    .then_some(())
 }

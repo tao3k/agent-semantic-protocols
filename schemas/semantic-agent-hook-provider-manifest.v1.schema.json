@@ -211,7 +211,7 @@
       "required": [
         "prime",
         "owner",
-        "fzf",
+        "lexical",
         "ingest",
         "checkChanged"
       ],
@@ -240,7 +240,7 @@
         "guide": {
           "$ref": "#/$defs/commandTemplate"
         },
-        "fzf": {
+        "lexical": {
           "$ref": "#/$defs/commandTemplate"
         },
         "exportIndex": {

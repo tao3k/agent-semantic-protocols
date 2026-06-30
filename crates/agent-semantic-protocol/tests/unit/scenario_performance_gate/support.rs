@@ -2,12 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation, write_marker_provider,
+    asp_command, prepend_path, provider, provider_with_owner_items, temp_project_root,
+    write_activation, write_marker_provider, write_provider_bin_config,
 };
 use agent_semantic_protocol::render_selector_seeded_search_pipe;
 use serde::Deserialize;
@@ -28,6 +30,7 @@ const REQUIRED_PERFORMANCE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FZF-SOURCE-INDEX-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-001",
+    "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-DYNAMIC-OVERLAY-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-SELECTOR-SEED-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-SOURCE-INDEX-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-RG-001",
@@ -35,6 +38,14 @@ const REQUIRED_PERFORMANCE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-RG-SOURCE-INDEX-MISS-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-PROVIDER-FACTS-001",
+    "GERBIL-SCHEME-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
+    "JULIA-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
+    "ORG-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
+    "PYTHON-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
+    "PYTHON-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
+    "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
+    "TYPESCRIPT-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
+    "TYPESCRIPT-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
 ];
 const REQUIRED_WORKSPACE_ARGUMENT_POLICY_IDS: &[&str] = &["RUST-AGENT-ASP-WORKSPACE-FILE-001"];
 const SHARED_SCENARIO_BENCHMARK_SCHEMA: &str = "schemas/semantic-scenario-benchmark.v1.schema.json";
@@ -85,6 +96,37 @@ fn refresh_source_index(root: &Path) {
     );
 }
 
+fn assert_source_index_query_benchmark_contract(benchmark: &SharedBenchmarkToml) {
+    assert_eq!(benchmark.route_source.as_deref(), Some("source-index"));
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(8192));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
+fn assert_dynamic_overlay_benchmark_contract(benchmark: &SharedBenchmarkToml) {
+    assert_eq!(benchmark.route_source.as_deref(), Some("dynamic-overlay"));
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(8192));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
+fn assert_selector_seed_benchmark_contract(benchmark: &SharedBenchmarkToml) {
+    assert_eq!(benchmark.route_source.as_deref(), Some("selector-seed"));
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
+fn assert_owner_items_cold_functional_benchmark_contract(benchmark: &SharedBenchmarkToml) {
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("owner-items-provider")
+    );
+    assert_eq!(benchmark.max_provider_process_count, Some(1));
+    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
 #[derive(Clone, Copy, Debug)]
 struct LanguageScenarioBenchmarkRequirement {
     language: &'static str,
@@ -130,6 +172,14 @@ struct SharedBenchmarkToml {
     observed_memory_bytes: u64,
     target_rationale: String,
     observed_timings: BTreeMap<String, toml::Value>,
+    #[serde(default)]
+    route_source: Option<String>,
+    #[serde(default)]
+    max_provider_process_count: Option<u32>,
+    #[serde(default)]
+    max_stdout_bytes: Option<u64>,
+    #[serde(default)]
+    fallback_reason: Option<String>,
 }
 
 pub(super) fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
@@ -179,6 +229,7 @@ pub(super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gat
         .join("scenarios")
         .join("asp_selector_seeded_search_pipe_frontier");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_selector_seed_benchmark_contract(&benchmark);
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
 
     let selector = "rust://crates/agent-semantic-protocol/src/command/provider_process.rs#item/fn/provider_invocation_with_profile";
@@ -286,10 +337,11 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
         .join("scenarios")
         .join("asp_source_index_search_pipe_warm_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_source_index_query_benchmark_contract(&benchmark);
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
 
     let root = temp_project_root("scenario-source-index-search-pipe");
-    let bin_dir = root.join(".bin");
+    let bin_dir = root.join(".tmp").join("provider-bin");
     let marker = root.join("provider-called");
     fs::create_dir_all(root.join("src")).expect("create source root");
     fs::write(
@@ -309,12 +361,15 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
 
     let language = agent_semantic_client::LanguageId::from("rust");
     let lookup_started_at = Instant::now();
+    let cache_root = crate::provider_command::support::cache_root(&root);
     let lookup = agent_semantic_client::lookup_source_index_in_client_cache_dir(
-        &crate::provider_command::support::cache_root(&root),
-        &root,
-        Some(&language),
-        "source_index_fixture",
-        256,
+        agent_semantic_client::SourceIndexClientCacheLookupRequest {
+            cache_root: &cache_root,
+            indexed_project_root: &root,
+            language_id: Some(&language),
+            query: "source_index_fixture",
+            limit: 256,
+        },
     )
     .expect("lookup source index");
     let lookup_elapsed = lookup_started_at.elapsed();
@@ -434,6 +489,163 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
     let _ = fs::remove_dir_all(root);
 }
 
+pub(super) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_dynamic_overlay_search_pipe_warm_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_dynamic_overlay_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-dynamic-overlay-search-pipe");
+    let bin_dir = root.join(".tmp").join("provider-bin");
+    let marker = root.join("provider-called");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::create_dir_all(root.join("target")).expect("create ignored target root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-dynamic-overlay-search-pipe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn dynamic_overlay_fixture() { let dynamic_overlay_signal = true; }\n",
+    )
+    .expect("write source");
+    fs::write(
+        root.join("target").join("dynamic_overlay_ignored.rs"),
+        "pub fn dynamic_overlay_ignored() {}\n",
+    )
+    .expect("write ignored source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "dynamic_overlay_fixture",
+            "--source",
+            "finder",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search pipe dynamic overlay");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    for expected in [
+        "[search-pipe]",
+        "source=finder",
+        "sourceTrace=finder:used",
+        "ownerCoverage=bestOwner=src/lib.rs",
+        "nextCommand=asp rust query --selector src/lib.rs:1:1 --workspace . --code",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "dynamic overlay search pipe scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        !stdout.contains("target/dynamic_overlay_ignored.rs"),
+        "dynamic overlay root walk must honor ignored directories; stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains("sourceTrace=sourceIndex:used"),
+        "explicit dynamic overlay scenario must not use source-index; stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains("sourceTrace=finder:used[backend=rg"),
+        "dynamic overlay scenario must not route through native finder rg; stdout={stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "dynamic overlay search pipe should not spawn provider"
+    );
+    let collect_ms = source_trace_metric_ms(&stdout, "elapsedMs");
+    assert!(
+        collect_ms <= max_total_ms,
+        "dynamic overlay search pipe exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        collect_ms
+    );
+    assert!(
+        stdout.len() <= benchmark.max_stdout_bytes.unwrap_or(8192) as usize,
+        "dynamic overlay stdout exceeded benchmark max_stdout_bytes; stdout={stdout}"
+    );
+
+    let observed_total = format!("{collect_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-dynamic-overlay-search-pipe-warm-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "rust",
+            "search",
+            "pipe",
+            "dynamic_overlay_fixture",
+            "--source",
+            "finder",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds"
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxNativeFinderProcessCount": 0,
+            "maxRenderDuration": benchmark.max_total,
+            "maxStdoutBytes": benchmark.max_stdout_bytes.unwrap_or(8192),
+            "allowedFirstRoutes": ["dynamic-overlay"],
+            "forbiddenRoutes": ["source-index", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "providerElapsed": "0ms",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0ms",
+            "firstRoute": "dynamic-overlay",
+            "executedRoutes": ["dynamic-overlay", "query-code"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": observed_total,
+            "stdoutBytes": stdout.len()
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-dynamic-overlay-search-pipe-warm-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(
+        performance_gate["observed"]["firstRoute"],
+        "dynamic-overlay"
+    );
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
 pub(super) fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
@@ -442,10 +654,11 @@ pub(super) fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
         .join("scenarios")
         .join("asp_rg_query_source_index_warm_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_source_index_query_benchmark_contract(&benchmark);
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
 
     let root = temp_project_root("scenario-rg-query-source-index");
-    let bin_dir = root.join(".bin");
+    let bin_dir = root.join(".tmp").join("provider-bin");
     let marker = root.join("provider-called");
     fs::create_dir_all(root.join("src")).expect("create source root");
     fs::write(
@@ -567,6 +780,7 @@ pub(super) fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
         .join("asp_fd_query_source_index_warm_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    assert_source_index_query_benchmark_contract(&benchmark);
 
     let root = temp_project_root("scenario-fd-query-source-index");
     let bin_dir = root.join(".bin");
@@ -690,6 +904,7 @@ pub(super) fn asp_rg_query_source_index_miss_skips_native_finder_gate() {
         .join("asp_rg_query_source_index_miss_warm_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    assert_source_index_query_benchmark_contract(&benchmark);
 
     let root = temp_project_root("scenario-rg-query-source-index-miss");
     let bin_dir = root.join(".bin");
@@ -812,6 +1027,7 @@ pub(super) fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
         .join("scenarios")
         .join("asp_lexical_source_index_warm_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_source_index_query_benchmark_contract(&benchmark);
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
 
     let root = temp_project_root("scenario-lexical-source-index");
@@ -945,6 +1161,854 @@ pub(super) fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
     let _ = fs::remove_dir_all(root);
 }
 
+pub(super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_rust_owner_items_cache_hot_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("owner-items-cache"),
+        "rust owner-items hot path benchmark must declare route_source"
+    );
+    assert_eq!(
+        benchmark.max_provider_process_count,
+        Some(0),
+        "hot cache benchmark must declare zero provider respawns"
+    );
+    let max_stdout_bytes = benchmark
+        .max_stdout_bytes
+        .expect("hot cache benchmark must declare max_stdout_bytes");
+    assert_eq!(
+        benchmark.fallback_reason.as_deref(),
+        Some("none"),
+        "hot cache benchmark must declare fallback_reason=none"
+    );
+
+    let root = temp_project_root("scenario-rust-owner-items-cache-hot");
+    let bin_dir = root.join(".bin");
+    let count_path = root.join("provider-count");
+    fs::create_dir_all(root.join("crate/src")).expect("create source root");
+    fs::write(
+        root.join("crate/src/lib.rs"),
+        "pub async fn dynamic_owner_item_index() {}\n",
+    )
+    .expect("write source");
+    fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let provider_path = bin_dir.join("rs-harness");
+    fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=crate/src/lib.rs pkg=. selector=items alg=rust-harness-owner-items\\n'\nprintf 'O=owner:path(crate/src/lib.rs)!owner;I=item:symbol(dynamic_owner_item_index)@crate/src/lib.rs:1:1!syntax\\n'\n",
+            count = count_path.display()
+        ),
+    )
+    .expect("write provider");
+    let mut permissions = fs::metadata(&provider_path)
+        .expect("provider metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
+    write_provider_bin_config(&root, "rust", &provider_path);
+    write_activation(&root, &[provider_with_owner_items("rust", Vec::new())]);
+
+    let command_args = [
+        "rust",
+        "search",
+        "owner",
+        "crate/src/lib.rs",
+        "items",
+        "--query",
+        "dynamic_owner_item_index",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds",
+    ];
+    let warmup = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(command_args)
+        .output()
+        .expect("warm asp rust search owner items");
+    assert!(
+        warmup.status.success(),
+        "warm stderr: {}",
+        String::from_utf8_lossy(&warmup.stderr)
+    );
+
+    let started_at = Instant::now();
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(command_args)
+        .output()
+        .expect("run cached asp rust search owner items");
+    let elapsed = started_at.elapsed();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("alg=rust-harness-owner-items"), "{stdout}");
+    assert!(
+        stdout.contains("item:symbol(dynamic_owner_item_index)"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("read=crate/src/lib.rs:1:1"),
+        "owner-items hot path must not expose executable line-range selectors: {stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(&count_path).expect("provider count"),
+        "1",
+        "cached hot path must not spawn rust harness provider again"
+    );
+    let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
+    assert!(
+        observed_ms <= max_total_ms,
+        "rust owner-items cache hot path exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        observed_ms
+    );
+    assert!(
+        stdout.len() <= max_stdout_bytes as usize,
+        "rust owner-items cache hot path exceeded max_stdout_bytes={} observed={} stdout={stdout}",
+        max_stdout_bytes,
+        stdout.len()
+    );
+    let observed_total = format!("{observed_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-rust-owner-items-cache-hot-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "rust",
+            "search",
+            "owner",
+            "crate/src/lib.rs",
+            "items",
+            "--query",
+            "dynamic_owner_item_index",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds"
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxNativeFinderProcessCount": 0,
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "nativeFinderProcessCount": 0,
+            "firstRoute": benchmark.route_source,
+            "executedRoutes": [benchmark.route_source],
+            "executableLineRangeSelectorCount": 0,
+            "stdoutBytes": stdout.len(),
+            "fallbackReason": benchmark.fallback_reason
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-rust-owner-items-cache-hot-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(super) fn asp_rust_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    assert_owner_items_cold_functional_path(OwnerItemsColdFunctionalScenario {
+        scenario_dir: "asp_rust_owner_items_cold_functional_path",
+        scenario_id: "asp-rust-owner-items-cold-functional-path",
+        language_id: "rust",
+        binary: "rs-harness",
+        owner_path: "crate/src/lib.rs",
+        package_anchor_path: "Cargo.toml",
+        package_anchor_text: "[package]\nname = \"scenario-rust-owner-items-cold-functional\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        source_text: "pub async fn dynamic_owner_item_index() {}\n",
+        query: "dynamic_owner_item_index",
+        alg: "rust-harness-owner-items",
+        item_symbol: "dynamic_owner_item_index",
+    });
+}
+
+pub(super) fn asp_typescript_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    assert_owner_items_cold_functional_path(OwnerItemsColdFunctionalScenario {
+        scenario_dir: "asp_typescript_owner_items_cold_functional_path",
+        scenario_id: "asp-typescript-owner-items-cold-functional-path",
+        language_id: "typescript",
+        binary: "ts-harness",
+        owner_path: "app/src/model.ts",
+        package_anchor_path: "package.json",
+        package_anchor_text: "{\"name\":\"scenario-typescript-owner-items-cold-functional\",\"private\":true}\n",
+        source_text: "export function dynamicOwnerItemIndex(): boolean { return true; }\n",
+        query: "dynamicOwnerItemIndex",
+        alg: "ts-harness-owner-items",
+        item_symbol: "dynamicOwnerItemIndex",
+    });
+}
+
+pub(super) fn asp_python_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    assert_owner_items_cold_functional_path(OwnerItemsColdFunctionalScenario {
+        scenario_dir: "asp_python_owner_items_cold_functional_path",
+        scenario_id: "asp-python-owner-items-cold-functional-path",
+        language_id: "python",
+        binary: "py-harness",
+        owner_path: "src/model.py",
+        package_anchor_path: "pyproject.toml",
+        package_anchor_text: "[project]\nname = \"scenario-python-owner-items-cold-functional\"\nversion = \"0.1.0\"\n",
+        source_text: "def dynamic_owner_item_index() -> bool:\n    return True\n",
+        query: "dynamic_owner_item_index",
+        alg: "py-harness-owner-items",
+        item_symbol: "dynamic_owner_item_index",
+    });
+}
+
+pub(super) fn asp_julia_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    assert_owner_items_cold_functional_path(OwnerItemsColdFunctionalScenario {
+        scenario_dir: "asp_julia_owner_items_cold_functional_path",
+        scenario_id: "asp-julia-owner-items-cold-functional-path",
+        language_id: "julia",
+        binary: "asp-julia-harness",
+        owner_path: "src/Model.jl",
+        package_anchor_path: "Project.toml",
+        package_anchor_text: "name = \"ScenarioJuliaOwnerItemsColdFunctional\"\nversion = \"0.1.0\"\n",
+        source_text: "dynamic_owner_item_index() = true\n",
+        query: "dynamic_owner_item_index",
+        alg: "asp-julia-harness-owner-items",
+        item_symbol: "dynamic_owner_item_index",
+    });
+}
+
+pub(super) fn asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    assert_owner_items_cold_functional_path(OwnerItemsColdFunctionalScenario {
+        scenario_dir: "asp_gerbil_scheme_owner_items_cold_functional_path",
+        scenario_id: "asp-gerbil-scheme-owner-items-cold-functional-path",
+        language_id: "gerbil-scheme",
+        binary: "gslph",
+        owner_path: "src/model.ss",
+        package_anchor_path: "gerbil.pkg",
+        package_anchor_text: "(package: scenario-gerbil-owner-items-cold-functional)\n",
+        source_text: "(def (dynamic-owner-item-index) #t)\n",
+        query: "dynamic-owner-item-index",
+        alg: "gslph-owner-items",
+        item_symbol: "dynamic-owner-item-index",
+    });
+}
+
+pub(super) fn asp_org_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_org_owner_items_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_owner_items_cold_functional_benchmark_contract(&benchmark);
+
+    let root = temp_project_root("scenario-org-owner-items-cold-functional");
+    fs::create_dir_all(root.join("docs")).expect("create docs root");
+    fs::write(
+        root.join("docs/plan.org"),
+        "* Heading\nBody\n** Child\nMore body\n",
+    )
+    .expect("write org owner");
+    let started_at = Instant::now();
+    let output = asp_command(&root)
+        .args([
+            "org",
+            "search",
+            "owner",
+            "docs/plan.org",
+            "items",
+            "--query",
+            "Heading",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp org search owner items");
+    let elapsed = started_at.elapsed();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    for expected in [
+        "[search-owner] lang=org",
+        "|heading docs/plan.org:1-4",
+        "title=\"Heading\"",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "org cold owner-items scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        !stdout.contains("read=docs/plan.org:1:1"),
+        "org owner-items cold path must not expose executable line-range selectors: {stdout}"
+    );
+    assert!(
+        stdout.len() <= benchmark.max_stdout_bytes.unwrap_or(4096) as usize,
+        "org owner-items cold path exceeded max_stdout_bytes; stdout={stdout}"
+    );
+    let observed_total = format!("{}ms", elapsed.as_millis().min(u128::from(u64::MAX)));
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-org-owner-items-cold-functional-path",
+        "languageId": "org",
+        "workspace": ".",
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxNativeFinderProcessCount": 0,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 1,
+            "nativeFinderProcessCount": 0,
+            "firstRoute": benchmark.route_source,
+            "executedRoutes": [benchmark.route_source],
+            "executableLineRangeSelectorCount": 0,
+            "stdoutBytes": stdout.len(),
+            "fallbackReason": benchmark.fallback_reason
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-org-owner-items-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 1);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+struct OwnerItemsColdFunctionalScenario {
+    scenario_dir: &'static str,
+    scenario_id: &'static str,
+    language_id: &'static str,
+    binary: &'static str,
+    owner_path: &'static str,
+    package_anchor_path: &'static str,
+    package_anchor_text: &'static str,
+    source_text: &'static str,
+    query: &'static str,
+    alg: &'static str,
+    item_symbol: &'static str,
+}
+
+fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFunctionalScenario) {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join(spec.scenario_dir);
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_owner_items_cold_functional_benchmark_contract(&benchmark);
+    let root = temp_project_root(spec.scenario_dir);
+    let bin_dir = root.join(".bin");
+    let count_path = root.join("provider-count");
+    let owner = root.join(spec.owner_path);
+    fs::create_dir_all(owner.parent().expect("owner parent")).expect("create source root");
+    fs::write(
+        root.join(spec.package_anchor_path),
+        spec.package_anchor_text,
+    )
+    .expect("write package anchor");
+    fs::write(&owner, spec.source_text).expect("write source");
+    fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let provider_path = bin_dir.join(spec.binary);
+    fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q={owner_path} pkg=. selector=items alg={alg}\\n'\nprintf 'O=owner:path({owner_path})!owner;I=item:symbol({item_symbol})@{owner_path}:1:1!syntax\\n'\n",
+            count = count_path.display(),
+            owner_path = spec.owner_path,
+            alg = spec.alg,
+            item_symbol = spec.item_symbol,
+        ),
+    )
+    .expect("write provider");
+    let mut permissions = fs::metadata(&provider_path)
+        .expect("provider metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
+    write_provider_bin_config(&root, spec.language_id, &provider_path);
+    write_activation(
+        &root,
+        &[provider_with_owner_items(spec.language_id, Vec::new())],
+    );
+
+    let command_args = [
+        spec.language_id,
+        "search",
+        "owner",
+        spec.owner_path,
+        "items",
+        "--query",
+        spec.query,
+        "--workspace",
+        ".",
+        "--view",
+        "seeds",
+    ];
+    let started_at = Instant::now();
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(command_args)
+        .output()
+        .expect("run cold asp search owner items");
+    let elapsed = started_at.elapsed();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains(&format!("alg={}", spec.alg)),
+        "stdout={stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("item:symbol({})", spec.item_symbol)),
+        "stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains(&format!("read={}:1:1", spec.owner_path)),
+        "owner-items cold path must not expose executable line-range selectors: {stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(&count_path).expect("provider count"),
+        "1",
+        "cold path must spawn exactly one language harness provider"
+    );
+    let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
+    let max_stdout_bytes = benchmark.max_stdout_bytes.unwrap_or(4096);
+    assert!(
+        stdout.len() <= max_stdout_bytes as usize,
+        "{} exceeded max_stdout_bytes={} observed={} stdout={stdout}",
+        spec.scenario_id,
+        max_stdout_bytes,
+        stdout.len()
+    );
+    let observed_total = format!("{observed_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": spec.scenario_id,
+        "languageId": spec.language_id,
+        "workspace": ".",
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxNativeFinderProcessCount": 0,
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "processStartupIncluded": true,
+            "providerProcessCount": 1,
+            "nativeFinderProcessCount": 0,
+            "firstRoute": benchmark.route_source,
+            "executedRoutes": [benchmark.route_source],
+            "executableLineRangeSelectorCount": 0,
+            "stdoutBytes": stdout.len(),
+            "fallbackReason": benchmark.fallback_reason
+        },
+        "verdict": "pass",
+        "evidenceRefs": [format!("scenario:{}", spec.scenario_id)]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 1);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_typescript_owner_items_cache_hot_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("owner-items-cache"),
+        "typescript owner-items hot path benchmark must declare route_source"
+    );
+    assert_eq!(
+        benchmark.max_provider_process_count,
+        Some(0),
+        "hot cache benchmark must declare zero provider respawns"
+    );
+    let max_stdout_bytes = benchmark
+        .max_stdout_bytes
+        .expect("hot cache benchmark must declare max_stdout_bytes");
+    assert_eq!(
+        benchmark.fallback_reason.as_deref(),
+        Some("none"),
+        "hot cache benchmark must declare fallback_reason=none"
+    );
+
+    let root = temp_project_root("scenario-typescript-owner-items-cache-hot");
+    let bin_dir = root.join(".bin");
+    let count_path = root.join("provider-count");
+    fs::create_dir_all(root.join("app/src")).expect("create source root");
+    fs::write(
+        root.join("package.json"),
+        "{\"name\":\"scenario-typescript-owner-items-cache-hot\",\"private\":true}\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("app/src/model.ts"),
+        "export function dynamicOwnerItemIndex(): boolean { return true; }\n",
+    )
+    .expect("write source");
+    fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let provider_path = bin_dir.join("ts-harness");
+    fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=app/src/model.ts pkg=. selector=items alg=ts-harness-owner-items\\n'\nprintf 'O=owner:path(app/src/model.ts)!owner;I=item:symbol(dynamicOwnerItemIndex)@app/src/model.ts:1:1!syntax\\n'\n",
+            count = count_path.display()
+        ),
+    )
+    .expect("write provider");
+    let mut permissions = fs::metadata(&provider_path)
+        .expect("provider metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
+    write_provider_bin_config(&root, "typescript", &provider_path);
+    write_activation(
+        &root,
+        &[provider_with_owner_items("typescript", Vec::new())],
+    );
+
+    let command_args = [
+        "typescript",
+        "search",
+        "owner",
+        "app/src/model.ts",
+        "items",
+        "--query",
+        "dynamicOwnerItemIndex",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds",
+    ];
+    let warmup = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(command_args)
+        .output()
+        .expect("warm asp typescript search owner items");
+    assert!(
+        warmup.status.success(),
+        "warm stderr: {}",
+        String::from_utf8_lossy(&warmup.stderr)
+    );
+
+    let started_at = Instant::now();
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(command_args)
+        .output()
+        .expect("run cached asp typescript search owner items");
+    let elapsed = started_at.elapsed();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("alg=ts-harness-owner-items"), "{stdout}");
+    assert!(
+        stdout.contains("item:symbol(dynamicOwnerItemIndex)"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("read=app/src/model.ts:1:1"),
+        "owner-items hot path must not expose executable line-range selectors: {stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(&count_path).expect("provider count"),
+        "1",
+        "cached hot path must not spawn typescript harness provider again"
+    );
+    let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
+    assert!(
+        observed_ms <= max_total_ms,
+        "typescript owner-items cache hot path exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        observed_ms
+    );
+    assert!(
+        stdout.len() <= max_stdout_bytes as usize,
+        "typescript owner-items cache hot path exceeded max_stdout_bytes={} observed={} stdout={stdout}",
+        max_stdout_bytes,
+        stdout.len()
+    );
+    let observed_total = format!("{observed_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-typescript-owner-items-cache-hot-path",
+        "languageId": "typescript",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "typescript",
+            "search",
+            "owner",
+            "app/src/model.ts",
+            "items",
+            "--query",
+            "dynamicOwnerItemIndex",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds"
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxNativeFinderProcessCount": 0,
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "nativeFinderProcessCount": 0,
+            "firstRoute": benchmark.route_source,
+            "executedRoutes": [benchmark.route_source],
+            "executableLineRangeSelectorCount": 0,
+            "stdoutBytes": stdout.len(),
+            "fallbackReason": benchmark.fallback_reason
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-typescript-owner-items-cache-hot-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(super) fn asp_python_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_python_owner_items_cache_hot_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("owner-items-cache"),
+        "python owner-items hot path benchmark must declare route_source"
+    );
+    assert_eq!(
+        benchmark.max_provider_process_count,
+        Some(0),
+        "hot cache benchmark must declare zero provider respawns"
+    );
+    let max_stdout_bytes = benchmark
+        .max_stdout_bytes
+        .expect("hot cache benchmark must declare max_stdout_bytes");
+    assert_eq!(
+        benchmark.fallback_reason.as_deref(),
+        Some("none"),
+        "hot cache benchmark must declare fallback_reason=none"
+    );
+
+    let root = temp_project_root("scenario-python-owner-items-cache-hot");
+    let bin_dir = root.join(".bin");
+    let count_path = root.join("provider-count");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("pyproject.toml"),
+        "[project]\nname = \"scenario-python-owner-items-cache-hot\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/model.py"),
+        "def dynamic_owner_item_index() -> bool:\n    return True\n",
+    )
+    .expect("write source");
+    fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let provider_path = bin_dir.join("py-harness");
+    fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=src/model.py pkg=. selector=items alg=py-harness-owner-items\\n'\nprintf 'O=owner:path(src/model.py)!owner;I=item:symbol(dynamic_owner_item_index)@src/model.py:1:1!syntax\\n'\n",
+            count = count_path.display()
+        ),
+    )
+    .expect("write provider");
+    let mut permissions = fs::metadata(&provider_path)
+        .expect("provider metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
+    write_provider_bin_config(&root, "python", &provider_path);
+    write_activation(&root, &[provider_with_owner_items("python", Vec::new())]);
+
+    let command_args = [
+        "python",
+        "search",
+        "owner",
+        "src/model.py",
+        "items",
+        "--query",
+        "dynamic_owner_item_index",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds",
+    ];
+    let warmup = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(command_args)
+        .output()
+        .expect("warm asp python search owner items");
+    assert!(
+        warmup.status.success(),
+        "warm stderr: {}",
+        String::from_utf8_lossy(&warmup.stderr)
+    );
+
+    let started_at = Instant::now();
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(command_args)
+        .output()
+        .expect("run cached asp python search owner items");
+    let elapsed = started_at.elapsed();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("alg=py-harness-owner-items"), "{stdout}");
+    assert!(
+        stdout.contains("item:symbol(dynamic_owner_item_index)"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("read=src/model.py:1:1"),
+        "owner-items hot path must not expose executable line-range selectors: {stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(&count_path).expect("provider count"),
+        "1",
+        "cached hot path must not spawn python harness provider again"
+    );
+    let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
+    assert!(
+        observed_ms <= max_total_ms,
+        "python owner-items cache hot path exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        observed_ms
+    );
+    assert!(
+        stdout.len() <= max_stdout_bytes as usize,
+        "python owner-items cache hot path exceeded max_stdout_bytes={} observed={} stdout={stdout}",
+        max_stdout_bytes,
+        stdout.len()
+    );
+    let observed_total = format!("{observed_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-python-owner-items-cache-hot-path",
+        "languageId": "python",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "python",
+            "search",
+            "owner",
+            "src/model.py",
+            "items",
+            "--query",
+            "dynamic_owner_item_index",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds"
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxNativeFinderProcessCount": 0,
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "nativeFinderProcessCount": 0,
+            "firstRoute": benchmark.route_source,
+            "executedRoutes": [benchmark.route_source],
+            "executableLineRangeSelectorCount": 0,
+            "stdoutBytes": stdout.len(),
+            "fallbackReason": benchmark.fallback_reason
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-python-owner-items-cache-hot-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
 pub(super) fn asp_unit_scenarios_cover_workspace_argument_guards() {
     let scenario_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -977,6 +2041,7 @@ pub(super) fn language_harnesses_have_shared_scenario_benchmark_schema_coverage(
 
     let mut missing = Vec::new();
     let mut invalid = Vec::new();
+    let mut hot_path_coverage = BTreeSet::new();
     for requirement in LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS {
         let root = repo_root.join(requirement.root);
         match requirement.syntax {
@@ -990,6 +2055,7 @@ pub(super) fn language_harnesses_have_shared_scenario_benchmark_schema_coverage(
                         requirement.language,
                         &pair_root,
                         &mut invalid,
+                        &mut hot_path_coverage,
                     );
                 }
             }
@@ -999,7 +2065,7 @@ pub(super) fn language_harnesses_have_shared_scenario_benchmark_schema_coverage(
                     missing.push(format!("{}:{}", requirement.language, requirement.root));
                 }
                 for path in paths {
-                    validate_gerbil_benchmark_ss(&path, &mut invalid);
+                    validate_gerbil_benchmark_ss(&path, &mut invalid, &mut hot_path_coverage);
                 }
             }
         }
@@ -1012,6 +2078,15 @@ pub(super) fn language_harnesses_have_shared_scenario_benchmark_schema_coverage(
     assert!(
         invalid.is_empty(),
         "language scenario benchmark manifests must satisfy {SHARED_SCENARIO_BENCHMARK_SCHEMA}; invalid={invalid:?}"
+    );
+    let missing_hot_path = LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS
+        .iter()
+        .map(|requirement| requirement.language)
+        .filter(|language| !hot_path_coverage.contains(*language))
+        .collect::<Vec<_>>();
+    assert!(
+        missing_hot_path.is_empty(),
+        "language harnesses must each expose at least one scenario benchmark with route_source/max_provider_process_count/max_stdout_bytes/fallback_reason hot-path metadata; missing={missing_hot_path:?}; observed={hot_path_coverage:?}"
     );
 }
 
@@ -1236,7 +2311,12 @@ fn collect_benchmark_ss_files(root: &Path, paths: &mut Vec<PathBuf>) {
     }
 }
 
-fn validate_toml_scenario_benchmark(language: &str, root: &Path, invalid: &mut Vec<String>) {
+fn validate_toml_scenario_benchmark(
+    language: &str,
+    root: &Path,
+    invalid: &mut Vec<String>,
+    hot_path_coverage: &mut BTreeSet<&'static str>,
+) {
     let scenario_path = root.join("scenario.toml");
     let benchmark_path = root.join("benchmark.toml");
     let scenario: SharedScenarioToml = read_toml(&scenario_path);
@@ -1297,6 +2377,9 @@ fn validate_toml_scenario_benchmark(language: &str, root: &Path, invalid: &mut V
             "{}: benchmark.observed_timings must not be empty",
             benchmark_path.display()
         ));
+    }
+    if benchmark_has_hot_path_metadata(&benchmark) {
+        hot_path_coverage.insert(canonical_benchmark_language(language));
     }
 }
 
@@ -1359,7 +2442,11 @@ const LEGACY_POLICY_ID_SCAN_PATHS: &[&str] = &[
     "typescript-lang-project-harness/tests",
 ];
 
-fn validate_gerbil_benchmark_ss(path: &Path, invalid: &mut Vec<String>) {
+fn validate_gerbil_benchmark_ss(
+    path: &Path,
+    invalid: &mut Vec<String>,
+    hot_path_coverage: &mut BTreeSet<&'static str>,
+) {
     let text =
         fs::read_to_string(path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
     for token in [
@@ -1377,6 +2464,17 @@ fn validate_gerbil_benchmark_ss(path: &Path, invalid: &mut Vec<String>) {
             invalid.push(format!("{}: benchmark.ss missing {token}", path.display()));
         }
     }
+    if [
+        "routeSource",
+        "maxProviderProcessCount",
+        "maxStdoutBytes",
+        "fallbackReason",
+    ]
+    .iter()
+    .all(|token| text.contains(token))
+    {
+        hot_path_coverage.insert("gerbil-scheme");
+    }
     match gerbil_benchmark_rule(&text) {
         Some(rule) if is_agent_policy_id(rule) => {}
         Some(rule) => invalid.push(format!(
@@ -1387,6 +2485,31 @@ fn validate_gerbil_benchmark_ss(path: &Path, invalid: &mut Vec<String>) {
             "{}: benchmark.ss missing rule value",
             path.display()
         )),
+    }
+}
+
+fn benchmark_has_hot_path_metadata(benchmark: &SharedBenchmarkToml) -> bool {
+    benchmark
+        .route_source
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        && benchmark.max_provider_process_count.is_some()
+        && benchmark.max_stdout_bytes.is_some()
+        && benchmark
+            .fallback_reason
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+}
+
+fn canonical_benchmark_language(language: &str) -> &'static str {
+    match language {
+        "rust" => "rust",
+        "typescript" => "typescript",
+        "python" => "python",
+        "julia" => "julia",
+        "gerbil-scheme" => "gerbil-scheme",
+        "orgize" => "orgize",
+        _ => "unknown",
     }
 }
 

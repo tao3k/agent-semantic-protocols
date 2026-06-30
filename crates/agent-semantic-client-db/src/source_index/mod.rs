@@ -1,13 +1,24 @@
 //! Rust-owned SQL source index rows for workspace source discovery.
 
 mod api;
+mod import;
 mod lookup;
 mod storage;
 mod text;
 mod types;
 
+pub use import::{build_source_index_import, source_index_relative_path, source_index_scope_dirs};
 pub use types::{
-    ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource, ClientDbSourceIndexStats,
+    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
+    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDbSourceIndexCandidate,
+    ClientDbSourceIndexImport, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
+    ClientDbSourceIndexLookup, ClientDbSourceIndexLookupResult, ClientDbSourceIndexLookupState,
+    ClientDbSourceIndexOwner, ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey,
+    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
+    ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
+    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource, ClientDbSourceIndexSourceKind,
+    ClientDbSourceIndexStats, client_db_source_index_file_count,
+    client_db_source_index_generation_id,
 };

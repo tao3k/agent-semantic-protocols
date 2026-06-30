@@ -8,6 +8,7 @@ members = [
     "crates/agent-semantic-client-local-cli",
     "crates/agent-semantic-hook",
     "crates/agent-semantic-provider-transport",
+    "crates/agent-semantic-search",
     "crates/agent-semantic-protocol",
     "crates/agent-semantic-tree-sitter",
 ]
@@ -23,6 +24,8 @@ criterion = "0.8.2"
 futures-util = "0.3"
 fs2 = "0.4"
 globset = "0.4"
+ignore = { version = "0.4.26", features = ["simd-accel"] }
+orgize = { path = "languages/orgize", features = ["md"] }
 libc = "0.2"
 memchr = "2"
 rust-lang-project-harness = { path = "languages/rust-lang-project-harness", default-features = false }
@@ -36,6 +39,7 @@ tracing = "0.1"
 tree-sitter = "0.26"
 tree-sitter-bash = "0.25"
 turso = { version = "0.7.0-pre.14", default-features = false }
+which = "8"
 
 [profile.release]
 lto = "thin"

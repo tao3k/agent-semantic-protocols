@@ -1,0 +1,13 @@
+id = "asp-rust-owner-items-cache-hot-path"
+title = "ASP rust search owner items uses cached rust-harness owner-items proof on hot path"
+policy_ids = ["RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001"]
+agent_goal = "Keep asp rust search owner <path> items on a rust-harness owner-items interface with cached hot-path replay, without provider respawn, native finder fallback, source synthesis, or executable line-range identity."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp rust search owner crate/src/lib.rs items --query dynamic_owner_item_index --workspace . --view seeds",
+  "alg=rust-harness-owner-items",
+  "item:symbol(dynamic_owner_item_index)",
+]
+inputs = "inputs"
+expected = "expected"
+command = "asp rust search owner crate/src/lib.rs items --query dynamic_owner_item_index --workspace . --view seeds"

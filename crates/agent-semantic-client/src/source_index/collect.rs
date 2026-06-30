@@ -4,11 +4,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use agent_semantic_client_core::{
-    ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot, ResolvedProvider,
-};
-use agent_semantic_client_local_cli::LocalNativeCliBackend;
-use serde::Deserialize;
+use agent_semantic_client_core::{ProviderRegistrySnapshot, ResolvedProvider};
+use agent_semantic_runtime::{ProviderWorkspaceScope, provider_workspace_scope};
 
 use super::config::SOURCE_INDEX_FILE_LIMIT;
 use super::model::SourceIndexScopeFile;
@@ -127,52 +124,11 @@ fn provider_workspace_scope_files(
     package_root: &str,
     package_root_path: &Path,
 ) -> Result<Option<Vec<SourceIndexScopeFile>>, String> {
-    let request = ClientRequest::new(ClientMethod::Search, project_root.to_path_buf())
-        .with_language(provider.language_id.clone())
-        .with_forwarded_args(vec![
-            "workspace-scope".to_string(),
-            "--json".to_string(),
-            package_root.to_string(),
-        ]);
-    let snapshot = ProviderRegistrySnapshot {
-        activation_path: PathBuf::new(),
-        providers: vec![provider.clone()],
-    };
-    let output = match LocalNativeCliBackend::new(snapshot).execute(&request) {
-        Ok(output) => output,
-        Err(_) => return Ok(None),
-    };
-    if output.status_code != 0 {
-        return Ok(None);
-    }
-    let stdout = String::from_utf8_lossy(output.stdout.as_ref());
-    let Some(packet) = stdout
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .find_map(parse_workspace_scope_packet)
+    let ProviderWorkspaceScope::Supported(packet) =
+        provider_workspace_scope(project_root, provider, package_root)?
     else {
         return Ok(None);
     };
-    if packet
-        .schema_id
-        .as_deref()
-        .is_some_and(|schema_id| schema_id != "agent.semantic-protocols.semantic-workspace-scope")
-    {
-        return Ok(None);
-    }
-    if packet.status.as_deref() == Some("missing-anchor") {
-        return Ok(Some(Vec::new()));
-    }
-    if packet.status.is_none() && packet.files.is_empty() {
-        return Ok(None);
-    }
-    let language_id = packet
-        .language_id
-        .unwrap_or_else(|| provider.language_id.clone());
-    let provider_id = packet
-        .provider_id
-        .unwrap_or_else(|| provider.provider_id.clone());
     let mut files = Vec::new();
     for file in packet.files {
         let Some(path) = scoped_child_path(package_root_path, &file.path) else {
@@ -181,47 +137,12 @@ fn provider_workspace_scope_files(
         if path.is_file() && !provider_ignores_path(project_root, provider, &path) {
             files.push(SourceIndexScopeFile {
                 path,
-                language_id: file
-                    .language_id
-                    .clone()
-                    .unwrap_or_else(|| language_id.clone()),
-                provider_id: file
-                    .provider_id
-                    .clone()
-                    .unwrap_or_else(|| provider_id.clone()),
+                language_id: file.language_id,
+                provider_id: file.provider_id,
             });
         }
     }
     Ok(Some(files))
-}
-
-fn parse_workspace_scope_packet(line: &str) -> Option<ProviderWorkspaceScopePacket> {
-    serde_json::from_str::<ProviderWorkspaceScopePacket>(line).ok()
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderWorkspaceScopePacket {
-    #[serde(default)]
-    schema_id: Option<String>,
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    language_id: Option<LanguageId>,
-    #[serde(default)]
-    provider_id: Option<ProviderId>,
-    #[serde(default)]
-    files: Vec<ProviderWorkspaceScopeFile>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderWorkspaceScopeFile {
-    path: String,
-    #[serde(default)]
-    language_id: Option<LanguageId>,
-    #[serde(default)]
-    provider_id: Option<ProviderId>,
 }
 
 fn collect_provider_scope_files(

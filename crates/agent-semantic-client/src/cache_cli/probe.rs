@@ -42,12 +42,14 @@ pub(crate) fn provider_cache_probe(
     }
     let cache_report = ClientCacheManifest::inspect_project(project_root);
     let cache_root = cache_report.cache_root.as_ref()?;
-    let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
-    let db = ClientDb::open_read_only_existing(&db_path).ok().flatten();
+    let db_path = ClientDbEngine::db_path_for_client_dir(cache_root);
+    let db = ClientDbEngine::open_read_only_existing_client_dir(cache_root)
+        .ok()
+        .flatten();
     let db_report = db
         .as_ref()
         .and_then(|db| db.inspect_open().ok())
-        .unwrap_or_else(|| ClientDb::inspect(&db_path));
+        .unwrap_or_else(|| ClientDbEngine::inspect_client_dir(cache_root));
     let mut sqlite_read_count = if db_report.status == ClientDbStatus::Present {
         1
     } else {

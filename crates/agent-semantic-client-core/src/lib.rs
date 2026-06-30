@@ -3,6 +3,7 @@
 //! Core contracts for the local-first agent semantic client.
 
 pub mod activation;
+pub mod cache_artifact;
 pub mod cache_manifest;
 pub mod config;
 pub mod project_context;
@@ -12,11 +13,14 @@ pub mod state_core;
 pub mod types;
 
 pub use activation::{
-    ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderRegistrySnapshot, ResolvedProvider,
-    RuntimeProfileStatus,
+    ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderRegistryEvidence, ProviderRegistrySnapshot,
+    ResolvedProvider, RuntimeProfileStatus,
 };
 pub use agent_semantic_config::ProjectEnvStatus;
 pub use agent_semantic_hook::ProviderExecution;
+pub use cache_artifact::{
+    replay_artifact_path, replay_artifacts_root, structured_evidence_artifact_path,
+};
 pub use cache_manifest::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,
@@ -29,8 +33,9 @@ pub use config::{BackendMode, ClientConfig, PrivacyMode};
 pub use project_context::{ProjectContext, StateLayout};
 pub use receipt::{
     AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID, AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID,
-    ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbRuntimePragmasReceipt,
-    ClientDbSqliteReceipt, ClientReceipt, ExecutionRoute, NativeProvenance, ProviderCommandReceipt,
+    ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbFutureBackendReportReceipt,
+    ClientDbRuntimePragmasReceipt, ClientDbSqliteReceipt, ClientReceipt, ExecutionRoute,
+    NativeProvenance, ProviderCommandReceipt,
 };
 pub use types::{
     ByteCount, CacheArtifactId, CacheExportMethod, CacheGenerationId, CacheStatus, ClientCachePath,
@@ -60,6 +65,9 @@ pub use {
 #[cfg(test)]
 #[path = "../tests/unit/activation.rs"]
 mod activation_tests;
+#[cfg(test)]
+#[path = "../tests/unit/cache_artifact.rs"]
+mod cache_artifact_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cache_manifest.rs"]
 mod cache_manifest_tests;

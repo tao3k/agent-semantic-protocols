@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 #[path = "../../../src/command/gerbil_check_cache.rs"]
 mod gerbil_check_cache;
 

@@ -30,6 +30,13 @@ pub struct RuntimeSourceCheckout {
     pub checkout_dir: PathBuf,
 }
 
+/// Runtime-source identity prepared for source-index refresh.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSourceIndexContext {
+    pub checkout_root: PathBuf,
+    pub registry_fingerprint: String,
+}
+
 /// Resolve the ASP-managed checkout directory for a runtime source version.
 pub fn runtime_source_checkout_dir(
     project_root: impl AsRef<Path>,
@@ -79,6 +86,57 @@ pub fn ensure_runtime_source_checkout_in_client_cache(
         &spec.checkout,
     )?;
     ensure_runtime_source_checkout_at(checkout_dir, spec)
+}
+
+/// Resolve runtime-source index identity under an ASP-managed client cache.
+pub fn runtime_source_index_context(
+    checkout_root: impl AsRef<Path>,
+    client_cache_dir: impl AsRef<Path>,
+    language_id: &str,
+    provider_id: &str,
+) -> Result<RuntimeSourceIndexContext, String> {
+    let checkout_root = fs::canonicalize(checkout_root.as_ref()).map_err(|error| {
+        format!(
+            "failed to resolve runtime source checkout {}: {error}",
+            checkout_root.as_ref().display()
+        )
+    })?;
+    let canonical_cache_dir = fs::canonicalize(client_cache_dir.as_ref()).map_err(|error| {
+        format!(
+            "failed to resolve ASP client cache dir {}: {error}",
+            client_cache_dir.as_ref().display()
+        )
+    })?;
+    if !checkout_root.starts_with(&canonical_cache_dir) {
+        return Err(format!(
+            "runtime source checkout {} is outside ASP client cache {}",
+            checkout_root.display(),
+            canonical_cache_dir.display()
+        ));
+    }
+
+    Ok(RuntimeSourceIndexContext {
+        registry_fingerprint: runtime_source_registry_fingerprint(
+            &checkout_root,
+            language_id,
+            provider_id,
+        ),
+        checkout_root,
+    })
+}
+
+/// Build the stable registry fingerprint for ASP-managed runtime source facts.
+pub fn runtime_source_registry_fingerprint(
+    checkout_root: &Path,
+    language_id: &str,
+    provider_id: &str,
+) -> String {
+    format!(
+        "runtimeSource\ngenerationRoot={}\nlanguage={}\nprovider={}",
+        checkout_root.display(),
+        language_id,
+        provider_id
+    )
 }
 
 fn ensure_runtime_source_checkout_at(

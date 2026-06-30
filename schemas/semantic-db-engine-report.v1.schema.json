@@ -20,6 +20,7 @@
     "repoId",
     "workspaceId",
     "scopeId",
+    "futureBackendReport",
     "sqliteReport"
   ],
   "properties": {
@@ -73,6 +74,9 @@
     },
     "sqliteReport": {
       "$ref": "#/$defs/sqliteReport"
+    },
+    "futureBackendReport": {
+      "$ref": "#/$defs/tursoReport"
     }
   },
   "$defs": {
@@ -140,7 +144,11 @@
           "minLength": 1
         },
         "status": {
-          "enum": ["missing", "present", "invalid"]
+          "enum": [
+            "missing",
+            "present",
+            "invalid"
+          ]
         },
         "generationCount": {
           "type": "integer",
@@ -204,7 +212,10 @@
           ]
         },
         "reason": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },
@@ -231,6 +242,95 @@
         },
         "foreignKeys": {
           "type": "boolean"
+        }
+      }
+    },
+    "tursoReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "status",
+        "dbFileName",
+        "schemaBootstrap",
+        "durability",
+        "features",
+        "dbPath",
+        "reason"
+      ],
+      "properties": {
+        "backend": {
+          "const": "turso"
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "available",
+            "active",
+            "unavailable"
+          ]
+        },
+        "dbFileName": {
+          "const": "client.turso"
+        },
+        "schemaBootstrap": {
+          "enum": [
+            "pending-cutover",
+            "ready",
+            "failed"
+          ]
+        },
+        "durability": {
+          "const": "turso-local-file"
+        },
+        "features": {
+          "$ref": "#/$defs/tursoFeatures"
+        },
+        "dbPath": {
+          "type": "string",
+          "pattern": "/live/client/client\\.turso$"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "tursoFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asyncIo",
+        "concurrentWrites",
+        "fts",
+        "vector",
+        "overlaySearch",
+        "sync",
+        "encryption"
+      ],
+      "properties": {
+        "asyncIo": {
+          "const": true
+        },
+        "concurrentWrites": {
+          "const": true
+        },
+        "fts": {
+          "const": true
+        },
+        "vector": {
+          "const": false
+        },
+        "overlaySearch": {
+          "const": true
+        },
+        "sync": {
+          "const": true
+        },
+        "encryption": {
+          "const": false
         }
       }
     }

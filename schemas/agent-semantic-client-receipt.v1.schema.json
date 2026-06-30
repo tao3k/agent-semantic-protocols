@@ -46,11 +46,24 @@
       ]
     },
     "route": {
-      "enum": ["local-native", "local-cache", "cloud-flight", "hybrid-reroute"]
+      "enum": [
+        "local-native",
+        "local-cache",
+        "cloud-flight",
+        "hybrid-reroute"
+      ]
     },
     "cacheStatus": {
       "description": "Machine routing/cache state for the execution. For method=cache-status, use cacheManifestStatus and clientDbStatus for manifest/DB health; the prompt line owns the human status spelling.",
-      "enum": ["cold", "warm-provider", "hit", "miss", "stale", "invalidated", "disabled"]
+      "enum": [
+        "cold",
+        "warm-provider",
+        "hit",
+        "miss",
+        "stale",
+        "invalidated",
+        "disabled"
+      ]
     },
     "providerCommandCount": {
       "type": "integer",
@@ -89,12 +102,18 @@
       }
     },
     "compactArtifactId": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1
     },
     "syntaxArtifactId": {
       "description": "semantic-tree-sitter-query artifact id used or written by a query route, when syntax ABI replay is involved.",
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1
     },
     "syntaxQueryAstAbiFingerprint": {
@@ -157,7 +176,12 @@
     },
     "cacheManifestStatus": {
       "description": "Filesystem and validation status for the cache manifest inspected by this receipt.",
-      "enum": ["unavailable", "missing", "present", "invalid"]
+      "enum": [
+        "unavailable",
+        "missing",
+        "present",
+        "invalid"
+      ]
     },
     "cacheGenerationCount": {
       "description": "Number of cache generations visible in the inspected manifest, or zero when missing/unavailable.",
@@ -175,7 +199,11 @@
     },
     "clientDbStatus": {
       "description": "Filesystem and schema status for the local SQLite client database inspected by this receipt.",
-      "enum": ["missing", "present", "invalid"]
+      "enum": [
+        "missing",
+        "present",
+        "invalid"
+      ]
     },
     "clientDbGenerationCount": {
       "description": "Number of cache generations visible in the local SQLite client database.",
@@ -288,6 +316,7 @@
         "repoId",
         "workspaceId",
         "scopeId",
+        "futureBackendReport",
         "sqliteReport"
       ],
       "properties": {
@@ -342,6 +371,9 @@
         },
         "sqliteReport": {
           "$ref": "#/$defs/sqliteReport"
+        },
+        "futureBackendReport": {
+          "$ref": "#/$defs/tursoReport"
         }
       }
     },
@@ -409,7 +441,11 @@
           "minLength": 1
         },
         "status": {
-          "enum": ["missing", "present", "invalid"]
+          "enum": [
+            "missing",
+            "present",
+            "invalid"
+          ]
         },
         "generationCount": {
           "type": "integer",
@@ -473,14 +509,22 @@
           ]
         },
         "reason": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },
     "sqliteRuntimePragmas": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["journalMode", "synchronous", "busyTimeoutMs", "foreignKeys"],
+      "required": [
+        "journalMode",
+        "synchronous",
+        "busyTimeoutMs",
+        "foreignKeys"
+      ],
       "properties": {
         "journalMode": {
           "type": "string",
@@ -501,7 +545,11 @@
     "nativeProvenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["languageId", "providerId", "providerBinary"],
+      "required": [
+        "languageId",
+        "providerId",
+        "providerBinary"
+      ],
       "properties": {
         "languageId": {
           "$ref": "#/$defs/identifier"
@@ -593,26 +641,115 @@
           "description": "Whether the provider process exceeded its configured timeout and was killed.",
           "type": "boolean"
         },
-      "elapsedMs": {
-        "type": "integer",
-        "minimum": 0
-      },
-      "eventTimestampMs": {
-        "description": "Preferred provider command event timestamp as Unix epoch milliseconds. Artifact history importers use this before packet-level timestamps or file modification time.",
-        "type": "integer",
-        "minimum": 0
-      },
-      "startedAtMs": {
-        "description": "Optional provider command start timestamp as Unix epoch milliseconds.",
-        "type": "integer",
-        "minimum": 0
-      },
-      "endedAtMs": {
-        "description": "Optional provider command end timestamp as Unix epoch milliseconds.",
-        "type": "integer",
-        "minimum": 0
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eventTimestampMs": {
+          "description": "Preferred provider command event timestamp as Unix epoch milliseconds. Artifact history importers use this before packet-level timestamps or file modification time.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "startedAtMs": {
+          "description": "Optional provider command start timestamp as Unix epoch milliseconds.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "endedAtMs": {
+          "description": "Optional provider command end timestamp as Unix epoch milliseconds.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "tursoReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "status",
+        "dbFileName",
+        "schemaBootstrap",
+        "durability",
+        "features",
+        "dbPath",
+        "reason"
+      ],
+      "properties": {
+        "backend": {
+          "const": "turso"
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "available",
+            "active",
+            "unavailable"
+          ]
+        },
+        "dbFileName": {
+          "const": "client.turso"
+        },
+        "schemaBootstrap": {
+          "enum": [
+            "pending-cutover",
+            "ready",
+            "failed"
+          ]
+        },
+        "durability": {
+          "const": "turso-local-file"
+        },
+        "features": {
+          "$ref": "#/$defs/tursoFeatures"
+        },
+        "dbPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "tursoFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asyncIo",
+        "concurrentWrites",
+        "fts",
+        "vector",
+        "overlaySearch",
+        "sync",
+        "encryption"
+      ],
+      "properties": {
+        "asyncIo": {
+          "const": true
+        },
+        "concurrentWrites": {
+          "const": true
+        },
+        "fts": {
+          "const": true
+        },
+        "vector": {
+          "const": false
+        },
+        "overlaySearch": {
+          "const": true
+        },
+        "sync": {
+          "const": true
+        },
+        "encryption": {
+          "const": false
+        }
       }
     }
   }
-}
 }

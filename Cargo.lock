@@ -57,14 +57,17 @@ dependencies = [
  "agent-semantic-hook",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
+ "agent-semantic-search",
  "bytes",
  "criterion",
+ "ignore",
  "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "toml 0.9.12+spec-1.1.0",
  "turso",
+ "which 8.0.4",
 ]
 
 [[package]]
@@ -92,6 +95,7 @@ dependencies = [
  "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",
+ "turso",
 ]
 
 [[package]]
@@ -141,6 +145,7 @@ dependencies = [
  "agent-semantic-hook",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
+ "agent-semantic-search",
  "agent-semantic-tree-sitter",
  "aho-corasick",
  "ignore",
@@ -186,7 +191,25 @@ name = "agent-semantic-runtime"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-config",
+ "agent-semantic-provider-transport",
+ "bytes",
  "rust-lang-project-harness 0.1.2",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "agent-semantic-search"
+version = "0.1.0"
+dependencies = [
+ "agent-semantic-hook",
+ "agent-semantic-provider-transport",
+ "bytes",
+ "ignore",
+ "orgize",
+ "rust-lang-project-harness 0.1.2",
+ "serde_json",
+ "turso",
+ "which 8.0.4",
 ]
 
 [[package]]

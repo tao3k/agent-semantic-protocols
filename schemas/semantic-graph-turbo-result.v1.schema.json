@@ -234,7 +234,7 @@
         "enum": [
           "raw-read",
           "repeat-owner",
-          "broad-fzf",
+          "broad-lexical",
           "manual-window-scan",
           "duplicate-read",
           "seen-selector"

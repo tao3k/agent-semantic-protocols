@@ -71,6 +71,44 @@ fn activation_provider_prefix_is_metadata_not_client_invocation() {
 }
 
 #[test]
+fn provider_registry_evidence_tracks_provider_identity_and_existing_scope_dirs() {
+    let root = temp_root("provider-registry-evidence");
+    std::fs::create_dir_all(root.join("crates/core/src")).expect("create source dir");
+    std::fs::write(
+        root.join("crates/core/Cargo.toml"),
+        "[package]\nname='core'\n",
+    )
+    .expect("write config file");
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join(".cache/activation.json"),
+        providers: vec![ResolvedProvider {
+            language_id: LanguageId::from("rust"),
+            provider_id: ProviderId::from("rs-harness"),
+            binary: "rs-harness".to_string(),
+            execution: ProviderExecution::ExternalProcess,
+            provider_command_prefix: vec!["rs-harness".to_string()],
+            runtime_command_argv: Some(vec!["/usr/bin/rs-harness".to_string()]),
+            runtime_profile_status: Some(RuntimeProfileStatus::Available),
+            package_roots: vec!["crates/core".to_string()],
+            source_roots: vec!["src".to_string()],
+            config_files: vec!["Cargo.toml".to_string()],
+            source_extensions: vec!["rs".to_string()],
+            ignored_path_prefixes: vec!["target".to_string()],
+        }],
+    };
+
+    let evidence = snapshot.evidence(&root);
+
+    assert!(evidence.fingerprint.contains("language=rust"));
+    assert!(evidence.fingerprint.contains("provider=rs-harness"));
+    assert!(evidence.fingerprint.contains("sourceExtensions=rs"));
+    assert!(evidence.scope_dirs.contains("."));
+    assert!(evidence.scope_dirs.contains("crates/core"));
+    assert!(evidence.scope_dirs.contains("crates/core/src"));
+    std::fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
 fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
     let root = temp_root("activation-prefix-snapshot");
     let activation_path = root.join("activation.json");

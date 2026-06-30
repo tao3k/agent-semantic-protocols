@@ -3,10 +3,15 @@
 use std::fs;
 use std::path::Path;
 
+use agent_semantic_search::{
+    SearchPipeFailureAcquisitionRequest, collect_search_pipe_failure_acquisition,
+};
+
 use super::search_config::AspConfig;
 use super::search_failure_render::{render_failure_frontier, render_failure_graph_turbo_request};
 use super::search_pipe_args::parse_failure_args;
-use super::search_pipe_candidates::collect_candidates;
+use super::search_pipe_candidates::PIPE_CANDIDATE_LINE_LIMIT;
+use super::search_pipe_model::Candidate;
 
 pub(super) fn run_search_failure_command(
     language_id: &str,
@@ -33,15 +38,21 @@ pub(super) fn run_search_failure_command(
     if message.trim().is_empty() {
         return Err("search failure requires non-empty failure text".to_string());
     }
-    let candidate_query = failure_candidate_query(&message);
-    let candidates = collect_candidates(
-        language_id,
-        project_root,
-        locator_root,
-        &candidate_query,
-        &[],
-        config,
-    )?;
+    let acquisition =
+        collect_search_pipe_failure_acquisition(SearchPipeFailureAcquisitionRequest {
+            language_id,
+            project_root,
+            locator_root,
+            message: &message,
+            ignore_dirs: &config.search.ignore_dirs,
+            include_hidden_dirs: &config.search.include_hidden_dirs,
+            limit: PIPE_CANDIDATE_LINE_LIMIT,
+        })?;
+    let candidates = acquisition
+        .candidates
+        .into_iter()
+        .map(Candidate::from)
+        .collect::<Vec<_>>();
     let rendered = if failure_args.view == "graph-turbo-request" {
         render_failure_graph_turbo_request(
             language_id,
@@ -73,67 +84,4 @@ fn read_last_check_output(cache_home: &Path) -> Result<String, String> {
             path.display()
         )
     })
-}
-
-fn failure_candidate_query(message: &str) -> String {
-    let mut terms = Vec::new();
-    for token in message
-        .split(|character: char| !failure_token_character(character))
-        .filter(|token| !token.is_empty())
-    {
-        if token.contains("::") {
-            if let Some(last) = token.rsplit("::").find(|part| !part.is_empty()) {
-                push_failure_candidate_term(&mut terms, last);
-            }
-        } else {
-            push_failure_candidate_term(&mut terms, token);
-        }
-    }
-    if terms.is_empty() {
-        return message.to_string();
-    }
-    terms.join(" ")
-}
-
-fn push_failure_candidate_term(terms: &mut Vec<String>, token: &str) {
-    let token = token.trim_matches([':', '.', ',', ';', '(', ')', '[', ']']);
-    let lower = token.to_ascii_lowercase();
-    if token.len() < 4
-        || failure_candidate_stop_word(&lower)
-        || !(token.contains('_') || token.contains('-'))
-    {
-        return;
-    }
-    if !terms.iter().any(|term| term == token) {
-        terms.push(token.to_string());
-    }
-}
-
-fn failure_candidate_stop_word(token: &str) -> bool {
-    matches!(
-        token,
-        "expected"
-            | "actual"
-            | "failure"
-            | "failed"
-            | "panic"
-            | "error"
-            | "status"
-            | "stdout"
-            | "stderr"
-            | "left"
-            | "right"
-            | "pass"
-            | "fail"
-            | "hit"
-            | "miss"
-            | "observed"
-            | "unknown"
-            | "request_fingerprint"
-            | "file_hash"
-    )
-}
-
-fn failure_token_character(character: char) -> bool {
-    character == '_' || character == '-' || character == ':' || character.is_ascii_alphanumeric()
 }

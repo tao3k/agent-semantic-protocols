@@ -1,23 +1,18 @@
 //! Candidate collection and finder previews for query wrappers.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 
-use agent_semantic_client::{SourceIndexLookupState, lookup_source_index_for_language};
+use agent_semantic_client::{SourceIndexLookupResult, lookup_source_index_for_language};
+use agent_semantic_search::{
+    QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
+    QueryWrapperSearchSurface, QueryWrapperSourceIndexCandidate, QueryWrapperSourceIndexLookup,
+    collect_query_wrapper_candidate_collection as collect_search_query_wrapper_candidate_collection,
+};
 use serde_json::Value;
 
 use super::search_config::AspConfig;
-use super::search_language_files::language_neutral_search_file_spec;
 use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
-use super::search_pipe_native_finder::{
-    NativeFinderCollectionRequest, NativeFinderSurface, collect_native_finder_candidates,
-};
-use super::search_pipe_source::{source_index_candidate, source_index_trace};
-use super::search_query_wrapper_candidate_scan::{
-    QUERY_CANDIDATE_LIMIT, QueryCandidateAppend, append_query_candidates,
-    augment_package_path_candidates, query_candidate_priority,
-};
 use super::search_query_wrapper_model::{QueryWrapperClause, QueryWrapperSurface};
 
 pub(super) struct QueryCandidateCollection {
@@ -70,212 +65,133 @@ pub(super) fn collect_query_candidate_collection(
         config,
         native_args,
     } = request;
-    if terms.is_empty() {
-        return Err(format!(
-            "asp {} -query requires non-empty terms",
-            surface.label()
-        ));
-    }
-    let roots = if scopes.is_empty() {
-        vec![project_root.to_path_buf()]
-    } else {
-        scopes
-            .iter()
-            .map(|scope| absolute_scope(locator_root, scope))
-            .collect()
-    };
-    let display_root = if scopes.len() == 1 {
-        let root = roots
-            .first()
-            .cloned()
-            .unwrap_or_else(|| locator_root.to_path_buf());
-        if root.is_file() {
-            locator_root.to_path_buf()
-        } else {
-            root
-        }
-    } else {
-        locator_root.to_path_buf()
-    };
-    let native_surface = match surface {
-        QueryWrapperSurface::Fd => NativeFinderSurface::Path,
-        QueryWrapperSurface::Rg => NativeFinderSurface::Content,
-    };
-    let accept_all_files = !scopes.is_empty();
-    let axis_terms = query_axis_terms(clauses);
-    if native_args.is_empty()
-        && let Some(collection) =
-            collect_source_index_query_candidates(surface, project_root, &roots, terms, &axis_terms)
-    {
-        return Ok(collection);
-    }
-    if !fd_query_prefers_internal_scan(surface, terms, native_args)
-        && let Some(mut collection) =
-            collect_native_finder_candidates(NativeFinderCollectionRequest {
-                surface: native_surface,
-                language_id: "query-wrapper",
-                file_spec_override: Some(language_neutral_search_file_spec()),
-                accept_all_files,
-                project_root,
-                locator_root: &display_root,
-                roots: &roots,
-                terms,
-                config,
-                native_args,
-            })?
-    {
-        if collection.candidates.is_empty()
-            && surface == QueryWrapperSurface::Fd
-            && collection.provenance.input_candidate_count() == 0
-        {
-            return Ok(QueryCandidateCollection {
-                candidates: Vec::new(),
-                trace_fields: collection.provenance.trace_fields(0),
-                source_trace: Vec::new(),
-                candidate_sources: vec!["finder".to_string()],
-            });
-        }
-        if !collection.candidates.is_empty() {
-            collection.candidates.sort_by_key(|candidate| {
-                query_candidate_priority(&candidate.path, terms, &axis_terms)
-            });
-            let mut candidates = cohesive_query_candidates(collection.candidates, clauses);
-            let package_path_augmented_count = augment_package_path_candidates(
-                &display_root,
-                &roots,
-                terms,
-                config,
-                &mut candidates,
-            )?;
-            candidates.sort_by_key(|candidate| {
-                query_candidate_priority(&candidate.path, terms, &axis_terms)
-            });
-            let mut trace_fields = collection.provenance.trace_fields(candidates.len());
-            if package_path_augmented_count > 0 {
-                trace_fields.insert(
-                    "packagePathAugmented".to_string(),
-                    Value::from(package_path_augmented_count),
-                );
-            }
-            return Ok(QueryCandidateCollection {
-                candidates,
-                trace_fields,
-                source_trace: Vec::new(),
-                candidate_sources: vec!["finder".to_string()],
-            });
-        }
-    }
-    let mut candidates = Vec::new();
-    let mut seen = HashSet::new();
-    for root in &roots {
-        if candidates.len() >= QUERY_CANDIDATE_LIMIT {
-            break;
-        }
-        append_query_candidates(QueryCandidateAppend {
-            surface,
-            locator_root: &display_root,
-            path: root,
+    let search_clauses = clauses
+        .iter()
+        .map(|clause| QueryWrapperSearchClause {
+            id: clause.id,
+            terms: clause.terms.clone(),
+            axis_terms: clause.axis_terms.clone(),
+        })
+        .collect::<Vec<_>>();
+    let collection =
+        collect_search_query_wrapper_candidate_collection(QueryWrapperSearchRequest {
+            surface: query_wrapper_search_surface(surface),
+            project_root,
+            locator_root,
+            scopes,
+            clauses: &search_clauses,
             terms,
-            axis_terms: &axis_terms,
-            config,
-            accept_all_files,
-            seen: &mut seen,
-            candidates: &mut candidates,
+            ignore_dirs: &config.search.ignore_dirs,
+            include_hidden_dirs: &config.search.include_hidden_dirs,
+            native_args,
+            source_index_lookup: query_wrapper_source_index_lookup(surface, project_root, terms)?,
         })?;
-    }
-    candidates
-        .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, &axis_terms));
-    let mut candidates = cohesive_query_candidates(candidates, clauses);
-    let package_path_augmented_count =
-        augment_package_path_candidates(&display_root, &roots, terms, config, &mut candidates)?;
-    candidates
-        .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, &axis_terms));
-    let mut trace_fields = BTreeMap::new();
-    if package_path_augmented_count > 0 {
-        trace_fields.insert(
-            "packagePathAugmented".to_string(),
-            Value::from(package_path_augmented_count),
-        );
+    let mut source_trace = Vec::new();
+    if let Some(trace) = collection.source_index_trace {
+        source_trace.push(query_wrapper_source_index_trace(trace));
+        if collection.finder_skipped_after_source_index {
+            source_trace.push(SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0));
+        }
     }
     Ok(QueryCandidateCollection {
-        candidates,
-        trace_fields,
-        source_trace: Vec::new(),
-        candidate_sources: vec!["finder".to_string()],
+        candidates: collection
+            .candidates
+            .into_iter()
+            .map(Candidate::from)
+            .collect(),
+        trace_fields: collection.trace_fields,
+        source_trace,
+        candidate_sources: collection.candidate_sources,
     })
 }
 
-fn collect_source_index_query_candidates(
+fn query_wrapper_source_index_trace(
+    trace: QueryWrapperSearchSourceIndexTrace,
+) -> SearchPipeSourceTrace {
+    let status = query_wrapper_source_index_status(&trace.lookup.state);
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "collectMs".to_string(),
+        Value::from(trace.elapsed.as_millis().min(u128::from(u64::MAX)) as u64),
+    );
+    fields.insert("state".to_string(), Value::from(trace.lookup.state.clone()));
+    fields.insert(
+        "dbPath".to_string(),
+        Value::from(trace.lookup.db_path.display().to_string()),
+    );
+    if status != "used" {
+        fields.insert(
+            "nextCommand".to_string(),
+            Value::from("asp cache source-index refresh"),
+        );
+    }
+    SearchPipeSourceTrace::new(
+        "sourceIndex",
+        status,
+        trace.candidate_count,
+        usize::from(trace.candidate_count == 0),
+        trace.candidate_count,
+    )
+    .with_fields(fields)
+}
+
+fn query_wrapper_source_index_status(state: &str) -> &'static str {
+    match state {
+        "hit" => "used",
+        "missing-db" => "missing-db",
+        "empty-index" => "empty-index",
+        "miss" => "miss",
+        _ => "unknown",
+    }
+}
+
+fn query_wrapper_source_index_lookup(
     surface: QueryWrapperSurface,
     project_root: &Path,
-    roots: &[PathBuf],
     terms: &[String],
-    axis_terms: &[String],
-) -> Option<QueryCandidateCollection> {
-    if !project_root.is_dir() || terms.is_empty() {
-        return None;
+) -> Result<Option<QueryWrapperSourceIndexLookup>, String> {
+    if terms.is_empty() {
+        return Ok(None);
     }
-    let started_at = Instant::now();
     let query = terms.join(" ");
     let limit = match surface {
         QueryWrapperSurface::Fd => 16,
-        QueryWrapperSurface::Rg => QUERY_CANDIDATE_LIMIT as u32,
+        QueryWrapperSurface::Rg => agent_semantic_search::QUERY_WRAPPER_CANDIDATE_LIMIT as u32,
     };
-    let result = lookup_source_index_for_language(project_root, None, &query, limit).ok()?;
-    if matches!(
-        result.state,
-        SourceIndexLookupState::MissingDb | SourceIndexLookupState::EmptyIndex
-    ) {
-        return None;
+    let result = lookup_source_index_for_language(project_root, None, &query, limit)?;
+    Ok(Some(query_wrapper_source_index_lookup_from_client(result)))
+}
+
+fn query_wrapper_source_index_lookup_from_client(
+    result: SourceIndexLookupResult,
+) -> QueryWrapperSourceIndexLookup {
+    QueryWrapperSourceIndexLookup {
+        db_path: result.db_path,
+        state: result.state.as_str().to_string(),
+        candidates: result
+            .candidates
+            .into_iter()
+            .map(|candidate| QueryWrapperSourceIndexCandidate {
+                path: candidate.path,
+                language_id: candidate
+                    .language_id
+                    .map(|value| value.as_str().to_string()),
+                provider_id: candidate
+                    .provider_id
+                    .map(|value| value.as_str().to_string()),
+                source_kind: candidate.source_kind.as_str().to_string(),
+                line_count: candidate.line_count,
+                query_keys: candidate.query_keys,
+            })
+            .collect(),
     }
-    let mut candidates = result
-        .candidates
-        .iter()
-        .filter(|candidate| source_index_candidate_in_roots(project_root, roots, &candidate.path))
-        .map(source_index_candidate)
-        .collect::<Vec<_>>();
-    candidates
-        .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, axis_terms));
-    let candidate_count = candidates.len();
-    Some(QueryCandidateCollection {
-        candidates,
-        trace_fields: BTreeMap::new(),
-        source_trace: vec![
-            source_index_trace(&result, candidate_count, started_at),
-            SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0),
-        ],
-        candidate_sources: vec!["source-index".to_string()],
-    })
 }
 
-fn source_index_candidate_in_roots(project_root: &Path, roots: &[PathBuf], path: &str) -> bool {
-    let candidate_path = Path::new(path);
-    let candidate_abs = if candidate_path.is_absolute() {
-        candidate_path.to_path_buf()
-    } else {
-        project_root.join(candidate_path)
-    };
-    roots.iter().any(|root| {
-        if root.is_file() {
-            candidate_abs == *root
-        } else {
-            candidate_abs.starts_with(root)
-        }
-    })
-}
-
-fn fd_query_prefers_internal_scan(
-    surface: QueryWrapperSurface,
-    terms: &[String],
-    native_args: &[String],
-) -> bool {
-    surface == QueryWrapperSurface::Fd
-        && native_args.is_empty()
-        && std::env::var_os("ASP_RUNTIME_BIN_DIR").is_none()
-        && terms.len() >= 5
-        && terms
-            .iter()
-            .all(|term| !term.contains('/') && !term.contains('.'))
+fn query_wrapper_search_surface(surface: QueryWrapperSurface) -> QueryWrapperSearchSurface {
+    match surface {
+        QueryWrapperSurface::Fd => QueryWrapperSearchSurface::Fd,
+        QueryWrapperSurface::Rg => QueryWrapperSearchSurface::Rg,
+    }
 }
 
 pub(super) fn query_clauses(queries: &[String]) -> Vec<QueryWrapperClause> {
@@ -306,77 +222,6 @@ pub(super) fn unique_clause_terms(clauses: &[QueryWrapperClause]) -> Vec<String>
         })
 }
 
-fn cohesive_query_candidates(
-    candidates: Vec<Candidate>,
-    clauses: &[QueryWrapperClause],
-) -> Vec<Candidate> {
-    if candidates.is_empty() || clauses.len() <= 1 {
-        return candidates;
-    }
-    let expected = clauses
-        .iter()
-        .map(|clause| clause.id)
-        .collect::<BTreeSet<_>>();
-    let mut package_coverage = BTreeMap::<String, BTreeSet<usize>>::new();
-    let mut path_coverage = BTreeMap::<String, BTreeSet<usize>>::new();
-    for candidate in &candidates {
-        let clause_ids = candidate_clause_ids(candidate, clauses);
-        if clause_ids.is_empty() {
-            continue;
-        }
-        package_coverage
-            .entry(package_key(&candidate.path))
-            .or_default()
-            .extend(clause_ids.iter().copied());
-        path_coverage
-            .entry(candidate.path.clone())
-            .or_default()
-            .extend(clause_ids);
-    }
-    let cohesive_packages = package_coverage
-        .iter()
-        .filter(|(_, coverage)| coverage == &&expected)
-        .map(|(package, _)| package.clone())
-        .collect::<BTreeSet<_>>();
-    if !cohesive_packages.is_empty() {
-        return candidates
-            .into_iter()
-            .filter(|candidate| cohesive_packages.contains(&package_key(&candidate.path)))
-            .collect();
-    }
-    let cohesive_paths = path_coverage
-        .iter()
-        .filter(|(_, coverage)| coverage == &&expected)
-        .map(|(path, _)| path.clone())
-        .collect::<BTreeSet<_>>();
-    if !cohesive_paths.is_empty() {
-        return candidates
-            .into_iter()
-            .filter(|candidate| cohesive_paths.contains(&candidate.path))
-            .collect();
-    }
-    candidates
-}
-
-fn candidate_clause_ids(candidate: &Candidate, clauses: &[QueryWrapperClause]) -> BTreeSet<usize> {
-    clauses
-        .iter()
-        .filter(|clause| {
-            clause
-                .terms
-                .iter()
-                .any(|term| candidate_matches_term(candidate, term))
-        })
-        .map(|clause| clause.id)
-        .collect()
-}
-
-pub(super) fn candidate_matches_term(candidate: &Candidate, term: &str) -> bool {
-    let lower =
-        format!("{} {} {}", candidate.path, candidate.symbol, candidate.text).to_ascii_lowercase();
-    lower.contains(term)
-}
-
 fn query_terms(query: &str) -> Vec<String> {
     let mut seen = BTreeSet::new();
     query
@@ -388,13 +233,10 @@ fn query_terms(query: &str) -> Vec<String> {
         .collect()
 }
 
-fn query_axis_terms(clauses: &[QueryWrapperClause]) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    clauses
-        .iter()
-        .flat_map(|clause| clause.axis_terms.iter().cloned())
-        .filter(|term| seen.insert(term.clone()))
-        .collect()
+pub(super) fn candidate_matches_term(candidate: &Candidate, term: &str) -> bool {
+    let lower =
+        format!("{} {} {}", candidate.path, candidate.symbol, candidate.text).to_ascii_lowercase();
+    lower.contains(term)
 }
 
 fn query_axis_terms_for_raw(raw: &str) -> Vec<String> {

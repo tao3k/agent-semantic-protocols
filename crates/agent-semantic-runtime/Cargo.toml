@@ -6,7 +6,14 @@ description = "Runtime state materialization for ASP project-local storage."
 license = "MIT"
 
 [dependencies]
+agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+agent-semantic-client-local-cli = { path = "../agent-semantic-client-local-cli" }
 agent-semantic-config = { path = "../agent-semantic-config" }
+agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
+bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
 
 [build-dependencies]
 rust-lang-project-harness = { workspace = true }

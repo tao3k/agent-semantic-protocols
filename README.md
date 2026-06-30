@@ -172,8 +172,8 @@ The retired compact graph renderer is a prompt/debug projection only; it is not 
 trusted graph, frontier, rank, or action protocol.
 
 Agent-facing fast search uses graph-turbo ranking by default.
-`asp rust search fzf <term> owner tests --workspace .` and the explicit seeds
-form `asp rust search fzf <term> owner tests --workspace . --view seeds` avoid printing the
+`asp rust search lexical <term> owner tests --workspace .` and the explicit seeds
+form `asp rust search lexical <term> owner tests --workspace . --view seeds` avoid printing the
 request packet, but the trusted structure remains the schema packet and any
 schema-owned JSON projection. Rank, profile, paths, scores, cache, trace,
 explanations, metrics, and frontier actions must be packet-visible before any

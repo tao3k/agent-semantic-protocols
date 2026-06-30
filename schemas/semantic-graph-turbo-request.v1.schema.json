@@ -52,7 +52,7 @@
         "search-pipe",
         "search-rg",
         "search-fd",
-        "search-fzf",
+        "search-lexical",
         "search-ingest",
         "evidence-analyze"
       ]

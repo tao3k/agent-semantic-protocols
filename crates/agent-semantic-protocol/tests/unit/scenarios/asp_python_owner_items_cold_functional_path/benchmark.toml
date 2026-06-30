@@ -1,0 +1,16 @@
+harness = "libtest"
+test = "asp_python_owner_items_cold_functional_path_stays_inside_scenario_gate"
+target_total = "250ms"
+max_total = "500ms"
+observed_total = "0ms"
+regression_budget = "100ms"
+memory_budget_bytes = 67108864
+observed_memory_bytes = 0
+route_source = "owner-items-provider"
+max_provider_process_count = 1
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "Cold owner-items search is the first functional gate for Python. The benchmark metadata stays inside the shared hard gate, while the test treats full asp process startup as diagnostic context and prioritizes provider-owned evidence, route correctness, no fallback, and no source synthesis. Hot cache scenarios own the tighter measured optimization budget."
+
+[observed_timings]
+owner_items_cold_functional_path = "0ms"

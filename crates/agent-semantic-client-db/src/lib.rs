@@ -23,9 +23,18 @@ pub use engine::{
 };
 pub use pragmas::{ClientDbJournalMode, ClientDbRuntimePragmas};
 pub use source_index::{
-    ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource, ClientDbSourceIndexStats,
+    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
+    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDbSourceIndexCandidate,
+    ClientDbSourceIndexImport, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
+    ClientDbSourceIndexLookup, ClientDbSourceIndexLookupResult, ClientDbSourceIndexLookupState,
+    ClientDbSourceIndexOwner, ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey,
+    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
+    ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
+    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource, ClientDbSourceIndexSourceKind,
+    ClientDbSourceIndexStats, build_source_index_import, client_db_source_index_file_count,
+    client_db_source_index_generation_id, source_index_relative_path, source_index_scope_dirs,
 };
 pub use structural_index::{
     ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,

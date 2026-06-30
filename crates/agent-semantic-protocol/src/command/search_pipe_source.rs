@@ -7,15 +7,20 @@ use std::time::{Duration, Instant};
 use agent_semantic_client::{
     SourceIndexLookupResult, SourceIndexLookupState, lookup_source_index_for_language,
 };
-use orgize::document::{
-    DocumentElement, DocumentLanguage, DocumentWalkConfig, filter_elements,
-    index_project_with_config,
+use agent_semantic_search::{
+    SearchPipeDocumentAcquisitionRequest, SearchPipeFinderAcquisitionRequest,
+    SearchPipeSourceAcquisition, SearchPipeSourceAcquisitionTrace,
+    SearchPipeSourceIndexAcquisition, SearchPipeSourceIndexAcquisitionRequest,
+    SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate,
+    SearchPipeSourceIndexLookup, SearchPipeSourceMode, collect_search_pipe_document_acquisition,
+    collect_search_pipe_finder_acquisition, collect_search_pipe_source_index_acquisition,
 };
+use orgize::document::DocumentLanguage;
 use serde_json::Value;
 
 use super::search_config::AspConfig;
 use super::search_pipe_candidates::{
-    collect_candidates, parse_ingest_candidates, read_piped_stdin,
+    PIPE_CANDIDATE_LINE_LIMIT, parse_ingest_candidates, read_piped_stdin,
 };
 use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
 
@@ -110,176 +115,32 @@ fn collect_document_search_pipe_candidates(
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
     match source {
-        SourceSpec::Auto => {
-            document_auto_candidates(language, project_root, locator_root, intent, scopes, config)
+        SourceSpec::Auto | SourceSpec::Provider | SourceSpec::Finder => {
+            let acquisition =
+                collect_search_pipe_document_acquisition(SearchPipeDocumentAcquisitionRequest {
+                    language,
+                    project_root,
+                    locator_root,
+                    intent,
+                    scopes,
+                    mode: document_source_mode(source),
+                    ignore_dirs: &config.search.ignore_dirs,
+                    include_hidden_dirs: &config.search.include_hidden_dirs,
+                    finder_limit: PIPE_CANDIDATE_LINE_LIMIT,
+                })?;
+            Ok(candidate_acquisition_from_search(acquisition))
         }
-        SourceSpec::Provider => document_element_candidates(
-            language,
-            project_root,
-            locator_root,
-            intent,
-            scopes,
-            config,
-        ),
-        SourceSpec::Finder => finder_candidates(
-            language.id(),
-            project_root,
-            locator_root,
-            intent,
-            scopes,
-            config,
-        ),
         SourceSpec::Ingest => ingest_candidates(project_root, locator_root),
     }
 }
 
-fn document_auto_candidates(
-    language: DocumentLanguage,
-    project_root: &Path,
-    locator_root: &Path,
-    intent: &str,
-    scopes: &[PathBuf],
-    config: &AspConfig,
-) -> Result<CandidateAcquisition, String> {
-    let document_acquisition =
-        document_element_candidates(language, project_root, locator_root, intent, scopes, config)?;
-    if !document_acquisition.candidates.is_empty() {
-        return Ok(document_acquisition);
+fn document_source_mode(source: SourceSpec) -> SearchPipeSourceMode {
+    match source {
+        SourceSpec::Auto => SearchPipeSourceMode::Auto,
+        SourceSpec::Provider => SearchPipeSourceMode::Provider,
+        SourceSpec::Finder => SearchPipeSourceMode::Finder,
+        SourceSpec::Ingest => SearchPipeSourceMode::Auto,
     }
-    let finder_acquisition = finder_candidates(
-        language.id(),
-        project_root,
-        locator_root,
-        intent,
-        scopes,
-        config,
-    )?;
-    let mut source_trace = document_acquisition.source_trace;
-    source_trace.extend(finder_acquisition.source_trace);
-    Ok(CandidateAcquisition {
-        candidates: finder_acquisition.candidates,
-        candidate_sources: vec!["document-element".to_string(), "finder".to_string()],
-        source_trace,
-    })
-}
-
-fn document_element_candidates(
-    language: DocumentLanguage,
-    project_root: &Path,
-    locator_root: &Path,
-    intent: &str,
-    scopes: &[PathBuf],
-    config: &AspConfig,
-) -> Result<CandidateAcquisition, String> {
-    let walk_config = DocumentWalkConfig::new(
-        config.search.ignore_dirs.clone(),
-        config.search.include_hidden_dirs.clone(),
-    );
-    let mut elements = Vec::new();
-    for root in document_search_roots(project_root, scopes) {
-        elements.extend(index_project_with_config(language, &root, &walk_config)?);
-    }
-    let matches = filter_elements(&elements, intent);
-    let candidates = matches
-        .iter()
-        .take(DOCUMENT_PIPE_CANDIDATE_LIMIT)
-        .map(|element| document_candidate(element, locator_root))
-        .collect::<Vec<_>>();
-    Ok(CandidateAcquisition {
-        source_trace: vec![SearchPipeSourceTrace::new(
-            "document-element",
-            if candidates.is_empty() {
-                "empty"
-            } else {
-                "used"
-            },
-            candidates.len(),
-            usize::from(candidates.is_empty()),
-            matches.len(),
-        )],
-        candidate_sources: vec!["document-element".to_string()],
-        candidates,
-    })
-}
-
-fn document_search_roots(project_root: &Path, scopes: &[PathBuf]) -> Vec<PathBuf> {
-    if scopes.is_empty() {
-        return vec![project_root.to_path_buf()];
-    }
-    scopes
-        .iter()
-        .map(|scope| {
-            if scope.is_absolute() {
-                scope.clone()
-            } else {
-                project_root.join(scope)
-            }
-        })
-        .collect()
-}
-
-fn document_candidate(element: &DocumentElement, locator_root: &Path) -> Candidate {
-    Candidate {
-        path: display_document_path(locator_root, &element.path),
-        line: element.line,
-        end_line: element.end_line.max(element.line),
-        symbol: document_symbol(element),
-        text: document_candidate_text(element),
-        source: "document-element".to_string(),
-        confidence: "parser".to_string(),
-    }
-}
-
-fn document_symbol(element: &DocumentElement) -> String {
-    element
-        .fields
-        .iter()
-        .find(|(key, value)| {
-            matches!(
-                key.as_str(),
-                "title" | "key" | "value" | "lang" | "target" | "description"
-            ) && !value.trim().is_empty()
-        })
-        .map(|(_, value)| symbol_from_text(value))
-        .filter(|symbol| !symbol.is_empty())
-        .unwrap_or_else(|| element.kind.to_string())
-}
-
-fn document_candidate_text(element: &DocumentElement) -> String {
-    let mut text = format!("{} {}", element.kind, element.source_kind);
-    for (key, value) in &element.fields {
-        if !value.trim().is_empty() {
-            text.push(' ');
-            text.push_str(key);
-            text.push('=');
-            text.push_str(value);
-        }
-    }
-    if !element.text.trim().is_empty() {
-        text.push(' ');
-        text.push_str(element.text.trim());
-    } else if !element.content.trim().is_empty() {
-        text.push(' ');
-        text.push_str(element.content.trim());
-    }
-    text
-}
-
-fn display_document_path(locator_root: &Path, path: &str) -> String {
-    let path = Path::new(path);
-    path.strip_prefix(locator_root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
-fn symbol_from_text(text: &str) -> String {
-    text.split(|character: char| {
-        !(character == '_' || character == '-' || character.is_ascii_alphanumeric())
-    })
-    .find(|part| !part.is_empty())
-    .unwrap_or("document")
-    .to_ascii_lowercase()
 }
 
 fn document_language(language_id: &str) -> Option<DocumentLanguage> {
@@ -330,15 +191,23 @@ fn auto_candidates(
             source_trace: acquisition.source_trace.clone(),
         });
     }
-    let started_at = Instant::now();
-    let candidates = collect_candidates(
-        language_id,
-        project_root,
-        locator_root,
-        intent,
-        scopes,
-        config,
-    )?;
+    let finder_acquisition =
+        collect_search_pipe_finder_acquisition(SearchPipeFinderAcquisitionRequest {
+            language_id,
+            project_root,
+            locator_root,
+            query: intent,
+            owners: scopes,
+            ignore_dirs: &config.search.ignore_dirs,
+            include_hidden_dirs: &config.search.include_hidden_dirs,
+            limit: PIPE_CANDIDATE_LINE_LIMIT,
+        })?;
+    let elapsed = finder_acquisition.elapsed;
+    let candidates = finder_acquisition
+        .candidates
+        .into_iter()
+        .map(Candidate::from)
+        .collect::<Vec<_>>();
     Ok(CandidateAcquisition {
         candidate_sources: vec!["provider".to_string(), "finder".to_string()],
         source_trace: source_index_trace_prefix(source_index_acquisition)
@@ -351,13 +220,44 @@ fn auto_candidates(
                     usize::from(!candidates.is_empty()),
                     0,
                 )
-                .with_fields(elapsed_fields(started_at.elapsed())),
-                candidate_trace("finder", &candidates)
-                    .with_fields(elapsed_fields(started_at.elapsed())),
+                .with_fields(elapsed_fields(elapsed)),
+                candidate_trace("finder", &candidates).with_fields(elapsed_fields(elapsed)),
             ])
             .collect(),
         candidates,
     })
+}
+
+fn candidate_acquisition_from_search(
+    acquisition: SearchPipeSourceAcquisition,
+) -> CandidateAcquisition {
+    CandidateAcquisition {
+        candidates: acquisition
+            .candidates
+            .into_iter()
+            .map(Candidate::from)
+            .collect(),
+        candidate_sources: acquisition.candidate_sources,
+        source_trace: acquisition
+            .source_trace
+            .into_iter()
+            .map(search_source_trace)
+            .collect(),
+    }
+}
+
+fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSourceTrace {
+    let mut source_trace = SearchPipeSourceTrace::new(
+        trace.source,
+        trace.status,
+        trace.matched,
+        trace.missing,
+        trace.normalized,
+    );
+    if let Some(elapsed) = trace.elapsed {
+        source_trace = source_trace.with_fields(elapsed_fields(elapsed));
+    }
+    source_trace
 }
 
 fn source_index_acquisition_blocks_backend(acquisition: &CandidateAcquisition) -> bool {
@@ -404,8 +304,14 @@ fn source_index_candidates(
     if !scopes.is_empty() {
         return None;
     }
-    if let Some(acquisition) = source_index_query_gate(intent) {
-        return Some(acquisition);
+    if let Some(acquisition) =
+        collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
+            intent,
+            scopes,
+            lookup: None,
+        })
+    {
+        return Some(source_index_acquisition_from_search(acquisition, None));
     }
     let started_at = Instant::now();
     let language_scope = agent_semantic_client::LanguageId::from(language_id);
@@ -416,13 +322,22 @@ fn source_index_candidates(
         DOCUMENT_PIPE_CANDIDATE_LIMIT as u32,
     ) {
         Ok(result) => {
-            let candidates = result
+            let lookup = search_source_index_lookup_from_client(&result);
+            let acquisition = collect_search_pipe_source_index_acquisition(
+                SearchPipeSourceIndexAcquisitionRequest {
+                    intent,
+                    scopes,
+                    lookup: Some(&lookup),
+                },
+            )?;
+            let candidates = acquisition
                 .candidates
                 .iter()
-                .map(source_index_candidate)
+                .cloned()
+                .map(Candidate::from)
                 .collect::<Vec<_>>();
             let mut source_trace = vec![source_index_trace(&result, candidates.len(), started_at)];
-            if !candidates.is_empty() {
+            if acquisition.decision == SearchPipeSourceIndexDecision::UseAndSkipFinder {
                 source_trace.push(SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0));
             }
             Some(CandidateAcquisition {
@@ -450,77 +365,64 @@ fn source_index_candidates(
     }
 }
 
-fn source_index_query_gate(intent: &str) -> Option<CandidateAcquisition> {
-    let terms = source_index_gate_terms(intent);
-    if terms.is_empty() {
-        return None;
+fn source_index_acquisition_from_search(
+    acquisition: SearchPipeSourceIndexAcquisition,
+    source_trace: Option<SearchPipeSourceTrace>,
+) -> CandidateAcquisition {
+    let candidates = acquisition
+        .candidates
+        .into_iter()
+        .map(Candidate::from)
+        .collect::<Vec<_>>();
+    let source_trace = source_trace
+        .map(|trace| vec![trace])
+        .unwrap_or_else(|| source_index_gate_trace(acquisition.gate));
+    CandidateAcquisition {
+        candidate_sources: vec!["source-index".to_string()],
+        source_trace,
+        candidates,
     }
-    let generic_count = terms
-        .iter()
-        .filter(|term| SOURCE_INDEX_GATE_GENERIC_TERMS.contains(&term.as_str()))
-        .count();
-    let all_generic = generic_count == terms.len() && terms.len() >= 2;
-    let broad_generic = terms.len() >= 8 && generic_count * 2 >= terms.len();
-    if !all_generic && !broad_generic {
-        return None;
-    }
+}
+
+fn source_index_gate_trace(gate: Option<SearchPipeSourceIndexGate>) -> Vec<SearchPipeSourceTrace> {
+    let Some(gate) = gate else {
+        return Vec::new();
+    };
     let mut fields = std::collections::BTreeMap::new();
     fields.insert("reason".to_string(), Value::from("query-gate"));
-    fields.insert("termCount".to_string(), Value::from(terms.len()));
-    fields.insert("genericTermCount".to_string(), Value::from(generic_count));
-    Some(CandidateAcquisition {
-        candidates: Vec::new(),
-        candidate_sources: vec!["source-index".to_string()],
-        source_trace: vec![
-            SearchPipeSourceTrace::new("sourceIndex", "skipped", 0, 0, 0).with_fields(fields),
-        ],
-    })
+    fields.insert("termCount".to_string(), Value::from(gate.term_count));
+    fields.insert(
+        "genericTermCount".to_string(),
+        Value::from(gate.generic_term_count),
+    );
+    vec![SearchPipeSourceTrace::new("sourceIndex", "skipped", 0, 0, 0).with_fields(fields)]
 }
 
-fn source_index_gate_terms(intent: &str) -> Vec<String> {
-    intent
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .map(str::to_ascii_lowercase)
-        .fold(Vec::new(), |mut terms, term| {
-            if !terms.iter().any(|seen| seen == &term) {
-                terms.push(term);
-            }
-            terms
-        })
+fn search_source_index_lookup_from_client(
+    result: &SourceIndexLookupResult,
+) -> SearchPipeSourceIndexLookup {
+    SearchPipeSourceIndexLookup {
+        state: result.state.as_str().to_string(),
+        candidates: result
+            .candidates
+            .iter()
+            .map(|candidate| SearchPipeSourceIndexCandidate {
+                path: candidate.path.clone(),
+                language_id: candidate
+                    .language_id
+                    .as_ref()
+                    .map(|value| value.as_str().to_string()),
+                provider_id: candidate
+                    .provider_id
+                    .as_ref()
+                    .map(|value| value.as_str().to_string()),
+                source_kind: candidate.source_kind.as_str().to_string(),
+                line_count: candidate.line_count,
+                query_keys: candidate.query_keys.clone(),
+            })
+            .collect(),
+    }
 }
-
-const SOURCE_INDEX_GATE_GENERIC_TERMS: &[&str] = &[
-    "action",
-    "actions",
-    "code",
-    "collectms",
-    "command",
-    "compact",
-    "elapsedms",
-    "fd",
-    "frontier",
-    "gate",
-    "graph",
-    "items",
-    "latency",
-    "low",
-    "milliseconds",
-    "owner",
-    "performance",
-    "pipe",
-    "quality",
-    "query",
-    "render",
-    "rg",
-    "route",
-    "search",
-    "selector",
-    "sourceindex",
-    "trace",
-    "words",
-];
 
 fn source_index_trace_prefix(
     acquisition: Option<CandidateAcquisition>,
@@ -535,7 +437,14 @@ pub(super) fn source_index_trace(
     candidate_count: usize,
     started_at: Instant,
 ) -> SearchPipeSourceTrace {
-    let elapsed = started_at.elapsed();
+    source_index_trace_with_elapsed(result, candidate_count, started_at.elapsed())
+}
+
+pub(super) fn source_index_trace_with_elapsed(
+    result: &SourceIndexLookupResult,
+    candidate_count: usize,
+    elapsed: std::time::Duration,
+) -> SearchPipeSourceTrace {
     let mut fields = elapsed_fields(elapsed);
     fields.insert(
         "collectMs".to_string(),
@@ -571,66 +480,6 @@ fn source_index_trace_status(state: &SourceIndexLookupState) -> &'static str {
     }
 }
 
-pub(super) fn source_index_candidate(
-    candidate: &agent_semantic_client::SourceIndexCandidate,
-) -> Candidate {
-    let line_count = candidate.line_count.unwrap_or(1).max(1) as usize;
-    Candidate {
-        path: candidate.path.clone(),
-        line: 1,
-        end_line: line_count,
-        symbol: source_index_symbol(candidate),
-        text: source_index_candidate_text(candidate),
-        source: "source-index".to_string(),
-        confidence: "rust-sql".to_string(),
-    }
-}
-
-fn source_index_symbol(candidate: &agent_semantic_client::SourceIndexCandidate) -> String {
-    candidate
-        .query_keys
-        .first()
-        .cloned()
-        .unwrap_or_else(|| symbol_from_path(&candidate.path))
-}
-
-fn source_index_candidate_text(candidate: &agent_semantic_client::SourceIndexCandidate) -> String {
-    let language = candidate
-        .language_id
-        .as_ref()
-        .map(|value| value.as_str())
-        .unwrap_or("unknown");
-    let provider = candidate
-        .provider_id
-        .as_ref()
-        .map(|value| value.as_str())
-        .unwrap_or("unknown");
-    let keys = candidate
-        .query_keys
-        .iter()
-        .take(8)
-        .cloned()
-        .collect::<Vec<_>>()
-        .join("|");
-    format!(
-        "source-index path={} language={} provider={} kind={} queryKeys={}",
-        candidate.path,
-        language,
-        provider,
-        candidate.source_kind.as_str(),
-        keys
-    )
-}
-
-fn symbol_from_path(path: &str) -> String {
-    Path::new(path)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .filter(|stem| !stem.is_empty())
-        .unwrap_or("source")
-        .to_string()
-}
-
 fn compact_detail(detail: &str) -> String {
     detail.split_whitespace().collect::<Vec<_>>().join("_")
 }
@@ -643,20 +492,25 @@ fn finder_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
-    let started_at = Instant::now();
-    let candidates = collect_candidates(
+    let acquisition = collect_search_pipe_finder_acquisition(SearchPipeFinderAcquisitionRequest {
         language_id,
         project_root,
         locator_root,
-        intent,
-        scopes,
-        config,
-    )?;
+        query: intent,
+        owners: scopes,
+        ignore_dirs: &config.search.ignore_dirs,
+        include_hidden_dirs: &config.search.include_hidden_dirs,
+        limit: PIPE_CANDIDATE_LINE_LIMIT,
+    })?;
+    let candidates = acquisition
+        .candidates
+        .into_iter()
+        .map(Candidate::from)
+        .collect::<Vec<_>>();
     Ok(CandidateAcquisition {
         candidate_sources: vec!["finder".to_string()],
         source_trace: vec![
-            candidate_trace("finder", &candidates)
-                .with_fields(elapsed_fields(started_at.elapsed())),
+            candidate_trace("finder", &candidates).with_fields(elapsed_fields(acquisition.elapsed)),
         ],
         candidates,
     })

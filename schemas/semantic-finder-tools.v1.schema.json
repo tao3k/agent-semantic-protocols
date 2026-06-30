@@ -104,7 +104,7 @@
     "toolId": {
       "enum": [
         "rg",
-        "fzf",
+        "lexical",
         "fd",
         "exa",
         "ast-grep",
@@ -165,8 +165,8 @@
     },
     "surface": {
       "enum": [
-        "search-fzf",
-        "search-fzf",
+        "search-lexical",
+        "search-lexical",
         "search-ingest",
         "search-pattern",
         "provider-internal",
@@ -283,7 +283,7 @@
         {
           "if": {
             "properties": {
-              "toolId": { "const": "fzf" }
+              "toolId": { "const": "lexical" }
             },
             "required": ["toolId"]
           },
@@ -348,7 +348,7 @@
         {
           "if": {
             "properties": {
-              "toolId": { "const": "fzf" }
+              "toolId": { "const": "lexical" }
             },
             "required": ["toolId"]
           },
@@ -431,7 +431,7 @@
         "defaultFor": {
           "type": "array",
           "items": {
-            "enum": ["fzf", "text", "text-fuzzy", "path", "pattern", "ingest"]
+            "enum": ["lexical", "text", "text-fuzzy", "path", "pattern", "ingest"]
           }
         },
         "stages": {
@@ -522,8 +522,8 @@
         "backend": {
           "enum": [
             "rg",
-            "rg+fzf",
-            "fzf",
+            "rg+lexical",
+            "lexical",
             "fd",
             "fd+exa",
             "ugrep",
@@ -556,7 +556,7 @@
           "required": ["toolId", "query"],
           "properties": {
             "toolId": {
-              "const": "fzf"
+              "const": "lexical"
             },
             "query": {
               "type": "string",

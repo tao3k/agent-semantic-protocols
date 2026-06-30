@@ -1,0 +1,13 @@
+id = "asp-rust-owner-items-cold-functional-path"
+title = "ASP rust search owner items executes rust-harness owner-items on cold path"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001"]
+agent_goal = "Prove the first asp rust search owner <path> items request executes the language harness owner-items interface and returns shared owner/item evidence before any hot cache optimization is considered."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp rust search owner crate/src/lib.rs items --query dynamic_owner_item_index --workspace . --view seeds",
+  "alg=rust-harness-owner-items",
+  "item:symbol(dynamic_owner_item_index)",
+]
+inputs = "inputs"
+expected = "expected"
+command = "asp rust search owner crate/src/lib.rs items --query dynamic_owner_item_index --workspace . --view seeds"

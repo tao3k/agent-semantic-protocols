@@ -7,6 +7,10 @@ observed_total = "1ms"
 regression_budget = "5ms"
 memory_budget_bytes = 8388608
 observed_memory_bytes = 4194304
+route_source = "selector-seed"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
 target_rationale = "Selector-seeded search pipe has enough structure to render directly from the selector and query. The scenario gate calls the Rust renderer API rather than measuring debug binary startup, so it should stay inside a tight millisecond hard gate."
 
 [observed_timings]

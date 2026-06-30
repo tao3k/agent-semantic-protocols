@@ -29,7 +29,7 @@ pub(crate) fn provider(language_id: &'static str, command_prefix: Vec<String>) -
     }
 }
 
-pub(super) fn provider_with_owner_items(
+pub(crate) fn provider_with_owner_items(
     language_id: &'static str,
     command_prefix: Vec<String>,
 ) -> ProviderSpec {
@@ -168,7 +168,7 @@ avoid=inline-code-in-search,raw-read,repeat-owner\n",
     write_provider_bin_config(root, "rust", &bin_dir.join("rs-harness"));
 }
 
-pub(super) fn write_provider_bin_config(root: &Path, language_id: &str, binary: &Path) {
+pub(crate) fn write_provider_bin_config(root: &Path, language_id: &str, binary: &Path) {
     let config_path = root.join(".agents").join("asp.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create asp config dir");

@@ -4,7 +4,12 @@
   "title": "Semantic Scenario Benchmark",
   "description": "Language-neutral normalized scenario benchmark JSON contract. Language harnesses expose this schema data through --json; ASP consumes it for the unified render surface.",
   "type": "object",
-  "required": ["schemaVersion", "language", "scenario", "benchmark"],
+  "required": [
+    "schemaVersion",
+    "language",
+    "scenario",
+    "benchmark"
+  ],
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
@@ -21,7 +26,10 @@
       "$ref": "#/$defs/benchmark"
     },
     "sourceSyntax": {
-      "enum": ["benchmark.toml", "benchmark.ss"]
+      "enum": [
+        "benchmark.toml",
+        "benchmark.ss"
+      ]
     }
   },
   "$defs": {
@@ -38,7 +46,14 @@
     },
     "scenario": {
       "type": "object",
-      "required": ["id", "title", "policyIds", "agentGoal", "inputs", "expected"],
+      "required": [
+        "id",
+        "title",
+        "policyIds",
+        "agentGoal",
+        "inputs",
+        "expected"
+      ],
       "additionalProperties": true,
       "properties": {
         "id": {
@@ -154,7 +169,16 @@
       "additionalProperties": true,
       "properties": {
         "harness": {
-          "enum": ["libtest", "criterion", "divan", "iai-callgrind", "vitest", "pytest", "julia-test", "gerbil-test"]
+          "enum": [
+            "libtest",
+            "criterion",
+            "divan",
+            "iai-callgrind",
+            "vitest",
+            "pytest",
+            "julia-test",
+            "gerbil-test"
+          ]
         },
         "test": {
           "type": "string",
@@ -199,6 +223,26 @@
         },
         "inputExpectedComparison": {
           "$ref": "#/$defs/inputExpectedComparison"
+        },
+        "routeSource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxProviderProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxStdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fallbackReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "routeSourceRationale": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

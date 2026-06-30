@@ -7,7 +7,7 @@ use agent_semantic_client_core::{
     CacheArtifactId, CacheExportMethod, CacheManifestStatus, ClientCacheManifest, ClientRequest,
     ElapsedMillis, ProviderCommandReceipt, ProviderRegistrySnapshot,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbEngine};
+use agent_semantic_client_db::ClientDbEngine;
 use bytes::Bytes;
 
 use super::locator_artifact::maybe_write_search_output_artifact;
@@ -279,8 +279,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
         upsert_generation(&mut manifest, generation);
         write_cache_manifest(manifest_path, &manifest).ok()?;
-        let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
-        let mut db = ClientDb::open_or_create(&db_path).ok()?;
+        let mut db = ClientDbEngine::open_or_create_client_dir(cache_root).ok()?;
         sync_client_db_for_manifest_writeback(&mut db, &manifest, &manifest_status)?;
         db.import_manifest(&manifest).ok()?;
         let mut sqlite_write_count = 1;
@@ -388,8 +387,7 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
-    let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
-    let mut db = ClientDb::open_or_create(&db_path).ok()?;
+    let mut db = ClientDbEngine::open_or_create_client_dir(cache_root).ok()?;
     sync_client_db_for_manifest_writeback(&mut db, &manifest, &manifest_status)?;
     db.import_manifest(&manifest).ok()?;
     let mut probe = provider_cache_probe(project_root, snapshot, request)?;
@@ -470,8 +468,7 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
     let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
-    let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
-    let mut db = ClientDb::open_or_create(&db_path).ok()?;
+    let mut db = ClientDbEngine::open_or_create_client_dir(cache_root).ok()?;
     sync_client_db_for_manifest_writeback(&mut db, &manifest, &manifest_status)?;
     db.import_manifest(&manifest).ok()?;
     let mut probe = provider_cache_probe(project_root, snapshot, request)?;

@@ -4,14 +4,16 @@ use std::path::{Component, Path, PathBuf};
 
 use super::graph::GraphTurboReceiptRequest;
 use super::language_owner_items::{
-    LanguageOwnerItemsDispatchRequest, LanguageOwnerItemsDispatchResult,
-    dispatch_language_owner_items, language_owner_path_exists,
+    LanguageOwnerItemsDispatchRequest, dispatch_language_owner_items,
 };
 use super::search_config::AspConfig;
 use super::search_pipe_args::parse_search_owner_items_query_args;
-use super::search_pipe_gerbil_owner_items::run_inline_gerbil_owner_items_query;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_view::reject_non_graph_turbo_receipt;
+use agent_semantic_client::{
+    LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan,
+    run_language_owner_items_dispatch_plan,
+};
 
 pub(super) struct SearchOwnerItemsFastContext<'a> {
     pub(super) language_id: &'a str,
@@ -31,22 +33,10 @@ struct OwnerItemsSearchState<'a> {
     config: &'a AspConfig,
     provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     owner: &'a Path,
-    query: &'a str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OwnerItemsSearchStep {
-    Handled,
-    Unsupported,
 }
 
 impl<'a> OwnerItemsSearchState<'a> {
-    fn new(
-        args: &'a [String],
-        context: SearchOwnerItemsFastContext<'a>,
-        owner: &'a Path,
-        query: &'a str,
-    ) -> Self {
+    fn new(args: &'a [String], context: SearchOwnerItemsFastContext<'a>, owner: &'a Path) -> Self {
         let owner_project_root = search_workspace_root(
             context.project_root,
             context.locator_root,
@@ -60,35 +50,22 @@ impl<'a> OwnerItemsSearchState<'a> {
             config: context.config,
             provider_context: context.provider_context,
             owner,
-            query,
         }
     }
 
-    fn try_inline_gerbil(&self) -> Result<OwnerItemsSearchStep, String> {
-        if run_inline_gerbil_owner_items_query(
-            self.language_id,
-            self.owner,
-            self.query,
-            &self.owner_project_root,
-        )? {
-            return Ok(OwnerItemsSearchStep::Handled);
-        }
-        Ok(OwnerItemsSearchStep::Unsupported)
-    }
-
-    fn try_provider(&self) -> Result<OwnerItemsSearchStep, String> {
-        match dispatch_language_owner_items(LanguageOwnerItemsDispatchRequest {
-            language_id: self.language_id,
-            args: self.args,
-            owner: self.owner,
-            project_root: &self.owner_project_root,
-            cache_home: self.cache_home,
-            config: self.config,
-            provider_context: self.provider_context,
-        })? {
-            LanguageOwnerItemsDispatchResult::Handled => Ok(OwnerItemsSearchStep::Handled),
-            LanguageOwnerItemsDispatchResult::Unsupported => Ok(OwnerItemsSearchStep::Unsupported),
-        }
+    fn try_provider(&self) -> Result<LanguageOwnerItemsAttempt, String> {
+        Ok(
+            dispatch_language_owner_items(LanguageOwnerItemsDispatchRequest {
+                language_id: self.language_id,
+                args: self.args,
+                owner: self.owner,
+                project_root: &self.owner_project_root,
+                cache_home: self.cache_home,
+                config: self.config,
+                provider_context: self.provider_context,
+            })?
+            .into(),
+        )
     }
 }
 
@@ -103,30 +80,14 @@ pub(super) fn run_search_owner_items_query_command(
             "search owner items fast path supports --view seeds or --view hits".to_string(),
         );
     }
-    let state = OwnerItemsSearchState::new(
-        args,
-        context,
-        &owner_query_args.owner,
-        &owner_query_args.query,
-    );
-    if !language_owner_path_exists(&state.owner_project_root, state.owner) {
-        return Err(format!(
-            "{} search owner items requires an existing owner path `{}`; no fallback executed",
-            state.language_id,
-            state.owner.display()
-        ));
-    }
-    if state.try_inline_gerbil()? == OwnerItemsSearchStep::Handled {
-        return Ok(());
-    }
-    if state.try_provider()? == OwnerItemsSearchStep::Handled {
-        return Ok(());
-    }
-    Err(format!(
-        "{} search owner items requires a language-harness owner-items interface for `{}`; ASP will not synthesize language items from source text",
-        state.language_id,
-        state.owner.display()
-    ))
+    let state = OwnerItemsSearchState::new(args, context, &owner_query_args.owner);
+    run_language_owner_items_dispatch_plan(LanguageOwnerItemsDispatchPlan {
+        language_id: state.language_id,
+        owner: state.owner,
+        project_root: &state.owner_project_root,
+        provider: || state.try_provider(),
+    })?;
+    Ok(())
 }
 
 fn search_owner_items_workspace(args: &[String]) -> Option<PathBuf> {

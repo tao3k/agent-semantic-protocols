@@ -12,10 +12,10 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheManifestReport, CacheManifestStatus,
     ClientCacheManifest, ClientCachePath, ClientDbBackend, ClientDbEngineDurability,
     ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbFileName, ClientDbFutureBackend,
-    ClientDbJournalMode, ClientDbRuntimePragmasReceipt, ClientDbSqliteReceipt, ClientDbStatus,
-    ClientMethod, ClientReceipt, ClientRepoId, ClientScopeId, ClientStateLayoutVersion,
-    ClientWorkspaceId, LanguageId, ProjectContext, ProviderId, ProviderRegistrySnapshot,
-    StateLayout,
+    ClientDbFutureBackendReportReceipt, ClientDbJournalMode, ClientDbRuntimePragmasReceipt,
+    ClientDbSqliteReceipt, ClientDbStatus, ClientMethod, ClientReceipt, ClientRepoId,
+    ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId, LanguageId, ProjectContext,
+    ProviderId, ProviderRegistrySnapshot, StateLayout,
 };
 use agent_semantic_client_db::{ClientDb, ClientDbEngine, ClientDbEngineReport, ClientDbReport};
 use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout_in_client_cache};
@@ -23,7 +23,8 @@ use serde_json::json;
 
 use super::structural_index_import::import_structural_index_artifacts;
 use crate::source_index::{
-    lookup_source_index_in_cache, refresh_runtime_source_index, refresh_source_index,
+    SourceIndexLookupRequest, lookup_source_index_in_cache, refresh_runtime_source_index,
+    refresh_source_index,
 };
 
 pub(crate) fn run_cache(
@@ -173,14 +174,13 @@ pub(crate) fn run_cache(
             let cache_report = ClientCacheManifest::inspect_project(project_root);
             let manifest = ClientCacheManifest::load_from_path(state_layout.cache_manifest_path())?;
             let cache_root = state_layout.client_cache_dir();
-            let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
-            let mut db = ClientDb::open_or_create(db_path.clone())?;
+            let mut db = ClientDbEngine::open_or_create_client_dir(cache_root)?;
             db.import_manifest(&manifest)?;
             let structural_index_imported_count =
                 import_structural_index_artifacts(cache_root, &mut db, &manifest)?;
             let db_report = db
                 .inspect_open()
-                .unwrap_or_else(|_| ClientDb::inspect(db_path));
+                .unwrap_or_else(|_| ClientDbEngine::inspect_client_dir(cache_root));
             let mut receipt =
                 ClientReceipt::cache_report(ClientMethod::CacheImport, provenance, &cache_report);
             apply_project_db_report_to_receipt(&mut receipt, project_root, &db_report);
@@ -245,13 +245,13 @@ pub(crate) fn run_cache(
         }
         [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "lookup" => {
             let spec = parse_source_index_lookup_args(project_root, rest)?;
-            let result = lookup_source_index_in_cache(
-                project_root,
-                &spec.index_root,
-                facade_language_id,
-                &spec.query,
-                spec.limit,
-            )?;
+            let result = lookup_source_index_in_cache(SourceIndexLookupRequest {
+                cache_project_root: project_root,
+                indexed_project_root: &spec.index_root,
+                language_id: facade_language_id,
+                query: &spec.query,
+                limit: spec.limit,
+            })?;
             if result.candidates.is_empty() {
                 println!(
                     "noOutput reason=source-index-{} query={} indexRoot={}",
@@ -322,10 +322,10 @@ pub(crate) fn run_cache(
                 .as_ref()
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_root = state_layout.client_cache_dir();
-            let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
+            let db_path = ClientDbEngine::db_path_for_client_dir(cache_root);
             let flushed_syntax_rows = ClientDb::flush_syntax_query_rows(&db_path)?;
             let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
-            let db_report = ClientDb::inspect(db_path);
+            let db_report = ClientDbEngine::inspect_client_dir(cache_root);
             let mut receipt = ClientReceipt::cache_report(
                 ClientMethod::CacheFlush,
                 provenance,
@@ -375,7 +375,7 @@ pub(crate) fn run_cache(
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_report = ClientCacheManifest::inspect_project(project_root);
             let cache_root = state_layout.client_cache_dir();
-            let db_path = ClientDbEngine::sqlite_path_for_client_dir(cache_root);
+            let db_path = ClientDbEngine::db_path_for_client_dir(cache_root);
             let db_invalidated_generation_count =
                 ClientDb::invalidate_generations_for_project(&db_path, project_root)?;
             let manifest_invalidated_generation_count =
@@ -383,7 +383,7 @@ pub(crate) fn run_cache(
             let invalidated_generation_count =
                 db_invalidated_generation_count.max(manifest_invalidated_generation_count);
             let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
-            let db_report = ClientDb::inspect(db_path);
+            let db_report = ClientDbEngine::inspect_client_dir(cache_root);
             let receipt_method = if is_flush {
                 ClientMethod::CacheFlush
             } else {
@@ -760,6 +760,35 @@ fn db_engine_receipt(engine_report: &ClientDbEngineReport) -> ClientDbEngineRece
         repo_id: ClientRepoId::from(engine_report.repo_id.clone()),
         workspace_id: ClientWorkspaceId::from(engine_report.workspace_id.clone()),
         scope_id: ClientScopeId::from(engine_report.scope_id.clone()),
+        future_backend_report: ClientDbFutureBackendReportReceipt {
+            backend: ClientDbFutureBackend::from(engine_report.future_backend_report.backend),
+            status: engine_report.future_backend_report.status.to_string(),
+            db_file_name: ClientDbFileName::from(engine_report.future_backend_report.db_file_name),
+            schema_bootstrap: engine_report
+                .future_backend_report
+                .schema_bootstrap
+                .to_string(),
+            durability: ClientDbEngineDurability::from(
+                engine_report.future_backend_report.durability,
+            ),
+            features: ClientDbEngineFeaturesReceipt {
+                async_io: engine_report.future_backend_report.features.async_io,
+                concurrent_writes: engine_report
+                    .future_backend_report
+                    .features
+                    .concurrent_writes,
+                fts: engine_report.future_backend_report.features.fts,
+                vector: engine_report.future_backend_report.features.vector,
+                overlay_search: engine_report.future_backend_report.features.overlay_search,
+                sync: engine_report.future_backend_report.features.sync,
+                encryption: engine_report.future_backend_report.features.encryption,
+            },
+            db_path: ClientCachePath::from_path(&engine_report.future_backend_report.db_path),
+            reason: engine_report
+                .future_backend_report
+                .reason
+                .map(str::to_string),
+        },
         sqlite_report: sqlite_receipt(&engine_report.sqlite_report),
     }
 }

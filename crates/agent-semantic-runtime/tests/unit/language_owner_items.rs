@@ -1,0 +1,125 @@
+use std::cell::Cell;
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::{
+    LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsDispatchPlan,
+    compact_language_owner_items_stdout, language_owner_items_failure,
+    read_language_owner_items_cache, run_language_owner_items_dispatch_plan,
+    write_language_owner_items_cache,
+};
+
+#[test]
+fn owner_items_dispatch_plan_runs_provider() {
+    let root = temp_root("owner-items-provider-first");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
+    let provider_calls = Cell::new(0);
+
+    let result = run_language_owner_items_dispatch_plan(LanguageOwnerItemsDispatchPlan {
+        language_id: "rust",
+        owner: std::path::Path::new("src/lib.rs"),
+        project_root: &root,
+        provider: || {
+            provider_calls.set(provider_calls.get() + 1);
+            Ok(LanguageOwnerItemsAttempt::Handled)
+        },
+    })
+    .expect("dispatch owner items");
+
+    assert_eq!(result, LanguageOwnerItemsAttempt::Handled);
+    assert_eq!(provider_calls.get(), 1);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_dispatch_plan_fails_closed_when_provider_is_unsupported() {
+    let root = temp_root("owner-items-provider-unsupported");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
+    let provider_calls = Cell::new(0);
+
+    let error = run_language_owner_items_dispatch_plan(LanguageOwnerItemsDispatchPlan {
+        language_id: "rust",
+        owner: std::path::Path::new("src/lib.rs"),
+        project_root: &root,
+        provider: || {
+            provider_calls.set(provider_calls.get() + 1);
+            Ok(LanguageOwnerItemsAttempt::Unsupported)
+        },
+    })
+    .expect_err("unsupported provider must fail closed");
+
+    assert!(
+        error.contains("requires a language-harness owner-items interface"),
+        "{error}"
+    );
+    assert_eq!(provider_calls.get(), 1);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_cache_round_trip_is_owned_by_runtime() {
+    let root = temp_root("owner-items-cache");
+    let cache_home = root.join(".cache");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
+    let args = vec![
+        "items".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+    ];
+    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let request = LanguageOwnerItemsCacheRequest {
+        language_id: "rust",
+        args: &args,
+        invocation: &invocation,
+        owner: std::path::Path::new("src/lib.rs"),
+        project_root: &root,
+        cache_home: &cache_home,
+    };
+
+    assert!(
+        read_language_owner_items_cache(&request)
+            .expect("read missing cache")
+            .is_none()
+    );
+    write_language_owner_items_cache(&request, b"owner-items\n").expect("write cache");
+    assert_eq!(
+        read_language_owner_items_cache(&request).expect("read cache"),
+        Some(b"owner-items\n".to_vec())
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_compact_render_drops_internal_search_lines() {
+    let compact = compact_language_owner_items_stdout(
+        b"actionFrontier=internal\npublic owner item\n[graph-frontier] internal\n",
+    );
+
+    assert_eq!(compact, b"public owner item\n");
+}
+
+#[test]
+fn owner_items_failure_reports_no_fallback() {
+    let failure = language_owner_items_failure(
+        "provider-owned owner-items failed",
+        std::path::Path::new("src/lib.rs"),
+        b"provider stderr\n",
+        true,
+    );
+
+    assert!(failure.contains("no fallback executed"), "{failure}");
+    assert!(failure.contains("provider stderr"), "{failure}");
+}
+
+fn temp_root(name: &str) -> std::path::PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("agent-semantic-runtime-{name}-{unique}"));
+    fs::create_dir_all(&root).expect("create temp root");
+    root
+}

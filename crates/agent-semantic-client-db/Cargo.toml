@@ -10,6 +10,11 @@ agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 rusqlite = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+turso = { workspace = true, optional = true }
+
+[features]
+default = []
+turso-backend = ["dep:turso"]
 
 [[bench]]
 name = "sqlite_cache_hot_path"

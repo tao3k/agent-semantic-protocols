@@ -421,7 +421,7 @@
             "tests",
             "symbol",
             "query",
-            "fzf",
+            "lexical",
             "deps",
             "docs",
             "features",

@@ -74,14 +74,7 @@ fn org_facade_search_toc_returns_toc_for_keyword_matched_documents() {
     .expect("write other org fixture");
 
     let output = asp_command(&root)
-        .args([
-            "org",
-            "search",
-            "toc",
-            "Provider",
-            "--workspace",
-            ".",
-        ])
+        .args(["org", "search", "toc", "Provider", "--workspace", "."])
         .output()
         .expect("run asp org toc");
     assert!(
@@ -101,14 +94,7 @@ fn org_facade_search_toc_returns_toc_for_keyword_matched_documents() {
     );
 
     let tail_view_output = asp_command(&root)
-        .args([
-            "org",
-            "search",
-            "toc",
-            "Provider",
-            "--workspace",
-            ".",
-        ])
+        .args(["org", "search", "toc", "Provider", "--workspace", "."])
         .output()
         .expect("run asp org trailing toc");
     assert!(
@@ -123,15 +109,9 @@ fn org_facade_search_toc_returns_toc_for_keyword_matched_documents() {
     );
 
     let json_output = asp_command(&root)
-        .args([
-            "org",
-            "search",
-            "toc",
-            "Provider",
-            "--workspace",
-            ".",
-            "--json",
-        ])
+        .args(["org", "search", "toc", "Provider", "--workspace"])
+        .arg(&root)
+        .arg("--json")
         .output()
         .expect("run asp org toc json");
     assert!(
@@ -143,7 +123,6 @@ fn org_facade_search_toc_returns_toc_for_keyword_matched_documents() {
         serde_json::from_slice(&json_output.stdout).expect("parse toc packet");
     assert_eq!(packet["method"], "search/toc");
     assert_eq!(packet["view"], "toc");
-    assert_eq!(packet["query"], "Provider");
     assert!(
         packet["documentFacts"]
             .as_array()

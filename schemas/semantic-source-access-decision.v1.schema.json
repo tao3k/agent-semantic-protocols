@@ -207,7 +207,7 @@
           "$ref": "#/$defs/identifier"
         },
         "kind": {
-          "enum": ["prime", "owner", "query", "fzf", "ingest", "guide"]
+          "enum": ["prime", "owner", "query", "lexical", "ingest", "guide"]
         },
         "argv": {
           "type": "array",

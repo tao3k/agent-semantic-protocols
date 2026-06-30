@@ -4,7 +4,10 @@ use std::{
     process::Command,
 };
 
-use super::{RuntimeSourceSpec, ensure_runtime_source_checkout, runtime_source_checkout_dir};
+use super::{
+    RuntimeSourceSpec, ensure_runtime_source_checkout, runtime_source_checkout_dir,
+    runtime_source_index_context, runtime_source_registry_fingerprint,
+};
 
 #[test]
 fn runtime_source_dir_uses_client_cache_namespace() {
@@ -36,6 +39,48 @@ fn runtime_source_dir_rejects_path_escape_segments() {
     let error = runtime_source_checkout_dir(&root, "runtime-source/gerbil-scheme", "v0.18.2/alt")
         .expect_err("reject checkout path segment");
     assert!(error.contains("invalid runtime source path segment"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn runtime_source_index_context_is_owned_by_runtime() {
+    let root = temp_root("runtime-source-index-context");
+    let cache_dir = root.join("client");
+    let checkout_root = cache_dir.join("runtime-source/python/v1");
+    fs::create_dir_all(&checkout_root).expect("create checkout root");
+
+    let context =
+        runtime_source_index_context(&checkout_root, &cache_dir, "python", "python-harness")
+            .expect("runtime source index context");
+
+    assert_eq!(context.checkout_root, canonical(&checkout_root));
+    assert_eq!(
+        context.registry_fingerprint,
+        runtime_source_registry_fingerprint(&canonical(&checkout_root), "python", "python-harness")
+    );
+    assert!(context.registry_fingerprint.contains("runtimeSource\n"));
+    assert!(context.registry_fingerprint.contains("language=python"));
+    assert!(
+        context
+            .registry_fingerprint
+            .contains("provider=python-harness")
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn runtime_source_index_context_rejects_checkouts_outside_client_cache() {
+    let root = temp_root("runtime-source-index-context-outside-cache");
+    let cache_dir = root.join("client");
+    let checkout_root = root.join("outside/runtime-source/python/v1");
+    fs::create_dir_all(&cache_dir).expect("create cache dir");
+    fs::create_dir_all(&checkout_root).expect("create checkout root");
+
+    let error =
+        runtime_source_index_context(&checkout_root, &cache_dir, "python", "python-harness")
+            .expect_err("checkout outside cache must fail");
+
+    assert!(error.contains("outside ASP client cache"));
     let _ = fs::remove_dir_all(root);
 }
 

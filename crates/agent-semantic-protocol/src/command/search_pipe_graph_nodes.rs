@@ -4,8 +4,9 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 use serde_json::{Value, json};
 
+use agent_semantic_search::language_file_spec;
+
 use super::{
-    search_language_files::language_file_spec,
     search_pipe_model::Candidate,
     search_pipe_projection::{
         candidate_end_line, candidate_selector, graph_projection_action, is_document_language,

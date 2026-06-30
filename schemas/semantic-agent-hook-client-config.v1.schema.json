@@ -236,7 +236,7 @@
             "prime",
             "owner",
             "query",
-            "fzf",
+            "lexical",
             "read",
             "deps",
             "api",

@@ -15,9 +15,7 @@ use agent_semantic_tree_sitter::{
 use syn::spanned::Spanned;
 use tree_sitter::StreamingIterator;
 
-use super::query_owner_item::{
-    OwnerItem, collect_gerbil_query_owner_items, owner_item_matches_request,
-};
+use super::query_owner_item::{OwnerItem, owner_item_matches_request};
 use super::query_owner_legacy_selector::parse_legacy_owner_selector;
 use super::query_owner_structural_selector::parse_structural_owner_query;
 
@@ -45,8 +43,6 @@ pub(super) fn run_asp_fast_owner_query_command(
             return Ok(true);
         }
         collect_syn_rust_owner_items(&source, &path)?
-    } else if language_id == "gerbil-scheme" {
-        collect_gerbil_query_owner_items(&source)
     } else {
         let Some(items) = collect_tree_sitter_owner_items(language_id, &source, &path)? else {
             render_non_source_owner_query(&request, &path, project_root, locator_root, &source)?;
@@ -131,10 +127,8 @@ struct OwnerQueryRequest {
 
 impl OwnerQueryRequest {
     fn parse(language_id: &str, args: &[String]) -> Option<Self> {
-        if !matches!(
-            language_id,
-            "rust" | "typescript" | "python" | "julia" | "gerbil-scheme"
-        ) || !matches!(args.first().map(String::as_str), Some("query"))
+        if !matches!(language_id, "rust" | "typescript" | "python" | "julia")
+            || !matches!(args.first().map(String::as_str), Some("query"))
         {
             return None;
         }

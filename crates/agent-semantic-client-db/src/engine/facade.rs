@@ -11,12 +11,15 @@ use serde::Serialize;
 use crate::db::{ClientDb, ClientDbReport};
 
 use super::sqlite::SqliteClientDbEngineBackend;
+use super::turso::{TursoClientDbEngineBackend, TursoClientDbEngineReport};
 
 /// Current durable client DB backend selected by the ASP DB Engine.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientDbBackend {
     /// Existing local SQLite schema and rusqlite adapter.
     SqliteV1,
+    /// Target Turso/libSQL backend for the new DB Engine.
+    Turso,
 }
 
 impl ClientDbBackend {
@@ -25,6 +28,7 @@ impl ClientDbBackend {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::SqliteV1 => SQLITE_V1_BACKEND,
+            Self::Turso => TURSO_BACKEND,
         }
     }
 }
@@ -34,6 +38,8 @@ impl ClientDbBackend {
 pub enum ClientDbEngineDurability {
     /// Transitional SQLite file managed by the phase-1 `rusqlite` adapter.
     SqliteFile,
+    /// Local Turso/libSQL durable file owned by the DB Engine.
+    TursoLocalFile,
 }
 
 impl ClientDbEngineDurability {
@@ -42,6 +48,7 @@ impl ClientDbEngineDurability {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::SqliteFile => "sqlite-file",
+            Self::TursoLocalFile => "turso-local-file",
         }
     }
 }
@@ -125,6 +132,7 @@ pub struct ClientDbEngineReport {
     pub repo_id: String,
     pub workspace_id: String,
     pub scope_id: String,
+    pub future_backend_report: TursoClientDbEngineReport,
     pub sqlite_report: ClientDbReport,
 }
 
@@ -154,10 +162,35 @@ impl ClientDbEngine {
         }
     }
 
+    /// Return the current DB Engine path below an already resolved client directory.
+    #[must_use]
+    pub fn db_path_for_client_dir(client_dir: impl AsRef<Path>) -> PathBuf {
+        client_dir.as_ref().join(CLIENT_DB_FILE)
+    }
+
     /// Return the SQLite v1 DB path below an already resolved client directory.
     #[must_use]
     pub fn sqlite_path_for_client_dir(client_dir: impl AsRef<Path>) -> PathBuf {
-        client_dir.as_ref().join(CLIENT_DB_FILE)
+        Self::db_path_for_client_dir(client_dir)
+    }
+
+    /// Open the current DB Engine backend for an already resolved client directory.
+    pub fn open_or_create_client_dir(client_dir: impl AsRef<Path>) -> Result<ClientDb, String> {
+        SqliteClientDbEngineBackend.open_or_create(&Self::db_path_for_client_dir(client_dir))
+    }
+
+    /// Open the current DB Engine backend read-only for an already resolved client directory.
+    pub fn open_read_only_existing_client_dir(
+        client_dir: impl AsRef<Path>,
+    ) -> Result<Option<ClientDb>, String> {
+        SqliteClientDbEngineBackend
+            .open_read_only_existing(&Self::db_path_for_client_dir(client_dir))
+    }
+
+    /// Inspect the current DB Engine backend for an already resolved client directory.
+    #[must_use]
+    pub fn inspect_client_dir(client_dir: impl AsRef<Path>) -> ClientDbReport {
+        SqliteClientDbEngineBackend.inspect(&Self::db_path_for_client_dir(client_dir))
     }
 
     /// Return the DB manifest path below an already resolved client directory.
@@ -186,6 +219,7 @@ impl ClientDbEngine {
     #[must_use]
     pub fn inspect(&self) -> ClientDbEngineReport {
         let backend = self.sqlite_backend();
+        let future_backend_report = self.turso_backend().inspect(&self.db_path);
         ClientDbEngineReport {
             backend: self.backend.as_str(),
             future_backend: self.future_backend,
@@ -201,6 +235,7 @@ impl ClientDbEngine {
             repo_id: self.repo_id.clone(),
             workspace_id: self.workspace_id.clone(),
             scope_id: self.scope_id.clone(),
+            future_backend_report,
             sqlite_report: self.inspect_backend(),
         }
     }
@@ -267,5 +302,9 @@ impl ClientDbEngine {
 
     fn sqlite_backend(&self) -> SqliteClientDbEngineBackend {
         SqliteClientDbEngineBackend
+    }
+
+    fn turso_backend(&self) -> TursoClientDbEngineBackend {
+        TursoClientDbEngineBackend
     }
 }

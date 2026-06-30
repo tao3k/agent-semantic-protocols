@@ -545,10 +545,10 @@ provider-local schema refinements. Search and query packets may embed these
 facts as optional `nativeSyntaxFacts`.
 
 `semantic-finder-tools.v1.schema.json` is the shared contract for
-provider-approved finder pipelines behind `search fzf`, compatibility
-`search fzf`, `search ingest`, and `search pattern`. It describes tool catalogs
-and pipelines such as `rg+fzf` without exposing raw shell argv to agents. `rg`
-owns lexical candidate generation, `fzf` owns headless fuzzy filtering/ranking,
+provider-approved finder pipelines behind `search lexical`, compatibility
+`search lexical`, `search ingest`, and `search pattern`. It describes tool catalogs
+and pipelines such as `rg+lexical` without exposing raw shell argv to agents. `rg`
+owns lexical candidate generation, `lexical` owns headless filtering/ranking,
 and the language provider owns path normalization, owner resolution,
 nearest-item resolution, test frontier selection, deduplication, caps, and
 packet rendering. `ast-grep` is modeled as a structural recipe/search tool, not
@@ -841,7 +841,7 @@ expanded through `rg`/`fd` or another external source and normalized through
 notes or falling back to raw shell output.
 Search descriptors can also carry `acceptedPipes`, a provider-advertised list of
 final-only pipe names accepted by that method, such as TypeScript's
-`search/fzf` accepting `owner` and `tests`.
+`search/lexical` accepting `owner` and `tests`.
 
 Registry invariants mirror Language Server Protocol naming discipline without
 copying LSP transport. `languageId` identifies the source language,
@@ -870,7 +870,7 @@ The stable envelope is language-neutral:
 - `view`: one semantic-search view, such as `workspace`, `prime`, `owner`,
   `dependency`, `deps`, `symbol`, `callsite`, `import`, `query`, `cfg`,
   `patterns`, `pattern`, `docs`, `api`, `public-external-types`, `policy`,
-  `tests`, `fzf`, `text`, or `ingest`
+  `tests`, `lexical`, `text`, or `ingest`
 - `header`, `packages`, `nodes`, `edges`, `owners`, `items`, `hits`,
   `findings`, `nextActions`, and `notes`
 - optional `typeSurfaces` for shared public API and dependency type surface
@@ -927,7 +927,7 @@ Owner-scoped TypeScript text searches are the motivating case: once
 `search owner src/cli/semantic-search/render.ts .` has selected the owner,
 repeated text probes such as `location.path`, `location.column`,
 `location.line`, and `renderLocation` should become one
-`search/fzf` query-set packet with `scope.ownerPath`, not several separate
+`search/lexical` query-set packet with `scope.ownerPath`, not several separate
 text packets or a comma-joined literal query.
 Project-scoped TypeScript text query-sets are also valid when the owner has not
 been selected yet and the repeated probes are still the same text axis.
@@ -1040,8 +1040,8 @@ reports coarse cache and parser reuse facts such as `cacheStatus`, `elapsedMs`,
 follow-up search planning; provider-specific compiler details still belong in
 `fields`.
 
-For `search fzf`, a flag-like first query positional remains literal. For
-example, `ts-harness search fzf --json --workspace . --view seeds` searches for the token
+For `search lexical`, a flag-like first query positional remains literal. For
+example, `ts-harness search lexical --json --workspace . --view seeds` searches for the token
 `--json`; request JSON output by placing `--json` after the query.
 
 This repository's `schemas/` directory is the protocol source of truth.
@@ -1095,13 +1095,13 @@ ts-harness search symbol OrderStatus --json .
 ts-harness search callsite OrderStatus --json .
 ts-harness search import ./order --json .
 ts-harness search tests src/domain/order.ts --json .
-ts-harness search fzf OrderStatus --json .
+ts-harness search lexical OrderStatus --json .
 rg -n "OrderStatus" src tests | ts-harness search ingest --json .
 ```
 
 Those JSON examples are contract checks, not an agent exploration recipe. A
 prompt-facing agent should use compact line protocol, for example
-`ts-harness search fzf OrderStatus --workspace . --view seeds`, and reserve `--json` for
+`ts-harness search lexical OrderStatus --workspace . --view seeds`, and reserve `--json` for
 tests, receipts, validators, IDE/Flowhub, or other machine consumers.
 
 For TypeScript, `search owner` resolves reasoning owners first, then
@@ -1111,14 +1111,14 @@ outside the reasoning owner graph are represented with
 metadata, line counts, validity, and diagnostic counts. Existing paths outside
 the parser module set are still represented as path-only owners with
 `fields.source=path-only`, `fields.parserOwner=false`, and
-`nextActions=[{kind:"ingest", target:<path>}]`. `search fzf` indexes
+`nextActions=[{kind:"ingest", target:<path>}]`. `search lexical` indexes
 parser-visible source text, owner paths, and exports; docs, schema files, and
 other non-parser text should be expanded with `rg` or `fd` and normalized
 through `search ingest`. The TypeScript registry advertises this directly:
 `search/owner` carries TypeScript-scoped
 `parser-visible-module-owner-search`, `test-owner-search`, and
 `ingestRequiredFor=[{languageId:"typescript",namespace:"typescript",name:"non-parser-path"}]`;
-`search/fzf` carries TypeScript-scoped
+`search/lexical` carries TypeScript-scoped
 `parser-visible-source-text-search` and TypeScript-scoped ingest surfaces for
 non-parser text, docs text, schema JSON, and generated artifacts.
 `search/api` projects TypeScript parser-owned exported/public API facts from the
@@ -1147,6 +1147,6 @@ py-harness search symbol PythonHarnessReport --json .
 py-harness search callsite PythonHarnessReport --json .
 py-harness search import python_lang_project_harness --json .
 py-harness search tests src/python_lang_project_harness/_cli.py --json .
-py-harness search fzf PythonHarnessReport --json .
+py-harness search lexical PythonHarnessReport --json .
 rg -n "PythonHarnessReport" src tests | py-harness search ingest --json .
 ```

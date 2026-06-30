@@ -1,5 +1,6 @@
 //! Provider activation snapshot loading for `agent-semantic-client`.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -107,6 +108,13 @@ pub struct ProviderRegistrySnapshot {
     pub providers: Vec<ResolvedProvider>,
 }
 
+/// Derived provider-registry evidence used to guard cache reuse.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderRegistryEvidence {
+    pub fingerprint: String,
+    pub scope_dirs: BTreeSet<String>,
+}
+
 impl ProviderRegistrySnapshot {
     pub fn load(project_root: &Path) -> Result<Self, String> {
         if let Some(activation_path) = env::var_os(ASP_PROVIDER_ACTIVATION_PATH_ENV) {
@@ -212,6 +220,112 @@ impl ProviderRegistrySnapshot {
             .map(ResolvedProvider::provenance)
             .collect()
     }
+
+    /// Build stable provider-registry evidence for cache reuse checks.
+    #[must_use]
+    pub fn evidence(&self, project_root: &Path) -> ProviderRegistryEvidence {
+        ProviderRegistryEvidence {
+            fingerprint: provider_registry_fingerprint(self),
+            scope_dirs: provider_registry_scope_dirs(project_root, self),
+        }
+    }
+}
+
+fn provider_registry_fingerprint(snapshot: &ProviderRegistrySnapshot) -> String {
+    let mut rows = vec![format!("activation={}", snapshot.activation_path.display())];
+    for provider in &snapshot.providers {
+        rows.push(provider_fingerprint(provider));
+    }
+    rows.join("\n")
+}
+
+fn provider_registry_scope_dirs(
+    project_root: &Path,
+    snapshot: &ProviderRegistrySnapshot,
+) -> BTreeSet<String> {
+    let mut dirs = BTreeSet::new();
+    dirs.insert(".".to_string());
+    for provider in &snapshot.providers {
+        append_provider_scope_dirs(project_root, provider, &mut dirs);
+    }
+    dirs
+}
+
+fn append_provider_scope_dirs(
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    dirs: &mut BTreeSet<String>,
+) {
+    let package_roots = if provider.package_roots.is_empty() {
+        vec![".".to_string()]
+    } else {
+        provider.package_roots.clone()
+    };
+    for package_root in package_roots {
+        insert_existing_scope_dir(project_root, &project_root.join(&package_root), dirs);
+        for source_root in &provider.source_roots {
+            insert_existing_scope_dir(
+                project_root,
+                &project_root.join(&package_root).join(source_root),
+                dirs,
+            );
+        }
+        for config_file in &provider.config_files {
+            if let Some(parent) = project_root.join(&package_root).join(config_file).parent() {
+                insert_existing_scope_dir(project_root, parent, dirs);
+            }
+        }
+    }
+}
+
+fn insert_existing_scope_dir(project_root: &Path, dir: &Path, dirs: &mut BTreeSet<String>) {
+    if !dir.is_dir() {
+        return;
+    }
+    let relative = dir
+        .strip_prefix(project_root)
+        .ok()
+        .and_then(|path| path.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(".");
+    dirs.insert(relative.replace(std::path::MAIN_SEPARATOR, "/"));
+}
+
+fn provider_fingerprint(provider: &ResolvedProvider) -> String {
+    [
+        format!("language={}", provider.language_id),
+        format!("provider={}", provider.provider_id),
+        format!("binary={}", provider.binary),
+        format!("execution={:?}", provider.execution),
+        format!("prefix={}", provider.provider_command_prefix.join("\u{1f}")),
+        format!(
+            "runtime={}",
+            provider
+                .runtime_command_argv
+                .as_ref()
+                .map(|argv| argv.join("\u{1f}"))
+                .unwrap_or_default()
+        ),
+        format!(
+            "runtimeStatus={}",
+            provider
+                .runtime_profile_status
+                .map(|status| status.as_str())
+                .unwrap_or_default()
+        ),
+        format!("packageRoots={}", provider.package_roots.join("\u{1f}")),
+        format!("sourceRoots={}", provider.source_roots.join("\u{1f}")),
+        format!("configFiles={}", provider.config_files.join("\u{1f}")),
+        format!(
+            "sourceExtensions={}",
+            provider.source_extensions.join("\u{1f}")
+        ),
+        format!(
+            "ignoredPathPrefixes={}",
+            provider.ignored_path_prefixes.join("\u{1f}")
+        ),
+    ]
+    .join("\u{1e}")
 }
 
 fn activation_needs_runtime_profile_fallback(activation: &HookRuntime) -> bool {

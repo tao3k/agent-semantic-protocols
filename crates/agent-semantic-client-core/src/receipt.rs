@@ -82,6 +82,7 @@ pub struct ClientDbEngineReceipt {
     pub repo_id: ClientRepoId,
     pub workspace_id: ClientWorkspaceId,
     pub scope_id: ClientScopeId,
+    pub future_backend_report: ClientDbFutureBackendReportReceipt,
     pub sqlite_report: ClientDbSqliteReceipt,
 }
 
@@ -96,6 +97,20 @@ pub struct ClientDbEngineFeaturesReceipt {
     pub overlay_search: bool,
     pub sync: bool,
     pub encryption: bool,
+}
+
+/// Planned replacement backend report nested under the DB Engine receipt.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientDbFutureBackendReportReceipt {
+    pub backend: ClientDbFutureBackend,
+    pub status: String,
+    pub db_file_name: ClientDbFileName,
+    pub schema_bootstrap: String,
+    pub durability: ClientDbEngineDurability,
+    pub features: ClientDbEngineFeaturesReceipt,
+    pub db_path: ClientCachePath,
+    pub reason: Option<String>,
 }
 
 /// SQLite transition-backend report nested under the DB Engine receipt.

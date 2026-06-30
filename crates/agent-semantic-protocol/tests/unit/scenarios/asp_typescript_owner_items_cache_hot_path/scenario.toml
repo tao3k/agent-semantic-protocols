@@ -1,0 +1,13 @@
+id = "asp-typescript-owner-items-cache-hot-path"
+title = "ASP typescript search owner items uses cached ts-harness owner-items proof on hot path"
+policy_ids = ["TYPESCRIPT-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001"]
+agent_goal = "Keep asp typescript search owner <path> items on the shared language-harness owner-items interface with cached hot-path replay, without provider respawn, native finder fallback, source synthesis, or executable line-range identity."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp typescript search owner app/src/model.ts items --query dynamicOwnerItemIndex --workspace . --view seeds",
+  "alg=ts-harness-owner-items",
+  "item:symbol(dynamicOwnerItemIndex)",
+]
+inputs = "inputs"
+expected = "expected"
+command = "asp typescript search owner app/src/model.ts items --query dynamicOwnerItemIndex --workspace . --view seeds"

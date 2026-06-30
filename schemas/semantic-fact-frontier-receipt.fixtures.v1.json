@@ -13,7 +13,7 @@
         "receiptId": "agent-semantic-protocols.rfc014.frontier-receipt-real-project",
         "receiptKind": "frontier",
         "taskFingerprint": "real-project:agent-semantic-protocols:rfc014-frontier-receipt",
-        "commandFingerprint": "command:asp-python-search-fzf:semantic-fact-frontier-receipt-relationchannels-ppr",
+        "commandFingerprint": "command:asp-python-search-lexical:semantic-fact-frontier-receipt-relationchannels-ppr",
         "selector": "tests/unit/test_semantic_fact_frontier_receipt_schema.py:9:29",
         "owner": "tests/unit/test_semantic_fact_frontier_receipt_schema.py",
         "symbol": "semantic-fact-frontier-receipt",
@@ -25,7 +25,7 @@
         "frontierReturned": [
           {
             "nodeId": "Q",
-            "action": "fzf",
+            "action": "lexical",
             "selector": null,
             "owner": null,
             "symbol": "semantic-fact-frontier-receipt relationChannels PPR",
@@ -241,7 +241,7 @@
           "cacheStatus": "hit",
           "graphTurboBackend": "scipy-csr",
           "graphTurboCacheKey": "sha256:20fb015516e5",
-          "searchCommand": "asp python search fzf 'semantic-fact-frontier-receipt relationChannels PPR' owner tests --workspace . --view seeds",
+          "searchCommand": "asp python search lexical 'semantic-fact-frontier-receipt relationChannels PPR' owner tests --workspace . --view seeds",
           "readCommand": "asp python query --from-hook direct-source-read --selector tests/unit/test_semantic_fact_frontier_receipt_schema.py:9-29 --code ."
         }
       }
@@ -289,7 +289,7 @@
           },
           {
             "nodeId": "q:parser",
-            "action": "fzf",
+            "action": "lexical",
             "selector": null,
             "owner": null,
             "symbol": "parser",
@@ -397,7 +397,7 @@
         "frontierReturned": [
           {
             "nodeId": "query:semantic-fact-frontier-receipt-relationchannels-ppr",
-            "action": "fzf",
+            "action": "lexical",
             "selector": null,
             "owner": null,
             "symbol": "semantic-fact-frontier-receipt relationChannels PPR",
@@ -565,7 +565,7 @@
         "frontierReturned": [
           {
             "nodeId": "query:semantic-fact-frontier-receipt-relationchannels-ppr",
-            "action": "fzf",
+            "action": "lexical",
             "selector": null,
             "owner": null,
             "symbol": "semantic-fact-frontier-receipt relationChannels PPR",
@@ -770,7 +770,7 @@
         "frontierReturned": [
           {
             "nodeId": "query:sandtable-summary-benchmark-report-contextmetrics-report-scenario",
-            "action": "fzf",
+            "action": "lexical",
             "selector": null,
             "owner": null,
             "symbol": "sandtable-summary benchmark-report contextMetrics report-scenario",
@@ -1055,7 +1055,7 @@
         ],
         "frontierReturned": [
           {
-            "action": "fzf",
+            "action": "lexical",
             "nodeId": "query:relation-weights-typed-transition-masks-profilecompatibility",
             "owner": null,
             "range": null,

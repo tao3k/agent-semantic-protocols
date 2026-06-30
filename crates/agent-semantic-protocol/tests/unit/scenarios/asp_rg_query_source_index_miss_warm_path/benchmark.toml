@@ -6,6 +6,10 @@ observed_total = "1ms"
 regression_budget = "20ms"
 memory_budget_bytes = 10485760
 observed_memory_bytes = 0
+route_source = "source-index"
+max_provider_process_count = 0
+max_stdout_bytes = 8192
+fallback_reason = "none"
 target_rationale = "Warm asp rg query-wrapper miss should stop at Rust-owned SourceIndex and skip native finder/provider fallback in an indexed workspace."
 
 [observed_timings]

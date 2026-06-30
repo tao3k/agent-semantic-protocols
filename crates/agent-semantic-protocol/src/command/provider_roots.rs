@@ -7,7 +7,7 @@ use agent_semantic_runtime::{
     project_local_client_cache_manifest_path, project_root_for_activation_path,
 };
 
-use super::search_language_files::language_file_spec;
+use agent_semantic_search::language_file_spec;
 
 pub(super) fn activation_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
     let configured = PathBuf::from(project_root);

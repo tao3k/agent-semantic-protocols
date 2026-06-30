@@ -1,4 +1,8 @@
+use std::collections::BTreeSet;
+
 use super::types::ClientDbSourceIndexQueryKey;
+
+const SOURCE_INDEX_QUERY_KEY_LIMIT: usize = 128;
 
 pub(super) struct SourceIndexSearchProjection {
     pub(super) query_keys_json: String,
@@ -83,4 +87,37 @@ pub(super) fn usize_to_i64(value: usize) -> i64 {
 
 pub(super) fn u32_to_i64(value: u32) -> i64 {
     i64::from(value)
+}
+
+pub(super) fn source_line_count(text: &str) -> u32 {
+    text.lines().count().max(1).min(u32::MAX as usize) as u32
+}
+
+pub(super) fn source_query_keys(path: &str, text: &str) -> Vec<String> {
+    let mut keys = BTreeSet::new();
+    append_source_tokens(path, &mut keys);
+    append_source_tokens(text, &mut keys);
+    keys.into_iter()
+        .take(SOURCE_INDEX_QUERY_KEY_LIMIT)
+        .collect()
+}
+
+fn append_source_tokens(text: &str, keys: &mut BTreeSet<String>) {
+    let mut token = String::new();
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | ':' | '/') {
+            token.push(character.to_ascii_lowercase());
+        } else {
+            push_source_token(&mut token, keys);
+        }
+    }
+    push_source_token(&mut token, keys);
+}
+
+fn push_source_token(token: &mut String, keys: &mut BTreeSet<String>) {
+    let value = token.trim_matches([':', '/', '-', '_']);
+    if value.len() >= 2 {
+        keys.insert(value.to_string());
+    }
+    token.clear();
 }

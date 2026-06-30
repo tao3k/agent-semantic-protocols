@@ -8,7 +8,6 @@ mod cache_replay;
 pub mod cli;
 mod cli_args;
 mod compact_mode;
-mod dynamic_search;
 mod native_prime;
 mod provider_method;
 mod search_history;
@@ -21,18 +20,16 @@ mod test_support;
 mod tools_cli;
 
 pub use agent_semantic_client_core::LanguageId;
-pub use cli::{run_cli_args, run_cli_from_env};
-pub use dynamic_search::{
-    DynamicOwnerItem, DynamicOwnerItemsRequest, DynamicOwnerPath, DynamicOwnerQuery,
-    DynamicSearchLanguage, DynamicSearchRoots, LexicalOverlayCandidateHit, LexicalOverlayDocument,
-    LexicalOverlaySearchHit, LexicalOverlaySearchRequest, render_dynamic_owner_items_code,
-    render_dynamic_owner_items_frontier, search_lexical_overlay, search_lexical_overlay_candidates,
+pub use agent_semantic_runtime::{
+    LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_path_exists,
+    run_language_owner_items_dispatch_plan,
 };
+pub use cli::{run_cli_args, run_cli_from_env};
 pub use source_index::{
-    SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
-    SourceIndexRefreshReport, SourceIndexSourceKind, lookup_source_index,
-    lookup_source_index_for_language, lookup_source_index_in_client_cache_dir,
-    refresh_source_index,
+    SourceIndexCandidate, SourceIndexClientCacheLookupRequest, SourceIndexLookupRequest,
+    SourceIndexLookupResult, SourceIndexLookupState, SourceIndexRefreshReport,
+    SourceIndexSourceKind, lookup_source_index, lookup_source_index_for_language,
+    lookup_source_index_in_client_cache_dir, refresh_source_index,
 };
 
 #[cfg(test)]

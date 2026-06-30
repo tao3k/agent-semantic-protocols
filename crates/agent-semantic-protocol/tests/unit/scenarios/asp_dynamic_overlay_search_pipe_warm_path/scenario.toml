@@ -1,0 +1,15 @@
+id = "asp-dynamic-overlay-search-pipe-warm-path"
+title = "ASP search pipe dynamic overlay root walk stays hot"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-DYNAMIC-OVERLAY-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-001",
+]
+agent_goal = "Keep the explicit dynamic overlay search pipe path fixed as a scenario: asp rust search pipe --source finder must collect candidates through the Rust client overlay/root-walk path, skip provider/native finder/source-index work, and return compact exact next actions in milliseconds."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp rust search pipe dynamic_overlay_fixture --source finder",
+  "sourceTrace=finder:used",
+  "firstRoute=dynamic-overlay",
+]
+inputs = "inputs"
+expected = "expected"

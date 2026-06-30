@@ -19,6 +19,11 @@ fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate() {
 }
 
 #[test]
+fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate() {
+    super::support::asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate();
+}
+
+#[test]
 fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
     super::support::asp_rg_query_source_index_warm_path_stays_inside_scenario_gate();
 }
@@ -36,6 +41,51 @@ fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
 #[test]
 fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
     super::support::asp_lexical_source_index_warm_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_rust_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_rust_owner_items_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_typescript_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_typescript_owner_items_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_python_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_python_owner_items_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_julia_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_julia_owner_items_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_org_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_org_owner_items_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+    super::support::asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+    super::support::asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_python_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+    super::support::asp_python_owner_items_cache_hot_path_stays_inside_scenario_gate();
 }
 
 #[test]

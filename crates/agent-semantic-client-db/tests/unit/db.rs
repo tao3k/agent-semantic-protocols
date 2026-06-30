@@ -3,11 +3,22 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
-    CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId,
+    CacheExportMethod, CacheGenerationId, ClientCacheFileHash, ClientCacheManifest, LanguageId,
+    ProviderId, SemanticSchemaId, SemanticSchemaVersion,
     state_core::{ResolvedState, SQLITE_V1_BACKEND, STATE_LAYOUT_VERSION, TURSO_BACKEND},
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbBackend, ClientDbEngine, ClientDbGenerationLookup, ClientDbStatus,
+    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
+    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDb, ClientDbBackend, ClientDbEngine,
+    ClientDbGenerationLookup, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
+    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
+    ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest,
+    ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource,
+    ClientDbSourceIndexSourceKind, ClientDbStatus, build_source_index_import,
+    client_db_source_index_file_count, client_db_source_index_generation_id,
+    source_index_relative_path, source_index_scope_dirs,
 };
 use serde_json::json;
 
@@ -39,6 +50,253 @@ fn inspect_reports_missing_without_creating_db() {
     assert!(!db_path.exists());
     assert!(report.runtime_pragmas.is_none());
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_import_builder_owns_owner_selector_projection() {
+    assert_eq!(
+        CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
+        "agent.semantic-protocols.semantic-source-index"
+    );
+    assert_eq!(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, "1");
+    assert_eq!(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, "rust-sql-source-index");
+    assert_eq!(
+        CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
+        "@scope/dir/"
+    );
+    assert_eq!(
+        CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH,
+        "@scope/registry"
+    );
+    assert_eq!(
+        CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256,
+        "0000000000000000000000000000000000000000000000000000000000000000"
+    );
+    assert!(
+        client_db_source_index_generation_id()
+            .as_str()
+            .starts_with("source-index-")
+    );
+    assert_eq!(client_db_source_index_file_count(7), 7);
+    assert_eq!(client_db_source_index_file_count(usize::MAX), u32::MAX);
+
+    let root = temp_root("source-index-import-builder");
+
+    let import = build_source_index_import(ClientDbSourceIndexImportRequest {
+        generation_id: CacheGenerationId::from("source-index-test"),
+        project_root: root.clone(),
+        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        file_hashes: vec![ClientCacheFileHash {
+            path: "src/lib.rs".to_string(),
+            sha256: "0123456789abcdef".repeat(4),
+            byte_len: 27,
+            mtime_ms: 42,
+        }],
+        files: vec![ClientDbSourceIndexImportFile {
+            relative_path: "src/lib.rs".to_string(),
+            language_id: LanguageId::from("rust"),
+            provider_id: ProviderId::from("rs-harness"),
+            text: "pub fn source_index_fixture() {}\n".to_string(),
+        }],
+    })
+    .expect("build source index import");
+
+    assert_eq!(import.owners.len(), 1);
+    assert_eq!(import.selectors.len(), 1);
+    let owner = &import.owners[0];
+    assert_eq!(owner.owner_path.as_str(), "src/lib.rs");
+    assert_eq!(owner.line_count, Some(1));
+    assert!(
+        owner
+            .query_keys
+            .iter()
+            .any(|key| key.as_str() == "source_index_fixture")
+    );
+    let selector = &import.selectors[0];
+    assert_eq!(selector.selector_id, "rust://src/lib.rs#file");
+    assert_eq!(selector.symbol.as_deref(), Some("lib"));
+    assert_eq!(selector.end_line, 1);
+    assert_eq!(selector.source.as_str(), "rust-sql-source-index");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_refresh_import_reports_reused_generation() {
+    let root = temp_root("source-index-refresh-import");
+    let db_path = root.join("client.sqlite3");
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+
+    let import = source_index_import_fixture(&root, "source-index-test");
+    let first = db
+        .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
+            import: import.clone(),
+            file_count: 1,
+        })
+        .expect("first source index refresh");
+    let second = db
+        .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
+            import: source_index_import_fixture(&root, "source-index-next"),
+            file_count: 1,
+        })
+        .expect("second source index refresh");
+
+    assert_eq!(first.generation_id.as_str(), "source-index-test");
+    assert!(!first.reused_generation);
+    assert_eq!(first.owner_count, 1);
+    assert_eq!(first.selector_count, 1);
+    assert_eq!(second.generation_id.as_str(), "source-index-test");
+    assert!(second.reused_generation);
+    let projected = ClientDbSourceIndexRefreshResult::from_report(db_path.clone(), second.clone());
+    assert_eq!(projected.db_path, db_path);
+    assert_eq!(projected.generation_id, second.generation_id);
+    assert!(projected.reused_generation);
+    assert_eq!(projected.file_count, 1);
+    assert_eq!(projected.owner_count, 1);
+    assert_eq!(projected.selector_count, 1);
+    let stats = db
+        .source_index_stats(&first.generation_id)
+        .expect("source index stats");
+    let reused_projection = ClientDbSourceIndexRefreshResult::from_stats(
+        root.join("client.sqlite3"),
+        stats,
+        usize::MAX,
+        true,
+    );
+    assert_eq!(reused_projection.file_count, u32::MAX);
+    assert!(reused_projection.reused_generation);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_scope_files_are_reconstructed_by_db_facade() {
+    let root = temp_root("source-index-scope-files");
+    let db_path = root.join("client.sqlite3");
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let import = source_index_import_fixture(&root, "source-index-test");
+    let schema_id = import.schema_id.clone();
+    let schema_version = import.schema_version.clone();
+    db.refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
+        import,
+        file_count: 1,
+    })
+    .expect("refresh source index");
+
+    let files = db
+        .latest_source_index_scope_files(&root, &schema_id, &schema_version)
+        .expect("scope files lookup")
+        .expect("scope files");
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].path, root.join("src/lib.rs"));
+    assert_eq!(files[0].language_id, LanguageId::from("rust"));
+    assert_eq!(files[0].provider_id, ProviderId::from("rs-harness"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_path_rules_are_db_owned() {
+    let root = temp_root("source-index-path-rules");
+    let nested = root.join("src").join("nested");
+    std::fs::create_dir_all(&nested).expect("create nested dir");
+    let source_file = nested.join("lib.rs");
+    std::fs::write(&source_file, "pub fn path_rules() {}\n").expect("write source");
+    let external = root
+        .parent()
+        .expect("temp root parent")
+        .join("outside")
+        .join("mod.rs");
+
+    assert_eq!(
+        source_index_relative_path(&root, &source_file),
+        "src/nested/lib.rs"
+    );
+    assert!(source_index_relative_path(&root, &external).ends_with("outside/mod.rs"));
+
+    let dirs = source_index_scope_dirs(
+        &root,
+        &[ClientDbSourceIndexScopeFile {
+            path: source_file,
+            language_id: LanguageId::from("rust"),
+            provider_id: ProviderId::from("rs-harness"),
+        }],
+    );
+    assert!(dirs.contains("."));
+    assert!(dirs.contains("src"));
+    assert!(dirs.contains("src/nested"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_lookup_dto_contract_is_db_owned() {
+    assert_eq!(
+        ClientDbSourceIndexLookupState::MissingDb.as_str(),
+        "missing-db"
+    );
+    assert_eq!(
+        ClientDbSourceIndexLookupState::EmptyIndex.as_str(),
+        "empty-index"
+    );
+    assert_eq!(ClientDbSourceIndexLookupState::Hit.as_str(), "hit");
+    assert_eq!(ClientDbSourceIndexLookupState::Miss.as_str(), "miss");
+
+    assert_eq!(
+        ClientDbSourceIndexSourceKind::from(ClientDbSourceIndexSource::from("file")).as_str(),
+        "file"
+    );
+    assert_eq!(
+        ClientDbSourceIndexSourceKind::from(ClientDbSourceIndexSource::from("runtime")).as_str(),
+        "runtime"
+    );
+
+    let candidate =
+        agent_semantic_client_db::ClientDbSourceIndexCandidate::from(ClientDbSourceIndexOwner {
+            owner_path: ClientDbSourceIndexPath::from("src/lib.rs"),
+            language_id: Some(LanguageId::from("rust")),
+            provider_id: Some(ProviderId::from("rs-harness")),
+            source_kind: ClientDbSourceIndexSource::from("file"),
+            line_count: Some(7),
+            query_keys: vec![
+                ClientDbSourceIndexQueryKey::from("source_index_fixture"),
+                ClientDbSourceIndexQueryKey::from("lib"),
+            ],
+        });
+    assert_eq!(candidate.path, "src/lib.rs");
+    assert_eq!(candidate.language_id, Some(LanguageId::from("rust")));
+    assert_eq!(candidate.provider_id, Some(ProviderId::from("rs-harness")));
+    assert_eq!(candidate.source_kind.as_str(), "file");
+    assert_eq!(candidate.line_count, Some(7));
+    assert_eq!(
+        candidate.query_keys,
+        vec!["source_index_fixture".to_string(), "lib".to_string()]
+    );
+}
+
+fn source_index_import_fixture(
+    root: &std::path::Path,
+    generation_id: &str,
+) -> agent_semantic_client_db::ClientDbSourceIndexImport {
+    build_source_index_import(ClientDbSourceIndexImportRequest {
+        generation_id: CacheGenerationId::from(generation_id),
+        project_root: root.to_path_buf(),
+        schema_id: SemanticSchemaId::from("agent.semantic-protocols.semantic-source-index"),
+        schema_version: SemanticSchemaVersion::from("1"),
+        selector_source: ClientDbSourceIndexSource::from("rust-sql-source-index"),
+        file_hashes: vec![ClientCacheFileHash {
+            path: "src/lib.rs".to_string(),
+            sha256: "0123456789abcdef".repeat(4),
+            byte_len: 27,
+            mtime_ms: 42,
+        }],
+        files: vec![ClientDbSourceIndexImportFile {
+            relative_path: "src/lib.rs".to_string(),
+            language_id: LanguageId::from("rust"),
+            provider_id: ProviderId::from("rs-harness"),
+            text: "pub fn source_index_fixture() {}\n".to_string(),
+        }],
+    })
+    .expect("source index import fixture")
 }
 
 #[test]
@@ -85,6 +343,26 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
     assert!(!engine_report.features.overlay_search);
     assert!(!engine_report.features.sync);
     assert!(!engine_report.features.encryption);
+    assert_eq!(engine_report.future_backend_report.backend, TURSO_BACKEND);
+    assert_eq!(engine_report.future_backend_report.status, "planned");
+    assert_eq!(
+        engine_report.future_backend_report.schema_bootstrap,
+        "pending-cutover"
+    );
+    assert_eq!(
+        engine_report.future_backend_report.durability,
+        "turso-local-file"
+    );
+    assert!(engine_report.future_backend_report.features.async_io);
+    assert!(
+        engine_report
+            .future_backend_report
+            .features
+            .concurrent_writes
+    );
+    assert!(engine_report.future_backend_report.features.fts);
+    assert!(engine_report.future_backend_report.features.overlay_search);
+    assert!(engine_report.future_backend_report.features.sync);
     assert_eq!(engine_report.db_path, state.paths.client_db_path);
     assert_eq!(
         engine_report.manifest_path,
@@ -107,6 +385,38 @@ fn db_engine_uses_state_core_client_dir_without_project_cache() {
     assert_eq!(engine_report_json["features"]["overlaySearch"], false);
     assert_eq!(engine_report_json["features"]["sync"], false);
     assert_eq!(engine_report_json["features"]["encryption"], false);
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["backend"],
+        TURSO_BACKEND
+    );
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["status"],
+        "planned"
+    );
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["schemaBootstrap"],
+        "pending-cutover"
+    );
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["durability"],
+        "turso-local-file"
+    );
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["features"]["asyncIo"],
+        true
+    );
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["features"]["concurrentWrites"],
+        true
+    );
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["features"]["fts"],
+        true
+    );
+    assert_eq!(
+        engine_report_json["futureBackendReport"]["features"]["overlaySearch"],
+        true
+    );
     assert_eq!(engine_report_json["repoId"], state.repo.repo_id.as_str());
     assert_eq!(
         engine_report_json["workspaceId"],

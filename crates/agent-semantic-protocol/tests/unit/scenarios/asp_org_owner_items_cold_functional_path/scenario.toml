@@ -1,0 +1,13 @@
+id = "asp-org-owner-items-cold-functional-path"
+title = "ASP org search owner items executes orgize owner-items on cold path"
+policy_ids = ["ORG-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001"]
+agent_goal = "Prove the first asp org search owner <path> items request executes the embedded orgize owner-items surface and returns shared owner/item-style document evidence before any hot cache optimization is considered."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp org search owner docs/plan.org items --query Heading --workspace . --view seeds",
+  "[search-owner] lang=org",
+  "|heading docs/plan.org",
+]
+inputs = "inputs"
+expected = "expected"
+command = "asp org search owner docs/plan.org items --query Heading --workspace . --view seeds"

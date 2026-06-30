@@ -1,0 +1,13 @@
+id = "asp-python-owner-items-cache-hot-path"
+title = "ASP python search owner items uses cached py-harness owner-items proof on hot path"
+policy_ids = ["PYTHON-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001"]
+agent_goal = "Keep asp python search owner <path> items on the shared language-harness owner-items interface with cached hot-path replay, without provider respawn, native finder fallback, source synthesis, or executable line-range identity."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp python search owner src/model.py items --query dynamic_owner_item_index --workspace . --view seeds",
+  "alg=py-harness-owner-items",
+  "item:symbol(dynamic_owner_item_index)",
+]
+inputs = "inputs"
+expected = "expected"
+command = "asp python search owner src/model.py items --query dynamic_owner_item_index --workspace . --view seeds"

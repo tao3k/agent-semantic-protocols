@@ -98,7 +98,7 @@
         "public-external-types",
         "policy",
         "tests",
-        "fzf",
+        "lexical",
         "reasoning",
         "env",
         "runtime-source",
@@ -367,7 +367,7 @@
     },
     "finder": {
       "type": "object",
-      "description": "Provider-owned finder pipeline provenance for lexical/fuzzy search surfaces such as search fzf. This records normalized agent-requested finder options; it is not raw shell argv.",
+      "description": "Provider-owned finder pipeline provenance for lexical/fuzzy search surfaces such as search lexical. This records normalized agent-requested finder options; it is not raw shell argv.",
       "additionalProperties": false,
       "required": [
         "engine",
@@ -379,15 +379,15 @@
       "properties": {
         "engine": {
           "enum": [
-            "fzf",
+            "lexical",
             "rg",
-            "rg-fzf",
+            "rg-lexical",
             "provider"
           ]
         },
         "surface": {
           "enum": [
-            "search-fzf",
+            "search-lexical",
             "search-ingest",
             "search-pattern",
             "search-custom"
@@ -468,7 +468,7 @@
         },
         "nativeArgs": {
           "type": "array",
-          "description": "The provider-normalized fzf-native argument tokens accepted for this headless run.",
+          "description": "The provider-normalized lexical-native argument tokens accepted for this headless run.",
           "items": {
             "type": "string",
             "minLength": 1
@@ -1127,7 +1127,7 @@
             "policy",
             "query",
             "query-set",
-            "fzf",
+            "lexical",
             "tests",
             "ingest",
             "failure",
@@ -1218,7 +1218,7 @@
             "tests",
             "read",
             "query",
-            "fzf",
+            "lexical",
             "deps",
             "dependency",
             "docs",

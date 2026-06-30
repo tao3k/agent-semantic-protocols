@@ -92,16 +92,17 @@ fn artifact_events_packet(
     project_context: &ProjectContext,
     artifact_dir: &Path,
 ) -> Result<Option<Bytes>, String> {
-    let db_path = ClientDbEngine::sqlite_path_for_client_dir(
-        project_context.state_layout().client_cache_dir(),
-    );
+    let db_path =
+        ClientDbEngine::db_path_for_client_dir(project_context.state_layout().client_cache_dir());
     let artifact_file_count = artifact_file_count(artifact_dir)?;
     let mut events = ClientDb::lookup_artifact_events(&db_path, None, 1_000_000)?;
     let indexed_count = indexed_artifact_count(&events);
     if indexed_count < artifact_file_count {
         let backfill_events = scan_artifact_events_for_db(artifact_dir)?;
         if !backfill_events.is_empty() {
-            let mut db = ClientDb::open_or_create(&db_path)?;
+            let mut db = ClientDbEngine::open_or_create_client_dir(
+                project_context.state_layout().client_cache_dir(),
+            )?;
             db.upsert_artifact_events(&backfill_events)?;
             events = ClientDb::lookup_artifact_events(&db_path, None, 1_000_000)?;
         }
