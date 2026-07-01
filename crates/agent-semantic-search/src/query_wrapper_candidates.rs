@@ -9,9 +9,11 @@ use serde_json::Value;
 use crate::{
     NativeFinderCollectionRequest, NativeFinderConfig, NativeFinderSurface, QueryCandidateAppend,
     QueryWrapperCandidate, QueryWrapperCandidateSurface, QueryWrapperScanConfig,
-    QueryWrapperSourceIndexLookup, QueryWrapperSourceIndexRequest, augment_package_path_candidates,
-    collect_native_finder_candidates, collect_query_wrapper_source_index_candidates,
-    language_neutral_search_file_spec, query_candidate_priority,
+    QueryWrapperSearchCandidateRequest, QueryWrapperSourceIndexLookup,
+    QueryWrapperSourceIndexRequest, RankedSearchCandidate, augment_package_path_candidates,
+    collect_native_finder_candidates, collect_query_wrapper_search_candidates,
+    collect_query_wrapper_source_index_candidates, language_neutral_search_file_spec,
+    query_candidate_priority,
 };
 
 /// Search surface for query-wrapper commands.
@@ -441,6 +443,7 @@ pub struct QueryWrapperSearchRequest<'a> {
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
     pub native_args: &'a [String],
+    pub ranked_search_candidates: &'a [RankedSearchCandidate],
     pub source_index_lookup: Option<QueryWrapperSourceIndexLookup>,
 }
 
@@ -532,6 +535,18 @@ pub fn collect_query_wrapper_candidate_collection(
         ignore_dirs: request.ignore_dirs,
         include_hidden_dirs: request.include_hidden_dirs,
     };
+
+    if request.native_args.is_empty()
+        && let Some(collection) = collect_ranked_search_query_candidates(
+            request.project_root,
+            &roots,
+            request.terms,
+            &axis_terms,
+            request.ranked_search_candidates,
+        )
+    {
+        return Ok(collection);
+    }
 
     if request.native_args.is_empty()
         && let Some(collection) = collect_source_index_query_candidates(
@@ -660,6 +675,46 @@ pub fn collect_query_wrapper_candidate_collection(
         source_index_trace: None,
         finder_skipped_after_source_index: false,
         candidate_sources: vec!["finder".to_string()],
+    })
+}
+
+fn collect_ranked_search_query_candidates(
+    project_root: &Path,
+    roots: &[PathBuf],
+    terms: &[String],
+    axis_terms: &[String],
+    ranked_search_candidates: &[RankedSearchCandidate],
+) -> Option<QueryWrapperCandidateCollection> {
+    let started_at = Instant::now();
+    let collection = collect_query_wrapper_search_candidates(QueryWrapperSearchCandidateRequest {
+        project_root,
+        roots,
+        terms,
+        axis_terms,
+        ranked: ranked_search_candidates,
+    })?;
+    let mut trace_fields = BTreeMap::new();
+    trace_fields.insert(
+        "collectMs".to_string(),
+        Value::from(started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64),
+    );
+    trace_fields.insert(
+        "candidateCount".to_string(),
+        Value::from(collection.candidates.len()),
+    );
+    let candidate_sources = unique_take(
+        collection
+            .candidates
+            .iter()
+            .map(|candidate| candidate.source.clone()),
+        6,
+    );
+    Some(QueryWrapperCandidateCollection {
+        candidates: collection.candidates,
+        trace_fields,
+        source_index_trace: None,
+        finder_skipped_after_source_index: false,
+        candidate_sources,
     })
 }
 

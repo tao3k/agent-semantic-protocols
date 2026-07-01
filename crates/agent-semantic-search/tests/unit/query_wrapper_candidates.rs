@@ -5,9 +5,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::{
     QueryCandidateAppend, QueryWrapperCandidate, QueryWrapperCandidateSurface,
     QueryWrapperQualityCandidate, QueryWrapperScanConfig, QueryWrapperSearchCandidateRequest,
-    QueryWrapperSearchClause, QueryWrapperSearchSourceIndexTrace, QueryWrapperSourceIndexCandidate,
-    QueryWrapperSourceIndexLookup, QueryWrapperSourceIndexRequest, analyze_query_wrapper_quality,
-    append_query_candidates, augment_package_path_candidates,
+    QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
+    QueryWrapperSearchSurface, QueryWrapperSourceIndexCandidate, QueryWrapperSourceIndexLookup,
+    QueryWrapperSourceIndexRequest, analyze_query_wrapper_quality, append_query_candidates,
+    augment_package_path_candidates, collect_query_wrapper_candidate_collection,
     collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
     merge_search_candidates, query_candidate_priority, query_wrapper_axis_terms,
     query_wrapper_candidate_matches_term, query_wrapper_clauses, query_wrapper_owner_candidates,
@@ -215,6 +216,61 @@ fn query_wrapper_collects_structural_turso_fts_candidates_from_shared_search_con
             .text
             .contains("structural_index_document")
     );
+
+    fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[cfg(feature = "turso-overlay")]
+#[test]
+fn query_wrapper_candidate_collection_prefers_ranked_turso_fts_candidates_before_finder() {
+    let root = temp_root("asp-query-wrapper-ranked-fts");
+    let src = root.join("src");
+    fs::create_dir_all(&src).expect("create source directory");
+    fs::write(src.join("lib.rs"), "pub fn parse_config() {}\n").expect("write rust fixture");
+    let clauses = query_wrapper_clauses(&["parse config".to_string()]);
+    let terms = query_wrapper_unique_clause_terms(&clauses);
+    let axis_terms = query_wrapper_axis_terms("parse config");
+    let structural_candidate = structural_index_hit_to_search_candidate(
+        &TursoStructuralIndexSearchHit {
+            document_id:
+                "structural-index:generation-1:symbol:rust://src/lib.rs#item/fn/parse_config"
+                    .to_string(),
+            selector: Some("rust://src/lib.rs#item/fn/parse_config".to_string()),
+            document: "symbol parse_config stable structural document".to_string(),
+        },
+        &axis_terms,
+    );
+    let ranked = merge_search_candidates(vec![structural_candidate]);
+    let ignore_dirs = Vec::new();
+    let include_hidden_dirs = Vec::new();
+    let native_args = Vec::new();
+
+    let collection = collect_query_wrapper_candidate_collection(QueryWrapperSearchRequest {
+        surface: QueryWrapperSearchSurface::Fd,
+        project_root: &root,
+        locator_root: &root,
+        scopes: std::slice::from_ref(&root),
+        clauses: &clauses,
+        terms: &terms,
+        ignore_dirs: &ignore_dirs,
+        include_hidden_dirs: &include_hidden_dirs,
+        native_args: &native_args,
+        ranked_search_candidates: &ranked,
+        source_index_lookup: None,
+    })
+    .expect("collect query wrapper candidates");
+
+    assert_eq!(collection.candidate_sources, vec!["turso-fts".to_string()]);
+    assert_eq!(collection.candidates.len(), 1);
+    assert_eq!(collection.candidates[0].path, "src/lib.rs");
+    assert_eq!(collection.candidates[0].source, "turso-fts");
+    assert_eq!(
+        collection.candidates[0].selector.as_deref(),
+        Some("rust://src/lib.rs#item/fn/parse_config")
+    );
+    assert!(collection.source_index_trace.is_none());
+    assert_eq!(collection.finder_skipped_after_source_index, false);
+    assert_eq!(collection.trace_fields["candidateCount"], 1);
 
     fs::remove_dir_all(root).expect("remove fixture");
 }

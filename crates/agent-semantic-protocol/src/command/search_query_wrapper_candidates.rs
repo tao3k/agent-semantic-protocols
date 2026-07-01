@@ -89,6 +89,7 @@ pub(super) fn collect_query_candidate_collection(
             ignore_dirs: &config.search.ignore_dirs,
             include_hidden_dirs: &config.search.include_hidden_dirs,
             native_args,
+            ranked_search_candidates: &[],
             source_index_lookup: query_wrapper_source_index_lookup(surface, project_root, terms)?,
         })?;
     let mut source_trace = Vec::new();
