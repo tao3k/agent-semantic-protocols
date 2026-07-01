@@ -451,10 +451,6 @@ pub(super) fn source_index_trace_with_elapsed(
         Value::from(elapsed_millis(elapsed)),
     );
     fields.insert("state".to_string(), Value::from(result.state.as_str()));
-    fields.insert(
-        "dbPath".to_string(),
-        Value::from(result.db_path.display().to_string()),
-    );
     if result.state != SourceIndexLookupState::Hit {
         fields.insert(
             "nextCommand".to_string(),
