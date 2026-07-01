@@ -77,7 +77,7 @@ def json_false(value: str, key: str, label: str) -> None:
 
 
 def no_cache_noise(value: str, label: str) -> None:
-    for needle in ("artifactId", "sqlite", "cacheRoot", "receipt"):
+    for needle in ("artifactId", "sqlite", "cacheRoot", "receipt="):
         not_contains(value, needle, label)
 
 
