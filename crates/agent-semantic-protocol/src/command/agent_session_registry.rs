@@ -62,8 +62,13 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
 
     let project_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let state_root = resolve_state_root(&project_root, args.state_root.as_deref());
-    let registry = AgentSessionRegistry::open_or_create_state_root(&state_root)?;
+    let registry = match args.state_root.as_deref() {
+        Some(state_root) => {
+            let state_root = resolve_explicit_state_root(&project_root, state_root);
+            AgentSessionRegistry::open_or_create_state_root(state_root)?
+        }
+        None => AgentSessionRegistry::open_or_create_project(&project_root)?,
+    };
 
     match args.command {
         SessionCommand::Register => register_session(&registry, &args),
@@ -307,7 +312,7 @@ pub(crate) fn asp_explore_session_for_current_root(
 }
 
 fn open_existing_registry(project_root: &Path) -> Result<Option<AgentSessionRegistry>, String> {
-    AgentSessionRegistry::open_existing_state_root(agent_state_root_for_project(project_root))
+    AgentSessionRegistry::open_existing_project(project_root)
 }
 
 fn current_recall_session_id() -> Option<String> {
@@ -315,20 +320,12 @@ fn current_recall_session_id() -> Option<String> {
         .map(|session| session.recall_session_id().to_string())
 }
 
-fn resolve_state_root(project_root: &Path, state_root: Option<&Path>) -> PathBuf {
-    match state_root {
-        Some(path) if path.is_absolute() => path.to_path_buf(),
-        Some(path) => project_root.join(path),
-        None => agent_state_root_for_project(project_root),
+fn resolve_explicit_state_root(project_root: &Path, state_root: &Path) -> PathBuf {
+    if state_root.is_absolute() {
+        state_root.to_path_buf()
+    } else {
+        project_root.join(state_root)
     }
-}
-
-fn agent_state_root_for_project(project_root: &Path) -> PathBuf {
-    env::var_os("PRJ_CACHE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| project_root.join(".cache"))
-        .join("agent-semantic-protocol")
-        .join("agent")
 }
 
 fn normalized_metadata(value: Option<&str>) -> Result<String, String> {

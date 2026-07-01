@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     CacheExportMethod, CacheGenerationId, ClientCacheFileHash, ClientCacheManifest, LanguageId,
-    ProviderId, SemanticSchemaId, SemanticSchemaVersion,
+    ProviderId, SemanticSchemaId, SemanticSchemaVersion, state_core::ResolvedState,
 };
 use agent_semantic_client_db::{
     AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionRegisterRequest, AgentSessionRegistry,
@@ -104,6 +104,33 @@ fn agent_session_registry_storage_is_db_owned() {
     assert_eq!(updated.last_evidence_ref.as_deref(), Some("receipt:1"));
 
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn agent_session_registry_state_root_is_state_core_owned() {
+    let project_root = temp_root("agent-session-project");
+    let state_home = temp_root("agent-session-state-home");
+    let state =
+        ResolvedState::resolve_with_state_home(&project_root, &state_home).expect("resolve state");
+    let state_root = AgentSessionRegistry::state_root_for_resolved_state(&state);
+
+    assert_eq!(state_root, state.paths.client_dir.join("agent"));
+    assert!(state_root.starts_with(&state_home));
+    assert!(!state_root.starts_with(project_root.join(".cache")));
+
+    let registry = AgentSessionRegistry::open_or_create_state_root(&state_root)
+        .expect("create state-core session registry");
+    assert_eq!(
+        registry.db_path(),
+        state
+            .paths
+            .client_dir
+            .join("agent")
+            .join(AGENT_SESSION_REGISTRY_DB_NAME)
+    );
+
+    let _ = std::fs::remove_dir_all(project_root);
+    let _ = std::fs::remove_dir_all(state_home);
 }
 
 #[test]

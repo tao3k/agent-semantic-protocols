@@ -1,5 +1,6 @@
 //! DB-owned storage for agent session registry rows.
 
+use agent_semantic_client_core::state_core::ResolvedState;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -94,8 +95,29 @@ pub struct AgentSessionRegistry {
 
 impl AgentSessionRegistry {
     #[must_use]
+    pub fn state_root_for_resolved_state(state: &ResolvedState) -> PathBuf {
+        state.paths.client_dir.join("agent")
+    }
+
+    pub fn state_root_for_project(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+        let state = ResolvedState::resolve(project_root.as_ref())?;
+        Ok(Self::state_root_for_resolved_state(&state))
+    }
+
+    #[must_use]
     pub fn db_path_for_state_root(state_root: impl AsRef<Path>) -> PathBuf {
         state_root.as_ref().join(AGENT_SESSION_REGISTRY_DB_NAME)
+    }
+
+    pub fn open_or_create_project(project_root: impl AsRef<Path>) -> Result<Self, String> {
+        let state = ResolvedState::resolve(project_root.as_ref())?;
+        state.ensure_minimal_layout()?;
+        Self::open_or_create_state_root(Self::state_root_for_resolved_state(&state))
+    }
+
+    pub fn open_existing_project(project_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
+        let state_root = Self::state_root_for_project(project_root)?;
+        Self::open_existing_state_root(state_root)
     }
 
     pub fn open_or_create_state_root(state_root: impl AsRef<Path>) -> Result<Self, String> {
