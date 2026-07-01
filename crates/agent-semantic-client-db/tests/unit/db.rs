@@ -115,7 +115,7 @@ fn agent_session_registry_state_root_is_state_core_owned() {
     let state_root = AgentSessionRegistry::state_root_for_resolved_state(&state);
 
     assert_eq!(state_root, state.paths.client_dir.join("agent"));
-    assert!(state_root.starts_with(&state_home));
+    assert!(state_root.starts_with(&state.state_home));
     assert!(!state_root.starts_with(project_root.join(".cache")));
 
     let registry = AgentSessionRegistry::open_or_create_state_root(&state_root)
