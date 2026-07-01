@@ -40,7 +40,7 @@ use super::turso::{TursoClientDbEngineBackend, TursoClientDbEngineReport};
 #[cfg(feature = "turso-backend")]
 use super::turso::{
     TursoClientDbEvidenceGraphPersistReport, TursoClientDbGraphEntity, connect_turso_client_db,
-    list_turso_graph_entities_by_ids_with_connection, persist_turso_evidence_graph,
+    persist_turso_evidence_graph,
 };
 #[cfg(feature = "turso-backend")]
 use super::turso_route_receipt::{
@@ -49,8 +49,7 @@ use super::turso_route_receipt::{
 #[cfg(feature = "turso-backend")]
 use super::turso_search::{
     TursoClientDbOverlayDocument, TursoClientDbSearchDocument, TursoClientDbSearchHit,
-    search_turso_documents, search_turso_stable_documents_with_connection,
-    upsert_turso_overlay_document, upsert_turso_search_documents,
+    search_turso_documents, upsert_turso_overlay_document, upsert_turso_search_documents,
 };
 
 /// Resolved DB Engine paths and backend selection for one State Core workspace.
@@ -1113,10 +1112,15 @@ async fn lookup_source_index_read_model_at_path(
     }
     let terms = source_index_read_model_terms(query);
     let connection = connect_turso_client_db(&db_path).await?;
-    let hits =
-        search_turso_stable_documents_with_connection(&connection, "source-index", query, limit)
-            .await?;
-    if hits.is_empty()
+    let candidates = query_turso_source_index_candidates_with_connection(
+        &connection,
+        query,
+        language_id,
+        limit,
+        &terms,
+    )
+    .await?;
+    if candidates.is_empty()
         && !turso_graph_entity_kind_exists_with_connection(&connection, "source-owner").await?
     {
         return Ok(source_index_lookup_result(
@@ -1125,49 +1129,136 @@ async fn lookup_source_index_read_model_at_path(
             Vec::new(),
         ));
     }
-    let entity_ids = hits
-        .iter()
-        .filter_map(|hit| hit.entity_id.clone())
-        .collect::<Vec<_>>();
-    let entities =
-        list_turso_graph_entities_by_ids_with_connection(&connection, &entity_ids).await?;
-    let mut candidates = Vec::new();
-    for hit in &hits {
-        let Some(entity_id) = &hit.entity_id else {
-            continue;
-        };
-        let Some(entity) = entities.iter().find(|entity| &entity.id == entity_id) else {
-            continue;
-        };
-        if entity.kind != "source-owner" {
-            continue;
-        }
-        if let Some(language_id) = language_id
-            && entity.language_id.as_deref() != Some(language_id.as_str())
-        {
-            continue;
-        }
-        if terms.is_empty() || !source_index_entity_matches(entity, &terms) {
-            continue;
-        }
-        candidates.push(ClientDbSourceIndexCandidate {
-            path: entity.path.clone().unwrap_or_else(|| entity.label.clone()),
-            language_id: entity.language_id.clone().map(LanguageId::from),
-            provider_id: entity.provider_id.clone().map(ProviderId::from),
-            source_kind: ClientDbSourceIndexSourceKind::Other("turso-source-index".to_string()),
-            line_count: None,
-            query_keys: entity.query_keys.clone(),
-        });
-        if candidates.len() >= limit as usize {
-            break;
-        }
-    }
     let state = if candidates.is_empty() {
         ClientDbSourceIndexLookupState::Miss
     } else {
         ClientDbSourceIndexLookupState::Hit
     };
     Ok(source_index_lookup_result(db_path, state, candidates))
+}
+
+#[cfg(feature = "turso-backend")]
+async fn query_turso_source_index_candidates_with_connection(
+    connection: &turso::Connection,
+    query: &str,
+    language_id: Option<&LanguageId>,
+    limit: u32,
+    terms: &[String],
+) -> Result<Vec<ClientDbSourceIndexCandidate>, String> {
+    if limit == 0 || query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    if let Some(fts_query) = source_index_read_model_fts_query(query) {
+        let candidates = query_turso_source_index_candidates_by_sql(
+            connection,
+            "SELECT e.id, e.kind, e.label, e.selector, e.path, e.language_id, e.provider_id, e.query_keys_json
+             FROM asp_search_document d
+             JOIN asp_graph_entity e ON e.id = d.entity_id
+             WHERE d.namespace = ?1
+               AND e.kind = ?2
+               AND (d.document MATCH ?3 OR d.selector MATCH ?3)
+             LIMIT ?4",
+            ("source-index", "source-owner", fts_query.as_str(), limit),
+            language_id,
+            limit,
+            terms,
+        )
+        .await?;
+        if !candidates.is_empty() {
+            return Ok(candidates);
+        }
+    }
+    let like_query = format!("%{}%", query.trim());
+    query_turso_source_index_candidates_by_sql(
+        connection,
+        "SELECT e.id, e.kind, e.label, e.selector, e.path, e.language_id, e.provider_id, e.query_keys_json
+         FROM asp_search_document d
+         JOIN asp_graph_entity e ON e.id = d.entity_id
+         WHERE d.namespace = ?1
+           AND e.kind = ?2
+           AND (d.document LIKE ?3 OR d.selector LIKE ?3)
+         ORDER BY d.document_id
+         LIMIT ?4",
+        ("source-index", "source-owner", like_query.as_str(), limit),
+        language_id,
+        limit,
+        terms,
+    )
+    .await
+}
+
+#[cfg(feature = "turso-backend")]
+async fn query_turso_source_index_candidates_by_sql<P>(
+    connection: &turso::Connection,
+    sql: &str,
+    params: P,
+    language_id: Option<&LanguageId>,
+    limit: u32,
+    terms: &[String],
+) -> Result<Vec<ClientDbSourceIndexCandidate>, String>
+where
+    P: turso::params::IntoParams,
+{
+    let mut rows = connection
+        .query(sql, params)
+        .await
+        .map_err(|error| format!("failed to query Turso source-index candidates: {error}"))?;
+    let mut candidates = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Turso source-index candidate row: {error}"))?
+    {
+        let query_keys_json = row
+            .get::<String>(7)
+            .map_err(|error| format!("failed to read Turso source-index query keys: {error}"))?;
+        let query_keys = serde_json::from_str::<Vec<String>>(&query_keys_json)
+            .map_err(|error| format!("failed to decode Turso source-index query keys: {error}"))?;
+        let entity = TursoClientDbGraphEntity {
+            id: row
+                .get::<String>(0)
+                .map_err(|error| format!("failed to read Turso source-index entity id: {error}"))?,
+            kind: row.get::<String>(1).map_err(|error| {
+                format!("failed to read Turso source-index entity kind: {error}")
+            })?,
+            label: row.get::<String>(2).map_err(|error| {
+                format!("failed to read Turso source-index entity label: {error}")
+            })?,
+            selector: row
+                .get::<Option<String>>(3)
+                .map_err(|error| format!("failed to read Turso source-index selector: {error}"))?,
+            path: row
+                .get::<Option<String>>(4)
+                .map_err(|error| format!("failed to read Turso source-index path: {error}"))?,
+            language_id: row.get::<Option<String>>(5).map_err(|error| {
+                format!("failed to read Turso source-index language id: {error}")
+            })?,
+            provider_id: row.get::<Option<String>>(6).map_err(|error| {
+                format!("failed to read Turso source-index provider id: {error}")
+            })?,
+            query_keys,
+        };
+        if let Some(language_id) = language_id
+            && entity.language_id.as_deref() != Some(language_id.as_str())
+        {
+            continue;
+        }
+        if terms.is_empty() || !source_index_entity_matches(&entity, terms) {
+            continue;
+        }
+        candidates.push(ClientDbSourceIndexCandidate {
+            path: entity.path.unwrap_or(entity.label),
+            language_id: entity.language_id.map(LanguageId::from),
+            provider_id: entity.provider_id.map(ProviderId::from),
+            source_kind: ClientDbSourceIndexSourceKind::Other("turso-source-index".to_string()),
+            line_count: None,
+            query_keys: entity.query_keys,
+        });
+        if candidates.len() >= limit as usize {
+            break;
+        }
+    }
+    Ok(candidates)
 }
 
 #[cfg(feature = "turso-backend")]
@@ -1197,6 +1288,18 @@ fn source_index_read_model_terms(query: &str) -> Vec<String> {
         .filter(|term| !term.is_empty())
         .map(|term| term.to_ascii_lowercase())
         .collect()
+}
+
+#[cfg(feature = "turso-backend")]
+fn source_index_read_model_fts_query(query: &str) -> Option<String> {
+    let terms = query
+        .split(|character: char| {
+            !character.is_alphanumeric() && character != '_' && character != '-'
+        })
+        .filter(|term| !term.is_empty())
+        .take(8)
+        .collect::<Vec<_>>();
+    (!terms.is_empty()).then(|| terms.join(" "))
 }
 
 #[cfg(feature = "turso-backend")]
