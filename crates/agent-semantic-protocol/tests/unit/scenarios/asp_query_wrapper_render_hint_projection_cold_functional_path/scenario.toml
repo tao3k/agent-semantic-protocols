@@ -1,0 +1,13 @@
+id = "asp-query-wrapper-render-hint-projection-cold-functional-path"
+title = "Query wrapper render hint projection is search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-WRAPPER-RENDER-HINT-PROJECTION-COLD-001"]
+agent_goal = "Validate that owner candidates, package clusters, and rg next-scope hints for query-wrapper output are projected by agent-semantic-search instead of command-local package-key logic."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::query_wrapper_owner_candidates",
+  "agent_semantic_search::query_wrapper_package_clusters_from_paths",
+  "agent_semantic_search::query_wrapper_rg_scope_next",
+  "command-local-package-key",
+]
+inputs = "A repeated list of query-wrapper candidate paths across package, docs, and crate scopes."
+expected = "The search crate deduplicates owner candidates, derives compact package clusters, derives rg next-scope hints, and does not require provider or native finder execution."

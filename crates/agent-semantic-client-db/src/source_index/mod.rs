@@ -7,7 +7,6 @@ mod storage;
 mod text;
 mod types;
 
-pub use api::{lookup_source_index_from_client_dir, lookup_source_index_from_project};
 pub use import::{
     assemble_source_index_import, build_source_index_import, source_index_file_hashes,
     source_index_import_with_file_hashes, source_index_relative_path, source_index_scope_dirs,

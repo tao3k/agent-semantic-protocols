@@ -15,5 +15,5 @@ target_rationale = "Cold functional SourceIndex lookup adapter gate validates th
 
 [observed_timings]
 source_index_lookup = "3ms"
-provider_process_count = "0ms"
-native_finder_process_count = "0ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

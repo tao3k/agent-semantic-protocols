@@ -1,0 +1,504 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-policy-fact.v1.schema.json",
+  "title": "Semantic Policy Fact v1",
+  "description": "Runtime policy fact emitted by a language harness or ASP policy layer when parser, compiler, project, profile, or receipt evidence proves guidance that an agent can use before or during code generation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "factId",
+    "languageId",
+    "providerId",
+    "factKind",
+    "severity",
+    "confidence",
+    "stability",
+    "summary",
+    "rationale",
+    "scope",
+    "evidence",
+    "agentUse"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-policy-fact"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.policy"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "factId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "criterionId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "ruleId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "recipeIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.:-]*$"
+      },
+      "uniqueItems": true
+    },
+    "languageId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "providerId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "factKind": {
+      "$ref": "#/$defs/factKind"
+    },
+    "severity": {
+      "$ref": "#/$defs/severity"
+    },
+    "confidence": {
+      "$ref": "#/$defs/confidence"
+    },
+    "stability": {
+      "$ref": "#/$defs/stability"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidenceRef"
+      }
+    },
+    "recommendedActions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    },
+    "avoidActions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    },
+    "agentUse": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/agentUse"
+      },
+      "uniqueItems": true
+    },
+    "promotion": {
+      "$ref": "#/$defs/promotion"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "integer" },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "factKind": {
+      "enum": [
+        "architecture-boundary",
+        "api-contract",
+        "code-quality",
+        "control-flow",
+        "cross-language-capability",
+        "dependency",
+        "documentation",
+        "error-resource",
+        "macro-boundary",
+        "migration",
+        "native-idiom",
+        "performance",
+        "profile",
+        "runtime-boundary",
+        "schema-boundary",
+        "security",
+        "testing",
+        "topology-context",
+        "verification",
+        "custom"
+      ]
+    },
+    "severity": {
+      "enum": [
+        "info",
+        "advisory",
+        "strong",
+        "blocking-candidate",
+        "hard"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "exact",
+        "high",
+        "medium",
+        "low",
+        "heuristic"
+      ]
+    },
+    "stability": {
+      "enum": [
+        "stable",
+        "overlay",
+        "session",
+        "research"
+      ]
+    },
+    "agentUse": {
+      "enum": [
+        "before-search",
+        "search-routing",
+        "before-write",
+        "during-write",
+        "review",
+        "test-selection",
+        "repair",
+        "documentation",
+        "architecture-context",
+        "plan-selection",
+        "suppress-route"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scopeKind"],
+      "properties": {
+        "scopeKind": {
+          "enum": [
+            "workspace",
+            "package",
+            "owner",
+            "selector",
+            "entity",
+            "dependency",
+            "test",
+            "artifact",
+            "scenario",
+            "profile",
+            "session"
+          ]
+        },
+        "projectRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entityId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dependencyId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "testId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profileId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display": {
+          "$ref": "#/$defs/displayLocator"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "displayLocator": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Display-only locator. It is not executable identity and must not replace selector, entity, generation, or overlay identity.",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidenceKind": {
+      "enum": [
+        "parser-fact",
+        "compiler-fact",
+        "provider-fact",
+        "criterion-catalog",
+        "extension-report",
+        "scenario-benchmark",
+        "behavior-snapshot",
+        "runtime-source",
+        "compiler-evidence",
+        "language-rule",
+        "standard-library",
+        "macro-pattern",
+        "evidence-graph",
+        "graph-route",
+        "topology-update",
+        "quality-frame",
+        "provider-capability",
+        "prior-failure",
+        "reasoning-step",
+        "route-receipt",
+        "test-receipt",
+        "verification-receipt",
+        "db-generation",
+        "overlay",
+        "artifact",
+        "org-contract",
+        "manual",
+        "research",
+        "heuristic"
+      ]
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "summary"],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/evidenceKind"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entityId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "benchmarkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshotId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receiptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display": {
+          "$ref": "#/$defs/displayLocator"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "actionKind": {
+      "enum": [
+        "search",
+        "read",
+        "edit",
+        "test",
+        "verify",
+        "document",
+        "route",
+        "suppress",
+        "ask",
+        "defer"
+      ]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "summary"],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/actionKind"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eligible": {
+          "type": "boolean"
+        },
+        "targetStability": {
+          "$ref": "#/$defs/stability"
+        },
+        "requiredEvidenceKinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceKind"
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "producer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceHash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

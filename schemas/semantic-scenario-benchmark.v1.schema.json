@@ -36,6 +36,10 @@
     "agentPolicyId": {
       "$ref": "semantic-agent-policy-id.v1.schema.json"
     },
+    "positiveDuration": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*(ns|us|ms|s)$"
+    },
     "duration": {
       "type": "string",
       "pattern": "^[0-9]+(ns|us|ms|s)$"
@@ -193,16 +197,16 @@
           "minLength": 1
         },
         "targetTotal": {
-          "$ref": "#/$defs/duration"
+          "$ref": "#/$defs/positiveDuration"
         },
         "maxTotal": {
-          "$ref": "#/$defs/duration"
+          "$ref": "#/$defs/positiveDuration"
         },
         "observedTotal": {
-          "$ref": "#/$defs/duration"
+          "$ref": "#/$defs/positiveDuration"
         },
         "regressionBudget": {
-          "$ref": "#/$defs/duration"
+          "$ref": "#/$defs/positiveDuration"
         },
         "memoryBudgetBytes": {
           "$ref": "#/$defs/memoryBytes"
@@ -258,10 +262,10 @@
       "additionalProperties": true,
       "properties": {
         "inputTotal": {
-          "$ref": "#/$defs/duration"
+          "$ref": "#/$defs/positiveDuration"
         },
         "expectedTotal": {
-          "$ref": "#/$defs/duration"
+          "$ref": "#/$defs/positiveDuration"
         },
         "inputMemoryBytes": {
           "$ref": "#/$defs/memoryBytes"

@@ -11,20 +11,22 @@ ignore = { workspace = true }
 which = { workspace = true }
 sha2 = { workspace = true }
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
-agent-semantic-client-db = { path = "../agent-semantic-client-db" }
+agent-semantic-client-db = { path = "../agent-semantic-client-db", default-features = false }
 agent-semantic-client-local-cli = { path = "../agent-semantic-client-local-cli" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
-agent-semantic-search = { path = "../agent-semantic-search" }
+agent-semantic-search = { path = "../agent-semantic-search", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
-turso = { workspace = true, optional = true }
 
 [features]
-default = []
-turso-overlay = ["dep:turso"]
+default = ["turso-backend"]
+turso-backend = [
+    "agent-semantic-client-db/turso-backend",
+    "agent-semantic-search/turso-overlay",
+]
 
 [build-dependencies]
 rust-lang-project-harness = { workspace = true }

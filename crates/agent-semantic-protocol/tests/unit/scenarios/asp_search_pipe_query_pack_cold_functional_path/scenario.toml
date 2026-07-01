@@ -1,0 +1,21 @@
+id = "asp-search-pipe-query-pack-cold-functional-path"
+title = "Search pipe query-pack parsing stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-PIPE-QUERY-PACK-COLD-001"]
+agent_goal = "Validate that query clause parsing, term role assignment, and clause coverage are owned by agent-semantic-search instead of command-local query-pack code."
+language = "rust"
+workspace = "."
+owners = [
+  "crates/agent-semantic-search/src/search_pipe_query_pack.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_query_pack.rs",
+]
+queries = [
+  "search pipe query pack parser",
+  "clause coverage owner seed terms",
+]
+inputs = "A broad search-pipe query with path, package, symbol, concept, and weak natural terms plus one bounded candidate."
+expected = "The search-owned query-pack kernel splits stable clauses, assigns symbol roles, and computes per-clause coverage without provider or native finder work."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/search_pipe_query_pack.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_query_pack.rs",
+]

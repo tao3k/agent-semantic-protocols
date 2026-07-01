@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::language_neutral_search_file_spec;
+use crate::search_candidate::{RankedSearchCandidate, SearchCandidate};
 
 pub const QUERY_WRAPPER_CANDIDATE_LIMIT: usize = 256;
 
@@ -21,6 +22,7 @@ pub struct QueryWrapperCandidate {
     pub line: usize,
     pub end_line: usize,
     pub symbol: String,
+    pub selector: Option<String>,
     pub text: String,
     pub source: String,
     pub confidence: String,
@@ -57,11 +59,38 @@ pub struct QueryWrapperSourceIndexCollection {
     pub candidates: Vec<QueryWrapperCandidate>,
 }
 
+pub struct QueryWrapperSearchCandidateRequest<'a> {
+    pub project_root: &'a Path,
+    pub roots: &'a [PathBuf],
+    pub terms: &'a [String],
+    pub axis_terms: &'a [String],
+    pub ranked: &'a [RankedSearchCandidate],
+}
+
+pub struct QueryWrapperSearchCandidateCollection {
+    pub candidates: Vec<QueryWrapperCandidate>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueryWrapperSourceIndexLookup {
     pub db_path: PathBuf,
     pub state: String,
     pub candidates: Vec<QueryWrapperSourceIndexCandidate>,
+}
+
+impl QueryWrapperSourceIndexLookup {
+    #[must_use]
+    pub fn new(
+        db_path: PathBuf,
+        state: impl Into<String>,
+        candidates: Vec<QueryWrapperSourceIndexCandidate>,
+    ) -> Self {
+        Self {
+            db_path,
+            state: state.into(),
+            candidates,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -72,6 +101,27 @@ pub struct QueryWrapperSourceIndexCandidate {
     pub source_kind: String,
     pub line_count: Option<u32>,
     pub query_keys: Vec<String>,
+}
+
+impl QueryWrapperSourceIndexCandidate {
+    #[must_use]
+    pub fn new(
+        path: impl Into<String>,
+        language_id: Option<String>,
+        provider_id: Option<String>,
+        source_kind: impl Into<String>,
+        line_count: Option<u32>,
+        query_keys: Vec<String>,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            language_id,
+            provider_id,
+            source_kind: source_kind.into(),
+            line_count,
+            query_keys,
+        }
+    }
 }
 
 pub fn collect_query_wrapper_source_index_candidates(
@@ -96,6 +146,30 @@ pub fn collect_query_wrapper_source_index_candidates(
         query_candidate_priority(&candidate.path, request.terms, request.axis_terms)
     });
     Ok(Some(QueryWrapperSourceIndexCollection { candidates }))
+}
+
+pub fn collect_query_wrapper_search_candidates(
+    request: QueryWrapperSearchCandidateRequest<'_>,
+) -> Option<QueryWrapperSearchCandidateCollection> {
+    let mut candidates = request
+        .ranked
+        .iter()
+        .filter_map(|ranked| {
+            search_candidate_query_wrapper_candidate(
+                request.project_root,
+                request.roots,
+                &ranked.candidate,
+            )
+        })
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.sort_by_key(|candidate| {
+        query_candidate_priority(&candidate.path, request.terms, request.axis_terms)
+    });
+    candidates.truncate(QUERY_WRAPPER_CANDIDATE_LIMIT);
+    Some(QueryWrapperSearchCandidateCollection { candidates })
 }
 
 pub fn append_query_candidates(input: QueryCandidateAppend<'_>) -> Result<(), String> {
@@ -212,10 +286,82 @@ fn source_index_query_wrapper_candidate(
         line: 1,
         end_line: line_count,
         symbol: source_index_symbol(candidate),
+        selector: None,
         text: source_index_candidate_text(candidate),
         source: "source-index".to_string(),
         confidence: "rust-sql".to_string(),
     }
+}
+
+fn search_candidate_query_wrapper_candidate(
+    project_root: &Path,
+    roots: &[PathBuf],
+    candidate: &SearchCandidate,
+) -> Option<QueryWrapperCandidate> {
+    let path = search_candidate_path(candidate)?;
+    if !source_index_candidate_in_roots(project_root, roots, &path) {
+        return None;
+    }
+    Some(QueryWrapperCandidate {
+        path,
+        line: 1,
+        end_line: 1,
+        symbol: search_candidate_symbol(candidate),
+        selector: candidate.selector.clone(),
+        text: search_candidate_text(candidate),
+        source: candidate.route_source.clone(),
+        confidence: candidate.proof_source.clone(),
+    })
+}
+
+fn search_candidate_path(candidate: &SearchCandidate) -> Option<String> {
+    candidate
+        .owner_path
+        .clone()
+        .or_else(|| candidate.selector.as_deref().and_then(selector_path_hint))
+}
+
+fn selector_path_hint(selector: &str) -> Option<String> {
+    let path_with_fragment = selector
+        .split_once("://")
+        .map(|(_, path)| path)
+        .unwrap_or(selector);
+    path_with_fragment
+        .split_once('#')
+        .map(|(path, _)| path)
+        .filter(|path| !path.is_empty())
+        .map(ToString::to_string)
+}
+
+fn search_candidate_symbol(candidate: &SearchCandidate) -> String {
+    candidate
+        .selector
+        .as_deref()
+        .and_then(|selector| selector.split_once('#').map(|(_, fragment)| fragment))
+        .and_then(|fragment| fragment.rsplit('/').next())
+        .filter(|symbol| !symbol.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| candidate.candidate_id.clone())
+}
+
+fn search_candidate_text(candidate: &SearchCandidate) -> String {
+    let fields = candidate
+        .field_hits
+        .iter()
+        .map(|field| format!("{}={}", field.field, field.value))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let selector = candidate.selector.as_deref().unwrap_or("none");
+    let generation = candidate.generation.as_deref().unwrap_or("none");
+    format!(
+        "search-candidate source={} identity={} selector={} generation={} proof={} {}",
+        candidate.route_source,
+        candidate.identity_kind,
+        selector,
+        generation,
+        candidate.proof_source,
+        fields
+    )
 }
 
 fn source_index_symbol(candidate: &QueryWrapperSourceIndexCandidate) -> String {
@@ -375,6 +521,7 @@ fn append_path_candidate(
         line: 1,
         end_line: 1,
         symbol: term.clone(),
+        selector: None,
         text: display,
         source: "fd-query".to_string(),
         confidence: "path".to_string(),
@@ -413,6 +560,7 @@ fn append_content_candidates(
             line: line_number,
             end_line: line_number,
             symbol: term.clone(),
+            selector: None,
             text: line.to_string(),
             source: "rg-query".to_string(),
             confidence: "content".to_string(),

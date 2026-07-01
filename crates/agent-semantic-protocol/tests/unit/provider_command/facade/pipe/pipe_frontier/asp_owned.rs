@@ -8,9 +8,9 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     let root = temp_project_root("search-pipe-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::create_dir_all(root.join("src/generated")).expect("create generated src");
     std::fs::write(
-        root.join("src/lib.rs"),
+        root.join("src/generated/lib.rs"),
         "pub struct HookDecision;\npub struct ClientReceipt;\nfn unrelated() {}\n",
     )
     .expect("write source");
@@ -60,7 +60,11 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         stdout.contains("strongCoverage=matched=HookDecision,ClientReceipt weak=-"),
         "{stdout}"
     );
-    assert!(stdout.contains("queryQuality=high reason=ok"), "{stdout}");
+    assert!(stdout.contains("queryQuality=high"), "{stdout}");
+    assert!(
+        stdout.contains("ownerCoverage=bestOwner=src/generated/lib.rs"),
+        "{stdout}"
+    );
     assert!(stdout.contains("provider:partial"), "{stdout}");
     assert!(stdout.contains("finder:used"), "{stdout}");
     assert!(
@@ -68,7 +72,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         "{stdout}"
     );
     assert!(
-        stdout.contains("parserHandles=HookDecision@src/lib.rs:1,ClientReceipt@src/lib.rs:2"),
+        stdout.contains("parserHandles=HookDecision@src/generated/lib.rs:1"),
         "{stdout}"
     );
     assert!(
@@ -120,7 +124,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     assert_compact_search_action_contract(&stdout);
     assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp rust query --selector src/lib.rs:")
+        stdout.contains("nextCommand=asp rust query --selector src/generated/lib.rs:")
             && stdout.contains(" --workspace . --code"),
         "{stdout}"
     );
@@ -137,6 +141,12 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         !stdout.contains("<selector>") && !stdout.contains("<owner-path>"),
         "{stdout}"
     );
+    assert!(
+        stdout.contains("omit=source,full-candidate-list,raw-finder-output,long-field-signatures"),
+        "{stdout}"
+    );
+    let removed_generated_omit = ["generated", "files"].join("-");
+    assert!(!stdout.contains(&removed_generated_omit), "{stdout}");
     assert!(
         stdout.contains("avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read"),
         "{stdout}"

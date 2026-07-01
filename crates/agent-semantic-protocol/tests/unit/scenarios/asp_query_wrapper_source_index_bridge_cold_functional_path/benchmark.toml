@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_query_wrapper_source_index_bridge_cold_functional_path_stays_inside_scenario_gate"
+snapshot = "asp_query_wrapper_source_index_bridge_cold_functional_path_stays_inside_scenario_gate"
+target_total = "500us"
+max_total = "2ms"
+observed_total = "500us"
+regression_budget = "2ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "query-wrapper-source-index-bridge"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "Cold functional query-wrapper source-index bridge gate validates DTO construction and candidate projection inside agent-semantic-search. It does not count command startup, provider process execution, or native finder execution."
+
+[observed_timings]
+source_index_bridge = "500us"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

@@ -1,25 +1,44 @@
+//! Turso DB Engine adapter for `client.turso` state, search, and overlay data.
+
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use super::facade::ClientDbEngineBackend;
-use super::{ClientDbBackend, ClientDbEngineDurability, ClientDbEngineFeatures};
+#[cfg(feature = "turso-backend")]
+use crate::evidence_graph::{
+    ClientDbEvidenceGraph, ClientDbEvidenceGraphEdge, ClientDbEvidenceGraphNode,
+};
+
+use super::contract::{
+    ClientDbBackend, ClientDbEngineBackend, ClientDbEngineDurability, ClientDbEngineFeatures,
+};
 
 const TURSO_CLIENT_DB_FILE: &str = "client.turso";
 const TURSO_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 const TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_PENDING: &str = "pending-cutover";
 #[cfg(feature = "turso-backend")]
 const TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_READY: &str = "ready";
+#[cfg(not(feature = "turso-backend"))]
 const TURSO_CLIENT_DB_CUTOVER_REASON: &str =
-    "active backend remains sqlite-v1 until Turso cutover gates pass";
+    "Turso DB Engine backend requires the turso-backend feature";
 #[cfg(feature = "turso-backend")]
+/// Bootstrap metadata table used to record the Turso DB Engine schema version.
 pub const TURSO_BOOTSTRAP_TABLE: &str = "asp_db_engine_bootstrap";
 #[cfg(feature = "turso-backend")]
+/// Stable entity table for the Turso-backed EvidenceGraph substrate.
 pub const TURSO_ENTITY_TABLE: &str = "asp_graph_entity";
 #[cfg(feature = "turso-backend")]
+/// Stable edge table for the Turso-backed EvidenceGraph substrate.
+pub const TURSO_EDGE_TABLE: &str = "asp_graph_edge";
+#[cfg(feature = "turso-backend")]
+/// Stable search-document table for generated selector/search projections.
 pub const TURSO_SEARCH_DOCUMENT_TABLE: &str = "asp_search_document";
 #[cfg(feature = "turso-backend")]
+/// Session-scoped dirty overlay document table for dynamic search.
 pub const TURSO_OVERLAY_DOCUMENT_TABLE: &str = "asp_overlay_document";
+#[cfg(feature = "turso-backend")]
+/// Bounded search route receipt table for replay and ranking feedback.
+pub const TURSO_ROUTE_RECEIPT_TABLE: &str = "asp_route_receipt";
 
 /// Diagnostic report for the planned Turso DB Engine backend.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -37,34 +56,34 @@ pub struct TursoClientDbEngineReport {
 }
 
 #[cfg(feature = "turso-backend")]
+/// Feature-gated EvidenceGraph entity row written through the Turso adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TursoClientDbSearchDocument {
-    pub namespace: String,
-    pub document_id: String,
-    pub entity_id: String,
+pub struct TursoClientDbGraphEntity {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
     pub selector: Option<String>,
-    pub document: String,
+    pub path: Option<String>,
+    pub language_id: Option<String>,
+    pub provider_id: Option<String>,
+    pub query_keys: Vec<String>,
 }
 
 #[cfg(feature = "turso-backend")]
+/// Feature-gated EvidenceGraph edge row written through the Turso adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TursoClientDbOverlayDocument {
-    pub repo_id: String,
-    pub workspace_id: String,
-    pub session_id: String,
-    pub base_generation: String,
-    pub document_id: String,
-    pub selector: Option<String>,
-    pub document: String,
+pub struct TursoClientDbGraphEdge {
+    pub from: String,
+    pub to: String,
+    pub kind: String,
 }
 
 #[cfg(feature = "turso-backend")]
+/// Persistence receipt for writing an EvidenceGraph projection into Turso.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TursoClientDbSearchHit {
-    pub source: &'static str,
-    pub document_id: String,
-    pub selector: Option<String>,
-    pub document: String,
+pub struct TursoClientDbEvidenceGraphPersistReport {
+    pub entity_count: usize,
+    pub edge_count: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -104,8 +123,7 @@ impl ClientDbEngineBackend for TursoClientDbEngineBackend {
 
     fn open_or_create(&self, db_path: &Path) -> Result<Self::Connection, String> {
         Err(format!(
-            "Turso DB Engine backend is not active yet: {}; dbPath={}",
-            TURSO_CLIENT_DB_CUTOVER_REASON,
+            "Turso DB Engine synchronous open is not supported; use the async bootstrap facade; dbPath={}",
             db_path.display()
         ))
     }
@@ -119,16 +137,29 @@ impl ClientDbEngineBackend for TursoClientDbEngineBackend {
     }
 
     fn inspect(&self, db_path: &Path) -> TursoClientDbEngineReport {
+        let active_db_path = db_path.with_file_name(self.db_file_name());
+        #[cfg(feature = "turso-backend")]
+        let (status, schema_bootstrap, reason) = if active_db_path.exists() {
+            ("ready", TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_READY, None)
+        } else {
+            ("missing", TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_PENDING, None)
+        };
+        #[cfg(not(feature = "turso-backend"))]
+        let (status, schema_bootstrap, reason) = (
+            "feature-disabled",
+            TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_PENDING,
+            Some(TURSO_CLIENT_DB_CUTOVER_REASON),
+        );
         TursoClientDbEngineReport {
             backend: self.backend().as_str(),
-            status: "planned",
+            status,
             db_file_name: self.db_file_name(),
             schema_version: self.schema_version(),
-            schema_bootstrap: TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_PENDING,
+            schema_bootstrap,
             durability: self.durability().as_str(),
             features: self.features(),
-            db_path: db_path.with_file_name(self.db_file_name()),
-            reason: Some(TURSO_CLIENT_DB_CUTOVER_REASON),
+            db_path: active_db_path,
+            reason,
         }
     }
 }
@@ -142,18 +173,272 @@ impl ClientDbEngineBackend for TursoClientDbEngineBackend {
 pub async fn bootstrap_turso_client_db(
     db_path: &Path,
 ) -> Result<TursoClientDbEngineReport, String> {
+    let turso_path = prepare_turso_client_db_path(db_path)?;
+    let connection = open_turso_client_connection(&turso_path).await?;
+    bootstrap_turso_schema_version(&connection).await?;
+    bootstrap_turso_client_search_schema(&connection).await?;
+    Ok(turso_bootstrap_report(db_path))
+}
+
+#[cfg(feature = "turso-backend")]
+/// Insert or update one EvidenceGraph entity in the Turso DB Engine file.
+pub async fn upsert_turso_graph_entity(
+    db_path: &Path,
+    entity: &TursoClientDbGraphEntity,
+) -> Result<(), String> {
+    let connection = connect_turso_client_db(db_path).await?;
+    upsert_turso_graph_entity_with_connection(&connection, entity).await
+}
+
+#[cfg(feature = "turso-backend")]
+/// Insert or update one EvidenceGraph edge in the Turso DB Engine file.
+pub async fn upsert_turso_graph_edge(
+    db_path: &Path,
+    edge: &TursoClientDbGraphEdge,
+) -> Result<(), String> {
+    let connection = connect_turso_client_db(db_path).await?;
+    upsert_turso_graph_edge_with_connection(&connection, edge).await
+}
+
+#[cfg(feature = "turso-backend")]
+/// Persist a DB-owned EvidenceGraph projection into the Turso DB Engine file.
+pub async fn persist_turso_evidence_graph(
+    db_path: &Path,
+    graph: &ClientDbEvidenceGraph,
+) -> Result<TursoClientDbEvidenceGraphPersistReport, String> {
+    let connection = connect_turso_client_db(db_path).await?;
+    for node in &graph.nodes {
+        upsert_turso_graph_entity_with_connection(
+            &connection,
+            &TursoClientDbGraphEntity::from(node),
+        )
+        .await?;
+    }
+    for edge in &graph.edges {
+        upsert_turso_graph_edge_with_connection(&connection, &TursoClientDbGraphEdge::from(edge))
+            .await?;
+    }
+    Ok(TursoClientDbEvidenceGraphPersistReport {
+        entity_count: graph.nodes.len(),
+        edge_count: graph.edges.len(),
+    })
+}
+
+#[cfg(feature = "turso-backend")]
+async fn upsert_turso_graph_entity_with_connection(
+    connection: &turso::Connection,
+    entity: &TursoClientDbGraphEntity,
+) -> Result<(), String> {
+    let query_keys_json = serde_json::to_string(&entity.query_keys)
+        .map_err(|error| format!("failed to encode Turso graph entity query keys: {error}"))?;
+    connection
+        .execute(
+            "INSERT INTO asp_graph_entity (id, kind, label, selector, path, language_id, provider_id, query_keys_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                kind = excluded.kind,
+                label = excluded.label,
+                selector = excluded.selector,
+                path = excluded.path,
+                language_id = excluded.language_id,
+                provider_id = excluded.provider_id,
+                query_keys_json = excluded.query_keys_json",
+            (
+                entity.id.as_str(),
+                entity.kind.as_str(),
+                entity.label.as_str(),
+                entity.selector.as_deref(),
+                entity.path.as_deref(),
+                entity.language_id.as_deref(),
+                entity.provider_id.as_deref(),
+                query_keys_json.as_str(),
+            ),
+        )
+        .await
+        .map_err(|error| format!("failed to upsert Turso graph entity: {error}"))?;
+    Ok(())
+}
+
+#[cfg(feature = "turso-backend")]
+async fn upsert_turso_graph_edge_with_connection(
+    connection: &turso::Connection,
+    edge: &TursoClientDbGraphEdge,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "INSERT INTO asp_graph_edge (from_id, to_id, kind)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(from_id, to_id, kind) DO UPDATE SET
+                kind = excluded.kind",
+            (edge.from.as_str(), edge.to.as_str(), edge.kind.as_str()),
+        )
+        .await
+        .map_err(|error| format!("failed to upsert Turso graph edge: {error}"))?;
+    Ok(())
+}
+
+#[cfg(feature = "turso-backend")]
+/// List EvidenceGraph entities from the Turso DB Engine file.
+pub async fn list_turso_graph_entities(
+    db_path: &Path,
+    kind: Option<&str>,
+    limit: u32,
+) -> Result<Vec<TursoClientDbGraphEntity>, String> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    let connection = connect_turso_client_db(db_path).await?;
+    let (sql, parameter): (&str, Option<&str>) = if let Some(kind) = kind {
+        (
+            "SELECT id, kind, label, selector, path, language_id, provider_id, query_keys_json
+             FROM asp_graph_entity
+             WHERE kind = ?1
+             ORDER BY id
+             LIMIT ?2",
+            Some(kind),
+        )
+    } else {
+        (
+            "SELECT id, kind, label, selector, path, language_id, provider_id, query_keys_json
+             FROM asp_graph_entity
+             ORDER BY id
+             LIMIT ?1",
+            None,
+        )
+    };
+    let mut rows = if let Some(kind) = parameter {
+        connection
+            .query(sql, (kind, limit))
+            .await
+            .map_err(|error| format!("failed to query Turso graph entities: {error}"))?
+    } else {
+        connection
+            .query(sql, [limit])
+            .await
+            .map_err(|error| format!("failed to query Turso graph entities: {error}"))?
+    };
+    let mut entities = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Turso graph entity row: {error}"))?
+    {
+        let query_keys_json = row
+            .get::<String>(7)
+            .map_err(|error| format!("failed to read Turso graph query keys: {error}"))?;
+        let query_keys = serde_json::from_str::<Vec<String>>(&query_keys_json)
+            .map_err(|error| format!("failed to decode Turso graph query keys: {error}"))?;
+        entities.push(TursoClientDbGraphEntity {
+            id: row
+                .get::<String>(0)
+                .map_err(|error| format!("failed to read Turso graph entity id: {error}"))?,
+            kind: row
+                .get::<String>(1)
+                .map_err(|error| format!("failed to read Turso graph entity kind: {error}"))?,
+            label: row
+                .get::<String>(2)
+                .map_err(|error| format!("failed to read Turso graph entity label: {error}"))?,
+            selector: row
+                .get::<Option<String>>(3)
+                .map_err(|error| format!("failed to read Turso graph entity selector: {error}"))?,
+            path: row
+                .get::<Option<String>>(4)
+                .map_err(|error| format!("failed to read Turso graph entity path: {error}"))?,
+            language_id: row.get::<Option<String>>(5).map_err(|error| {
+                format!("failed to read Turso graph entity language id: {error}")
+            })?,
+            provider_id: row.get::<Option<String>>(6).map_err(|error| {
+                format!("failed to read Turso graph entity provider id: {error}")
+            })?,
+            query_keys,
+        });
+    }
+    Ok(entities)
+}
+
+#[cfg(feature = "turso-backend")]
+/// List EvidenceGraph edges from the Turso DB Engine file.
+pub async fn list_turso_graph_edges(
+    db_path: &Path,
+    kind: Option<&str>,
+    limit: u32,
+) -> Result<Vec<TursoClientDbGraphEdge>, String> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    let connection = connect_turso_client_db(db_path).await?;
+    let (sql, parameter): (&str, Option<&str>) = if let Some(kind) = kind {
+        (
+            "SELECT from_id, to_id, kind
+             FROM asp_graph_edge
+             WHERE kind = ?1
+             ORDER BY from_id, to_id, kind
+             LIMIT ?2",
+            Some(kind),
+        )
+    } else {
+        (
+            "SELECT from_id, to_id, kind
+             FROM asp_graph_edge
+             ORDER BY from_id, to_id, kind
+             LIMIT ?1",
+            None,
+        )
+    };
+    let mut rows = if let Some(kind) = parameter {
+        connection
+            .query(sql, (kind, limit))
+            .await
+            .map_err(|error| format!("failed to query Turso graph edges: {error}"))?
+    } else {
+        connection
+            .query(sql, [limit])
+            .await
+            .map_err(|error| format!("failed to query Turso graph edges: {error}"))?
+    };
+    let mut edges = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Turso graph edge row: {error}"))?
+    {
+        edges.push(TursoClientDbGraphEdge {
+            from: row
+                .get::<String>(0)
+                .map_err(|error| format!("failed to read Turso graph edge from id: {error}"))?,
+            to: row
+                .get::<String>(1)
+                .map_err(|error| format!("failed to read Turso graph edge to id: {error}"))?,
+            kind: row
+                .get::<String>(2)
+                .map_err(|error| format!("failed to read Turso graph edge kind: {error}"))?,
+        });
+    }
+    Ok(edges)
+}
+
+#[cfg(feature = "turso-backend")]
+fn prepare_turso_client_db_path(db_path: &Path) -> Result<PathBuf, String> {
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create Turso client DB dir: {error}"))?;
     }
-    let turso_path = db_path.with_file_name(TURSO_CLIENT_DB_FILE);
-    let database = turso::Builder::new_local(turso_path.to_string_lossy().as_ref())
+    Ok(db_path.with_file_name(TURSO_CLIENT_DB_FILE))
+}
+
+#[cfg(feature = "turso-backend")]
+async fn open_turso_client_connection(turso_path: &Path) -> Result<turso::Connection, String> {
+    let database = turso_builder(turso_path)
         .build()
         .await
         .map_err(|error| format!("failed to open Turso client DB: {error}"))?;
-    let connection = database
+    database
         .connect()
-        .map_err(|error| format!("failed to connect Turso client DB: {error}"))?;
+        .map_err(|error| format!("failed to connect Turso client DB: {error}"))
+}
+
+#[cfg(feature = "turso-backend")]
+async fn bootstrap_turso_schema_version(connection: &turso::Connection) -> Result<(), String> {
     connection
         .execute(
             "CREATE TABLE IF NOT EXISTS asp_db_engine_bootstrap (schema_version INTEGER NOT NULL)",
@@ -172,113 +457,17 @@ pub async fn bootstrap_turso_client_db(
         )
         .await
         .map_err(|error| format!("failed to write Turso bootstrap schema row: {error}"))?;
-    bootstrap_turso_client_search_schema(&connection).await?;
+    Ok(())
+}
+
+#[cfg(feature = "turso-backend")]
+fn turso_bootstrap_report(db_path: &Path) -> TursoClientDbEngineReport {
     let backend = TursoClientDbEngineBackend;
     let mut report = backend.inspect(db_path);
     report.status = "bootstrap-smoke";
     report.schema_bootstrap = TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_READY;
     report.reason = None;
-    Ok(report)
-}
-
-#[cfg(feature = "turso-backend")]
-pub async fn upsert_turso_search_document(
-    db_path: &Path,
-    document: &TursoClientDbSearchDocument,
-) -> Result<(), String> {
-    let connection = connect_turso_client_db(db_path).await?;
-    connection
-        .execute(
-            "INSERT INTO asp_search_document (namespace, document_id, entity_id, selector, document)
-             VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(namespace, document_id) DO UPDATE SET
-                entity_id = excluded.entity_id,
-                selector = excluded.selector,
-                document = excluded.document",
-            (
-                document.namespace.as_str(),
-                document.document_id.as_str(),
-                document.entity_id.as_str(),
-                document.selector.as_deref(),
-                document.document.as_str(),
-            ),
-        )
-        .await
-        .map_err(|error| format!("failed to upsert Turso search document: {error}"))?;
-    Ok(())
-}
-
-#[cfg(feature = "turso-backend")]
-pub async fn upsert_turso_overlay_document(
-    db_path: &Path,
-    document: &TursoClientDbOverlayDocument,
-) -> Result<(), String> {
-    let connection = connect_turso_client_db(db_path).await?;
-    connection
-        .execute(
-            "INSERT INTO asp_overlay_document
-             (repo_id, workspace_id, session_id, base_generation, document_id, selector, document)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(repo_id, workspace_id, session_id, base_generation, document_id)
-             DO UPDATE SET
-                selector = excluded.selector,
-                document = excluded.document",
-            (
-                document.repo_id.as_str(),
-                document.workspace_id.as_str(),
-                document.session_id.as_str(),
-                document.base_generation.as_str(),
-                document.document_id.as_str(),
-                document.selector.as_deref(),
-                document.document.as_str(),
-            ),
-        )
-        .await
-        .map_err(|error| format!("failed to upsert Turso overlay document: {error}"))?;
-    Ok(())
-}
-
-#[cfg(feature = "turso-backend")]
-pub async fn search_turso_documents(
-    db_path: &Path,
-    query: &str,
-    limit: u32,
-) -> Result<Vec<TursoClientDbSearchHit>, String> {
-    if limit == 0 || query.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-    let connection = connect_turso_client_db(db_path).await?;
-    let like_query = format!("%{}%", query.trim());
-    let mut hits = Vec::new();
-    collect_turso_search_hits(
-        &connection,
-        "stable",
-        "SELECT document_id, selector, document
-         FROM asp_search_document
-         WHERE document LIKE ?1 OR selector LIKE ?1
-         ORDER BY document_id
-         LIMIT ?2",
-        &like_query,
-        limit,
-        &mut hits,
-    )
-    .await?;
-    if hits.len() < limit as usize {
-        collect_turso_search_hits(
-            &connection,
-            "overlay",
-            "SELECT document_id, selector, document
-             FROM asp_overlay_document
-             WHERE document LIKE ?1 OR selector LIKE ?1
-             ORDER BY document_id
-             LIMIT ?2",
-            &like_query,
-            limit.saturating_sub(hits.len() as u32),
-            &mut hits,
-        )
-        .await?;
-    }
-    Ok(hits)
+    report
 }
 
 #[cfg(feature = "turso-backend")]
@@ -292,9 +481,20 @@ async fn bootstrap_turso_client_search_schema(
             label TEXT NOT NULL,
             selector TEXT,
             path TEXT,
+            language_id TEXT,
+            provider_id TEXT,
             query_keys_json TEXT NOT NULL DEFAULT '[]'
         )",
         "CREATE INDEX IF NOT EXISTS asp_graph_entity_kind_idx ON asp_graph_entity(kind)",
+        "CREATE INDEX IF NOT EXISTS asp_graph_entity_language_idx ON asp_graph_entity(kind, language_id)",
+        "CREATE TABLE IF NOT EXISTS asp_graph_edge (
+            from_id TEXT NOT NULL,
+            to_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            PRIMARY KEY(from_id, to_id, kind)
+        )",
+        "CREATE INDEX IF NOT EXISTS asp_graph_edge_kind_idx ON asp_graph_edge(kind)",
+        "CREATE INDEX IF NOT EXISTS asp_graph_edge_to_idx ON asp_graph_edge(to_id)",
         "CREATE TABLE IF NOT EXISTS asp_search_document (
             namespace TEXT NOT NULL,
             document_id TEXT NOT NULL,
@@ -304,6 +504,7 @@ async fn bootstrap_turso_client_search_schema(
             PRIMARY KEY(namespace, document_id)
         )",
         "CREATE INDEX IF NOT EXISTS asp_search_document_entity_idx ON asp_search_document(entity_id)",
+        "CREATE INDEX IF NOT EXISTS asp_search_document_fts_idx ON asp_search_document USING fts (document, selector)",
         "CREATE TABLE IF NOT EXISTS asp_overlay_document (
             repo_id TEXT NOT NULL,
             workspace_id TEXT NOT NULL,
@@ -315,6 +516,23 @@ async fn bootstrap_turso_client_search_schema(
             PRIMARY KEY(repo_id, workspace_id, session_id, base_generation, document_id)
         )",
         "CREATE INDEX IF NOT EXISTS asp_overlay_document_session_idx ON asp_overlay_document(repo_id, workspace_id, session_id)",
+        "CREATE INDEX IF NOT EXISTS asp_overlay_document_fts_idx ON asp_overlay_document USING fts (document, selector)",
+        "CREATE TABLE IF NOT EXISTS asp_route_receipt (
+            receipt_id TEXT PRIMARY KEY,
+            repo_id TEXT NOT NULL,
+            workspace_id TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            session_id TEXT,
+            query TEXT NOT NULL,
+            route_source TEXT NOT NULL,
+            selected_selector TEXT,
+            next_command TEXT,
+            hit_count INTEGER NOT NULL,
+            evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+            created_at_ms INTEGER NOT NULL
+        )",
+        "CREATE INDEX IF NOT EXISTS asp_route_receipt_workspace_idx ON asp_route_receipt(repo_id, workspace_id, created_at_ms)",
+        "CREATE INDEX IF NOT EXISTS asp_route_receipt_session_idx ON asp_route_receipt(repo_id, workspace_id, session_id, created_at_ms)",
     ] {
         connection
             .execute(statement, ())
@@ -325,50 +543,45 @@ async fn bootstrap_turso_client_search_schema(
 }
 
 #[cfg(feature = "turso-backend")]
-async fn connect_turso_client_db(db_path: &Path) -> Result<turso::Connection, String> {
+impl From<&ClientDbEvidenceGraphNode> for TursoClientDbGraphEntity {
+    fn from(node: &ClientDbEvidenceGraphNode) -> Self {
+        Self {
+            id: node.id.clone(),
+            kind: node.kind.to_string(),
+            label: node.label.clone(),
+            selector: node.selector.clone(),
+            path: node.path.clone(),
+            language_id: node.language_id.clone(),
+            provider_id: node.provider_id.clone(),
+            query_keys: node.query_keys.clone(),
+        }
+    }
+}
+
+#[cfg(feature = "turso-backend")]
+impl From<&ClientDbEvidenceGraphEdge> for TursoClientDbGraphEdge {
+    fn from(edge: &ClientDbEvidenceGraphEdge) -> Self {
+        Self {
+            from: edge.from.clone(),
+            to: edge.to.clone(),
+            kind: edge.kind.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "turso-backend")]
+fn turso_builder(turso_path: &Path) -> turso::Builder {
+    turso::Builder::new_local(turso_path.to_string_lossy().as_ref()).experimental_index_method(true)
+}
+
+#[cfg(feature = "turso-backend")]
+pub(super) async fn connect_turso_client_db(db_path: &Path) -> Result<turso::Connection, String> {
     let turso_path = db_path.with_file_name(TURSO_CLIENT_DB_FILE);
-    let database = turso::Builder::new_local(turso_path.to_string_lossy().as_ref())
+    let database = turso_builder(&turso_path)
         .build()
         .await
         .map_err(|error| format!("failed to open Turso client DB: {error}"))?;
     database
         .connect()
         .map_err(|error| format!("failed to connect Turso client DB: {error}"))
-}
-
-#[cfg(feature = "turso-backend")]
-async fn collect_turso_search_hits(
-    connection: &turso::Connection,
-    source: &'static str,
-    sql: &str,
-    like_query: &str,
-    limit: u32,
-    hits: &mut Vec<TursoClientDbSearchHit>,
-) -> Result<(), String> {
-    let mut rows = connection
-        .query(sql, (like_query, limit))
-        .await
-        .map_err(|error| format!("failed to query Turso search documents: {error}"))?;
-    while let Some(row) = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read Turso search row: {error}"))?
-    {
-        let document_id = row
-            .get::<String>(0)
-            .map_err(|error| format!("failed to read Turso document id: {error}"))?;
-        let selector = row
-            .get::<Option<String>>(1)
-            .map_err(|error| format!("failed to read Turso selector: {error}"))?;
-        let document = row
-            .get::<String>(2)
-            .map_err(|error| format!("failed to read Turso document body: {error}"))?;
-        hits.push(TursoClientDbSearchHit {
-            source,
-            document_id,
-            selector,
-            document,
-        });
-    }
-    Ok(())
 }

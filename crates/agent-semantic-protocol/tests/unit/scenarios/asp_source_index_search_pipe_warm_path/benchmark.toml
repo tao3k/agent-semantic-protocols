@@ -15,5 +15,5 @@ target_rationale = "Warm search pipe must use the Rust SQL SourceIndex as the ca
 
 [observed_timings]
 source_index_lookup = "3ms"
-provider_process_count = "0ms"
-native_finder_process_count = "0ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

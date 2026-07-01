@@ -1,0 +1,21 @@
+id = "asp-search-pipe-evidence-classifier-cold-functional-path"
+title = "Search pipe evidence classifier stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-PIPE-EVIDENCE-CLASSIFIER-COLD-001"]
+agent_goal = "Validate that search-pipe declaration matching, strong matching, weak reason projection, parser handles, and finder handles are owned by agent-semantic-search instead of command-local evidence code."
+language = "rust"
+workspace = "."
+owners = [
+  "crates/agent-semantic-search/src/search_pipe_evidence.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_query_evidence.rs",
+]
+queries = [
+  "search pipe evidence classifier declaration strong match",
+  "parser handles finder handles weak reason",
+]
+inputs = "Two bounded evidence candidates and three query terms covering declaration, finder, and rust compound owner/member matching."
+expected = "The search-owned evidence classifier emits declaration and compound strong matches, parser and finder handles, and weak reason output without provider or native finder work."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/search_pipe_evidence.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_query_evidence.rs",
+]

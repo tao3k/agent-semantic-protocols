@@ -1,0 +1,18 @@
+harness = "libtest"
+test = "asp_graph_node_projection_cold_functional_path_stays_inside_scenario_gate"
+target_total = "500us"
+max_total = "10ms"
+observed_total = "500us"
+regression_budget = "1ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 0
+target_rationale = "Graph node projection is an in-process search crate projection and should remain sub-millisecond on cold functional checks."
+route_source = "graph-node-projection"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+
+[observed_timings]
+projection = "500us"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

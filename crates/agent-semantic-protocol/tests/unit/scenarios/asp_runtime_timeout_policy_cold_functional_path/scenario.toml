@@ -1,0 +1,16 @@
+id = "asp-runtime-timeout-policy-cold-functional-path"
+title = "ASP runtime records timeout and cancellation decisions without command ownership"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-RUNTIME-TIMEOUT-POLICY-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
+]
+agent_goal = "Keep provider timeout and cancellation accounting owned by agent-semantic-runtime so command code can render receipts without deciding timeout, cancellation, or fallback policy."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_runtime::RuntimeOperationTimeoutPolicy",
+  "agent_semantic_runtime::runtime_operation_timeout_receipt",
+  "cancellationRequired=false",
+  "timedOut=false",
+]
+inputs = "inputs"
+expected = "expected"

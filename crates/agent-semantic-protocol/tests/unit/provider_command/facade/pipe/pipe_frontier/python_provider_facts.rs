@@ -17,7 +17,7 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_semantic_facts() {
     write_semantic_facts_provider(
         &bin_dir,
         "py-harness",
-        "[agent-semantic-client] syncing generated activation\n{\"nodes\":[{\"id\":\"field:src/model.py-bag-items-2\",\"kind\":\"field\",\"role\":\"class-field\",\"value\":\"items: list[str]\",\"action\":\"code\",\"path\":\"src/model.py\",\"ownerPath\":\"src/model.py\",\"symbol\":\"items\",\"startLine\":2,\"endLine\":2,\"locator\":\"src/model.py:2:2\",\"matchText\":\"Bag.items: list[str]\",\"fields\":{\"containerName\":\"Bag\",\"fieldName\":\"items\",\"typeValue\":\"list[str]\",\"elementShape\":\"collection\",\"collectionKind\":\"list\",\"contextLocator\":\"src/model.py:1:2\"}}],\"edges\":[]}\n",
+        "[agent-semantic-client] syncing generated activation\n{\"schemaId\":\"agent.semantic-protocols.semantic-provider-facts\",\"schemaVersion\":\"1\",\"nodes\":[{\"id\":\"field:src/model.py-bag-items-2\",\"kind\":\"field\",\"role\":\"class-field\",\"value\":\"items: list[str]\",\"action\":\"code\",\"path\":\"src/model.py\",\"ownerPath\":\"src/model.py\",\"symbol\":\"items\",\"startLine\":2,\"endLine\":2,\"locator\":\"src/model.py:2:2\",\"matchText\":\"Bag.items: list[str]\",\"fields\":{\"containerName\":\"Bag\",\"fieldName\":\"items\",\"typeValue\":\"list[str]\",\"elementShape\":\"collection\",\"collectionKind\":\"list\",\"contextLocator\":\"src/model.py:1:2\"}}],\"edges\":[],\"candidateAnnotations\":[{\"path\":\"src/model.py\",\"attributes\":[\"generated\",\"schema-generated\"],\"source\":\"py-harness\",\"reason\":\"provider-parser-fact\"}]}\n",
         "",
     );
     write_provider_bin_config(&root, "python", &bin_dir.join("py-harness"));
@@ -52,6 +52,15 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_semantic_facts() {
             node["kind"].as_str() == Some("field")
                 && node["symbol"].as_str() == Some("items")
                 && node["fields"]["collectionKind"].as_str() == Some("list")
+        }),
+        "{payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("provider-candidate-annotation")
+                && node["path"].as_str() == Some("src/model.py")
+                && node["fields"]["attributes"][0].as_str() == Some("generated")
+                && node["fields"]["attributes"][1].as_str() == Some("schema-generated")
         }),
         "{payload}"
     );

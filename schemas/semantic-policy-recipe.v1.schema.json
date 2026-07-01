@@ -1,0 +1,449 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-policy-recipe.v1.schema.json",
+  "title": "Semantic Policy Recipe v1",
+  "description": "Actionable code-quality or repair recipe linked to semantic policy facts. Recipes are for agent reasoning before, during, and after writes; they are not hard-coded provider prose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "recipeId",
+    "languageId",
+    "providerId",
+    "title",
+    "purpose",
+    "applicability",
+    "steps",
+    "agentUse"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-policy-recipe"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.policy"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "recipeId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "criterionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.:-]*$"
+      },
+      "uniqueItems": true
+    },
+    "ruleIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.:-]*$"
+      },
+      "uniqueItems": true
+    },
+    "languageId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "providerId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1
+    },
+    "applicability": {
+      "$ref": "#/$defs/applicability"
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/condition"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "expectedFacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/factRef"
+      }
+    },
+    "expectedEvidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceExpectation"
+      }
+    },
+    "failureModes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/failureMode"
+      }
+    },
+    "agentUse": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/agentUse"
+      },
+      "uniqueItems": true
+    },
+    "stability": {
+      "$ref": "#/$defs/stability"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "integer" },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "agentUse": {
+      "enum": [
+        "before-search",
+        "search-routing",
+        "before-write",
+        "during-write",
+        "review",
+        "test-selection",
+        "repair",
+        "documentation",
+        "architecture-context",
+        "plan-selection",
+        "suppress-route"
+      ]
+    },
+    "stability": {
+      "enum": [
+        "stable",
+        "overlay",
+        "session",
+        "research"
+      ]
+    },
+    "factKind": {
+      "enum": [
+        "architecture-boundary",
+        "api-contract",
+        "code-quality",
+        "control-flow",
+        "cross-language-capability",
+        "dependency",
+        "documentation",
+        "error-resource",
+        "macro-boundary",
+        "migration",
+        "native-idiom",
+        "performance",
+        "profile",
+        "runtime-boundary",
+        "schema-boundary",
+        "security",
+        "testing",
+        "topology-context",
+        "verification",
+        "custom"
+      ]
+    },
+    "applicability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scopeKinds"],
+      "properties": {
+        "scopeKinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "workspace",
+              "package",
+              "owner",
+              "selector",
+              "entity",
+              "dependency",
+              "test",
+              "artifact",
+              "scenario",
+              "profile",
+              "session"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "factKinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factKind"
+          },
+          "uniqueItems": true
+        },
+        "requiresExactSelector": {
+          "type": "boolean"
+        },
+        "requiresStableGeneration": {
+          "type": "boolean"
+        },
+        "supportsOverlay": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "factRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factId"],
+      "properties": {
+        "factId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "factRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factRef"
+          }
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "stepKind": {
+      "enum": [
+        "inspect",
+        "route",
+        "select",
+        "edit",
+        "refactor",
+        "test",
+        "verify",
+        "document",
+        "suppress",
+        "ask",
+        "defer"
+      ]
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stepId", "kind", "summary"],
+      "properties": {
+        "stepId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "kind": {
+          "$ref": "#/$defs/stepKind"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredFactRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factRef"
+          }
+        },
+        "expectedEvidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceExpectation"
+          }
+        },
+        "nextCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "evidenceExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "summary"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "parser-fact",
+            "compiler-fact",
+            "provider-fact",
+            "criterion-catalog",
+            "extension-report",
+            "scenario-benchmark",
+            "behavior-snapshot",
+            "runtime-source",
+            "compiler-evidence",
+            "language-rule",
+            "standard-library",
+            "macro-pattern",
+            "evidence-graph",
+            "graph-route",
+            "topology-update",
+            "quality-frame",
+            "provider-capability",
+            "prior-failure",
+            "reasoning-step",
+            "route-receipt",
+            "test-receipt",
+            "verification-receipt",
+            "db-generation",
+            "overlay",
+            "artifact",
+            "org-contract",
+            "manual",
+            "research",
+            "heuristic"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "failureMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "recovery"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recovery": {
+          "type": "string",
+          "minLength": 1
+        },
+        "avoidAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "producer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceHash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

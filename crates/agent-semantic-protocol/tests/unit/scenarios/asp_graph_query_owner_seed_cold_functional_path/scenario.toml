@@ -1,0 +1,11 @@
+id = "asp-graph-query-owner-seed-cold-functional-path"
+title = "ASP graph query owner seed selection stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-QUERY-OWNER-SEED-COLD-001"]
+agent_goal = "Select query owner seeds from search crate primitives without command-local package-path or identifier-axis seed policy."
+inputs = "Graph projection candidates with package-path evidence and identifier-axis evidence."
+expected = "Owner seed selection prefers explicit package-path candidates and falls back to owner evidence axes without provider/native finder work."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/graph_query_owner_seed.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_graph_turbo_seed.rs",
+]

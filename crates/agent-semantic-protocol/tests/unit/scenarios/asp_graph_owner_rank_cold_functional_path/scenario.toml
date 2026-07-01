@@ -1,0 +1,11 @@
+id = "asp-graph-owner-rank-cold-functional-path"
+title = "ASP graph owner ranking stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-OWNER-RANK-COLD-001"]
+agent_goal = "Rank graph owner paths from search crate primitives without command-local owner ranking policy."
+inputs = "Graph projection candidates spanning root source, package source, and a submodule path with query terms."
+expected = "Owner rank prefers topology-local and query-axis evidence while running without provider/native finder processes."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/graph_owner_rank.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_graph_turbo_owner_rank.rs",
+]

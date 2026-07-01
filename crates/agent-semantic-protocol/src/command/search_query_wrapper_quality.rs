@@ -22,6 +22,7 @@ pub(super) fn analyze_query_wrapper_quality(
         .iter()
         .map(|clause| QueryWrapperSearchClause {
             id: clause.id,
+            raw: clause.raw.clone(),
             terms: clause.terms.clone(),
             axis_terms: clause.axis_terms.clone(),
         })

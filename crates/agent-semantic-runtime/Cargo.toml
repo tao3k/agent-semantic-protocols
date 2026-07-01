@@ -10,6 +10,7 @@ agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 bytes = { workspace = true }
 sha2 = { workspace = true }
+tokio = { workspace = true }
 
 [build-dependencies]
 rust-lang-project-harness = { workspace = true }

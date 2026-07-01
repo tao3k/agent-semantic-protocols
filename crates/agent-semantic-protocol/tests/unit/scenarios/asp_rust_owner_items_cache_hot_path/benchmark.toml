@@ -2,7 +2,7 @@ harness = "libtest"
 test = "asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate"
 target_total = "75ms"
 max_total = "500ms"
-observed_total = "0ms"
+observed_total = "1ms"
 regression_budget = "20ms"
 memory_budget_bytes = 67108864
 observed_memory_bytes = 0
@@ -13,4 +13,4 @@ fallback_reason = "none"
 target_rationale = "Warm owner-items search should replay cached rust-harness owner-items stdout without respawning the provider or synthesizing source items in the command facade."
 
 [observed_timings]
-owner_items_cache_hot_path = "0ms"
+owner_items_cache_hot_path = "0us"

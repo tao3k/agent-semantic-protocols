@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate"
+snapshot = "asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate"
+target_total = "500us"
+max_total = "2ms"
+observed_total = "500us"
+regression_budget = "2ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "search-query-budget"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "Cold functional search query budget gate validates search-owned query blocking policy only. It does not count command startup, provider process execution, or native finder execution."
+
+[observed_timings]
+query_budget = "500us"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

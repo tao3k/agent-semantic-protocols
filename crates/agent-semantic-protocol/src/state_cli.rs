@@ -2,6 +2,9 @@
 
 use std::ffi::OsString;
 
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_db::ClientDbEngine;
+
 /// Run the `asp` binary with pre-dispatch for State Core commands.
 pub fn run_binary_from_env() -> Result<(), String> {
     if let Some(result) = run_state_command_from_env() {
@@ -43,7 +46,15 @@ fn run_state_command(args: Vec<OsString>) -> Result<(), String> {
     }
 
     let cwd = std::env::current_dir().map_err(|error| format!("resolve cwd: {error}"))?;
-    let report = agent_semantic_client_core::state_core::locate_state(cwd, true)?;
+    let state = ResolvedState::resolve(&cwd)?;
+    state.ensure_minimal_layout()?;
+    let engine = ClientDbEngine::from_resolved_state(&state);
+    engine.write_manifest()?;
+    let engine_report = engine.inspect();
+    let mut report = state.locate_report();
+    report.db_path = engine_report.db_path;
+    report.backend = engine_report.backend.to_string();
+    report.future_backend = engine_report.future_backend.to_string();
     if json {
         let body = serde_json::to_string_pretty(&report)
             .map_err(|error| format!("serialize state locate report: {error}"))?;

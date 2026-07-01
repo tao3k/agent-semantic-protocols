@@ -1,97 +1,64 @@
-//! Query-pack parsing and per-clause coverage for search pipe quality gates.
+//! Query-pack parsing facade for search pipe quality gates.
 
 use super::search_pipe_model::Candidate;
-use super::search_pipe_query_evidence::weak_match;
 use super::search_pipe_query_model::{ClauseCoverage, QueryClause, QueryTerm, TermRole};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct QueryTokenFragment {
-    raw: String,
-    force_symbol: bool,
-}
-
 pub(super) fn query_clauses(language_id: &str, query: &str) -> Vec<QueryClause> {
-    let explicit = query
-        .split('|')
-        .map(str::trim)
-        .filter(|clause| !clause.is_empty())
-        .map(|raw_clause| QueryClause {
-            terms: query_terms(language_id, raw_clause),
-        })
-        .filter(|clause| !clause.terms.is_empty())
-        .collect::<Vec<_>>();
-    if query.contains('|') {
-        return explicit;
-    }
-    auto_query_clauses(explicit)
-}
-
-pub(super) fn query_clause_texts(language_id: &str, query: &str) -> Vec<String> {
-    query_clauses(language_id, query)
+    agent_semantic_search::search_pipe_query_clauses(language_id, query)
         .into_iter()
-        .map(|clause| {
-            clause
-                .terms
-                .into_iter()
-                .map(|term| term.raw)
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .filter(|clause| !clause.is_empty())
+        .map(query_clause_from_search)
         .collect()
 }
 
+pub(super) fn query_clause_texts(language_id: &str, query: &str) -> Vec<String> {
+    agent_semantic_search::search_pipe_query_clause_texts(language_id, query)
+}
+
 pub(super) fn unique_query_terms(clauses: &[QueryClause]) -> Vec<QueryTerm> {
-    clauses
+    let search_clauses = clauses
         .iter()
-        .flat_map(|clause| clause.terms.iter())
-        .fold(Vec::new(), |mut terms, term| {
-            if !terms.iter().any(|seen: &QueryTerm| seen.raw == term.raw) {
-                terms.push(term.clone());
-            }
-            terms
-        })
+        .map(search_clause_from_protocol)
+        .collect::<Vec<_>>();
+    agent_semantic_search::search_pipe_unique_query_terms(&search_clauses)
+        .into_iter()
+        .map(query_term_from_search)
+        .collect()
 }
 
 pub(super) fn clause_coverages(
     clauses: &[QueryClause],
     candidates: &[Candidate],
 ) -> Vec<ClauseCoverage> {
-    clauses
+    let search_clauses = clauses
         .iter()
-        .enumerate()
-        .map(|(index, clause)| {
-            let matched = clause
-                .terms
-                .iter()
-                .filter(|term| {
-                    candidates
-                        .iter()
-                        .any(|candidate| weak_match(candidate, term))
-                })
-                .map(|term| term.lower.clone())
-                .collect::<Vec<_>>();
-            let missing = clause
-                .terms
-                .iter()
-                .filter(|term| !matched.iter().any(|matched| matched == &term.lower))
-                .map(|term| term.lower.clone())
-                .collect::<Vec<_>>();
-            ClauseCoverage {
-                id: index + 1,
-                matched,
-                missing,
-            }
+        .map(search_clause_from_protocol)
+        .collect::<Vec<_>>();
+    let search_candidates = candidates
+        .iter()
+        .map(
+            |candidate| agent_semantic_search::SearchPipeQueryPackCandidate {
+                path: candidate.path.clone(),
+                symbol: candidate.symbol.clone(),
+                text: candidate.text.clone(),
+            },
+        )
+        .collect::<Vec<_>>();
+    agent_semantic_search::search_pipe_clause_coverages(&search_clauses, &search_candidates)
+        .into_iter()
+        .map(|coverage| ClauseCoverage {
+            id: coverage.id,
+            matched: coverage.matched,
+            missing: coverage.missing,
         })
         .collect()
 }
 
 pub(super) fn role_terms(terms: &[QueryTerm], role: TermRole) -> Vec<String> {
-    terms
+    let search_terms = terms
         .iter()
-        .filter(|term| term.role == role)
-        .map(|term| term.raw.clone())
-        .collect()
+        .map(search_term_from_protocol)
+        .collect::<Vec<_>>();
+    agent_semantic_search::search_pipe_role_terms(&search_terms, search_role_from_protocol(role))
 }
 
 pub(super) fn next_query_pack_hint(
@@ -99,231 +66,59 @@ pub(super) fn next_query_pack_hint(
     owner_seed_terms: &[String],
     concept_terms: &[String],
 ) -> Option<String> {
-    if owner_seed_terms.len() < 2 {
-        return None;
-    }
-    let mut clauses = vec![owner_seed_terms.join(" ")];
-    if concept_terms
-        .iter()
-        .any(|term| term.eq_ignore_ascii_case("concurrency"))
-    {
-        clauses.push("concurrency runtime scheduling".to_string());
-    } else if !concept_terms.is_empty() {
-        clauses.push(concept_terms.join(" "));
-    }
-    if owner_seed_terms
-        .iter()
-        .any(|term| term.eq_ignore_ascii_case("Scope"))
-    {
-        clauses.push("Scope lifecycle".to_string());
-    }
-    if owner_seed_terms
-        .iter()
-        .any(|term| term.eq_ignore_ascii_case("Queue"))
-        && owner_seed_terms
-            .iter()
-            .any(|term| term.eq_ignore_ascii_case("Stream"))
-    {
-        clauses.push("Queue Stream backpressure".to_string());
-    }
-    if clauses.len() == 1 && !context_terms.is_empty() {
-        clauses.push(context_terms.join(" "));
-    }
-    Some(clauses.join("|"))
-}
-
-fn term_role(language_id: &str, raw: &str) -> TermRole {
-    if language_id == "typescript" && matches!(raw, "Effect") {
-        return TermRole::Context;
-    }
-    if is_weak_natural_term(raw) {
-        return TermRole::Context;
-    }
-    if is_owner_seed_token(raw) {
-        return TermRole::Symbol;
-    }
-    if raw
-        .chars()
-        .next()
-        .is_some_and(|character| character.is_ascii_uppercase())
-    {
-        return TermRole::Symbol;
-    }
-    TermRole::Concept
-}
-
-fn query_terms(language_id: &str, raw_clause: &str) -> Vec<QueryTerm> {
-    raw_clause
-        .split(|character: char| character == ',' || character.is_whitespace())
-        .flat_map(query_token_fragments)
-        .map(|fragment| QueryTerm {
-            raw: fragment.raw.clone(),
-            lower: fragment.raw.to_ascii_lowercase(),
-            role: if fragment.force_symbol {
-                TermRole::Symbol
-            } else {
-                term_role(language_id, &fragment.raw)
-            },
-        })
-        .fold(Vec::new(), |mut terms, term| {
-            if !terms.iter().any(|seen: &QueryTerm| seen.raw == term.raw) {
-                terms.push(term);
-            }
-            terms
-        })
-}
-
-fn query_token_fragments(raw: &str) -> Vec<QueryTokenFragment> {
-    let trimmed = trim_query_token(raw);
-    if trimmed.is_empty() || !has_ascii_query_signal(trimmed) {
-        return Vec::new();
-    }
-    if should_split_slash_compound(trimmed) {
-        return trimmed
-            .split('/')
-            .flat_map(query_token_fragments)
-            .collect::<Vec<_>>();
-    }
-    vec![QueryTokenFragment {
-        raw: trimmed.to_string(),
-        force_symbol: false,
-    }]
-}
-
-fn trim_query_token(raw: &str) -> &str {
-    raw.trim_matches(|character: char| !is_query_token_character(character))
-}
-
-fn is_query_token_character(character: char) -> bool {
-    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '/' | ':' | '.' | '@')
-}
-
-fn has_ascii_query_signal(raw: &str) -> bool {
-    raw.chars()
-        .any(|character| character == '_' || character.is_ascii_alphanumeric())
-}
-
-fn should_split_slash_compound(raw: &str) -> bool {
-    if raw.contains('.') || raw.contains("::") {
-        return false;
-    }
-    let parts = raw.split('/').collect::<Vec<_>>();
-    if parts.len() != 2 || parts.iter().any(|part| part.is_empty()) {
-        return false;
-    }
-    if matches!(
-        parts[0],
-        "src"
-            | "test"
-            | "tests"
-            | "crates"
-            | "packages"
-            | "apps"
-            | "lib"
-            | "libs"
-            | "docs"
-            | "examples"
-            | "benches"
-    ) {
-        return false;
-    }
-    parts.iter().all(|part| {
-        part.chars().all(|character| {
-            character == '_' || character == '-' || character.is_ascii_alphanumeric()
-        })
-    })
-}
-
-fn auto_query_clauses(explicit: Vec<QueryClause>) -> Vec<QueryClause> {
-    let Some(single) = explicit.first() else {
-        return explicit;
-    };
-    if explicit.len() != 1 || single.terms.len() < 6 {
-        return explicit;
-    }
-
-    let mut path_terms = Vec::new();
-    let mut package_terms = Vec::new();
-    let mut symbol_terms = Vec::new();
-    let mut concept_terms = Vec::new();
-    let mut context_terms = Vec::new();
-    for term in &single.terms {
-        if is_path_like_token(&term.raw) {
-            path_terms.push(term.clone());
-        } else if is_package_like_token(&term.raw) {
-            package_terms.push(term.clone());
-        } else {
-            match term.role {
-                TermRole::Symbol => symbol_terms.push(term.clone()),
-                TermRole::Concept => concept_terms.push(term.clone()),
-                TermRole::Context => context_terms.push(term.clone()),
-            }
-        }
-    }
-
-    let mut clauses = [path_terms, package_terms, symbol_terms, concept_terms]
-        .into_iter()
-        .filter(|terms| !terms.is_empty())
-        .map(|terms| QueryClause { terms })
-        .collect::<Vec<_>>();
-    if clauses.is_empty() && !context_terms.is_empty() {
-        clauses.push(QueryClause {
-            terms: context_terms,
-        });
-    }
-    if clauses.len() > 1 { clauses } else { explicit }
-}
-
-fn is_owner_seed_token(raw: &str) -> bool {
-    is_path_like_token(raw) || is_package_like_token(raw)
-}
-
-pub(super) fn is_path_like_token(raw: &str) -> bool {
-    raw.contains('/') || raw.contains("::") || raw.contains('.') || raw.contains('_')
-}
-
-fn is_package_like_token(raw: &str) -> bool {
-    raw.matches('-').count() >= 2 && !matches!(raw, "long-field-signatures")
-}
-
-fn is_weak_natural_term(raw: &str) -> bool {
-    matches!(
-        raw.to_ascii_lowercase().as_str(),
-        "through"
-            | "smoke"
-            | "dev"
-            | "dependency"
-            | "dependencies"
-            | "in"
-            | "how"
-            | "should"
-            | "an"
-            | "a"
-            | "the"
-            | "and"
-            | "or"
-            | "before"
-            | "after"
-            | "changing"
-            | "change"
-            | "locate"
-            | "start"
-            | "starts"
-            | "from"
-            | "which"
-            | "what"
-            | "where"
-            | "when"
-            | "why"
-            | "owner"
-            | "owners"
-            | "frontier"
-            | "frontiers"
-            | "agent"
-            | "behavior"
-            | "weak"
-            | "natural"
-            | "term"
-            | "terms"
+    agent_semantic_search::search_pipe_next_query_pack_hint(
+        context_terms,
+        owner_seed_terms,
+        concept_terms,
     )
+}
+
+fn query_clause_from_search(clause: agent_semantic_search::SearchPipeQueryClause) -> QueryClause {
+    QueryClause {
+        terms: clause
+            .terms
+            .into_iter()
+            .map(query_term_from_search)
+            .collect(),
+    }
+}
+
+fn query_term_from_search(term: agent_semantic_search::SearchPipeQueryTerm) -> QueryTerm {
+    QueryTerm {
+        raw: term.raw,
+        lower: term.lower,
+        role: query_role_from_search(term.role),
+    }
+}
+
+fn query_role_from_search(role: agent_semantic_search::SearchPipeTermRole) -> TermRole {
+    match role {
+        agent_semantic_search::SearchPipeTermRole::Context => TermRole::Context,
+        agent_semantic_search::SearchPipeTermRole::Concept => TermRole::Concept,
+        agent_semantic_search::SearchPipeTermRole::Symbol => TermRole::Symbol,
+    }
+}
+
+fn search_clause_from_protocol(
+    clause: &QueryClause,
+) -> agent_semantic_search::SearchPipeQueryClause {
+    agent_semantic_search::SearchPipeQueryClause {
+        terms: clause.terms.iter().map(search_term_from_protocol).collect(),
+    }
+}
+
+fn search_term_from_protocol(term: &QueryTerm) -> agent_semantic_search::SearchPipeQueryTerm {
+    agent_semantic_search::SearchPipeQueryTerm {
+        raw: term.raw.clone(),
+        lower: term.lower.clone(),
+        role: search_role_from_protocol(term.role),
+    }
+}
+
+fn search_role_from_protocol(role: TermRole) -> agent_semantic_search::SearchPipeTermRole {
+    match role {
+        TermRole::Context => agent_semantic_search::SearchPipeTermRole::Context,
+        TermRole::Concept => agent_semantic_search::SearchPipeTermRole::Concept,
+        TermRole::Symbol => agent_semantic_search::SearchPipeTermRole::Symbol,
+    }
 }

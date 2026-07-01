@@ -1,13 +1,10 @@
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::db::ClientDb;
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion,
-    project_client_cache_dir_read_only,
 };
-
-use crate::ClientDbEngine;
 
 use super::lookup::{
     latest_source_index_generation_owners, lookup_source_index_owners,
@@ -19,52 +16,11 @@ use super::storage::{
 };
 use super::types::{
     ClientDbSourceIndexCandidate, ClientDbSourceIndexCandidateLookup,
-    ClientDbSourceIndexCandidateLookupResult, ClientDbSourceIndexClientDirLookupRequest,
-    ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexLookupResult,
-    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexRefreshReport,
+    ClientDbSourceIndexCandidateLookupResult, ClientDbSourceIndexImport, ClientDbSourceIndexLookup,
+    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshReport,
     ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
     ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexStats,
 };
-
-/// Lookup source-index candidates from a project's resolved client DB.
-pub fn lookup_source_index_from_project(
-    request: ClientDbSourceIndexProjectLookupRequest<'_>,
-) -> Result<ClientDbSourceIndexLookupResult, String> {
-    let client_dir = project_client_cache_dir_read_only(request.cache_project_root)?;
-    lookup_source_index_from_client_dir(ClientDbSourceIndexClientDirLookupRequest {
-        client_dir: &client_dir,
-        indexed_project_root: request.indexed_project_root,
-        language_id: request.language_id,
-        query_keys: request.query_keys,
-        limit: request.limit,
-    })
-}
-
-/// Lookup source-index candidates from an already resolved client DB directory.
-pub fn lookup_source_index_from_client_dir(
-    request: ClientDbSourceIndexClientDirLookupRequest<'_>,
-) -> Result<ClientDbSourceIndexLookupResult, String> {
-    let db_path = ClientDbEngine::db_path_for_client_dir(request.client_dir);
-    let Some(db) = ClientDbEngine::open_read_only_existing_client_dir(request.client_dir)? else {
-        return Ok(source_index_lookup_result(
-            db_path,
-            ClientDbSourceIndexLookupState::MissingDb,
-            Vec::new(),
-        ));
-    };
-    let lookup = db.lookup_source_index_candidates(&ClientDbSourceIndexCandidateLookup {
-        project_root: request.indexed_project_root.to_path_buf(),
-        language_id: request.language_id.cloned(),
-        query_keys: request.query_keys,
-        limit: request.limit,
-    })?;
-    Ok(source_index_lookup_result(
-        db_path,
-        lookup.state,
-        lookup.candidates,
-    ))
-}
 
 impl ClientDb {
     /// Replace Rust-owned source index rows for one cache generation.
@@ -249,18 +205,6 @@ fn append_unique_source_index_candidates(
         if seen.insert(candidate.path.clone()) {
             candidates.push(candidate);
         }
-    }
-}
-
-fn source_index_lookup_result(
-    db_path: PathBuf,
-    state: ClientDbSourceIndexLookupState,
-    candidates: Vec<ClientDbSourceIndexCandidate>,
-) -> ClientDbSourceIndexLookupResult {
-    ClientDbSourceIndexLookupResult {
-        db_path,
-        state,
-        candidates,
     }
 }
 

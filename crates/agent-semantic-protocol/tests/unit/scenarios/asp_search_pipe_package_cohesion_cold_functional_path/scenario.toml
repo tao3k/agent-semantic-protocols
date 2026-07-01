@@ -1,0 +1,22 @@
+id = "asp-search-pipe-package-cohesion-cold-functional-path"
+title = "Search pipe package cohesion stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-PIPE-PACKAGE-COHESION-COLD-001"]
+agent_goal = "Validate that package key extraction and package cohesion scoring are owned by agent-semantic-search instead of command-local quality code."
+language = "rust"
+workspace = "."
+owners = [
+  "crates/agent-semantic-search/src/search_pipe_quality.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_quality.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_query_evidence.rs",
+]
+queries = [
+  "package cohesion search pipe quality",
+  "owner matched package axes",
+]
+inputs = "Three candidate owner paths across two package clusters plus two high-value package-axis terms."
+expected = "The search-owned cohesion kernel returns low cohesion for partial owner package-axis coverage and medium cohesion when the owner covers both package axes, without provider or native finder work."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/search_pipe_quality.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_quality.rs",
+]

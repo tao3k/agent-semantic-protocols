@@ -1,13 +1,34 @@
 * One-sentence summary
-=smolagents= is useful to ASP because it makes agent reasoning executable: code actions, tool calls, observations, errors, state, and plans become structured run evidence. ASP can turn that idea into a stronger EvidenceGraph by applying native parser facts, Python graph algorithms, and Rust high-performance search/render infrastructure.
+=smolagents= is useful to ASP as an external reference for code-as-reasoning: it shows how model-written code actions, tool calls, observations, errors, state, and plans can become structured run evidence. ASP's core theory and improvement scheme live in [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]], not in this reference note.
+* Scope
+This RFC is intentionally a reference note for =smolagents=.
+
+It owns:
+- the local source snapshot used for comparison;
+- the specific =smolagents= concepts that are useful to ASP;
+- the limits of =smolagents= as an ASP architecture model;
+- the mapping from =smolagents= implementation concepts to ASP core theory.
+
+It does not own:
+- ASP =ReasoningTree= / =EvidenceGraph= / =GraphRoute= theory;
+- ASP DB Engine and Turso state architecture;
+- ASP compact render contract;
+- Python production graph-route algorithms;
+- Julia offline topology research.
+
+Those live in:
+- [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]]
+- [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]]
+- [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]]
 * Source snapshot
 Local checkout:
+
 #+begin_src text
-repo: https://github.com/huggingface/smolagents
-local checkout: .data/smolagents
-snapshot commit: 526069c1ead958b36d9fd09a6b1ef37f68ed6ade
-snapshot date: 2026-06-16T10:56:14+02:00
-observed date: 2026-06-30
+.data/smolagents
+remote: https://github.com/huggingface/smolagents
+HEAD: 526069c1ead958b36d9fd09a6b1ef37f68ed6ade
+commit date: 2026-06-16T10:56:14+02:00
+title: Docs: fix minor wording issues (#2380)
 #+end_src
 
 Primary local evidence:
@@ -20,9 +41,10 @@ Primary local evidence:
 - =docs/source/en/conceptual_guides/react.md= explains ReAct as reason + act, with =MultiStepAgent= as the abstraction.
 - =docs/source/en/tutorials/memory.md= explains replay, full-step dictionaries, dynamic memory modification, callbacks, and one-step execution.
 * Core finding
-The important idea is not just "LLM writes code." The important idea is:
+The important lesson is not "LLM writes code." The important lesson is:
+
 #+begin_src text
-reasoning becomes an executable artifact
+reasoning can become an executable artifact
 #+end_src
 
 In =smolagents=, one action step is not an opaque chat turn. It can contain:
@@ -36,115 +58,47 @@ In =smolagents=, one action step is not an opaque chat turn. It can contain:
 - final-answer marker;
 - timing.
 
-That is already close to an EvidenceGraph event model.
+That is close to an ASP reasoning-event model. The difference is authority. =smolagents= uses Python AST/runtime structures to execute code actions. ASP should use the stronger theory in [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23]]: provider-owned native parsers, selector identity, dependency/test/Org topology, DB Engine receipts, dynamic overlays, Python production graph ranking, Julia offline replay, and compact render.
+* Relationship to core ASP reasoning theory
+This RFC uses =ReasoningTree=, =EvidenceGraph=, and =GraphRoute= only as mapping terms into [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]].
 
-ASP should generalize it:
-#+begin_src text
-Intent -> PlanStep -> CodeAction -> NativeParse -> ToolCall/SelectorAction
--> Observation/Error -> EvidenceNode -> GraphRank -> Render -> NextAction
-#+end_src
+The mapping from =smolagents= is:
+- =AgentMemory= and step serialization map to ASP run evidence.
+- =TaskStep=, =PlanningStep=, and =ActionStep= map to reasoning-event classes.
+- Code blocks executed by =CodeAgent= map to ASP reasoning actions.
+- Python AST execution in =LocalPythonExecutor= maps to ASP's general action parsing layer.
+- Tool schema metadata and tool validation map to ASP command/provider contracts.
+- Observations, logs, errors, timing, and final-answer markers map to receipt and replay evidence.
 
-The difference is authority. =smolagents= uses Python AST/runtime structures to execute code actions. ASP can use provider-owned native parsers, dependency topology, tests, Org decisions, Turso search, overlay search, and Python graph fusion to attach stronger proof and topology around each action.
-* Terminology: graph-route, reasoning tree, EvidenceGraph
-ASP should not use =graph-route= and =reasoning tree= as interchangeable names.
-
-=graph-route= is the topology-backed navigation layer over the current evidence state. It is the closest ASP concept to "map + navigation algorithm": the map is the typed topology of owners, selectors, dependencies, tests, Org anchors, artifacts, overlays, and prior run evidence; the navigation algorithm is the ranking/traversal policy that chooses the next action. It answers:
-#+begin_src text
-Given this intent and the evidence already known, where should the agent go next?
-#+end_src
-Its durable units are owners, symbols, selectors, dependencies, tests, topology edges, artifact receipts, query packets, render packets, and ranked next commands. It is allowed to use stable DB facts, dynamic overlay facts, and recent run evidence, but its output is a next action, not a replay of the agent's whole thinking process. This is where ASP topology theory should become implementation: neighborhood expansion, centrality, cut edges, bridge nodes, dependency/test proximity, stale-route suppression, and high-value jumps belong in graph-route ranking.
-
-=reasoning tree= is the causal execution trace of one agent run, session, or subagent branch. It answers:
-#+begin_src text
-How did the agent get here, which actions produced which observations,
-which failures forced recovery, and which evidence supports the current answer?
-#+end_src
-Its units are intent nodes, plan steps, code actions, tool calls, selector actions, observations, errors, state deltas, recovery branches, and final-answer claims. It is dynamic by default and should be stored as bounded run evidence plus overlay JSON, with selected metadata promoted into DB rows.
-
-=EvidenceGraph= is the shared evidence substrate where both meet. Static codebase facts and dynamic reasoning facts become typed nodes and edges. =graph-route= queries and ranks that substrate. =reasoning tree= appends new causal evidence to it.
-
-The intended loop is:
-#+begin_src text
-ReasoningTree -> EvidenceGraph -> GraphRoute -> NextAction -> ReasoningTree
-#+end_src
-
-The boundary is important:
-- =graph-route= should be compact, ranked, and agent-actionable.
-- =reasoning tree= should be replayable, causal, and audit-friendly.
-- =EvidenceGraph= should be selector-first and DB-backed enough for cross-session reuse.
-- topology implementation should primarily serve =graph-route=; =reasoning tree= feeds it dynamic weights such as recent success, failure, recovery, novelty, and repeated-route suppression.
-- Python and Julia are both important to the route/topology algorithm system, but they have different authority. Python is the production algorithm lane for graph fusion, scoring, pruning, and next-action ranking. Julia is strictly offline research: data analysis, graph-algorithm experiments, metric design, topology-jump studies, ranking-failure mining, and algorithm-quality evaluation. Julia should replay large session batches and explain which jumps reduce turns, then feed candidate improvements back to Python. Julia must not be part of runtime route execution or production ranking.
-- Rendered output should progressively disclose reasoning evidence; it should not dump the whole tree unless the agent asks for replay or audit context.
+The mapping is useful, but it is not the architecture owner. ASP's architecture owner is the core theory RFC plus the DB/search architecture RFC.
 * What smolagents gets right
 ** Code action as a better action language
-The docs argue that code actions are better than JSON tool calls for:
+The code-action surface is useful because it supports:
 - composability;
 - object management;
 - generality;
-- fit with model training data.
+- branching and recovery;
+- a representation that matches model training data better than deeply nested JSON.
 
-The implementation supports that:
-- =CodeAgent._step_stream= asks the model for a code block.
-- It parses the code block.
-- It emits a synthetic =python_interpreter= tool call.
-- It executes the code through a Python executor.
-- It records code, observations, output, logs, and final-answer status on =ActionStep=.
-
-This is a useful reference for ASP because ASP already treats parser-owned selectors and query languages as first-class. A future ASP action should be a small program over evidence, not a plain grep instruction.
+ASP should learn from this. An ASP reasoning action should be a small program over approved evidence/search/tool interfaces, not a plain grep instruction and not a raw JSON dump.
 ** Memory as a typed run log
-=AgentMemory= stores:
+=AgentMemory= stores typed steps:
 - =SystemPromptStep=;
 - =TaskStep=;
 - =ActionStep=;
 - =PlanningStep=.
 
-It supports:
-- =get_succinct_steps=;
-- =get_full_steps=;
-- =replay=;
-- =return_full_code=.
-
-This is the model ASP should push further: memory should be typed, replayable, and graph-addressable. It should not live only as prompt text.
-** Planning as explicit step evidence
-=PlanningStep= stores:
-- planning input messages;
-- planning output message;
-- plan text;
-- timing;
-- token usage.
-
-In ASP, =PlanningStep= should become a graph node with edges to:
-- task intent;
-- selected anchors;
-- rejected routes;
-- graph frontier;
-- recommended next commands;
-- subsequent action steps.
+It supports succinct step views, full step dictionaries, replay, and full-code return. ASP should push this further by making the run log graph-addressable and selector-aware.
+** Planning as explicit evidence
+=PlanningStep= stores planning input messages, planning output, plan text, timing, and token usage. ASP should preserve this idea, but link planning evidence to selected anchors, rejected routes, graph frontiers, recommended next commands, and subsequent action steps through the core theory in 10.23.
 ** Tool schema as executable contract
-=Tool= carries:
-- name;
-- description;
-- input schema;
-- output type/schema;
-- code export/import;
-- requirements extraction.
+=Tool= carries name, description, input schema, output type/schema, code export/import, and requirements extraction. =tool_validation.py= uses AST checks to ensure tool source is reconstructable and self-contained.
 
-=tool_validation.py= uses AST checks to ensure tool source is reconstructable and self-contained.
-
-This maps directly to ASP provider and command contracts. A tool or ASP command should emit enough schema and source/provenance to become an evidence node.
+This maps well to ASP provider and command contracts: a tool or ASP command should emit enough schema, provenance, and receipt data to become evidence.
 ** AST-level execution trace
-=evaluate_python_code= parses code with =ast.parse= and =evaluate_ast= dispatches on AST node kinds. =LocalPythonExecutor= maintains state, static tools, custom tools, authorized imports, logs, and timeout behavior.
+=LocalPythonExecutor= parses code with Python AST, maintains state, enforces authorized imports, calls tools, captures logs, and detects final answers.
 
-For ASP, the lesson is not to adopt this executor as-is. The lesson is to normalize code actions into structured AST events:
-- assignments;
-- calls;
-- imports;
-- loops;
-- conditionals;
-- final answer calls;
-- state reads/writes;
-- tool invocations;
-- errors.
+For ASP, the lesson is not to adopt this executor as-is. The lesson is to normalize actions into structured events and then attach stronger native-parser proof where ASP has provider authority.
 * Limits of smolagents for ASP
 =smolagents= is an agent framework. ASP is an evidence/search protocol and codebase intelligence substrate.
 
@@ -152,273 +106,33 @@ Important limits:
 - Python AST is not enough for multi-language codebase reasoning.
 - The local executor is explicitly not a security sandbox.
 - Memory is typed but still mostly list-shaped, not graph-shaped.
-- Code actions are executed, but not automatically linked to repository selectors, dependency facts, tests, Org decisions, or DB generations.
-- Tool/action traces are not a durable cross-session graph read-model.
+- Code actions are executed, but not automatically linked to repository selectors, dependency facts, tests, Org decisions, DB generations, or dirty overlays.
+- Tool/action traces are not a durable cross-session graph read model.
 - Search is not the center of the architecture.
 
 ASP should absorb the run-evidence model, not copy the framework boundary.
-* ASP EvidenceGraph extension
-Add a new EvidenceGraph layer for reasoning/code-action events.
+* ASP mapping notes
+The ASP side of this comparison should be read through the dedicated theory and architecture RFCs:
+- Code actions as graph-transforming evidence: [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23]]
+- DB Engine, Turso, overlay state, and analyzer artifacts: [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21]]
+- Search optimum and Codebase-Memory comparison: [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20]]
 
-Node types:
-- =IntentNode=: original user intent, prompt/session ids, constraints.
-- =PlanNode=: planning text, route candidates, selected strategy, rejected strategies.
-- =ActionNode=: one executable action step.
-- =CodeActionNode=: code text, language, parser fingerprint, AST hash, allowed imports, code block source.
-- =ToolCallNode=: tool/command name, schema, args, call id.
-- =SelectorActionNode=: ASP selector/query/dependency/test action.
-- =ObservationNode=: stdout/logs/return value/screenshot/artifact.
-- =ErrorNode=: parser/execution/tool/test/policy error with recovery hints.
-- =StateDeltaNode=: variable/state changes, overlay changes, DB generation changes.
-- =EvidenceNode=: parser proof, search proof, dependency proof, test proof, Org proof.
-- =RenderNode=: compact prompt surface emitted to the agent.
-- =NextActionNode=: exact recommended command or selector action.
+The concise mapping is:
 
-Edges:
-- =planned= from intent to plan.
-- =materializes= from plan to action.
-- =parsed_as= from code action to native/AST proof.
-- =calls= from code action to tool/selector action.
-- =reads_state= and =writes_state=.
-- =produces= from action to observation.
-- =fails_with= from action to error.
-- =supports= or =refutes= from evidence to plan/action/answer.
-- =derived_from= from evidence to generation/overlay/source hash.
-- =ranked_by= from candidate evidence to Python graph fusion.
-- =rendered_as= from graph frontier to compact render.
-- =recommended_next= from render/action to next exact command.
-
-This turns "code as reasoning" into:
 #+begin_src text
-code as graph-transforming evidence
+smolagents code action
+  -> ASP reasoning action
+smolagents AgentMemory step
+  -> ASP ReasoningTree run evidence
+smolagents observation/error/log
+  -> ASP receipt/evidence node
+smolagents Python AST execution
+  -> ASP action parse + native parser proof
+smolagents tool schema
+  -> ASP provider/command schema contract
 #+end_src
-* Reasoning tree design
-=smolagents= already has a linear step list. ASP should preserve the linear log but derive a reasoning tree/topology from it. The reasoning tree is not the route itself; it is causal evidence that graph-route can consume when ranking the next selector, command, or recovery branch.
-
-Reasoning tree:
-#+begin_src text
-Task
-  PlanStep
-    ActionStep
-      CodeAction
-        ASTCall: asp.search(...)
-        ASTCall: tool(...)
-      Observation
-      Evidence
-    ActionStep
-      CodeAction
-      Error
-      RecoveryPlan
-  FinalAnswer
-#+end_src
-
-Topology graph:
-- shared selectors connect multiple steps;
-- repeated errors connect to recovery strategy;
-- tool outputs connect to later state reads;
-- dependency/test/org nodes connect code actions to codebase evidence;
-- dynamic overlays connect dirty-file actions to stable DB generations.
-
-This is where ASP can exceed =smolagents=. With native parsers, each code action can be lowered into more exact relations:
-- Rust call/dependency/test facts from Cargo and rust parser;
-- Python import/package/test facts;
-- Julia module/method research facts;
-- TypeScript compiler/router/component facts;
-- Org decision and writing evidence;
-- tree-sitter S-expression fallback when native proof is unavailable.
-* Search and writing implications
-For code search:
-#+begin_src text
-intent -> plan node -> code/query action -> parser proof -> graph/topology expansion
--> compact evidence -> exact selector
-#+end_src
-
-For future writing search:
-#+begin_src text
-writing intent -> Org/RFC/ADR anchors -> code/entity evidence -> prior reasoning tree
--> compact outline/evidence packet -> write action
-#+end_src
-
-Reasoning trees become searchable state. An agent can ask:
-- "What evidence did I already collect for this selector?"
-- "Which route failed and why?"
-- "Which action produced this observation?"
-- "Which plan branch was abandoned?"
-- "Which dynamic overlay changed the result?"
-
-This avoids forcing every prompt into a cold search flow.
-* Integration with Turso DB Engine
-The Turso-backed DB Engine v1 should store stable reasoning metadata and bounded dynamic JSON.
-
-New or extended tables:
-- =reasoning_run= with session, prompt, repo, workspace, scope.
-- =reasoning_step= with step id, parent id, kind, ordinal, timing, token usage.
-- =reasoning_code_action= with language, code hash, AST hash, parser id, allowed imports, source text policy.
-- =reasoning_tool_call= with tool id, schema hash, arguments hash, call id.
-- =reasoning_observation= with output hash, artifact id, truncation policy.
-- =reasoning_error= with error class, message hash, recovery hint.
-- =reasoning_state_delta= with variable/state/overlay/generation changes.
-- =reasoning_evidence_edge= linking steps to selectors, entities, dependencies, tests, Org nodes, search receipts, and render receipts.
-
-Do not store all volatile code text by default. Store:
-- hashes;
-- AST summaries;
-- bounded snippets when needed;
-- artifact links;
-- replayable receipts;
-- accepted checkpoint data.
-
-Dynamic overlays can keep richer JSON under the session/subagent overlay directory. Julia can analyze DB + dynamic JSON offline without forcing every dirty fact into Turso or entering the runtime path.
-* Python graph algorithm lane
-Python is the production algorithm lane for graph-route/topology decisions. It should not be treated as a side analyzer after Rust has already chosen the route. Rust should feed compact typed graph inputs into Python; Python should return ranked candidates, suppressions, recovery choices, and scoring receipts that Rust can validate and render.
-
-Python should consume reasoning events as graph input, not only search candidates.
-
-Candidate features:
-- step kind;
-- route class;
-- selector overlap;
-- tool-call success/failure;
-- observation novelty;
-- repeated error pattern;
-- dependency/test proximity;
-- prior receipt confidence;
-- state delta importance;
-- token/latency cost.
-
-Python graph fusion can rank:
-- next selectors;
-- next commands;
-- recovery routes;
-- evidence bundles;
-- stale branches to suppress;
-- high-value topology jumps.
-
-Julia remains outside the runtime path here. Its offline workload is replaying large session batches, measuring which topology jumps shorten intent-to-evidence paths, finding ranking failure cases, and producing algorithm notes that feed Python production ranking.
-
-This complements the current =asp_graph_turbo.rank_frontier= idea: ranking should use not only static code graph nodes, but also reasoning-run topology.
-Julia is the offline research and algorithm-improvement lane for the same topology problem. It should consume DB snapshots plus dynamic JSON overlays for data analysis, graph-algorithm experiments, topology metric design, turn-reduction studies, and failure-case discovery. It should not execute runtime ranking or route decisions. Validated Julia research can become Python production features only after it has clear receipts and measurable route-quality improvement.
-
-* Rust high-performance lane
-Rust should own the production substrate:
-- parse command/action packets;
-- validate schemas;
-- normalize reasoning steps;
-- write DB rows and overlay receipts;
-- run Turso FTS/BM25 and overlay search;
-- call Python graph fusion with compact typed inputs;
-- render schema-backed compact evidence.
-
-The command layer remains thin. Heavy implementation belongs in state/db/search/router/render/provider-bridge crates.
-
-Provider harnesses stay focused:
-- parse native language;
-- emit stable facts;
-- expose exact query/selector APIs;
-- avoid owning global search/routing/render.
-* Why ASP can do better than smolagents
-ASP can keep the good part of =smolagents= while improving the evidence substrate:
-
-- Finer identity: provider selectors instead of only code strings or step ordinals.
-- Native language semantics: Rust/Python/Julia/TypeScript/Org facts rather than Python AST only.
-- Durable topology: Turso-backed graph/read-model, not just in-memory step list.
-- Dynamic overlay model: dirty code/session/subagent state without polluting stable generations.
-- Graph algorithms: Python production graph fusion over reasoning tree + code graph.
-- Research loop: Julia replay and experiments over DB + dynamic JSON.
-- Agent render: compact, progressive evidence rather than full JSON logs.
-
-The ASP version of "code as reasoning" is:
-#+begin_src text
-native-parsed executable reasoning -> evidence graph -> topology-ranked next action
-#+end_src
-* Deep requirement: code as reasoning for code search
-The hard requirement is not "let the model write arbitrary code." The requirement is that the agent's reasoning becomes an executable, typed, replayable program over the evidence substrate.
-
-For ASP, a code-as-reasoning action must satisfy these constraints:
-- The action is a small program over approved ASP/search/tool interfaces, not raw shell exploration.
-- Every action has a typed packet: intent, route hypothesis, tool/selector calls, inputs, outputs, errors, timing, token cost, and parent reasoning step.
-- Every produced codebase claim links back to native parser identity: selector, owner, symbol, dependency, test, Org anchor, artifact id, source hash, or overlay generation.
-- The action can use dynamic overlays for dirty code, but only bounded metadata is promoted into DB Engine rows.
-- The reasoning tree records why the action happened and what it observed; graph-route consumes the useful route signals without becoming a full replay log.
-- The render is compact and progressive. It should expose enough evidence for the next action, then reveal more only when the agent asks for replay, audit, or broader context.
-
-This is the missing bridge between =smolagents= and =codebase-memory-mcp=. =smolagents= shows that executable actions can carry reasoning evidence. =codebase-memory-mcp= shows that durable code search needs a graph, BM25/semantic retrieval, structural nodes, snippets, and path tracing. ASP should combine them as:
-#+begin_src text
-code action -> native parser proof -> reasoning tree event
--> EvidenceGraph update -> topology-ranked graph-route -> compact next action
-#+end_src
-
-=codebase-memory-mcp= is currently stronger as a productized graph-search reference. Its playbook is clear: =search_graph= to find candidates, =trace_path= or =query_graph= to expand relationships, and =get_code_snippet= / =search_code= to retrieve code evidence. ASP should not copy the MCP surface. ASP should make the same playbook more precise by replacing snippet/line-driven identity with native selectors and by letting reasoning actions update future route ranking.
-* Rust large-repo thought simulation
-Use a large Rust workspace as the pressure test because it exposes the weaknesses of text-first search: many crates, feature gates, trait impls, generated code, tests, examples, binary targets, and fast dirty edits.
-
-Example intent:
-#+begin_src text
-Find why a CLI subcommand resolves the wrong runtime config, identify the owner,
-and produce the smallest evidence packet for the next edit.
-#+end_src
-
-With a =codebase-memory-mcp=-style flow, the agent usually does:
-1. =search_graph= with terms such as "runtime config subcommand".
-2. Expand connected nodes through graph/query/trace tools.
-3. Ask for snippets for likely functions or files.
-4. Search code text again if the graph candidates do not expose the exact Rust owner.
-5. Manually reconcile snippets, paths, and line ranges with Cargo/test context.
-
-This is already much better than grep, but it still leaves important work to the model: which snippet is authoritative, which Cargo feature path matters, which trait impl or test owns the behavior, whether a dirty overlay invalidates the index, and which next command should be run.
-
-The ASP code-as-reasoning flow should be:
-1. Build an executable reasoning action from the intent:
-   =route = asp.rust.graph_route(intent, require=["owner", "selector", "dependency", "test", "runtime receipt"], avoid=["line-number identity", "raw file dump"])=
-2. Rust graph-route uses topology facts from the Rust provider: crate/package target, module owner, symbol selector, use/import edges, trait/impl facts where available, dependency edges, test reachability, and prior receipts.
-3. Dynamic overlay search handles dirty files without inserting every transient edit into Turso.
-4. Python graph fusion ranks candidate owners/selectors using topology features: dependency/test proximity, bridge nodes, centrality, repeated failure suppression, prior successful route patterns, and evidence novelty.
-5. The reasoning tree records the route hypothesis, commands, observations, errors, and recovery branch. It does not become the canonical topology.
-6. The agent receives a compact next-action packet:
-   =nextCommand= names the exact owner/selector query, =evidence= summarizes dependency/test proximity and overlay status, and =why= states the topology bridge from CLI subcommand to config loader to failing test.
-
-The expected advantage over =codebase-memory-mcp= is not one single algorithm. It is the combination:
-- Native Rust identity instead of snippet/line identity.
-- Cargo/dependency/test topology as first-class route evidence.
-- Dirty-code overlay ranking without polluting the stable DB graph.
-- Reasoning-tree feedback into graph-route scoring.
-- Python production ranking plus Julia replay experiments over the same DB + overlay evidence.
-- Compact render that gives the agent the next selector/command instead of a broad JSON or snippet dump.
-
-The success criterion for a Rust large-repo experiment should be stricter than "found relevant snippets." It should measure:
-- intent-to-authoritative-selector turn count;
-- whether the first packet names the correct owner and next command;
-- whether dirty edits change route ranking without stale DB writes;
-- whether repeated failed branches are suppressed;
-- whether test/dependency proximity improves the route;
-- whether offline Julia analysis can explain why Python ranking improved or regressed.
-* Proposed experiment
-Build a small ASP reasoning-trace importer for smolagents runs:
-1. Run a small =CodeAgent= example with full result/steps enabled.
-2. Export =AgentMemory.get_full_steps()=.
-3. Convert =TaskStep=, =PlanningStep=, =ActionStep=, and =FinalAnswerStep= into an ASP =reasoning-run.v1= JSON packet.
-4. Parse each =code_action= with Python AST and record calls/imports/assignments/final_answer.
-5. Link tool calls to tool schema and source hash.
-6. Store the packet as dynamic JSON and selected rows in DB Engine tables.
-7. Feed the derived graph to Python graph fusion.
-8. Render a compact evidence/reasoning tree for the agent.
-
-Success metrics:
-- fewer repeated searches after prior reasoning exists;
-- lower token cost than replaying full memory;
-- improved recovery after tool errors;
-- better next-action prediction from prior branches;
-- useful offline Julia analysis without re-running the agent.
-* Relationship to prior ASP RFCs
-This report extends:
-- [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 DB Engine, state, and search architecture]]
+* References
+- [[https://github.com/huggingface/smolagents][huggingface/smolagents]]
+- [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]]
+- [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]]
 - [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]]
-- [[file:10.18-turso-native-client-db-engine.org][10.18 Turso native client DB Engine]]
-
-=codebase-memory-mcp= teaches durable code search graph productization.
-=smolagents= teaches executable reasoning traces.
-ASP should combine both:
-#+begin_src text
-codebase graph + executable reasoning tree + native parser facts
--> EvidenceGraph
-#+end_src

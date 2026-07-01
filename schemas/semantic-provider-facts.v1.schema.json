@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-provider-facts.v1.schema.json",
+  "title": "Semantic Provider Facts",
+  "description": "Provider-owned semantic facts emitted by language harnesses for ASP search graph enrichment. Candidate annotations are provider facts, not ASP path heuristics.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-provider-facts"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      },
+      "default": []
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      },
+      "default": []
+    },
+    "candidateAnnotations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidateAnnotation"
+      },
+      "default": []
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "kind", "role", "value", "action"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+        "role": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+        "value": { "type": "string", "minLength": 1 },
+        "action": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["source", "target", "relation"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "relation": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+        "weight": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "candidateAnnotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "attributes"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "attributes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "generated",
+              "vendor",
+              "build-output",
+              "schema-generated",
+              "test-fixture",
+              "third-party"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "source": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

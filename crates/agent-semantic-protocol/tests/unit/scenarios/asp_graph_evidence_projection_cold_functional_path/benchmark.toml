@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_graph_evidence_projection_cold_functional_path_stays_inside_scenario_gate"
+target_total = "500us"
+max_total = "10ms"
+observed_total = "500us"
+regression_budget = "1ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 0
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+snapshot = "asp_graph_evidence_projection_cold_functional_path_stays_inside_scenario_gate"
+fallback_reason = "none"
+route_source = "graph-evidence-projection"
+target_rationale = "Cold functional graph evidence projection gate validates the search-owned owner/topology frontier predicate. The target remains sub-millisecond; the low-millisecond hard ceiling absorbs parallel libtest scheduling jitter."
+
+[observed_timings]
+graph_evidence_projection = "500us"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

@@ -2,7 +2,7 @@ harness = "libtest"
 test = "asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_scenario_gate"
 target_total = "250ms"
 max_total = "500ms"
-observed_total = "0ms"
+observed_total = "1ms"
 regression_budget = "100ms"
 memory_budget_bytes = 67108864
 observed_memory_bytes = 0
@@ -13,4 +13,4 @@ fallback_reason = "none"
 target_rationale = "Cold owner-items search is the first functional gate for Gerbil Scheme. The gate prioritizes provider-owned evidence, route correctness, no fallback, and no source synthesis; hot cache scenarios own the tighter measured optimization budget."
 
 [observed_timings]
-owner_items_cold_functional_path = "0ms"
+owner_items_cold_functional_path = "0us"

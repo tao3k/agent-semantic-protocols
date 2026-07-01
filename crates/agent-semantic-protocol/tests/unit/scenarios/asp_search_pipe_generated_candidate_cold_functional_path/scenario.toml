@@ -1,0 +1,13 @@
+id = "asp-search-pipe-generated-candidate-cold-functional-path"
+title = "Graph candidate sparsity keeps generated-path candidates without ASP path filtering"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-PIPE-GENERATED-CANDIDATE-COLD-001"]
+agent_goal = "Validate that the search-owned graph candidate sparsity kernel keeps a parser-owned candidate under src/generated and does not apply ASP-owned generated/vendor path filtering."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::select_sparse_graph_candidate_indices",
+  "src/generated/lib.rs",
+  "providerProcessCount=0",
+  "path-generated-filter",
+]
+inputs = "Two graph candidate sparsity inputs: one under src/generated/lib.rs and one normal domain candidate."
+expected = "The search-owned sparsity kernel returns both candidates in order, proving generated-path candidates are not filtered by ASP core. Public CLI retention is covered by the matching search pipe facade test."

@@ -1,9 +1,15 @@
+#[cfg(feature = "turso-backend")]
+use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_core::{
     CacheArtifactId, CacheGenerationId, CacheStatus, ClientCacheGeneration, ClientCacheManifest,
     ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot,
     SemanticSchemaId, project_client_cache_manifest_path,
 };
 use agent_semantic_client_db::ClientDb;
+#[cfg(feature = "turso-backend")]
+use agent_semantic_client_db::ClientDbEngine;
+#[cfg(feature = "turso-backend")]
+use agent_semantic_runtime::runtime_block_on_current_thread;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -12,6 +18,8 @@ use crate::cache_cli::writeback::{
     maybe_write_search_output_artifact, search_output_file_hashes,
     write_search_packet_cache_after_provider_success,
 };
+#[cfg(feature = "turso-backend")]
+use crate::test_support::EnvVarGuard;
 use crate::test_support::v2_cache_root;
 
 #[test]
@@ -103,6 +111,8 @@ fn search_packet_writeback_replays_rendered_stdout_artifact() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("search-packet-writeback");
+    #[cfg(feature = "turso-backend")]
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join("state-home"));
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     let source = b"pub fn cached_prime() {}\n";
@@ -153,6 +163,33 @@ rank=O frontier=O.owner\n";
 
     assert_eq!(replay.stdout, rendered_stdout.as_bytes());
     assert_eq!(probe.sqlite_write_count, 2);
+    #[cfg(feature = "turso-backend")]
+    {
+        let state = ResolvedState::resolve(&root).expect("resolve state for Turso receipt");
+        let engine = ClientDbEngine::from_resolved_state(&state);
+        assert!(engine.db_path().ends_with("client.turso"));
+        assert!(
+            engine.db_path().exists(),
+            "route receipt writeback must materialize the active Turso backend path"
+        );
+        let receipts = runtime_block_on_current_thread(engine.list_route_receipts(None, 8))
+            .expect("run DB Engine route receipt lookup")
+            .expect("list route receipts through DB Engine facade");
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].query, "prime");
+        assert_eq!(receipts[0].route_source, "graph-route");
+        assert_eq!(
+            receipts[0].next_command.as_deref(),
+            Some("asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds")
+        );
+        assert!(
+            receipts[0]
+                .evidence_ids
+                .iter()
+                .any(|evidence_id| evidence_id == "owners:path:src/lib.rs"),
+            "receipts={receipts:?}"
+        );
+    }
     let _ = std::fs::remove_dir_all(root);
 }
 

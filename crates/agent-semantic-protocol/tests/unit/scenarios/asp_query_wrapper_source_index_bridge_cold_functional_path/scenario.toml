@@ -1,0 +1,13 @@
+id = "asp-query-wrapper-source-index-bridge-cold-functional-path"
+title = "Query wrapper source-index bridge is search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-WRAPPER-SOURCE-INDEX-BRIDGE-COLD-001"]
+agent_goal = "Validate that query-wrapper source-index DTO construction and candidate projection are owned by agent-semantic-search, not command code."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::QueryWrapperSourceIndexLookup::new",
+  "agent_semantic_search::QueryWrapperSourceIndexCandidate::new",
+  "agent_semantic_search::collect_query_wrapper_source_index_candidates",
+  "command-dto-construction",
+]
+inputs = "A source-index hit record for a Rust owner file and a query-wrapper rg surface."
+expected = "The search crate constructs the lookup DTO, projects a source-index candidate, avoids provider/native finder execution, and does not expose executable line-range identity."

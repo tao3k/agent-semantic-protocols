@@ -5,17 +5,16 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use agent_semantic_client_core::{
     CacheExportMethod, CacheGenerationId, ClientCacheFileHash, ClientCacheManifest, LanguageId,
     ProviderId, SemanticSchemaId, SemanticSchemaVersion,
-    state_core::{ResolvedState, SQLITE_V1_BACKEND, STATE_LAYOUT_VERSION, TURSO_BACKEND},
 };
 use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
     CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH,
-    CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDb, ClientDbBackend, ClientDbEngine,
-    ClientDbGenerationLookup, ClientDbSourceIndexCandidateLookup,
-    ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
-    ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDb, ClientDbGenerationLookup,
+    ClientDbSourceIndexCandidateLookup, ClientDbSourceIndexImportAssemblyRequest,
+    ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
+    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
+    ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest,
     ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource,
     ClientDbSourceIndexSourceKind, ClientDbStatus, ClientDbStructuralDependencyUsage,
     ClientDbStructuralIndexImport, ClientDbStructuralKind, ClientDbStructuralLocator,
@@ -55,70 +54,6 @@ fn inspect_reports_missing_without_creating_db() {
     assert_eq!(report.syntax_row_capture_count, 0);
     assert!(!db_path.exists());
     assert!(report.runtime_pragmas.is_none());
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[cfg(feature = "turso-backend")]
-#[tokio::test(flavor = "current_thread")]
-async fn turso_backend_bootstrap_smoke_creates_local_file_without_cutover() {
-    let root = temp_root("turso-bootstrap-smoke");
-    let sqlite_path = root.join("client.sqlite3");
-
-    let report = agent_semantic_client_db::bootstrap_turso_client_db(&sqlite_path)
-        .await
-        .expect("bootstrap Turso client DB");
-
-    assert_eq!(report.backend, TURSO_BACKEND);
-    assert_eq!(report.status, "bootstrap-smoke");
-    assert_eq!(report.db_file_name, "client.turso");
-    assert_eq!(report.schema_version, 1);
-    assert_eq!(report.schema_bootstrap, "ready");
-    assert_eq!(report.reason, None);
-    assert_eq!(report.db_path, root.join("client.turso"));
-    assert!(report.db_path.exists());
-    assert!(
-        !sqlite_path.exists(),
-        "Turso smoke must not create SQLite file"
-    );
-    agent_semantic_client_db::upsert_turso_search_document(
-        &sqlite_path,
-        &agent_semantic_client_db::TursoClientDbSearchDocument {
-            namespace: "stable".to_string(),
-            document_id: "doc:fixture".to_string(),
-            entity_id: "selector:rust://src/lib.rs#item/struct/TursoFixture".to_string(),
-            selector: Some("rust://src/lib.rs#item/struct/TursoFixture".to_string()),
-            document: "TursoFixture implements a searchable DB engine smoke document".to_string(),
-        },
-    )
-    .await
-    .expect("upsert Turso search document row");
-    agent_semantic_client_db::upsert_turso_overlay_document(
-        &sqlite_path,
-        &agent_semantic_client_db::TursoClientDbOverlayDocument {
-            repo_id: "repo-fixture".to_string(),
-            workspace_id: "workspace-fixture".to_string(),
-            session_id: "session-fixture".to_string(),
-            base_generation: "generation-fixture".to_string(),
-            document_id: "overlay:fixture".to_string(),
-            selector: Some("rust://src/lib.rs#item/struct/TursoFixture".to_string()),
-            document: "dirty overlay document for dynamic search smoke".to_string(),
-        },
-    )
-    .await
-    .expect("upsert Turso overlay document row");
-    let hits = agent_semantic_client_db::search_turso_documents(&sqlite_path, "TursoFixture", 8)
-        .await
-        .expect("search Turso documents");
-    assert!(
-        hits.iter()
-            .any(|hit| hit.source == "stable" && hit.document_id == "doc:fixture"),
-        "hits={hits:?}"
-    );
-    assert!(
-        hits.iter()
-            .any(|hit| hit.source == "overlay" && hit.document_id == "overlay:fixture"),
-        "hits={hits:?}"
-    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -633,178 +568,6 @@ fn source_index_import_fixture(
         }],
     })
     .expect("source index import fixture")
-}
-
-#[test]
-fn db_engine_uses_state_core_client_dir_without_project_cache() {
-    let root = temp_root("engine-state-core");
-    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
-    let state_home = root.join("home").join(".agent-semantic-protocols");
-    let state =
-        ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolve state core");
-    state.ensure_minimal_layout().expect("create state layout");
-    let engine = ClientDbEngine::from_resolved_state(&state);
-
-    assert_eq!(engine.backend(), ClientDbBackend::SqliteV1);
-    assert_eq!(engine.backend().as_str(), SQLITE_V1_BACKEND);
-    assert_eq!(engine.future_backend(), TURSO_BACKEND);
-    assert_eq!(engine.layout_version(), STATE_LAYOUT_VERSION);
-    assert_eq!(engine.client_dir(), state.paths.client_dir.as_path());
-    assert_eq!(engine.db_path(), state.paths.client_db_path.as_path());
-    assert_eq!(
-        engine.manifest_path(),
-        state.paths.client_manifest_json.as_path()
-    );
-    assert_eq!(engine.artifact_path(), state.paths.artifacts_dir.as_path());
-    assert_eq!(engine.repo_id(), state.repo.repo_id.as_str());
-    assert_eq!(engine.workspace_id(), state.workspace.workspace_id.as_str());
-    assert_eq!(engine.scope_id(), state.scope_id.to_string());
-    assert!(engine.db_path().starts_with(&state_home));
-    assert!(!root.join(".cache").join("agent-semantic-protocol").exists());
-
-    let missing = engine.inspect_backend();
-    assert_eq!(missing.status, ClientDbStatus::Missing);
-    assert!(!engine.db_path().exists());
-    let engine_report = engine.inspect();
-    assert_eq!(engine_report.backend, SQLITE_V1_BACKEND);
-    assert_eq!(engine_report.future_backend, TURSO_BACKEND);
-    assert_eq!(engine_report.layout_version, STATE_LAYOUT_VERSION);
-    assert_eq!(engine_report.db_file_name, "client.sqlite3");
-    assert_eq!(engine_report.schema_version, 1);
-    assert_eq!(engine_report.durability, "sqlite-file");
-    assert!(!engine_report.features.async_io);
-    assert!(!engine_report.features.concurrent_writes);
-    assert!(!engine_report.features.fts);
-    assert!(!engine_report.features.vector);
-    assert!(!engine_report.features.overlay_search);
-    assert!(!engine_report.features.sync);
-    assert!(!engine_report.features.encryption);
-    assert_eq!(engine_report.future_backend_report.backend, TURSO_BACKEND);
-    assert_eq!(engine_report.future_backend_report.status, "planned");
-    assert_eq!(
-        engine_report.future_backend_report.db_file_name,
-        "client.turso"
-    );
-    assert_eq!(engine_report.future_backend_report.schema_version, 1);
-    assert_eq!(
-        engine_report.future_backend_report.schema_bootstrap,
-        "pending-cutover"
-    );
-    assert_eq!(
-        engine_report.future_backend_report.durability,
-        "turso-local-file"
-    );
-    assert!(engine_report.future_backend_report.features.async_io);
-    assert!(
-        engine_report
-            .future_backend_report
-            .features
-            .concurrent_writes
-    );
-    assert!(engine_report.future_backend_report.features.fts);
-    assert!(engine_report.future_backend_report.features.overlay_search);
-    assert!(engine_report.future_backend_report.features.sync);
-    assert_eq!(
-        engine_report.future_backend_report.db_path,
-        engine.db_path().with_file_name("client.turso")
-    );
-    assert_eq!(
-        ClientDbEngine::turso_path_for_client_dir(engine.client_dir()),
-        engine_report.future_backend_report.db_path
-    );
-    assert_eq!(
-        ClientDbEngine::inspect_turso_client_dir(engine.client_dir()),
-        engine_report.future_backend_report
-    );
-    assert_eq!(engine_report.db_path, state.paths.client_db_path);
-    assert_eq!(
-        engine_report.manifest_path,
-        state.paths.client_manifest_json
-    );
-    assert_eq!(engine_report.artifact_path, state.paths.artifacts_dir);
-    assert_eq!(engine_report.sqlite_report.status, ClientDbStatus::Missing);
-    let engine_report_json =
-        serde_json::to_value(&engine_report).expect("serialize db engine report");
-    assert_eq!(engine_report_json["backend"], SQLITE_V1_BACKEND);
-    assert_eq!(engine_report_json["futureBackend"], TURSO_BACKEND);
-    assert_eq!(engine_report_json["layoutVersion"], STATE_LAYOUT_VERSION);
-    assert_eq!(engine_report_json["dbFileName"], "client.sqlite3");
-    assert_eq!(engine_report_json["schemaVersion"], 1);
-    assert_eq!(engine_report_json["durability"], "sqlite-file");
-    assert_eq!(engine_report_json["features"]["asyncIo"], false);
-    assert_eq!(engine_report_json["features"]["concurrentWrites"], false);
-    assert_eq!(engine_report_json["features"]["fts"], false);
-    assert_eq!(engine_report_json["features"]["vector"], false);
-    assert_eq!(engine_report_json["features"]["overlaySearch"], false);
-    assert_eq!(engine_report_json["features"]["sync"], false);
-    assert_eq!(engine_report_json["features"]["encryption"], false);
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["backend"],
-        TURSO_BACKEND
-    );
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["status"],
-        "planned"
-    );
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["schemaBootstrap"],
-        "pending-cutover"
-    );
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["schemaVersion"],
-        1
-    );
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["durability"],
-        "turso-local-file"
-    );
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["features"]["asyncIo"],
-        true
-    );
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["features"]["concurrentWrites"],
-        true
-    );
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["features"]["fts"],
-        true
-    );
-    assert_eq!(
-        engine_report_json["futureBackendReport"]["features"]["overlaySearch"],
-        true
-    );
-    assert_eq!(engine_report_json["repoId"], state.repo.repo_id.as_str());
-    assert_eq!(
-        engine_report_json["workspaceId"],
-        state.workspace.workspace_id.as_str()
-    );
-    assert_eq!(engine_report_json["scopeId"], state.scope_id.to_string());
-    assert_eq!(
-        engine_report_json["sqliteReport"]["status"],
-        ClientDbStatus::Missing.as_str()
-    );
-    assert_eq!(
-        engine_report_json["sqliteReport"]["runtimePragmas"],
-        serde_json::Value::Null
-    );
-    let schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../schemas/semantic-db-engine-report.v1.schema.json"
-    ))
-    .expect("parse db engine report schema");
-    assert_eq!(
-        schema["$id"],
-        "https://agent-semantic-protocols.local/schemas/semantic-db-engine-report.v1.schema.json"
-    );
-    assert_eq!(
-        schema["properties"]["futureBackend"]["const"],
-        TURSO_BACKEND
-    );
-
-    let db = engine.open_or_create().expect("open db engine backend");
-    assert_eq!(db.path(), engine.db_path());
-    assert!(engine.db_path().is_file());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]

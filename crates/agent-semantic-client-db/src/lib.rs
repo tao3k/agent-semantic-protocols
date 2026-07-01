@@ -24,10 +24,14 @@ pub use engine::{
 };
 #[cfg(feature = "turso-backend")]
 pub use engine::{
-    TURSO_BOOTSTRAP_TABLE, TURSO_ENTITY_TABLE, TURSO_OVERLAY_DOCUMENT_TABLE,
-    TURSO_SEARCH_DOCUMENT_TABLE, TursoClientDbOverlayDocument, TursoClientDbSearchDocument,
-    TursoClientDbSearchHit, bootstrap_turso_client_db, search_turso_documents,
-    upsert_turso_overlay_document, upsert_turso_search_document,
+    ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
+    TURSO_BOOTSTRAP_TABLE, TURSO_EDGE_TABLE, TURSO_ENTITY_TABLE, TURSO_OVERLAY_DOCUMENT_TABLE,
+    TURSO_ROUTE_RECEIPT_TABLE, TURSO_SEARCH_DOCUMENT_TABLE,
+    TursoClientDbEvidenceGraphPersistReport, TursoClientDbGraphEdge, TursoClientDbGraphEntity,
+    TursoClientDbOverlayDocument, TursoClientDbRouteReceipt, TursoClientDbSearchDocument,
+    TursoClientDbSearchHit, list_turso_graph_edges, list_turso_graph_entities,
+    list_turso_route_receipts, persist_turso_evidence_graph, upsert_turso_graph_edge,
+    upsert_turso_graph_entity, upsert_turso_route_receipt,
 };
 pub use evidence_graph::{
     CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_ID, CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_VERSION,
@@ -52,7 +56,6 @@ pub use source_index::{
     ClientDbSourceIndexStats, assemble_source_index_import, build_source_index_import,
     client_db_source_index_file_count, client_db_source_index_generation_id,
     client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
-    lookup_source_index_from_client_dir, lookup_source_index_from_project,
     source_index_file_hashes, source_index_import_with_file_hashes, source_index_relative_path,
     source_index_scope_dirs,
 };

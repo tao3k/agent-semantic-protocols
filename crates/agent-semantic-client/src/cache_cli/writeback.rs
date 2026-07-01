@@ -44,6 +44,7 @@ use super::writeback_request::{
     request_search_packet_provider_export_method, request_search_packet_writeback_method,
     request_syntax_query_writeback_method,
 };
+use super::writeback_route_receipt::maybe_write_turso_route_receipt_for_search_packet;
 #[cfg(test)]
 use crate::cache_replay::ProviderCacheReplay;
 use crate::cache_replay::{MAX_CACHE_REPLAY_ARTIFACT_BYTES, replay_artifact_path};
@@ -416,6 +417,7 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
         db.upsert_artifact_events(&artifact_events).ok()?;
         2
     };
+    maybe_write_turso_route_receipt_for_search_packet(project_root, packet_bytes, rendered_stdout);
     probe.sqlite_write_count = sqlite_write_count;
     Some(probe)
 }

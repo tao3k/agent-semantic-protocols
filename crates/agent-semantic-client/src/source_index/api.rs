@@ -13,6 +13,8 @@ use agent_semantic_client_db::{
     client_db_source_index_generation_id, source_index_file_hashes,
     source_index_import_with_file_hashes,
 };
+#[cfg(feature = "turso-backend")]
+use agent_semantic_runtime::runtime_block_on_current_thread;
 use agent_semantic_runtime::{collect_runtime_source_index_files, runtime_source_index_context};
 
 use super::collect::collect_source_index_files;
@@ -100,6 +102,8 @@ struct SourceIndexRefreshContext {
     db_path: std::path::PathBuf,
     client_cache_dir: std::path::PathBuf,
     db: ClientDb,
+    #[cfg(feature = "turso-backend")]
+    db_engine: ClientDbEngine,
     schema_id: SemanticSchemaId,
     schema_version: SemanticSchemaVersion,
 }
@@ -116,6 +120,8 @@ impl SourceIndexRefreshContext {
             db_path,
             client_cache_dir,
             db,
+            #[cfg(feature = "turso-backend")]
+            db_engine,
             schema_id: SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID),
             schema_version: SemanticSchemaVersion::from(SOURCE_INDEX_SCHEMA_VERSION),
         })
@@ -144,45 +150,104 @@ impl SourceIndexRefreshContext {
             &request.registry.fingerprint,
             request.registry.scope_dirs.iter().map(String::as_str),
         )?;
-        if let Some(stats) = self.db.reusable_source_index_generation(
+        let reusable_stats = self.db.reusable_source_index_generation(
             request.index_root,
             &self.schema_id,
             &self.schema_version,
             &file_hashes,
-        )? {
-            return Ok(source_index_refresh_report(
-                &self.db_path,
-                stats,
-                request.files.len(),
-                true,
+        )?;
+
+        #[cfg(feature = "turso-backend")]
+        {
+            let generation_id = reusable_stats
+                .as_ref()
+                .map(|stats| stats.generation_id.clone())
+                .unwrap_or_else(client_db_source_index_generation_id);
+            let import = source_index_import_with_file_hashes(
+                ClientDbSourceIndexImportAssemblyRequest {
+                    generation_id,
+                    project_root: request.index_root.to_path_buf(),
+                    schema_id: self.schema_id.clone(),
+                    schema_version: self.schema_version.clone(),
+                    selector_source: SOURCE_INDEX_PROVIDER_ID.into(),
+                    file_text_bytes_limit: SOURCE_INDEX_FILE_BYTES_LIMIT,
+                    previous_file_hashes: None,
+                    registry_fingerprint: request.registry.fingerprint.clone(),
+                    extra_scope_dirs: request.registry.scope_dirs.iter().cloned().collect(),
+                    files: request.files.to_vec(),
+                },
+                file_hashes,
+            )?;
+            if let Some(stats) = reusable_stats {
+                self.persist_turso_source_index_read_model(&import)?;
+                return Ok(source_index_refresh_report(
+                    &self.db_path,
+                    stats,
+                    request.files.len(),
+                    true,
+                ));
+            }
+            let turso_import = import.clone();
+            let report =
+                self.db
+                    .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
+                        import,
+                        file_count: client_db_source_index_file_count(request.files.len()),
+                    })?;
+            self.persist_turso_source_index_read_model(&turso_import)?;
+            return Ok(SourceIndexRefreshReport::from_report(
+                self.db_path.clone(),
+                report,
             ));
         }
-        let generation_id = client_db_source_index_generation_id();
-        let import = source_index_import_with_file_hashes(
-            ClientDbSourceIndexImportAssemblyRequest {
-                generation_id,
-                project_root: request.index_root.to_path_buf(),
-                schema_id: self.schema_id.clone(),
-                schema_version: self.schema_version.clone(),
-                selector_source: SOURCE_INDEX_PROVIDER_ID.into(),
-                file_text_bytes_limit: SOURCE_INDEX_FILE_BYTES_LIMIT,
-                previous_file_hashes: None,
-                registry_fingerprint: request.registry.fingerprint.clone(),
-                extra_scope_dirs: request.registry.scope_dirs.iter().cloned().collect(),
-                files: request.files.to_vec(),
-            },
-            file_hashes,
-        )?;
-        let report = self
-            .db
-            .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
-                import,
-                file_count: client_db_source_index_file_count(request.files.len()),
-            })?;
-        Ok(SourceIndexRefreshReport::from_report(
-            self.db_path.clone(),
-            report,
-        ))
+
+        #[cfg(not(feature = "turso-backend"))]
+        {
+            if let Some(stats) = reusable_stats {
+                return Ok(source_index_refresh_report(
+                    &self.db_path,
+                    stats,
+                    request.files.len(),
+                    true,
+                ));
+            }
+            let generation_id = client_db_source_index_generation_id();
+            let import = source_index_import_with_file_hashes(
+                ClientDbSourceIndexImportAssemblyRequest {
+                    generation_id,
+                    project_root: request.index_root.to_path_buf(),
+                    schema_id: self.schema_id.clone(),
+                    schema_version: self.schema_version.clone(),
+                    selector_source: SOURCE_INDEX_PROVIDER_ID.into(),
+                    file_text_bytes_limit: SOURCE_INDEX_FILE_BYTES_LIMIT,
+                    previous_file_hashes: None,
+                    registry_fingerprint: request.registry.fingerprint.clone(),
+                    extra_scope_dirs: request.registry.scope_dirs.iter().cloned().collect(),
+                    files: request.files.to_vec(),
+                },
+                file_hashes,
+            )?;
+            let report =
+                self.db
+                    .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
+                        import,
+                        file_count: client_db_source_index_file_count(request.files.len()),
+                    })?;
+            Ok(SourceIndexRefreshReport::from_report(
+                self.db_path.clone(),
+                report,
+            ))
+        }
+    }
+
+    #[cfg(feature = "turso-backend")]
+    fn persist_turso_source_index_read_model(
+        &self,
+        import: &agent_semantic_client_db::ClientDbSourceIndexImport,
+    ) -> Result<(), String> {
+        runtime_block_on_current_thread(self.db_engine.persist_source_index_read_model(import))
+            .map_err(|error| format!("source-index Turso read-model bridge failed: {error}"))?
+            .map(|_| ())
     }
 }
 

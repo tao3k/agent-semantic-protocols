@@ -1,0 +1,13 @@
+id = "asp-query-wrapper-source-index-trace-projection-cold-functional-path"
+title = "Query wrapper source-index trace projection is search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-WRAPPER-SOURCE-INDEX-TRACE-PROJECTION-COLD-001"]
+agent_goal = "Validate that query-wrapper source-index trace status, timing fields, DB path fields, and refresh hints are projected by agent-semantic-search instead of command-local status mapping."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::query_wrapper_source_index_trace_projection",
+  "agent_semantic_search::QueryWrapperSourceIndexTraceProjection",
+  "asp cache source-index refresh",
+  "command-local-source-index-status",
+]
+inputs = "A source-index hit trace and a missing-db trace for query-wrapper source-index routing."
+expected = "The search crate projects used/missing-db statuses, timing fields, DB path fields, and the source-index refresh hint without provider or native finder execution."

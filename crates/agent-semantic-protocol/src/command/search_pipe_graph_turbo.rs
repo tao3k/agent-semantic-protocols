@@ -1,10 +1,6 @@
 //! Graph-turbo request packets for ASP-owned fast search candidates.
 
-use std::{
-    collections::{HashMap, HashSet},
-    env,
-    path::Path,
-};
+use std::{collections::HashSet, env, path::Path};
 
 use serde_json::{Value, json};
 
@@ -16,23 +12,17 @@ use super::{
     search_pipe_dependency_seed_cache::collect_cached_dependency_facts,
     search_pipe_graph_nodes::{
         append_candidate_nodes, append_hot_nodes, append_project_topology_nodes,
-        append_submodule_owner_edges, candidate_node_id, hot_node_id, project_submodule_paths,
-        stable_node_id,
+        append_submodule_owner_edges, candidate_node_id, hot_node_id, stable_node_id,
     },
     search_pipe_graph_turbo_owner_rank::ranked_candidate_paths_with_topology,
     search_pipe_graph_turbo_seed::{has_package_path_candidate, query_owner_seed_paths},
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
     search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsContext},
-    search_pipe_quality::{
-        analyze_search_pipe_quality, compact_fact_value, is_generated_path, query_allows_generated,
-    },
+    search_pipe_quality::analyze_search_pipe_quality,
     search_pipe_quality_model::SearchPipeQuality,
     search_pipe_query_evidence::{is_high_value_term, strong_match},
     search_pipe_query_pack::{query_clauses, unique_query_terms},
-    search_pipe_seed_decision::{
-        SearchActionSelection, SearchEvidenceState, SeedPhaseDecision,
-        recommended_action_for_seed_risk,
-    },
+    search_pipe_seed_decision::SeedPhaseDecision,
     search_pipe_surfaces::{
         include_deps, include_items, include_owner_context, include_tests, include_topology,
         normalized_search_surfaces,
@@ -137,7 +127,8 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         &query_terms,
         topology_membership_enabled.then_some(dependency_root),
     );
-    let topology_submodule_count = project_submodule_paths(dependency_root).len();
+    let topology_submodule_count =
+        agent_semantic_search::graph_project_submodule_paths(dependency_root).len();
     let dependency_seed = if include_deps(&surfaces) {
         collect_cached_dependency_facts(
             language_id,
@@ -226,18 +217,20 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         fallback_owner_seed_count = fallback_owner_seed_ids.len();
         seed_ids.extend(fallback_owner_seed_ids);
     }
-    let seed_plan = graph_turbo_seed_plan(GraphTurboSeedPlanInput {
-        query_present,
-        query_seed_present,
-        candidate_count: graph_candidates.len(),
-        candidate_owner_count: owners.len(),
-        query_owner_seed_count,
-        fallback_owner_seed_count,
-        seed_ids: &seed_ids,
-        seed_decision: &seed_decision,
-    });
+    let seed_plan = agent_semantic_search::graph_turbo_seed_plan(
+        agent_semantic_search::GraphTurboSeedPlanInput {
+            query_present,
+            query_seed_present,
+            candidate_count: graph_candidates.len(),
+            candidate_owner_count: owners.len(),
+            query_owner_seed_count,
+            fallback_owner_seed_count,
+            seed_ids: &seed_ids,
+            seed_decision: &seed_decision,
+        },
+    );
     if include_owner_context {
-        append_owner_nodes(&mut nodes, &owners);
+        nodes.extend(agent_semantic_search::owner_path_graph_nodes(&owners));
     }
     if include_topology {
         append_project_topology_nodes(
@@ -431,146 +424,23 @@ fn query_adjustment_policy_from_env() -> Option<Value> {
     }
 }
 
-struct GraphTurboSeedPlanInput<'a> {
-    query_present: bool,
-    query_seed_present: bool,
-    candidate_count: usize,
-    candidate_owner_count: usize,
-    query_owner_seed_count: usize,
-    fallback_owner_seed_count: usize,
-    seed_ids: &'a [String],
-    seed_decision: &'a SeedPhaseDecision,
-}
-
-fn graph_turbo_seed_plan(input: GraphTurboSeedPlanInput<'_>) -> Value {
-    let reason = if input.query_seed_present {
-        "query"
-    } else if input.fallback_owner_seed_count > 0 {
-        "fallback-owner"
-    } else {
-        "empty"
-    };
-    let mut risk_factors = Vec::new();
-    if input.seed_ids.is_empty() {
-        risk_factors.push("empty-seed-frontier");
-    }
-    if input.fallback_owner_seed_count > 0 {
-        risk_factors.push("fallback-owner");
-    }
-    if input.query_present && !input.query_seed_present {
-        risk_factors.push("query-seed-missing");
-    }
-    risk_factors.extend(input.seed_decision.risk_factors.iter().copied());
-    let seed_quality = if input.seed_ids.is_empty() {
-        "fail"
-    } else if risk_factors.is_empty() {
-        "good"
-    } else {
-        "review"
-    };
-    let recommended_actions = if risk_factors.is_empty() {
-        vec!["keep-query-seed"]
-    } else {
-        risk_factors
-            .iter()
-            .filter_map(|risk| recommended_action_for_seed_risk(risk))
-            .collect::<Vec<_>>()
-    };
-    let selection = SearchActionSelection::for_first_action(SearchEvidenceState::Unknown, "seed");
-    let evidence_states = SearchEvidenceState::all()
+fn sparse_graph_candidates(candidates: &[Candidate], _query: Option<&str>) -> Vec<Candidate> {
+    let sparsity_inputs = candidates
         .iter()
-        .map(|state| state.as_str())
+        .map(|candidate| {
+            agent_semantic_search::GraphCandidateSparsityInput::new(
+                candidate.path.clone(),
+                candidate.symbol.clone(),
+            )
+        })
         .collect::<Vec<_>>();
-    json!({
-        "phase": "seed-query",
-        "algorithm": "asp-search-pipe-v1",
-        "reason": reason,
-        "seedQuality": seed_quality,
-        "queryPresent": input.query_present,
-        "querySeedPresent": input.query_seed_present,
-        "candidateCount": input.candidate_count,
-        "candidateOwnerCount": input.candidate_owner_count,
-        "queryOwnerSeedCount": input.query_owner_seed_count,
-        "fallbackOwnerSeedCount": input.fallback_owner_seed_count,
-        "selectedSeedCount": input.seed_ids.len(),
-        "seedIds": input.seed_ids,
-        "riskFactors": risk_factors,
-        "recommendedActions": recommended_actions,
-        "selectionPolicy": {
-            "flow": "evidence-state-reasoning-tree",
-            "evidenceState": selection.evidence_state.as_str(),
-            "knownEvidenceStates": evidence_states,
-            "firstActionStage": selection.first_action_stage,
-            "allowedFirstStages": selection.allowed_first_stages,
-            "disallowedFirstStages": selection.disallowed_first_stages,
-            "firstActionMatchesEvidenceState": selection.first_action_matches_evidence_state,
-            "reasoningTreeRouteShown": selection.reasoning_tree_route_shown,
-            "chosenRoutePreconditionsMet": selection.chosen_route_preconditions_met,
-            "unnecessarySeedCount": selection.unnecessary_seed_count,
-            "seedWhenKnownOwnerCount": selection.seed_when_known_owner_count,
-            "seedWhenKnownSymbolCount": selection.seed_when_known_symbol_count,
-            "seedWhenKnownSelectorCount": selection.seed_when_known_selector_count,
-        },
-    })
-}
-
-fn sparse_graph_candidates(candidates: &[Candidate], query: Option<&str>) -> Vec<Candidate> {
-    let allow_generated = query_allows_generated(query);
-    let filtered = candidates
-        .iter()
-        .filter(|candidate| allow_generated || !is_generated_path(&candidate.path))
-        .cloned()
-        .collect::<Vec<_>>();
-    let candidates = if filtered.is_empty() {
-        candidates.to_vec()
-    } else {
-        filtered
-    };
-    let mut selected = Vec::new();
-    let mut selected_indices = HashSet::new();
-    let mut symbol_counts: HashMap<String, usize> = HashMap::new();
-    let mut per_symbol_limit = 1usize;
-    while selected.len() < GRAPH_TURBO_CANDIDATE_NODE_LIMIT
-        && selected_indices.len() < candidates.len()
-    {
-        let mut added = false;
-        for (index, candidate) in candidates.iter().enumerate() {
-            if selected.len() >= GRAPH_TURBO_CANDIDATE_NODE_LIMIT {
-                break;
-            }
-            if selected_indices.contains(&index) {
-                continue;
-            }
-            let symbol_count = symbol_counts
-                .get(candidate.symbol.as_str())
-                .copied()
-                .unwrap_or(0);
-            if symbol_count >= per_symbol_limit {
-                continue;
-            }
-            selected_indices.insert(index);
-            symbol_counts.insert(candidate.symbol.clone(), symbol_count + 1);
-            selected.push(candidate.clone());
-            added = true;
-        }
-        if !added {
-            per_symbol_limit += 1;
-        }
-    }
-    selected
-}
-
-fn append_owner_nodes(nodes: &mut Vec<Value>, owners: &[String]) {
-    for owner in owners {
-        nodes.push(json!({
-            "id": stable_node_id("owner", owner),
-            "kind": "owner",
-            "role": "path",
-            "value": owner,
-            "action": "owner",
-            "path": owner
-        }));
-    }
+    agent_semantic_search::select_sparse_graph_candidate_indices(
+        &sparsity_inputs,
+        GRAPH_TURBO_CANDIDATE_NODE_LIMIT,
+    )
+    .into_iter()
+    .filter_map(|index| candidates.get(index).cloned())
+    .collect()
 }
 
 fn graph_turbo_source_trace(source_trace: &[SearchPipeSourceTrace]) -> Value {
@@ -595,23 +465,12 @@ fn graph_turbo_source_trace(source_trace: &[SearchPipeSourceTrace]) -> Value {
 }
 
 fn append_provider_fact_nodes(nodes: &mut Vec<Value>, provider_facts: &ProviderGraphFacts) {
-    nodes.extend(
-        provider_facts
-            .nodes
-            .iter()
-            .cloned()
-            .map(compact_provider_fact_node),
-    );
-}
-
-fn compact_provider_fact_node(mut node: Value) -> Value {
-    if let Some(value) = node.get("value").and_then(Value::as_str) {
-        node["value"] = json!(compact_fact_value(value));
-    }
-    if let Some(value) = node.get("matchText").and_then(Value::as_str) {
-        node["matchText"] = json!(compact_fact_value(value));
-    }
-    node
+    nodes.extend(agent_semantic_search::compact_provider_fact_nodes(
+        &provider_facts.nodes,
+    ));
+    nodes.extend(agent_semantic_search::provider_candidate_annotation_nodes(
+        &provider_facts.candidate_annotations,
+    ));
 }
 
 fn append_dependency_nodes(nodes: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {

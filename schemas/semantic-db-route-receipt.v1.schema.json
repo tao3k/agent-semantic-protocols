@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-db-route-receipt.v1.schema.json",
+  "title": "Semantic DB Route Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receiptId",
+    "repoId",
+    "workspaceId",
+    "scopeId",
+    "query",
+    "routeSource",
+    "hitCount",
+    "evidenceIds",
+    "createdAtMs"
+  ],
+  "properties": {
+    "receiptId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repoId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scopeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "routeSource": {
+      "type": "string",
+      "enum": [
+        "context-anchor",
+        "overlay-fts",
+        "stable-fts",
+        "lexical-control",
+        "source-index",
+        "graph-route",
+        "semantic-vector",
+        "manual"
+      ]
+    },
+    "selectedSelector": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "nextCommand": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "hitCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "evidenceIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "createdAtMs": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

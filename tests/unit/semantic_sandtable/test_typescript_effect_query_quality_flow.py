@@ -126,7 +126,7 @@ class TypeScriptEffectQueryQualityFlowTests(unittest.TestCase):
             stdout_contains,
         )
         self.assertIn(
-            "omit=source,full-candidate-list,raw-finder-output,generated-files,long-field-signatures",
+            "omit=source,full-candidate-list,raw-finder-output,long-field-signatures",
             stdout_contains,
         )
         self.assertIn(

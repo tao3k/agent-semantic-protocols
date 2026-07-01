@@ -2,11 +2,15 @@ use crate::{cache_cli::run_cache, lookup_source_index_for_language};
 use agent_semantic_client_core::{
     ASP_PROVIDER_ACTIVATION_PATH_ENV, ClientCacheManifest, LanguageId,
 };
+#[cfg(feature = "turso-backend")]
+use agent_semantic_client_db::ClientDbEngine;
 use agent_semantic_client_db::{ClientDb, ClientDbSourceIndexLookup, ClientDbSourceIndexQueryKey};
 use agent_semantic_hook::{
     HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, builtin_provider_manifests, provider_manifest_digest,
 };
+#[cfg(feature = "turso-backend")]
+use agent_semantic_runtime::runtime_block_on_current_thread;
 use serde_json::json;
 use std::{
     ffi::{OsStr, OsString},
@@ -87,6 +91,25 @@ fn cache_source_index_refresh_builds_rust_sql_rows() {
     assert_eq!(owners.len(), 1);
     assert_eq!(owners[0].owner_path.as_str(), "src/usage.ss");
     assert_eq!(owners[0].line_count, Some(3));
+    #[cfg(feature = "turso-backend")]
+    {
+        let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
+        assert!(
+            engine.db_path().exists(),
+            "source-index refresh must project stable rows into active Turso read model"
+        );
+        let hits =
+            runtime_block_on_current_thread(engine.search_source_index_documents("gerbil-poo", 8))
+                .expect("run Turso source-index search")
+                .expect("search Turso source-index documents through DB Engine facade");
+        assert!(
+            hits.iter().any(|hit| {
+                hit.source == "stable"
+                    && hit.selector.as_deref() == Some("gerbil-scheme://src/usage.ss#file")
+            }),
+            "hits={hits:?}"
+        );
+    }
     let _ = std::fs::remove_dir_all(root);
 }
 

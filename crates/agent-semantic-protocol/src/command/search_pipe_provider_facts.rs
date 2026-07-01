@@ -23,6 +23,7 @@ const PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES: usize = 256 * 1024;
 pub(super) struct ProviderGraphFacts {
     pub(super) nodes: Vec<Value>,
     pub(super) edges: Vec<Value>,
+    pub(super) candidate_annotations: Vec<Value>,
     pub(super) input_candidates: usize,
     pub(super) fact_candidates: usize,
     pub(super) truncated_candidates: usize,
@@ -129,40 +130,15 @@ fn provider_fact_candidates(candidates: &[Candidate]) -> Vec<Candidate> {
 }
 
 fn provider_graph_facts_from_stdout(stdout: &[u8]) -> Result<ProviderGraphFacts, String> {
-    let Some(value) = provider_graph_facts_json(stdout) else {
+    let Some(envelope) = agent_semantic_search::provider_facts_envelope_from_stdout(stdout) else {
         return Ok(ProviderGraphFacts::default());
     };
-    Ok(provider_graph_facts_from_value(value))
-}
-
-fn provider_graph_facts_json(stdout: &[u8]) -> Option<Value> {
-    if let Ok(value) = serde_json::from_slice::<Value>(stdout) {
-        return Some(value);
-    }
-    let start = stdout.iter().position(|byte| *byte == b'{')?;
-    let end = stdout.iter().rposition(|byte| *byte == b'}')?;
-    if end <= start {
-        return None;
-    }
-    serde_json::from_slice::<Value>(&stdout[start..=end]).ok()
-}
-
-fn provider_graph_facts_from_value(value: Value) -> ProviderGraphFacts {
-    let nodes = value
-        .get("nodes")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let edges = value
-        .get("edges")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    ProviderGraphFacts {
-        nodes,
-        edges,
+    Ok(ProviderGraphFacts {
+        nodes: envelope.nodes,
+        edges: envelope.edges,
+        candidate_annotations: envelope.candidate_annotations,
         ..ProviderGraphFacts::default()
-    }
+    })
 }
 
 fn candidate_stdin(project_root: &Path, candidates: &[Candidate]) -> Vec<u8> {

@@ -11,8 +11,7 @@ use super::search_pipe_query_evidence::{
 };
 use super::search_pipe_query_model::{QueryTerm, TermRole};
 use super::search_pipe_query_pack::{
-    clause_coverages, is_path_like_token, next_query_pack_hint, query_clauses, role_terms,
-    unique_query_terms,
+    clause_coverages, next_query_pack_hint, query_clauses, role_terms, unique_query_terms,
 };
 
 pub(super) fn analyze_search_pipe_quality(
@@ -22,11 +21,13 @@ pub(super) fn analyze_search_pipe_quality(
 ) -> SearchPipeQuality {
     let clauses = query_clauses(language_id, query);
     let terms = unique_query_terms(&clauses);
+    let search_terms = search_terms_from_protocol(&terms);
     let global_matched = matched_terms(&terms, candidates);
     let global_missing = missing_terms(&terms, &global_matched);
     let path_matched = high_value_matches(&terms, candidates, path_exact_match);
     let path_missing = high_value_missing(&terms, &path_matched);
-    let missing_path_terms = missing_path_terms(&terms, &global_matched);
+    let missing_path_terms =
+        agent_semantic_search::search_pipe_missing_path_terms(&search_terms, &global_matched);
     let declaration_matched = high_value_matches(&terms, candidates, |candidate, term| {
         declaration_header_match(language_id, candidate, term)
     });
@@ -43,21 +44,32 @@ pub(super) fn analyze_search_pipe_quality(
     let best_owner = best_owner_coverage(&terms, candidates);
     let packages = candidate_packages(candidates);
     let package_cohesion = package_cohesion(&packages, &best_owner, &terms);
-    let risks = risks(
-        &terms,
-        candidates,
+    let risks = agent_semantic_search::search_pipe_quality_risks(
+        &search_terms,
+        candidates.iter().map(|candidate| candidate.text.clone()),
         &global_missing,
         &strong_matched,
         &weak_terms,
         &package_cohesion,
         clauses.len(),
     );
-    let query_pack_quality = query_pack_quality(&terms, &global_missing, &weak_terms, &risks);
+    let query_pack_quality = agent_semantic_search::search_pipe_query_pack_quality(
+        &search_terms,
+        &global_missing,
+        &weak_terms,
+        &risks,
+    );
     let allow_query_selector =
         query_pack_quality != "low" && package_cohesion != "low" && weak_terms.is_empty();
-    let fd_query = fd_query_terms(&terms, &weak_terms, &strong_matched, &risks);
+    let fd_query = agent_semantic_search::search_pipe_fd_query_terms(
+        &search_terms,
+        &weak_terms,
+        &strong_matched,
+        &risks,
+    );
     let context_terms = role_terms(&terms, TermRole::Context);
-    let owner_seed_terms = owner_seed_terms(&terms, &missing_path_terms);
+    let owner_seed_terms =
+        agent_semantic_search::search_pipe_owner_seed_terms(&search_terms, &missing_path_terms);
     let concept_terms = role_terms(&terms, TermRole::Concept);
     let page_index_handles = handle_paths(candidates, |candidate| {
         candidate.source == "finder-path"
@@ -97,49 +109,6 @@ pub(super) fn analyze_search_pipe_quality(
         next_query_pack_hint,
         clause_coverages: clause_coverages(&clauses, candidates),
     }
-}
-
-pub(super) fn is_generated_path(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower.contains("/generated/")
-        || lower.contains("/vendor/")
-        || lower.contains("/vendors/")
-        || lower.contains("/dist/")
-        || lower.contains("/build/")
-        || lower.contains("/node_modules/")
-        || lower.ends_with("/generated.ts")
-        || lower.ends_with("/generated.tsx")
-        || lower.ends_with("/generated.js")
-        || lower.ends_with("/generated.jsx")
-        || lower.ends_with("generated.ts")
-        || lower.ends_with("generated.tsx")
-        || lower.ends_with("generated.js")
-        || lower.ends_with("generated.jsx")
-}
-
-pub(super) fn query_allows_generated(query: Option<&str>) -> bool {
-    let Some(query) = query else {
-        return false;
-    };
-    query
-        .split(|character: char| !(character == '_' || character.is_ascii_alphanumeric()))
-        .map(str::to_ascii_lowercase)
-        .any(|term| matches!(term.as_str(), "generated" | "api" | "schema" | "client"))
-}
-
-pub(super) fn compact_fact_value(value: &str) -> String {
-    let mut first = value.lines().next().unwrap_or(value).trim().to_string();
-    if let Some((prefix, _)) = first.split_once(':')
-        && !prefix.trim().is_empty()
-        && prefix.len() <= 80
-    {
-        first = prefix.trim().to_string();
-    }
-    if first.len() > 96 {
-        first.truncate(96);
-        first.push_str("...");
-    }
-    first
 }
 
 impl SearchPipeQuality {
@@ -355,27 +324,9 @@ fn config_like_owner(owner: &str) -> bool {
 }
 
 fn candidate_packages(candidates: &[Candidate]) -> Vec<String> {
-    let mut packages = BTreeSet::new();
-    candidates
-        .iter()
-        .filter_map(|candidate| packages.insert(package_key(&candidate.path)).then_some(()))
-        .take(6)
-        .for_each(drop);
-    packages.into_iter().collect()
-}
-
-fn package_key(path: &str) -> String {
-    let parts = path.split('/').collect::<Vec<_>>();
-    if let Some(index) = parts.iter().position(|part| *part == "packages") {
-        let end = (index + 3).min(parts.len());
-        return parts[index..end].join("/");
-    }
-    parts
-        .into_iter()
-        .filter(|part| !part.is_empty() && *part != ".")
-        .take(2)
-        .collect::<Vec<_>>()
-        .join("/")
+    agent_semantic_search::search_pipe_candidate_packages(
+        candidates.iter().map(|candidate| candidate.path.clone()),
+    )
 }
 
 fn package_cohesion(
@@ -386,200 +337,13 @@ fn package_cohesion(
     let high_value_terms = terms
         .iter()
         .filter(|term| is_high_value_term(term))
+        .map(|term| agent_semantic_search::SearchPipeCohesionTerm::new(&term.raw, &term.lower))
         .collect::<Vec<_>>();
-    let high_value_count = high_value_terms.len().max(1);
-    let best_owner_high_value_hits = best_owner
-        .as_ref()
-        .map(|owner| {
-            high_value_terms
-                .iter()
-                .filter(|term| owner.matched.iter().any(|matched| matched == &term.lower))
-                .count()
-        })
-        .unwrap_or_default();
-    let package_axis_terms = high_value_terms
-        .iter()
-        .filter(|term| is_package_axis_term(&term.raw))
-        .collect::<Vec<_>>();
-    let best_owner_package_axis_hits = best_owner
-        .as_ref()
-        .map(|owner| {
-            package_axis_terms
-                .iter()
-                .filter(|term| owner.matched.iter().any(|matched| matched == &term.lower))
-                .count()
-        })
-        .unwrap_or_default();
-    let has_strong_owner_anchor =
-        high_value_terms.len() >= 2 && best_owner_high_value_hits >= high_value_terms.len();
-    if (package_axis_terms.len() > 1 && best_owner_package_axis_hits < package_axis_terms.len())
-        || (packages.len() > 3 && !has_strong_owner_anchor)
-        || best_owner_high_value_hits * 2 < high_value_count
-    {
-        "low".to_string()
-    } else if packages.len() > 1 {
-        "medium".to_string()
-    } else {
-        "high".to_string()
-    }
-}
-
-fn is_package_axis_term(raw: &str) -> bool {
-    raw.matches('-').count() >= 2 && !matches!(raw, "long-field-signatures")
-}
-
-fn risks(
-    terms: &[QueryTerm],
-    candidates: &[Candidate],
-    global_missing: &[String],
-    strong_matched: &[String],
-    weak_terms: &[String],
-    package_cohesion: &str,
-    clause_count: usize,
-) -> Vec<String> {
-    let mut risks = Vec::new();
-    if clause_count == 1
-        && terms.len() >= 5
-        && terms.iter().filter(|term| is_high_value_term(term)).count() >= 3
-    {
-        risks.push("single-broad-clause".to_string());
-    }
-    if global_missing.is_empty() && !weak_terms.is_empty() {
-        risks.push("coverage-inflation".to_string());
-    }
-    if package_cohesion == "low" {
-        risks.push("package-drift".to_string());
-    }
-    if candidates
-        .iter()
-        .any(|candidate| is_generated_path(&candidate.path))
-    {
-        risks.push("generated-match".to_string());
-    }
-    if terms.iter().any(is_high_value_term) && !weak_terms.is_empty() {
-        risks.push("weak-camelcase-match".to_string());
-    }
-    if candidates
-        .iter()
-        .any(|candidate| candidate.text.len() > 160 || candidate.text.contains('\n'))
-    {
-        risks.push("long-field-signatures".to_string());
-    }
-    if strong_matched.is_empty() && terms.iter().filter(|term| is_high_value_term(term)).count() > 1
-    {
-        risks.push("no-strong-symbol-coverage".to_string());
-    }
-    risks
-}
-
-fn query_pack_quality(
-    terms: &[QueryTerm],
-    global_missing: &[String],
-    weak_terms: &[String],
-    risks: &[String],
-) -> String {
-    if risks.iter().any(|risk| {
-        matches!(
-            risk.as_str(),
-            "single-broad-clause" | "package-drift" | "no-strong-symbol-coverage"
-        )
-    }) {
-        "low"
-    } else if weak_terms.is_empty() && global_missing.is_empty() {
-        "high"
-    } else if terms.is_empty() {
-        "low"
-    } else {
-        "medium"
-    }
-    .to_string()
-}
-
-fn fd_query_terms(
-    terms: &[QueryTerm],
-    weak_terms: &[String],
-    strong_matched: &[String],
-    risks: &[String],
-) -> Option<String> {
-    let symbol_terms = terms
-        .iter()
-        .filter(|term| matches!(term.role, TermRole::Symbol))
-        .filter(|term| {
-            weak_terms.is_empty()
-                || weak_terms.iter().any(|weak| weak == &term.raw)
-                || strong_matched.iter().any(|matched| matched == &term.raw)
-        })
-        .map(|term| term.raw.clone())
-        .collect::<Vec<_>>();
-    if !symbol_terms.is_empty() {
-        return Some(symbol_terms.join("|"));
-    }
-    if !risks
-        .iter()
-        .any(|risk| matches!(risk.as_str(), "single-broad-clause" | "package-drift"))
-    {
-        return None;
-    }
-    let owner_axis_terms = terms
-        .iter()
-        .filter(|term| !matches!(term.role, TermRole::Symbol))
-        .filter(|term| fd_owner_axis_term(&term.raw))
-        .map(|term| term.raw.clone())
-        .take(8)
-        .collect::<Vec<_>>();
-    (!owner_axis_terms.is_empty()).then(|| owner_axis_terms.join("|"))
-}
-
-fn missing_path_terms(terms: &[QueryTerm], global_matched: &[String]) -> Vec<String> {
-    terms
-        .iter()
-        .filter(|term| is_path_like_token(&term.raw))
-        .filter(|term| !global_matched.iter().any(|matched| matched == &term.raw))
-        .map(|term| term.raw.clone())
-        .collect()
-}
-
-fn owner_seed_terms(terms: &[QueryTerm], missing_path_terms: &[String]) -> Vec<String> {
-    role_terms(terms, TermRole::Symbol)
-        .into_iter()
-        .filter(|term| !is_path_like_token(term))
-        .filter(|term| !missing_path_terms.iter().any(|missing| missing == term))
-        .collect()
-}
-
-fn fd_owner_axis_term(term: &str) -> bool {
-    let lower = term.to_ascii_lowercase();
-    if lower.len() < 4 {
-        return false;
-    }
-    if matches!(
-        lower.as_str(),
-        "query"
-            | "search"
-            | "pipe"
-            | "fd"
-            | "rg"
-            | "owner"
-            | "owners"
-            | "graph"
-            | "turbo"
-            | "command"
-            | "commands"
-            | "frontier"
-            | "frontiers"
-            | "action"
-            | "actions"
-            | "result"
-            | "results"
-            | "quality"
-            | "wide"
-            | "drift"
-            | "handoff"
-    ) {
-        return false;
-    }
-    term.chars()
-        .all(|ch| ch == '.' || ch == '_' || ch == '-' || ch.is_ascii_alphanumeric())
+    agent_semantic_search::search_pipe_package_cohesion(
+        packages,
+        best_owner.as_ref().map(|owner| owner.matched.as_slice()),
+        &high_value_terms,
+    )
 }
 
 fn owner_coverage_line(best_owner: &Option<OwnerCoverage>) -> String {
@@ -592,6 +356,27 @@ fn owner_coverage_line(best_owner: &Option<OwnerCoverage>) -> String {
         )
     } else {
         "ownerCoverage=bestOwner=- matched=- missing=-".to_string()
+    }
+}
+
+fn search_terms_from_protocol(
+    terms: &[QueryTerm],
+) -> Vec<agent_semantic_search::SearchPipeQueryTerm> {
+    terms
+        .iter()
+        .map(|term| agent_semantic_search::SearchPipeQueryTerm {
+            raw: term.raw.clone(),
+            lower: term.lower.clone(),
+            role: search_role_from_protocol(term.role),
+        })
+        .collect()
+}
+
+fn search_role_from_protocol(role: TermRole) -> agent_semantic_search::SearchPipeTermRole {
+    match role {
+        TermRole::Context => agent_semantic_search::SearchPipeTermRole::Context,
+        TermRole::Concept => agent_semantic_search::SearchPipeTermRole::Concept,
+        TermRole::Symbol => agent_semantic_search::SearchPipeTermRole::Symbol,
     }
 }
 

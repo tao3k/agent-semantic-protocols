@@ -15,6 +15,7 @@ mod writeback_manifest;
 mod writeback_packet;
 mod writeback_provider_export;
 mod writeback_request;
+mod writeback_route_receipt;
 
 #[cfg(test)]
 #[path = "../../tests/unit/cache_cli/locator_artifact.rs"]

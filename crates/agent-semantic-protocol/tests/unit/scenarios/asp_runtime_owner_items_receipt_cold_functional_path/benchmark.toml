@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_scenario_gate"
+snapshot = "asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_scenario_gate"
+target_total = "1ms"
+max_total = "50ms"
+observed_total = "1ms"
+regression_budget = "5ms"
+memory_budget_bytes = 4194304
+observed_memory_bytes = 1048576
+route_source = "owner-items-runtime"
+max_provider_process_count = 1
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "Cold functional owner-items runtime receipt gate validates runtime-owned provider output policy and receipt metrics. It measures only runtime outcome resolution and receipt construction, not command startup or provider process execution."
+
+[observed_timings]
+runtime_receipt = "1ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

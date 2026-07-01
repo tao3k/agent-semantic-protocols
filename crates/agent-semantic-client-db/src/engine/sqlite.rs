@@ -4,8 +4,9 @@ use agent_semantic_client_core::state_core::CLIENT_DB_FILE;
 
 use crate::db::{AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION, ClientDb, ClientDbReport};
 
-use super::facade::ClientDbEngineBackend;
-use super::{ClientDbBackend, ClientDbEngineDurability, ClientDbEngineFeatures};
+use super::contract::{
+    ClientDbBackend, ClientDbEngineBackend, ClientDbEngineDurability, ClientDbEngineFeatures,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct SqliteClientDbEngineBackend;

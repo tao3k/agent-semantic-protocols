@@ -1,0 +1,17 @@
+id = "asp-search-candidate-contract-cold-functional-path"
+title = "ASP search crate projects and merges source-index and overlay hits through one candidate contract"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-CANDIDATE-CONTRACT-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-DYNAMIC-OVERLAY-001",
+]
+agent_goal = "Keep Turso FTS, dynamic overlay, source-index, and future graph-route search on one search-owned candidate contract with field hits, rank features, proof source, selector/entity identity, and router-ready merge order instead of command/client-specific shapes."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::SearchCandidate",
+  "agent_semantic_search::source_index_candidate_to_search_candidate",
+  "agent_semantic_search::lexical_overlay_hit_to_search_candidate",
+  "agent_semantic_search::merge_search_candidates",
+  "executableLineRangeSelectorCount=0",
+]
+inputs = "inputs"
+expected = "expected"

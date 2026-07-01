@@ -66,7 +66,7 @@
     },
     "dbPath": {
       "type": "string",
-      "pattern": "/live/client/client\\.sqlite3$"
+      "pattern": "/live/client/client\\.(sqlite3|turso)$"
     },
     "artifactPath": {
       "type": "string",
@@ -81,7 +81,7 @@
       "pattern": "/live/client/cache-manifest\\.json$"
     },
     "backend": {
-      "const": "sqlite-v1"
+      "enum": ["sqlite-v1", "turso"]
     },
     "futureBackend": {
       "const": "turso"

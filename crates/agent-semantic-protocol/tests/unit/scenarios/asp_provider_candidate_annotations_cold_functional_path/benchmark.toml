@@ -1,0 +1,18 @@
+harness = "libtest"
+test = "asp_provider_candidate_annotations_cold_functional_path_stays_inside_scenario_gate"
+snapshot = "asp_provider_candidate_annotations_cold_functional_path_stays_inside_scenario_gate"
+target_total = "500us"
+max_total = "2ms"
+observed_total = "500us"
+regression_budget = "2ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "provider-candidate-annotations"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "Cold functional provider candidate annotation gate validates search-owned stdout extraction, projection, and compaction of provider facts only. It does not count provider process execution, command startup, or native finder execution."
+
+[observed_timings]
+provider_candidate_annotations = "500us"
+provider_process_count = "0us"

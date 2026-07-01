@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_query_wrapper_render_hint_projection_cold_functional_path_stays_inside_scenario_gate"
+snapshot = "asp_query_wrapper_render_hint_projection_cold_functional_path_stays_inside_scenario_gate"
+target_total = "3ms"
+max_total = "6ms"
+observed_total = "3ms"
+regression_budget = "6ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "query-wrapper-render-hint-projection"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "Cold functional query-wrapper render hint projection gate validates search-owned path projection only. It does not count command startup, provider process execution, or native finder execution."
+
+[observed_timings]
+render_hint_projection = "3ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

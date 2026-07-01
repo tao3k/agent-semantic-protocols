@@ -29,6 +29,119 @@ fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate() {
     super::support::asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate();
 }
 
+#[test]
+fn asp_search_candidate_contract_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_search_candidate_contract_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_query_wrapper_source_index_bridge_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_query_wrapper_source_index_bridge_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_query_wrapper_render_hint_projection_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_query_wrapper_render_hint_projection_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_query_wrapper_source_index_trace_projection_cold_functional_path_stays_inside_scenario_gate()
+{
+    super::support::asp_query_wrapper_source_index_trace_projection_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_query_wrapper_clause_normalization_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_query_wrapper_clause_normalization_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_search_pipe_generated_candidate_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_search_pipe_generated_candidate_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_provider_candidate_annotations_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_provider_candidate_annotations_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_graph_node_projection_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_graph_node_projection_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_graph_candidate_projection_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_graph_candidate_projection_cold_functional_path_stays_inside_scenario_gate(
+    );
+}
+
+#[test]
+fn asp_graph_topology_projection_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_graph_topology_projection_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_graph_owner_rank_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_graph_owner_rank_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_graph_query_owner_seed_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_graph_query_owner_seed_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_graph_seed_decision_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_graph_seed_decision_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_graph_evidence_projection_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_graph_evidence_projection_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_search_pipe_package_cohesion_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_search_pipe_package_cohesion_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_search_pipe_query_pack_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_search_pipe_query_pack_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_search_pipe_quality_decision_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_search_pipe_quality_decision_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_search_pipe_evidence_classifier_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_scenario_gate(
+    );
+}
+
+#[test]
+fn asp_runtime_timeout_policy_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_runtime_timeout_policy_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn scenario_benchmark_duration_contract_rejects_zero_budget() {
+    super::support::scenario_benchmark_duration_contract_rejects_zero_budget();
+}
+
 #[cfg(feature = "turso-overlay")]
 #[test]
 fn asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate() {

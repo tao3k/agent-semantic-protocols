@@ -1,6 +1,6 @@
 //! Candidate collection and finder previews for query wrappers.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client::{SourceIndexLookupResult, lookup_source_index_for_language};
@@ -8,7 +8,10 @@ use agent_semantic_search::{
     QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
     QueryWrapperSearchSurface, QueryWrapperSourceIndexCandidate, QueryWrapperSourceIndexLookup,
     collect_query_wrapper_candidate_collection as collect_search_query_wrapper_candidate_collection,
-    query_wrapper_axis_terms, query_wrapper_terms,
+    query_wrapper_clauses as search_query_wrapper_clauses, query_wrapper_owner_candidates,
+    query_wrapper_package_clusters_from_paths, query_wrapper_rg_scope_next,
+    query_wrapper_source_index_trace_projection,
+    query_wrapper_unique_clause_terms as search_query_wrapper_unique_clause_terms,
 };
 use serde_json::Value;
 
@@ -70,6 +73,7 @@ pub(super) fn collect_query_candidate_collection(
         .iter()
         .map(|clause| QueryWrapperSearchClause {
             id: clause.id,
+            raw: clause.raw.clone(),
             terms: clause.terms.clone(),
             axis_terms: clause.axis_terms.clone(),
         })
@@ -109,41 +113,15 @@ pub(super) fn collect_query_candidate_collection(
 fn query_wrapper_source_index_trace(
     trace: QueryWrapperSearchSourceIndexTrace,
 ) -> SearchPipeSourceTrace {
-    let status = query_wrapper_source_index_status(&trace.lookup.state);
-    let mut fields = BTreeMap::new();
-    fields.insert(
-        "collectMs".to_string(),
-        Value::from(trace.elapsed.as_millis().min(u128::from(u64::MAX)) as u64),
-    );
-    fields.insert("state".to_string(), Value::from(trace.lookup.state.clone()));
-    fields.insert(
-        "dbPath".to_string(),
-        Value::from(trace.lookup.db_path.display().to_string()),
-    );
-    if status != "used" {
-        fields.insert(
-            "nextCommand".to_string(),
-            Value::from("asp cache source-index refresh"),
-        );
-    }
+    let projection = query_wrapper_source_index_trace_projection(&trace);
     SearchPipeSourceTrace::new(
-        "sourceIndex",
-        status,
-        trace.candidate_count,
-        usize::from(trace.candidate_count == 0),
-        trace.candidate_count,
+        projection.source,
+        projection.status,
+        projection.candidate_count,
+        projection.skipped_count,
+        projection.input_count,
     )
-    .with_fields(fields)
-}
-
-fn query_wrapper_source_index_status(state: &str) -> &'static str {
-    match state {
-        "hit" => "used",
-        "missing-db" => "missing-db",
-        "empty-index" => "empty-index",
-        "miss" => "miss",
-        _ => "unknown",
-    }
+    .with_fields(projection.fields)
 }
 
 fn query_wrapper_source_index_lookup(
@@ -166,26 +144,28 @@ fn query_wrapper_source_index_lookup(
 fn query_wrapper_source_index_lookup_from_client(
     result: SourceIndexLookupResult,
 ) -> QueryWrapperSourceIndexLookup {
-    QueryWrapperSourceIndexLookup {
-        db_path: result.db_path,
-        state: result.state.as_str().to_string(),
-        candidates: result
+    QueryWrapperSourceIndexLookup::new(
+        result.db_path,
+        result.state.as_str(),
+        result
             .candidates
             .into_iter()
-            .map(|candidate| QueryWrapperSourceIndexCandidate {
-                path: candidate.path,
-                language_id: candidate
-                    .language_id
-                    .map(|value| value.as_str().to_string()),
-                provider_id: candidate
-                    .provider_id
-                    .map(|value| value.as_str().to_string()),
-                source_kind: candidate.source_kind.as_str().to_string(),
-                line_count: candidate.line_count,
-                query_keys: candidate.query_keys,
+            .map(|candidate| {
+                QueryWrapperSourceIndexCandidate::new(
+                    candidate.path,
+                    candidate
+                        .language_id
+                        .map(|value| value.as_str().to_string()),
+                    candidate
+                        .provider_id
+                        .map(|value| value.as_str().to_string()),
+                    candidate.source_kind.as_str(),
+                    candidate.line_count,
+                    candidate.query_keys,
+                )
             })
             .collect(),
-    }
+    )
 }
 
 fn query_wrapper_search_surface(surface: QueryWrapperSurface) -> QueryWrapperSearchSurface {
@@ -196,81 +176,42 @@ fn query_wrapper_search_surface(surface: QueryWrapperSurface) -> QueryWrapperSea
 }
 
 pub(super) fn query_clauses(queries: &[String]) -> Vec<QueryWrapperClause> {
-    queries
-        .iter()
-        .enumerate()
-        .filter_map(|(index, raw)| {
-            let terms = query_terms(raw);
-            (!terms.is_empty()).then_some(QueryWrapperClause {
-                id: index + 1,
-                raw: raw.clone(),
-                terms,
-                axis_terms: query_wrapper_axis_terms(raw),
-            })
+    search_query_wrapper_clauses(queries)
+        .into_iter()
+        .map(|clause| QueryWrapperClause {
+            id: clause.id,
+            raw: clause.raw,
+            terms: clause.terms,
+            axis_terms: clause.axis_terms,
         })
         .collect()
 }
 
 pub(super) fn unique_clause_terms(clauses: &[QueryWrapperClause]) -> Vec<String> {
-    clauses
+    let search_clauses = clauses
         .iter()
-        .flat_map(|clause| clause.terms.iter())
-        .fold(Vec::new(), |mut terms, term| {
-            if !terms.iter().any(|seen| seen == term) {
-                terms.push(term.clone());
-            }
-            terms
+        .map(|clause| QueryWrapperSearchClause {
+            id: clause.id,
+            raw: clause.raw.clone(),
+            terms: clause.terms.clone(),
+            axis_terms: clause.axis_terms.clone(),
         })
-}
-
-fn query_terms(query: &str) -> Vec<String> {
-    query_wrapper_terms(query)
+        .collect::<Vec<_>>();
+    search_query_wrapper_unique_clause_terms(&search_clauses)
 }
 
 pub(super) fn owner_candidates(candidates: &[Candidate]) -> Vec<String> {
-    unique_take(candidates.iter().map(|candidate| candidate.path.clone()), 8)
+    query_wrapper_owner_candidates(candidates.iter().map(|candidate| candidate.path.clone()))
 }
 
 pub(super) fn package_clusters(candidates: &[Candidate]) -> Vec<String> {
-    unique_take(
-        candidates
-            .iter()
-            .map(|candidate| package_key(&candidate.path)),
-        6,
+    query_wrapper_package_clusters_from_paths(
+        candidates.iter().map(|candidate| candidate.path.clone()),
     )
 }
 
 pub(super) fn rg_scope_next(candidates: &[Candidate]) -> Vec<String> {
-    unique_take(
-        candidates
-            .iter()
-            .map(|candidate| package_key(&candidate.path))
-            .filter(|package| !package.is_empty()),
-        3,
-    )
-}
-
-pub(super) fn package_key(path: &str) -> String {
-    let parts = path.split('/').collect::<Vec<_>>();
-    if let Some(index) = parts.iter().position(|part| *part == "packages") {
-        let end = (index + 3).min(parts.len());
-        return parts[index..end].join("/");
-    }
-    parts
-        .into_iter()
-        .filter(|part| !part.is_empty() && *part != ".")
-        .take(2)
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-fn unique_take(values: impl Iterator<Item = String>, limit: usize) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    values
-        .filter(|value| !value.is_empty())
-        .filter(|value| seen.insert(value.clone()))
-        .take(limit)
-        .collect()
+    query_wrapper_rg_scope_next(candidates.iter().map(|candidate| candidate.path.clone()))
 }
 
 pub(super) fn absolute_scope(root: &Path, scope: &Path) -> PathBuf {

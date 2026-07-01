@@ -35,6 +35,7 @@ impl QueryWrapperSearchSurface {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueryWrapperSearchClause {
     pub id: usize,
+    pub raw: String,
     pub terms: Vec<String>,
     pub axis_terms: Vec<String>,
 }
@@ -92,6 +93,38 @@ pub fn query_wrapper_axis_terms(raw: &str) -> Vec<String> {
         .flat_map(expanded_query_terms)
         .filter(|term| seen.insert(term.clone()))
         .collect()
+}
+
+/// Build query-wrapper clauses from raw query strings.
+#[must_use]
+pub fn query_wrapper_clauses(queries: &[String]) -> Vec<QueryWrapperSearchClause> {
+    queries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, raw)| {
+            let terms = query_wrapper_terms(raw);
+            (!terms.is_empty()).then_some(QueryWrapperSearchClause {
+                id: index + 1,
+                raw: raw.clone(),
+                terms,
+                axis_terms: query_wrapper_axis_terms(raw),
+            })
+        })
+        .collect()
+}
+
+/// Return deduplicated clause terms in first-seen order.
+#[must_use]
+pub fn query_wrapper_unique_clause_terms(clauses: &[QueryWrapperSearchClause]) -> Vec<String> {
+    clauses
+        .iter()
+        .flat_map(|clause| clause.terms.iter())
+        .fold(Vec::new(), |mut terms, term| {
+            if !terms.iter().any(|seen| seen == term) {
+                terms.push(term.clone());
+            }
+            terms
+        })
 }
 
 fn expanded_query_terms(raw: &str) -> Vec<String> {
@@ -255,6 +288,31 @@ pub fn query_wrapper_package_clusters(candidates: &[QueryWrapperQualityCandidate
     )
 }
 
+/// Return compact owner path candidates for query-wrapper render hints.
+#[must_use]
+pub fn query_wrapper_owner_candidates(paths: impl Iterator<Item = String>) -> Vec<String> {
+    unique_take(paths, 8)
+}
+
+/// Return compact package clusters for query-wrapper render hints.
+#[must_use]
+pub fn query_wrapper_package_clusters_from_paths(
+    paths: impl Iterator<Item = String>,
+) -> Vec<String> {
+    unique_take(paths.map(|path| query_wrapper_package_key(&path)), 6)
+}
+
+/// Return the next rg scope candidates for query-wrapper render hints.
+#[must_use]
+pub fn query_wrapper_rg_scope_next(paths: impl Iterator<Item = String>) -> Vec<String> {
+    unique_take(
+        paths
+            .map(|path| query_wrapper_package_key(&path))
+            .filter(|package| !package.is_empty()),
+        3,
+    )
+}
+
 #[must_use]
 pub fn query_wrapper_candidate_matches_term(
     candidate: &QueryWrapperQualityCandidate,
@@ -346,12 +404,6 @@ fn is_query_wrapper_noise_path(path: &str) -> bool {
         || lower.starts_with("notebooks/")
         || lower.contains("/experiments/")
         || lower.starts_with("experiments/")
-        || lower.contains("/generated/")
-        || lower.contains("/vendor/")
-        || lower.contains("/vendors/")
-        || lower.contains("/dist/")
-        || lower.contains("/build/")
-        || lower.contains("/node_modules/")
 }
 
 fn is_query_wrapper_generic_term(term: &str) -> bool {
@@ -397,6 +449,59 @@ pub struct QueryWrapperSearchSourceIndexTrace {
     pub lookup: QueryWrapperSourceIndexLookup,
     pub candidate_count: usize,
     pub elapsed: Duration,
+}
+
+/// Render-neutral source-index trace projection for query-wrapper callers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryWrapperSourceIndexTraceProjection {
+    pub source: String,
+    pub status: String,
+    pub candidate_count: usize,
+    pub skipped_count: usize,
+    pub input_count: usize,
+    pub fields: BTreeMap<String, Value>,
+}
+
+/// Project a query-wrapper source-index trace into render-neutral fields.
+#[must_use]
+pub fn query_wrapper_source_index_trace_projection(
+    trace: &QueryWrapperSearchSourceIndexTrace,
+) -> QueryWrapperSourceIndexTraceProjection {
+    let status = query_wrapper_source_index_status(trace.lookup.state.as_str());
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "collectMs".to_string(),
+        Value::from(trace.elapsed.as_millis().min(u128::from(u64::MAX)) as u64),
+    );
+    fields.insert("state".to_string(), Value::from(trace.lookup.state.clone()));
+    fields.insert(
+        "dbPath".to_string(),
+        Value::from(trace.lookup.db_path.display().to_string()),
+    );
+    if status != "used" {
+        fields.insert(
+            "nextCommand".to_string(),
+            Value::from("asp cache source-index refresh"),
+        );
+    }
+    QueryWrapperSourceIndexTraceProjection {
+        source: "sourceIndex".to_string(),
+        status: status.to_string(),
+        candidate_count: trace.candidate_count,
+        skipped_count: usize::from(trace.candidate_count == 0),
+        input_count: trace.candidate_count,
+        fields,
+    }
+}
+
+fn query_wrapper_source_index_status(state: &str) -> &'static str {
+    match state {
+        "hit" => "used",
+        "missing-db" => "missing-db",
+        "empty-index" => "empty-index",
+        "miss" => "miss",
+        _ => "unknown",
+    }
 }
 
 /// Query-wrapper candidates plus route receipt data.
@@ -678,6 +783,7 @@ fn query_wrapper_candidate_from_native(
         line: candidate.line,
         end_line: candidate.end_line,
         symbol: candidate.symbol,
+        selector: None,
         text: candidate.text,
         source: candidate.source,
         confidence: candidate.confidence,

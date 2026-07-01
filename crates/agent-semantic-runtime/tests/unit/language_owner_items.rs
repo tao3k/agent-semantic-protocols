@@ -6,8 +6,9 @@ use crate::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsDispatchPlan,
     LanguageOwnerItemsProviderOutput, LanguageOwnerItemsRuntimeOutcome,
     compact_language_owner_items_stdout, language_owner_items_failure,
-    read_language_owner_items_cache, resolve_language_owner_items_runtime_outcome,
-    run_language_owner_items_dispatch_plan, write_language_owner_items_cache,
+    language_owner_items_runtime_receipt, read_language_owner_items_cache,
+    resolve_language_owner_items_runtime_outcome, run_language_owner_items_dispatch_plan,
+    write_language_owner_items_cache,
 };
 
 #[test]
@@ -164,6 +165,41 @@ fn owner_items_runtime_outcome_compacts_and_caches_provider_success() {
         Some(b"public owner item\n".to_vec())
     );
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_runtime_receipt_records_provider_count_and_output_size() {
+    let outcome = LanguageOwnerItemsRuntimeOutcome::Handled {
+        stdout: b"public owner item\n".to_vec(),
+        stderr: b"provider note\n".to_vec(),
+        cache_hit: false,
+    };
+
+    let receipt = language_owner_items_runtime_receipt(&outcome, 1, 2);
+
+    assert_eq!(receipt.outcome, "handled");
+    assert_eq!(receipt.provider_process_count, 1);
+    assert_eq!(receipt.stdout_bytes, b"public owner item\n".len());
+    assert_eq!(receipt.stderr_bytes, b"provider note\n".len());
+    assert!(!receipt.cache_hit);
+    assert_eq!(receipt.fallback_reason, "none");
+    assert_eq!(receipt.elapsed_ms, 2);
+}
+
+#[test]
+fn owner_items_runtime_receipt_records_fail_closed_without_fallback() {
+    let outcome = LanguageOwnerItemsRuntimeOutcome::Failed(
+        "provider-owned owner-items failed for existing owner `src/lib.rs`; no fallback executed"
+            .to_string(),
+    );
+
+    let receipt = language_owner_items_runtime_receipt(&outcome, 1, 3);
+
+    assert_eq!(receipt.outcome, "failed");
+    assert_eq!(receipt.provider_process_count, 1);
+    assert_eq!(receipt.stdout_bytes, 0);
+    assert_eq!(receipt.fallback_reason, "fail-closed-no-fallback");
+    assert_eq!(receipt.elapsed_ms, 3);
 }
 
 #[test]

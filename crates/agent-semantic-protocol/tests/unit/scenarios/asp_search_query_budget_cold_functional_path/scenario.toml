@@ -1,0 +1,13 @@
+id = "asp-search-query-budget-cold-functional-path"
+title = "Search query budget is search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-QUERY-BUDGET-COLD-001"]
+agent_goal = "Validate that broad generic query blocking, specific-term bypass, explicit-filter bypass, and rg broad-term blocking are owned by agent-semantic-search instead of command-local budget logic."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::search_query_budget_block",
+  "agent_semantic_search::search_terms_budget_block",
+  "agent_semantic_search::search_rg_terms_budget_block",
+  "command-local-query-budget",
+]
+inputs = "A broad generic query, a specific path/identifier query, an explicit-filter query, and an rg query with many broad terms."
+expected = "The search crate blocks broad generic queries, allows specific or explicitly filtered queries, blocks rg broad terms, and does not require provider or native finder execution."

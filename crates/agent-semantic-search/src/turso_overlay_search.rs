@@ -1,8 +1,5 @@
-use std::path::Path;
-
 use agent_semantic_client_db::{
-    TursoClientDbOverlayDocument, TursoClientDbSearchHit, bootstrap_turso_client_db,
-    search_turso_documents, upsert_turso_overlay_document,
+    ClientDbEngine, TursoClientDbOverlayDocument, TursoClientDbSearchHit,
 };
 
 /// Search-owned document for a transient Turso overlay namespace.
@@ -26,25 +23,27 @@ pub struct TursoOverlaySearchHit {
 }
 
 /// Bootstrap the Turso overlay search store through the DB Engine adapter.
-pub async fn bootstrap_turso_overlay_search_store(db_path: &Path) -> Result<(), String> {
-    bootstrap_turso_client_db(db_path).await.map(|_| ())
+pub async fn bootstrap_turso_overlay_search_store(engine: &ClientDbEngine) -> Result<(), String> {
+    engine.bootstrap_active_turso().await.map(|_| ())
 }
 
 /// Store one transient overlay document through the DB Engine Turso adapter.
 pub async fn upsert_turso_overlay_search_document(
-    db_path: &Path,
+    engine: &ClientDbEngine,
     document: &TursoOverlaySearchDocument,
 ) -> Result<(), String> {
-    upsert_turso_overlay_document(db_path, &document.clone().into()).await
+    engine
+        .upsert_overlay_document(&document.clone().into())
+        .await
 }
 
 /// Query transient overlay documents without exposing DB adapter rows to callers.
 pub async fn search_turso_overlay_documents(
-    db_path: &Path,
+    engine: &ClientDbEngine,
     query: &str,
     limit: u32,
 ) -> Result<Vec<TursoOverlaySearchHit>, String> {
-    let hits = search_turso_documents(db_path, query, limit).await?;
+    let hits = engine.search_overlay_documents(query, limit).await?;
     Ok(hits
         .into_iter()
         .filter_map(turso_hit_to_overlay_hit)

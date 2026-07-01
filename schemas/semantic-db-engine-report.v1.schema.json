@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-db-engine-report.v1.schema.json",
   "title": "Semantic DB Engine Report",
-  "description": "Analyzer-facing DB Engine diagnostic report. Phase 1 reports sqlite-v1 as the active validation backend and turso as the replacement target.",
+  "description": "Analyzer-facing DB Engine diagnostic report. Default builds report turso as the active replacement backend; sqlite-v1 remains valid only for no-default-features migration/control validation.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -25,7 +25,10 @@
   ],
   "properties": {
     "backend": {
-      "const": "sqlite-v1"
+      "enum": [
+        "sqlite-v1",
+        "turso"
+      ]
     },
     "futureBackend": {
       "const": "turso"
@@ -34,16 +37,22 @@
       "const": "state-v2"
     },
     "dbFileName": {
-      "const": "client.sqlite3"
+      "enum": [
+        "client.sqlite3",
+        "client.turso"
+      ]
     },
     "schemaVersion": {
       "const": 1
     },
     "durability": {
-      "const": "sqlite-file"
+      "enum": [
+        "sqlite-file",
+        "turso-local-file"
+      ]
     },
     "features": {
-      "$ref": "#/$defs/engineFeatures"
+      "$ref": "#/$defs/activeEngineFeatures"
     },
     "clientDir": {
       "type": "string",
@@ -51,7 +60,7 @@
     },
     "dbPath": {
       "type": "string",
-      "pattern": "/live/client/client\\.sqlite3$"
+      "pattern": "/live/client/client\\.(sqlite3|turso)$"
     },
     "manifestPath": {
       "type": "string",
@@ -80,6 +89,16 @@
     }
   },
   "$defs": {
+    "activeEngineFeatures": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/engineFeatures"
+        },
+        {
+          "$ref": "#/$defs/tursoFeatures"
+        }
+      ]
+    },
     "engineFeatures": {
       "type": "object",
       "additionalProperties": false,
@@ -268,7 +287,11 @@
             "planned",
             "available",
             "active",
-            "unavailable"
+            "unavailable",
+            "feature-disabled",
+            "missing",
+            "ready",
+            "bootstrap-smoke"
           ]
         },
         "dbFileName": {

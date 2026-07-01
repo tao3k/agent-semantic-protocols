@@ -1,0 +1,21 @@
+id = "asp-graph-seed-decision-cold-functional-path"
+title = "Graph seed decision stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-SEED-DECISION-COLD-001"]
+agent_goal = "Validate that graph-turbo seed phase budgets, seed risk actions, and first-action evidence preconditions are owned by agent-semantic-search instead of command-local route policy."
+language = "rust"
+workspace = "."
+owners = [
+  "crates/agent-semantic-search/src/graph_seed_decision.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_seed_decision.rs",
+]
+queries = [
+  "graph seed decision flat query owner drift",
+  "search evidence state first action seed preconditions",
+]
+inputs = "A broad query shape with owner drift, a single-owner query shape, and known/unknown evidence states for first-action selection."
+expected = "The search-owned seed decision emits anchor budget, risk factors, typed actions, and seed rejection for known owner/selector states without provider or native finder work."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/graph_seed_decision.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_seed_decision.rs",
+]

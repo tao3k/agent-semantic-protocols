@@ -4,6 +4,8 @@
 mod db;
 #[path = "unit/db/artifact_events.rs"]
 mod db_artifact_events;
+#[path = "unit/db/engine.rs"]
+mod db_engine;
 #[path = "unit/db/invalidation.rs"]
 mod db_invalidation;
 #[path = "unit/db/provider_command_selection.rs"]

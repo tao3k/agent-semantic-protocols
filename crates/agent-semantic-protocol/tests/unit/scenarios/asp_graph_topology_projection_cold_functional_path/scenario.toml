@@ -1,0 +1,11 @@
+id = "asp-graph-topology-projection-cold-functional-path"
+title = "ASP graph topology projection stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-TOPOLOGY-PROJECTION-COLD-001"]
+agent_goal = "Project workspace, provider-root, project marker, dependency marker, and submodule topology through search crate primitives."
+inputs = "A temp Rust workspace with Cargo.toml, Cargo.lock, source candidate, and .gitmodules."
+expected = "Topology nodes and submodule owner edges are produced without command-local marker walking or provider/native finder processes."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/graph_topology_projection.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_graph_nodes.rs",
+]

@@ -19,10 +19,6 @@ pub(super) fn candidate_selector(language_id: &str, candidate: &Candidate) -> St
     }
 }
 
-pub(super) fn graph_projection_action(language_id: &str) -> &'static str {
-    query_projection_kind(language_id)
-}
-
 pub(super) fn query_projection_kind(language_id: &str) -> &'static str {
     if is_document_language(language_id) {
         "content"

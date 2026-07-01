@@ -1,0 +1,13 @@
+id = "asp-query-wrapper-clause-normalization-cold-functional-path"
+title = "Query wrapper clause normalization is search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-WRAPPER-CLAUSE-NORMALIZATION-COLD-001"]
+agent_goal = "Validate that raw query-wrapper clauses, normalized terms, identifier axis terms, and unique clause terms are produced by agent-semantic-search instead of command-local string logic."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::query_wrapper_clauses",
+  "agent_semantic_search::query_wrapper_unique_clause_terms",
+  "agent_semantic_search::query_wrapper_axis_terms",
+  "command-local-query-terms",
+]
+inputs = "Raw query-wrapper strings containing camelCase, snake_case, uppercase identifier segments, and an empty query."
+expected = "The search crate filters empty clauses, preserves raw query text, expands identifier axis terms, deduplicates unique terms, and does not require provider or native finder execution."

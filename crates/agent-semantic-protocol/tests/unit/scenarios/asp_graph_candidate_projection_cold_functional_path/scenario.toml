@@ -1,0 +1,11 @@
+id = "asp-graph-candidate-projection-cold-functional-path"
+title = "ASP graph candidate projection stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-CANDIDATE-PROJECTION-COLD-001"]
+agent_goal = "Project item and hot graph nodes from search crate primitives without command-local selector or syntax-query algorithms."
+inputs = "A Rust candidate with path, range, symbol, text, source, and confidence."
+expected = "Item and hot graph nodes use stable structural selectors, preserve display ranges as metadata, and avoid executable line-range identity."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/graph_candidate_projection.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_graph_nodes.rs",
+]

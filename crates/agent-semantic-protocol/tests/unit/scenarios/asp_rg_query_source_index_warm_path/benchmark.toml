@@ -14,6 +14,6 @@ target_rationale = "Warm asp rg query-wrapper collection should hit SourceIndex 
 
 [observed_timings]
 source_index_collect = "13ms"
-provider_process_count = "0ms"
-native_finder_process_count = "0ms"
-render = "0ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"
+render = "0us"

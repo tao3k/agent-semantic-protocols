@@ -298,7 +298,7 @@
       "pattern": "^[a-z][a-z0-9_-]*$"
     },
     "dbEngine": {
-      "description": "Structured DB Engine state for analyzer-facing receipts. backend=sqlite-v1 is a transition adapter while futureBackend=turso records the replacement direction.",
+      "description": "Structured DB Engine state for analyzer-facing receipts. backend=turso is the default active backend; backend=sqlite-v1 remains valid only for no-default-features migration/control validation while futureBackend=turso records the cutover direction.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -321,7 +321,10 @@
       ],
       "properties": {
         "backend": {
-          "const": "sqlite-v1"
+          "enum": [
+            "sqlite-v1",
+            "turso"
+          ]
         },
         "futureBackend": {
           "const": "turso"
@@ -330,16 +333,22 @@
           "const": "state-v2"
         },
         "dbFileName": {
-          "const": "client.sqlite3"
+          "enum": [
+            "client.sqlite3",
+            "client.turso"
+          ]
         },
         "schemaVersion": {
           "const": 1
         },
         "durability": {
-          "const": "sqlite-file"
+          "enum": [
+            "sqlite-file",
+            "turso-local-file"
+          ]
         },
         "features": {
-          "$ref": "#/$defs/dbEngineFeatures"
+          "$ref": "#/$defs/activeDbEngineFeatures"
         },
         "clientDir": {
           "type": "string",
@@ -376,6 +385,16 @@
           "$ref": "#/$defs/tursoReport"
         }
       }
+    },
+    "activeDbEngineFeatures": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/dbEngineFeatures"
+        },
+        {
+          "$ref": "#/$defs/tursoFeatures"
+        }
+      ]
     },
     "dbEngineFeatures": {
       "type": "object",
@@ -684,7 +703,11 @@
             "planned",
             "available",
             "active",
-            "unavailable"
+            "unavailable",
+            "feature-disabled",
+            "missing",
+            "ready",
+            "bootstrap-smoke"
           ]
         },
         "dbFileName": {

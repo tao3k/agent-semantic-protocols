@@ -1,0 +1,558 @@
+* One-sentence summary
+ASP Policy should become an evidence-backed fact and recipe protocol: language harnesses keep parser/compiler authority, Rust validates and routes the packets, Python consumes them for production graph-route ranking, and Julia studies which policy/topology jumps reduce agent turns.
+* Scope
+This RFC owns the runtime schema and architecture for =PolicyFacts= and =PolicyRecipes=.
+It connects:
+- the core software criterion canon in [[file:10.13-software-criterion-policy.org][10.13 software criterion policy]];
+- ecosystem/profile criterion extensions in [[file:10.16-software-criterion-extension-policy.org][10.16 software criterion extension policy]];
+- the reasoning/evidence/topology theory in [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]];
+- the DB Engine and overlay architecture in [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]].
+It does not own:
+- provider-private parser implementations;
+- final blocking defaults for any language;
+- an agent MCP server;
+- line-number identity for code search or policy scope.
+* Audit verdict
+The language harness ecosystem already has the right lower layers, but the policy layer is not yet unified enough for agent code generation.
+Current strengths:
+- =languages/= already has Rust, TypeScript, Python, Julia, Gerbil Scheme, Org, and Markdown harness surfaces.
+- The provider registry advertises callable methods and packet schemas instead of relying on prompt-only command prose.
+- Rust, TypeScript, Python, and Julia already share =search/semantic-facts= plus =software-criterion-catalog= and =semantic-fact-graph= registrations.
+- Gerbil Scheme has stronger language-specific evidence lanes such as runtime source, compiler evidence, proof, pattern search, and comparison.
+- Org/Markdown providers already keep document query/search separate from source-language packets, which is the right precedent for policy facts.
+Current gaps:
+- =software-criterion-catalog.v1= defines the canon and repair-recipe vocabulary, but it does not say which facts are active in a concrete workspace, owner, selector, dependency, or session.
+- =software-criterion-extension-report.v1= gives ecosystem/profile findings an envelope, but it is still a report shape, not the common runtime fact shape consumed by =EvidenceGraph=, =ReasoningTree=, and =GraphRoute=.
+- =semantic-provider-facts.v1= is useful for graph enrichment, but it is intentionally generic and cannot express agent timing such as =before-write=, =during-write=, =test-selection=, or =suppress-route=.
+- Existing hook/classifier policy is mostly a boundary and denial system. That remains necessary, but it cannot be the main mechanism for improving code quality before the agent writes code.
+Therefore the missing layer is:
+#+begin_src text
+criterion canon / ecosystem reports -> active policy facts -> actionable recipes
+-> evidence graph -> graph-route / reasoning tree -> agent write behavior
+#+end_src
+* Core design
+Policy must stop being only a post-hoc checker.
+The target design is:
+#+begin_src mermaid
+flowchart LR
+  H["Language harness<br/>native parser/compiler/project facts"] --> C["Criterion catalog<br/>shared canon"]
+  H --> E["Extension/profile reports<br/>ecosystem doctrine"]
+  C --> PF["PolicyFact<br/>active evidence-backed fact"]
+  E --> PF
+  PF --> PR["PolicyRecipe<br/>how to improve or repair"]
+  PF --> EG["EvidenceGraph<br/>stable + overlay evidence"]
+  PR --> EG
+  EG --> GR["GraphRoute<br/>ranked next action"]
+  GR --> RT["ReasoningTree<br/>agent run branch"]
+  RT --> W["Agent writes code"]
+  W --> R["Review/test/receipt evidence"]
+  R --> EG
+#+end_src
+The important shift is timing.
+A hard policy check runs after an action and says "allowed" or "denied". A policy fact is available before or during an action and says:
+#+begin_src text
+This selector/package/profile has these proven constraints.
+Use these recipes to improve code quality.
+Avoid these edits or routes unless new evidence changes the graph.
+#+end_src
+That is how policy becomes part of the code reasoning tree instead of reducing the model to a fixed linter.
+* Policy facts in the code reasoning tree
+The core product goal is that policy facts become reasoning material when the model is about to write code.
+They should not appear only after the model has already written a bad patch.
+The write loop should look like:
+#+begin_src mermaid
+flowchart TD
+  I["Intent / task"] --> R["GraphRoute selects owner, selector, tests, and policy context"]
+  R --> F["PolicyFacts enter the code reasoning tree"]
+  F --> D["Model chooses write strategy"]
+  D --> W["Model writes bounded patch"]
+  W --> V["Snapshot / benchmark / test / receipt validation"]
+  V --> O{"Outcome"}
+  O -->|matched| A["Accept recipe and route evidence"]
+  O -->|changed or regressed| B["Add failure fact and choose recovery recipe"]
+  A --> EG["EvidenceGraph"]
+  B --> EG
+  EG --> R
+#+end_src
+The useful policy facts at write time are not generic warnings.
+They are compact decision facts:
+- this owner has a stable output contract from a snapshot;
+- this route has a performance budget from a benchmark;
+- this query surface must preserve =nextCommand= and =avoid= because snapshots prove agents rely on them;
+- this scenario has an expected agent failure mode and expected resolution;
+- this selector has a known route-quality risk such as low package cohesion, weak term coverage, or missing owner evidence;
+- this edit should pick a recipe that preserves the snapshot contract before trying a broader refactor.
+The model should see these facts before selecting an edit shape.
+That turns policy into a quality-improvement substrate:
+#+begin_src text
+intent -> evidence-backed facts -> recipe choice -> patch -> validation -> new facts
+#+end_src
+* Write-time mental model validation
+The design passes a simple mental-model simulation.
+Assume the user asks the agent to improve Rust search routing.
+Without policy facts, the model might jump directly to a broad code edit after seeing a weak search result.
+With policy facts in the reasoning tree, the model should reason this way:
+1. /Before writing./ GraphRoute selects the likely owner and attaches policy facts from benchmark and snapshot evidence. The model sees that compact output must preserve =nextCommand= and =avoid=, and that relevant search-pipe paths have performance/functional scenario policy ids.
+2. /During writing./ The model treats snapshot facts as output-contract constraints and benchmark facts as route/performance constraints. It chooses the smallest recipe that improves ranking or query quality without changing the compact contract.
+3. /After writing./ Snapshot validation checks whether observable output changed. Benchmark validation checks whether the route still meets target/max totals, memory budget, route source, provider process count, and stdout limits. The outcome becomes new reasoning evidence.
+4. /Next turn./ If validation matched, the graph can suppress repeated concern. If validation changed or regressed, GraphRoute can jump directly to the failed policy fact and recovery recipe.
+This is a proof obligation for the architecture:
+#+begin_src text
+A policy fact is useful only if it can change the model's next write decision,
+choose or suppress a recipe, or explain validation failure.
+#+end_src
+Facts that do not affect one of those choices should remain offline analysis or report material.
+* Progressive QualityFrame
+The hard part is not collecting more policy. The hard part is progressively revealing only the facts that can change the agent's current code decision.
+ASP should model the write-time reasoning shape as:
+#+begin_src text
+Intent
+  QualityFrame
+    relevant policy facts
+    relevant project facts
+    relevant prior failures
+  CandidatePlan A
+    pros
+    risks
+    violated facts
+  CandidatePlan B
+    pros
+    supporting facts
+  ChosenPlan
+    decision reason
+  CodeAction
+    generated edit
+  Observation
+    parse/test/policy result
+  Revision
+    why changed
+#+end_src
+=QualityFrame= is not a durable fact source. It is a ranked read-model over =PolicyFact=, =PolicyRecipe=, project facts, and prior failure evidence for one intent and one candidate edit boundary.
+It should be small enough to fit before the model writes code.
+The default render should expose only three groups:
+- /constraints/: hard or strong facts that the chosen edit must not violate;
+- /choice differentiators/: facts that make one candidate plan better than another;
+- /references on demand/: exact fact ids, selectors, snapshot ids, benchmark ids, or recipe ids the agent can expand if needed.
+The render must not dump the full policy catalog.
+It should answer:
+#+begin_src text
+What must the agent know now to choose the edit strategy?
+What fact distinguishes candidate A from candidate B?
+What exact reference can the agent expand if uncertain?
+#+end_src
+* Progressive disclosure levels
+Policy disclosure should have explicit levels:
+- =L0 decision frame=: the agent sees 1-3 constraints, 1-3 plan differentiators, and the chosen next action. This is the default before writing.
+- =L1 focused facts=: the agent sees compact summaries for the top ranked facts and recipes. Show this when a plan has risk, violation, or support.
+- =L2 references=: the agent sees exact selector, fact id, recipe id, snapshot id, benchmark id, or receipt id. Show this when the agent needs evidence or repair detail.
+- =L3 full packet=: the agent sees a validated JSON packet or artifact path. Use this only for validation, debugging, replay, or offline analysis.
+The normal model-writing path should stay at L0 or L1.
+L2 exists so the model can ask for exact references without receiving every policy.
+L3 is not prompt-facing unless the task explicitly needs packet-level debugging.
+* QualityFrame ranking
+The ranking rule should prefer facts that are close, actionable, and discriminative.
+A fact should rank higher when:
+- its scope is close to the edit boundary: selector > owner > package > workspace;
+- its =agentUse= matches the current phase, especially =before-write=, =during-write=, =repair=, or =test-selection=;
+- it is backed by strong evidence such as parser facts, behavior snapshots, scenario benchmarks, route receipts, or verification receipts;
+- it explains a known prior failure for the same owner, route, dependency, output contract, or scenario;
+- it distinguishes candidate plans, for example plan A violates it while plan B satisfies it;
+- it references tests, snapshots, benchmarks, or receipts that can validate the edit immediately.
+A fact should rank lower or be suppressed when:
+- it is generic workspace advice with no selector, owner, route, dependency, or test proximity;
+- it repeats a fact already accepted in the current reasoning tree without changing the next action;
+- it is advisory and unrelated to the candidate edit boundary;
+- it requires a full packet dump before the agent can act;
+- it is stale, overlay-conflicted, or from a failed route that the graph already suppressed.
+The scoring shape is:
+#+begin_src text
+qualityFrameScore =
+  scopeCloseness
+  + phaseMatch
+  + evidenceStrength
+  + priorFailureSimilarity
+  + planDiscrimination
+  + validationReachability
+  - tokenCost
+  - repetitionPenalty
+  - stalenessPenalty
+#+end_src
+This score is not the final code decision. It ranks what the model should see before making the decision.
+* Candidate-plan comparison
+The model should not receive "top policies" in isolation.
+It should receive policies attached to candidate plans.
+For example:
+#+begin_src text
+CandidatePlan A: rewrite compact render broadly
+  pros: simplifies output code
+  risks: changes snapshot-backed stdout contract
+  violated facts: PF.output.next-command, PF.output.avoid-action
+
+CandidatePlan B: change route ranking only
+  pros: improves search quality without output drift
+  supporting facts: PF.search.weak-term-risk, PF.benchmark.route-budget
+  validation: snapshot compact output + scenario benchmark gate
+#+end_src
+This framing is important because the model often does not need every policy fact.
+It needs to know which facts make candidate A worse and candidate B safer.
+Policy facts therefore become plan-selection evidence, not a static checklist.
+* Reference targeting
+Every visible fact in a =QualityFrame= should carry an exact expansion target.
+Good expansion targets are:
+- =factId= for a normalized policy fact;
+- =recipeId= for an actionable repair or improvement recipe;
+- =selector= for parser-owned code identity;
+- =snapshotId= for observable output or behavior contract evidence;
+- =benchmarkId= or =scenarioId= for route/performance/failure-mode evidence;
+- =receiptId= for validation or route receipts;
+- =nextCommand= for a bounded follow-up search, read, test, or verification action.
+The model should not be asked to infer references from filenames or line numbers.
+Path and line data may appear only as display hints.
+The executable target is the fact id, selector, generation, overlay, snapshot, benchmark, scenario, receipt, or command.
+* Prior failures
+Prior failures should enter =QualityFrame= only when they are similar enough to the current intent.
+Useful similarity keys include:
+- same owner or selector;
+- same dependency, API, output contract, or scenario id;
+- same route class, such as =search-pipe=, =query-wrapper=, =compact-render=, or =source-index=;
+- same failure kind, such as weak term coverage, low package cohesion, snapshot drift, route budget regression, or repeated raw-read recovery.
+Prior failure facts should be rendered as:
+#+begin_src text
+priorFailure=<id> similar=<owner|route|snapshot|benchmark>
+why=previous plan changed compact output; snapshot failed
+prefer=ranking-only edit; validate with snapshot X
+#+end_src
+They should not be rendered as a full session transcript.
+The agent only needs enough information to avoid repeating the failed branch and to pick the recovery recipe.
+* Gerbil policy simulation
+Gerbil Scheme is the best current stress test for this design because its harness already emits policy-like facts with runtime, compiler, macro, standard-library, style, benchmark, input, and expected-repair evidence.
+The important lesson is that =QualityFrame= must select a few decisive facts from this rich policy surface instead of showing the model every language rule.
+** Controlled macro syntax
+Intent:
+#+begin_src text
+Improve a Gerbil macro owner that records macro phase/context state.
+#+end_src
+The low-quality candidate plan is:
+#+begin_src text
+CandidatePlan A: keep global mutable macro state
+  pros: smallest mechanical edit
+  risks: leaks macro expansion context through global variables
+  violated facts:
+    - macro-boundary: syntax owners should keep phase/context scoped to the transformer
+    - macro-pattern: generated macro code must route through parser/runtime witnesses
+    - runtime-source: macro guidance must come from active runtime source, not memory
+#+end_src
+The better candidate plan is:
+#+begin_src text
+CandidatePlan B: introduce scoped expansion context
+  pros: keeps phase/source in a typed expansion context
+  supporting facts:
+    - language-rule:hygienic-macro
+    - standard-library:std/sugar when sugar forms are needed
+    - macro-pattern:hygienic-macro-pattern-evidence
+  code action:
+    - define an expansion context structure
+    - scope state through a parameter
+    - use syntax-case to validate shape
+    - raise syntax errors on the original syntax object
+  validation:
+    - compare against controlled-macro-syntax expected owner
+    - run the relevant policy scenario
+#+end_src
+The L0 =QualityFrame= should not say "read all Gerbil macro policy".
+It should say:
+#+begin_src text
+constraints:
+  PF.gerbil.macro.context-scoped
+  PF.gerbil.macro.no-memory-runtime-source
+differentiator:
+  Plan A leaks context globally; Plan B scopes context to transformer.
+references:
+  selector=.../controlled-macro-syntax/input/src/macros/core.ss
+  expected=.../controlled-macro-syntax/expected/src/macros/core.ss
+  fact=language-rule:hygienic-macro
+#+end_src
+This proves why progressive disclosure matters.
+The agent gets enough policy to choose Plan B without reading the whole Gerbil evidence catalog.
+** Compiler method-pass boundary
+Intent:
+#+begin_src text
+Repair a Gerbil compiler method table where anonymous lambdas hide pass boundaries.
+#+end_src
+The benchmark evidence says:
+- rule: =GERBIL-SCHEME-AGENT-POLICY-013=;
+- purpose: route method-table drift toward local AST pass handlers;
+- optimization focus: method-table lambda drift to compiler-style pass handlers;
+- input shape: anonymous method-table lambdas hide dispatch and pass boundaries;
+- expected repair: extract local pass handlers and keep the method table as a dispatch surface;
+- expected quality signals: method-table pass boundary, ast-case shape dispatch, source-preserving transform, typed pass pipeline;
+- budget: small millisecond target with a hard max ceiling.
+The =QualityFrame= should compare plans this way:
+#+begin_src text
+CandidatePlan A: inline more logic into method-table lambdas
+  pros: localized edit
+  risks:
+    - worsens hidden pass boundaries
+    - violates compiler-method-pass-boundary scenario
+    - makes route-quality and future repair weaker
+
+CandidatePlan B: extract local pass handlers
+  pros:
+    - keeps method table as dispatch surface
+    - aligns with compiler method-pass policy
+    - gives tests and benchmarks a clear owner to validate
+  supporting facts:
+    - scenario-benchmark:compiler-method-pass-boundary
+    - compiler-evidence:medium-weight compiler optimizer metadata
+    - language-rule:gerbil-native pass boundary
+  validation:
+    - policy scenario benchmark
+    - owner-local parser facts
+#+end_src
+Again, the policy does not tell the model to obey a generic style rule.
+It frames the candidate plans so the model can choose the edit that preserves the compiler pass topology.
+* Gerbil policy families
+The current Gerbil evidence suggests these policy families should be first-class in =QualityFrame= ranking:
+- =runtime-boundary=: active runtime, load path, versioned runtime source, and no training-memory language claims;
+- =macro-boundary=: hygienic macro facts, syntax-case/defsyntax witnesses, scoped expansion context, and generated-code restrictions;
+- =compiler-evidence=: medium-weight compiler metadata, local assertion environment, subtype/class metadata, and explicit rejection of full proof-system claims;
+- =module-import=: active load path, module-sugar source, only-in/except-in/rename-in/rename-out/for-syntax witnesses;
+- =standard-library=: concrete modules such as =:std/srfi/13=, =:std/text/json=, =:std/sugar=, =:std/test=, and =:std/misc/ports=;
+- =scheme-style=: domain owners, =t/= tests, directional data-flow names, named control-flow helpers, and no vague helper owners;
+- =policy-scenario=: input/expected/benchmark triples that teach the agent the intended repair, failure mode, and quality axes.
+The schema should keep these as evidence and fact categories, while provider-owned fields carry Gerbil-specific selectors and details.
+* Rust and Gerbil combined lesson
+Rust search quality policy and Gerbil language policy should meet in the same =QualityFrame=:
+- Rust quality analysis is good at deciding whether search evidence is strong enough: query pack quality, package cohesion, weak terms, owner coverage, parser handles, and whether query-selector is allowed.
+- Gerbil policy evidence is good at deciding what a safe edit should look like after the owner is selected: runtime-source requirements, macro boundary, compiler evidence boundary, and policy scenario repair shape.
+The combined loop is:
+#+begin_src text
+Rust route quality narrows where to edit.
+Gerbil policy facts narrow how to edit.
+Snapshots and benchmarks validate whether the edit preserved observable behavior and policy intent.
+#+end_src
+This should be the pattern for future languages.
+The Rust side should keep the shared routing/render/schema path thin and strong.
+Each language harness should contribute the facts only it can prove.
+* Cross-language capability transfer
+Rust search-quality policy and Gerbil language-policy evidence should become the two template practices for other language harnesses.
+The schema goal is not to copy Rust or Gerbil rules into every language.
+The schema goal is to define a small set of transferable capability families that every provider can map to its own native ecosystem.
+The transferable families are:
+- =route-quality=: query pack quality, owner coverage, package cohesion, weak terms, parser handles, finder handles, and route budget;
+- =native-language-boundary=: parser/compiler/runtime facts that prove what the language can safely express;
+- =runtime-boundary=: active runtime, versioned source, load path, package/project environment, and no-memory claims;
+- =macro-or-metaprogramming-boundary=: macro, derive, decorator, annotation, codegen, template, or compiler-plugin facts;
+- =compiler-evidence=: type/checker/optimizer/build evidence that can support bounded claims without pretending to be a full proof system;
+- =standard-library-and-ecosystem=: concrete library/module capability facts with minimal import/use guidance;
+- =scenario-repair-shape=: input/expected/benchmark triples that teach the model the intended repair and failure mode;
+- =topology-context=: current owner, neighbor owners, dependencies, tests, snapshots, benchmarks, prior failures, and route receipts that explain where the edit sits in the architecture.
+Each language maps these families differently:
+- Rust maps them through ownership, modules, Cargo/dependency facts, traits/types, tests, snapshots, and search-route quality.
+- Gerbil maps them through active runtime source, macro forms, module-sugar, compiler optimizer metadata, policy scenarios, and =t/= tests.
+- TypeScript can map them through package/dependency facts, discriminated unions, Effect/Schema/Layer facts, compiler narrowing, resource/error channels, and test surface.
+- Python can map them through import/module ownership, framework profile facts, dynamic/runtime evidence, test selection, data-flow shape, and graph-route production ranking.
+- Julia can map them through Project/Manifest facts, JuliaSyntax facts, type-stability and mutation contracts, function barriers, package profile evidence, and offline algorithm research.
+This means a provider does not need to implement ASP's whole policy system.
+It only needs to emit the strongest native facts it can prove into shared =PolicyFact= and =PolicyRecipe= shapes.
+Rust then validates and renders them.
+Python ranks them in production.
+Julia evaluates whether they reduced turns or improved repair quality.
+* Dynamic topology during coding
+Topology must update while the model is coding, not only after a final test run.
+Every important coding step should be able to add bounded topology evidence:
+- =Intent= selects the initial architecture neighborhood.
+- =QualityFrame= attaches the nearest policy, project, and prior-failure facts.
+- =CandidatePlan= adds hypothetical edges from plan to affected owners, tests, snapshots, benchmarks, dependencies, and violated/supporting facts.
+- =ChosenPlan= records which facts caused the decision.
+- =CodeAction= records which selector/entity/generation/overlay was edited.
+- =Observation= records parser, test, snapshot, benchmark, policy, and route outcomes.
+- =Revision= records why the plan changed and which failed edge was suppressed or repaired.
+This produces a dynamic overlay graph:
+#+begin_src text
+stable topology + session overlay + dirty-code facts + reasoning edges
+-> next QualityFrame
+#+end_src
+The LLM should not receive the full graph.
+It should receive a compact topology slice:
+#+begin_src text
+architectureContext:
+  owner=<current owner>
+  neighbors=<2-5 relevant owners/tests/deps>
+  policyFacts=<1-3 decisive facts>
+  priorFailures=<0-2 similar failures>
+  validation=<nearest snapshot/benchmark/test>
+  next=<chosen selector/command/recipe>
+#+end_src
+That slice lets the model know the architecture while writing code.
+It also keeps token cost bounded because the graph-route layer chooses which topology edges matter now.
+* Schema consequences
+The schema must support this downflow without becoming a language-specific dump.
+The required shared additions are:
+- =factKind=cross-language-capability= for facts that prove a provider can express one of the transferable capability families;
+- =factKind=topology-context= for facts that explain where the current edit sits in the architecture;
+- =evidenceKind=provider-capability= for provider-advertised capability facts;
+- =evidenceKind=graph-route= for selected topology routes and ranked neighbors;
+- =evidenceKind=topology-update= for session-overlay updates caused by candidate plans, code actions, observations, and revisions;
+- =evidenceKind=quality-frame= for the compact read-model shown to the agent;
+- =evidenceKind=prior-failure= for replayable failure facts that should influence the next plan;
+- =agentUse=architecture-context= when the fact helps the model understand local architecture;
+- =agentUse=plan-selection= when the fact distinguishes candidate plans.
+These additions keep the schema language-neutral while making the Rust/Gerbil lessons portable.
+The core invariant is:
+#+begin_src text
+Provider-native fact -> shared PolicyFact/PolicyRecipe -> QualityFrame
+-> candidate-plan choice -> topology overlay update -> next QualityFrame
+#+end_src
+When this loop works, the model writes with current architecture context instead of isolated snippets.
+* Benchmark and snapshot information model
+The current policy evidence has two major sources: scenario benchmarks and behavior snapshots.
+They overlap because both can prove policy-relevant facts, but they answer different questions.
+| Source | Primary question | Stable payload | PolicyFact projection | Recipe use |
+| Scenario benchmark | Can this route or workflow satisfy the agent goal under budget? | =policyIds=, =agentGoal=, =policyTrigger=, expected criteria, agent failure mode, expected resolution, target/max/observed time, memory budget, route source, provider process count, stdout bytes | performance, route-quality, failure-mode, and expected-resolution facts scoped to scenario, owner, route, or command surface | choose route, prune slow paths, prefer warm/index/selector route, recover from known failure mode |
+| Behavior snapshot | Did observable behavior or compact output contract match? | subject, command, status, observations, expected, actual, diff, receipt ids, candidate ids | output-contract, API-contract, compact-render, regression, or changed-behavior facts scoped to CLI subject, selector, test, artifact, or snapshot | preserve contract, repair changed output, avoid JSON/token-heavy render, keep agent-facing fields stable |
+Benchmark facts are comparative and budget-shaped.
+They tell the model whether a route is worth taking, whether a workflow is too expensive, and which failure mode the scenario was created to catch.
+Snapshot facts are observational and contract-shaped.
+They tell the model what output, API behavior, or compact render form must not drift without an intentional decision.
+Both should project into =semantic-policy-fact.v1=, but they should not be merged into one vague "test evidence" bucket.
+The schema therefore treats =scenario-benchmark= and =behavior-snapshot= as explicit evidence kinds.
+* Projection rules
+Benchmark projection:
+- =scenario.policyIds= become =criterionId= or =ruleId= links when they name policy criteria, and remain =evidence[].scenarioId= / =fields.policyIds= when they are scenario-specific.
+- =scenario.agentGoal= becomes the agent-facing rationale: why this policy matters for the model's task.
+- =scenario.policyTrigger.agentFailureMode= becomes a failure-mode fact.
+- =scenario.policyTrigger.expectedResolution= becomes a recovery or repair recipe seed.
+- =benchmark.targetTotal=, =maxTotal=, =observedTotal=, memory fields, provider process count, stdout bytes, and route source become performance and route-quality facts.
+- Regressions should generate =severity=strong= or =blocking-candidate= only when the benchmark evidence is current and tied to a stable generation or validation receipt.
+Snapshot projection:
+- =subject.kind= and =subject.command= define the fact scope.
+- =status=matched= supports a stable output-contract fact.
+- =status=changed= or =status=missing= creates a changed-behavior or missing-contract fact.
+- =observations= supply compact rationale, not raw source.
+- =expected=, =actual=, and =diff= are artifact-backed evidence; normal agent render should summarize them and link the artifact, not dump full content.
+- =receiptIds= and =candidateIds= connect the snapshot to validation receipts and graph nodes.
+The projection invariant is:
+#+begin_src text
+benchmark -> route quality, budget, failure mode, expected resolution
+snapshot  -> observable contract, changed behavior, compact render stability
+#+end_src
+* Rust policy evidence today
+Rust already has useful pieces of this design:
+- query-wrapper quality analysis computes query pack quality, scope quality, package cohesion, risks, noise, and whether a selector query is allowed;
+- search-pipe quality analysis computes global/path/declaration/strong/weak coverage, package cohesion, parser/finder/page-index handles, owner seed terms, query-pack hints, and whether query-selector is safe;
+- session policy compiles allowed ASP command prefixes for main and child sessions;
+- scenario performance gates maintain required policy ids for ASP search/query/graph/provider-fact paths across Rust, Python, Julia, TypeScript, Gerbil Scheme, and Org;
+- snapshot tests assert agent-facing compact contracts such as single-line output, =nextCommand=, =avoid=, and compact search action structure.
+These are not yet one coherent write-time policy substrate.
+The new schema direction is to normalize them into policy facts and recipes so the model can consume them before patch generation.
+* Schema contracts
+Two new schema files define the runtime layer:
+- =schemas/semantic-policy-fact.v1.schema.json=
+- =schemas/semantic-policy-recipe.v1.schema.json=
+=semantic-policy-fact.v1= records:
+- stable identity: =factId=, optional =criterionId=, optional =ruleId=, and optional =recipeIds=;
+- authority: =languageId=, =providerId=, optional =namespace=;
+- meaning: =factKind=, =severity=, =confidence=, =stability=, =summary=, =rationale=;
+- scope: workspace/package/owner/selector/entity/dependency/test/artifact/scenario/profile/session;
+- evidence: parser fact, compiler fact, provider fact, criterion catalog, extension report, scenario benchmark, behavior snapshot, EvidenceGraph, reasoning step, route receipt, test receipt, verification receipt, DB generation, overlay, artifact, Org contract, manual, research, or heuristic;
+- agent timing: =before-search=, =search-routing=, =before-write=, =during-write=, =review=, =test-selection=, =repair=, =documentation=, or =suppress-route=;
+- actions: recommended actions and avoid actions with optional =nextCommand=, selector, or recipe reference.
+=semantic-policy-recipe.v1= records:
+- stable recipe identity and optional criterion/rule links;
+- applicability over scope kinds and fact kinds;
+- preconditions, steps, expected evidence, failure modes, and recovery;
+- agent timing, stability, provenance, and provider-owned fields.
+The schema split matters:
+- A fact is a claim about the current evidence state.
+- A recipe is an action model the agent can follow.
+- A finding is a provider/report surface.
+- A criterion is the shared canon.
+Conflating these four roles makes the graph hard to rank and makes compact render verbose.
+* Identity invariant
+Policy facts must not use line numbers as executable identity.
+A policy fact may include display-only path/line/column information for a human or compact render. It must still scope itself through selector, entity, owner, generation, dependency, artifact, profile, session, or overlay identity.
+This is required because code can change quickly across parallel agent sessions and subagents. A line number can be a stale display hint; it cannot be the key that determines policy applicability, route ranking, recipe selection, or DB persistence.
+* Harness responsibilities
+Language harnesses should do the smallest language-specific work that only they can do:
+- parse native syntax and project files;
+- ask compilers or language tooling for facts when available;
+- identify native idioms, ecosystem activations, and profile boundaries;
+- emit policy facts and recipes using the shared schema;
+- preserve language-specific detail in =fields= maps rather than changing the root protocol.
+Rust should do the shared heavy work:
+- validate =semantic-policy-fact= and =semantic-policy-recipe= packets;
+- normalize facts into DB/overlay/EvidenceGraph inputs;
+- keep dynamic overlay policy facts out of durable stable tables unless promotion evidence exists;
+- render compact policy guidance without dumping JSON to the agent;
+- expose graph-route-ready next actions and suppressions.
+Python should own production graph-route use of policy:
+- combine policy facts with selectors, dependencies, tests, history, and route receipts;
+- rank recipes against current intent;
+- prune low-value or repeated policy routes;
+- emit compact scoring receipts.
+Julia should not make runtime route decisions. It should replay large session sets and study which policy facts, recipes, and topology jumps actually reduce search/write/review turns. Its findings should feed Python algorithm changes and Rust schema/render adjustments.
+* Language ecosystem audit
+The current harness split implies this rollout order:
+| Language/provider | Current useful base | Policy fact opportunity |
+| Rust / =rs-harness= | native source index, owner/search/read/check, semantic facts, criterion catalog | Tokio, ownership/API boundaries, error/resource recipes, test coupling, DB Engine migration facts |
+| TypeScript / =ts-harness= | native search/read/check, semantic facts, Effect extension precedent | Effect/resource/schema/error-channel facts, discriminated union and exhaustiveness recipes |
+| Python / =py-harness= | policy check command, semantic facts, graph algorithm runtime | framework/profile facts, data-flow and test-selection recipes, production graph-route implementation |
+| Julia / =julia-lang-project-harness= | parser/project evidence and analysis artifacts | type-stability, mutation contract, function barrier, SciML/Moshi research facts; offline ranking research |
+| Gerbil Scheme / =gerbil-scheme-harness= | runtime source, compiler evidence, proof, compare, pattern search | macro boundary facts, syntax-parameter recipes, proof-backed policy facts |
+| Org/Markdown / =orgize= | document search/query, contract-friendly selectors | writing-policy facts, RFC/contract evidence, recipe documentation anchors |
+This is not a mandate that every harness implement every fact. The shared schema lets each harness emit the strongest facts it can prove while Rust/Python/Julia consume a common shape.
+* Agent-facing render
+Agents should not be asked to read full JSON policy packets during normal work.
+The compact render should expose:
+#+begin_src text
+policyFacts=<count> hard=<count> strong=<count> advisory=<count>
+PF1 kind=<factKind> scope=<selector/entity/profile> use=<before-write,repair>
+    fact=<short summary>
+    why=<short rationale>
+    recipe=<recipeId> next=<command or selector>
+avoid=<short suppressions>
+#+end_src
+Full JSON remains validation, cache, DB, and artifact material. The agent-facing render should be progressive:
+1. show only the top few facts that change the next action;
+2. show recipes only when a write/review/test action needs them;
+3. let the agent request exact fact/recipe packets by selector or fact id.
+This keeps policy useful without filling context.
+* EvidenceGraph and ReasoningTree use
+Policy facts become =EvidenceGraph= nodes.
+Policy recipes become recipe nodes connected to:
+- facts they require;
+- selectors/entities they apply to;
+- tests or verification receipts they expect;
+- route receipts that show whether the recipe helped;
+- reasoning steps where the agent accepted, ignored, or failed the recipe.
+=ReasoningTree= should record:
+- which policy facts were visible when the agent made a write decision;
+- which recipe branch the agent followed;
+- whether the branch reduced search/write/review turns;
+- whether the recipe caused a false route, stale selector, or unnecessary edit.
+=GraphRoute= should use this state to make policy compact and contextual. A known fact should not be repeated every turn unless it changes the next action.
+* DB and overlay policy
+Stable policy facts can be persisted when they are backed by stable parser/compiler/project evidence.
+Dynamic policy facts should live in overlay/session storage when they depend on dirty code, current branch edits, active subagent context, or temporary reasoning branches.
+Promotion from overlay to stable DB state requires evidence such as:
+- matching parser facts on a stable generation;
+- a provider receipt or verification receipt;
+- no conflict with newer overlay facts;
+- an accepted route/write/test receipt showing the fact was useful.
+This follows the DB Engine architecture: stable Turso state should improve repeated work, while fast-changing policy facts must not churn durable tables under parallel agent editing.
+* Rollout
+1. Register =semantic-policy-fact.v1= and =semantic-policy-recipe.v1= in schema docs and provider descriptor planning.
+2. Add Rust-side schema validation and compact render tests before provider implementation.
+3. Map existing =software-criterion-catalog= repair recipes into =semantic-policy-recipe= packets.
+4. Let one provider emit a minimal =before-write= policy fact and recipe from parser facts.
+5. Feed the facts into EvidenceGraph and Python graph-route ranking as non-blocking advisory evidence.
+6. Replay real sessions in Julia to compare with and without policy facts/recipes.
+7. Promote only the facts that reduce turns or prevent bad edits without creating repeated route noise.
+* Non-goals
+- Do not turn policy into a large hard-coded linter that speaks before the parser proves evidence.
+- Do not require all policy facts to be DB-persisted.
+- Do not make Julia part of runtime policy decisions.
+- Do not make JSON the prompt-facing render.
+- Do not treat line ranges as search, policy, or recipe identity.
+- Do not introduce an agent MCP server as part of this design.

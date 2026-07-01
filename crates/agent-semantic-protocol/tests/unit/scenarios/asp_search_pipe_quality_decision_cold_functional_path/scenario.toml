@@ -1,0 +1,21 @@
+id = "asp-search-pipe-quality-decision-cold-functional-path"
+title = "Search pipe quality decision stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-PIPE-QUALITY-DECISION-COLD-001"]
+agent_goal = "Validate that search-pipe risk classification, query quality, fd fallback, missing path terms, and owner seed projection are owned by agent-semantic-search instead of command-local quality code."
+language = "rust"
+workspace = "."
+owners = [
+  "crates/agent-semantic-search/src/search_pipe_quality.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_quality.rs",
+]
+queries = [
+  "search pipe quality risks",
+  "fd fallback owner seed missing path",
+]
+inputs = "A bounded query-term vector with one path-like symbol, one weak symbol, a concept term, weak coverage evidence, and low package cohesion."
+expected = "The search-owned quality decision kernel emits package-drift and weak-camelcase risks, low query quality, fd fallback terms, and owner seed terms without provider or native finder work."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/search_pipe_quality.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_quality.rs",
+]

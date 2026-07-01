@@ -1,7 +1,4 @@
-#[path = "../../../../../../src/command/search_pipe_seed_decision.rs"]
-mod search_pipe_seed_decision;
-
-use search_pipe_seed_decision::{
+use agent_semantic_search::{
     SearchActionSelection, SearchEvidenceState, SeedActionIntent, SeedPhaseDecision,
     recommended_action_for_seed_risk,
 };

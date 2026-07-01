@@ -56,6 +56,18 @@ pub enum LanguageOwnerItemsRuntimeOutcome {
     Failed(String),
 }
 
+/// Runtime-owned performance receipt for one owner-items resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LanguageOwnerItemsRuntimeReceipt {
+    pub outcome: String,
+    pub provider_process_count: usize,
+    pub stdout_bytes: usize,
+    pub stderr_bytes: usize,
+    pub cache_hit: bool,
+    pub fallback_reason: String,
+    pub elapsed_ms: u128,
+}
+
 /// Run owner-items dispatch through the shared provider-owned policy.
 ///
 /// The command layer supplies the provider adapter, but the runtime owns the
@@ -184,6 +196,48 @@ pub fn resolve_language_owner_items_runtime_outcome(
         stderr: output.stderr.to_vec(),
         cache_hit: false,
     })
+}
+
+/// Build the runtime-owned performance receipt for owner-items policy.
+#[must_use]
+pub fn language_owner_items_runtime_receipt(
+    outcome: &LanguageOwnerItemsRuntimeOutcome,
+    provider_process_count: usize,
+    elapsed_ms: u128,
+) -> LanguageOwnerItemsRuntimeReceipt {
+    match outcome {
+        LanguageOwnerItemsRuntimeOutcome::Handled {
+            stdout,
+            stderr,
+            cache_hit,
+        } => LanguageOwnerItemsRuntimeReceipt {
+            outcome: "handled".to_string(),
+            provider_process_count,
+            stdout_bytes: stdout.len(),
+            stderr_bytes: stderr.len(),
+            cache_hit: *cache_hit,
+            fallback_reason: "none".to_string(),
+            elapsed_ms,
+        },
+        LanguageOwnerItemsRuntimeOutcome::Unsupported => LanguageOwnerItemsRuntimeReceipt {
+            outcome: "unsupported".to_string(),
+            provider_process_count,
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+            cache_hit: false,
+            fallback_reason: "unsupported-owner-items-interface".to_string(),
+            elapsed_ms,
+        },
+        LanguageOwnerItemsRuntimeOutcome::Failed(message) => LanguageOwnerItemsRuntimeReceipt {
+            outcome: "failed".to_string(),
+            provider_process_count,
+            stdout_bytes: 0,
+            stderr_bytes: message.len(),
+            cache_hit: false,
+            fallback_reason: "fail-closed-no-fallback".to_string(),
+            elapsed_ms,
+        },
+    }
 }
 
 /// Compact language harness stdout into the bounded `owner-items` cache shape.

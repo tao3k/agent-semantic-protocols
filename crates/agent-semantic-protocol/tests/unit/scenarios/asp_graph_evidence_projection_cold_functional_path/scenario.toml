@@ -1,0 +1,21 @@
+id = "asp-graph-evidence-projection-cold-functional-path"
+title = "Graph evidence projection predicate stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-EVIDENCE-PROJECTION-COLD-001"]
+agent_goal = "Validate that owner/topology-only frontier detection is owned by agent-semantic-search instead of command-local evidence projection code."
+language = "rust"
+workspace = "."
+owners = [
+  "crates/agent-semantic-search/src/graph_evidence_projection.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_evidence_projection.rs",
+]
+queries = [
+  "owner topology frontier predicate",
+  "command evidence projection boundary",
+]
+inputs = "Two graph frontier kind maps: one containing only owner/workspace/provider-root/submodule kinds and one containing an item node."
+expected = "The search-owned predicate accepts the topology-only frontier and rejects the mixed item frontier without provider or native finder work."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/graph_evidence_projection.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_evidence_projection.rs",
+]

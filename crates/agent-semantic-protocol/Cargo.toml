@@ -5,13 +5,14 @@ edition = "2024"
 
 [dependencies]
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+agent-semantic-client-db = { path = "../agent-semantic-client-db", default-features = false }
 aho-corasick = "1.1.4"
 agent-semantic-client = { path = "../agent-semantic-client" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
-agent-semantic-search = { path = "../agent-semantic-search" }
+agent-semantic-search = { path = "../agent-semantic-search", default-features = false }
 agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
 orgize = { workspace = true }
 proc-macro2 = { version = "1", features = ["span-locations"] }
@@ -44,4 +45,7 @@ toml = "0.9"
 insta = "1"
 
 [features]
-turso-overlay = ["agent-semantic-search/turso-overlay"]
+turso-overlay = [
+    "agent-semantic-search/turso-overlay",
+    "agent-semantic-client-db/turso-backend",
+]

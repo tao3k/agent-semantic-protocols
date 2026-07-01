@@ -1,0 +1,16 @@
+id = "asp-runtime-owner-items-receipt-cold-functional-path"
+title = "ASP runtime records owner-items provider receipt metrics on a cold provider output"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-RUNTIME-OWNER-ITEMS-RECEIPT-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
+]
+agent_goal = "Keep language owner-items provider metrics owned by agent-semantic-runtime: runtime should resolve provider output, compact stdout, write cache, and emit provider count, stdout bytes, stderr bytes, cache hit, fallback reason, and elapsed ms without command-specific receipt logic."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_runtime::resolve_language_owner_items_runtime_outcome",
+  "agent_semantic_runtime::language_owner_items_runtime_receipt",
+  "providerProcessCount=1",
+  "fallbackReason=none",
+]
+inputs = "inputs"
+expected = "expected"

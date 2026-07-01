@@ -1,0 +1,11 @@
+id = "asp-graph-node-projection-cold-functional-path"
+title = "ASP graph node projection stays search-owned"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-GRAPH-NODE-PROJECTION-COLD-001"]
+agent_goal = "Project owner path nodes from search crate primitives without command-local graph node algorithms."
+inputs = "Owner paths with mixed casing, spaces, generated path labels, and punctuation-only values."
+expected = "Owner graph nodes use stable search-owned ids, preserve provider/file attributes as data, and do not encode executable line ranges."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-search/src/graph_node_projection.rs",
+  "crates/agent-semantic-protocol/src/command/search_pipe_graph_turbo.rs",
+]

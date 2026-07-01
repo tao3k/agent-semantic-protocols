@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_search_pipe_package_cohesion_cold_functional_path_stays_inside_scenario_gate"
+target_total = "500us"
+max_total = "10ms"
+observed_total = "500us"
+regression_budget = "1ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 0
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+snapshot = "asp_search_pipe_package_cohesion_cold_functional_path_stays_inside_scenario_gate"
+fallback_reason = "none"
+route_source = "search-pipe-package-cohesion"
+target_rationale = "Search-pipe package cohesion is an in-memory search crate policy over bounded owner paths and high-value terms. The target remains sub-millisecond; the low-millisecond hard ceiling absorbs parallel libtest scheduling jitter."
+
+[observed_timings]
+search_pipe_package_cohesion = "500us"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

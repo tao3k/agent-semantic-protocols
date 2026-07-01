@@ -1,0 +1,355 @@
+* One-sentence summary
+ASP should treat agent reasoning as typed, replayable, graph-transforming evidence: =ReasoningTree= records how a run moved, =EvidenceGraph= stores reusable evidence across runs, and =GraphRoute= navigates that evidence toward exact selectors, commands, tests, edits, and writing actions.
+* Scope
+This RFC is the core theory document for ASP reasoning, evidence, topology, and agent-facing navigation.
+
+It owns:
+- the user and agent mental model for code-as-reasoning;
+- the distinction between =ReasoningTree=, =EvidenceGraph=, and =GraphRoute=;
+- the principle that reasoning actions should become typed evidence;
+- the principle that executable code identity must be selector/entity/generation/overlay identity, not line ranges;
+- the improvement scheme that connects native parsers, DB Engine state, dynamic overlays, Python graph-route ranking, Julia offline replay, and compact render.
+
+It does not own:
+- the external =smolagents= source snapshot, which remains in [[file:10.22-smolagents-code-as-reasoning-evidence-graph.org][10.22 smolagents code-as-reasoning EvidenceGraph]];
+- the DB Engine / Turso state layout, which remains in [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]];
+- the codebase-memory-mcp search comparison, which remains in [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]];
+- policy facts and recipes, which remain in [[file:10.24-policy-facts-recipes-schema.org][10.24 policy facts recipes schema]];
+- the compact graph feature details, which remain tied to [[file:10.06-agent-compact-graph-feature.org][10.06 agent compact graph feature]] and schema work.
+* Document map
+This theory should be the shared conceptual root for the surrounding RFCs:
+
+#+begin_src text
+10.23 core theory
+  -> 10.20 code-search evidence and Codebase-Memory comparison
+  -> 10.21 DB Engine, Turso, state, overlay, graph-route implementation architecture
+  -> 10.22 smolagents as an external code-as-reasoning reference
+  -> 10.24 policy facts and recipes as runtime quality evidence
+  -> 10.06 compact graph render and agent-facing evidence projection
+#+end_src
+
+The direction of dependency matters. Core ASP theory should not live inside an external reference note. External research notes may point here when they explain how an outside system maps into ASP.
+* Core principle
+The core principle is:
+
+#+begin_src text
+reasoning becomes an executable, typed, replayable evidence artifact
+#+end_src
+
+This does not mean that code itself thinks. It means that an agent can express part of its reasoning as a small executable action. The action can call tools, hold intermediate state, branch on observations, handle errors, and produce a final answer. Once it runs, ASP can record what happened as structured evidence instead of losing the reasoning inside a natural-language paragraph.
+
+A prompt-only loop usually looks like:
+
+#+begin_src text
+think about intent -> write a tool call -> read output -> think again
+#+end_src
+
+The ASP target loop is:
+
+#+begin_src text
+intent -> reasoning action -> execution/parse -> observation/error/state
+-> typed evidence -> graph-route next action
+#+end_src
+
+The important change is not that the action is written in Python, Rust, TypeScript, or any other language. The important change is that the system can lower the action into a structured event with provenance, parser proof, observations, and graph edges.
+* Basic code-as-reasoning loop
+The basic loop is:
+
+#+begin_src mermaid
+flowchart TD
+  A["User intent"] --> B["Agent plans next step"]
+  B --> C["Agent emits reasoning action"]
+  C --> D["Runtime executes or parses action"]
+  D --> E{"Observation or error"}
+  E --> F["Typed run memory records step"]
+  F --> B
+  E --> G["Final answer or accepted evidence"]
+#+end_src
+
+The useful properties are:
+- composability: one action can call several tools in a controlled order;
+- object management: intermediate values can be named and reused;
+- branching: the action can react to a missing result, empty list, low confidence, or error;
+- replayability: action code, normalized calls, observations, logs, errors, and timing can be stored;
+- auditability: the system can inspect what was tried, what failed, and what evidence was produced.
+
+Compared with a plain JSON tool call:
+
+#+begin_src text
+JSON call: run this tool with these arguments.
+Reasoning action: run this tool, inspect the result, branch if weak,
+record evidence, then choose the next action.
+#+end_src
+
+This makes code-as-reasoning a better local action language for multi-step evidence gathering. It does not remove the need for schemas. It increases the need for schemas, because every executed action should be normalized into typed events and receipts.
+* Why generic code-as-reasoning is not enough
+Generic code-as-reasoning can record that an action called a tool and produced an observation. That is useful, but it is not enough for ASP.
+
+Agent-grade codebase reasoning also needs to know:
+- which provider-owned selector was proven;
+- which owner, module, package, or artifact contains the evidence;
+- which dependency edge made the route important;
+- which test covers the selector;
+- which Org/RFC/ADR decision refers to the evidence;
+- whether the result came from stable DB state or a dirty overlay;
+- whether this route failed in another session;
+- whether the next action should read more, edit, test, write, or suppress the route;
+- whether the action can be replayed without re-running providers.
+
+ASP should therefore treat a reasoning action as the beginning of evidence construction, not as the final artifact.
+* Three-layer model
+The core theory has three separate layers.
+
+#+begin_src mermaid
+flowchart LR
+  RT["ReasoningTree<br/>How this run got here"] --> EG["EvidenceGraph<br/>What evidence exists and how it connects"]
+  EG --> GR["GraphRoute<br/>Where the agent should go next"]
+  GR --> NA["NextAction<br/>Exact selector / command / recovery"]
+  NA --> RT
+#+end_src
+
+=ReasoningTree= is the causal trace of a run. It answers:
+
+#+begin_src text
+How did the agent get here?
+Which action produced which observation?
+Which branch failed?
+Which recovery was tried?
+Which evidence supports the answer?
+#+end_src
+
+=EvidenceGraph= is the cross-session evidence substrate. It answers:
+
+#+begin_src text
+What selectors, entities, tests, dependencies, artifacts, observations,
+errors, receipts, and route decisions are known?
+How are they connected?
+Which facts are stable, overlay-local, stale, or accepted?
+#+end_src
+
+=GraphRoute= is the navigation policy over the evidence state. It answers:
+
+#+begin_src text
+Given this intent and what the system already knows,
+which exact owner, selector, test, dependency, writing anchor,
+or recovery action should the agent use next?
+#+end_src
+
+The relationship is:
+- =ReasoningTree= produces dynamic evidence;
+- =EvidenceGraph= joins dynamic evidence with stable codebase, artifact, Org, and DB facts;
+- =GraphRoute= reads the graph and chooses the next action;
+- the next action creates more reasoning evidence.
+* Layer boundaries
+The boundaries are strict.
+
+=ReasoningTree= is not the graph-route. It is a replayable causal log. It may add dynamic weights such as "this route failed", "this observation was decisive", or "this recovery succeeded", but it must not become the canonical topology.
+
+=EvidenceGraph= is not a transcript dump. It is a typed evidence substrate. It should store or reference facts that can be reused: selectors, entities, dependencies, tests, artifacts, search receipts, route receipts, render receipts, overlay facts, and bounded reasoning metadata.
+
+=GraphRoute= is not the full reasoning history. It is a ranked navigation result. It should be compact and agent-actionable: exact selector, owner, dependency, test, edit target, writing anchor, or recovery action.
+
+The production loop is:
+
+#+begin_src text
+ReasoningTree -> EvidenceGraph/overlay -> GraphRoute
+-> compact render/recommendedNext -> ReasoningTree
+#+end_src
+
+This prevents two bad designs:
+- treating every reasoning branch as durable route topology, which pollutes the DB under fast-changing code;
+- treating graph-route as a replay log, which wastes tokens and hides the next actionable selector.
+* Code action as graph-transforming evidence
+For ASP, the strongest form is:
+
+#+begin_src text
+code action -> native parser proof -> evidence node/edge -> graph-route update
+#+end_src
+
+One reasoning action should be lowered into graph events:
+- =parsed_as=: action code to AST/native parser proof;
+- =calls=: action to tool or selector action;
+- =reads_state= / =writes_state=: action to memory, overlay, DB, or runtime state;
+- =produces=: action to observation;
+- =fails_with=: action to error;
+- =supports= / =refutes=: evidence to plan, selector, route, writing claim, or final answer;
+- =derived_from=: evidence to generation, overlay namespace, source hash, artifact, or provider receipt;
+- =ranked_by=: candidate evidence to Python graph scoring receipt;
+- =rendered_as=: graph frontier to compact agent packet;
+- =recommended_next=: packet to exact next command.
+
+#+begin_src mermaid
+flowchart TD
+  A["CodeAction"] --> B["AST / native parse"]
+  A --> C["ToolCall"]
+  A --> D["SelectorAction"]
+  A --> E["StateDelta"]
+
+  B --> P["Parser proof"]
+  D --> S["Stable selector or overlay entity"]
+  C --> O["Observation"]
+  E --> M["Memory / overlay state"]
+
+  P --> EG["EvidenceGraph"]
+  S --> EG
+  O --> EG
+  M --> EG
+
+  EG --> R["GraphRoute rank"]
+  R --> N["Next exact action"]
+#+end_src
+
+This is the point where ASP can exceed generic code-as-reasoning. The action is no longer just executed; it becomes a typed graph transformation. The system can later ask why the route was chosen, which selector was decisive, which branch failed, and which action should be suppressed.
+* ASP enhanced loop
+The complete ASP loop is:
+
+#+begin_src mermaid
+flowchart TD
+  I["Intent"] --> P["Reasoning action"]
+  P --> X["Execute / parse action"]
+
+  X --> O["Observation / error / state delta"]
+  X --> S["Selector action"]
+  X --> T["Tool call"]
+
+  S --> NP["Native parser proof"]
+  NP --> EG["EvidenceGraph"]
+
+  O --> RT["ReasoningTree"]
+  T --> RT
+  P --> RT
+
+  RT --> EG
+
+  EG --> GR["GraphRoute"]
+  GR --> R["Compact ranked evidence"]
+  R --> N["Recommended next action"]
+  N --> P
+#+end_src
+
+ASP has stronger authority than a generic executor because:
+- native parsers can prove selectors, owners, imports, definitions, calls, tests, and language-specific facts;
+- DB Engine state can preserve stable generations, search receipts, route receipts, render receipts, and accepted actions;
+- dynamic overlays can represent dirty code without forcing every edit into the durable DB;
+- Python can run production graph-route ranking over normalized evidence;
+- Julia can replay large session batches offline to discover which topology jumps reduce turns.
+* User mental model
+For users, the practical model is:
+
+#+begin_src text
+The agent is not just searching files.
+It is building evidence and navigating a map of evidence.
+#+end_src
+
+A weak search loop looks like:
+
+#+begin_src text
+search -> read -> search again -> read more -> guess
+#+end_src
+
+The ASP target loop is:
+
+#+begin_src text
+intent -> evidence packet -> exact selector -> edit/test/write
+#+end_src
+
+Every meaningful action should become reusable evidence:
+- a successful selector read can make future routes shorter;
+- a failed route can be suppressed;
+- a test edge can make a candidate more authoritative;
+- a dependency edge can make a candidate more relevant;
+- an Org/RFC edge can connect code search to writing search;
+- a dirty overlay can change ranking without polluting stable DB state.
+* Agent mental model
+For an agent, the rule is:
+
+#+begin_src text
+Do not treat code search as line retrieval.
+Treat it as evidence navigation.
+#+end_src
+
+The agent should prefer:
+- selectors over line numbers;
+- owners over raw files;
+- route receipts over unstructured notes;
+- compact evidence over raw JSON dumps;
+- prior accepted receipts over cold search;
+- graph-route next actions over broad exploration when enough evidence exists.
+
+When more context is needed, the agent should ask for progressive disclosure:
+
+#+begin_src text
+compact packet -> more proof -> bounded snippet -> replay/audit
+#+end_src
+
+It should not default to:
+
+#+begin_src text
+dump whole file -> inspect manually -> repeat
+#+end_src
+* Search and writing implications
+For code search:
+
+#+begin_src text
+intent -> reasoning action -> parser proof -> graph/topology expansion
+-> compact evidence -> exact selector
+#+end_src
+
+For future writing search:
+
+#+begin_src text
+writing intent -> Org/RFC/ADR anchors -> code/entity evidence
+-> prior reasoning tree -> compact outline/evidence packet -> write action
+#+end_src
+
+Reasoning trees become searchable state. An agent can ask:
+- "What evidence did I already collect for this selector?"
+- "Which route failed and why?"
+- "Which action produced this observation?"
+- "Which plan branch was abandoned?"
+- "Which dynamic overlay changed the result?"
+
+This avoids forcing every prompt into a cold search flow.
+* Improvement scheme
+The core ASP improvement scheme is:
+
+1. Make reasoning events typed. A plan step, code action, tool call, observation, error, state delta, and final answer should have stable event identities.
+2. Attach native parser proof. Search results should become selectors, entities, dependencies, tests, and provider-owned facts instead of line rows.
+3. Store reusable evidence. Stable facts and accepted receipts belong in the DB Engine; high-churn dirty facts belong in dynamic overlay JSON until promoted.
+4. Route through EvidenceGraph. Search should join stable DB facts, overlays, prior receipts, parser facts, Org/writing evidence, and reasoning events.
+5. Rank with GraphRoute. Python production ranking should combine topology, freshness, prior success/failure, dependency/test proximity, novelty, and suppression signals.
+6. Render compactly. Agent-facing output should expose the minimum sufficient evidence, exact next command, confidence, freshness, and =more= handles.
+7. Replay offline. Julia should replay large session batches to measure which topology jumps reduce turns and which ranking failures should feed back into Python.
+
+The target product behavior is:
+
+#+begin_src text
+intent
+  -> code-as-reasoning action
+  -> selector-first evidence
+  -> EvidenceGraph update
+  -> graph-route next action
+  -> fewer turns to correct edit/test/write
+#+end_src
+
+The final purpose is not to store more data. The purpose is to reduce search turns by making evidence durable, typed, ranked, and reusable.
+* Runtime and research authority
+Runtime authority should remain strict:
+- Rust owns high-performance substrate, schema validation, provider orchestration, DB/overlay reads, receipt persistence, and compact render.
+- Python owns production graph-route algorithms: fusion, ranking, pruning, stale-route suppression, recovery ranking, and scoring receipts.
+- Julia is offline only: large session replay, topology jump evaluation, ranking-failure mining, graph metric design, and candidate algorithm notes for Python.
+
+Julia must not execute runtime route decisions. A route improvement should flow from Julia research to Python production implementation to Rust-validated receipt/render output.
+* Core invariants
+- Executable identity is selector/entity/generation/overlay id, not line range.
+- Raw JSON is a debug/analyzer surface, not the default agent prompt surface.
+- A reasoning action is not complete until it produces typed evidence or a typed failure.
+- Stable facts and volatile overlays must remain separate until promotion is justified.
+- GraphRoute output should be compact, ranked, and directly actionable.
+- ReasoningTree output should be causal, replayable, and audit-friendly.
+- EvidenceGraph should be selector-first and storage-backed enough for cross-session reuse.
+* References
+- [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]]
+- [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]]
+- [[file:10.22-smolagents-code-as-reasoning-evidence-graph.org][10.22 smolagents code-as-reasoning EvidenceGraph]]
+- [[file:10.06-agent-compact-graph-feature.org][10.06 agent compact graph feature]]

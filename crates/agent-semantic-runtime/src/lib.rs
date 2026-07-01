@@ -2,11 +2,14 @@
 
 //! Runtime state materialization for ASP project-local storage.
 
+mod async_bridge;
 mod graph_render;
 pub mod language_owner_items;
 mod runtime_source;
 pub mod state;
+mod timeout_policy;
 
+pub use async_bridge::runtime_block_on_current_thread;
 pub use graph_render::{
     GraphRenderReceiptRequest, run_graph_render_packet, run_graph_render_packet_bytes,
     run_graph_render_packet_bytes_with_receipt,
@@ -14,7 +17,8 @@ pub use graph_render::{
 pub use language_owner_items::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsDispatchPlan,
     LanguageOwnerItemsProviderOutput, LanguageOwnerItemsRuntimeOutcome,
-    compact_language_owner_items_stdout, language_owner_items_failure, language_owner_path_exists,
+    LanguageOwnerItemsRuntimeReceipt, compact_language_owner_items_stdout,
+    language_owner_items_failure, language_owner_items_runtime_receipt, language_owner_path_exists,
     language_owner_source_path, read_language_owner_items_cache,
     resolve_language_owner_items_runtime_outcome, run_language_owner_items_dispatch_plan,
     write_language_owner_items_cache,
@@ -36,7 +40,14 @@ pub use state::{
     project_protocol_home_path, project_root_for_activation_path, project_runtime_state,
     project_state_paths, runtime_bin_dir_for_cache_home,
 };
+pub use timeout_policy::{
+    RuntimeOperationTimeoutPolicy, RuntimeOperationTimeoutReceipt,
+    runtime_operation_timeout_receipt,
+};
 
 #[cfg(test)]
 #[path = "../tests/unit/language_owner_items.rs"]
 mod language_owner_items_tests;
+#[cfg(test)]
+#[path = "../tests/unit/timeout_policy.rs"]
+mod timeout_policy_tests;

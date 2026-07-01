@@ -80,7 +80,7 @@ evidence plan, and then operate on stable selectors, dependency facts, graph
 paths, snippets, and receipts.
 
 ** Follow-up: code as reasoning over the search graph
-The follow-up requirement is captured in [[file:10.22-smolagents-code-as-reasoning-evidence-graph.org][10.22 smolagents code-as-reasoning EvidenceGraph]].
+The follow-up requirement is captured in [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]]. [[file:10.22-smolagents-code-as-reasoning-evidence-graph.org][10.22 smolagents code-as-reasoning EvidenceGraph]] remains the external reference note for the code-as-reasoning implementation pattern.
 
 =codebase-memory-mcp= productizes the durable graph-search side: indexed nodes, BM25/semantic lookup, path tracing, snippet retrieval, and an agent playbook. ASP should add the executable reasoning side: each route decision should be a typed action over the evidence graph, recorded in a reasoning tree, linked to native parser selectors, and fed back into graph-route scoring.
 

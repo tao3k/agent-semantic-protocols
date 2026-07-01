@@ -15,5 +15,5 @@ target_rationale = "Cold functional Turso overlay search adapter gate validates 
 
 [observed_timings]
 turso_overlay_search = "5ms"
-provider_process_count = "0ms"
-native_finder_process_count = "0ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

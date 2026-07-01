@@ -1,0 +1,18 @@
+harness = "libtest"
+test = "asp_search_pipe_generated_candidate_cold_functional_path_stays_inside_scenario_gate"
+snapshot = "asp_search_pipe_generated_candidate_cold_functional_path_stays_inside_scenario_gate"
+target_total = "500us"
+max_total = "2ms"
+observed_total = "500us"
+regression_budget = "2ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "search-pipe-generated-candidate"
+max_provider_process_count = 0
+max_stdout_bytes = 8192
+fallback_reason = "none"
+target_rationale = "Cold functional generated-candidate gate validates the search-owned graph candidate sparsity kernel. The end-to-end CLI facade has a separate test; this scenario stays under the <=500ms hard gate and proves the kernel does not apply generated-path filtering."
+
+[observed_timings]
+search_pipe_generated_candidate = "500us"
+provider_process_count = "0us"
