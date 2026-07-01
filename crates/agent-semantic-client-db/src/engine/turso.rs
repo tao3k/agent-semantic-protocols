@@ -207,17 +207,36 @@ pub async fn persist_turso_evidence_graph(
     graph: &ClientDbEvidenceGraph,
 ) -> Result<TursoClientDbEvidenceGraphPersistReport, String> {
     let connection = connect_turso_client_db(db_path).await?;
+    connection
+        .execute("BEGIN TRANSACTION", ())
+        .await
+        .map_err(|error| format!("failed to begin Turso evidence graph transaction: {error}"))?;
     for node in &graph.nodes {
-        upsert_turso_graph_entity_with_connection(
+        if let Err(error) = upsert_turso_graph_entity_with_connection(
             &connection,
             &TursoClientDbGraphEntity::from(node),
         )
-        .await?;
+        .await
+        {
+            let _ = connection.execute("ROLLBACK", ()).await;
+            return Err(error);
+        }
     }
     for edge in &graph.edges {
-        upsert_turso_graph_edge_with_connection(&connection, &TursoClientDbGraphEdge::from(edge))
-            .await?;
+        if let Err(error) = upsert_turso_graph_edge_with_connection(
+            &connection,
+            &TursoClientDbGraphEdge::from(edge),
+        )
+        .await
+        {
+            let _ = connection.execute("ROLLBACK", ()).await;
+            return Err(error);
+        }
     }
+    connection
+        .execute("COMMIT", ())
+        .await
+        .map_err(|error| format!("failed to commit Turso evidence graph transaction: {error}"))?;
     Ok(TursoClientDbEvidenceGraphPersistReport {
         entity_count: graph.nodes.len(),
         edge_count: graph.edges.len(),
@@ -352,6 +371,63 @@ pub async fn list_turso_graph_entities(
             })?,
             query_keys,
         });
+    }
+    Ok(entities)
+}
+
+#[cfg(feature = "turso-backend")]
+/// Return EvidenceGraph entities by primary key using an existing Turso connection.
+pub(super) async fn list_turso_graph_entities_by_ids_with_connection(
+    connection: &turso::Connection,
+    ids: &[String],
+) -> Result<Vec<TursoClientDbGraphEntity>, String> {
+    let mut entities = Vec::new();
+    for id in ids {
+        let mut rows = connection
+            .query(
+                "SELECT id, kind, label, selector, path, language_id, provider_id, query_keys_json
+                 FROM asp_graph_entity
+                 WHERE id = ?1
+                 LIMIT 1",
+                [id.as_str()],
+            )
+            .await
+            .map_err(|error| format!("failed to query Turso graph entity by id: {error}"))?;
+        if let Some(row) = rows
+            .next()
+            .await
+            .map_err(|error| format!("failed to read Turso graph entity by id row: {error}"))?
+        {
+            let query_keys_json = row
+                .get::<String>(7)
+                .map_err(|error| format!("failed to read Turso graph query keys: {error}"))?;
+            let query_keys = serde_json::from_str::<Vec<String>>(&query_keys_json)
+                .map_err(|error| format!("failed to decode Turso graph query keys: {error}"))?;
+            entities.push(TursoClientDbGraphEntity {
+                id: row
+                    .get::<String>(0)
+                    .map_err(|error| format!("failed to read Turso graph entity id: {error}"))?,
+                kind: row
+                    .get::<String>(1)
+                    .map_err(|error| format!("failed to read Turso graph entity kind: {error}"))?,
+                label: row
+                    .get::<String>(2)
+                    .map_err(|error| format!("failed to read Turso graph entity label: {error}"))?,
+                selector: row.get::<Option<String>>(3).map_err(|error| {
+                    format!("failed to read Turso graph entity selector: {error}")
+                })?,
+                path: row
+                    .get::<Option<String>>(4)
+                    .map_err(|error| format!("failed to read Turso graph entity path: {error}"))?,
+                language_id: row.get::<Option<String>>(5).map_err(|error| {
+                    format!("failed to read Turso graph entity language id: {error}")
+                })?,
+                provider_id: row.get::<Option<String>>(6).map_err(|error| {
+                    format!("failed to read Turso graph entity provider id: {error}")
+                })?,
+                query_keys,
+            });
+        }
     }
     Ok(entities)
 }

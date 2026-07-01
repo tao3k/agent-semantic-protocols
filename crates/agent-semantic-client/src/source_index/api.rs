@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::time::Instant;
 
 use agent_semantic_client_core::{
     ClientCacheFileHash, LanguageId, ProjectContext, ProviderId, ProviderRegistryEvidence,
@@ -26,10 +27,14 @@ use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
 
 /// Refresh the DB Engine source index for a project without storing raw source.
 pub fn refresh_source_index(project_root: &Path) -> Result<SourceIndexRefreshReport, String> {
+    let trace_started = Instant::now();
     let mut context = SourceIndexRefreshContext::resolve(project_root)?;
+    source_index_trace("context-resolved", trace_started);
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
+    source_index_trace("provider-registry-loaded", trace_started);
     let registry = snapshot.evidence(project_root);
     let previous_file_hashes = context.latest_file_hashes(project_root)?;
+    source_index_trace("previous-file-hashes-loaded", trace_started);
     if let Some(report) = try_reuse_source_index_scope(
         &context,
         SourceIndexScopeReuse {
@@ -38,9 +43,11 @@ pub fn refresh_source_index(project_root: &Path) -> Result<SourceIndexRefreshRep
             registry: &registry,
         },
     )? {
+        source_index_trace("scope-reused", trace_started);
         return Ok(report);
     }
     let files = collect_source_index_files(project_root, &snapshot)?;
+    source_index_trace("scope-files-collected", trace_started);
     context.refresh_generation(SourceIndexGenerationRefresh {
         index_root: project_root,
         files: &files,
@@ -146,6 +153,7 @@ impl SourceIndexRefreshContext {
         &mut self,
         request: SourceIndexGenerationRefresh<'_>,
     ) -> Result<SourceIndexRefreshReport, String> {
+        let trace_started = Instant::now();
         let file_hashes = source_index_file_hashes(
             request.index_root,
             request.files,
@@ -153,12 +161,14 @@ impl SourceIndexRefreshContext {
             &request.registry.fingerprint,
             request.registry.scope_dirs.iter().map(String::as_str),
         )?;
+        source_index_trace("generation-file-hashes-built", trace_started);
         let reusable_stats = self.db_session.reusable_source_index_generation(
             request.index_root,
             &self.schema_id,
             &self.schema_version,
             &file_hashes,
         )?;
+        source_index_trace("generation-reuse-checked", trace_started);
 
         #[cfg(feature = "turso-backend")]
         {
@@ -181,8 +191,10 @@ impl SourceIndexRefreshContext {
                 },
                 file_hashes,
             )?;
+            source_index_trace("generation-import-assembled", trace_started);
             if let Some(stats) = reusable_stats {
                 self.persist_turso_source_index_read_model(&import)?;
+                source_index_trace("generation-turso-read-model-persisted", trace_started);
                 Ok(source_index_refresh_report(
                     &self.db_path,
                     stats,
@@ -197,7 +209,9 @@ impl SourceIndexRefreshContext {
                         file_count: client_db_source_index_file_count(request.files.len()),
                     },
                 )?;
+                source_index_trace("generation-sqlite-control-imported", trace_started);
                 self.persist_turso_source_index_read_model(&turso_import)?;
+                source_index_trace("generation-turso-read-model-persisted", trace_started);
                 Ok(SourceIndexRefreshReport::from_report(
                     self.db_path.clone(),
                     report,
@@ -231,12 +245,14 @@ impl SourceIndexRefreshContext {
                 },
                 file_hashes,
             )?;
+            source_index_trace("generation-import-assembled", trace_started);
             let report =
                 self.db_session
                     .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
                         import,
                         file_count: client_db_source_index_file_count(request.files.len()),
                     })?;
+            source_index_trace("generation-sqlite-control-imported", trace_started);
             Ok(SourceIndexRefreshReport::from_report(
                 self.db_path.clone(),
                 report,
@@ -252,6 +268,16 @@ impl SourceIndexRefreshContext {
         runtime_block_on_current_thread(self.db_engine.persist_source_index_read_model(import))
             .map_err(|error| format!("source-index Turso read-model bridge failed: {error}"))?
             .map(|_| ())
+    }
+}
+
+fn source_index_trace(stage: &str, started: Instant) {
+    if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
+        eprintln!(
+            "[source-index-trace] stage={} elapsedMs={}",
+            stage,
+            started.elapsed().as_millis()
+        );
     }
 }
 

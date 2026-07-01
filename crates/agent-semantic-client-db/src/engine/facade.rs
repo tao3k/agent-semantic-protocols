@@ -39,8 +39,8 @@ use super::turso::bootstrap_turso_client_db;
 use super::turso::{TursoClientDbEngineBackend, TursoClientDbEngineReport};
 #[cfg(feature = "turso-backend")]
 use super::turso::{
-    TursoClientDbEvidenceGraphPersistReport, TursoClientDbGraphEntity, list_turso_graph_entities,
-    persist_turso_evidence_graph,
+    TursoClientDbEvidenceGraphPersistReport, TursoClientDbGraphEntity, connect_turso_client_db,
+    list_turso_graph_entities_by_ids_with_connection, persist_turso_evidence_graph,
 };
 #[cfg(feature = "turso-backend")]
 use super::turso_route_receipt::{
@@ -49,7 +49,8 @@ use super::turso_route_receipt::{
 #[cfg(feature = "turso-backend")]
 use super::turso_search::{
     TursoClientDbOverlayDocument, TursoClientDbSearchDocument, TursoClientDbSearchHit,
-    search_turso_documents, upsert_turso_overlay_document, upsert_turso_search_document,
+    search_turso_documents, search_turso_stable_documents_with_connection,
+    upsert_turso_overlay_document, upsert_turso_search_documents,
 };
 
 /// Resolved DB Engine paths and backend selection for one State Core workspace.
@@ -620,7 +621,9 @@ impl ClientDbEngine {
         document: &TursoClientDbSearchDocument,
     ) -> Result<(), String> {
         self.bootstrap_active_turso().await?;
-        upsert_turso_search_document(&self.db_path, document).await
+        upsert_turso_search_documents(&self.db_path, std::slice::from_ref(document))
+            .await
+            .map(|_| ())
     }
 
     /// Persist one dynamic overlay document through the active DB Engine backend.
@@ -744,12 +747,17 @@ impl ClientDbEngine {
         &self,
         import: &ClientDbSourceIndexImport,
     ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
+        let trace_started = std::time::Instant::now();
         self.bootstrap_active_turso().await?;
+        db_engine_trace("source-index-bootstrap", trace_started);
         let graph = source_index_evidence_graph(import);
+        db_engine_trace("source-index-graph-built", trace_started);
         let graph_report = persist_turso_evidence_graph(&self.db_path, &graph).await?;
+        db_engine_trace("source-index-graph-persisted", trace_started);
         let search_document_count = self
             .persist_source_index_search_documents(import.generation_id.as_str(), &graph)
             .await?;
+        db_engine_trace("source-index-search-documents-persisted", trace_started);
         Ok(source_index_read_model_report(
             graph_report,
             search_document_count,
@@ -762,12 +770,17 @@ impl ClientDbEngine {
         &self,
         import: &ClientDbStructuralIndexImport,
     ) -> Result<ClientDbEngineStructuralIndexReadModelReport, String> {
+        let trace_started = std::time::Instant::now();
         self.bootstrap_active_turso().await?;
+        db_engine_trace("structural-index-bootstrap", trace_started);
         let graph = structural_index_evidence_graph(import);
+        db_engine_trace("structural-index-graph-built", trace_started);
         let graph_report = persist_turso_evidence_graph(&self.db_path, &graph).await?;
+        db_engine_trace("structural-index-graph-persisted", trace_started);
         let search_document_count = self
             .persist_structural_index_search_documents(import.generation_id.as_str(), &graph)
             .await?;
+        db_engine_trace("structural-index-search-documents-persisted", trace_started);
         Ok(structural_index_read_model_report(
             graph_report,
             search_document_count,
@@ -951,8 +964,12 @@ impl ClientDbEngine {
         generation_id: &str,
         graph: &crate::ClientDbEvidenceGraph,
     ) -> Result<usize, String> {
-        let mut count = 0;
-        for node in &graph.nodes {
+        let mut documents = Vec::new();
+        for node in graph
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "source-owner")
+        {
             let mut terms = vec![node.kind.to_string(), node.label.clone()];
             if let Some(path) = &node.path {
                 terms.push(path.clone());
@@ -965,13 +982,18 @@ impl ClientDbEngine {
                 namespace: "source-index".to_string(),
                 document_id: format!("source-index:{generation_id}:{}", node.id),
                 entity_id: node.id.clone(),
-                selector: node.selector.clone(),
+                selector: node.selector.clone().or_else(|| {
+                    Some(format!(
+                        "{}://{}#file",
+                        node.language_id.as_ref()?,
+                        node.path.as_ref()?
+                    ))
+                }),
                 document: terms.join(" "),
             };
-            upsert_turso_search_document(&self.db_path, &document).await?;
-            count += 1;
+            documents.push(document);
         }
-        Ok(count)
+        upsert_turso_search_documents(&self.db_path, &documents).await
     }
 
     #[cfg(feature = "turso-backend")]
@@ -980,7 +1002,7 @@ impl ClientDbEngine {
         generation_id: &str,
         graph: &crate::ClientDbEvidenceGraph,
     ) -> Result<usize, String> {
-        let mut count = 0;
+        let mut documents = Vec::new();
         for node in graph
             .nodes
             .iter()
@@ -1007,10 +1029,20 @@ impl ClientDbEngine {
                 selector: node.selector.clone(),
                 document: terms.join(" "),
             };
-            upsert_turso_search_document(&self.db_path, &document).await?;
-            count += 1;
+            documents.push(document);
         }
-        Ok(count)
+        upsert_turso_search_documents(&self.db_path, &documents).await
+    }
+}
+
+#[cfg(feature = "turso-backend")]
+fn db_engine_trace(stage: &str, started: std::time::Instant) {
+    if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
+        eprintln!(
+            "[db-engine-trace] stage={} elapsedMs={}",
+            stage,
+            started.elapsed().as_millis()
+        );
     }
 }
 
@@ -1080,31 +1112,51 @@ async fn lookup_source_index_read_model_at_path(
         ));
     }
     let terms = source_index_read_model_terms(query);
-    let entities = list_turso_graph_entities(&db_path, Some("source-owner"), 4096).await?;
-    if entities.is_empty() {
+    let connection = connect_turso_client_db(&db_path).await?;
+    let hits =
+        search_turso_stable_documents_with_connection(&connection, "source-index", query, limit)
+            .await?;
+    if hits.is_empty()
+        && !turso_graph_entity_kind_exists_with_connection(&connection, "source-owner").await?
+    {
         return Ok(source_index_lookup_result(
             db_path,
             ClientDbSourceIndexLookupState::EmptyIndex,
             Vec::new(),
         ));
     }
+    let entity_ids = hits
+        .iter()
+        .filter_map(|hit| hit.entity_id.clone())
+        .collect::<Vec<_>>();
+    let entities =
+        list_turso_graph_entities_by_ids_with_connection(&connection, &entity_ids).await?;
     let mut candidates = Vec::new();
-    for entity in entities {
+    for hit in &hits {
+        let Some(entity_id) = &hit.entity_id else {
+            continue;
+        };
+        let Some(entity) = entities.iter().find(|entity| &entity.id == entity_id) else {
+            continue;
+        };
+        if entity.kind != "source-owner" {
+            continue;
+        }
         if let Some(language_id) = language_id
             && entity.language_id.as_deref() != Some(language_id.as_str())
         {
             continue;
         }
-        if terms.is_empty() || !source_index_entity_matches(&entity, &terms) {
+        if terms.is_empty() || !source_index_entity_matches(entity, &terms) {
             continue;
         }
         candidates.push(ClientDbSourceIndexCandidate {
-            path: entity.path.unwrap_or(entity.label),
-            language_id: entity.language_id.map(LanguageId::from),
-            provider_id: entity.provider_id.map(ProviderId::from),
+            path: entity.path.clone().unwrap_or_else(|| entity.label.clone()),
+            language_id: entity.language_id.clone().map(LanguageId::from),
+            provider_id: entity.provider_id.clone().map(ProviderId::from),
             source_kind: ClientDbSourceIndexSourceKind::Other("turso-source-index".to_string()),
             line_count: None,
-            query_keys: entity.query_keys,
+            query_keys: entity.query_keys.clone(),
         });
         if candidates.len() >= limit as usize {
             break;
@@ -1116,6 +1168,24 @@ async fn lookup_source_index_read_model_at_path(
         ClientDbSourceIndexLookupState::Hit
     };
     Ok(source_index_lookup_result(db_path, state, candidates))
+}
+
+#[cfg(feature = "turso-backend")]
+async fn turso_graph_entity_kind_exists_with_connection(
+    connection: &turso::Connection,
+    kind: &str,
+) -> Result<bool, String> {
+    let mut rows = connection
+        .query(
+            "SELECT id FROM asp_graph_entity WHERE kind = ?1 LIMIT 1",
+            [kind],
+        )
+        .await
+        .map_err(|error| format!("failed to query Turso graph entity kind presence: {error}"))?;
+    rows.next()
+        .await
+        .map(|row| row.is_some())
+        .map_err(|error| format!("failed to read Turso graph entity kind presence: {error}"))
 }
 
 #[cfg(feature = "turso-backend")]

@@ -466,7 +466,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file_without_sqlite_control
         .expect("persist source-index read-model through DB Engine facade");
     assert_eq!(source_index_report.graph_entity_count, 2);
     assert_eq!(source_index_report.graph_edge_count, 1);
-    assert_eq!(source_index_report.search_document_count, 2);
+    assert_eq!(source_index_report.search_document_count, 1);
     let source_index_hits = engine
         .search_source_index_documents("source_index_turso_fixture", 8)
         .await
