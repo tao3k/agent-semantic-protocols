@@ -160,7 +160,9 @@ fn tree_sitter_rows_replay_when_latest_unrelated_generation_is_stale() {
 
 #[test]
 fn tree_sitter_rows_are_stale_when_matching_source_hash_changes() {
+    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("syntax-row-matching-stale-source");
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src dir");
     let cache_root = ClientCacheManifest::inspect_project(&root)
