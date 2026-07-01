@@ -321,24 +321,52 @@ The current Gerbil evidence suggests these policy families should be first-class
 - =scheme-style=: domain owners, =t/= tests, directional data-flow names, named control-flow helpers, and no vague helper owners;
 - =policy-scenario=: input/expected/benchmark triples that teach the agent the intended repair, failure mode, and quality axes.
 The schema should keep these as evidence and fact categories, while provider-owned fields carry Gerbil-specific selectors and details.
-* Rust and Gerbil combined lesson
-Rust search quality policy and Gerbil language policy should meet in the same =QualityFrame=:
-- Rust quality analysis is good at deciding whether search evidence is strong enough: query pack quality, package cohesion, weak terms, owner coverage, parser handles, and whether query-selector is allowed.
-- Gerbil policy evidence is good at deciding what a safe edit should look like after the owner is selected: runtime-source requirements, macro boundary, compiler evidence boundary, and policy scenario repair shape.
-The combined loop is:
+* Per-language policy obligation
+Every language harness policy must cover both edit localization and edit strategy.
+The split is not "Rust tells where" and "Gerbil tells how".
+That would be the wrong architecture.
+Rust and Gerbil are two mature practice cases that show different native ways to satisfy the same language policy obligation:
 #+begin_src text
-Rust route quality narrows where to edit.
-Gerbil policy facts narrow how to edit.
-Snapshots and benchmarks validate whether the edit preserved observable behavior and policy intent.
+for one language:
+  policy localizes where to edit
+  policy explains how to edit safely
+  policy names how to validate the edit
+  policy updates topology after observation
 #+end_src
-This should be the pattern for future languages.
+For a language, =where to edit= means:
+- selecting the owner, selector, dependency edge, test surface, snapshot, benchmark, or scenario that is actually affected;
+- suppressing broad or stale routes;
+- exposing prior failures that are close to the current owner, route, or output contract;
+- keeping line numbers as display hints, never identity.
+For a language, =how to edit= means:
+- choosing the native idiom, boundary, recipe, or repair shape that preserves the language's architecture;
+- respecting parser/compiler/runtime facts;
+- preserving snapshot-backed observable contracts;
+- staying within benchmark and route-quality budgets;
+- choosing validation that proves the edit was safe.
+Rust search quality is a mature example because it already computes owner coverage, package cohesion, weak terms, parser handles, query-selector eligibility, benchmark gates, and compact output snapshots.
+Those facts can localize affected owners and also constrain safe search/render edits.
+Gerbil policy evidence is a mature example because it already carries runtime-source, macro-boundary, compiler-evidence, module-import, standard-library, style, and policy-scenario facts.
+Those facts can localize affected Gerbil owners/selectors and also constrain safe macro/compiler/runtime edits.
+The shared pattern for future languages is:
+#+begin_src text
+Language-native parser/runtime/compiler/project facts
+-> edit-localization facts
+-> edit-strategy facts
+-> QualityFrame
+-> chosen plan
+-> topology overlay update
+#+end_src
+This applies to every covered language: Rust, TypeScript, Python, Julia, Gerbil Scheme, Org/Markdown, and future harnesses.
 The Rust side should keep the shared routing/render/schema path thin and strong.
-Each language harness should contribute the facts only it can prove.
+Each language harness should contribute both localization and strategy facts only it can prove.
 * Cross-language capability transfer
 Rust search-quality policy and Gerbil language-policy evidence should become the two template practices for other language harnesses.
 The schema goal is not to copy Rust or Gerbil rules into every language.
 The schema goal is to define a small set of transferable capability families that every provider can map to its own native ecosystem.
 The transferable families are:
+- =edit-localization=: owner, selector, dependency, test, snapshot, benchmark, scenario, prior failure, and route evidence that tells the agent where the edit belongs;
+- =edit-strategy=: native idiom, boundary, recipe, repair shape, validation path, and risk evidence that tells the agent how to edit safely;
 - =route-quality=: query pack quality, owner coverage, package cohesion, weak terms, parser handles, finder handles, and route budget;
 - =native-language-boundary=: parser/compiler/runtime facts that prove what the language can safely express;
 - =runtime-boundary=: active runtime, versioned source, load path, package/project environment, and no-memory claims;
@@ -390,6 +418,8 @@ It also keeps token cost bounded because the graph-route layer chooses which top
 The schema must support this downflow without becoming a language-specific dump.
 The required shared additions are:
 - =factKind=cross-language-capability= for facts that prove a provider can express one of the transferable capability families;
+- =factKind=edit-localization= for facts that identify the owner, selector, dependency, test, snapshot, benchmark, scenario, or route affected by the current intent;
+- =factKind=edit-strategy= for facts that constrain the native repair shape, idiom, boundary, validation, or safe code action;
 - =factKind=topology-context= for facts that explain where the current edit sits in the architecture;
 - =evidenceKind=provider-capability= for provider-advertised capability facts;
 - =evidenceKind=graph-route= for selected topology routes and ranked neighbors;
@@ -398,6 +428,8 @@ The required shared additions are:
 - =evidenceKind=prior-failure= for replayable failure facts that should influence the next plan;
 - =agentUse=architecture-context= when the fact helps the model understand local architecture;
 - =agentUse=plan-selection= when the fact distinguishes candidate plans.
+- =agentUse=edit-localization= when the fact should affect where the model edits;
+- =agentUse=edit-strategy= when the fact should affect how the model edits.
 These additions keep the schema language-neutral while making the Rust/Gerbil lessons portable.
 The core invariant is:
 #+begin_src text

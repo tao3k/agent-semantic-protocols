@@ -7,11 +7,16 @@ use agent_semantic_client::{SourceIndexLookupResult, lookup_source_index_for_lan
 use agent_semantic_search::{
     QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
     QueryWrapperSearchSurface, QueryWrapperSourceIndexCandidate, QueryWrapperSourceIndexLookup,
+    RankedSearchCandidate,
     collect_query_wrapper_candidate_collection as collect_search_query_wrapper_candidate_collection,
     query_wrapper_clauses as search_query_wrapper_clauses, query_wrapper_owner_candidates,
     query_wrapper_package_clusters_from_paths, query_wrapper_rg_scope_next,
     query_wrapper_source_index_trace_projection,
     query_wrapper_unique_clause_terms as search_query_wrapper_unique_clause_terms,
+};
+#[cfg(feature = "turso-overlay")]
+use agent_semantic_search::{
+    TursoStructuralIndexCandidateRequest, collect_turso_structural_index_ranked_candidates,
 };
 use serde_json::Value;
 
@@ -78,6 +83,8 @@ pub(super) fn collect_query_candidate_collection(
             axis_terms: clause.axis_terms.clone(),
         })
         .collect::<Vec<_>>();
+    let ranked_search_candidates =
+        query_wrapper_ranked_search_candidates(surface, project_root, terms)?;
     let collection =
         collect_search_query_wrapper_candidate_collection(QueryWrapperSearchRequest {
             surface: query_wrapper_search_surface(surface),
@@ -89,7 +96,7 @@ pub(super) fn collect_query_candidate_collection(
             ignore_dirs: &config.search.ignore_dirs,
             include_hidden_dirs: &config.search.include_hidden_dirs,
             native_args,
-            ranked_search_candidates: &[],
+            ranked_search_candidates: &ranked_search_candidates,
             source_index_lookup: query_wrapper_source_index_lookup(surface, project_root, terms)?,
         })?;
     let mut source_trace = Vec::new();
@@ -109,6 +116,36 @@ pub(super) fn collect_query_candidate_collection(
         source_trace,
         candidate_sources: collection.candidate_sources,
     })
+}
+
+#[cfg(feature = "turso-overlay")]
+fn query_wrapper_ranked_search_candidates(
+    surface: QueryWrapperSurface,
+    project_root: &Path,
+    terms: &[String],
+) -> Result<Vec<RankedSearchCandidate>, String> {
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+    let query = terms.join(" ");
+    let limit = match surface {
+        QueryWrapperSurface::Fd => 16,
+        QueryWrapperSurface::Rg => agent_semantic_search::QUERY_WRAPPER_CANDIDATE_LIMIT as u32,
+    };
+    collect_turso_structural_index_ranked_candidates(TursoStructuralIndexCandidateRequest {
+        project_root,
+        query: query.as_str(),
+        limit,
+    })
+}
+
+#[cfg(not(feature = "turso-overlay"))]
+fn query_wrapper_ranked_search_candidates(
+    _surface: QueryWrapperSurface,
+    _project_root: &Path,
+    _terms: &[String],
+) -> Result<Vec<RankedSearchCandidate>, String> {
+    Ok(Vec::new())
 }
 
 fn query_wrapper_source_index_trace(

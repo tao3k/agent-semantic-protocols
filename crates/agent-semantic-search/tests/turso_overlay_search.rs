@@ -1,10 +1,11 @@
 #![cfg(feature = "turso-overlay")]
 
+use std::ffi::{OsStr, OsString};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     CacheGenerationId, LanguageId, ProviderId, SemanticSchemaId, SemanticSchemaVersion,
-    state_core::ResolvedState,
+    state_core::{ASP_STATE_HOME_ENV, ResolvedState},
 };
 use agent_semantic_client_db::{
     ClientDbEngine, ClientDbStructuralDependencyUsage, ClientDbStructuralIndexImport,
@@ -13,7 +14,8 @@ use agent_semantic_client_db::{
     ClientDbStructuralSource, ClientDbStructuralSymbol, TursoClientDbSearchDocument,
 };
 use agent_semantic_search::{
-    TursoOverlaySearchDocument, bootstrap_turso_overlay_search_store,
+    TursoOverlaySearchDocument, TursoStructuralIndexCandidateRequest,
+    bootstrap_turso_overlay_search_store, collect_turso_structural_index_ranked_candidates_async,
     search_turso_overlay_documents, search_turso_structural_index_documents,
     upsert_turso_overlay_search_document,
 };
@@ -30,6 +32,7 @@ async fn turso_overlay_search_cold_functional_path_filters_to_overlay_hits() {
     let project_root = root.join("project");
     let state_home = root.join("state-home");
     std::fs::create_dir_all(&project_root).expect("create temp project root");
+    let _state_home_env = EnvVarGuard::set(ASP_STATE_HOME_ENV, &state_home);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
     state.ensure_minimal_layout().expect("create state layout");
@@ -92,6 +95,7 @@ async fn turso_structural_index_search_cold_functional_path_filters_to_structura
     let project_root = root.join("project");
     let state_home = root.join("state-home");
     std::fs::create_dir_all(&project_root).expect("create temp project root");
+    let _state_home_env = EnvVarGuard::set(ASP_STATE_HOME_ENV, &state_home);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
     state.ensure_minimal_layout().expect("create state layout");
@@ -180,4 +184,54 @@ async fn turso_structural_index_search_cold_functional_path_filters_to_structura
         elapsed.as_millis() <= 25,
         "structural-index search should stay in the cold functional millisecond gate, elapsed={elapsed:?}"
     );
+    let resolved_engine =
+        ClientDbEngine::resolve(&project_root).expect("resolve DB Engine from temp project root");
+    assert_eq!(resolved_engine.db_path(), engine.db_path());
+    let ranked = collect_turso_structural_index_ranked_candidates_async(
+        TursoStructuralIndexCandidateRequest {
+            project_root: &project_root,
+            query: "parse_config",
+            limit: 8,
+        },
+    )
+    .await
+    .expect("collect ranked Turso structural-index candidates from project state");
+    assert_eq!(ranked.len(), 1, "{ranked:#?}");
+    assert_eq!(ranked[0].candidate.route_source, "turso-fts");
+    assert_eq!(
+        ranked[0].candidate.selector.as_deref(),
+        Some("rust://src/structural_search.rs#item/fn/parse_config")
+    );
+    assert_eq!(
+        ranked[0].candidate.generation.as_deref(),
+        Some("structural-search-fixture")
+    );
+    assert_eq!(ranked[0].candidate.identity_kind, "selector");
+}
+
+struct EnvVarGuard {
+    key: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+        let previous = std::env::var_os(key);
+        // This integration test runs on a current-thread runtime and restores
+        // the variable before returning.
+        unsafe { std::env::set_var(key, value) };
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        if let Some(previous) = &self.previous {
+            // See `EnvVarGuard::set`; this is the paired restoration.
+            unsafe { std::env::set_var(self.key, previous) };
+        } else {
+            // See `EnvVarGuard::set`; this is the paired restoration.
+            unsafe { std::env::remove_var(self.key) };
+        }
+    }
 }

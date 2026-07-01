@@ -186,7 +186,10 @@ pub use source_index_rank::{
 };
 #[cfg(feature = "turso-overlay")]
 pub use structural_index_search::{
-    TursoStructuralIndexSearchHit, search_turso_structural_index_documents,
+    TursoStructuralIndexCandidateRequest, TursoStructuralIndexSearchHit,
+    collect_turso_structural_index_ranked_candidates,
+    collect_turso_structural_index_ranked_candidates_async,
+    search_turso_structural_index_documents,
 };
 pub use syntax_query_replay::{
     SyntaxQueryReplayCapture, SyntaxQueryRowsReplay, render_semantic_tree_sitter_query_rows_stdout,
