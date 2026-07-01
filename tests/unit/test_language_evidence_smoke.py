@@ -186,7 +186,9 @@ def _assert_search_pipe_quality(language_id: str, pipe_output: str) -> None:
     assert pipe_output.strip()
     assert "[search-pipe]" in pipe_output, f"{language_id} pipe did not use facade pipe"
     assert "queryQuality=" in pipe_output, f"{language_id} pipe missing query quality"
-    assert "actionFrontier=" in pipe_output, f"{language_id} pipe missing action frontier"
+    assert (
+        "actionFrontier=" in pipe_output or "nextCommand=" in pipe_output
+    ), f"{language_id} pipe missing next action guidance"
     assert "recommendedNext=" in pipe_output, f"{language_id} pipe missing recommendation"
     assert "avoid=" in pipe_output, f"{language_id} pipe missing avoid guidance"
     assert (

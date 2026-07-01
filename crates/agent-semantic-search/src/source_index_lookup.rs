@@ -61,6 +61,20 @@ pub fn lookup_source_index_for_language(
 pub fn lookup_source_index_in_cache(
     request: SourceIndexLookupRequest<'_>,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
+    let lookup = ClientDbEngine::lookup_source_index_from_project(
+        ClientDbSourceIndexProjectLookupRequest {
+            cache_project_root: request.cache_project_root,
+            indexed_project_root: request.indexed_project_root,
+            language_id: request.language_id,
+            query_keys: source_index_lookup_query_keys(request.query),
+            limit: request.limit,
+        },
+    )?;
+    let lookup = rank_source_index_lookup_result(lookup, request.query);
+    if !lookup.candidates.is_empty() {
+        return Ok(lookup);
+    }
+
     #[cfg(feature = "turso-overlay")]
     {
         let engine = ClientDbEngine::resolve(request.cache_project_root)?;
@@ -77,22 +91,27 @@ pub fn lookup_source_index_in_cache(
             ));
         }
     }
-    let lookup = ClientDbEngine::lookup_source_index_from_project(
-        ClientDbSourceIndexProjectLookupRequest {
-            cache_project_root: request.cache_project_root,
-            indexed_project_root: request.indexed_project_root,
-            language_id: request.language_id,
-            query_keys: source_index_lookup_query_keys(request.query),
-            limit: request.limit,
-        },
-    )?;
-    Ok(rank_source_index_lookup_result(lookup, request.query))
+    Ok(lookup)
 }
 
 /// Lookup source-index owners from an already resolved client cache directory.
 pub fn lookup_source_index_in_client_cache_dir(
     request: SourceIndexClientCacheLookupRequest<'_>,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
+    let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
+        ClientDbSourceIndexClientDirLookupRequest {
+            client_dir: request.cache_root,
+            indexed_project_root: request.indexed_project_root,
+            language_id: request.language_id,
+            query_keys: source_index_lookup_query_keys(request.query),
+            limit: request.limit,
+        },
+    )?;
+    let lookup = rank_source_index_lookup_result(lookup, request.query);
+    if !lookup.candidates.is_empty() {
+        return Ok(lookup);
+    }
+
     #[cfg(feature = "turso-overlay")]
     if let Some(read_model_lookup) =
         turso_source_index_lookup_hit(runtime_block_on_current_thread(
@@ -109,16 +128,7 @@ pub fn lookup_source_index_in_client_cache_dir(
             request.query,
         ));
     }
-    let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
-        ClientDbSourceIndexClientDirLookupRequest {
-            client_dir: request.cache_root,
-            indexed_project_root: request.indexed_project_root,
-            language_id: request.language_id,
-            query_keys: source_index_lookup_query_keys(request.query),
-            limit: request.limit,
-        },
-    )?;
-    Ok(rank_source_index_lookup_result(lookup, request.query))
+    Ok(lookup)
 }
 
 #[cfg(feature = "turso-overlay")]
