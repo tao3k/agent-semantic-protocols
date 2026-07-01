@@ -256,13 +256,13 @@ fn asp_toml_can_disable_document_language_hook_activation() {
 
 #[test]
 fn top_level_asp_toml_no_longer_configures_provider_activation() {
-    let root = temp_root("legacy-top-level-ignored");
+    let root = temp_root("top-level-ignored");
     fs::create_dir_all(root.join(".bin")).expect("create project bin");
     let asp_bin = root.join(".bin/asp");
     fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
     make_executable(&asp_bin);
     fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
-        .expect("write legacy asp.toml");
+        .expect("write ignored top-level asp.toml");
 
     let activation = build_default_activation(&root).expect("build activation");
 

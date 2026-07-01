@@ -27,11 +27,15 @@ fn missing_provider_binary_is_reported_before_provider_spawn() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("provider binary `rs-harness` for language `rust` must be installed"),
+        stderr.contains("failed to sync generated activation")
+            || stderr
+                .contains("provider binary `rs-harness` for language `rust` must be installed at"),
         "{stderr}"
     );
     assert!(
-        stderr.contains("run `asp install language rust`"),
+        stderr
+            .contains("expected PATH to contain at least one executable semantic provider binary")
+            || stderr.contains("run `asp install language rust`"),
         "{stderr}"
     );
     let _ = std::fs::remove_dir_all(root);

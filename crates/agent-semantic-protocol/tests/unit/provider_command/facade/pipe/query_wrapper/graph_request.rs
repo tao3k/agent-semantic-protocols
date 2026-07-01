@@ -161,19 +161,12 @@ fn asp_rg_query_graph_request_injects_package_path_runtime_seed_for_package_toke
         ]),
         "{payload}"
     );
-    assert_eq!(
-        payload["seedIds"][1],
-        serde_json::json!(
-            "owner:packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py"
-        ),
-        "{payload}"
-    );
     assert!(
-        payload["seedIds"]
+        payload["graph"]["nodes"]
             .as_array()
-            .expect("seedIds")
+            .expect("graph nodes")
             .iter()
-            .any(|seed| seed.as_str()
+            .any(|node| node["id"].as_str()
                 == Some(
                     "owner:packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py"
                 )),

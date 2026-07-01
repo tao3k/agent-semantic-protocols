@@ -2,6 +2,7 @@
 
 //! DB Engine facade and control adapters for `agent-semantic-client`.
 
+mod agent_session_registry;
 pub mod db;
 pub mod engine;
 mod evidence_graph;
@@ -11,6 +12,11 @@ mod structural_index;
 mod syntax_query;
 
 pub use agent_semantic_client_core::ClientDbStatus;
+pub use agent_session_registry::{
+    AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionRecord, AgentSessionRegisterRequest,
+    AgentSessionRegistry, AgentSessionToolEventRequest, agent_session_status_is_routable,
+    agent_session_unix_timestamp,
+};
 pub use db::{
     AGENT_SEMANTIC_CLIENT_DB_FILE, AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION, ClientDb,
     ClientDbArtifactEvent, ClientDbGenerationHit, ClientDbGenerationLookup,

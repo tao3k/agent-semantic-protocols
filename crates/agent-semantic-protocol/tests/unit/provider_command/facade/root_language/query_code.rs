@@ -118,8 +118,8 @@ fn root_query_facade_tree_sitter_owner_code_outputs_source_for_non_rust_language
 }
 
 #[test]
-fn language_facade_python_legacy_selector_code_uses_fast_owner_query_without_provider() {
-    let root = temp_project_root("python-legacy-selector-fast-query");
+fn language_facade_python_structural_selector_code_uses_fast_owner_query_without_provider() {
+    let root = temp_project_root("python-structural-selector-fast-query");
     let bin_dir = root.join(".bin");
     let cache_home = root.join(".cache");
     let provider_marker = root.join("provider-called");
@@ -136,13 +136,13 @@ fn language_facade_python_legacy_selector_code_uses_fast_owner_query_without_pro
             "python",
             "query",
             "--selector",
-            "rank_frontier@src/ranking.py:1",
+            "python://src/ranking.py#item/function/rank_frontier",
             "--workspace",
             ".",
             "--code",
         ])
         .output()
-        .expect("run asp python legacy selector query");
+        .expect("run asp python structural selector query");
 
     assert!(
         output.status.success(),
@@ -152,7 +152,7 @@ fn language_facade_python_legacy_selector_code_uses_fast_owner_query_without_pro
     assert_eq!(String::from_utf8(output.stdout).expect("stdout"), source);
     assert!(
         !provider_marker.exists(),
-        "legacy selector query fell through to python provider"
+        "structural selector query fell through to python provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }

@@ -10,7 +10,7 @@ route_source = "owner-items-provider"
 max_provider_process_count = 1
 max_stdout_bytes = 4096
 fallback_reason = "none"
-target_rationale = "Cold owner-items search is the first functional gate for Org. It exercises the embedded orgize provider surface through the manifest-compatible search owner-items route and verifies no legacy query-selector owner route is required."
+target_rationale = "Cold owner-items search is the first functional gate for Org. It exercises the embedded orgize provider surface through the manifest-compatible search owner-items route and verifies no retired query-selector owner route is required."
 
 [observed_timings]
 owner_items_cold_functional_path = "0us"

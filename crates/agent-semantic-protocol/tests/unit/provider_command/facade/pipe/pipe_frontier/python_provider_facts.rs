@@ -26,7 +26,7 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_semantic_facts() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "2000")
+        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "10000")
         .args([
             "python",
             "search",

@@ -570,11 +570,11 @@ ASP.  The durable migration path is: expose the underlying Org facts through
 =search= and =query= axes first, publish named guide recipes that compose
 those axes, then add thin compatibility subcommands only when they replay the
 same recipe and emit the underlying =asp org query/search= commands as next
-actions.  The canonical migration recipe names are semantic, not legacy client
+actions.  The canonical migration recipe names are semantic, not retired client
 labels: =sdd-kind-properties= maps to =kind=property= plus =key=SDD_KIND=,
 =org-id-properties= maps to =kind=property= plus =key=ID=, =tagged-tasks=
 maps to =kind=task= plus term/tag fields, and =done-tasks= maps to
-=kind=task= plus =todo=DONE=.  Legacy labels such as =sdd-property=,
+=kind=task= plus =todo=DONE=.  Retired labels such as =sdd-property=,
 =wendao-task-*=, =wendao-orgid-*=, =agent-plan-*=, and =plan-record= must
 not become provider-owned commands or recipes.  Destructive actions such as task archive apply must route through an
 AST-patch or edit-plan contract; they must not be introduced as hidden side

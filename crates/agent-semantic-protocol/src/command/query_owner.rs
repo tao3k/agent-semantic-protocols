@@ -16,7 +16,6 @@ use syn::spanned::Spanned;
 use tree_sitter::StreamingIterator;
 
 use super::query_owner_item::{OwnerItem, owner_item_matches_request};
-use super::query_owner_legacy_selector::parse_legacy_owner_selector;
 use super::query_owner_structural_selector::parse_structural_owner_query;
 
 pub(super) fn run_asp_fast_owner_query_command(
@@ -135,9 +134,6 @@ impl OwnerQueryRequest {
         if let Some(request) = Self::parse_structural_selector(language_id, args) {
             return Some(request);
         }
-        if let Some(request) = Self::parse_legacy_display_selector(language_id, args) {
-            return Some(request);
-        }
         if has_any_arg(
             args,
             &[
@@ -187,26 +183,6 @@ impl OwnerQueryRequest {
             names_only: args.iter().any(|arg| arg == "--names-only"),
             code: args.iter().any(|arg| arg == "--code"),
             projection: structural.projection,
-        })
-    }
-
-    fn parse_legacy_display_selector(language_id: &str, args: &[String]) -> Option<Self> {
-        let selector = arg_value(args, "--selector")?;
-        let legacy = parse_legacy_owner_selector(selector)?;
-        Some(Self {
-            language_id: language_id.to_string(),
-            owner_path: legacy.owner_path,
-            kind: None,
-            term: legacy.term,
-            names_only: args.iter().any(|arg| arg == "--names-only"),
-            code: args.iter().any(|arg| arg == "--code"),
-            projection: if args.iter().any(|arg| arg == "--code") {
-                "code"
-            } else if args.iter().any(|arg| arg == "--names-only") {
-                "skeleton"
-            } else {
-                "outline"
-            },
         })
     }
 }

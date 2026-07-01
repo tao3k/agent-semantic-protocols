@@ -65,9 +65,8 @@ fn run_contract_capture(args: &[String]) -> Result<(), String> {
 
 pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, String> {
     let state_root = project_state_paths(project_root)?.protocol_home.join("org");
-    let sync = sync_default_org_state(project_root, &state_root)?;
+    let sync = sync_default_org_state(&state_root)?;
     let artifacts_root = org_artifacts_root(&state_root)?;
-    migrate_legacy_flow(&state_root, &artifacts_root)?;
     ensure_flow_dirs(&artifacts_root)?;
     Ok(sync)
 }
@@ -81,12 +80,11 @@ pub(crate) fn org_artifacts_root_for_project(project_root: &Path) -> Result<Path
 pub(crate) struct OrgStateSync {
     pub(crate) source: String,
     pub(crate) status: &'static str,
-    pub(crate) legacy_backup: Option<PathBuf>,
 }
 
-fn sync_default_org_state(project_root: &Path, state_root: &Path) -> Result<OrgStateSync, String> {
+fn sync_default_org_state(state_root: &Path) -> Result<OrgStateSync, String> {
     let repo_url = default_org_repo_url();
-    sync_org_state_repo(project_root, state_root, &repo_url)
+    sync_org_state_repo(state_root, &repo_url)
 }
 
 fn default_org_repo_url() -> String {
@@ -96,11 +94,7 @@ fn default_org_repo_url() -> String {
         .unwrap_or_else(|| DEFAULT_ASP_ORG_REPO_URL.to_string())
 }
 
-fn sync_org_state_repo(
-    project_root: &Path,
-    state_root: &Path,
-    repo_url: &str,
-) -> Result<OrgStateSync, String> {
+fn sync_org_state_repo(state_root: &Path, repo_url: &str) -> Result<OrgStateSync, String> {
     if state_root.join(".git").is_dir() {
         ensure_org_repo_remote(state_root, repo_url)?;
         if !git_output(&["status", "--porcelain"], Some(state_root))?
@@ -111,7 +105,6 @@ fn sync_org_state_repo(
             return Ok(OrgStateSync {
                 source: repo_url.to_string(),
                 status: "dirty-skipped",
-                legacy_backup: None,
             });
         }
         run_git(&["pull", "--ff-only"], Some(state_root))?;
@@ -119,23 +112,15 @@ fn sync_org_state_repo(
         return Ok(OrgStateSync {
             source: repo_url.to_string(),
             status: "updated",
-            legacy_backup: None,
         });
     }
 
-    let legacy_backup = if state_root.exists() {
-        let backup = legacy_backup_path(project_root, state_root)?;
-        fs::rename(state_root, &backup).map_err(|error| {
-            format!(
-                "failed to preserve existing ASP Org state {} as {}: {error}",
-                state_root.display(),
-                backup.display()
-            )
-        })?;
-        Some(backup)
-    } else {
-        None
-    };
+    if state_root.exists() {
+        return Err(format!(
+            "ASP Org state path {} exists but is not a git worktree; move it aside and rerun `asp sync`",
+            state_root.display()
+        ));
+    }
 
     if let Some(parent) = state_root.parent() {
         fs::create_dir_all(parent)
@@ -143,14 +128,10 @@ fn sync_org_state_repo(
     }
     let state_root_string = state_root.display().to_string();
     run_git(&["clone", repo_url, &state_root_string], None)?;
-    if let Some(backup) = legacy_backup.as_ref() {
-        restore_legacy_flow(backup, state_root)?;
-    }
     ensure_org_repo_local_excludes(state_root)?;
     Ok(OrgStateSync {
         source: repo_url.to_string(),
         status: "cloned",
-        legacy_backup,
     })
 }
 
@@ -160,51 +141,6 @@ fn ensure_org_repo_remote(state_root: &Path, repo_url: &str) -> Result<(), Strin
         run_git(&["remote", "set-url", "origin", repo_url], Some(state_root))?;
     }
     Ok(())
-}
-
-fn restore_legacy_flow(backup: &Path, state_root: &Path) -> Result<(), String> {
-    let legacy_flow = backup.join("flow");
-    if !legacy_flow.is_dir() {
-        return Ok(());
-    }
-    let artifacts_root = org_artifacts_root(state_root)?;
-    let target_flow = artifacts_root.join("flow");
-    if target_flow.exists() {
-        return Ok(());
-    }
-    if let Some(parent) = target_flow.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::rename(&legacy_flow, &target_flow).map_err(|error| {
-        format!(
-            "failed to restore legacy ASP Org flow {} to {}: {error}",
-            legacy_flow.display(),
-            target_flow.display()
-        )
-    })
-}
-
-fn migrate_legacy_flow(state_root: &Path, artifacts_root: &Path) -> Result<(), String> {
-    let legacy_flow = state_root.join("flow");
-    if !legacy_flow.is_dir() {
-        return Ok(());
-    }
-    let target_flow = artifacts_root.join("flow");
-    if target_flow.exists() {
-        return Ok(());
-    }
-    if let Some(parent) = target_flow.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::rename(&legacy_flow, &target_flow).map_err(|error| {
-        format!(
-            "failed to migrate legacy ASP Org flow {} to {}: {error}",
-            legacy_flow.display(),
-            target_flow.display()
-        )
-    })
 }
 
 fn org_artifacts_root(state_root: &Path) -> Result<PathBuf, String> {
@@ -229,27 +165,6 @@ fn ensure_org_repo_local_excludes(state_root: &Path) -> Result<(), String> {
     contents.push_str("flow/\n");
     fs::write(&exclude_path, contents)
         .map_err(|error| format!("failed to update {}: {error}", exclude_path.display()))
-}
-
-fn legacy_backup_path(project_root: &Path, state_root: &Path) -> Result<PathBuf, String> {
-    let parent = state_root.parent().ok_or_else(|| {
-        format!(
-            "failed to compute legacy backup path for {}",
-            state_root.display()
-        )
-    })?;
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| format!("system time before Unix epoch: {error}"))?
-        .as_nanos();
-    let name = state_root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("org");
-    Ok(parent.join(format!(
-        ".{name}.legacy-{}-{nonce}",
-        path_segment(&project_root.display().to_string())
-    )))
 }
 
 fn run_git(args: &[&str], cwd: Option<&Path>) -> Result<(), String> {
@@ -360,16 +275,6 @@ fn ensure_flow_dirs(artifacts_root: &Path) -> Result<Vec<PathBuf>, String> {
             fs::create_dir_all(&path)
                 .map_err(|error| format!("failed to create {}: {error}", path.display()))?;
             Ok(path)
-        })
-        .collect()
-}
-
-fn path_segment(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| match character {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '.' | '-' | '_' => character,
-            _ => '_',
         })
         .collect()
 }

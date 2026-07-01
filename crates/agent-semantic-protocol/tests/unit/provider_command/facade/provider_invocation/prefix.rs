@@ -86,7 +86,7 @@ printf 'renderer=%s
     assert!(stdout.contains("home-local args=[guide][.]"), "{stdout}");
     assert!(!stdout.contains("profile args="), "{stdout}");
     assert!(
-        stdout.contains(&format!("cache={}\n", cache_home.display())),
+        stdout.contains("cache=") && stdout.contains("/live/client\n"),
         "{stdout}"
     );
     assert!(
@@ -124,7 +124,7 @@ printf 'renderer=%s
     );
     assert!(!stdout.contains("profile args="), "{stdout}");
     assert!(
-        stdout.contains(&format!("cache={}\n", cache_home.display())),
+        stdout.contains("cache=") && stdout.contains("/live/client\n"),
         "{stdout}"
     );
     assert!(

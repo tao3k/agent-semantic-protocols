@@ -1,5 +1,5 @@
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation,
+    asp_command, cache_root, prepend_path, provider, temp_project_root, write_activation,
     write_check_failure_provider, write_stdout_stderr_exit_provider,
 };
 use std::process::Command;
@@ -89,9 +89,10 @@ fn check_changed_view_seeds_renders_failure_frontier_after_provider_failure() {
     }
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(!stderr.contains("unexpected --view"), "{stderr}");
-    let last_check =
-        std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/last-check-output.txt"))
-            .expect("last check output");
+    let last_check = std::fs::read_to_string(
+        cache_root(&root).join("agent-semantic-protocol/last-check-output.txt"),
+    )
+    .expect("last check output");
     assert!(
         last_check.contains("cache_cli::write_prompt_output_artifact"),
         "{last_check}"

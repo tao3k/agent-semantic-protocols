@@ -25,9 +25,6 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         sync.source,
         sync.status,
     );
-    if let Some(backup) = sync.legacy_backup.as_ref() {
-        println!("|legacyBackup={}", display_path(&project_root, backup));
-    }
     Ok(())
 }
 

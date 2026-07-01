@@ -60,7 +60,7 @@ fn asp_org_guide_exposes_generic_ast_recipes_only() {
     ] {
         assert!(
             !stdout.contains(domain_recipe),
-            "legacy recipe `{domain_recipe}` leaked into asp org guide:\n{stdout}"
+            "retired recipe `{domain_recipe}` leaked into asp org guide:\n{stdout}"
         );
     }
 

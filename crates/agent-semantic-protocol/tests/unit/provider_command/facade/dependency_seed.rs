@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_provider_bin_config,
+    asp_command, cache_root, make_executable, prepend_path, provider, temp_project_root,
+    write_activation, write_provider_bin_config,
 };
 
 const DIRECT_DEPENDENCY_SEED_GATE: Duration = Duration::from_millis(500);
@@ -113,13 +113,12 @@ fn direct_dependency_seed_uses_provider_dependency_topology_when_available() {
     assert!(stdout.contains("topology=provider-owned"), "{stdout}");
     assert!(stdout.contains("seedCache=miss"), "{stdout}");
     assert!(stdout.contains("requirement=\"1\""), "{stdout}");
-    let namespaced_seed_cache = root
-        .join(".cache")
+    let namespaced_seed_cache = cache_root(&root)
         .join("agent-semantic-protocol")
         .join("search")
         .join("dependency-seeds")
         .join("rust.tsv");
-    let legacy_seed_cache = root
+    let retired_seed_cache = root
         .join(".cache")
         .join("search")
         .join("dependency-seeds")
@@ -129,7 +128,7 @@ fn direct_dependency_seed_uses_provider_dependency_topology_when_available() {
         "dependency seed cache should live under ASP state/cache namespace"
     );
     assert!(
-        !legacy_seed_cache.exists(),
+        !retired_seed_cache.exists(),
         "dependency seed cache must not be written under project-local .cache/search"
     );
 

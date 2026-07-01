@@ -1,10 +1,10 @@
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation,
+    asp_command, cache_root, prepend_path, provider, temp_project_root, write_activation,
     write_check_failure_provider, write_marker_provider,
 };
 
 #[test]
-fn reasoning_owner_query_is_asp_owned_and_does_not_spawn_provider() {
+fn reasoning_owner_query_requires_provider_owner_items_interface_without_fallback() {
     let root = temp_project_root("search-reasoning-owner-query-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -37,48 +37,25 @@ fn reasoning_owner_query_is_asp_owned_and_does_not_spawn_provider() {
         .output()
         .expect("run asp rust search reasoning owner-query");
 
+    assert!(!output.status.success(), "owner-query should fail closed");
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[search-owner]"), "{stdout}");
-    assert!(
-        stdout.contains(
-            "I=item:symbol(render_fast_prime_search)@rust://src/lib.rs#item/fn/render_fast_prime_search!syntax"
-        ),
-        "{stdout}"
+        stderr.contains("requires a language-harness owner-query interface"),
+        "{stderr}"
     );
     assert!(
-        stdout.contains("syntax I selector=rust://src/lib.rs#item/fn/render_fast_prime_search displayLineRange=2:3 sourceLocatorHint=src/lib.rs:2:3 pattern='((function_item name: (_) @function.name) (#eq? @function.name \"render_fast_prime_search\"))'"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("I=item:symbol(render_fast_prime_search)@src/lib.rs:"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("syntax I selector=src/lib.rs:2:3"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("entries=owner-query(O,Q=>items+tests+dependency-usage)\n"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("owner-tests("),
-        "owner-query reasoning should not infer owner-tests entry: {stdout}"
+        stderr.contains("ASP will not synthesize language items from source text"),
+        "{stderr}"
     );
     assert!(
         !marker.exists(),
-        "owner-query fast path should not spawn provider"
+        "missing owner-query interface should not spawn generic provider fallback"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn scoped_owner_query_code_locator_replays_from_workspace_root() {
+fn scoped_owner_query_requires_interface_but_code_locator_replays_from_workspace_root() {
     let root = temp_project_root("search-reasoning-scoped-root-code-replay");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -120,33 +97,15 @@ fn scoped_owner_query_code_locator_replays_from_workspace_root() {
         .output()
         .expect("run scoped asp rust search reasoning owner-query");
 
+    assert!(!output.status.success(), "owner-query should fail closed");
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains(
-            "I=item:symbol(cache_root)@rust://crates/demo/src/lib.rs#item/fn/cache_root!syntax"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("syntax I selector=rust://crates/demo/src/lib.rs#item/fn/cache_root displayLineRange=1:4 sourceLocatorHint=crates/demo/src/lib.rs:1:4 pattern='((function_item name: (_) @function.name) (#eq? @function.name \"cache_root\"))'"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("I=item:symbol(cache_root)@crates/demo/src/lib.rs:"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("syntax I selector=crates/demo/src/lib.rs:1:4"),
-        "{stdout}"
+        stderr.contains("requires a language-harness owner-query interface"),
+        "{stderr}"
     );
     assert!(
         !marker.exists(),
-        "scoped owner-query fast path should not spawn provider"
+        "missing owner-query interface should not spawn generic provider fallback"
     );
 
     let replay = asp_command(&root)
@@ -183,7 +142,7 @@ fn scoped_owner_query_code_locator_replays_from_workspace_root() {
 }
 
 #[test]
-fn owner_tests_and_owner_items_query_are_asp_owned() {
+fn owner_tests_are_asp_owned_and_owner_items_require_provider_interface() {
     let root = temp_project_root("search-owner-fast-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -243,40 +202,17 @@ fn owner_tests_and_owner_items_query_are_asp_owned() {
         .output()
         .expect("run asp rust search owner items");
     assert!(
-        owner_items.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&owner_items.stderr)
+        !owner_items.status.success(),
+        "owner-items should require provider-owned interface"
     );
-    let owner_items_stdout = String::from_utf8(owner_items.stdout).expect("stdout");
+    let owner_items_stderr = String::from_utf8(owner_items.stderr).expect("stderr");
     assert!(
-        owner_items_stdout.contains(
-            "I=item:symbol(render_fast_prime_search)@rust://src/lib.rs#item/fn/render_fast_prime_search!syntax"
-        ),
-        "{owner_items_stdout}"
+        owner_items_stderr.contains("provider-owned owner-items produced empty output"),
+        "{owner_items_stderr}"
     );
     assert!(
-        owner_items_stdout.contains("syntax I selector=rust://src/lib.rs#item/fn/render_fast_prime_search displayLineRange=2:3 sourceLocatorHint=src/lib.rs:2:3 pattern='((function_item name: (_) @function.name) (#eq? @function.name \"render_fast_prime_search\"))'"),
-        "{owner_items_stdout}"
-    );
-    assert!(
-        !owner_items_stdout.contains("I=item:symbol(render_fast_prime_search)@src/lib.rs:"),
-        "{owner_items_stdout}"
-    );
-    assert!(
-        !owner_items_stdout.contains("syntax I selector=src/lib.rs:2:3"),
-        "{owner_items_stdout}"
-    );
-    assert!(
-        owner_items_stdout.contains("entries=owner-query(O,Q=>items+tests+dependency-usage)"),
-        "{owner_items_stdout}"
-    );
-    assert!(
-        !owner_items_stdout.contains("frontier="),
-        "{owner_items_stdout}"
-    );
-    assert!(
-        !marker.exists(),
-        "owner fast paths should not spawn provider"
+        marker.exists(),
+        "owner-items should invoke the provider-owned interface"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -338,18 +274,12 @@ fn search_failure_frontier_is_asp_owned_and_points_to_hot_blocks() {
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "H2=hot:fn(load_prompt_output_artifact)@rust://src/cache_cli/writeback.rs#item/fn/load_prompt_output_artifact!code"
-        ),
-        "{stdout}"
-    );
-    assert!(
         !stdout.contains("hot:fn(request_fingerprint)"),
         "evidence variables should not become hot code selectors: {stdout}"
     );
     assert!(
         stdout.contains(
-            "frontierActions=C1.query-code(selector=rust://src/cache_cli/writeback.rs#item/fn/write_prompt_output_artifact,owner=src/cache_cli/writeback.rs,symbol=write_prompt_output_artifact,source=H,language=rust)!query-code,C2.query-code(selector=rust://src/cache_cli/writeback.rs#item/fn/load_prompt_output_artifact,owner=src/cache_cli/writeback.rs,symbol=load_prompt_output_artifact,source=H2,language=rust)!query-code"
+            "frontierActions=C1.query-code(selector=rust://src/cache_cli/writeback.rs#item/fn/write_prompt_output_artifact,owner=src/cache_cli/writeback.rs,symbol=write_prompt_output_artifact,source=H,language=rust)!query-code"
         ),
         "{stdout}"
     );
@@ -377,7 +307,7 @@ fn search_failure_from_last_check_reads_cache_artifact() {
     let root = temp_project_root("search-failure-from-last-check-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    let cache_home = root.join(".cache");
+    let cache_home = cache_root(&root);
     std::fs::create_dir_all(root.join("src/cache_cli")).expect("create source");
     std::fs::create_dir_all(cache_home.join("agent-semantic-protocol")).expect("create cache");
     std::fs::write(

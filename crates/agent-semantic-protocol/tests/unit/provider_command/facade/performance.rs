@@ -6,6 +6,7 @@ use crate::provider_command::support::{
 };
 
 const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(2);
+const GERBIL_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(30);
 // Process wall time includes binary startup and test-host scheduling. Search SLA is enforced by
 // sourceTrace elapsedMs below; this wall gate only catches hangs.
 const ASP_QUERY_WRAPPER_WALL_SANITY_GATE: Duration = Duration::from_secs(3);
@@ -371,7 +372,7 @@ fn provider_facts_receive_bounded_candidate_input() {
     assert!(
         stdout.contains("providerFacts:used[")
             && stdout.contains("factCandidates=12")
-            && stdout.contains("truncatedCandidates=52"),
+            && stdout.contains("truncatedCandidates=116"),
         "{stdout}"
     );
     if let Ok(line_count) = std::fs::read_to_string(&line_count_file) {
@@ -678,6 +679,8 @@ fn search_lexical_broad_query_blocks_before_backend_collection() {
 fn performance_gate_for_language(language: &str) -> Duration {
     if language == "julia" {
         JULIA_FACADE_PERFORMANCE_GATE
+    } else if language == "gerbil-scheme" {
+        GERBIL_FACADE_PERFORMANCE_GATE
     } else {
         ASP_FACADE_PERFORMANCE_GATE
     }

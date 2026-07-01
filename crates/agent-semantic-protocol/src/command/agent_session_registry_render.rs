@@ -3,7 +3,7 @@
 use serde::Serialize;
 use std::path::Path;
 
-use super::SessionRecord;
+use agent_semantic_client_db::AgentSessionRecord;
 
 #[derive(Serialize)]
 struct SessionReport<'a> {
@@ -12,13 +12,13 @@ struct SessionReport<'a> {
     db_path: &'a str,
     #[serde(rename = "rootSessionId", skip_serializing_if = "Option::is_none")]
     root_session_id: Option<&'a str>,
-    sessions: Vec<SessionRecord>,
+    sessions: Vec<AgentSessionRecord>,
 }
 
 pub(super) fn print_reuse_session(
     db_path: &Path,
     root_session_id: Option<&str>,
-    session: SessionRecord,
+    session: AgentSessionRecord,
     json: bool,
 ) -> Result<(), String> {
     if json {
@@ -63,7 +63,7 @@ pub(super) fn print_reuse_miss(
 pub(super) fn print_json_report(
     db_path: &Path,
     root_session_id: Option<&str>,
-    sessions: Vec<SessionRecord>,
+    sessions: Vec<AgentSessionRecord>,
 ) -> Result<(), String> {
     let report = SessionReport {
         owner: "rust",
@@ -79,7 +79,7 @@ pub(super) fn print_json_report(
     Ok(())
 }
 
-pub(super) fn print_session_row(session: &SessionRecord) {
+pub(super) fn print_session_row(session: &AgentSessionRecord) {
     println!(
         "|session name=\"{}\" session=\"{}\" rootSession=\"{}\" parentSession={} role=\"{}\" model={} status=\"{}\" updatedAt={} lastSeenAt={} lastHeartbeatAt={} expiresAt={}",
         escape_field(&session.name),

@@ -150,9 +150,9 @@ fn prompt_output_replay_rejects_obsolete_compact_graph_grammar() {
         "[search-obsolete] q=GraphAlias alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 alias: graph:{G=search,Q=query}\n\
-Q=query:term(GraphAlias)!legacy\n\
+Q=query:term(GraphAlias)!obsolete\n\
 G>{Q:matches}\n\
-rank=Q frontier=Q.legacy\n",
+rank=Q frontier=Q.obsolete\n",
     );
     let hit = prompt_generation_hit(&root, &request, "search/lexical");
 

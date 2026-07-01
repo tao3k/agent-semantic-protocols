@@ -158,7 +158,6 @@ dependencies = [
  "orgize",
  "proc-macro2",
  "rs-harness",
- "rusqlite",
  "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",

@@ -542,7 +542,7 @@ The preferred implementation order is:
 #+begin_src text
 durable accepted state        -> Turso DB + Turso FTS/BM25
 dynamic session overlay       -> Turso/Tantivy-derived hot search backend
-legacy fuzzy candidate search -> removed after parity receipts
+agent-facing lexical search   -> Turso/Tantivy backend with bounded packets
 #+end_src
 
 If Turso exposes a stable reusable Rust search package for its FTS layer, ASP should depend on that. If the FTS implementation is only available through private Turso internals, ASP should depend on =tantivy= directly while matching Turso's analyzer contract and keeping a compatibility test against Turso FTS query results.
@@ -556,7 +556,7 @@ same field-weight contract
 same selector-first result packet
 #+end_src
 
-Under this design =fzf= should not remain a search backend. Its role, if any, is limited to a temporary legacy adapter during migration or a human-only interactive UI affordance. Agent-facing ASP search should converge on the Turso/Tantivy lexical backend plus Python graph fusion.
+Under this design =fzf= is not an agent-facing search backend. Human-only interactive UI affordances must stay outside the shared ASP search contract. Agent-facing ASP search converges on the Turso/Tantivy lexical backend plus Python graph fusion.
 
 * Paper reread: tree-sitter as coarse structure, native parser as proof
 The Codebase-Memory paper's strongest lesson is not that tree-sitter is more semantically precise than native provider parsers. It is the opposite: tree-sitter is useful because it is a portable, fast, error-tolerant, cross-language structural substrate that can cheaply materialize a broad graph before the agent asks a question.

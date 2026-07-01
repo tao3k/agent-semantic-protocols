@@ -278,7 +278,7 @@ The key dependency rule is that =agent-semantic-protocol= can call these crates,
 
 Thinness gates should be enforced during review:
 - no new command module may introduce per-language semantic match tables;
-- no new command module may interpret schema fields through arbitrary JSON traversal except as a named legacy adapter;
+- no new command module may interpret schema fields through arbitrary JSON traversal except as a named retired adapter;
 - search/ranking/render tests should move to library crates;
 - CLI tests should assert command affordance only;
 - every extracted implementation should expose timing and receipt fields so the performance architecture can measure whether the extraction improved the hot path.
@@ -301,7 +301,7 @@ async I/O lane
   provider stdin/stdout/stderr, Turso async DB, timers, cancellation
 
 blocking compatibility lane
-  short sync filesystem/rusqlite/legacy calls via spawn_blocking
+  short sync filesystem/rusqlite/retired-path calls via spawn_blocking
   guarded by semaphores and never used for long-lived workers
 
 CPU lane

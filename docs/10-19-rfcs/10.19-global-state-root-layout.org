@@ -661,7 +661,7 @@ Tracks:
 - scope anchors;
 - last seen timestamps;
 - state schema version;
-- legacy project-local cache path when discovered.
+- canonical client DB path.
 
 ** Artifact registry
 
@@ -774,7 +774,6 @@ workspaceId=ws-v1:...
 scopeIds=scope-v1:...
 artifacts=...
 clientDb=...
-legacyCache=...
 #+end_src
 
 New diagnostic commands:

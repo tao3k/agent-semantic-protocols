@@ -271,7 +271,7 @@ fn language_owner_items_missing_owner_errors_without_provider_fallback() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("requires an existing owner path")
-            && stderr.contains("no fallback executed"),
+            && stderr.contains("no provider executed"),
         "{stderr}"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);

@@ -662,7 +662,7 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
         "sourceTrace=sourceIndex:used",
         "finder:skipped",
         "ownerCoverage=bestOwner=src/lib.rs",
-        "nextCommand=asp rust query --selector src/lib.rs:1:2 --workspace . --code",
+        "nextCommand=asp rust query --selector src/lib.rs:1:1 --workspace . --code",
     ] {
         assert!(
             stdout.contains(expected),
@@ -3561,6 +3561,22 @@ pub(super) fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
     refresh_source_index(&root);
     let _ = fs::remove_file(&marker);
 
+    let warm_output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["rg", "-query", "source_index_fixture", "--workspace", "."])
+        .output()
+        .expect("warm asp rg -query");
+    assert!(
+        warm_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&warm_output.stderr)
+    );
+    assert!(
+        !marker.exists(),
+        "source-index warm-up rg query should not spawn provider"
+    );
+
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -5285,24 +5301,24 @@ fn validate_language_harness_json_boundary(
     }
 }
 
-pub(super) fn language_harnesses_do_not_use_legacy_agent_policy_ids() {
+pub(super) fn language_harnesses_do_not_use_retired_agent_policy_ids() {
     let languages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../languages");
     let mut invalid = Vec::new();
-    for relative in LEGACY_POLICY_ID_SCAN_PATHS {
+    for relative in RETIRED_POLICY_ID_SCAN_PATHS {
         let path = languages.join(relative);
         if path.exists() {
-            collect_legacy_policy_ids(&path, &mut invalid);
+            collect_retired_policy_ids(&path, &mut invalid);
         }
     }
 
     assert!(
         invalid.is_empty(),
-        "legacy agent policy ids must use {AGENT_POLICY_ID_GRAMMAR}:\n{}",
+        "retired agent policy ids must use {AGENT_POLICY_ID_GRAMMAR}:\n{}",
         invalid.join("\n")
     );
 }
 
-const LEGACY_POLICY_ID_SCAN_PATHS: &[&str] = &[
+const RETIRED_POLICY_ID_SCAN_PATHS: &[&str] = &[
     "JuliaLangProjectHarness.jl/src",
     "JuliaLangProjectHarness.jl/docs",
     "JuliaLangProjectHarness.jl/test",
@@ -5414,8 +5430,8 @@ fn gerbil_benchmark_rule(text: &str) -> Option<&str> {
     })
 }
 
-fn collect_legacy_policy_ids(dir: &Path, invalid: &mut Vec<String>) {
-    if is_ignored_legacy_policy_scan_path(dir) {
+fn collect_retired_policy_ids(dir: &Path, invalid: &mut Vec<String>) {
+    if is_ignored_retired_policy_scan_path(dir) {
         return;
     }
 
@@ -5442,27 +5458,27 @@ fn collect_legacy_policy_ids(dir: &Path, invalid: &mut Vec<String>) {
             }
         };
         let path = entry.path();
-        if is_ignored_legacy_policy_scan_path(&path) {
+        if is_ignored_retired_policy_scan_path(&path) {
             continue;
         }
         if path.is_dir() {
-            collect_legacy_policy_ids(&path, invalid);
+            collect_retired_policy_ids(&path, invalid);
         } else if path.is_file() {
-            validate_no_legacy_policy_ids(&path, invalid);
+            validate_no_retired_policy_ids(&path, invalid);
         }
     }
 }
 
-fn validate_no_legacy_policy_ids(path: &Path, invalid: &mut Vec<String>) {
+fn validate_no_retired_policy_ids(path: &Path, invalid: &mut Vec<String>) {
     let Ok(text) = fs::read_to_string(path) else {
         return;
     };
 
     for (line_index, line) in text.lines().enumerate() {
         for token in policy_id_tokens(line) {
-            if is_legacy_policy_id(token) {
+            if is_retired_policy_id(token) {
                 invalid.push(format!(
-                    "{}:{}: legacy policy id {token:?} must match {AGENT_POLICY_ID_GRAMMAR}",
+                    "{}:{}: retired policy id {token:?} must match {AGENT_POLICY_ID_GRAMMAR}",
                     path.display(),
                     line_index + 1
                 ));
@@ -5476,11 +5492,11 @@ fn policy_id_tokens(line: &str) -> impl Iterator<Item = &str> {
         .filter(|token| !token.is_empty())
 }
 
-fn is_legacy_policy_id(token: &str) -> bool {
-    has_numbered_legacy_marker(token, "-AGENT-R") || has_numbered_legacy_marker(token, "-PROJ-R")
+fn is_retired_policy_id(token: &str) -> bool {
+    has_numbered_retired_marker(token, "-AGENT-R") || has_numbered_retired_marker(token, "-PROJ-R")
 }
 
-fn has_numbered_legacy_marker(token: &str, marker: &str) -> bool {
+fn has_numbered_retired_marker(token: &str, marker: &str) -> bool {
     let Some(index) = token.find(marker) else {
         return false;
     };
@@ -5490,7 +5506,7 @@ fn has_numbered_legacy_marker(token: &str, marker: &str) -> bool {
         .is_some_and(|ch| ch.is_ascii_digit())
 }
 
-fn is_ignored_legacy_policy_scan_path(path: &Path) -> bool {
+fn is_ignored_retired_policy_scan_path(path: &Path) -> bool {
     path.components().any(|component| {
         matches!(
             component.as_os_str().to_str(),

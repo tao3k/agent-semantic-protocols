@@ -112,32 +112,6 @@ fn root_search_facade_infers_language_from_single_project_marker() {
 }
 
 #[test]
-fn root_search_facade_requires_language_when_project_markers_are_ambiguous() {
-    let root = temp_project_root("root-search-ambiguous-language");
-    std::fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname='demo'\nversion='0.1.0'\n",
-    )
-    .expect("write cargo manifest");
-    std::fs::write(
-        root.join("pyproject.toml"),
-        "[project]\nname='demo'\nversion='0.1.0'\n",
-    )
-    .expect("write pyproject");
-
-    let output = asp_command(&root)
-        .args(["search", "prime", "--view", "seeds", "."])
-        .output()
-        .expect("run asp search ambiguous language");
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).expect("stderr");
-    assert!(stderr.contains("asp search requires --language"));
-    assert!(stderr.contains("asp <language> search"));
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn root_search_facade_rejects_unsupported_explicit_language_with_finder_recovery() {
     let root = temp_project_root("root-search-unsupported-language");
     write_activation(

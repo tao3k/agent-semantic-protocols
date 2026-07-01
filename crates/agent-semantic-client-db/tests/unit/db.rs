@@ -7,8 +7,10 @@ use agent_semantic_client_core::{
     ProviderId, SemanticSchemaId, SemanticSchemaVersion,
 };
 use agent_semantic_client_db::{
-    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
+    AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionRegisterRequest, AgentSessionRegistry,
+    AgentSessionToolEventRequest, CLIENT_DB_SOURCE_INDEX_PROVIDER_ID,
+    CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
     CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH,
     CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDb, ClientDbGenerationLookup,
     ClientDbSourceIndexCandidateLookup, ClientDbSourceIndexImportAssemblyRequest,
@@ -33,6 +35,75 @@ fn schema_version_stays_on_first_release_contract() {
         agent_semantic_client_db::AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION,
         1
     );
+}
+
+#[test]
+fn agent_session_registry_storage_is_db_owned() {
+    let root = temp_root("agent-session-registry");
+    let state_root = root.join("agent");
+    let db_path = AgentSessionRegistry::db_path_for_state_root(&state_root);
+
+    assert_eq!(
+        db_path.file_name().and_then(|name| name.to_str()),
+        Some(AGENT_SESSION_REGISTRY_DB_NAME)
+    );
+    assert!(
+        AgentSessionRegistry::open_existing_state_root(&state_root)
+            .expect("open missing session registry")
+            .is_none()
+    );
+
+    let registry =
+        AgentSessionRegistry::open_or_create_state_root(&state_root).expect("create registry");
+    let record = registry
+        .register_session(AgentSessionRegisterRequest {
+            root_session_id: "root-session",
+            session_id: "child-session",
+            parent_session_id: Some("parent-session"),
+            name: "asp-explore",
+            role: "search",
+            model: Some("gpt-test"),
+            status: "active",
+            expires_at: Some(1_900_000_000),
+            metadata_json: "{\"route\":\"db-owned\"}",
+            now: 1_800_000_000,
+        })
+        .expect("register session through DB crate");
+
+    assert_eq!(record.root_session_id, "root-session");
+    assert_eq!(record.session_id, "child-session");
+    assert!(record.is_routable_at(1_800_000_001));
+    assert_eq!(
+        registry
+            .query_sessions(Some("root-session"), Some("asp-explore"))
+            .expect("query session")
+            .len(),
+        1
+    );
+
+    assert!(
+        registry
+            .record_tool_event(AgentSessionToolEventRequest {
+                session_id: "child-session",
+                tool_event: "search",
+                command: Some("asp rust search owner"),
+                evidence_ref: Some("receipt:1"),
+                now: 1_800_000_010,
+            })
+            .expect("record tool event")
+    );
+    let updated = registry
+        .session_by_id("child-session")
+        .expect("lookup updated session")
+        .expect("session exists");
+    assert_eq!(updated.last_tool_event.as_deref(), Some("search"));
+    assert_eq!(
+        updated.last_command.as_deref(),
+        Some("asp rust search owner")
+    );
+    assert_eq!(updated.last_evidence_ref.as_deref(), Some("receipt:1"));
+
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]

@@ -253,11 +253,13 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
     assert!(stdout.contains("lang=gerbil-scheme"), "{stdout}");
     assert!(stdout.contains("src/main.ss"), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp gerbil-scheme search owner gerbil.pkg items"),
+        stdout.contains(
+            "nextCommand=asp gerbil-scheme query --selector build.ss:1:1 --workspace . --code"
+        ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("fdPreview=ownerCandidates=build.ss,gerbil.pkg,src/main.ss"),
+        stdout.contains("packageCohesion=medium packages=build.ss,gerbil.pkg,src/main.ss"),
         "{stdout}"
     );
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
@@ -374,14 +376,17 @@ fn search_pipe_splits_api_compounds_before_seed_quality_analysis() {
     assert!(!stdout.contains("advance_mut/unsafe:symbol"), "{stdout}");
     assert!(!stdout.contains("owner。:concept"), "{stdout}");
     assert!(
-        stdout.contains("strongCoverage=matched=BufMut weak=-"),
+        stdout.contains("strongCoverage=matched=BufMut,advance_mut weak=-"),
         "{stdout}"
     );
     assert!(
         stdout.contains("packageCohesion=high packages=src/buf"),
         "{stdout}"
     );
-    assert!(stdout.contains("queryQuality=medium reason=ok"), "{stdout}");
+    assert!(
+        stdout.contains("queryQuality=high reason=long-field-signatures"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("nextCommand=asp rust query --selector"),
         "{stdout}"
@@ -435,7 +440,7 @@ fn search_pipe_preserves_rust_path_compounds_as_precise_symbol_terms() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp rust search owner src/runtime/handle.rs items --query 'Tokio|guard|runtime' --workspace . --view seeds"
+            "nextCommand=asp rust query --selector src/runtime/handle.rs:1:1 --workspace . --code"
         ),
         "{stdout}"
     );
@@ -501,7 +506,7 @@ fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
         "{stdout}"
     );
     assert!(stdout.contains("gerbil.pkg"), "{stdout}");
-    assert!(stdout.contains("src/extensions/poo.ss"), "{stdout}");
+    assert!(stdout.contains("src/extensions"), "{stdout}");
     assert!(
         stdout.contains("globalCoverage=matched=gerbil.pkg,poo,gxpkg"),
         "{stdout}"
@@ -514,7 +519,7 @@ fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
     );
     assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(
-        stdout.contains("finderHandles=") && stdout.contains("poo"),
+        stdout.contains("nextQueryPackHint='GitHub Actions Poo|matrix gxpkg deps install cache'"),
         "{stdout}"
     );
     assert!(

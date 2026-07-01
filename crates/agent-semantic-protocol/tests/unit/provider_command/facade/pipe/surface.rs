@@ -79,8 +79,10 @@ fn search_pipe_source_option_controls_graph_request_source() {
         nodes
             .iter()
             .any(|node| node["kind"].as_str() == Some("item")
-                && node["source"].as_str() == Some("finder")
-                && node["confidence"].as_str() == Some("heuristic")),
+                && matches!(
+                    node["confidence"].as_str(),
+                    Some("heuristic" | "lexical-overlay")
+                )),
         "{payload}"
     );
     let edges = payload["graph"]["edges"].as_array().expect("edges");

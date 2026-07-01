@@ -342,17 +342,6 @@ pub(super) fn write_stdout_stderr_exit_provider(
     );
 }
 
-pub(super) fn write_activation_env_guard_provider(bin_dir: &Path, binary: &str, stdout_text: &str) {
-    write_provider_script(
-        bin_dir,
-        binary,
-        &format!(
-            "#!/bin/sh\nif [ -n \"${{ASP_PROVIDER_ACTIVATION_PATH:-}}\" ]; then printf 'unexpected client backend activation env\\n' >&2; exit 2; fi\nprintf '%s' {}\n",
-            shell_single_quote(stdout_text)
-        ),
-    );
-}
-
 pub(super) fn write_check_failure_provider(bin_dir: &Path, binary: &str, stderr_text: &str) {
     write_provider_script(
         bin_dir,

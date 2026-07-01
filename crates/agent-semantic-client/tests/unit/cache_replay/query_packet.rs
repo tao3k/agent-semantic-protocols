@@ -143,7 +143,7 @@ fn search_packet_replay_rejects_obsolete_search_frontier() {
 [search-obsolete] q=cache view=hits\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases: graph:{G=search,Q=query}\n\
-rank=Q frontier=Q.legacy\n";
+rank=Q frontier=Q.obsolete\n";
 
     assert!(!search_output_artifact_replay_safe(stdout.as_bytes()));
 }

@@ -169,7 +169,7 @@ fn asp_agent_session_rejects_removed_session_id_flag() {
             "--name",
             "asp-explore",
             "--session-id",
-            "legacy-child-id",
+            "retired-child-id",
             "--role",
             "asp-explore",
         ])
