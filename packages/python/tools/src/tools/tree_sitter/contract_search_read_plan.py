@@ -29,6 +29,15 @@ def search_frontier(value: str, label: str) -> None:
     no_cache_noise(value, label)
 
 
+def search_pipe_frontier(value: str, label: str) -> None:
+    contains(value, "[search-pipe]", label)
+    contains(value, "queryQuality=", label)
+    contains(value, "ownerCoverage=", label)
+    contains(value, "nextCommand=", label)
+    contains(value, "avoid=", label)
+    no_cache_noise(value, label)
+
+
 def _check_rust_search_frontier(env: dict[str, str], asp_bin: str) -> None:
     output = asp(
         env,
@@ -55,17 +64,15 @@ def _check_typescript_search_frontier(env: dict[str, str], asp_bin: str) -> None
         asp_bin,
         "typescript",
         "search",
-        "fzf",
-        "parseTreeSitterQueryArgs",
-        "owner",
-        "tests",
+        "pipe",
+        "parseTreeSitterQueryArgs owner tests",
         "--workspace",
         "languages/typescript-lang-project-harness",
         "--view",
         "seeds",
     )
-    search_frontier(output, "typescript search frontier")
-    contains(output, "src/cli/protocol-tree-sitter-query.ts", "typescript search frontier")
+    search_pipe_frontier(output, "typescript search frontier")
+    contains(output, "src/cli/protocol.ts", "typescript search frontier")
     not_contains(output, "export function parseTreeSitterQueryArgs", "typescript search frontier")
 
 
