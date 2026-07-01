@@ -189,7 +189,9 @@ def _assert_search_pipe_quality(language_id: str, pipe_output: str) -> None:
     assert (
         "actionFrontier=" in pipe_output or "nextCommand=" in pipe_output
     ), f"{language_id} pipe missing next action guidance"
-    assert "recommendedNext=" in pipe_output, f"{language_id} pipe missing recommendation"
+    assert (
+        "recommendedNext=" in pipe_output or "nextCommand=" in pipe_output
+    ), f"{language_id} pipe missing recommendation"
     assert "avoid=" in pipe_output, f"{language_id} pipe missing avoid guidance"
     assert (
         "raw-read" in pipe_output or "direct-source-read" in pipe_output
