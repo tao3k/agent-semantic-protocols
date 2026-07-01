@@ -514,10 +514,6 @@ pub fn query_wrapper_source_index_trace_projection(
         Value::from(trace.elapsed.as_millis().min(u128::from(u64::MAX)) as u64),
     );
     fields.insert("state".to_string(), Value::from(trace.lookup.state.clone()));
-    fields.insert(
-        "dbPath".to_string(),
-        Value::from(trace.lookup.db_path.display().to_string()),
-    );
     if status != "used" {
         fields.insert(
             "nextCommand".to_string(),
@@ -654,18 +650,6 @@ pub fn collect_query_wrapper_candidate_collection(
     };
 
     if request.native_args.is_empty()
-        && let Some(collection) = collect_ranked_search_query_candidates(
-            request.project_root,
-            &roots,
-            request.terms,
-            &axis_terms,
-            request.ranked_search_candidates,
-        )
-    {
-        return Ok(collection);
-    }
-
-    if request.native_args.is_empty()
         && let Some(collection) = collect_source_index_query_candidates(
             request.surface,
             request.project_root,
@@ -674,6 +658,18 @@ pub fn collect_query_wrapper_candidate_collection(
             &axis_terms,
             request.source_index_lookup.as_ref(),
         )?
+    {
+        return Ok(collection);
+    }
+
+    if request.native_args.is_empty()
+        && let Some(collection) = collect_ranked_search_query_candidates(
+            request.project_root,
+            &roots,
+            request.terms,
+            &axis_terms,
+            request.ranked_search_candidates,
+        )
     {
         return Ok(collection);
     }
