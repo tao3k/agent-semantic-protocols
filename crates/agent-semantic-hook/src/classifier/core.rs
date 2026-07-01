@@ -9,8 +9,8 @@ use super::decision::{allow, deny_for_action};
 use super::prompt_search_flow::classify_prompt_search_flow_feedback;
 use super::recovery::command_line;
 use super::source_access_routes::{
-    classify_direct_read_action, classify_raw_search_command, classify_source_read_command,
-    direct_read_language_ids, direct_read_routes,
+    SourceReadCommandRequest, classify_direct_read_action, classify_raw_search_command,
+    classify_source_read_command, direct_read_language_ids, direct_read_routes,
 };
 use crate::event_state::missing_search_pipe_after_prime;
 use crate::{
@@ -515,16 +515,16 @@ fn classify_command_action(
     apply_patch_decision
         .or_else(|| classify_search_json_command(registry, platform, event, action, &tokens))
         .or_else(|| {
-            classify_source_read_command(
+            classify_source_read_command(SourceReadCommandRequest {
                 registry,
                 platform,
                 event,
                 action,
                 command,
-                &tokens,
+                tokens: &tokens,
                 semantic_ast_patch_enabled,
                 recovery_prompt,
-            )
+            })
         })
         .or_else(|| {
             classify_raw_search_command(

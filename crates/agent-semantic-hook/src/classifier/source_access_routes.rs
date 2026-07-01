@@ -187,66 +187,76 @@ pub(super) fn classify_direct_read_action(
     )
 }
 
+pub(super) struct SourceReadCommandRequest<'a> {
+    pub(super) registry: &'a HookRuntime,
+    pub(super) platform: &'a str,
+    pub(super) event: &'a str,
+    pub(super) action: &'a ToolAction,
+    pub(super) command: &'a str,
+    pub(super) tokens: &'a [String],
+    pub(super) semantic_ast_patch_enabled: bool,
+    pub(super) recovery_prompt: &'a CompiledRecoveryPromptConfig,
+}
+
 pub(super) fn classify_source_read_command(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    command: &str,
-    tokens: &[String],
-    semantic_ast_patch_enabled: bool,
-    recovery_prompt: &CompiledRecoveryPromptConfig,
+    request: SourceReadCommandRequest<'_>,
 ) -> Option<HookDecision> {
-    let intent = command_intent(tokens);
+    let intent = command_intent(request.tokens);
     if intent == CommandIntent::VcsDiffReview {
         return None;
     }
-    let mut inline_source_read_paths = inline_source_read::source_read_paths(command, tokens);
+    let mut inline_source_read_paths =
+        inline_source_read::source_read_paths(request.command, request.tokens);
     append_selector_base_paths_for_ranges(&mut inline_source_read_paths);
     if !inline_source_read_paths.is_empty() {
         let matches = collect_content_dump_matches(
-            registry,
+            request.registry,
             inline_source_read_paths.iter().map(String::as_str),
         );
         if !matches.is_empty() {
             return Some(content_dump_decision(
-                platform,
-                event,
-                action,
+                request.platform,
+                request.event,
+                request.action,
                 matches,
                 Some(inline_source_read_paths),
-                semantic_ast_patch_enabled,
-                recovery_prompt,
+                request.semantic_ast_patch_enabled,
+                request.recovery_prompt,
             ));
         }
     }
 
     match intent {
         CommandIntent::DirectRead => direct_read_decision(
-            registry,
-            platform,
-            event,
-            action,
-            semantic_ast_patch_enabled,
-            recovery_prompt,
-            collect_direct_read_matches(registry, action_path_selectors(action, tokens)),
+            request.registry,
+            request.platform,
+            request.event,
+            request.action,
+            request.semantic_ast_patch_enabled,
+            request.recovery_prompt,
+            collect_direct_read_matches(
+                request.registry,
+                action_path_selectors(request.action, request.tokens),
+            ),
         ),
         CommandIntent::ContentDump => {
-            let selectors = action_path_selectors(action, tokens);
-            let matches =
-                collect_content_dump_matches(registry, selectors.iter().map(String::as_str));
+            let selectors = action_path_selectors(request.action, request.tokens);
+            let matches = collect_content_dump_matches(
+                request.registry,
+                selectors.iter().map(String::as_str),
+            );
             if matches.is_empty() {
                 return None;
             }
             let subject_paths = selectors;
             Some(content_dump_decision(
-                platform,
-                event,
-                action,
+                request.platform,
+                request.event,
+                request.action,
                 matches,
                 Some(subject_paths),
-                semantic_ast_patch_enabled,
-                recovery_prompt,
+                request.semantic_ast_patch_enabled,
+                request.recovery_prompt,
             ))
         }
         _ => None,

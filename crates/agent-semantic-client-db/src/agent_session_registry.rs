@@ -51,7 +51,7 @@ impl AgentSessionRecord {
     #[must_use]
     pub fn is_routable_at(&self, now: i64) -> bool {
         agent_session_status_is_routable(&self.status)
-            && self.expires_at.map_or(true, |expires| expires > now)
+            && self.expires_at.is_none_or(|expires| expires > now)
     }
 }
 

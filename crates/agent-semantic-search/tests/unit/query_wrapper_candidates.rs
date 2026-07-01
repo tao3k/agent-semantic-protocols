@@ -155,7 +155,7 @@ fn package_path_augmentation_adds_only_missing_package_axis() {
     }];
     let added = augment_package_path_candidates(
         &root,
-        &[root.clone()],
+        std::slice::from_ref(&root),
         &terms,
         QueryWrapperScanConfig {
             ignore_dirs: &ignore_dirs,
@@ -308,7 +308,7 @@ fn query_wrapper_candidate_collection_prefers_ranked_turso_fts_candidates_before
         projection.fields["fallbackReason"],
         serde_json::json!("none")
     );
-    assert_eq!(collection.finder_skipped_after_source_index, false);
+    assert!(!collection.finder_skipped_after_source_index);
     assert_eq!(collection.trace_fields["candidateCount"], 1);
 
     fs::remove_dir_all(root).expect("remove fixture");

@@ -3,18 +3,23 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use agent_semantic_client_core::{
     ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot,
     ResolvedProvider, project_child_path, provider_ignores_path, provider_supports_source_file,
     scoped_child_path,
 };
+use agent_semantic_provider_transport::ProviderProcessLimits;
 use serde::Deserialize;
 
 use crate::LocalNativeCliBackend;
 
 pub const PROVIDER_WORKSPACE_SCOPE_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-workspace-scope";
+const WORKSPACE_SCOPE_PROVIDER_TIMEOUT_MS: u64 = 750;
+const WORKSPACE_SCOPE_MAX_STDOUT_BYTES: usize = 1024 * 1024;
+const WORKSPACE_SCOPE_MAX_STDERR_BYTES: usize = 128 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProviderWorkspaceScope {
@@ -94,7 +99,9 @@ pub fn provider_workspace_scope(
         activation_path: PathBuf::new(),
         providers: vec![provider.clone()],
     };
-    let output = match LocalNativeCliBackend::new(snapshot).execute(&request) {
+    let output = match LocalNativeCliBackend::new(snapshot)
+        .execute_with_limits(&request, workspace_scope_provider_limits())
+    {
         Ok(output) => output,
         Err(_) => return Ok(ProviderWorkspaceScope::Unsupported),
     };
@@ -102,6 +109,14 @@ pub fn provider_workspace_scope(
         return Ok(ProviderWorkspaceScope::Unsupported);
     }
     provider_workspace_scope_from_stdout(output.stdout.as_ref(), provider)
+}
+
+fn workspace_scope_provider_limits() -> ProviderProcessLimits {
+    ProviderProcessLimits {
+        timeout: Some(Duration::from_millis(WORKSPACE_SCOPE_PROVIDER_TIMEOUT_MS)),
+        max_stdout_bytes: Some(WORKSPACE_SCOPE_MAX_STDOUT_BYTES),
+        max_stderr_bytes: Some(WORKSPACE_SCOPE_MAX_STDERR_BYTES),
+    }
 }
 
 pub fn provider_workspace_scope_files(
@@ -132,7 +147,7 @@ pub fn provider_workspace_scope_files_from_packet(
     package_root_path: &Path,
     packet: ProviderWorkspaceScopePacket,
 ) -> Vec<ProviderWorkspaceScopePathFile> {
-    let files = packet
+    packet
         .files
         .into_iter()
         .filter_map(|file| {
@@ -145,8 +160,7 @@ pub fn provider_workspace_scope_files_from_packet(
                 },
             )
         })
-        .collect();
-    files
+        .collect()
 }
 
 pub fn provider_workspace_scope_from_stdout(

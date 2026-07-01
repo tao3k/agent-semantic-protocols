@@ -248,9 +248,17 @@ impl LocalNativeCliBackend {
     }
 
     pub fn execute(&self, request: &ClientRequest) -> Result<LocalNativeOutput, String> {
+        self.execute_with_limits(request, ProviderProcessLimits::default())
+    }
+
+    pub fn execute_with_limits(
+        &self,
+        request: &ClientRequest,
+        limits: ProviderProcessLimits,
+    ) -> Result<LocalNativeOutput, String> {
         let prepared_commands = self.prepare_all(request)?;
         let (provider, stdout, stderr, status_code, provider_commands, elapsed_ms) =
-            Self::run_provider_commands(prepared_commands, request.stdin.clone())?;
+            Self::run_provider_commands(prepared_commands, request.stdin.clone(), limits)?;
         let receipt = Self::receipt_for_run(
             request,
             &provider,
@@ -271,6 +279,7 @@ impl LocalNativeCliBackend {
     fn run_provider_commands(
         prepared_commands: Vec<LocalNativeCommand>,
         stdin: Option<Bytes>,
+        limits: ProviderProcessLimits,
     ) -> Result<ProviderCommandOutputs, String> {
         let provider = prepared_commands
             .first()
@@ -296,7 +305,7 @@ impl LocalNativeCliBackend {
                     .unwrap_or(StdinMode::Inherit),
                 stdout: OutputMode::Capture,
                 stderr: OutputMode::Capture,
-                limits: ProviderProcessLimits::default(),
+                limits,
             })
             .map_err(|error| {
                 format!(

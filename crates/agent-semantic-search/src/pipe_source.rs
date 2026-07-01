@@ -209,16 +209,18 @@ pub fn collect_search_pipe_document_acquisition(
     match request.mode {
         SearchPipeSourceMode::Auto => document_auto_acquisition(request),
         SearchPipeSourceMode::Provider => document_element_acquisition(request),
-        SearchPipeSourceMode::Finder => finder_source_acquisition(
-            request.language.id(),
-            request.project_root,
-            request.locator_root,
-            request.intent,
-            request.scopes,
-            request.ignore_dirs,
-            request.include_hidden_dirs,
-            request.finder_limit,
-        ),
+        SearchPipeSourceMode::Finder => {
+            finder_source_acquisition(SearchPipeFinderAcquisitionRequest {
+                language_id: request.language.id(),
+                project_root: request.project_root,
+                locator_root: request.locator_root,
+                query: request.intent,
+                owners: request.scopes,
+                ignore_dirs: request.ignore_dirs,
+                include_hidden_dirs: request.include_hidden_dirs,
+                limit: request.finder_limit,
+            })
+        }
     }
 }
 
@@ -233,16 +235,16 @@ fn document_auto_acquisition(
     if !document_acquisition.candidates.is_empty() {
         return Ok(document_acquisition);
     }
-    let finder_acquisition = finder_source_acquisition(
-        request.language.id(),
-        request.project_root,
-        request.locator_root,
-        request.intent,
-        request.scopes,
-        request.ignore_dirs,
-        request.include_hidden_dirs,
-        request.finder_limit,
-    )?;
+    let finder_acquisition = finder_source_acquisition(SearchPipeFinderAcquisitionRequest {
+        language_id: request.language.id(),
+        project_root: request.project_root,
+        locator_root: request.locator_root,
+        query: request.intent,
+        owners: request.scopes,
+        ignore_dirs: request.ignore_dirs,
+        include_hidden_dirs: request.include_hidden_dirs,
+        limit: request.finder_limit,
+    })?;
     let mut source_trace = document_acquisition.source_trace;
     source_trace.extend(finder_acquisition.source_trace);
     Ok(SearchPipeSourceAcquisition {
@@ -288,24 +290,17 @@ fn document_element_acquisition(
 }
 
 fn finder_source_acquisition(
-    language_id: &str,
-    project_root: &Path,
-    locator_root: &Path,
-    intent: &str,
-    scopes: &[PathBuf],
-    ignore_dirs: &[String],
-    include_hidden_dirs: &[String],
-    limit: usize,
+    request: SearchPipeFinderAcquisitionRequest<'_>,
 ) -> Result<SearchPipeSourceAcquisition, String> {
     let acquisition = collect_search_pipe_finder_acquisition(SearchPipeFinderAcquisitionRequest {
-        language_id,
-        project_root,
-        locator_root,
-        query: intent,
-        owners: scopes,
-        ignore_dirs,
-        include_hidden_dirs,
-        limit,
+        language_id: request.language_id,
+        project_root: request.project_root,
+        locator_root: request.locator_root,
+        query: request.query,
+        owners: request.owners,
+        ignore_dirs: request.ignore_dirs,
+        include_hidden_dirs: request.include_hidden_dirs,
+        limit: request.limit,
     })?;
     let candidates = acquisition.candidates;
     Ok(SearchPipeSourceAcquisition {

@@ -3,6 +3,9 @@ name = "agent-semantic-protocol"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+doctest = false
+
 [dependencies]
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-db = { path = "../agent-semantic-client-db", default-features = false }

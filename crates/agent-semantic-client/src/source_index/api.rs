@@ -183,25 +183,26 @@ impl SourceIndexRefreshContext {
             )?;
             if let Some(stats) = reusable_stats {
                 self.persist_turso_source_index_read_model(&import)?;
-                return Ok(source_index_refresh_report(
+                Ok(source_index_refresh_report(
                     &self.db_path,
                     stats,
                     request.files.len(),
                     true,
-                ));
-            }
-            let turso_import = import.clone();
-            let report =
-                self.db_session
-                    .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
+                ))
+            } else {
+                let turso_import = import.clone();
+                let report = self.db_session.refresh_source_index_import(
+                    ClientDbSourceIndexRefreshRequest {
                         import,
                         file_count: client_db_source_index_file_count(request.files.len()),
-                    })?;
-            self.persist_turso_source_index_read_model(&turso_import)?;
-            return Ok(SourceIndexRefreshReport::from_report(
-                self.db_path.clone(),
-                report,
-            ));
+                    },
+                )?;
+                self.persist_turso_source_index_read_model(&turso_import)?;
+                Ok(SourceIndexRefreshReport::from_report(
+                    self.db_path.clone(),
+                    report,
+                ))
+            }
         }
 
         #[cfg(not(feature = "turso-backend"))]

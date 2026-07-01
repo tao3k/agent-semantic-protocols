@@ -1090,10 +1090,10 @@ async fn lookup_source_index_read_model_at_path(
     }
     let mut candidates = Vec::new();
     for entity in entities {
-        if let Some(language_id) = language_id {
-            if entity.language_id.as_deref() != Some(language_id.as_str()) {
-                continue;
-            }
+        if let Some(language_id) = language_id
+            && entity.language_id.as_deref() != Some(language_id.as_str())
+        {
+            continue;
         }
         if terms.is_empty() || !source_index_entity_matches(&entity, &terms) {
             continue;

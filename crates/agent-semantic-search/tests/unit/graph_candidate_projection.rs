@@ -15,7 +15,7 @@ fn graph_candidate_item_nodes_use_structural_identity_without_line_range_selecto
         "high",
     );
 
-    let nodes = graph_candidate_item_nodes("rust", &[candidate.clone()], 8);
+    let nodes = graph_candidate_item_nodes("rust", std::slice::from_ref(&candidate), 8);
 
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0]["id"], graph_candidate_item_node_id(&candidate));

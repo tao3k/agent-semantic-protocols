@@ -46,13 +46,13 @@ pub fn query_wrapper_ranked_search_candidates(
     {
         let query = terms.join(" ");
         let limit = query_wrapper_ranked_search_limit(surface);
-        return crate::collect_turso_structural_index_ranked_candidates(
+        crate::collect_turso_structural_index_ranked_candidates(
             crate::TursoStructuralIndexCandidateRequest {
                 project_root,
                 query: query.as_str(),
                 limit,
             },
-        );
+        )
     }
     #[cfg(not(feature = "turso-overlay"))]
     {

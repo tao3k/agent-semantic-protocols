@@ -402,16 +402,8 @@ fn source_index_symbol(candidate: &QueryWrapperSourceIndexCandidate) -> String {
 }
 
 fn source_index_candidate_text(candidate: &QueryWrapperSourceIndexCandidate) -> String {
-    let language = candidate
-        .language_id
-        .as_ref()
-        .map(|value| value.as_str())
-        .unwrap_or("unknown");
-    let provider = candidate
-        .provider_id
-        .as_ref()
-        .map(|value| value.as_str())
-        .unwrap_or("unknown");
+    let language = candidate.language_id.as_deref().unwrap_or("unknown");
+    let provider = candidate.provider_id.as_deref().unwrap_or("unknown");
     let keys = candidate
         .query_keys
         .iter()

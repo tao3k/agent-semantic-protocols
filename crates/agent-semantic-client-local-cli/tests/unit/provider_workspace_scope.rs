@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     LanguageId, ProviderExecution, ProviderId, ProviderRegistrySnapshot, ResolvedProvider,
@@ -178,6 +178,42 @@ fn provider_source_scope_manifest_fallback_collects_config_and_source_files() {
         files
             .iter()
             .all(|file| file.provider_id.as_str() == "rs-harness")
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn provider_source_scope_workspace_scope_timeout_falls_back_to_manifest() {
+    let root = temp_root("provider-source-scope-timeout");
+    std::fs::create_dir_all(root.join("src")).expect("create source dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write source fixture");
+
+    let mut provider = provider();
+    provider.binary = "missing-timeout-provider".to_string();
+    provider.runtime_command_argv = Some(vec![
+        "/bin/sh".to_string(),
+        "-c".to_string(),
+        "sleep 2".to_string(),
+    ]);
+    provider.source_roots = vec!["src".to_string()];
+    provider.source_extensions = vec!["rs".to_string()];
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("registry.json"),
+        providers: vec![provider],
+    };
+
+    let started = Instant::now();
+    let files =
+        collect_provider_source_scope_files(&root, &snapshot, 16).expect("collect source scope");
+
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "workspace-scope timeout should fall back before provider sleep finishes"
+    );
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        files[0].path.strip_prefix(&root).unwrap(),
+        std::path::Path::new("src/lib.rs")
     );
     let _ = std::fs::remove_dir_all(root);
 }

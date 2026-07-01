@@ -191,6 +191,7 @@ pub use structural_index_search::{
     TursoStructuralIndexCandidateRequest, TursoStructuralIndexSearchHit,
     collect_turso_structural_index_ranked_candidates,
     collect_turso_structural_index_ranked_candidates_async,
+    collect_turso_structural_index_ranked_candidates_from_engine_async,
     search_turso_structural_index_documents,
 };
 pub use syntax_query_replay::{

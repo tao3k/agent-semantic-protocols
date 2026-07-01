@@ -37,13 +37,26 @@ pub fn collect_turso_structural_index_ranked_candidates(
 pub async fn collect_turso_structural_index_ranked_candidates_async(
     request: TursoStructuralIndexCandidateRequest<'_>,
 ) -> Result<Vec<RankedSearchCandidate>, String> {
-    if request.query.trim().is_empty() || request.limit == 0 {
+    let engine = ClientDbEngine::resolve(request.project_root)?;
+    collect_turso_structural_index_ranked_candidates_from_engine_async(
+        &engine,
+        request.query,
+        request.limit,
+    )
+    .await
+}
+
+/// Async implementation for callers that already own a resolved DB Engine.
+pub async fn collect_turso_structural_index_ranked_candidates_from_engine_async(
+    engine: &ClientDbEngine,
+    query: &str,
+    limit: u32,
+) -> Result<Vec<RankedSearchCandidate>, String> {
+    if query.trim().is_empty() || limit == 0 {
         return Ok(Vec::new());
     }
-    let engine = ClientDbEngine::resolve(request.project_root)?;
-    let hits =
-        search_turso_structural_index_documents(&engine, request.query, request.limit).await?;
-    let terms = source_index_lookup_terms(request.query);
+    let hits = search_turso_structural_index_documents(engine, query, limit).await?;
+    let terms = source_index_lookup_terms(query);
     Ok(merge_search_candidates(
         hits.iter()
             .map(|hit| structural_index_hit_to_search_candidate(hit, &terms))
