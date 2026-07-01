@@ -68,7 +68,7 @@ def _request_edges(
 def _query_node_id(nodes: dict[tuple[str, str], dict[str, object]], query: str) -> str:
     if not query:
         return ""
-    return _add_node(nodes, "query", "term", query, action="fzf")
+    return _add_node(nodes, "query", "term", query, action="typed-frontier")
 
 
 def _node_ids(

@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::language_neutral_search_file_spec;
-use crate::search_candidate::{RankedSearchCandidate, SearchCandidate};
+use crate::search_candidate::{RankedSearchCandidate, SearchCandidate, SearchStageReceipt};
 
 pub const QUERY_WRAPPER_CANDIDATE_LIMIT: usize = 256;
 
@@ -69,6 +69,7 @@ pub struct QueryWrapperSearchCandidateRequest<'a> {
 
 pub struct QueryWrapperSearchCandidateCollection {
     pub candidates: Vec<QueryWrapperCandidate>,
+    pub stage_receipt: SearchStageReceipt,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -169,7 +170,34 @@ pub fn collect_query_wrapper_search_candidates(
         query_candidate_priority(&candidate.path, request.terms, request.axis_terms)
     });
     candidates.truncate(QUERY_WRAPPER_CANDIDATE_LIMIT);
-    Some(QueryWrapperSearchCandidateCollection { candidates })
+    Some(QueryWrapperSearchCandidateCollection {
+        stage_receipt: query_wrapper_search_stage_receipt(request.ranked, candidates.len()),
+        candidates,
+    })
+}
+
+fn query_wrapper_search_stage_receipt(
+    ranked: &[RankedSearchCandidate],
+    returned_count: usize,
+) -> SearchStageReceipt {
+    SearchStageReceipt {
+        stage: "search-candidate-merge".to_string(),
+        route_sources: query_wrapper_ranked_route_sources(ranked),
+        candidate_count: ranked.len(),
+        returned_count,
+        filtered_line_identity_count: 0,
+        fallback_reason: "none".to_string(),
+    }
+}
+
+fn query_wrapper_ranked_route_sources(ranked: &[RankedSearchCandidate]) -> Vec<String> {
+    let mut sources = ranked
+        .iter()
+        .map(|candidate| candidate.candidate.route_source.clone())
+        .collect::<Vec<_>>();
+    sources.sort();
+    sources.dedup();
+    sources
 }
 
 pub fn append_query_candidates(input: QueryCandidateAppend<'_>) -> Result<(), String> {
@@ -289,7 +317,7 @@ fn source_index_query_wrapper_candidate(
         selector: None,
         text: source_index_candidate_text(candidate),
         source: "source-index".to_string(),
-        confidence: "rust-sql".to_string(),
+        confidence: "db-engine".to_string(),
     }
 }
 
@@ -354,8 +382,9 @@ fn search_candidate_text(candidate: &SearchCandidate) -> String {
     let selector = candidate.selector.as_deref().unwrap_or("none");
     let generation = candidate.generation.as_deref().unwrap_or("none");
     format!(
-        "search-candidate source={} identity={} selector={} generation={} proof={} {}",
+        "search-candidate source={} fallback={} identity={} selector={} generation={} proof={} {}",
         candidate.route_source,
+        candidate.fallback_reason,
         candidate.identity_kind,
         selector,
         generation,

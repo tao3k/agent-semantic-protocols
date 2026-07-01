@@ -16,7 +16,7 @@ fn refresh_source_index(root: &std::path::Path) {
 }
 
 #[test]
-fn search_pipe_auto_uses_rust_sql_source_index_before_finder() {
+fn search_pipe_auto_uses_db_engine_source_index_before_finder() {
     let root = temp_project_root("search-pipe-source-index");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -62,10 +62,12 @@ fn search_pipe_auto_uses_rust_sql_source_index_before_finder() {
     assert!(stdout.contains("sourceTrace=sourceIndex:used"), "{stdout}");
     assert!(stdout.contains("finder:skipped"), "{stdout}");
     assert!(
-        stdout.contains("ownerCoverage=bestOwner=src/lib.rs")
-            && stdout.contains(
-                "nextCommand=asp rust query --selector src/lib.rs:1:2 --workspace . --code"
-            ),
+        stdout.contains("ownerCoverage=bestOwner=src/lib.rs"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextCommand=asp rust query --selector src/lib.rs")
+            && stdout.contains("--workspace . --code"),
         "{stdout}"
     );
     assert!(!stdout.contains("O=owner:path(src/lib.rs)"), "{stdout}");

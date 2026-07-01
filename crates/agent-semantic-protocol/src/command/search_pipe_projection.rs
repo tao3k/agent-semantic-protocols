@@ -11,6 +11,9 @@ pub(super) fn candidate_end_line(candidate: &Candidate) -> usize {
 }
 
 pub(super) fn candidate_selector(language_id: &str, candidate: &Candidate) -> String {
+    if let Some(selector) = &candidate.selector {
+        return selector.clone();
+    }
     let end_line = candidate_end_line(candidate);
     if is_document_language(language_id) {
         format!("{}:{}-{end_line}", candidate.path, candidate.line)

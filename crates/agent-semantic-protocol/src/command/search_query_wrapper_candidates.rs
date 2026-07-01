@@ -3,20 +3,16 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client::{SourceIndexLookupResult, lookup_source_index_for_language};
+use agent_semantic_client::lookup_query_wrapper_source_index;
 use agent_semantic_search::{
     QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
-    QueryWrapperSearchSurface, QueryWrapperSourceIndexCandidate, QueryWrapperSourceIndexLookup,
-    RankedSearchCandidate,
+    QueryWrapperSearchStageTraceProjection, QueryWrapperSearchSurface,
     collect_query_wrapper_candidate_collection as collect_search_query_wrapper_candidate_collection,
     query_wrapper_clauses as search_query_wrapper_clauses, query_wrapper_owner_candidates,
-    query_wrapper_package_clusters_from_paths, query_wrapper_rg_scope_next,
-    query_wrapper_source_index_trace_projection,
+    query_wrapper_package_clusters_from_paths,
+    query_wrapper_ranked_search_candidates as search_query_wrapper_ranked_search_candidates,
+    query_wrapper_rg_scope_next, query_wrapper_source_index_trace_projection,
     query_wrapper_unique_clause_terms as search_query_wrapper_unique_clause_terms,
-};
-#[cfg(feature = "turso-overlay")]
-use agent_semantic_search::{
-    TursoStructuralIndexCandidateRequest, collect_turso_structural_index_ranked_candidates,
 };
 use serde_json::Value;
 
@@ -83,8 +79,11 @@ pub(super) fn collect_query_candidate_collection(
             axis_terms: clause.axis_terms.clone(),
         })
         .collect::<Vec<_>>();
-    let ranked_search_candidates =
-        query_wrapper_ranked_search_candidates(surface, project_root, terms)?;
+    let ranked_search_candidates = search_query_wrapper_ranked_search_candidates(
+        query_wrapper_search_surface(surface),
+        project_root,
+        terms,
+    )?;
     let collection =
         collect_search_query_wrapper_candidate_collection(QueryWrapperSearchRequest {
             surface: query_wrapper_search_surface(surface),
@@ -97,9 +96,16 @@ pub(super) fn collect_query_candidate_collection(
             include_hidden_dirs: &config.search.include_hidden_dirs,
             native_args,
             ranked_search_candidates: &ranked_search_candidates,
-            source_index_lookup: query_wrapper_source_index_lookup(surface, project_root, terms)?,
+            source_index_lookup: lookup_query_wrapper_source_index(
+                query_wrapper_search_surface(surface),
+                project_root,
+                terms,
+            )?,
         })?;
     let mut source_trace = Vec::new();
+    for projection in collection.search_stage_trace_projections {
+        source_trace.push(query_wrapper_search_stage_trace(projection));
+    }
     if let Some(trace) = collection.source_index_trace {
         source_trace.push(query_wrapper_source_index_trace(trace));
         if collection.finder_skipped_after_source_index {
@@ -118,36 +124,6 @@ pub(super) fn collect_query_candidate_collection(
     })
 }
 
-#[cfg(feature = "turso-overlay")]
-fn query_wrapper_ranked_search_candidates(
-    surface: QueryWrapperSurface,
-    project_root: &Path,
-    terms: &[String],
-) -> Result<Vec<RankedSearchCandidate>, String> {
-    if terms.is_empty() {
-        return Ok(Vec::new());
-    }
-    let query = terms.join(" ");
-    let limit = match surface {
-        QueryWrapperSurface::Fd => 16,
-        QueryWrapperSurface::Rg => agent_semantic_search::QUERY_WRAPPER_CANDIDATE_LIMIT as u32,
-    };
-    collect_turso_structural_index_ranked_candidates(TursoStructuralIndexCandidateRequest {
-        project_root,
-        query: query.as_str(),
-        limit,
-    })
-}
-
-#[cfg(not(feature = "turso-overlay"))]
-fn query_wrapper_ranked_search_candidates(
-    _surface: QueryWrapperSurface,
-    _project_root: &Path,
-    _terms: &[String],
-) -> Result<Vec<RankedSearchCandidate>, String> {
-    Ok(Vec::new())
-}
-
 fn query_wrapper_source_index_trace(
     trace: QueryWrapperSearchSourceIndexTrace,
 ) -> SearchPipeSourceTrace {
@@ -162,48 +138,17 @@ fn query_wrapper_source_index_trace(
     .with_fields(projection.fields)
 }
 
-fn query_wrapper_source_index_lookup(
-    surface: QueryWrapperSurface,
-    project_root: &Path,
-    terms: &[String],
-) -> Result<Option<QueryWrapperSourceIndexLookup>, String> {
-    if terms.is_empty() {
-        return Ok(None);
-    }
-    let query = terms.join(" ");
-    let limit = match surface {
-        QueryWrapperSurface::Fd => 16,
-        QueryWrapperSurface::Rg => agent_semantic_search::QUERY_WRAPPER_CANDIDATE_LIMIT as u32,
-    };
-    let result = lookup_source_index_for_language(project_root, None, &query, limit)?;
-    Ok(Some(query_wrapper_source_index_lookup_from_client(result)))
-}
-
-fn query_wrapper_source_index_lookup_from_client(
-    result: SourceIndexLookupResult,
-) -> QueryWrapperSourceIndexLookup {
-    QueryWrapperSourceIndexLookup::new(
-        result.db_path,
-        result.state.as_str(),
-        result
-            .candidates
-            .into_iter()
-            .map(|candidate| {
-                QueryWrapperSourceIndexCandidate::new(
-                    candidate.path,
-                    candidate
-                        .language_id
-                        .map(|value| value.as_str().to_string()),
-                    candidate
-                        .provider_id
-                        .map(|value| value.as_str().to_string()),
-                    candidate.source_kind.as_str(),
-                    candidate.line_count,
-                    candidate.query_keys,
-                )
-            })
-            .collect(),
+fn query_wrapper_search_stage_trace(
+    projection: QueryWrapperSearchStageTraceProjection,
+) -> SearchPipeSourceTrace {
+    SearchPipeSourceTrace::new(
+        projection.source,
+        projection.status,
+        projection.candidate_count,
+        projection.skipped_count,
+        projection.input_count,
     )
+    .with_fields(projection.fields)
 }
 
 fn query_wrapper_search_surface(surface: QueryWrapperSurface) -> QueryWrapperSearchSurface {

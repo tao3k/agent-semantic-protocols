@@ -12,7 +12,7 @@ def action_summary(
     actions = [
         *_fanout_actions(report_actions.get("fanoutPlanning")),
         *_owner_actions(report_actions.get("ownerCollapse")),
-        *_fzf_actions(report_actions.get("fzfPromotion")),
+        *_typed_frontier_actions(report_actions.get("typedFrontierPromotion")),
         *_prime_actions(report_actions.get("primeSuppression")),
     ]
     actions.sort(
@@ -60,14 +60,14 @@ def _owner_actions(value: object) -> list[dict[str, object]]:
     ]
 
 
-def _fzf_actions(value: object) -> list[dict[str, object]]:
+def _typed_frontier_actions(value: object) -> list[dict[str, object]]:
     if not isinstance(value, Mapping):
         return []
     return [
         _summary_row(
             action,
-            source="fzfPromotion",
-            category="repeat-fzf",
+            source="typedFrontierPromotion",
+            category="repeat-search",
             impact_score=(int(action["repeatCount"]) * 8) + int(action["count"]),
         )
         for action in value.get("actions", [])

@@ -1,8 +1,8 @@
 use crate::{
     LexicalOverlayDocument, LexicalOverlaySearchRequest, SourceIndexRankCandidate,
     lexical_overlay_hit_to_search_candidate, merge_search_candidates,
-    search_candidate_has_executable_line_identity, search_lexical_overlay,
-    source_index_candidate_to_search_candidate, source_index_lookup_terms,
+    merge_search_candidates_with_receipt, search_candidate_has_executable_line_identity,
+    search_lexical_overlay, source_index_candidate_to_search_candidate, source_index_lookup_terms,
 };
 #[cfg(feature = "turso-overlay")]
 use crate::{TursoStructuralIndexSearchHit, structural_index_hit_to_search_candidate};
@@ -20,6 +20,7 @@ fn source_index_candidate_projects_to_shared_search_candidate_contract() {
     );
 
     assert_eq!(candidate.route_source, "source-index");
+    assert_eq!(candidate.fallback_reason, "none");
     assert_eq!(candidate.identity_kind, "owner-path");
     assert_eq!(candidate.owner_path.as_deref(), Some("src/lib.rs"));
     assert_eq!(candidate.field_hits[0].field, "query_keys");
@@ -47,6 +48,7 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
     let candidate = lexical_overlay_hit_to_search_candidate(&hits[0], "session-1/base-1");
 
     assert_eq!(candidate.route_source, "dynamic-overlay");
+    assert_eq!(candidate.fallback_reason, "none");
     assert_eq!(candidate.identity_kind, "selector");
     assert_eq!(
         candidate.selector.as_deref(),
@@ -78,6 +80,7 @@ fn structural_index_hit_projects_selector_generation_and_stable_route() {
     let candidate = structural_index_hit_to_search_candidate(&hit, &terms);
 
     assert_eq!(candidate.route_source, "turso-fts");
+    assert_eq!(candidate.fallback_reason, "none");
     assert_eq!(candidate.identity_kind, "selector");
     assert_eq!(candidate.generation.as_deref(), Some("generation-1"));
     assert_eq!(
@@ -195,4 +198,58 @@ fn merge_search_candidates_filters_line_range_identity() {
     );
 
     assert!(merge_search_candidates(vec![line_range_candidate]).is_empty());
+}
+
+#[test]
+fn merge_search_candidates_with_receipt_records_stage_counts_and_fallback_reason() {
+    let stable_candidate = source_index_candidate_to_search_candidate(
+        SourceIndexRankCandidate {
+            ordinal: 0,
+            path: "src/lib.rs".to_string(),
+            query_keys: vec!["lib".to_string()],
+        },
+        &["lib".to_string()],
+    );
+    let line_range_candidate = source_index_candidate_to_search_candidate(
+        SourceIndexRankCandidate {
+            ordinal: 1,
+            path: "src/generated.rs:1:2".to_string(),
+            query_keys: vec!["generated".to_string()],
+        },
+        &["generated".to_string()],
+    );
+
+    let receipt =
+        merge_search_candidates_with_receipt(vec![stable_candidate, line_range_candidate]);
+
+    assert_eq!(receipt.ranked.len(), 1);
+    assert_eq!(receipt.stage.stage, "search-candidate-merge");
+    assert_eq!(receipt.stage.candidate_count, 2);
+    assert_eq!(receipt.stage.returned_count, 1);
+    assert_eq!(receipt.stage.filtered_line_identity_count, 1);
+    assert_eq!(receipt.stage.fallback_reason, "none");
+    assert_eq!(
+        receipt.stage.route_sources,
+        vec!["source-index".to_string()]
+    );
+}
+
+#[test]
+fn merge_search_candidates_with_receipt_reports_line_identity_filtered_fallback() {
+    let line_range_candidate = source_index_candidate_to_search_candidate(
+        SourceIndexRankCandidate {
+            ordinal: 0,
+            path: "src/lib.rs:1:2".to_string(),
+            query_keys: vec!["lib".to_string()],
+        },
+        &["lib".to_string()],
+    );
+
+    let receipt = merge_search_candidates_with_receipt(vec![line_range_candidate]);
+
+    assert!(receipt.ranked.is_empty());
+    assert_eq!(receipt.stage.candidate_count, 1);
+    assert_eq!(receipt.stage.returned_count, 0);
+    assert_eq!(receipt.stage.filtered_line_identity_count, 1);
+    assert_eq!(receipt.stage.fallback_reason, "line-identity-filtered");
 }

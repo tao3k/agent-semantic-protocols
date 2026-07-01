@@ -97,20 +97,20 @@ def _assert_action_counts(report: dict[str, object]) -> None:
     assert "rust:query/--selector" not in report["actionMethodCounts"]
     assert "rust:search/--view" not in report["actionMethodCounts"]
     assert report["repeatGroups"][0]["language"] == "python"
-    assert report["repeatGroups"][0]["method"] == "search/fzf"
+    assert report["repeatGroups"][0]["method"] == "search/typed-frontier"
     assert report["repeatGroups"][0]["repeatCount"] == 1
 
 
 def _assert_promotion_action(report: dict[str, object]) -> None:
-    action = report["fzfPromotion"]["actions"][0]
-    assert report["promotableFzfSearches"] == 1
-    assert report["fzfPromotion"]["policy"] == "repeat-fzf-to-typed-frontier"
+    action = report["typedFrontierPromotion"]["actions"][0]
+    assert report["promotableTypedFrontierSearches"] == 1
+    assert report["typedFrontierPromotion"]["policy"] == "repeat-search-to-typed-frontier"
     assert action["decision"] == "promote"
     assert action["replacement"] == "promote-to-owner-item-test-frontier"
     assert action["query"] == "semantic type"
     assert action["profile"] == "owner-query"
     assert action["preferredCommand"] == (
-        "asp python search fzf 'semantic type' owner tests --workspace . --view seeds"
+        "asp python search typed-frontier 'semantic type' owner tests --workspace . --view seeds"
     )
 
 
@@ -131,7 +131,7 @@ def _assert_owner_action(report: dict[str, object]) -> None:
 
 def _assert_optimization_targets(report: dict[str, object]) -> None:
     categories = {target["category"] for target in report["optimizationTargets"]}
-    assert "repeat-fzf" in categories
+    assert "repeat-search" in categories
     assert "repeat-owner" in categories
     assert "mixed-fanout" in categories
     mixed_targets = [
@@ -170,7 +170,7 @@ def _assert_efficiency_estimate(report: dict[str, object]) -> None:
     estimate = report["efficiencyEstimate"]
     typed_frontier_searches = (
         report["suppressiblePrimeSearches"]
-        + report["promotableFzfSearches"]
+        + report["promotableTypedFrontierSearches"]
         + report["collapsibleOwnerSearches"]
     )
     avoidable_upper_bound = typed_frontier_searches + report["avoidableFanoutBranches"]

@@ -1,6 +1,6 @@
 #![deny(dead_code)]
 
-//! SQLite-backed cache database surface for `agent-semantic-client`.
+//! DB Engine facade and control adapters for `agent-semantic-client`.
 
 pub mod db;
 pub mod engine;
@@ -20,7 +20,7 @@ pub use db::{
 };
 pub use engine::{
     ClientDbBackend, ClientDbEngine, ClientDbEngineDurability, ClientDbEngineFeatures,
-    ClientDbEngineReport,
+    ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
 };
 #[cfg(feature = "turso-backend")]
 pub use engine::{

@@ -79,9 +79,9 @@
     },
     "view": {
       "enum": [
-        "workspace",
-        "prime",
-        "owner",
+      "workspace",
+      "prime",
+      "owner",
         "dependency",
         "deps",
         "features",

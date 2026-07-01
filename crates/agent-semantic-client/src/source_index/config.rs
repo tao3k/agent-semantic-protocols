@@ -1,4 +1,4 @@
-//! Static limits and filename catalogs for Rust SQL source indexing.
+//! Static limits and filename catalogs for DB Engine source indexing.
 
 pub(super) use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID as SOURCE_INDEX_PROVIDER_ID,

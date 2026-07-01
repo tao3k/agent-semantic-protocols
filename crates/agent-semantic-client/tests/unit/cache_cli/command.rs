@@ -29,6 +29,20 @@ fn cache_usage_lists_flush() {
 }
 
 #[test]
+fn cache_source_index_refresh_receipt_names_db_engine_owner() {
+    assert_eq!(
+        crate::cache_cli::source_index_refresh_index_owner(),
+        "db-engine"
+    );
+    assert_eq!(
+        crate::cache_cli::source_index_refresh_phase(),
+        "source-index-db-engine"
+    );
+    assert!(!crate::cache_cli::source_index_refresh_index_owner().contains("rust-sql"));
+    assert!(!crate::cache_cli::source_index_refresh_phase().contains("rust-sql"));
+}
+
+#[test]
 fn cache_runtime_source_acquire_clones_versioned_source() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("runtime-source-acquire");

@@ -14,7 +14,7 @@ def artifact_events_packet(
     events: Iterable[ArtifactEvent],
     *,
     source_kind: str,
-    db_path: str = "",
+    client_dir: str = "",
 ) -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.graph-turbo-artifact-events",
@@ -22,7 +22,7 @@ def artifact_events_packet(
         "artifactDir": str(artifact_dir),
         "source": {
             "kind": source_kind,
-            "dbPath": db_path,
+            "clientDir": client_dir,
         },
         "events": [_event_row(event) for event in events],
     }

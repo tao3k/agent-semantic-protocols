@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-task-frame-archive.v1.schema.json",
+  "title": "Semantic Task Frame Archive v1",
+  "description": "Machine-readable archive packet for a completed, suspended, superseded, or handed-off task/feature frame. The Org archive is the audited human/query surface; this JSON packet is the replayable machine state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "taskFrameId",
+    "status",
+    "intentId",
+    "projectId",
+    "archivedAt",
+    "whereFrame",
+    "howFrame",
+    "scope",
+    "editGroups",
+    "observations",
+    "promotedFacts",
+    "ephemeralEvidence"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.task-frame-archive"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "taskFrameId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "suspended",
+        "superseded",
+        "handoff"
+      ]
+    },
+    "intentId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "featureId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "archivedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "orgArtifact": {
+      "$ref": "#/$defs/artifactRef"
+    },
+    "jsonArtifact": {
+      "$ref": "#/$defs/artifactRef"
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "whereFrame": {
+      "$ref": "#/$defs/frameRef"
+    },
+    "howFrame": {
+      "$ref": "#/$defs/frameRef"
+    },
+    "editGroups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/editGroup"
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "promotedFacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fact"
+      }
+    },
+    "ephemeralEvidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceRef"
+      }
+    },
+    "followUpHints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/followUpHint"
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:@/-]+$"
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "^\\.\\."
+          },
+          {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9+.-]*:"
+          }
+        ]
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId"
+      ],
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "featureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "selectors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "frameRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frameId",
+        "evidenceGeneration",
+        "complete"
+      ],
+      "properties": {
+        "frameId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "derivedFrom": {
+          "$ref": "#/$defs/identifier"
+        },
+        "evidenceGeneration": {
+          "$ref": "#/$defs/identifier"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "policyScenarioIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "validFor": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "invalidatedBy": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "editGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "editGroupId",
+        "result"
+      ],
+      "properties": {
+        "editGroupId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "result": {
+          "enum": [
+            "planned",
+            "applied",
+            "partially-applied",
+            "abandoned",
+            "failed"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "result"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "scenario-benchmark",
+            "behavior-snapshot",
+            "test-receipt",
+            "verification-receipt",
+            "route-receipt",
+            "manual",
+            "research",
+            "custom"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "result": {
+          "enum": [
+            "matched",
+            "changed",
+            "failed",
+            "skipped",
+            "unknown"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "summary"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "topology-context",
+            "edit-strategy",
+            "prior-failure",
+            "verification",
+            "performance",
+            "architecture-boundary",
+            "custom"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "factId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "summary"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "session-only",
+            "stale-generation",
+            "raw-candidate",
+            "debug",
+            "custom"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "notPromotedReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "followUpHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    }
+  }
+}

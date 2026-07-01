@@ -1,4 +1,4 @@
-//! Rust-owned SQL source index rows for workspace source discovery.
+//! DB Engine-owned source index rows for workspace source discovery.
 
 mod api;
 mod import;

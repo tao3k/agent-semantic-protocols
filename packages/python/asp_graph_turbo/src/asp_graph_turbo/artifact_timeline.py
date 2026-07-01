@@ -11,11 +11,11 @@ from .artifact_action_summary import action_summary
 from .artifact_efficiency import efficiency_estimate
 from .artifact_events import ArtifactEvent, scan_artifact_events
 from .artifact_fanout_planning import fanout_planning_candidates
-from .artifact_fzf_promotion import fzf_promotion_candidates
 from .artifact_owner_collapse import owner_collapse_candidates
 from .artifact_prime_suppression import prime_suppression_candidates
 from .artifact_read_loop import read_loop_risk_summary
 from .artifact_timeline_targets import optimization_targets
+from .artifact_typed_frontier_promotion import typed_frontier_promotion_candidates
 from .artifact_topology import hydrate_topology_metadata, topology_summary
 
 
@@ -39,7 +39,7 @@ class TimelineContext:
     repeat_groups: list[dict[str, object]]
     fanout_hotspots: list[dict[str, object]]
     prime_suppression: dict[str, object]
-    fzf_promotion: dict[str, object]
+    typed_frontier_promotion: dict[str, object]
     owner_collapse: dict[str, object]
     fanout_planning: dict[str, object]
     read_loop_risk: dict[str, object]
@@ -87,7 +87,7 @@ def _timeline_context(
         sessions,
         limit=params.examples,
     )
-    fzf_promotion = fzf_promotion_candidates(
+    typed_frontier_promotion = typed_frontier_promotion_candidates(
         repeat_groups,
         limit=params.examples,
     )
@@ -109,7 +109,7 @@ def _timeline_context(
         repeat_groups=repeat_groups,
         fanout_hotspots=fanout_hotspots,
         prime_suppression=prime_suppression,
-        fzf_promotion=fzf_promotion,
+        typed_frontier_promotion=typed_frontier_promotion,
         owner_collapse=owner_collapse,
         fanout_planning=fanout_planning,
         read_loop_risk=read_loop_risk,
@@ -147,7 +147,7 @@ def _timeline_report(
 ) -> dict[str, object]:
     report_actions = {
         "primeSuppression": context.prime_suppression,
-        "fzfPromotion": context.fzf_promotion,
+        "typedFrontierPromotion": context.typed_frontier_promotion,
         "ownerCollapse": context.owner_collapse,
         "fanoutPlanning": context.fanout_planning,
     }
@@ -179,7 +179,9 @@ def _timeline_report(
             int(row["repeatSearches"]) for row in context.session_rows
         ),
         "suppressiblePrimeSearches": context.prime_suppression["suppressibleSearches"],
-        "promotableFzfSearches": context.fzf_promotion["promotableSearches"],
+        "promotableTypedFrontierSearches": context.typed_frontier_promotion[
+            "promotableSearches"
+        ],
         "collapsibleOwnerSearches": context.owner_collapse["collapsibleSearches"],
         "routableFanoutBursts": context.fanout_planning["routableFanoutBursts"],
         "avoidableFanoutBranches": context.fanout_planning["avoidableFanoutBranches"],
@@ -209,7 +211,7 @@ def _timeline_report(
             limit=params.examples,
         ),
         "primeSuppression": context.prime_suppression,
-        "fzfPromotion": context.fzf_promotion,
+        "typedFrontierPromotion": context.typed_frontier_promotion,
         "ownerCollapse": context.owner_collapse,
         "fanoutPlanning": context.fanout_planning,
         "readLoopRisk": context.read_loop_risk,

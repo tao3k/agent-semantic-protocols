@@ -169,7 +169,7 @@ next=search pattern gerbil-poo usage
 #+end_src
 
 Registered package knowledge must also expose source acquisition interfaces for
-client-side indexing.  The harness does not clone packages or build Rust SQL
+client-side indexing.  The harness does not clone packages or build DB Engine
 indexes itself; it reports candidate source locations and repository identity.
 For Gerbil packages, clients should probe the installed package source under the
 active Gerbil package roots, such as =~/.gerbil=, before considering the git
@@ -752,8 +752,8 @@ active project/package scope from Gerbil package anchors such as =gerbil.pkg=,
 installed package metadata, load paths, and package-manager source roots.  It
 reports those roots and logical selectors as facts.  Heavy source indexing,
 cross-package lookup tables, and replayable source-index persistence belong to
-ASP's Rust SQL source-index layer; Scheme code must not rebuild a parallel
-database or scan implementation to compensate for a missing Rust index.  If a
+ASP's DB Engine source-index layer; Scheme code must not rebuild a parallel
+database or scan implementation to compensate for a missing DB Engine index.  If a
 package such as =gerbil-poo= is not installed, the provider should report the
 missing package-manager fact and the install/source-root next action before any
 Git fallback is considered.

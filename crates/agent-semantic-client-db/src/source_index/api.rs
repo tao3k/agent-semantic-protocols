@@ -23,7 +23,7 @@ use super::types::{
 };
 
 impl ClientDb {
-    /// Replace Rust-owned source index rows for one cache generation.
+    /// Replace DB Engine-owned source index rows for one cache generation.
     pub fn replace_source_index(
         &mut self,
         import: &ClientDbSourceIndexImport,

@@ -7,14 +7,16 @@ use crate::{
     QueryWrapperQualityCandidate, QueryWrapperScanConfig, QueryWrapperSearchCandidateRequest,
     QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
     QueryWrapperSearchSurface, QueryWrapperSourceIndexCandidate, QueryWrapperSourceIndexLookup,
-    QueryWrapperSourceIndexRequest, analyze_query_wrapper_quality, append_query_candidates,
-    augment_package_path_candidates, collect_query_wrapper_candidate_collection,
-    collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
-    merge_search_candidates, query_candidate_priority, query_wrapper_axis_terms,
-    query_wrapper_candidate_matches_term, query_wrapper_clauses, query_wrapper_owner_candidates,
+    QueryWrapperSourceIndexRequest, SearchStageReceipt, analyze_query_wrapper_quality,
+    append_query_candidates, augment_package_path_candidates,
+    collect_query_wrapper_candidate_collection, collect_query_wrapper_search_candidates,
+    collect_query_wrapper_source_index_candidates, merge_search_candidates,
+    query_candidate_priority, query_wrapper_axis_terms, query_wrapper_candidate_matches_term,
+    query_wrapper_clauses, query_wrapper_owner_candidates,
     query_wrapper_package_clusters_from_paths, query_wrapper_package_key,
-    query_wrapper_rg_scope_next, query_wrapper_source_index_trace_projection, query_wrapper_terms,
-    query_wrapper_unique_clause_terms,
+    query_wrapper_ranked_search_candidates, query_wrapper_rg_scope_next,
+    query_wrapper_search_stage_trace_projection, query_wrapper_source_index_trace_projection,
+    query_wrapper_terms, query_wrapper_unique_clause_terms,
 };
 #[cfg(feature = "turso-overlay")]
 use crate::{TursoStructuralIndexSearchHit, structural_index_hit_to_search_candidate};
@@ -204,6 +206,14 @@ fn query_wrapper_collects_structural_turso_fts_candidates_from_shared_search_con
     .expect("collect structural Turso FTS candidates");
 
     assert_eq!(collection.candidates.len(), 1);
+    assert_eq!(collection.stage_receipt.stage, "search-candidate-merge");
+    assert_eq!(collection.stage_receipt.candidate_count, 1);
+    assert_eq!(collection.stage_receipt.returned_count, 1);
+    assert_eq!(collection.stage_receipt.fallback_reason, "none");
+    assert_eq!(
+        collection.stage_receipt.route_sources,
+        vec!["turso-fts".to_string()]
+    );
     assert_eq!(collection.candidates[0].path, "src/lib.rs");
     assert_eq!(collection.candidates[0].source, "turso-fts");
     assert_eq!(
@@ -211,6 +221,7 @@ fn query_wrapper_collects_structural_turso_fts_candidates_from_shared_search_con
         Some("rust://src/lib.rs#item/fn/parse_config")
     );
     assert!(collection.candidates[0].text.contains("generation-1"));
+    assert!(collection.candidates[0].text.contains("fallback=none"));
     assert!(
         collection.candidates[0]
             .text
@@ -269,8 +280,48 @@ fn query_wrapper_candidate_collection_prefers_ranked_turso_fts_candidates_before
         Some("rust://src/lib.rs#item/fn/parse_config")
     );
     assert!(collection.source_index_trace.is_none());
+    assert_eq!(collection.search_stage_receipts.len(), 1);
+    assert_eq!(
+        collection.search_stage_receipts[0].route_sources,
+        vec!["turso-fts".to_string()]
+    );
+    assert_eq!(collection.search_stage_receipts[0].candidate_count, 1);
+    assert_eq!(collection.search_stage_receipts[0].returned_count, 1);
+    assert_eq!(collection.search_stage_receipts[0].fallback_reason, "none");
+    assert_eq!(collection.search_stage_trace_projections.len(), 1);
+    let projection = &collection.search_stage_trace_projections[0];
+    assert_eq!(projection.source, "turso-fts");
+    assert_eq!(projection.status, "used");
+    assert_eq!(projection.candidate_count, 1);
+    assert_eq!(projection.skipped_count, 0);
+    assert_eq!(projection.input_count, 1);
+    assert_eq!(
+        projection.fields["schemaId"],
+        serde_json::json!("agent.semantic-protocols.semantic-search-stage-receipt")
+    );
+    assert_eq!(projection.fields["schemaVersion"], serde_json::json!(1));
+    assert_eq!(
+        projection.fields["routeSources"],
+        serde_json::json!(["turso-fts"])
+    );
+    assert_eq!(
+        projection.fields["fallbackReason"],
+        serde_json::json!("none")
+    );
     assert_eq!(collection.finder_skipped_after_source_index, false);
     assert_eq!(collection.trace_fields["candidateCount"], 1);
+
+    fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[test]
+fn query_wrapper_ranked_search_adapter_is_search_owned_for_empty_terms() {
+    let root = temp_root("query-wrapper-ranked-empty");
+    fs::create_dir_all(&root).expect("create fixture root");
+    let ranked = query_wrapper_ranked_search_candidates(QueryWrapperSearchSurface::Fd, &root, &[])
+        .expect("ranked candidates");
+
+    assert!(ranked.is_empty());
 
     fs::remove_dir_all(root).expect("remove fixture");
 }
@@ -535,6 +586,48 @@ fn source_index_lookup_dto_construction_is_owned_by_search_crate() {
     assert_eq!(
         lookup.candidates[0].query_keys,
         vec!["query_wrapper_source_index".to_string()]
+    );
+}
+
+#[test]
+fn search_stage_trace_projection_is_owned_by_search_crate() {
+    let receipt = SearchStageReceipt {
+        stage: "search-candidate-merge".to_string(),
+        route_sources: vec!["dynamic-overlay".to_string(), "turso-fts".to_string()],
+        candidate_count: 4,
+        returned_count: 3,
+        filtered_line_identity_count: 1,
+        fallback_reason: "line-identity-filtered".to_string(),
+    };
+    let projection = query_wrapper_search_stage_trace_projection(&receipt);
+
+    assert_eq!(projection.source, "dynamic-overlay");
+    assert_eq!(projection.status, "line-identity-filtered");
+    assert_eq!(projection.candidate_count, 3);
+    assert_eq!(projection.skipped_count, 1);
+    assert_eq!(projection.input_count, 4);
+    assert_eq!(
+        projection.fields["schemaId"],
+        serde_json::json!("agent.semantic-protocols.semantic-search-stage-receipt")
+    );
+    assert_eq!(projection.fields["schemaVersion"], serde_json::json!(1));
+    assert_eq!(
+        projection.fields["stage"],
+        serde_json::json!("search-candidate-merge")
+    );
+    assert_eq!(
+        projection.fields["routeSources"],
+        serde_json::json!(["dynamic-overlay", "turso-fts"])
+    );
+    assert_eq!(projection.fields["candidateCount"], serde_json::json!(4));
+    assert_eq!(projection.fields["returnedCount"], serde_json::json!(3));
+    assert_eq!(
+        projection.fields["filteredLineIdentityCount"],
+        serde_json::json!(1)
+    );
+    assert_eq!(
+        projection.fields["fallbackReason"],
+        serde_json::json!("line-identity-filtered")
     );
 }
 

@@ -28,8 +28,9 @@ pub use cli::{run_cli_args, run_cli_from_env};
 pub use source_index::{
     SourceIndexCandidate, SourceIndexClientCacheLookupRequest, SourceIndexLookupRequest,
     SourceIndexLookupResult, SourceIndexLookupState, SourceIndexRefreshReport,
-    SourceIndexSourceKind, lookup_source_index, lookup_source_index_for_language,
-    lookup_source_index_in_client_cache_dir, refresh_source_index,
+    SourceIndexSourceKind, lookup_query_wrapper_source_index, lookup_source_index,
+    lookup_source_index_for_language, lookup_source_index_in_client_cache_dir,
+    refresh_source_index,
 };
 
 #[cfg(test)]
@@ -70,6 +71,9 @@ mod provider_method_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_history.rs"]
 mod search_history_tests;
+#[cfg(test)]
+#[path = "../tests/unit/source_index_lookup.rs"]
+mod source_index_lookup_tests;
 #[cfg(test)]
 #[path = "../tests/unit/syntax_query_preflight.rs"]
 mod syntax_query_preflight_tests;

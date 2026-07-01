@@ -50,7 +50,7 @@ fn source_index_replaces_and_reads_rust_owned_rows() {
     );
     assert_eq!(
         owners[0].provider_id.as_ref().map(ProviderId::as_str),
-        Some("rust-sql")
+        Some("db-engine")
     );
     assert_eq!(owners[0].source_kind.as_str(), "scheme-source");
     assert_eq!(owners[0].line_count, Some(80));
@@ -142,7 +142,7 @@ fn source_index_lookup_filters_language_scope() {
     source_index.owners.push(ClientDbSourceIndexOwner {
         owner_path: ClientDbSourceIndexPath::from("src/lib.py"),
         language_id: Some(LanguageId::from("python")),
-        provider_id: Some(ProviderId::from("rust-sql")),
+        provider_id: Some(ProviderId::from("db-engine")),
         source_kind: ClientDbSourceIndexSource::from("python-source"),
         line_count: Some(12),
         query_keys: vec![ClientDbSourceIndexQueryKey::from("gerbil-poo")],
@@ -154,7 +154,7 @@ fn source_index_lookup_filters_language_scope() {
         kind: Some("function".to_string()),
         start_line: 1,
         end_line: 12,
-        source: ClientDbSourceIndexSource::from("rust-sql"),
+        source: ClientDbSourceIndexSource::from("db-engine"),
         query_keys: vec![ClientDbSourceIndexQueryKey::from("gerbil-poo")],
     });
 
@@ -199,7 +199,7 @@ fn source_index_selector_lookup_filters_kind_query_and_language() {
     source_index.owners.push(ClientDbSourceIndexOwner {
         owner_path: ClientDbSourceIndexPath::from("src/lib.py"),
         language_id: Some(LanguageId::from("python")),
-        provider_id: Some(ProviderId::from("rust-sql")),
+        provider_id: Some(ProviderId::from("db-engine")),
         source_kind: ClientDbSourceIndexSource::from("python-source"),
         line_count: Some(12),
         query_keys: vec![ClientDbSourceIndexQueryKey::from("gerbil-poo")],
@@ -211,7 +211,7 @@ fn source_index_selector_lookup_filters_kind_query_and_language() {
         kind: Some("function".to_string()),
         start_line: 1,
         end_line: 12,
-        source: ClientDbSourceIndexSource::from("rust-sql"),
+        source: ClientDbSourceIndexSource::from("db-engine"),
         query_keys: vec![ClientDbSourceIndexQueryKey::from("gerbil-poo://usage")],
     });
 
@@ -256,7 +256,7 @@ fn source_index(
         owners: vec![ClientDbSourceIndexOwner {
             owner_path: ClientDbSourceIndexPath::from(owner_path),
             language_id: Some(LanguageId::from("gerbil-scheme")),
-            provider_id: Some(ProviderId::from("rust-sql")),
+            provider_id: Some(ProviderId::from("db-engine")),
             source_kind: ClientDbSourceIndexSource::from("scheme-source"),
             line_count: Some(80),
             query_keys: vec![
@@ -271,7 +271,7 @@ fn source_index(
             kind: Some("function".to_string()),
             start_line: 12,
             end_line: 20,
-            source: ClientDbSourceIndexSource::from("rust-sql"),
+            source: ClientDbSourceIndexSource::from("db-engine"),
             query_keys: vec![ClientDbSourceIndexQueryKey::from("gerbil-poo://usage")],
         }],
     }

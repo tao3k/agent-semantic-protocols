@@ -17,7 +17,7 @@ use agent_semantic_client_core::{
     ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId, LanguageId, ProjectContext,
     ProviderId, ProviderRegistrySnapshot, StateLayout,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbEngine, ClientDbEngineReport, ClientDbReport};
+use agent_semantic_client_db::{ClientDbEngine, ClientDbEngineReport, ClientDbReport};
 use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout_in_client_cache};
 use serde_json::json;
 
@@ -26,6 +26,9 @@ use crate::source_index::{
     SourceIndexLookupRequest, lookup_source_index_in_cache, refresh_runtime_source_index,
     refresh_source_index,
 };
+
+const SOURCE_INDEX_REFRESH_INDEX_OWNER: &str = "db-engine";
+const SOURCE_INDEX_REFRESH_PHASE: &str = "source-index-db-engine";
 
 pub(crate) fn run_cache(
     project_root: &Path,
@@ -174,12 +177,12 @@ pub(crate) fn run_cache(
             let cache_report = ClientCacheManifest::inspect_project(project_root);
             let manifest = ClientCacheManifest::load_from_path(state_layout.cache_manifest_path())?;
             let cache_root = state_layout.client_cache_dir();
-            let mut db = ClientDbEngine::open_or_create_client_dir(cache_root)?;
-            db.import_manifest(&manifest)?;
+            let mut db_session = ClientDbEngine::open_write_session_client_dir(cache_root)?;
+            db_session.import_manifest(&manifest)?;
             let structural_index_imported_count =
-                import_structural_index_artifacts(cache_root, &mut db, &manifest)?;
-            let db_report = db
-                .inspect_open()
+                import_structural_index_artifacts(cache_root, &mut db_session, &manifest)?;
+            let db_report = db_session
+                .inspect()
                 .unwrap_or_else(|_| ClientDbEngine::inspect_client_dir(cache_root));
             let mut receipt =
                 ClientReceipt::cache_report(ClientMethod::CacheImport, provenance, &cache_report);
@@ -213,16 +216,18 @@ pub(crate) fn run_cache(
         [subcommand, action] if subcommand == "source-index" && action == "refresh" => {
             let report = refresh_source_index(project_root)?;
             println!(
-                "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} reused={} files={} owners={} selectors={} rawSourceStored=false indexOwner=rust-sql",
+                "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} reused={} files={} owners={} selectors={} rawSourceStored=false indexOwner={}",
                 report.db_path.display(),
                 report.generation_id,
                 report.reused_generation,
                 report.file_count,
                 report.owner_count,
-                report.selector_count
+                report.selector_count,
+                source_index_refresh_index_owner()
             );
             println!(
-                "|reason phase=source-index-rust-sql action=refresh providerCommands=0"
+                "|reason phase={} action=refresh providerCommands=0",
+                source_index_refresh_phase()
             );
             if receipt_json {
                 let receipt = json!({
@@ -237,7 +242,7 @@ pub(crate) fn run_cache(
                     "ownerCount": report.owner_count,
                     "selectorCount": report.selector_count,
                     "rawSourceStored": false,
-                    "indexOwner": "rust-sql"
+                    "indexOwner": source_index_refresh_index_owner()
                 });
                 eprintln!("{receipt}");
             }
@@ -322,8 +327,8 @@ pub(crate) fn run_cache(
                 .as_ref()
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_root = state_layout.client_cache_dir();
-            let db_path = ClientDbEngine::db_path_for_client_dir(cache_root);
-            let flushed_syntax_rows = ClientDb::flush_syntax_query_rows(&db_path)?;
+            let flushed_syntax_rows =
+                ClientDbEngine::flush_syntax_query_rows_from_client_dir(cache_root)?;
             let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
             let db_report = ClientDbEngine::inspect_client_dir(cache_root);
             let mut receipt = ClientReceipt::cache_report(
@@ -375,9 +380,11 @@ pub(crate) fn run_cache(
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_report = ClientCacheManifest::inspect_project(project_root);
             let cache_root = state_layout.client_cache_dir();
-            let db_path = ClientDbEngine::db_path_for_client_dir(cache_root);
             let db_invalidated_generation_count =
-                ClientDb::invalidate_generations_for_project(&db_path, project_root)?;
+                ClientDbEngine::invalidate_generations_for_project_from_client_dir(
+                    cache_root,
+                    project_root,
+                )?;
             let manifest_invalidated_generation_count =
                 clear_manifest_generations(&cache_report, &state_layout, project_root)?;
             let invalidated_generation_count =
@@ -520,6 +527,14 @@ fn next_flag_value<'a>(
     } else {
         Ok(value.clone())
     }
+}
+
+pub(crate) fn source_index_refresh_index_owner() -> &'static str {
+    SOURCE_INDEX_REFRESH_INDEX_OWNER
+}
+
+pub(crate) fn source_index_refresh_phase() -> &'static str {
+    SOURCE_INDEX_REFRESH_PHASE
 }
 
 fn clear_manifest_generations(

@@ -141,7 +141,7 @@ fn source_index_acquisition_projects_candidates_and_skips_finder() {
     assert_eq!(candidate.end_line, 42);
     assert_eq!(candidate.symbol, "source_index_owner");
     assert_eq!(candidate.source, "source-index");
-    assert_eq!(candidate.confidence, "rust-sql");
+    assert_eq!(candidate.confidence, "db-engine");
 }
 
 #[test]

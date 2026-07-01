@@ -483,7 +483,7 @@ fn source_index_candidate(candidate: &SearchPipeSourceIndexCandidate) -> SearchP
         symbol: source_index_symbol(candidate),
         text: source_index_candidate_text(candidate),
         source: "source-index".to_string(),
-        confidence: "rust-sql".to_string(),
+        confidence: "db-engine".to_string(),
     }
 }
 

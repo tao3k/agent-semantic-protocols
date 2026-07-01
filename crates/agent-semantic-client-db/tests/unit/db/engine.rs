@@ -7,10 +7,10 @@ use std::{
 use agent_semantic_client_core::state_core::{
     ASP_STATE_HOME_ENV, ResolvedState, SQLITE_V1_BACKEND, STATE_LAYOUT_VERSION, TURSO_BACKEND,
 };
+use agent_semantic_client_core::{CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId};
 #[cfg(feature = "turso-backend")]
 use agent_semantic_client_core::{
-    CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
-    SemanticSchemaVersion,
+    CacheGenerationId, ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion,
 };
 #[cfg(feature = "turso-backend")]
 use agent_semantic_client_db::{
@@ -23,6 +23,7 @@ use agent_semantic_client_db::{
     ClientDbStructuralSymbol, build_source_index_import,
 };
 use agent_semantic_client_db::{ClientDbBackend, ClientDbEngine};
+use serde_json::json;
 
 #[test]
 fn db_engine_active_backend_contract_tracks_default_turso_cutover() {
@@ -246,6 +247,87 @@ fn db_engine_active_backend_contract_tracks_default_turso_cutover() {
 
     let _ = std::fs::remove_dir_all(project_root);
     let _ = std::fs::remove_dir_all(state_home);
+}
+
+#[test]
+fn db_engine_write_session_imports_manifest_without_exposing_sqlite_handle() {
+    let project_root = temp_root("db-engine-write-session-project");
+    let state_home = temp_root("db-engine-write-session-state-home");
+    let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
+        .expect("resolve state with explicit state home");
+    fs::create_dir_all(project_root.join("src")).expect("create src dir");
+    fs::write(
+        project_root.join("src/lib.rs"),
+        "pub fn cached_fixture() {}\n",
+    )
+    .expect("write source fixture");
+    let manifest: ClientCacheManifest = serde_json::from_value(json!({
+        "schemaId": "agent.semantic-protocols.client-cache-manifest",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.client",
+        "protocolVersion": "1",
+        "cacheRoot": state.paths.client_dir.display().to_string(),
+        "generations": [
+            {
+                "generationId": "rust-main-1",
+                "languageId": "rust",
+                "providerId": "rs-harness",
+                "providerVersion": "0.1.0",
+                "exportMethod": "search/prime",
+                "projectRoot": project_root.display().to_string(),
+                "packageRoot": ".",
+                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "cacheStatus": "hit",
+                "rawSourceStored": false,
+                "requestFingerprint": "fnv64:write-session",
+                "fileHashes": [{
+                    "path": "src/lib.rs",
+                    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "byteLen": 1,
+                    "mtimeMs": 1
+                }],
+                "artifactIds": ["search/rust-main-1.json"]
+            }
+        ]
+    }))
+    .expect("manifest fixture");
+
+    let mut write_session = ClientDbEngine::open_write_session_client_dir(&state.paths.client_dir)
+        .expect("open DB Engine write session");
+    write_session
+        .import_manifest(&manifest)
+        .expect("import manifest through DB Engine write session");
+    let write_report = write_session.inspect().expect("inspect write session");
+    assert_eq!(
+        write_report.status,
+        agent_semantic_client_db::ClientDbStatus::Present
+    );
+    assert_eq!(write_report.generation_count, 1);
+    assert!(state.paths.client_db_path.exists());
+
+    let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
+        .expect("open DB Engine read session")
+        .expect("read session exists");
+    let hit = read_session
+        .lookup_generation_request(
+            &LanguageId::from("rust"),
+            &ProviderId::from("rs-harness"),
+            &project_root,
+            &CacheExportMethod::from("search/prime"),
+            Some("fnv64:write-session".to_string()),
+        )
+        .expect("lookup generation through DB Engine read session")
+        .expect("generation hit");
+    assert_eq!(hit.artifact_ids.len(), 1);
+    assert_eq!(hit.artifact_ids[0].as_str(), "search/rust-main-1.json");
+
+    let engine = ClientDbEngine::from_resolved_state(&state);
+    if engine.backend() == ClientDbBackend::Turso {
+        assert!(
+            !engine.db_path().exists(),
+            "write-session control import must not create active Turso DB path"
+        );
+    }
 }
 
 #[cfg(feature = "turso-backend")]

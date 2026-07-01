@@ -39,16 +39,16 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "dbPath"
+        "clientDir"
       ],
       "properties": {
         "kind": {
           "enum": [
             "artifact-scan",
-            "rust-sqlite"
+            "db-engine"
           ]
         },
-        "dbPath": {
+        "clientDir": {
           "type": "string"
         }
       }

@@ -1417,7 +1417,7 @@ Completed:
   for classifier/provider owners.
 - [X] Timeline output now classifies repeat and fanout evidence into balanced
   =optimizationTargets=.  Repeat-prime targets point to agent guidance/cache
-  suppression, repeat-fzf targets point to typed target recall and profile
+  suppression, repeat-search targets point to typed target recall and profile
   selection, repeat-owner targets point to owner-local frontier expansion,
   mixed fanout targets point to round planning/profile routing, and wide
   owner-item query fanout points to batched owner item frontiers.
@@ -1431,7 +1431,7 @@ Completed:
   =languages/typescript-lang-project-harness= so the suggested action is valid
   at the real provider boundary.
 - [X] Timeline output now exposes =fanoutPlanning= as a first-class action
-  surface alongside =primeSuppression=, =fzfPromotion=, and =ownerCollapse=.
+  surface alongside =primeSuppression=, =typedFrontierPromotion=, and =ownerCollapse=.
   Each mixed-fanout action records =decision=route=,
   =profile=owner-query=, =route=single-profile-frontier-before-fanout=, an
   actionable =preferredCommand=, and an =avoidableFanoutBranches= count.  This
@@ -1475,8 +1475,8 @@ Completed:
   but replayed through =route=local-cache= with =cacheStatus=hit=,
   =providerProcessesSpawned=0=, =sqliteReadCount=3=, =sqliteWriteCount=0=,
   =elapsedMs=19=, and byte-identical 1095-byte stdout.
-- [X] Timeline output now reports =fzfPromotion= actions for repeated
-  =search/fzf= groups.  Each action records =decision=promote=,
+- [X] Timeline output now reports =typedFrontierPromotion= actions for repeated
+  typed-frontier search groups.  Each action records =decision=promote=,
   =replacement=promote-to-owner-item-test-frontier=, repeat count, span, query,
   and the target =owner-query= profile so recurring fuzzy searches can be
   converted into typed owner/item/test frontier work.  Current local artifacts
@@ -1490,7 +1490,7 @@ Completed:
 - [X] The local client cache probe now performs safe fresh-fzf reuse for
   repeated =search fzf <query> --workspace . --view seeds= requests.  Exact
   request-fingerprint replay still wins; when that misses, the probe scans the
-  recent same provider/project =search/fzf= generations newest-first and only
+  recent same provider/project typed-frontier search generations newest-first and only
   reuses one if source file hashes are fresh and the cached =search/*.json=
   packet carries the same =query= as the current request.  This prevents
   accidentally replaying a different fuzzy query while still suppressing
@@ -1549,11 +1549,11 @@ Completed:
   owner collapse, prime suppression, fanout hotspots, and optimization targets
   from only the selected events.  A real local =--recent-sessions 1= report
   over =.cache/agent-semantic-protocol/artifacts= produced =eventCount=186=,
-  =actionEventCount=89=, =repeatSearches=8=, =promotableFzfSearches=5=,
+  =actionEventCount=89=, =repeatSearches=8=, =promotableTypedFrontierSearches=5=,
   =collapsibleOwnerSearches=3=, and =suppressiblePrimeSearches=0=.  Its current
   top post-change target is TypeScript =src/cli/protocol.ts= with
-  =search/fzf= repeat 4 and =search/owner= repeat 2, while mixed fanout remains
-  =query,search/fzf,search/owner=.
+  typed-frontier search repeat 4 and =search/owner= repeat 2, while mixed fanout remains
+  =query,search/typed-frontier,search/owner=.
 - [X] Artifact timeline repeat and action targets now preserve provider project
   root context for package-local owner paths.  Search packets use their
   schema-owned =projectRoot=, and prompt-output command receipts without an

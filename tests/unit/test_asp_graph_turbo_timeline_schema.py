@@ -41,8 +41,8 @@ def test_timeline_events_packet_is_schema_owned_sqlite_boundary(tmp_path) -> Non
     packet = artifact_events_packet(
         tmp_path,
         events,
-        source_kind="rust-sqlite",
-        db_path=str(tmp_path / "client.sqlite3"),
+        source_kind="db-engine",
+        client_dir=str(tmp_path / "client"),
     )
 
     errors = list(schema_validator_for(_EVENTS_SCHEMA).iter_errors(packet))

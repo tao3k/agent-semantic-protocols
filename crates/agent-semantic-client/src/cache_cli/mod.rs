@@ -23,6 +23,8 @@ mod locator_artifact_tests;
 
 pub(crate) use command::run_cache;
 #[cfg(test)]
+pub(crate) use command::{source_index_refresh_index_owner, source_index_refresh_phase};
+#[cfg(test)]
 pub(crate) use probe::generation_file_hashes_match;
 pub(crate) use probe::{apply_provider_cache_probe, cache_hit_receipt, provider_cache_probe};
 pub(crate) use writeback::{

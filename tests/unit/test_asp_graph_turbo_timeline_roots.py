@@ -14,7 +14,7 @@ def test_timeline_resolves_package_local_project_root_actions(tmp_path) -> None:
     owner_path = "src/cli/protocol.ts"
     _touch_typescript_owner(repo, owner_path)
     _write_owner_commands(prompt_dir, owner_path)
-    _write_fzf_commands(prompt_dir, owner_path)
+    _write_typed_frontier_commands(prompt_dir, owner_path)
 
     report = evaluate_artifact_timeline(artifact_dir)
 
@@ -24,7 +24,7 @@ def test_timeline_resolves_package_local_project_root_actions(tmp_path) -> None:
     }
     expected_root = "languages/typescript-lang-project-harness"
     assert repeat_roots[("search/owner", owner_path)] == expected_root
-    assert repeat_roots[("search/fzf", owner_path)] == expected_root
+    assert repeat_roots[("search/typed-frontier", owner_path)] == expected_root
     assert report["ownerCollapse"]["actions"][0]["projectRootArg"] == expected_root
     assert report["ownerCollapse"]["actions"][0]["avoidCommand"] == (
         "asp typescript search owner src/cli/protocol.ts <same-scope> "
@@ -34,12 +34,12 @@ def test_timeline_resolves_package_local_project_root_actions(tmp_path) -> None:
         "asp typescript search owner src/cli/protocol.ts items --view seeds "
         "languages/typescript-lang-project-harness"
     )
-    assert report["fzfPromotion"]["actions"][0]["projectRootArg"] == expected_root
-    assert report["fzfPromotion"]["actions"][0]["avoidCommand"] == (
-        "asp typescript search fzf <same-query> owner tests --view seeds "
+    assert report["typedFrontierPromotion"]["actions"][0]["projectRootArg"] == expected_root
+    assert report["typedFrontierPromotion"]["actions"][0]["avoidCommand"] == (
+        "asp typescript search typed-frontier <same-query> owner tests --view seeds "
         "languages/typescript-lang-project-harness"
     )
-    assert report["fzfPromotion"]["actions"][0]["preferredCommand"] == (
+    assert report["typedFrontierPromotion"]["actions"][0]["preferredCommand"] == (
         "asp typescript search owner src/cli/protocol.ts items --view seeds "
         "languages/typescript-lang-project-harness"
     )
@@ -63,15 +63,15 @@ def _write_owner_commands(prompt_dir, owner_path: str) -> None:
         )
 
 
-def _write_fzf_commands(prompt_dir, owner_path: str) -> None:
+def _write_typed_frontier_commands(prompt_dir, owner_path: str) -> None:
     for index, mtime in enumerate((1020, 1030), start=1):
         write_timeline_json(
-            prompt_dir / f"typescript-search-fzf-{index}.command.json",
+            prompt_dir / f"typescript-search-typed-frontier-{index}.command.json",
             _command_packet(
                 [
                     "ts-harness",
                     "search",
-                    "fzf",
+                    "typed-frontier",
                     owner_path,
                     "owner",
                     "tests",

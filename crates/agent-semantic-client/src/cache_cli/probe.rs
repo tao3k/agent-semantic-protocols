@@ -9,7 +9,7 @@ use agent_semantic_client_core::{
     ClientRequest, ElapsedMillis, NativeProvenance, ProviderRegistrySnapshot, ResolvedProvider,
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbEngine, ClientDbGenerationHit, ClientDbGenerationLookup, ClientDbReport,
+    ClientDbEngine, ClientDbEngineReadSession, ClientDbGenerationHit, ClientDbReport,
 };
 
 use crate::cache_cli::request::{
@@ -17,7 +17,7 @@ use crate::cache_cli::request::{
 };
 use crate::cache_replay::{
     ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay,
-    load_syntax_query_rows_replay_open, search_lexical_generation_matches_request,
+    load_syntax_query_rows_replay_session, search_lexical_generation_matches_request,
 };
 
 const FRESH_LEXICAL_CANDIDATE_LIMIT: u32 = 20;
@@ -42,13 +42,12 @@ pub(crate) fn provider_cache_probe(
     }
     let cache_report = ClientCacheManifest::inspect_project(project_root);
     let cache_root = cache_report.cache_root.as_ref()?;
-    let db_path = ClientDbEngine::db_path_for_client_dir(cache_root);
-    let db = ClientDbEngine::open_read_only_existing_client_dir(cache_root)
+    let db_session = ClientDbEngine::open_read_session_client_dir(cache_root)
         .ok()
         .flatten();
-    let db_report = db
+    let db_report = db_session
         .as_ref()
-        .and_then(|db| db.inspect_open().ok())
+        .and_then(|db_session| db_session.inspect().ok())
         .unwrap_or_else(|| ClientDbEngine::inspect_client_dir(cache_root));
     let mut sqlite_read_count = if db_report.status == ClientDbStatus::Present {
         1
@@ -61,23 +60,24 @@ pub(crate) fn provider_cache_probe(
         .unwrap_or_default();
     let export_method = request_export_method(request);
     let generation_hit = if db_report.status == ClientDbStatus::Present {
-        db.as_ref()
+        db_session
+            .as_ref()
             .zip(selected_provider)
             .zip(export_method.clone())
-            .and_then(|((db, provider), export_method)| {
+            .and_then(|((db_session, provider), export_method)| {
                 sqlite_read_count += 1;
                 let request_fingerprint =
                     request_lookup_fingerprint(provider, project_root, &export_method, request);
-                db.lookup_generation_open(&ClientDbGenerationLookup {
-                    db_path: db_path.clone(),
-                    language_id: provider.language_id.clone(),
-                    provider_id: provider.provider_id.clone(),
-                    project_root: project_root.to_path_buf(),
-                    export_method,
-                    request_fingerprint,
-                })
-                .ok()
-                .flatten()
+                db_session
+                    .lookup_generation_request(
+                        &provider.language_id,
+                        &provider.provider_id,
+                        project_root,
+                        &export_method,
+                        request_fingerprint,
+                    )
+                    .ok()
+                    .flatten()
             })
     } else {
         None
@@ -95,7 +95,7 @@ pub(crate) fn provider_cache_probe(
             }
         })
         .or_else(|| {
-            let db = db.as_ref()?;
+            let db_session = db_session.as_ref()?;
             let provider = selected_provider?;
             let export_method = export_method.as_ref()?;
             if db_report.status != ClientDbStatus::Present
@@ -105,7 +105,7 @@ pub(crate) fn provider_cache_probe(
             }
             sqlite_read_count += 1;
             load_fresh_prime_replay(
-                db,
+                db_session,
                 cache_root,
                 project_root,
                 provider,
@@ -114,7 +114,7 @@ pub(crate) fn provider_cache_probe(
             )
         })
         .or_else(|| {
-            let db = db.as_ref()?;
+            let db_session = db_session.as_ref()?;
             let provider = selected_provider?;
             let export_method = export_method.as_ref()?;
             if db_report.status != ClientDbStatus::Present
@@ -124,7 +124,7 @@ pub(crate) fn provider_cache_probe(
             }
             sqlite_read_count += 1;
             load_fresh_lexical_replay(
-                db,
+                db_session,
                 cache_root,
                 project_root,
                 provider,
@@ -140,9 +140,9 @@ pub(crate) fn provider_cache_probe(
             {
                 return None;
             }
-            if let Some(db) = db.as_ref() {
-                load_syntax_query_rows_replay_open(
-                    db,
+            if let Some(db_session) = db_session.as_ref() {
+                load_syntax_query_rows_replay_session(
+                    db_session,
                     &provider.language_id,
                     &provider.provider_id,
                     project_root,
@@ -180,22 +180,21 @@ pub(crate) fn provider_cache_probe(
 }
 
 fn load_fresh_prime_replay(
-    db: &ClientDb,
+    db_session: &ClientDbEngineReadSession,
     cache_root: &Path,
     project_root: &Path,
     provider: &ResolvedProvider,
     export_method: &CacheExportMethod,
     request: &ClientRequest,
 ) -> Option<ProviderCacheReplay> {
-    let hit = db
-        .lookup_generation_open(&ClientDbGenerationLookup {
-            db_path: db.path().to_path_buf(),
-            language_id: provider.language_id.clone(),
-            provider_id: provider.provider_id.clone(),
-            project_root: project_root.to_path_buf(),
-            export_method: export_method.clone(),
-            request_fingerprint: None,
-        })
+    let hit = db_session
+        .lookup_generation_request(
+            &provider.language_id,
+            &provider.provider_id,
+            project_root,
+            export_method,
+            None,
+        )
         .ok()
         .flatten()?;
     if generation_file_hashes_match(project_root, &hit) {
@@ -206,23 +205,20 @@ fn load_fresh_prime_replay(
 }
 
 fn load_fresh_lexical_replay(
-    db: &ClientDb,
+    db_session: &ClientDbEngineReadSession,
     cache_root: &Path,
     project_root: &Path,
     provider: &ResolvedProvider,
     export_method: &CacheExportMethod,
     request: &ClientRequest,
 ) -> Option<ProviderCacheReplay> {
-    let hits = db
-        .lookup_recent_generations_open(
-            &ClientDbGenerationLookup {
-                db_path: db.path().to_path_buf(),
-                language_id: provider.language_id.clone(),
-                provider_id: provider.provider_id.clone(),
-                project_root: project_root.to_path_buf(),
-                export_method: export_method.clone(),
-                request_fingerprint: None,
-            },
+    let hits = db_session
+        .lookup_recent_generations_request(
+            &provider.language_id,
+            &provider.provider_id,
+            project_root,
+            export_method,
+            None,
             FRESH_LEXICAL_CANDIDATE_LIMIT,
         )
         .ok()?;

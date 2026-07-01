@@ -60,7 +60,7 @@ recorded command cascade as graph-turbo timeline evidence.
 
 =graph-turbo= is the algorithm owner for this audit surface.  It owns artifact
 event extraction, episode/session splitting, microburst and fan-out detection,
-prime-frontier suppression, =fzf= promotion, owner collapse, ranked next
+prime-frontier suppression, typed-frontier promotion, owner collapse, ranked next
 actions, and future failure-frontier evidence backends.  =asp= must not
 reimplement these algorithms in Rust.  The ASP surface is a thin, explicit bin
 caller:
@@ -96,14 +96,14 @@ algorithm.
 
 The audit is compact and action-oriented.  It must not dump provider stdout or
 source windows.  It reports timeline episodes, command cascade size, repeated
-prime/fzf/owner patterns, mixed fan-out bursts, avoidable branches, and ranked
+prime/typed-frontier/owner patterns, mixed fan-out bursts, avoidable branches, and ranked
 next actions.  Old aggregate command counts are only raw input to the graph
 model, not the product output.  Example rows:
 
 #+begin_src text
-[graph-turbo-timeline] events=746 actions=512 sessions=18 rounds=64 microbursts=64 fanoutBursts=22 repeatSearches=47 suppressiblePrimeSearches=9 promotableFzfSearches=12 collapsibleOwnerSearches=18 routableFanoutBursts=7 avoidableFanoutBranches=19
+[graph-turbo-timeline] events=746 actions=512 sessions=18 rounds=64 microbursts=64 fanoutBursts=22 repeatSearches=47 suppressiblePrimeSearches=9 promotableTypedFrontierSearches=12 collapsibleOwnerSearches=18 routableFanoutBursts=7 avoidableFanoutBranches=19
 [graph-turbo-prime-suppression] policy=same-session-fresh-prime suppressible=9 groups=4 actions=4 replacement=reuse-prime-frontier
-[graph-turbo-fzf-promotion] policy=repeat-fzf-to-typed-frontier promotable=12 groups=6 actions=5 replacement=promote-to-owner-item-test-frontier
+[graph-turbo-typed-frontier-promotion] policy=repeat-search-to-typed-frontier promotable=12 groups=6 actions=5 replacement=promote-to-owner-item-test-frontier
 [graph-turbo-owner-collapse] policy=repeat-owner-to-item-test-frontier collapsible=18 groups=7 actions=5 replacement=promote-to-owner-query-item-test-frontier
 [graph-turbo-fanout-planning] policy=mixed-fanout-to-single-profile-frontier routable=7 avoidableBranches=19 actions=5 replacement=route-to-typed-frontier-before-parallel-fanout
 [graph-turbo-next] source=ownerCollapse category=repeat-owner score=18 decision=collapse subject=crates/agent-semantic-client/src/search_history.rs replacement=promote-to-owner-query-item-test-frontier profile=owner-query route=owner-items-tests preferredCommand=asp rust search owner crates/agent-semantic-client/src/search_history.rs items --workspace . --view seeds
@@ -149,7 +149,7 @@ The compact output contract is line-oriented:
 |history audit="asp search history audit ."
 |prefer pipe="asp <language> search pipe <query> --workspace . --view seeds"
 |prefer graph="asp <language> search pipe <query> --view graph-turbo-request ."
-|prefer fzf="asp <language> search fzf <query> owner tests --workspace . --view seeds"
+|prefer typed-frontier="asp <language> search typed-frontier <query> owner tests --workspace . --view seeds"
 |manual ingest="rg -n <query> <owners> | asp <language> search ingest items tests --workspace . --view seeds"
 |reasoning owner-query="asp <language> search reasoning owner-query --owner <path> --query <query> --workspace . --view seeds"
 |avoid provider-spawn,source-scan,natural-language-planning
@@ -163,7 +163,7 @@ pipeline executor.
 
 Suggested commands should prefer existing high-signal surfaces:
 
-- =search fzf <term> owner tests --view seeds= for lexical candidate
+- =search typed-frontier <term> owner tests --view seeds= for lexical candidate
   acquisition;
 - =search owner <owner> items --query a|b|c --view seeds= for owner-local
   parser-visible item discovery;

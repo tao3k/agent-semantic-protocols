@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::ProjectContext;
-use agent_semantic_client_db::{ClientDb, ClientDbArtifactEvent, ClientDbEngine};
+use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbEngine};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
     run_provider_process,
@@ -92,19 +92,25 @@ fn artifact_events_packet(
     project_context: &ProjectContext,
     artifact_dir: &Path,
 ) -> Result<Option<Bytes>, String> {
-    let db_path =
-        ClientDbEngine::db_path_for_client_dir(project_context.state_layout().client_cache_dir());
     let artifact_file_count = artifact_file_count(artifact_dir)?;
-    let mut events = ClientDb::lookup_artifact_events(&db_path, None, 1_000_000)?;
+    let mut events = ClientDbEngine::lookup_artifact_events_from_client_dir(
+        project_context.state_layout().client_cache_dir(),
+        None,
+        1_000_000,
+    )?;
     let indexed_count = indexed_artifact_count(&events);
     if indexed_count < artifact_file_count {
         let backfill_events = scan_artifact_events_for_db(artifact_dir)?;
         if !backfill_events.is_empty() {
-            let mut db = ClientDbEngine::open_or_create_client_dir(
+            ClientDbEngine::upsert_artifact_events_from_client_dir(
                 project_context.state_layout().client_cache_dir(),
+                &backfill_events,
             )?;
-            db.upsert_artifact_events(&backfill_events)?;
-            events = ClientDb::lookup_artifact_events(&db_path, None, 1_000_000)?;
+            events = ClientDbEngine::lookup_artifact_events_from_client_dir(
+                project_context.state_layout().client_cache_dir(),
+                None,
+                1_000_000,
+            )?;
         }
     }
     if events.is_empty() || indexed_artifact_count(&events) < artifact_file_count {
@@ -115,8 +121,8 @@ fn artifact_events_packet(
         "schemaVersion": "1",
         "artifactDir": artifact_dir.display().to_string(),
         "source": {
-            "kind": "rust-sqlite",
-            "dbPath": db_path.display().to_string()
+            "kind": "db-engine",
+            "clientDir": project_context.state_layout().client_cache_dir().display().to_string()
         },
         "events": events.iter().map(|event| {
             serde_json::json!({

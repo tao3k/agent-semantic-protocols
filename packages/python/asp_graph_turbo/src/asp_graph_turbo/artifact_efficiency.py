@@ -8,7 +8,7 @@ from collections.abc import Mapping
 def efficiency_estimate(report: Mapping[str, object]) -> dict[str, object]:
     typed_frontier_searches = (
         _int_value(report, "suppressiblePrimeSearches")
-        + _int_value(report, "promotableFzfSearches")
+        + _int_value(report, "promotableTypedFrontierSearches")
         + _int_value(report, "collapsibleOwnerSearches")
     )
     avoidable_fanout_branches = _int_value(report, "avoidableFanoutBranches")

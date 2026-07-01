@@ -280,9 +280,9 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
         upsert_generation(&mut manifest, generation);
         write_cache_manifest(manifest_path, &manifest).ok()?;
-        let mut db = ClientDbEngine::open_or_create_client_dir(cache_root).ok()?;
-        sync_client_db_for_manifest_writeback(&mut db, &manifest, &manifest_status)?;
-        db.import_manifest(&manifest).ok()?;
+        let mut db_session = ClientDbEngine::open_write_session_client_dir(cache_root).ok()?;
+        sync_client_db_for_manifest_writeback(&mut db_session, &manifest, &manifest_status)?;
+        db_session.import_manifest(&manifest).ok()?;
         let mut sqlite_write_count = 1;
         let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
             artifact_kind,
@@ -304,20 +304,22 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             provider_commands,
         });
         if !artifact_events.is_empty() {
-            db.upsert_artifact_events(&artifact_events).ok()?;
+            db_session.upsert_artifact_events(&artifact_events).ok()?;
             sqlite_write_count += 1;
         }
         if let Some(syntax_generation) = syntax_generation {
-            db.import_semantic_tree_sitter_query_packet(&syntax_generation, &artifact_bytes)
+            db_session
+                .import_semantic_tree_sitter_query_packet(&syntax_generation, &artifact_bytes)
                 .ok()?;
             sqlite_write_count += 1;
         }
         if let Some(structural_generation) = structural_generation {
-            db.import_semantic_structural_index_refresh_packet(
-                &structural_generation,
-                &artifact_bytes,
-            )
-            .ok()?;
+            db_session
+                .import_semantic_structural_index_refresh_packet(
+                    &structural_generation,
+                    &artifact_bytes,
+                )
+                .ok()?;
             sqlite_write_count += 1;
         }
         let mut probe = provider_cache_probe(project_root, snapshot, request)?;
@@ -388,9 +390,9 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
-    let mut db = ClientDbEngine::open_or_create_client_dir(cache_root).ok()?;
-    sync_client_db_for_manifest_writeback(&mut db, &manifest, &manifest_status)?;
-    db.import_manifest(&manifest).ok()?;
+    let mut db_session = ClientDbEngine::open_write_session_client_dir(cache_root).ok()?;
+    sync_client_db_for_manifest_writeback(&mut db_session, &manifest, &manifest_status)?;
+    db_session.import_manifest(&manifest).ok()?;
     let mut probe = provider_cache_probe(project_root, snapshot, request)?;
     let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
         artifact_kind: ArtifactKind::SearchPacket,
@@ -414,7 +416,7 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     let sqlite_write_count = if artifact_events.is_empty() {
         1
     } else {
-        db.upsert_artifact_events(&artifact_events).ok()?;
+        db_session.upsert_artifact_events(&artifact_events).ok()?;
         2
     };
     maybe_write_turso_route_receipt_for_search_packet(project_root, packet_bytes, rendered_stdout);
@@ -470,9 +472,9 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
     let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
-    let mut db = ClientDbEngine::open_or_create_client_dir(cache_root).ok()?;
-    sync_client_db_for_manifest_writeback(&mut db, &manifest, &manifest_status)?;
-    db.import_manifest(&manifest).ok()?;
+    let mut db_session = ClientDbEngine::open_write_session_client_dir(cache_root).ok()?;
+    sync_client_db_for_manifest_writeback(&mut db_session, &manifest, &manifest_status)?;
+    db_session.import_manifest(&manifest).ok()?;
     let mut probe = provider_cache_probe(project_root, snapshot, request)?;
     let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
         artifact_kind: ArtifactKind::QueryPacket,
@@ -496,7 +498,7 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
     let sqlite_write_count = if artifact_events.is_empty() {
         1
     } else {
-        db.upsert_artifact_events(&artifact_events).ok()?;
+        db_session.upsert_artifact_events(&artifact_events).ok()?;
         2
     };
     probe.sqlite_write_count = sqlite_write_count;

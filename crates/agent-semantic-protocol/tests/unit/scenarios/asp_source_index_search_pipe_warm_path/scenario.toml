@@ -1,10 +1,10 @@
 id = "asp-source-index-search-pipe-warm-path"
-title = "ASP search pipe uses Rust SQL SourceIndex on warm owner query"
+title = "ASP search pipe uses DB Engine SourceIndex on warm owner query"
 policy_ids = [
   "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-SOURCE-INDEX-001",
   "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",
 ]
-agent_goal = "Keep the real warm search pipe path fixed as a scenario: after Rust SQL source-index refresh, asp rust search pipe must resolve owner candidates through SourceIndex, skip native finder/provider work, and return a compact exact query next command."
+agent_goal = "Keep the real warm search pipe path fixed as a scenario: after DB Engine source-index refresh, asp rust search pipe must resolve owner candidates through SourceIndex, skip native finder/provider work, and return a compact exact query next command."
 reference_repositories = ["tao3k/agent-semantic-protocols"]
 reference_patterns = [
   "asp rust search pipe source_index_fixture",

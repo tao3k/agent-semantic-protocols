@@ -1,4 +1,4 @@
-//! Public refresh API for the Rust SQL source index.
+//! Public refresh API for the DB Engine source index.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -8,7 +8,7 @@ use agent_semantic_client_core::{
     ProviderRegistrySnapshot, SemanticSchemaId, SemanticSchemaVersion,
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbEngine, ClientDbSourceIndexImportAssemblyRequest,
+    ClientDbEngine, ClientDbEngineWriteSession, ClientDbSourceIndexImportAssemblyRequest,
     ClientDbSourceIndexRefreshRequest, client_db_source_index_file_count,
     client_db_source_index_generation_id, source_index_file_hashes,
     source_index_import_with_file_hashes,
@@ -24,7 +24,7 @@ use super::config::{
 };
 use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
 
-/// Refresh the Rust SQL source index for a project without storing raw source.
+/// Refresh the DB Engine source index for a project without storing raw source.
 pub fn refresh_source_index(project_root: &Path) -> Result<SourceIndexRefreshReport, String> {
     let mut context = SourceIndexRefreshContext::resolve(project_root)?;
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
@@ -101,7 +101,7 @@ pub fn refresh_runtime_source_index(
 struct SourceIndexRefreshContext {
     db_path: std::path::PathBuf,
     client_cache_dir: std::path::PathBuf,
-    db: ClientDb,
+    db_session: ClientDbEngineWriteSession,
     #[cfg(feature = "turso-backend")]
     db_engine: ClientDbEngine,
     schema_id: SemanticSchemaId,
@@ -115,11 +115,11 @@ impl SourceIndexRefreshContext {
         let db_engine = ClientDbEngine::resolve(project_root)?;
         let db_path = db_engine.db_path().to_path_buf();
         let client_cache_dir = db_engine.client_dir().to_path_buf();
-        let db = db_engine.open_or_create()?;
+        let db_session = ClientDbEngine::open_write_session_client_dir(db_engine.client_dir())?;
         Ok(Self {
             db_path,
             client_cache_dir,
-            db,
+            db_session,
             #[cfg(feature = "turso-backend")]
             db_engine,
             schema_id: SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID),
@@ -135,8 +135,11 @@ impl SourceIndexRefreshContext {
         &self,
         index_root: &Path,
     ) -> Result<Option<Vec<ClientCacheFileHash>>, String> {
-        self.db
-            .latest_source_index_file_hashes(index_root, &self.schema_id, &self.schema_version)
+        self.db_session.latest_source_index_file_hashes(
+            index_root,
+            &self.schema_id,
+            &self.schema_version,
+        )
     }
 
     fn refresh_generation(
@@ -150,7 +153,7 @@ impl SourceIndexRefreshContext {
             &request.registry.fingerprint,
             request.registry.scope_dirs.iter().map(String::as_str),
         )?;
-        let reusable_stats = self.db.reusable_source_index_generation(
+        let reusable_stats = self.db_session.reusable_source_index_generation(
             request.index_root,
             &self.schema_id,
             &self.schema_version,
@@ -189,7 +192,7 @@ impl SourceIndexRefreshContext {
             }
             let turso_import = import.clone();
             let report =
-                self.db
+                self.db_session
                     .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
                         import,
                         file_count: client_db_source_index_file_count(request.files.len()),
@@ -228,7 +231,7 @@ impl SourceIndexRefreshContext {
                 file_hashes,
             )?;
             let report =
-                self.db
+                self.db_session
                     .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
                         import,
                         file_count: client_db_source_index_file_count(request.files.len()),
@@ -271,7 +274,7 @@ fn try_reuse_source_index_scope(
     let Some(previous_file_hashes) = scope.previous_file_hashes else {
         return Ok(None);
     };
-    let files = match context.db.latest_source_index_scope_files(
+    let files = match context.db_session.latest_source_index_scope_files(
         scope.index_root,
         &context.schema_id,
         &context.schema_version,
@@ -289,7 +292,7 @@ fn try_reuse_source_index_scope(
         Ok(file_hashes) => file_hashes,
         Err(_) => return Ok(None),
     };
-    let Some(stats) = context.db.reusable_source_index_generation(
+    let Some(stats) = context.db_session.reusable_source_index_generation(
         scope.index_root,
         &context.schema_id,
         &context.schema_version,

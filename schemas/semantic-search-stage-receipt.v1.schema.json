@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-search-stage-receipt.v1.schema.json",
+  "title": "Semantic Search Stage Receipt v1",
+  "description": "Replayable receipt for a search/router stage such as candidate merge. It records route sources, candidate counts, line-identity filtering, and fallback reason without embedding source text.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "stage",
+    "routeSources",
+    "candidateCount",
+    "returnedCount",
+    "filteredLineIdentityCount",
+    "fallbackReason"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-search-stage-receipt"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "search-candidate-merge",
+        "overlay-search",
+        "stable-fts",
+        "source-index-lookup",
+        "provider-proof",
+        "graph-route-rank"
+      ]
+    },
+    "routeSources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/routeSource"
+      },
+      "uniqueItems": true
+    },
+    "candidateCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "returnedCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "filteredLineIdentityCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "fallbackReason": {
+      "$ref": "#/$defs/fallbackReason"
+    },
+    "elapsedMs": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "proofGain": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "finalActionSource": {
+      "type": ["string", "null"],
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "routeSource": {
+      "type": "string",
+      "enum": [
+        "receipt-anchor",
+        "dynamic-overlay",
+        "provider-delta",
+        "turso-fts",
+        "source-index",
+        "semantic-vector",
+        "evidence-graph-rank",
+        "owner-items-provider",
+        "native-finder-control",
+        "manual"
+      ]
+    },
+    "fallbackReason": {
+      "type": "string",
+      "enum": [
+        "none",
+        "line-identity-filtered",
+        "missing-db",
+        "empty-index",
+        "stale-generation",
+        "overlay-unavailable",
+        "fts-unavailable",
+        "provider-required",
+        "native-finder-control",
+        "timeout",
+        "error"
+      ]
+    }
+  }
+}

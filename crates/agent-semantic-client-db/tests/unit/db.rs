@@ -64,7 +64,7 @@ fn source_index_import_builder_owns_owner_selector_projection() {
         "agent.semantic-protocols.semantic-source-index"
     );
     assert_eq!(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, "1");
-    assert_eq!(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, "rust-sql-source-index");
+    assert_eq!(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, "db-engine-source-index");
     assert_eq!(
         CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
         "@scope/dir/"
@@ -139,7 +139,7 @@ fn source_index_import_builder_owns_owner_selector_projection() {
     assert_eq!(selector.selector_id, "rust://src/lib.rs#file");
     assert_eq!(selector.symbol.as_deref(), Some("lib"));
     assert_eq!(selector.end_line, 1);
-    assert_eq!(selector.source.as_str(), "rust-sql-source-index");
+    assert_eq!(selector.source.as_str(), "db-engine-source-index");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -553,7 +553,7 @@ fn source_index_import_fixture(
         project_root: root.to_path_buf(),
         schema_id: SemanticSchemaId::from("agent.semantic-protocols.semantic-source-index"),
         schema_version: SemanticSchemaVersion::from("1"),
-        selector_source: ClientDbSourceIndexSource::from("rust-sql-source-index"),
+        selector_source: ClientDbSourceIndexSource::from("db-engine-source-index"),
         file_hashes: vec![ClientCacheFileHash {
             path: "src/lib.rs".to_string(),
             sha256: "0123456789abcdef".repeat(4),

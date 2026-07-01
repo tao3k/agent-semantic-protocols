@@ -56,6 +56,82 @@ Use these recipes to improve code quality.
 Avoid these edits or routes unless new evidence changes the graph.
 #+end_src
 That is how policy becomes part of the code reasoning tree instead of reducing the model to a fixed linter.
+* End-to-end ASP loop
+The new ASP design should be understood as one loop with two paired frames:
+#+begin_src text
+WhereFrame: how to search, what evidence exists, where the change lives
+HowFrame: how to change, which policies/scenarios apply, how to validate
+#+end_src
+The goal is stricter than ordinary code search. ASP should beat CodeBase-style search on agent turns while also improving edit quality and controlling token cost:
+- fewer turns: route from intent/action to the right selector, owner, tests, and next action with fewer repeated searches;
+- better edits: synthesize a HowFrame only after enough topology, policy, scenario, and read evidence exists;
+- bounded tokens: show compact frame summaries first and keep large artifacts behind exact references.
+
+The complete loop is:
+#+begin_src mermaid
+flowchart TD
+  A["Agent intent or action<br/>touches code/doc/schema/artifact"] --> R["ASP route"]
+  R --> WF["WhereFrame<br/>search/query/read evidence"]
+  WF --> ES["EvidenceState<br/>selectors, owners, deps, tests, artifacts"]
+  ES --> TO["FeatureTopologyOverview<br/>static + scenario + dynamic overlay"]
+  TO --> RG["ReflectionGate<br/>is evidence sufficient for this edit group?"]
+  RG -->|"where missing"| WF2["Refresh WhereFrame<br/>next search/query/read"]
+  WF2 --> ES
+  RG -->|"how missing or stale"| HF["HowFrame synthesis<br/>policy + scenarios + topology + evidence"]
+  RG -->|"covered"| EG["EditGroup"]
+  HF --> EG
+  EG --> OB["Observation<br/>tests, benchmarks, snapshots, receipts"]
+  OB --> AR["TaskFrameArchive<br/>Org + JSON"]
+  AR --> PS["ProjectEvidenceStore<br/>promoted durable facts"]
+  PS --> WF
+#+end_src
+This loop has two important timing rules:
+- Search/query/read does not finalize how to change. It accumulates evidence, topology hints, and candidate policy/scenario matches into the =WhereFrame= and =EvidenceState=.
+- =HowFrame= is synthesized at the reflection point before an edit group, not on every file edit. It is reused while the edit group stays within the same task/feature scope.
+
+The default agent surface should therefore be:
+#+begin_src text
+WhereFrame L0:
+  recommendedNext
+  confirmed owners/selectors/tests
+  missing evidence
+  avoid repeated or broad routes
+
+HowFrame L0:
+  architecture pressure
+  decision rule
+  change shape
+  guardrails
+  validation
+#+end_src
+Everything else is linked evidence, not prompt payload. Large artifacts remain addressable by id:
+- =taskFrameId= links the active or archived task/feature frame;
+- =intentId= links the user/action intent;
+- =featureId= links the feature topology slice;
+- =evidenceGeneration= links the stable project state plus dynamic overlay generation;
+- =selector= and =ownerPath= link parser-owned code/document identity;
+- =scenarioId=, =snapshotId=, =benchmarkId=, and =receiptId= link policy/scenario proof;
+- =artifactId= links Org archives, JSON packets, graph artifacts, and validation artifacts.
+
+This artifact lattice is how ASP stays precise without spending prompt tokens. The agent sees the compact frame; Python and Julia can analyze the linked graph and receipts offline; Rust can keep the prompt-facing path fast and bounded.
+
+Only durable observations are promoted from a =TaskFrameArchive= into the =ProjectEvidenceStore=. Task-local candidate lists, stale generations, and temporary session reasoning stay in =ephemeralEvidence=. This lets hundreds of turns and many unrelated features share one project evidence substrate without pretending that every task frame is the next project-wide version.
+
+** Executable scenario contracts
+The Org contract reproductions for this loop are indexed in
+[[file:../../languages/org/contracts/scenarios/README.org][languages/org/contracts/scenarios/README.org]].
+They are the auditable scenario layer for agents and humans:
+
+- [[file:../../languages/org/contracts/scenarios/asp.where-how-loop.scenario.v1.org][asp.where-how-loop.scenario.v1]]
+  reproduces =IntentUnderstanding=, =WhereFrame=, =HowFrame=,
+  =ReflectionGate=, =Observation=, and =TaskFrameArchive= as one bounded loop.
+- [[file:../../languages/org/contracts/scenarios/asp.task-frame-archive.scenario.v1.org][asp.task-frame-archive.scenario.v1]]
+  reproduces the Org/JSON archive boundary, promotion rules, and Python/Julia
+  analysis surface.
+
+These scenarios are not a replacement for the JSON schemas. They are the Org
+contract surface that proves the design can be rendered progressively to an
+agent without flooding the prompt.
 * Policy facts in the code reasoning tree
 The core product goal is that policy facts become reasoning material when the model is about to write code.
 They should not appear only after the model has already written a bad patch.
@@ -321,19 +397,38 @@ The current Gerbil evidence suggests these policy families should be first-class
 - =scheme-style=: domain owners, =t/= tests, directional data-flow names, named control-flow helpers, and no vague helper owners;
 - =policy-scenario=: input/expected/benchmark triples that teach the agent the intended repair, failure mode, and quality axes.
 The schema should keep these as evidence and fact categories, while provider-owned fields carry Gerbil-specific selectors and details.
+* Boundary: EvidenceGraph localizes, Policy strategizes
+The "where to edit" decision belongs to ASP EvidenceGraph, GraphRoute, and the search layer. They own the least-search flow:
+#+begin_src text
+Intent
+-> minimal search / topology jump
+-> evidence-backed owner, selector, dependency, test, snapshot, benchmark, and prior-failure context
+-> EditTargetSet
+#+end_src
+=EditTargetSet= is the compact answer to "which files/selectors/owners/tests are relevant enough to edit or inspect". It should be built from stable selectors, graph nodes, dependency edges, snapshot ids, benchmark ids, and topology overlay facts. It must not depend on line-number identity.
+
+Policy begins after that localization step. Policy receives the =EditTargetSet= and emits a strategy slice:
+#+begin_src text
+EditTargetSet
+-> target-scoped PolicyFacts and PolicyRecipes
+-> EditStrategyFrame / QualityFrame strategy slice
+-> candidate-plan comparison
+-> chosen code action and validation plan
+#+end_src
+This keeps the language harness obligation precise. A language policy can refine a selected target with native facts, but its primary job is not broad search and not global file selection. Its primary job is to tell the agent how to change the selected target: which idioms, boundaries, recipes, anti-recipes, snapshot contracts, benchmark budgets, and validation paths apply.
 * Per-language policy obligation
-Every language harness policy must cover both edit localization and edit strategy.
+Every language harness policy must cover the edit-strategy side for selected targets.
 The split is not "Rust tells where" and "Gerbil tells how".
 That would be the wrong architecture.
 Rust and Gerbil are two mature practice cases that show different native ways to satisfy the same language policy obligation:
 #+begin_src text
 for one language:
-  policy localizes where to edit
-  policy explains how to edit safely
+  EvidenceGraph localizes the target context
+  policy explains how to edit the selected target safely
   policy names how to validate the edit
-  policy updates topology after observation
+  observation feeds topology overlay after policy validation
 #+end_src
-For a language, =where to edit= means:
+For a language, target context received from EvidenceGraph means:
 - selecting the owner, selector, dependency edge, test surface, snapshot, benchmark, or scenario that is actually affected;
 - suppressing broad or stale routes;
 - exposing prior failures that are close to the current owner, route, or output contract;
@@ -345,27 +440,29 @@ For a language, =how to edit= means:
 - staying within benchmark and route-quality budgets;
 - choosing validation that proves the edit was safe.
 Rust search quality is a mature example because it already computes owner coverage, package cohesion, weak terms, parser handles, query-selector eligibility, benchmark gates, and compact output snapshots.
-Those facts can localize affected owners and also constrain safe search/render edits.
+Those facts can help EvidenceGraph rank and explain affected owners, and they can constrain safe search/render edits once a target is selected.
 Gerbil policy evidence is a mature example because it already carries runtime-source, macro-boundary, compiler-evidence, module-import, standard-library, style, and policy-scenario facts.
-Those facts can localize affected Gerbil owners/selectors and also constrain safe macro/compiler/runtime edits.
+Those facts can help EvidenceGraph explain selected Gerbil owners/selectors, and they can constrain safe macro/compiler/runtime edits once a target is selected.
 The shared pattern for future languages is:
 #+begin_src text
-Language-native parser/runtime/compiler/project facts
--> edit-localization facts
--> edit-strategy facts
+Intent
+-> ASP EvidenceGraph / GraphRoute least-search
+-> EditTargetSet
+-> Language-native parser/runtime/compiler/project policy facts
+-> target-scoped edit-strategy facts and recipes
 -> QualityFrame
 -> chosen plan
 -> topology overlay update
 #+end_src
 This applies to every covered language: Rust, TypeScript, Python, Julia, Gerbil Scheme, Org/Markdown, and future harnesses.
 The Rust side should keep the shared routing/render/schema path thin and strong.
-Each language harness should contribute both localization and strategy facts only it can prove.
+Each language harness should contribute target-scoped strategy facts and validation facts only it can prove.
 * Cross-language capability transfer
 Rust search-quality policy and Gerbil language-policy evidence should become the two template practices for other language harnesses.
 The schema goal is not to copy Rust or Gerbil rules into every language.
 The schema goal is to define a small set of transferable capability families that every provider can map to its own native ecosystem.
 The transferable families are:
-- =edit-localization=: owner, selector, dependency, test, snapshot, benchmark, scenario, prior failure, and route evidence that tells the agent where the edit belongs;
+- =target-context=: owner, selector, dependency, test, snapshot, benchmark, scenario, prior failure, and route evidence selected by EvidenceGraph for the current intent;
 - =edit-strategy=: native idiom, boundary, recipe, repair shape, validation path, and risk evidence that tells the agent how to edit safely;
 - =route-quality=: query pack quality, owner coverage, package cohesion, weak terms, parser handles, finder handles, and route budget;
 - =native-language-boundary=: parser/compiler/runtime facts that prove what the language can safely express;
@@ -418,17 +515,15 @@ It also keeps token cost bounded because the graph-route layer chooses which top
 The schema must support this downflow without becoming a language-specific dump.
 The required shared additions are:
 - =factKind=cross-language-capability= for facts that prove a provider can express one of the transferable capability families;
-- =factKind=edit-localization= for facts that identify the owner, selector, dependency, test, snapshot, benchmark, scenario, or route affected by the current intent;
 - =factKind=edit-strategy= for facts that constrain the native repair shape, idiom, boundary, validation, or safe code action;
 - =factKind=topology-context= for facts that explain where the current edit sits in the architecture;
 - =evidenceKind=provider-capability= for provider-advertised capability facts;
-- =evidenceKind=graph-route= for selected topology routes and ranked neighbors;
+- =evidenceKind=graph-route= for the selected topology routes, ranked neighbors, and =EditTargetSet= context that EvidenceGraph passes into policy;
 - =evidenceKind=topology-update= for session-overlay updates caused by candidate plans, code actions, observations, and revisions;
 - =evidenceKind=quality-frame= for the compact read-model shown to the agent;
 - =evidenceKind=prior-failure= for replayable failure facts that should influence the next plan;
 - =agentUse=architecture-context= when the fact helps the model understand local architecture;
 - =agentUse=plan-selection= when the fact distinguishes candidate plans.
-- =agentUse=edit-localization= when the fact should affect where the model edits;
 - =agentUse=edit-strategy= when the fact should affect how the model edits.
 These additions keep the schema language-neutral while making the Rust/Gerbil lessons portable.
 The core invariant is:
@@ -437,6 +532,251 @@ Provider-native fact -> shared PolicyFact/PolicyRecipe -> QualityFrame
 -> candidate-plan choice -> topology overlay update -> next QualityFrame
 #+end_src
 When this loop works, the model writes with current architecture context instead of isolated snippets.
+* Policy scenarios as experience facts
+Policy scenarios are not just tests. They are evidence-backed experience packs for improving performance, safety, correctness, architecture fit, and dependency usage. A scenario should capture what an experienced engineer would know after reading the dependency documentation, studying the intended algorithm, implementing the fast path, measuring it, and recording the failure modes.
+
+For dependency-oriented policy, such as a Tokio policy pack, the scenario should answer:
+- which dependency, feature, version range, runtime profile, or ecosystem profile the fact applies to;
+- which documentation, source material, benchmark artifact, research note, or upstream reference produced the claim;
+- which high-performance algorithm or implementation pattern the scenario validates;
+- which safety, cancellation, scheduling, allocation, memory, IO, or concurrency boundary the agent must preserve;
+- which benchmark result, snapshot, verification receipt, or prior failure makes the claim a fact rather than model memory;
+- which recipe should be preferred when the agent edits a target selected by EvidenceGraph.
+
+The policy value is that the model does not need to rely on training-memory folklore about a dependency. It receives a target-scoped fact such as:
+#+begin_src text
+dependency=tokio
+scenario=tokio-runtime-boundary
+evidence=scenario-benchmark + manual + verification-receipt
+claim=prefer bounded async task structure for this owner
+algorithm=...
+implementation-pattern=...
+validation=...
+recipe=...
+#+end_src
+That is equivalent to giving the agent a compact, benchmark-backed "experienced user" for the dependency. The fact can still be projected progressively: L0 only shows the decision constraint, L1 shows the scenario summary, L2 shows the documentation/benchmark/snapshot references, and L3 exposes the full packet or artifact path.
+
+This also defines the boundary with EvidenceGraph. Scenarios may contain owner, dependency, test, and artifact evidence that helps EvidenceGraph rank an =EditTargetSet=. Once that target is selected, policy uses the same scenario to decide how the edit should be written and validated.
+* Simulated progressive Agent flow
+Policy should not teach a strong model basic dependency APIs. A capable model already knows common Tokio, SQLite, parser, graph, and indexing patterns. The real failure mode is different: the model writes a locally plausible patch that ignores the current architecture, resource pressure, topology, output contract, or known failure history. The default policy projection must therefore be an architecture-decision frame, not a tutorial.
+
+Assume the intent is:
+#+begin_src text
+Improve ASP Rust search performance for dirty worktrees while multiple agent
+sessions edit files concurrently.
+#+end_src
+EvidenceGraph owns the localization step and returns an =EditTargetSet=:
+#+begin_src text
+editTargetSet:
+  owner=crates/.../search_overlay.rs
+  role=dirty-worktree overlay merge on the prompt-critical search path
+  topology=gateway between stable Turso rows, dynamic in-memory overlay, and compact render
+  coupledOwners=[state_generation, compact_graph_render, provider_command_runner]
+  dependencyPressure=[turso, tokio, tantivy-derived-search-capability]
+  coupledTests=[search_overlay_dirty_generation, compact_render_snapshot]
+  scenario=dirty-overlay-multi-session-search
+  priorFailures=[line-number-identity-drift, per-edit-db-write-amplification]
+#+end_src
+The default =QualityFrame L0= should compile facts into an architecture decision:
+#+begin_src text
+targetContext:
+  dirty overlay merge is on the prompt-critical search path.
+  Stable index rows may live in Turso; rapidly changing worktree evidence must
+  stay in a dynamic overlay until generation is safe to promote.
+
+architecturePressure:
+  10+ agent sessions may edit different files concurrently.
+  Per-edit DB writes amplify latency and stale-row risk.
+  Full JSON or source-heavy prompt output breaks compact render budgets.
+
+decisionRule:
+  Prefer a split search path:
+    stable Turso evidence + dynamic overlay candidates -> ranked merge -> compact render.
+  Do not turn dirty worktree evidence into durable DB identity during search.
+
+changeShape:
+  Keep language harnesses thin.
+  Put heavy merge/ranking/cancellation/budget logic in the Rust search package.
+  Use generation ids and selector identity, not line numbers, as merge keys.
+  Emit only target-scoped policy facts into QualityFrame.
+
+guardrails:
+  no raw source storage in DB rows
+  no line-number executable identity
+  no per-session full index rebuild on hot path
+  no provider-specific compact render fork
+  no broad JSON dump as default Agent context
+
+validation:
+  scenario-benchmark=dirty-overlay-multi-session-search
+  snapshot=compact-render-output-stable
+  receipt checks: command count, latency, stdout bytes, stale selector rate,
+                  memory high-water mark, duplicate owner fanout
+#+end_src
+This is a higher-signal frame because it does not tell the model how Tokio or indexing generally works. It tells the model how to write this patch inside ASP's architecture.
+
+If the model needs more, =L1= expands only the chosen architectural recipe:
+#+begin_src text
+recipe asp.search.dynamic-overlay-merge:
+  1. keep stable rows behind the DB-backed search interface
+  2. keep dirty worktree candidates in an overlay keyed by generation + selector
+  3. merge stable and dirty candidates after ranking, before compact rendering
+  4. cancel or bound stale overlay work when generation changes
+  5. return compact graph/render facts from the shared renderer contract
+  6. record route and receipt metrics for Julia/Python analysis
+#+end_src
+If the model still needs proof, =L2= exposes only the evidence references:
+#+begin_src text
+refs:
+  scenario=dirty-overlay-multi-session-search
+  priorFailure=line-number-identity-drift
+  priorFailure=per-edit-db-write-amplification
+  snapshot=compact-render-output-stable
+  benchmark=max-latency/stdout-bytes/memory-high-water/command-count
+  topology=edge:stable-index -> dynamic-overlay -> compact-render
+#+end_src
+=L3= remains packet/artifact level for replay, debugging, and offline analysis. It should not be prompt-facing by default.
+
+The postmortem for this simulated flow is:
+- The model likely already knows the APIs. Policy supplies what it does not know: current project topology, hot-path pressure, durable-vs-dynamic storage boundary, prompt budget, and prior failure evidence.
+- The policy still does not decide where to edit. EvidenceGraph selected the owner and topology neighborhood.
+- The policy tells the model what kind of patch is architecturally correct: split stable DB evidence from dirty overlay evidence, merge by generation and selector, keep render shared, and validate prompt-facing output.
+- The scenario is valuable because it converts repeated architecture failures into a target-scoped decision rule, not because it restates dependency documentation.
+- The validation path measures whether the patch solved the real problem: fewer stale selectors, bounded memory, fewer commands, smaller prompt output, and stable compact render.
+
+The default Agent frame should therefore compile many facts into six high-level slots:
+#+begin_src text
+targetContext -> architecturePressure -> decisionRule -> changeShape -> guardrails -> validation
+#+end_src
+Everything else is expandable evidence. If a fact cannot change one of those slots, it should not appear in the default Agent frame.
+* TaskFrame archive with Org and JSON
+Task and feature frames should be archived explicitly. They must not become a hidden side effect of =search=, =query=, or provider reads. ASP already has the right lower layer: Org contracts provide durable, queryable, human-auditable state, while JSON packets provide compact machine state for replay, validation, and promotion into the project evidence store.
+
+The archive boundary is:
+#+begin_src text
+ProjectEvidenceStore:
+  long-lived topology, policy/scenario catalogs, snapshots, benchmarks,
+  promoted facts, receipts, and replayable observations
+
+TaskFrameArchive:
+  short-lived task/feature reasoning state after it is completed, suspended,
+  superseded, or handed off
+#+end_src
+An archive should be created when a task frame leaves the active reasoning loop:
+- =completed=: the edit group and validation plan finished;
+- =suspended=: the agent stopped with useful evidence but no final edit;
+- =superseded=: the user changed feature scope and a new task frame took over;
+- =handoff=: another agent/session should continue from the evidence state.
+
+The Org side is the audited narrative and query surface:
+#+begin_src org
+* DONE TaskFrame: dirty-overlay-multi-session-search
+:PROPERTIES:
+:ARCHIVE_CONTRACT: agent.task-frame-archive.v1
+:TASK_FRAME_ID: tf.dirty-overlay.2026-07-01
+:STATUS: completed
+:PROJECT: agent-semantic-protocols
+:FEATURE: search-overlay
+:INTENT_ID: intent.search-overlay-performance
+:WHERE_FRAME: wf.search-overlay
+:HOW_FRAME: hf.search-overlay
+:EVIDENCE_GENERATION: gen.42
+:ARCHIVED_AT: 2026-07-01T00:00:00Z
+:END:
+** Intent
+** Feature Topology Overview
+** WhereFrame Summary
+** HowFrame Summary
+** Edit Groups
+** Observations
+** Promoted Facts
+** Non-Promoted Ephemeral Evidence
+** Follow-up Hints
+** JSON Packet
+#+begin_src json :schema agent.semantic-protocols.task-frame-archive.v1
+{ "...": "machine packet lives here or is linked by artifact id" }
+#+end_src
+#+end_src
+The JSON side is the machine packet:
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.task-frame-archive",
+  "schemaVersion": "1",
+  "taskFrameId": "tf.dirty-overlay.2026-07-01",
+  "status": "completed",
+  "intentId": "intent.search-overlay-performance",
+  "projectId": "agent-semantic-protocols",
+  "featureId": "search-overlay",
+  "archivedAt": "2026-07-01T00:00:00Z",
+  "scope": {
+    "owners": ["crates/.../search_overlay.rs"],
+    "tests": ["tests/.../dirty_overlay_multi_session.rs"],
+    "artifacts": ["compact-render-output-stable"]
+  },
+  "whereFrame": {
+    "frameId": "wf.search-overlay",
+    "evidenceGeneration": "gen.42",
+    "complete": true,
+    "missing": []
+  },
+  "howFrame": {
+    "frameId": "hf.search-overlay",
+    "derivedFrom": "wf.search-overlay",
+    "evidenceGeneration": "gen.42",
+    "complete": true,
+    "policyScenarioIds": ["dirty-overlay-multi-session-search"],
+    "validFor": ["feature:search-overlay", "edit-group:overlay-merge"],
+    "invalidatedBy": ["scope-expansion", "stale-generation", "failed-validation"]
+  },
+  "editGroups": [
+    {
+      "editGroupId": "eg.overlay-merge",
+      "owners": ["crates/.../search_overlay.rs"],
+      "result": "applied"
+    }
+  ],
+  "observations": [
+    {
+      "kind": "scenario-benchmark",
+      "id": "dirty-overlay-multi-session-search",
+      "result": "matched"
+    }
+  ],
+  "promotedFacts": [
+    {
+      "kind": "topology-context",
+      "summary": "stable index and dirty overlay merge before compact render"
+    }
+  ],
+  "ephemeralEvidence": [
+    {
+      "kind": "session-only",
+      "summary": "temporary candidate list not valid outside this generation"
+    }
+  ],
+  "followUpHints": []
+}
+#+end_src
+The split is intentional:
+- Org makes the archive searchable through =asp org query= and contract validation;
+- JSON keeps replay, validation, promotion, and downstream Python/Julia analysis precise;
+- source text does not need to be stored in either shape unless a bounded provider read packet explicitly owns it;
+- only =promotedFacts= enter the long-lived project evidence store.
+
+The lifecycle should be:
+#+begin_src text
+active TaskFrame
+-> WhereFrame evidence accumulation
+-> ReflectionGate
+-> HowFrame synthesis when edit evidence is sufficient
+-> EditGroup
+-> Observation
+-> explicit archive action
+-> Org archive + JSON packet
+-> promote durable facts
+-> close or hand off task frame
+#+end_src
+This solves the multi-round problem without creating a misleading project-wide =v1/v2/v3= chain. A frontend task, a backend task, and a schema task can each create separate archives. Later tasks may reuse only durable promoted facts, not stale task-local frames.
 * Benchmark and snapshot information model
 The current policy evidence has two major sources: scenario benchmarks and behavior snapshots.
 They overlap because both can prove policy-relevant facts, but they answer different questions.

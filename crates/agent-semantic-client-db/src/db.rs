@@ -676,13 +676,18 @@ impl ClientDb {
             return Ok(0);
         }
         let db = Self::open_or_create(db_path)?;
-        db.conn
+        db.invalidate_generations_open()
+    }
+
+    /// Delete all local generation rows using this already opened DB handle.
+    pub fn invalidate_generations_open(&self) -> Result<u32, String> {
+        self.conn
             .execute("DELETE FROM cache_generations", [])
             .map(|count| count.min(u32::MAX as usize) as u32)
             .map_err(|error| {
                 format!(
                     "failed to invalidate agent semantic client db generations at {}: {error}",
-                    db.db_path.display()
+                    self.db_path.display()
                 )
             })
     }
@@ -697,8 +702,16 @@ impl ClientDb {
             return Ok(0);
         }
         let db = Self::open_or_create(db_path)?;
+        db.invalidate_generations_for_project_open(project_root)
+    }
+
+    /// Delete local generation rows for one project root using this already opened DB handle.
+    pub fn invalidate_generations_for_project_open(
+        &self,
+        project_root: impl AsRef<Path>,
+    ) -> Result<u32, String> {
         let project_root = normalized_project_root(project_root.as_ref());
-        db.conn
+        self.conn
             .execute(
                 "DELETE FROM cache_generations WHERE project_root = ?1",
                 params![project_root],
@@ -707,7 +720,7 @@ impl ClientDb {
             .map_err(|error| {
                 format!(
                     "failed to invalidate agent semantic client db generations for project at {}: {error}",
-                    db.db_path.display()
+                    self.db_path.display()
                 )
             })
     }
@@ -719,17 +732,22 @@ impl ClientDb {
             return Ok(0);
         }
         let db = Self::open_or_create(db_path)?;
-        let flushed = db
+        db.flush_syntax_query_rows_open()
+    }
+
+    /// Delete normalized syntax query rows using this already opened DB handle.
+    pub fn flush_syntax_query_rows_open(&self) -> Result<u32, String> {
+        let flushed = self
             .conn
             .execute("DELETE FROM syntax_query_generation", [])
             .map(|count| count.min(u32::MAX as usize) as u32)
             .map_err(|error| {
                 format!(
                     "failed to flush syntax query row cache at {}: {error}",
-                    db.db_path.display()
+                    self.db_path.display()
                 )
             })?;
-        db.conn
+        self.conn
             .execute(
                 "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?1, ?2)",
                 params![SYNTAX_QUERY_ROW_ABI_META_KEY, SYNTAX_QUERY_ROW_ABI_VERSION],
@@ -737,7 +755,7 @@ impl ClientDb {
             .map_err(|error| {
                 format!(
                     "failed to write syntax query row ABI version at {}: {error}",
-                    db.db_path.display()
+                    self.db_path.display()
                 )
             })?;
         Ok(flushed)
@@ -828,6 +846,18 @@ impl ClientDb {
             return Ok(Vec::new());
         }
         Self::open_read_only(db_path)?.lookup_artifact_events_for(since_timestamp_ms, limit)
+    }
+
+    /// Return graph-turbo artifact events using this already opened DB handle.
+    pub fn lookup_artifact_events_open(
+        &self,
+        since_timestamp_ms: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<ClientDbArtifactEvent>, String> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        self.lookup_artifact_events_for(since_timestamp_ms, limit)
     }
 
     /// Return normalized syntax query rows for an exact request fingerprint.

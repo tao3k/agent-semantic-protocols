@@ -118,14 +118,15 @@ pub use query_packet_replay::{
 pub use query_wrapper_candidates::{
     QueryWrapperCandidateCollection, QueryWrapperClauseCoverage, QueryWrapperQuality,
     QueryWrapperQualityCandidate, QueryWrapperSearchClause, QueryWrapperSearchRequest,
-    QueryWrapperSearchSourceIndexTrace, QueryWrapperSearchSurface,
-    QueryWrapperSourceIndexTraceProjection, analyze_query_wrapper_quality,
-    collect_query_wrapper_candidate_collection, query_wrapper_axis_terms,
-    query_wrapper_candidate_matches_term, query_wrapper_clauses, query_wrapper_owner_candidates,
-    query_wrapper_package_clusters, query_wrapper_package_clusters_from_paths,
-    query_wrapper_package_key, query_wrapper_rg_scope_next,
-    query_wrapper_source_index_trace_projection, query_wrapper_terms,
-    query_wrapper_unique_clause_terms,
+    QueryWrapperSearchSourceIndexTrace, QueryWrapperSearchStageTraceProjection,
+    QueryWrapperSearchSurface, QueryWrapperSourceIndexTraceProjection,
+    analyze_query_wrapper_quality, collect_query_wrapper_candidate_collection,
+    query_wrapper_axis_terms, query_wrapper_candidate_matches_term, query_wrapper_clauses,
+    query_wrapper_owner_candidates, query_wrapper_package_clusters,
+    query_wrapper_package_clusters_from_paths, query_wrapper_package_key,
+    query_wrapper_ranked_search_candidates, query_wrapper_rg_scope_next,
+    query_wrapper_search_stage_trace_projection, query_wrapper_source_index_trace_projection,
+    query_wrapper_terms, query_wrapper_unique_clause_terms,
 };
 pub use query_wrapper_scan::{
     QUERY_WRAPPER_CANDIDATE_LIMIT, QueryCandidateAppend, QueryWrapperCandidate,
@@ -139,9 +140,10 @@ pub use query_wrapper_scan::{
 #[cfg(feature = "turso-overlay")]
 pub use search_candidate::structural_index_hit_to_search_candidate;
 pub use search_candidate::{
-    FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate,
-    lexical_overlay_hit_to_search_candidate, merge_search_candidates,
-    search_candidate_has_executable_line_identity, source_index_candidate_to_search_candidate,
+    FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,
+    SearchStageReceipt, lexical_overlay_hit_to_search_candidate, merge_search_candidates,
+    merge_search_candidates_with_receipt, search_candidate_has_executable_line_identity,
+    source_index_candidate_to_search_candidate,
 };
 pub use search_language_files::{
     LanguageFileSpec, language_file_spec, language_neutral_search_file_spec,

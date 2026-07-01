@@ -29,7 +29,7 @@ def test_timeline_filters_since_and_recent_sessions(tmp_path) -> None:
         assert report["eventCount"] == 2
         assert report["sessionCount"] == 1
         assert report["repeatSearches"] == 1
-        assert report["promotableFzfSearches"] == 0
+        assert report["promotableTypedFrontierSearches"] == 0
         assert report["collapsibleOwnerSearches"] == 1
         assert report["repeatGroups"][0]["method"] == "search/owner"
         assert report["repeatGroups"][0]["subject"] == "src/lib.rs"
@@ -42,13 +42,13 @@ def test_timeline_filters_since_and_recent_sessions(tmp_path) -> None:
 
 def _write_filter_artifacts(search_dir) -> None:
     write_timeline_json(
-        search_dir / "python-search-fzf-a.json",
-        _packet("python", "search/fzf", query="semantic type"),
+        search_dir / "python-search-typed-frontier-a.json",
+        _packet("python", "search/typed-frontier", query="semantic type"),
         mtime=1000,
     )
     write_timeline_json(
-        search_dir / "python-search-fzf-b.json",
-        _packet("python", "search/fzf", query="semantic type"),
+        search_dir / "python-search-typed-frontier-b.json",
+        _packet("python", "search/typed-frontier", query="semantic type"),
         mtime=1010,
     )
     write_timeline_json(

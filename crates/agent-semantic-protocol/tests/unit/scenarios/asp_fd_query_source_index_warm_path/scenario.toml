@@ -1,5 +1,5 @@
 id = "asp-fd-query-source-index-warm-path"
-title = "ASP fd query uses Rust SQL SourceIndex before native finder"
+title = "ASP fd query uses DB Engine SourceIndex before native finder"
 policy_ids = [
   "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FD-SOURCE-INDEX-001",
   "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",

@@ -4,27 +4,30 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::{
-    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, project_client_cache_dir_read_only,
+    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, CacheExportMethod, CacheManifestStatus,
+    ClientCacheFileHash, ClientCacheGeneration, ClientCacheManifest, LanguageId, ProviderId,
+    SemanticSchemaId, SemanticSchemaVersion, project_client_cache_dir_read_only,
     state_core::{
         CLIENT_DB_FILE, ResolvedState, STATE_LAYOUT_VERSION, STATE_MANIFEST_FILE, TURSO_BACKEND,
     },
 };
-#[cfg(feature = "turso-backend")]
-use agent_semantic_client_core::{LanguageId, ProviderId};
 use serde::Serialize;
 use serde_json::json;
 
-use crate::db::{ClientDb, ClientDbReport};
+use crate::db::{
+    ClientDb, ClientDbArtifactEvent, ClientDbGenerationHit, ClientDbGenerationLookup,
+    ClientDbProviderCommandSelection, ClientDbReport, ClientDbSyntaxQueryLookup,
+    ClientDbSyntaxQueryReplay,
+};
 #[cfg(feature = "turso-backend")]
 use crate::evidence_graph::{source_index_evidence_graph, structural_index_evidence_graph};
-#[cfg(feature = "turso-backend")]
-use crate::source_index::ClientDbSourceIndexImport;
 #[cfg(feature = "turso-backend")]
 use crate::source_index::{ClientDbSourceIndexCandidate, ClientDbSourceIndexSourceKind};
 use crate::source_index::{
     ClientDbSourceIndexCandidateLookup, ClientDbSourceIndexClientDirLookupRequest,
-    ClientDbSourceIndexLookupResult, ClientDbSourceIndexLookupState,
-    ClientDbSourceIndexProjectLookupRequest,
+    ClientDbSourceIndexImport, ClientDbSourceIndexLookupResult, ClientDbSourceIndexLookupState,
+    ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexRefreshReport,
+    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile, ClientDbSourceIndexStats,
 };
 #[cfg(feature = "turso-backend")]
 use crate::structural_index::ClientDbStructuralIndexImport;
@@ -84,6 +87,240 @@ pub struct ClientDbEngineReport {
     pub scope_id: String,
     pub future_backend_report: TursoClientDbEngineReport,
     pub sqlite_report: ClientDbReport,
+}
+
+/// DB Engine read session over the current control adapter.
+pub struct ClientDbEngineReadSession {
+    db: ClientDb,
+}
+
+/// DB Engine write session over the current control adapter.
+pub struct ClientDbEngineWriteSession {
+    db: ClientDb,
+}
+
+impl ClientDbEngineReadSession {
+    /// Inspect the opened control adapter without exposing its concrete DB type.
+    pub fn inspect(&self) -> Result<ClientDbReport, String> {
+        self.db.inspect_open()
+    }
+
+    /// Return matching generation metadata using this already opened DB Engine session.
+    pub fn lookup_generation_request(
+        &self,
+        language_id: &LanguageId,
+        provider_id: &ProviderId,
+        project_root: &Path,
+        export_method: &CacheExportMethod,
+        request_fingerprint: Option<String>,
+    ) -> Result<Option<ClientDbGenerationHit>, String> {
+        self.db.lookup_generation_open(&ClientDbGenerationLookup {
+            db_path: self.db.path().to_path_buf(),
+            language_id: language_id.clone(),
+            provider_id: provider_id.clone(),
+            project_root: project_root.to_path_buf(),
+            export_method: export_method.clone(),
+            request_fingerprint,
+        })
+    }
+
+    /// Return recent matching generation metadata using this already opened DB Engine session.
+    pub fn lookup_recent_generations_request(
+        &self,
+        language_id: &LanguageId,
+        provider_id: &ProviderId,
+        project_root: &Path,
+        export_method: &CacheExportMethod,
+        request_fingerprint: Option<String>,
+        limit: u32,
+    ) -> Result<Vec<ClientDbGenerationHit>, String> {
+        self.db.lookup_recent_generations_open(
+            &ClientDbGenerationLookup {
+                db_path: self.db.path().to_path_buf(),
+                language_id: language_id.clone(),
+                provider_id: provider_id.clone(),
+                project_root: project_root.to_path_buf(),
+                export_method: export_method.clone(),
+                request_fingerprint,
+            },
+            limit,
+        )
+    }
+
+    /// Return syntax query replay rows using this already opened DB Engine session.
+    pub fn lookup_syntax_query_replay_request(
+        &self,
+        language_id: &LanguageId,
+        provider_id: &ProviderId,
+        project_root: &Path,
+        query_ast_fingerprint: String,
+        selector: Option<String>,
+    ) -> Result<Option<ClientDbSyntaxQueryReplay>, String> {
+        self.db
+            .lookup_syntax_query_replay_open(&ClientDbSyntaxQueryLookup {
+                db_path: self.db.path().to_path_buf(),
+                language_id: language_id.clone(),
+                provider_id: provider_id.clone(),
+                project_root: project_root.to_path_buf(),
+                query_ast_fingerprint,
+                selector,
+            })
+    }
+
+    /// Return graph-turbo artifact events using this already opened DB Engine session.
+    pub fn lookup_artifact_events(
+        &self,
+        since_timestamp_ms: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<ClientDbArtifactEvent>, String> {
+        self.db
+            .lookup_artifact_events_open(since_timestamp_ms, limit)
+    }
+
+    /// Return cached provider command selections through this DB Engine session.
+    pub fn lookup_provider_command_selections(
+        &self,
+        project_root: &Path,
+        context_fingerprint: &str,
+    ) -> Result<Option<Vec<ClientDbProviderCommandSelection>>, String> {
+        self.db
+            .lookup_provider_command_selections(project_root, context_fingerprint)
+    }
+}
+
+impl ClientDbEngineWriteSession {
+    /// Inspect the opened control adapter without exposing its concrete DB type.
+    pub fn inspect(&self) -> Result<ClientDbReport, String> {
+        self.db.inspect_open()
+    }
+
+    /// Import one cache manifest through the DB Engine control adapter.
+    pub fn import_manifest(&mut self, manifest: &ClientCacheManifest) -> Result<(), String> {
+        self.db.import_manifest(manifest)
+    }
+
+    /// Synchronize the control adapter's generation universe before manifest writeback import.
+    pub fn sync_cache_generations_for_manifest_writeback(
+        &mut self,
+        manifest: &ClientCacheManifest,
+        status: &CacheManifestStatus,
+    ) -> Result<(), String> {
+        match status {
+            CacheManifestStatus::Missing | CacheManifestStatus::Invalid => {
+                self.db.clear_cache_generations()?;
+            }
+            CacheManifestStatus::Present => {
+                self.db.prune_cache_generations_to_manifest(manifest)?;
+            }
+            CacheManifestStatus::Unavailable => {
+                return Err(
+                    "cache manifest is unavailable for DB Engine writeback sync".to_string()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Upsert artifact events through the DB Engine control adapter.
+    pub fn upsert_artifact_events(
+        &mut self,
+        events: &[ClientDbArtifactEvent],
+    ) -> Result<u32, String> {
+        self.db.upsert_artifact_events(events)
+    }
+
+    /// Replace cached provider command selections through this DB Engine session.
+    pub fn replace_provider_command_selections(
+        &mut self,
+        project_root: &Path,
+        context_fingerprint: &str,
+        selections: &[ClientDbProviderCommandSelection],
+    ) -> Result<(), String> {
+        self.db
+            .replace_provider_command_selections(project_root, context_fingerprint, selections)
+    }
+
+    /// Return file hash evidence from the latest source-index generation.
+    pub fn latest_source_index_file_hashes(
+        &self,
+        project_root: &Path,
+        schema_id: &SemanticSchemaId,
+        schema_version: &SemanticSchemaVersion,
+    ) -> Result<Option<Vec<ClientCacheFileHash>>, String> {
+        self.db
+            .latest_source_index_file_hashes(project_root, schema_id, schema_version)
+    }
+
+    /// Return file-scoped source-index inputs from the latest generation.
+    pub fn latest_source_index_scope_files(
+        &self,
+        project_root: &Path,
+        schema_id: &SemanticSchemaId,
+        schema_version: &SemanticSchemaVersion,
+    ) -> Result<Option<Vec<ClientDbSourceIndexScopeFile>>, String> {
+        self.db
+            .latest_source_index_scope_files(project_root, schema_id, schema_version)
+    }
+
+    /// Return reusable source-index stats when the latest evidence is unchanged.
+    pub fn reusable_source_index_generation(
+        &self,
+        project_root: &Path,
+        schema_id: &SemanticSchemaId,
+        schema_version: &SemanticSchemaVersion,
+        file_hashes: &[ClientCacheFileHash],
+    ) -> Result<Option<ClientDbSourceIndexStats>, String> {
+        self.db.reusable_source_index_generation(
+            project_root,
+            schema_id,
+            schema_version,
+            file_hashes,
+        )
+    }
+
+    /// Apply a source-index import through this DB Engine session.
+    pub fn refresh_source_index_import(
+        &mut self,
+        request: ClientDbSourceIndexRefreshRequest,
+    ) -> Result<ClientDbSourceIndexRefreshReport, String> {
+        self.db.refresh_source_index_import(request)
+    }
+
+    /// Import one semantic tree-sitter query packet through the DB Engine control adapter.
+    pub fn import_semantic_tree_sitter_query_packet(
+        &mut self,
+        generation: &ClientCacheGeneration,
+        packet_bytes: &[u8],
+    ) -> Result<(), String> {
+        self.db
+            .import_semantic_tree_sitter_query_packet(generation, packet_bytes)
+            .map(|_| ())
+    }
+
+    /// Import one structural-index refresh artifact through the DB Engine control adapter.
+    pub fn import_semantic_structural_index_refresh_packet(
+        &mut self,
+        generation: &ClientCacheGeneration,
+        packet_bytes: &[u8],
+    ) -> Result<(), String> {
+        self.db
+            .import_semantic_structural_index_refresh_packet(generation, packet_bytes)
+            .map(|_| ())
+    }
+
+    /// Flush syntax query replay rows through this already opened DB Engine session.
+    pub fn flush_syntax_query_rows(&mut self) -> Result<u32, String> {
+        self.db.flush_syntax_query_rows_open()
+    }
+
+    /// Invalidate local generation rows for one project through this DB Engine session.
+    pub fn invalidate_generations_for_project(
+        &mut self,
+        project_root: impl AsRef<Path>,
+    ) -> Result<u32, String> {
+        self.db
+            .invalidate_generations_for_project_open(project_root)
+    }
 }
 
 /// DB Engine receipt for projecting a source-index import into Turso read models.
@@ -172,6 +409,105 @@ impl ClientDbEngine {
     ) -> Result<Option<ClientDb>, String> {
         SqliteClientDbEngineBackend
             .open_read_only_existing(&Self::sqlite_path_for_client_dir(client_dir))
+    }
+
+    /// Open a DB Engine read session without exposing the concrete control adapter.
+    pub fn open_read_session_client_dir(
+        client_dir: impl AsRef<Path>,
+    ) -> Result<Option<ClientDbEngineReadSession>, String> {
+        Ok(Self::open_read_only_existing_client_dir(client_dir)?
+            .map(|db| ClientDbEngineReadSession { db }))
+    }
+
+    /// Open a DB Engine write session without exposing the concrete control adapter.
+    pub fn open_write_session_client_dir(
+        client_dir: impl AsRef<Path>,
+    ) -> Result<ClientDbEngineWriteSession, String> {
+        Ok(ClientDbEngineWriteSession {
+            db: Self::open_or_create_client_dir(client_dir)?,
+        })
+    }
+
+    /// Return syntax query replay rows through the DB Engine control adapter.
+    pub fn lookup_syntax_query_replay_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        lookup: &ClientDbSyntaxQueryLookup,
+    ) -> Result<Option<ClientDbSyntaxQueryReplay>, String> {
+        Self::lookup_syntax_query_replay_request_from_client_dir(
+            client_dir,
+            &lookup.language_id,
+            &lookup.provider_id,
+            &lookup.project_root,
+            lookup.query_ast_fingerprint.clone(),
+            lookup.selector.clone(),
+        )
+    }
+
+    /// Return syntax query replay rows for one normalized request through the DB Engine.
+    pub fn lookup_syntax_query_replay_request_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        language_id: &LanguageId,
+        provider_id: &ProviderId,
+        project_root: &Path,
+        query_ast_fingerprint: String,
+        selector: Option<String>,
+    ) -> Result<Option<ClientDbSyntaxQueryReplay>, String> {
+        let Some(db) = Self::open_read_only_existing_client_dir(client_dir)? else {
+            return Ok(None);
+        };
+        let lookup = ClientDbSyntaxQueryLookup {
+            db_path: db.path().to_path_buf(),
+            language_id: language_id.clone(),
+            provider_id: provider_id.clone(),
+            project_root: project_root.to_path_buf(),
+            query_ast_fingerprint,
+            selector,
+        };
+        db.lookup_syntax_query_replay_open(&lookup)
+    }
+
+    /// Return graph-turbo artifact events through the DB Engine control adapter.
+    pub fn lookup_artifact_events_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        since_timestamp_ms: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<ClientDbArtifactEvent>, String> {
+        let Some(session) = Self::open_read_session_client_dir(client_dir)? else {
+            return Ok(Vec::new());
+        };
+        session.lookup_artifact_events(since_timestamp_ms, limit)
+    }
+
+    /// Upsert graph-turbo artifact events through the DB Engine control adapter.
+    pub fn upsert_artifact_events_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        events: &[ClientDbArtifactEvent],
+    ) -> Result<u32, String> {
+        Self::open_write_session_client_dir(client_dir)?.upsert_artifact_events(events)
+    }
+
+    /// Flush syntax query replay rows through the DB Engine control adapter.
+    pub fn flush_syntax_query_rows_from_client_dir(
+        client_dir: impl AsRef<Path>,
+    ) -> Result<u32, String> {
+        let client_dir = client_dir.as_ref();
+        if !Self::sqlite_path_for_client_dir(client_dir).exists() {
+            return Ok(0);
+        }
+        Self::open_write_session_client_dir(client_dir)?.flush_syntax_query_rows()
+    }
+
+    /// Invalidate local generation rows for one project through the DB Engine control adapter.
+    pub fn invalidate_generations_for_project_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        project_root: impl AsRef<Path>,
+    ) -> Result<u32, String> {
+        let client_dir = client_dir.as_ref();
+        if !Self::sqlite_path_for_client_dir(client_dir).exists() {
+            return Ok(0);
+        }
+        Self::open_write_session_client_dir(client_dir)?
+            .invalidate_generations_for_project(project_root)
     }
 
     /// Lookup source-index candidates from one project's resolved DB Engine state.

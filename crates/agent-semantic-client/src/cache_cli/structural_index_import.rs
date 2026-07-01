@@ -3,7 +3,7 @@
 use std::{fs, path::Path};
 
 use agent_semantic_client_core::{ClientCacheGeneration, ClientCacheManifest};
-use agent_semantic_client_db::ClientDb;
+use agent_semantic_client_db::ClientDbEngineWriteSession;
 
 use crate::cache_replay::replay_artifact_path;
 
@@ -12,21 +12,21 @@ const SEMANTIC_STRUCTURAL_INDEX_SCHEMA_ID: &str =
 
 pub(super) fn import_structural_index_artifacts(
     cache_root: &Path,
-    db: &mut ClientDb,
+    db_session: &mut ClientDbEngineWriteSession,
     manifest: &ClientCacheManifest,
 ) -> Result<u64, String> {
     manifest
         .generations
         .iter()
         .try_fold(0, |count, generation| {
-            import_structural_index_generation(cache_root, db, generation)
+            import_structural_index_generation(cache_root, db_session, generation)
                 .map(|imported| if imported { count + 1 } else { count })
         })
 }
 
 fn import_structural_index_generation(
     cache_root: &Path,
-    db: &mut ClientDb,
+    db_session: &mut ClientDbEngineWriteSession,
     generation: &ClientCacheGeneration,
 ) -> Result<bool, String> {
     let Some(artifact_path) = structural_index_artifact_path(cache_root, generation)? else {
@@ -38,7 +38,8 @@ fn import_structural_index_generation(
             artifact_path.display()
         )
     })?;
-    db.import_semantic_structural_index_refresh_packet(generation, &packet_bytes)
+    db_session
+        .import_semantic_structural_index_refresh_packet(generation, &packet_bytes)
         .map_err(|error| {
             format!(
                 "failed to import structural index artifact for generation {}: {error}",

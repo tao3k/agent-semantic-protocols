@@ -10,6 +10,7 @@ use crate::{LexicalOverlaySearchHit, SourceIndexRankCandidate};
 #[derive(Clone, Debug, PartialEq)]
 pub struct SearchCandidate {
     pub route_source: String,
+    pub fallback_reason: String,
     pub candidate_id: String,
     pub identity_kind: String,
     pub selector: Option<String>,
@@ -47,6 +48,24 @@ pub struct RankedSearchCandidate {
     pub ordinal: usize,
 }
 
+/// Replayable receipt for one search-candidate merge stage.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchStageReceipt {
+    pub stage: String,
+    pub route_sources: Vec<String>,
+    pub candidate_count: usize,
+    pub returned_count: usize,
+    pub filtered_line_identity_count: usize,
+    pub fallback_reason: String,
+}
+
+/// Search candidates plus the receipt needed by graph-route replay.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SearchCandidateMergeReceipt {
+    pub ranked: Vec<RankedSearchCandidate>,
+    pub stage: SearchStageReceipt,
+}
+
 /// Project a source-index rank candidate into the shared search candidate shape.
 #[must_use]
 pub fn source_index_candidate_to_search_candidate(
@@ -60,6 +79,7 @@ pub fn source_index_candidate_to_search_candidate(
         .collect::<Vec<_>>();
     SearchCandidate {
         route_source: "source-index".to_string(),
+        fallback_reason: "none".to_string(),
         candidate_id: format!("source-index:{}", candidate.path),
         identity_kind: "owner-path".to_string(),
         selector: None,
@@ -88,6 +108,7 @@ pub fn lexical_overlay_hit_to_search_candidate(
 ) -> SearchCandidate {
     SearchCandidate {
         route_source: "dynamic-overlay".to_string(),
+        fallback_reason: "none".to_string(),
         candidate_id: format!("overlay:{}", hit.selector()),
         identity_kind: "selector".to_string(),
         selector: Some(hit.selector().to_string()),
@@ -129,6 +150,7 @@ pub fn structural_index_hit_to_search_candidate(
         .collect::<Vec<_>>();
     SearchCandidate {
         route_source: "turso-fts".to_string(),
+        fallback_reason: "none".to_string(),
         candidate_id: hit.document_id.clone(),
         identity_kind: if hit.selector.is_some() {
             "selector".to_string()
@@ -166,6 +188,20 @@ pub fn search_candidate_has_executable_line_identity(candidate: &SearchCandidate
 /// Merge heterogeneous search candidates into one router-ready order.
 #[must_use]
 pub fn merge_search_candidates(candidates: Vec<SearchCandidate>) -> Vec<RankedSearchCandidate> {
+    merge_search_candidates_with_receipt(candidates).ranked
+}
+
+/// Merge heterogeneous search candidates and retain a replayable stage receipt.
+#[must_use]
+pub fn merge_search_candidates_with_receipt(
+    candidates: Vec<SearchCandidate>,
+) -> SearchCandidateMergeReceipt {
+    let candidate_count = candidates.len();
+    let route_sources = search_candidate_route_sources(&candidates);
+    let filtered_line_identity_count = candidates
+        .iter()
+        .filter(|candidate| search_candidate_has_executable_line_identity(candidate))
+        .count();
     let mut ranked = candidates
         .into_iter()
         .enumerate()
@@ -183,7 +219,18 @@ pub fn merge_search_candidates(candidates: Vec<SearchCandidate>) -> Vec<RankedSe
         })
         .collect::<Vec<_>>();
     ranked.sort_by(compare_ranked_search_candidates);
-    ranked
+    let fallback_reason = search_candidate_merge_fallback_reason(candidate_count, ranked.len());
+    SearchCandidateMergeReceipt {
+        stage: SearchStageReceipt {
+            stage: "search-candidate-merge".to_string(),
+            route_sources,
+            candidate_count,
+            returned_count: ranked.len(),
+            filtered_line_identity_count,
+            fallback_reason,
+        },
+        ranked,
+    }
 }
 
 fn compare_ranked_search_candidates(
@@ -214,6 +261,24 @@ fn search_candidate_route_priority(route_source: &str) -> usize {
         "semantic-vector" => 5,
         "evidence-graph-rank" => 6,
         _ => 9,
+    }
+}
+
+fn search_candidate_route_sources(candidates: &[SearchCandidate]) -> Vec<String> {
+    let mut sources = candidates
+        .iter()
+        .map(|candidate| candidate.route_source.clone())
+        .collect::<Vec<_>>();
+    sources.sort();
+    sources.dedup();
+    sources
+}
+
+fn search_candidate_merge_fallback_reason(candidate_count: usize, returned_count: usize) -> String {
+    if candidate_count > 0 && returned_count == 0 {
+        "line-identity-filtered".to_string()
+    } else {
+        "none".to_string()
     }
 }
 

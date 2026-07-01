@@ -21,7 +21,7 @@
     "inferredSubagentStarts",
     "repeatSearches",
     "suppressiblePrimeSearches",
-    "promotableFzfSearches",
+    "promotableTypedFrontierSearches",
     "collapsibleOwnerSearches",
     "routableFanoutBursts",
     "avoidableFanoutBranches",
@@ -41,7 +41,7 @@
     "repeatGroups",
     "optimizationTargets",
     "primeSuppression",
-    "fzfPromotion",
+    "typedFrontierPromotion",
     "ownerCollapse",
     "fanoutPlanning",
     "readLoopRisk",
@@ -64,7 +64,7 @@
       "type": "string",
       "enum": [
         "artifact-scan",
-        "rust-sqlite",
+        "db-engine",
         "events-json"
       ]
     },
@@ -101,7 +101,7 @@
     "suppressiblePrimeSearches": {
       "$ref": "#/$defs/nonNegativeInteger"
     },
-    "promotableFzfSearches": {
+    "promotableTypedFrontierSearches": {
       "$ref": "#/$defs/nonNegativeInteger"
     },
     "collapsibleOwnerSearches": {
@@ -176,7 +176,7 @@
     "primeSuppression": {
       "$ref": "#/$defs/actionGroup"
     },
-    "fzfPromotion": {
+    "typedFrontierPromotion": {
       "$ref": "#/$defs/actionGroup"
     },
     "ownerCollapse": {

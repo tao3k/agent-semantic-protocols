@@ -8,9 +8,7 @@ use agent_semantic_client_core::{
     ProviderId, replay_artifact_path, structured_evidence_artifact_path,
     syntax_query_ast_abi_fingerprint,
 };
-use agent_semantic_client_db::{
-    ClientDb, ClientDbEngine, ClientDbGenerationHit, ClientDbSyntaxQueryLookup,
-};
+use agent_semantic_client_db::{ClientDbEngine, ClientDbEngineReadSession, ClientDbGenerationHit};
 use agent_semantic_search::{
     PromptOutputFingerprintRequest, PromptOutputReplayRequest, QueryPacketReplayRequest,
     is_prime_seed_search_request as search_is_prime_seed_search_request,
@@ -280,57 +278,54 @@ pub(crate) fn load_syntax_query_rows_replay(
     project_root: &Path,
     request: &ClientRequest,
 ) -> Option<ProviderCacheReplay> {
-    let lookup = syntax_query_rows_lookup(
-        &ClientDbEngine::db_path_for_client_dir(cache_root),
-        language_id,
-        provider_id,
-        project_root,
-        request,
-    )?;
+    let (query_ast_fingerprint, selector) = syntax_query_rows_request_key(request)?;
     render_syntax_query_rows_replay(
-        ClientDb::lookup_syntax_query_replay(&lookup)
+        ClientDbEngine::lookup_syntax_query_replay_request_from_client_dir(
+            cache_root,
+            language_id,
+            provider_id,
+            project_root,
+            query_ast_fingerprint,
+            selector,
+        )
+        .ok()
+        .flatten()?,
+        project_root,
+    )
+}
+
+pub(crate) fn load_syntax_query_rows_replay_session(
+    db_session: &ClientDbEngineReadSession,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+    project_root: &Path,
+    request: &ClientRequest,
+) -> Option<ProviderCacheReplay> {
+    let (query_ast_fingerprint, selector) = syntax_query_rows_request_key(request)?;
+    render_syntax_query_rows_replay(
+        db_session
+            .lookup_syntax_query_replay_request(
+                language_id,
+                provider_id,
+                project_root,
+                query_ast_fingerprint,
+                selector,
+            )
             .ok()
             .flatten()?,
         project_root,
     )
 }
 
-pub(crate) fn load_syntax_query_rows_replay_open(
-    db: &ClientDb,
-    language_id: &LanguageId,
-    provider_id: &ProviderId,
-    project_root: &Path,
-    request: &ClientRequest,
-) -> Option<ProviderCacheReplay> {
-    let lookup =
-        syntax_query_rows_lookup(db.path(), language_id, provider_id, project_root, request)?;
-    render_syntax_query_rows_replay(
-        db.lookup_syntax_query_replay_open(&lookup).ok().flatten()?,
-        project_root,
-    )
-}
-
-fn syntax_query_rows_lookup(
-    db_path: &Path,
-    language_id: &LanguageId,
-    provider_id: &ProviderId,
-    project_root: &Path,
-    request: &ClientRequest,
-) -> Option<ClientDbSyntaxQueryLookup> {
+fn syntax_query_rows_request_key(request: &ClientRequest) -> Option<(String, Option<String>)> {
     if request.method != ClientMethod::Query
         || request.forwarded_args.iter().any(|arg| arg == "--code")
     {
         return None;
     }
     let query_ast_fingerprint = request_tree_sitter_query_ast_fingerprint(&request.forwarded_args)?;
-    Some(ClientDbSyntaxQueryLookup {
-        db_path: db_path.to_path_buf(),
-        language_id: language_id.clone(),
-        provider_id: provider_id.clone(),
-        project_root: project_root.to_path_buf(),
-        query_ast_fingerprint,
-        selector: request_flag_value(&request.forwarded_args, "--selector").map(str::to_string),
-    })
+    let selector = request_flag_value(&request.forwarded_args, "--selector").map(str::to_string);
+    Some((query_ast_fingerprint, selector))
 }
 
 fn render_syntax_query_rows_replay(

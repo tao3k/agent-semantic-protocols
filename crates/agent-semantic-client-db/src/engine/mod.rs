@@ -10,7 +10,9 @@ mod turso_route_receipt;
 mod turso_search;
 
 pub use contract::{ClientDbBackend, ClientDbEngineDurability, ClientDbEngineFeatures};
-pub use facade::{ClientDbEngine, ClientDbEngineReport};
+pub use facade::{
+    ClientDbEngine, ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
+};
 #[cfg(feature = "turso-backend")]
 pub use facade::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,

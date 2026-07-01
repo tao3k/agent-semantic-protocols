@@ -2,7 +2,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::state_core::ResolvedState;
-use agent_semantic_client_db::ClientDb;
+use agent_semantic_client_db::ClientDbEngine;
 
 use crate::search_history::run_search_history;
 use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
@@ -19,7 +19,7 @@ fn search_history_rejects_unknown_subcommand() {
 }
 
 #[test]
-fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
+fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("history-backfill");
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
@@ -152,13 +152,14 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
     let args = std::fs::read_to_string(&args_path).expect("read asp-graph-turbo args");
     let stdin = std::fs::read_to_string(&stdin_path).expect("read asp-graph-turbo stdin");
     assert!(args.contains("--events-json"), "{args}");
-    assert!(stdin.contains("\"kind\":\"rust-sqlite\""), "{stdin}");
+    assert!(stdin.contains("\"kind\":\"db-engine\""), "{stdin}");
     let packet: serde_json::Value = serde_json::from_str(&stdin).expect("events packet");
-    let db_path = packet
-        .pointer("/source/dbPath")
+    let client_dir = packet
+        .pointer("/source/clientDir")
         .and_then(serde_json::Value::as_str)
-        .expect("db path");
-    let events = ClientDb::lookup_artifact_events(db_path, None, 10).expect("read db events");
+        .expect("client dir");
+    let events = ClientDbEngine::lookup_artifact_events_from_client_dir(client_dir, None, 10)
+        .expect("read db events");
     assert!(
         events
             .iter()

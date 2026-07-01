@@ -23,6 +23,8 @@ mod command_gerbil_check_cache;
 mod command_query_owner_legacy_selector;
 #[path = "unit/command/search_pipe_evidence_projection.rs"]
 mod command_search_pipe_evidence_projection;
+#[path = "unit/command/search_pipe_projection.rs"]
+mod command_search_pipe_projection;
 #[path = "unit/document_provider.rs"]
 mod document_provider;
 #[path = "unit/graph_render.rs"]

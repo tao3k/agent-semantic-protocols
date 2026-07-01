@@ -1,4 +1,4 @@
-//! Public value types for Rust-owned SQL source index rows.
+//! Public value types for DB Engine-owned source index rows.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 pub const CLIENT_DB_SOURCE_INDEX_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-source-index";
 pub const CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION: &str = "1";
-pub const CLIENT_DB_SOURCE_INDEX_PROVIDER_ID: &str = "rust-sql-source-index";
+pub const CLIENT_DB_SOURCE_INDEX_PROVIDER_ID: &str = "db-engine-source-index";
 pub const CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX: &str = "@scope/dir/";
 pub const CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH: &str = "@scope/registry";
 pub const CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256: &str =
@@ -92,7 +92,7 @@ macro_rules! source_index_value_type {
 }
 
 source_index_value_type!(
-    /// Project-relative path retained by the Rust SQL source index.
+    /// Project-relative path retained by the DB Engine source index.
     ClientDbSourceIndexPath
 );
 source_index_value_type!(
@@ -104,7 +104,7 @@ source_index_value_type!(
     ClientDbSourceIndexSource
 );
 
-/// One Rust-owned source index generation imported into the client DB.
+/// One DB Engine-owned source index generation imported into the client DB.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexImport {
     pub generation_id: CacheGenerationId,
@@ -248,7 +248,7 @@ impl From<ClientDbSourceIndexOwner> for ClientDbSourceIndexCandidate {
     }
 }
 
-/// Lookup result from the Rust-owned source index.
+/// Lookup result from the DB Engine-owned source index.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexLookupResult {
     pub db_path: PathBuf,
@@ -368,7 +368,7 @@ impl ClientDbSourceIndexRefreshResult {
     }
 }
 
-/// Lookup request for Rust-owned source index rows.
+/// Lookup request for DB Engine-owned source index rows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexLookup {
     pub project_root: PathBuf,
@@ -386,7 +386,7 @@ pub struct ClientDbSourceIndexCandidateLookup {
     pub limit: u32,
 }
 
-/// Lookup request for Rust-owned source index selector rows.
+/// Lookup request for DB Engine-owned source index selector rows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelectorLookup {
     pub project_root: PathBuf,

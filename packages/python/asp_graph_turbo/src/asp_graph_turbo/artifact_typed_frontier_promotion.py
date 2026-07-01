@@ -8,7 +8,7 @@ from typing import Any
 from .artifact_commands import shell_command, target_like
 
 
-def fzf_promotion_candidates(
+def typed_frontier_promotion_candidates(
     repeat_groups: Sequence[Mapping[str, Any]],
     *,
     limit: int,
@@ -16,7 +16,7 @@ def fzf_promotion_candidates(
     actions = [
         _action_row(group)
         for group in repeat_groups
-        if str(group["method"]) == "search/fzf" and int(group["repeatCount"]) > 0
+        if str(group["method"]) == "search/typed-frontier" and int(group["repeatCount"]) > 0
     ]
     actions.sort(
         key=lambda action: (
@@ -27,7 +27,7 @@ def fzf_promotion_candidates(
         )
     )
     return {
-        "policy": "repeat-fzf-to-typed-frontier",
+        "policy": "repeat-search-to-typed-frontier",
         "replacement": "promote-to-owner-item-test-frontier",
         "promotableSearches": sum(int(action["repeatCount"]) for action in actions),
         "candidateGroupCount": len(actions),
@@ -43,11 +43,11 @@ def _action_row(group: Mapping[str, Any]) -> dict[str, object]:
     preferred_command = _preferred_command(language, query, project_root_arg)
     return {
         "decision": "promote",
-        "policy": "repeat-fzf-to-typed-frontier",
+        "policy": "repeat-search-to-typed-frontier",
         "replacement": "promote-to-owner-item-test-frontier",
         "reason": "same fuzzy query repeated before converging on a typed frontier",
         "language": language,
-        "method": "search/fzf",
+        "method": "search/typed-frontier",
         "query": query,
         "projectRootArg": project_root_arg,
         "count": int(group["count"]),
@@ -59,7 +59,7 @@ def _action_row(group: Mapping[str, Any]) -> dict[str, object]:
         "profile": "owner-query",
         "preferredCommand": preferred_command,
         "avoidCommand": (
-            f"asp {language} search fzf <same-query> owner tests "
+            f"asp {language} search typed-frontier <same-query> owner tests "
             f"--workspace {project_root_arg} --view seeds"
         ),
         "nextAction": (
@@ -89,7 +89,7 @@ def _preferred_command(language: str, query: str, project_root_arg: str) -> str:
             "asp",
             language,
             "search",
-            "fzf",
+            "typed-frontier",
             query,
             "owner",
             "tests",

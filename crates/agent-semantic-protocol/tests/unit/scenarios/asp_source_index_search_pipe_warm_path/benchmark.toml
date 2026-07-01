@@ -11,7 +11,7 @@ route_source = "source-index"
 max_provider_process_count = 0
 max_stdout_bytes = 8192
 fallback_reason = "none"
-target_rationale = "Warm search pipe must use the Rust SQL SourceIndex as the candidate source and skip provider/native finder processes. The gate measures Rust SourceIndex lookup duration directly and validates the real CLI output shape separately so debug binary startup is not counted as search latency."
+target_rationale = "Warm search pipe must use the DB Engine SourceIndex as the candidate source and skip provider/native finder processes. The gate measures DB Engine SourceIndex lookup duration directly and validates the real CLI output shape separately so debug binary startup is not counted as search latency."
 
 [observed_timings]
 source_index_lookup = "3ms"

@@ -15,8 +15,8 @@ def write_microburst_repeat_artifacts(root: Path) -> None:
         directory.mkdir()
 
     write_timeline_json(
-        search_dir / "python-search-fzf-a.json",
-        _search_packet("python", "search/fzf", query="semantic type"),
+        search_dir / "python-search-typed-frontier-a.json",
+        _search_packet("python", "search/typed-frontier", query="semantic type"),
         mtime=1000,
     )
     write_timeline_json(
@@ -38,8 +38,8 @@ def write_microburst_repeat_artifacts(root: Path) -> None:
         mtime=1021,
     )
     write_timeline_json(
-        search_dir / "python-search-fzf-b.json",
-        _search_packet("python", "search/fzf", query="semantic type"),
+        search_dir / "python-search-typed-frontier-b.json",
+        _search_packet("python", "search/typed-frontier", query="semantic type"),
         mtime=1026,
     )
     for name, mtime in (("a", 1036), ("b", 1040)):

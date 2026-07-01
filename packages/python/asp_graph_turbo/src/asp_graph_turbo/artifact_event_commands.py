@@ -36,7 +36,7 @@ def artifact_command_query(argv: tuple[str, ...]) -> str:
     if search_index is None:
         return ""
     surface, surface_index = _command_surface(argv, search_index + 1)
-    return _next_positional(argv, surface_index + 1) if surface == "fzf" else ""
+    return _next_positional(argv, surface_index + 1) if surface == "typed-frontier" else ""
 
 
 def _next_positional(argv: tuple[str, ...], start: int) -> str:

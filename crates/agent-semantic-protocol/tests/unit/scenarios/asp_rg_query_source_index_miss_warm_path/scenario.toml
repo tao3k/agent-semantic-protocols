@@ -1,5 +1,5 @@
 id = "asp-rg-query-source-index-miss-warm-path"
-title = "ASP rg query miss stops at Rust SQL SourceIndex"
+title = "ASP rg query miss stops at DB Engine SourceIndex"
 policy_ids = [
   "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-RG-SOURCE-INDEX-MISS-001",
   "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",

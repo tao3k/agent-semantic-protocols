@@ -97,9 +97,9 @@ def _repeat_policy(method: str) -> tuple[str, str, str]:
             "agent-guidance-and-cache",
             "Suppress repeated prime calls after a session already has a fresh prime frontier.",
         )
-    if method == "search/fzf":
+    if method == "search/typed-frontier":
         return (
-            "repeat-fzf",
+            "repeat-search",
             "target-recall-and-profile-selection",
             "Promote recurring fuzzy targets into typed owner/item/test frontier facts.",
         )
@@ -158,9 +158,9 @@ def _fanout_policy(methods: tuple[str, ...]) -> tuple[str, str, str]:
             "round-planning-and-profile-routing",
             "Choose one typed reasoning profile before launching parallel searches.",
         )
-    if methods == ("search/fzf",):
+    if methods == ("search/typed-frontier",):
         return (
-            "wide-fzf-fanout",
+            "wide-typed-frontier-fanout",
             "query-diversity-and-owner-recall",
             "Use graph turbo rank/diversity to narrow fuzzy fanout before owner expansion.",
         )
@@ -181,13 +181,13 @@ def _repeat_route(
     language: str, method: str, subject: str, project_root_arg: str
 ) -> dict[str, object]:
     root = project_root_arg or "."
-    if method == "search/fzf":
+    if method == "search/typed-frontier":
         return {
             "profile": "owner-query",
             "route": (
-                "path-fzf-to-owner-items"
+                "path-typed-frontier-to-owner-items"
                 if target_like(subject)
-                else "fzf-owner-test-seeds"
+                else "typed-frontier-owner-test-seeds"
             ),
             "preferredCommand": _frontier_command(language, method, subject, root),
         }
@@ -228,8 +228,8 @@ def _preferred_fanout_key(value: object) -> Mapping[str, Any] | None:
     keys = [item for item in value if isinstance(item, Mapping)]
     return (
         _first_key(keys, "search/owner", require_target=True)
-        or _first_key(keys, "search/fzf", require_target=True)
-        or _first_key(keys, "search/fzf", require_target=False)
+        or _first_key(keys, "search/typed-frontier", require_target=True)
+        or _first_key(keys, "search/typed-frontier", require_target=False)
         or _first_key(keys, "search/owner", require_target=False)
     )
 
@@ -258,7 +258,7 @@ def _frontier_command(
             "asp",
             language,
             "search",
-            "fzf",
+            "typed-frontier",
             subject,
             "owner",
             "tests",

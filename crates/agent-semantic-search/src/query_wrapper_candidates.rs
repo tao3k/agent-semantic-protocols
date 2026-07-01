@@ -10,10 +10,10 @@ use crate::{
     NativeFinderCollectionRequest, NativeFinderConfig, NativeFinderSurface, QueryCandidateAppend,
     QueryWrapperCandidate, QueryWrapperCandidateSurface, QueryWrapperScanConfig,
     QueryWrapperSearchCandidateRequest, QueryWrapperSourceIndexLookup,
-    QueryWrapperSourceIndexRequest, RankedSearchCandidate, augment_package_path_candidates,
-    collect_native_finder_candidates, collect_query_wrapper_search_candidates,
-    collect_query_wrapper_source_index_candidates, language_neutral_search_file_spec,
-    query_candidate_priority,
+    QueryWrapperSourceIndexRequest, RankedSearchCandidate, SearchStageReceipt,
+    augment_package_path_candidates, collect_native_finder_candidates,
+    collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
+    language_neutral_search_file_spec, query_candidate_priority,
 };
 
 /// Search surface for query-wrapper commands.
@@ -30,6 +30,43 @@ impl QueryWrapperSearchSurface {
             Self::Fd => "fd",
             Self::Rg => "rg",
         }
+    }
+}
+
+/// Collect ranked query-wrapper candidates from the configured search adapter.
+pub fn query_wrapper_ranked_search_candidates(
+    surface: QueryWrapperSearchSurface,
+    project_root: &Path,
+    terms: &[String],
+) -> Result<Vec<RankedSearchCandidate>, String> {
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+    #[cfg(feature = "turso-overlay")]
+    {
+        let query = terms.join(" ");
+        let limit = query_wrapper_ranked_search_limit(surface);
+        return crate::collect_turso_structural_index_ranked_candidates(
+            crate::TursoStructuralIndexCandidateRequest {
+                project_root,
+                query: query.as_str(),
+                limit,
+            },
+        );
+    }
+    #[cfg(not(feature = "turso-overlay"))]
+    {
+        let _ = surface;
+        let _ = project_root;
+        Ok(Vec::new())
+    }
+}
+
+#[cfg(feature = "turso-overlay")]
+fn query_wrapper_ranked_search_limit(surface: QueryWrapperSearchSurface) -> u32 {
+    match surface {
+        QueryWrapperSearchSurface::Fd => 16,
+        QueryWrapperSearchSurface::Rg => crate::QUERY_WRAPPER_CANDIDATE_LIMIT as u32,
     }
 }
 
@@ -507,11 +544,91 @@ fn query_wrapper_source_index_status(state: &str) -> &'static str {
     }
 }
 
+/// Render-neutral search-stage trace projection for query-wrapper callers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryWrapperSearchStageTraceProjection {
+    pub source: String,
+    pub status: String,
+    pub candidate_count: usize,
+    pub skipped_count: usize,
+    pub input_count: usize,
+    pub fields: BTreeMap<String, Value>,
+}
+
+/// Project a search-stage receipt into render-neutral fields.
+#[must_use]
+pub fn query_wrapper_search_stage_trace_projection(
+    receipt: &SearchStageReceipt,
+) -> QueryWrapperSearchStageTraceProjection {
+    let source = receipt
+        .route_sources
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "searchStage".to_string());
+    let status = query_wrapper_search_stage_status(receipt);
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "schemaId".to_string(),
+        Value::from("agent.semantic-protocols.semantic-search-stage-receipt"),
+    );
+    fields.insert("schemaVersion".to_string(), Value::from(1));
+    fields.insert("stage".to_string(), Value::from(receipt.stage.clone()));
+    fields.insert(
+        "routeSources".to_string(),
+        Value::Array(
+            receipt
+                .route_sources
+                .iter()
+                .cloned()
+                .map(Value::from)
+                .collect(),
+        ),
+    );
+    fields.insert(
+        "candidateCount".to_string(),
+        Value::from(receipt.candidate_count),
+    );
+    fields.insert(
+        "returnedCount".to_string(),
+        Value::from(receipt.returned_count),
+    );
+    fields.insert(
+        "filteredLineIdentityCount".to_string(),
+        Value::from(receipt.filtered_line_identity_count),
+    );
+    fields.insert(
+        "fallbackReason".to_string(),
+        Value::from(receipt.fallback_reason.clone()),
+    );
+    QueryWrapperSearchStageTraceProjection {
+        source,
+        status,
+        candidate_count: receipt.returned_count,
+        skipped_count: receipt
+            .candidate_count
+            .saturating_sub(receipt.returned_count),
+        input_count: receipt.candidate_count,
+        fields,
+    }
+}
+
+fn query_wrapper_search_stage_status(receipt: &SearchStageReceipt) -> String {
+    if receipt.fallback_reason != "none" {
+        receipt.fallback_reason.clone()
+    } else if receipt.returned_count == 0 {
+        "empty".to_string()
+    } else {
+        "used".to_string()
+    }
+}
+
 /// Query-wrapper candidates plus route receipt data.
 pub struct QueryWrapperCandidateCollection {
     pub candidates: Vec<QueryWrapperCandidate>,
     pub trace_fields: BTreeMap<String, Value>,
     pub source_index_trace: Option<QueryWrapperSearchSourceIndexTrace>,
+    pub search_stage_receipts: Vec<SearchStageReceipt>,
+    pub search_stage_trace_projections: Vec<QueryWrapperSearchStageTraceProjection>,
     pub finder_skipped_after_source_index: bool,
     pub candidate_sources: Vec<String>,
 }
@@ -587,6 +704,8 @@ pub fn collect_query_wrapper_candidate_collection(
                 candidates: Vec::new(),
                 trace_fields: collection.provenance.trace_fields(0),
                 source_index_trace: None,
+                search_stage_receipts: Vec::new(),
+                search_stage_trace_projections: Vec::new(),
                 finder_skipped_after_source_index: false,
                 candidate_sources: vec!["finder".to_string()],
             });
@@ -624,6 +743,8 @@ pub fn collect_query_wrapper_candidate_collection(
                 candidates,
                 trace_fields,
                 source_index_trace: None,
+                search_stage_receipts: Vec::new(),
+                search_stage_trace_projections: Vec::new(),
                 finder_skipped_after_source_index: false,
                 candidate_sources: vec!["finder".to_string()],
             });
@@ -673,6 +794,8 @@ pub fn collect_query_wrapper_candidate_collection(
         candidates,
         trace_fields,
         source_index_trace: None,
+        search_stage_receipts: Vec::new(),
+        search_stage_trace_projections: Vec::new(),
         finder_skipped_after_source_index: false,
         candidate_sources: vec!["finder".to_string()],
     })
@@ -709,10 +832,15 @@ fn collect_ranked_search_query_candidates(
             .map(|candidate| candidate.source.clone()),
         6,
     );
+    let search_stage_trace_projections = vec![query_wrapper_search_stage_trace_projection(
+        &collection.stage_receipt,
+    )];
     Some(QueryWrapperCandidateCollection {
         candidates: collection.candidates,
         trace_fields,
         source_index_trace: None,
+        search_stage_receipts: vec![collection.stage_receipt],
+        search_stage_trace_projections,
         finder_skipped_after_source_index: false,
         candidate_sources,
     })
@@ -751,6 +879,8 @@ fn collect_source_index_query_candidates(
             candidate_count,
             elapsed: started_at.elapsed(),
         }),
+        search_stage_receipts: Vec::new(),
+        search_stage_trace_projections: Vec::new(),
         finder_skipped_after_source_index: true,
         candidate_sources: vec!["source-index".to_string()],
     }))

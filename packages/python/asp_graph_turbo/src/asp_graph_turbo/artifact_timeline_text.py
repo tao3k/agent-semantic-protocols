@@ -27,7 +27,7 @@ def _timeline_line_sections(report: dict[str, object]) -> tuple[tuple[str, ...],
         _topology_lines(report.get("topology")),
         _action_summary_lines(report.get("actionSummary")),
         _suppression_lines(report.get("primeSuppression")),
-        _promotion_lines(report.get("fzfPromotion")),
+        _promotion_lines(report.get("typedFrontierPromotion")),
         _collapse_lines(report.get("ownerCollapse")),
         _fanout_lines(report.get("fanoutPlanning")),
         _session_lines(report),
@@ -46,7 +46,7 @@ def _summary_lines(report: dict[str, object]) -> tuple[str, ...]:
         f"inferredSubagentStarts={report['inferredSubagentStarts']} "
         f"repeatSearches={report['repeatSearches']} "
         f"suppressiblePrimeSearches={report['suppressiblePrimeSearches']} "
-        f"promotableFzfSearches={report['promotableFzfSearches']} "
+        f"promotableTypedFrontierSearches={report['promotableTypedFrontierSearches']} "
         f"collapsibleOwnerSearches={report['collapsibleOwnerSearches']} "
         f"routableFanoutBursts={report['routableFanoutBursts']} "
         f"avoidableFanoutBranches={report['avoidableFanoutBranches']} "
@@ -262,7 +262,7 @@ def _promotion_lines(value: object) -> tuple[str, ...]:
     if not isinstance(value, dict):
         return ()
     return (
-        "[graph-turbo-fzf-promotion] "
+        "[graph-turbo-typed-frontier-promotion] "
         f"policy={value['policy']} promotable={value['promotableSearches']} "
         f"groups={value['candidateGroupCount']} actions={value['actionCount']} "
         f"replacement={value['replacement']}",
@@ -273,7 +273,7 @@ def _promotion_lines(value: object) -> tuple[str, ...]:
 def _fzf_action_line(action: dict[str, object]) -> str:
     root = f" root={action['projectRootArg']}" if action.get("projectRootArg") else ""
     return (
-        "[graph-turbo-fzf-action] "
+        "[graph-turbo-typed-frontier-action] "
         f"decision={action['decision']} "
         f"language={action['language']} query={action['query']} "
         f"repeat={action['repeatCount']}{root} "

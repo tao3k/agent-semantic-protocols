@@ -14,7 +14,7 @@ pub(crate) use agent_semantic_search::output_with_delegation_hint_lines;
 pub(crate) use agent_semantic_search::search_output_artifact_replay_safe;
 pub(crate) use artifact::{
     ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay,
-    load_syntax_query_rows_replay_open, render_query_packet_bytes,
+    load_syntax_query_rows_replay_session, render_query_packet_bytes,
 };
 #[cfg(test)]
 pub(crate) use artifact::{

@@ -19,7 +19,7 @@ use std::{
 };
 
 #[test]
-fn cache_source_index_refresh_builds_rust_sql_rows() {
+fn cache_source_index_refresh_builds_db_engine_rows() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");

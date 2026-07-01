@@ -404,6 +404,7 @@ fn query_anchor_candidates(
             line: source_candidate.line,
             end_line: source_candidate.end_line,
             symbol: term.raw.clone(),
+            selector: None,
             text: source_candidate.text.clone(),
             source: "query-anchor".to_string(),
             confidence: "query-anchor".to_string(),

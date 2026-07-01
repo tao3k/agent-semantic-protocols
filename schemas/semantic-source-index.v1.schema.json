@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-source-index.v1.schema.json",
   "title": "Semantic Source Index",
-  "description": "Rust-owned SQL source index packet for workspace source discovery, owner identity, selector ranges, query acceleration, cache state, and optional gtags seed import.",
+  "description": "DB Engine-owned source index packet for workspace source discovery, owner identity, selector ranges, query acceleration, cache state, and optional gtags seed import.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -28,7 +28,7 @@
       "const": "1"
     },
     "indexOwner": {
-      "const": "rust-sql"
+      "const": "db-engine"
     },
     "projectRoot": {
       "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
@@ -280,7 +280,7 @@
         },
         "source": {
           "enum": [
-            "rust-sql",
+            "db-engine",
             "provider-fact",
             "gtags",
             "tree-sitter",

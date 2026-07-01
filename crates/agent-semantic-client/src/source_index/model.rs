@@ -1,4 +1,4 @@
-//! Public data model for Rust SQL source-index refresh and lookup receipts.
+//! Public data model for DB Engine source-index refresh and lookup receipts.
 
 pub use agent_semantic_client_db::{
     ClientDbSourceIndexCandidate as SourceIndexCandidate,
