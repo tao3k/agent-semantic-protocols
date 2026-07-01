@@ -662,7 +662,7 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
         "sourceTrace=sourceIndex:used",
         "finder:skipped",
         "ownerCoverage=bestOwner=src/lib.rs",
-        "nextCommand=asp rust query --selector src/lib.rs:1:1 --workspace . --code",
+        "nextCommand=asp rust query --selector src/lib.rs:1:2 --workspace . --code",
     ] {
         assert!(
             stdout.contains(expected),
