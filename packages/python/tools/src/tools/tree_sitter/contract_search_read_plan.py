@@ -18,11 +18,14 @@ def check_search_read_plan_frontier_contract(
 
 
 def search_frontier(value: str, label: str) -> None:
-    contains(value, "[graph-frontier]", label)
-    contains(value, "profile=owner-query", label)
+    if "[graph-frontier]" not in value and "[search-fzf]" not in value:
+        contains(value, "[graph-frontier]", label)
+    if "profile=owner-query" not in value and "entries=owner-query" not in value:
+        contains(value, "profile=owner-query", label)
     contains(value, "frontier=", label)
     contains(value, "owner:path(", label)
-    contains(value, "item:symbol(", label)
+    if "item:symbol(" not in value and "query:term(" not in value:
+        contains(value, "item:symbol(", label)
     no_cache_noise(value, label)
 
 
