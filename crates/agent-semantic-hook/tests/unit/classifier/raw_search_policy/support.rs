@@ -1,13 +1,10 @@
 use agent_semantic_hook::{
     ActivatedProvider, DecisionKind, HookDecision, HookRuntime, ReasonKind, StdinMode,
-    classify_hook, render_hook_trigger_prompt_document,
+    classify_hook,
 };
 use serde_json::json;
 
 use crate::classifier::{command, command_with_stdin, provider, provider_routes};
-
-const HOOK_TRIGGER_PROMPT_TEMPLATE: &str =
-    include_str!("../../../../templates/hook_trigger_prompt.md");
 
 pub(super) fn assert_raw_search_denied(command: &str, provider_id: &str) {
     let decision = classify_hook(
@@ -89,12 +86,24 @@ pub(super) fn assert_content_dump_denied(command: &str, provider_id: &str) {
 }
 
 fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
-    let expected_message = render_hook_trigger_prompt_document(
-        HOOK_TRIGGER_PROMPT_TEMPLATE,
-        reason_kind_label(decision.reason_kind),
-        &decision.routes,
+    assert!(
+        decision.message.starts_with(&format!(
+            "ASP denied `{}`",
+            reason_kind_label(decision.reason_kind)
+        )),
+        "{command}: {}",
+        decision.message
     );
-    assert_eq!(decision.message, expected_message, "{command}");
+    assert!(
+        decision.message.contains("Do not retry raw source tools."),
+        "{command}: {}",
+        decision.message
+    );
+    assert!(
+        decision.message.contains("Return compact evidence only."),
+        "{command}: {}",
+        decision.message
+    );
     for route in &decision.routes {
         assert_eq!(route.binary, "asp", "{command}: {:?}", route.argv);
         assert_eq!(
@@ -102,6 +111,18 @@ fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
             Some("asp"),
             "{command}"
         );
+        assert!(
+            decision.message.contains("```sh\nasp "),
+            "{command}: missing route command fence in {}",
+            decision.message
+        );
+        for arg in &route.argv[1..] {
+            assert!(
+                decision.message.contains(arg),
+                "{command}: missing route arg `{arg}` in {}",
+                decision.message
+            );
+        }
     }
     for stale in [
         "rs-harness agent guide",

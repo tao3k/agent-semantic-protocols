@@ -127,49 +127,6 @@ pub fn project_agent_config_path(project_root: &Path) -> PathBuf {
     project_root.join(".agents").join("asp.toml")
 }
 
-fn legacy_project_agent_config_path(project_root: &Path) -> PathBuf {
-    project_root.join("asp.toml")
-}
-
-pub fn migrate_legacy_project_agent_config(project_root: &Path) -> Result<Option<PathBuf>, String> {
-    let legacy_path = legacy_project_agent_config_path(project_root);
-    if !legacy_path.is_file() {
-        return Ok(None);
-    }
-
-    let config_path = project_agent_config_path(project_root);
-    if config_path.is_file() {
-        let legacy_contents = fs::read_to_string(&legacy_path)
-            .map_err(|error| format!("failed to read {}: {error}", legacy_path.display()))?;
-        let config_contents = fs::read_to_string(&config_path)
-            .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
-        if legacy_contents == config_contents {
-            fs::remove_file(&legacy_path)
-                .map_err(|error| format!("failed to remove {}: {error}", legacy_path.display()))?;
-            return Ok(Some(config_path));
-        }
-        return Err(format!(
-            "cannot migrate legacy provider config {}; {} already exists with different contents. Merge the files into {} and remove the top-level asp.toml.",
-            legacy_path.display(),
-            config_path.display(),
-            config_path.display()
-        ));
-    }
-
-    if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::rename(&legacy_path, &config_path).map_err(|error| {
-        format!(
-            "failed to migrate {} to {}: {error}",
-            legacy_path.display(),
-            config_path.display()
-        )
-    })?;
-    Ok(Some(config_path))
-}
-
 fn activate_provider(
     manifest: &ProviderManifest,
     provider_command_prefix: Vec<String>,

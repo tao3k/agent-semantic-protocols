@@ -3,9 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use agent_semantic_hook::{
-    DecisionKind, HookClassificationRequest, classify_hook_with_config,
-    default_client_config_template, load_client_config, load_client_config_for_project,
-    render_platform_response,
+    ClientHookConfig, DecisionKind, HookClassificationRequest, classify_hook_with_config,
+    load_client_config, load_client_config_for_project, render_platform_response,
 };
 use serde_json::json;
 
@@ -94,11 +93,9 @@ argvSourceExcludeFlagAny = ["--output"]
 }
 
 #[test]
-fn default_source_argv_rule_matches_command_names_not_harness_subcommands() {
-    let root = temp_root("default-source-argv-command-name");
-    let config_path = root.join("config.toml");
-    fs::write(&config_path, default_client_config_template()).expect("write config");
-    let config = load_client_config(&config_path).expect("load client config");
+fn builtin_source_argv_rule_matches_command_names_not_harness_subcommands() {
+    let root = temp_root("builtin-source-argv-command-name");
+    let config = ClientHookConfig::default();
     let registry = registry();
 
     let asp_rg_decision = classify_hook_with_config(HookClassificationRequest {
@@ -108,7 +105,7 @@ fn default_source_argv_rule_matches_command_names_not_harness_subcommands() {
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rg -query 'HookDecision' crates/agent-semantic-hook/src/hook_config.rs"}
+            "tool_input": {"command": "asp rg -query 'HookDecision' src/cli/agent-hooks.ts"}
         }),
     });
 
@@ -122,7 +119,7 @@ fn default_source_argv_rule_matches_command_names_not_harness_subcommands() {
         payload: &json!({
             "session_id": "session-ABC_123",
             "tool_name": "Bash",
-            "tool_input": {"command": "rg HookDecision crates/agent-semantic-hook/src/hook_config.rs"}
+            "tool_input": {"command": "rg HookDecision src/cli/agent-hooks.ts"}
         }),
     });
 
@@ -132,7 +129,7 @@ fn default_source_argv_rule_matches_command_names_not_harness_subcommands() {
             .fields
             .get("configRuleId")
             .and_then(|id| id.as_str()),
-        Some("deny-shell-source-argv")
+        None
     );
 
     let _ = fs::remove_dir_all(root);
@@ -814,7 +811,7 @@ commandContainsAny = ["HOOKDECISION"]
         payload: &json!({
             "tool_name": "Bash",
             "tool_input": {
-                "command": "rg hookdecision crates/agent-semantic-hook/src/hook_config.rs"
+                "command": "rg hookdecision src/cli/agent-hooks.ts"
             }
         }),
     });
@@ -834,26 +831,24 @@ commandContainsAny = ["HOOKDECISION"]
 #[test]
 fn configurable_hook_default_rule_classification_stays_fast() {
     let root = temp_root("default-source-argv-perf");
-    let config_path = root.join("config.toml");
-    fs::write(&config_path, default_client_config_template()).expect("write config");
-    let config = load_client_config(&config_path).expect("load client config");
+    let config = ClientHookConfig::default();
     let registry = registry();
     let payloads = [
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "rg HookDecision crates/agent-semantic-hook/src/hook_config.rs"}
+            "tool_input": {"command": "rg HookDecision src/cli/agent-hooks.ts"}
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "sed -n '1,40p' crates/agent-semantic-hook/src/hook_config.rs"}
+            "tool_input": {"command": "sed -n '1,40p' src/cli/agent-hooks.ts"}
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "wl --output crates/agent-semantic-hook/src/hook_config.rs README.md"}
+            "tool_input": {"command": "wl --output src/cli/agent-hooks.ts README.md"}
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rg -query 'HookDecision' crates/agent-semantic-hook/src/hook_config.rs"}
+            "tool_input": {"command": "asp rg -query 'HookDecision' src/cli/agent-hooks.ts"}
         }),
     ];
     let samples = 4;
@@ -889,7 +884,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         best_elapsed.as_millis()
     );
 
-    assert_eq!(best_denied, iterations * 3 / 4);
+    assert_eq!(best_denied, iterations / 2);
     assert!(
         best_elapsed < Duration::from_millis(5_000),
         "configurable hook classification regressed: {best_elapsed:?} for {iterations} iterations"

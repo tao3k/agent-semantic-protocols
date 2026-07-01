@@ -48,8 +48,8 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
     );
     assert!(reason.contains("Return compact evidence only."), "{reason}");
     assert!(!reason.contains("call `send_input`"), "{reason}");
-    assert!(!reason.contains("spawn_agent"), "{reason}");
-    assert!(!reason.contains("agent_type"), "{reason}");
+    assert!(reason.contains("spawn_agent"), "{reason}");
+    assert!(reason.contains("agent_type=\"asp_explorer\""), "{reason}");
     assert!(
         !reason.contains("fall back to `agent_type=\"explorer\"`"),
         "{reason}"
@@ -382,8 +382,8 @@ enabled = false
     );
     assert!(reason.contains("Return compact evidence only."), "{reason}");
     assert!(!reason.contains("call `send_input`"), "{reason}");
-    assert!(!reason.contains("spawn_agent"), "{reason}");
-    assert!(!reason.contains("agent_type"), "{reason}");
+    assert!(reason.contains("spawn_agent"), "{reason}");
+    assert!(reason.contains("agent_type=\"asp_explorer\""), "{reason}");
     assert!(
         !reason.contains("fall back to `agent_type=\"explorer\"`"),
         "{reason}"

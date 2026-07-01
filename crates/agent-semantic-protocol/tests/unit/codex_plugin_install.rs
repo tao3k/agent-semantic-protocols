@@ -50,7 +50,7 @@ mod unix {
         assert!(content.contains("source = \".\""), "{content}");
         assert!(!content.contains("last_updated ="), "{content}");
         assert!(!content.contains(&root.display().to_string()), "{content}");
-        assert!(content.contains("[agents.asp_explorer]"), "{content}");
+        assert!(!content.contains("[agents.asp_explorer]"), "{content}");
         assert!(
             !content.contains(agent_semantic_hook::ROOT_BLOCK_BEGIN),
             "{content}"
@@ -61,6 +61,10 @@ mod unix {
         let user_config =
             std::fs::read_to_string(codex_home.join("config.toml")).expect("read user config");
         assert!(user_config.contains("[projects."), "{user_config}");
+        assert!(
+            user_config.contains("[agents.asp_explorer]"),
+            "{user_config}"
+        );
         assert!(!user_config.contains("[hooks.state."), "{user_config}");
 
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
@@ -71,8 +75,11 @@ mod unix {
         let root = temp_project_root("codex-plugin-unified-install");
         let codex_home = root.join(".codex-home");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
-        std::fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
-            .expect("write legacy asp.toml");
+        let agent_config_path = root.join(".agents").join("asp.toml");
+        std::fs::create_dir_all(agent_config_path.parent().expect("agent config parent"))
+            .expect("create agent config parent");
+        std::fs::write(&agent_config_path, "[providers.org]\nenabled = false\n")
+            .expect("write canonical agent config");
         write_stale_plugin_skill_contract(&root);
         write_stale_project_plugin_cache(&root);
 
@@ -240,7 +247,7 @@ mod unix {
         );
         assert!(
             !root.join("asp.toml").exists(),
-            "legacy top-level asp.toml should be migrated away"
+            "install must not write top-level asp.toml"
         );
         let agent_config_path = root.join(".agents").join("asp.toml");
         assert!(

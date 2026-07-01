@@ -72,7 +72,7 @@ pub use protocol_activation::{
 };
 pub use provider_manifest::{
     ProviderCommandSelection, build_default_activation, builtin_provider_manifests,
-    migrate_legacy_project_agent_config, project_agent_config_path, provider_command_selections,
+    project_agent_config_path, provider_command_selections,
 };
 pub use runtime_profile::{
     RUNTIME_PROFILES_PROTOCOL_ID, RUNTIME_PROFILES_PROTOCOL_VERSION, RUNTIME_PROFILES_SCHEMA_ID,

@@ -271,7 +271,7 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
             .providers
             .iter()
             .any(|provider| provider.language_id == "org"),
-        "build_default_activation must ignore legacy top-level asp.toml; sync/install owns migration"
+        "build_default_activation must ignore top-level asp.toml; .agents/asp.toml is the only project provider config"
     );
 
     fs::remove_dir_all(root).expect("remove temp root");

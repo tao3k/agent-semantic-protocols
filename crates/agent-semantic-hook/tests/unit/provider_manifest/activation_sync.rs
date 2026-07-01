@@ -51,46 +51,6 @@ fn generated_activation_sync_refreshes_newly_available_parent_workspace_provider
 }
 
 #[test]
-fn generated_activation_sync_migrates_legacy_top_level_asp_toml() {
-    let root = temp_root("legacy-top-level-migration");
-    fs::create_dir_all(root.join(".bin")).expect("create bin dir");
-    let asp_bin = root.join(".bin/asp");
-    fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
-    make_executable(&asp_bin);
-    let activation_path = default_activation_path(&root);
-    let activation = build_default_activation(&root).expect("build activation");
-    assert!(
-        activation
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == "org")
-    );
-    write_activation(&activation_path, &activation).expect("write old activation");
-    fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
-        .expect("write legacy asp.toml");
-
-    let runtime = load_or_sync_activation(&activation_path, &root).expect("sync activation");
-
-    assert!(
-        !runtime
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == "org"),
-        "sync should migrate legacy top-level asp.toml before provider selection"
-    );
-    assert!(
-        !root.join("asp.toml").exists(),
-        "legacy top-level asp.toml should be removed during migration"
-    );
-    assert!(
-        root.join(".agents").join("asp.toml").is_file(),
-        "canonical .agents/asp.toml should receive migrated provider config"
-    );
-
-    fs::remove_dir_all(root).expect("remove temp root");
-}
-
-#[test]
 fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     let root = temp_root("stale-coverage-defaults");
     fs::create_dir_all(root.join(".bin")).expect("create bin dir");

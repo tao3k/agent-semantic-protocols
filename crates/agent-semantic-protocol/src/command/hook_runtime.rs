@@ -719,10 +719,15 @@ fn ensure_supported_client(client: &str) -> Result<(), String> {
 }
 
 fn display_path(project_root: &Path, path: &Path) -> String {
-    path.strip_prefix(project_root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
+    if let Ok(relative) = path.strip_prefix(project_root) {
+        return relative.to_string_lossy().replace('\\', "/");
+    }
+    if let (Ok(root), Ok(path)) = (fs::canonicalize(project_root), fs::canonicalize(path))
+        && let Ok(relative) = path.strip_prefix(root)
+    {
+        return relative.to_string_lossy().replace('\\', "/");
+    }
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {

@@ -2,8 +2,8 @@
 
 use crate::protocol_activation::{HookActivation, HookRuntime, parse_activation};
 use crate::provider_manifest::{
-    ProviderCommandSelection, build_default_activation, migrate_legacy_project_agent_config,
-    provider_command_selections, provider_manifests,
+    ProviderCommandSelection, build_default_activation, provider_command_selections,
+    provider_manifests,
 };
 use agent_semantic_runtime::{
     discover_project_activation_path, is_project_activation_path, project_activation_path,
@@ -52,7 +52,6 @@ pub fn load_or_refresh_default_activation(
     activation_path: &Path,
     project_root: &Path,
 ) -> Result<DefaultActivationSync, String> {
-    migrate_legacy_project_agent_config(project_root)?;
     let current_selections = provider_command_selections(project_root)?;
     if let Some(activation) =
         reusable_activation(activation_path, project_root, &current_selections)?
