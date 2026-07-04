@@ -1,0 +1,14 @@
+id = "asp-search-owner-source-index-trace-hit-cold-functional-path"
+title = "ASP search owner reports SourceIndex hit before path-only fallback"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-SOURCE-INDEX-HIT-COLD-001",
+]
+agent_goal = "When asp rust search owner <path> items has a source-index hit, it must surface source=source-index and the indexed owner path instead of falling back to path-only owner-not-found output."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp rust search owner crates/agent-semantic-hook/build.rs items --workspace . --view seeds",
+  "sourceIndex status=hit",
+  "source=source-index",
+]
+inputs = "inputs"
+expected = "expected"

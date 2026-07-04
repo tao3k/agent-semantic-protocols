@@ -1,6 +1,5 @@
 use agent_semantic_hook::{
-    HookActivation, build_default_activation, default_activation_path, load_or_sync_activation,
-    write_activation,
+    HookActivation, build_default_activation, load_or_sync_activation, write_activation,
 };
 use std::fs;
 
@@ -20,7 +19,7 @@ fn generated_activation_sync_refreshes_newly_available_parent_workspace_provider
     let asp_bin = root.join(".bin/asp");
     fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
     make_executable(&asp_bin);
-    let activation_path = default_activation_path(&child);
+    let activation_path = test_activation_path(&child, &root);
     let initial_activation = build_default_activation(&child).expect("build initial activation");
     assert!(
         !initial_activation
@@ -63,7 +62,7 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     fs::write(&rs_harness, "#!/bin/sh\nexit 0\n").expect("write rust provider bin");
     make_executable(&rs_harness);
 
-    let activation_path = default_activation_path(&root);
+    let activation_path = test_activation_path(&root, &root);
     let mut activation = build_default_activation(&root).expect("build activation");
     let rust_provider = activation
         .providers
@@ -111,6 +110,33 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
+}
+
+fn test_activation_path(
+    project_root: &std::path::Path,
+    state_root: &std::path::Path,
+) -> std::path::PathBuf {
+    let resolved = agent_semantic_runtime::state_core::ResolvedState::resolve_with_state_home(
+        project_root,
+        state_root.join(".agent-semantic-protocols"),
+    )
+    .expect("resolve test state");
+    std::fs::create_dir_all(&resolved.paths.workspace_dir).expect("create workspace state dir");
+    std::fs::write(
+        &resolved.paths.workspace_json,
+        serde_json::to_string(&serde_json::json!({
+            "root": project_root.display().to_string()
+        }))
+        .expect("serialize workspace manifest"),
+    )
+    .expect("write workspace manifest");
+    resolved
+        .paths
+        .workspace_dir
+        .join("live")
+        .join("hooks")
+        .join("state")
+        .join("activation.json")
 }
 
 fn write_agent_config(root: &std::path::Path, contents: &str) {

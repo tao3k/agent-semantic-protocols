@@ -1,4 +1,4 @@
-@.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org
+@/Users/guangtao/.agent-semantic-protocols/org/templates/ASP_ORG_SKILL.org
 
 # Project Workflow
 

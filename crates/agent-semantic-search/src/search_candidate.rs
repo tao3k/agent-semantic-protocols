@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-#[cfg(feature = "turso-overlay")]
+use crate::dynamic_overlay::SEARCH_OVERLAY_ROUTE_SOURCE;
 use crate::structural_index_search::TursoStructuralIndexSearchHit;
 use crate::{LexicalOverlaySearchHit, SourceIndexRankCandidate};
 
@@ -100,16 +100,16 @@ pub fn source_index_candidate_to_search_candidate(
     }
 }
 
-/// Project an overlay hit into the shared search candidate shape.
+/// Project a search-overlay hit into the shared search candidate shape.
 #[must_use]
 pub fn lexical_overlay_hit_to_search_candidate(
     hit: &LexicalOverlaySearchHit,
     overlay_namespace: impl Into<String>,
 ) -> SearchCandidate {
     SearchCandidate {
-        route_source: "dynamic-overlay".to_string(),
+        route_source: SEARCH_OVERLAY_ROUTE_SOURCE.to_string(),
         fallback_reason: "none".to_string(),
-        candidate_id: format!("overlay:{}", hit.selector()),
+        candidate_id: format!("{}:{}", SEARCH_OVERLAY_ROUTE_SOURCE, hit.selector()),
         identity_kind: "selector".to_string(),
         selector: Some(hit.selector().to_string()),
         owner_path: Some(hit.owner_path().to_string()),
@@ -129,15 +129,14 @@ pub fn lexical_overlay_hit_to_search_candidate(
             },
         ],
         rank_features: vec![RankFeature {
-            name: "lexical-overlay-score".to_string(),
+            name: "search-overlay-score".to_string(),
             value: hit.score(),
         }],
-        proof_source: "agent-semantic-search/lexical-overlay".to_string(),
+        proof_source: "agent-semantic-search/search-overlay".to_string(),
     }
 }
 
 /// Project a Turso structural-index hit into the shared search candidate shape.
-#[cfg(feature = "turso-overlay")]
 #[must_use]
 pub fn structural_index_hit_to_search_candidate(
     hit: &TursoStructuralIndexSearchHit,
@@ -254,7 +253,7 @@ fn compare_ranked_search_candidates(
 fn search_candidate_route_priority(route_source: &str) -> usize {
     match route_source {
         "receipt-anchor" => 0,
-        "dynamic-overlay" => 1,
+        SEARCH_OVERLAY_ROUTE_SOURCE => 1,
         "provider-delta" => 2,
         "turso-fts" => 3,
         "source-index" => 4,
@@ -293,7 +292,6 @@ fn source_index_candidate_matches_term(candidate: &SourceIndexRankCandidate, ter
                 .any(|key| key.contains(normalized_term.as_str())))
 }
 
-#[cfg(feature = "turso-overlay")]
 fn structural_index_hit_matches_term(hit: &TursoStructuralIndexSearchHit, term: &str) -> bool {
     let normalized_term = term.to_ascii_lowercase();
     !normalized_term.is_empty()
@@ -308,7 +306,6 @@ fn structural_index_hit_matches_term(hit: &TursoStructuralIndexSearchHit, term: 
             }))
 }
 
-#[cfg(feature = "turso-overlay")]
 fn structural_index_generation(document_id: &str) -> Option<String> {
     let mut parts = document_id.splitn(3, ':');
     match (parts.next(), parts.next()) {

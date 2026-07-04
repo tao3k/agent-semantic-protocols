@@ -1,14 +1,10 @@
-#[cfg(feature = "turso-backend")]
 use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_core::{
     CacheArtifactId, CacheGenerationId, CacheStatus, ClientCacheGeneration, ClientCacheManifest,
     ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot,
     SemanticSchemaId, project_client_cache_manifest_path,
 };
-use agent_semantic_client_db::ClientDb;
-#[cfg(feature = "turso-backend")]
 use agent_semantic_client_db::ClientDbEngine;
-#[cfg(feature = "turso-backend")]
 use agent_semantic_runtime::runtime_block_on_current_thread;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -18,7 +14,6 @@ use crate::cache_cli::writeback::{
     maybe_write_search_output_artifact, search_output_file_hashes,
     write_search_packet_cache_after_provider_success,
 };
-#[cfg(feature = "turso-backend")]
 use crate::test_support::EnvVarGuard;
 use crate::test_support::v2_cache_root;
 
@@ -111,7 +106,6 @@ fn search_packet_writeback_replays_rendered_stdout_artifact() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("search-packet-writeback");
-    #[cfg(feature = "turso-backend")]
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join("state-home"));
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -162,8 +156,7 @@ rank=O frontier=O.owner\n";
     let replay = probe.replay.expect("search output replay");
 
     assert_eq!(replay.stdout, rendered_stdout.as_bytes());
-    assert_eq!(probe.sqlite_write_count, 2);
-    #[cfg(feature = "turso-backend")]
+    assert_eq!(probe.db_write_count, 2);
     {
         let state = ResolvedState::resolve(&root).expect("resolve state for Turso receipt");
         let engine = ClientDbEngine::from_resolved_state(&state);
@@ -254,7 +247,7 @@ rank=D frontier=D.dependency\n";
     let replay = probe.replay.expect("dependency search output replay");
 
     assert_eq!(replay.stdout, rendered_stdout.as_bytes());
-    assert_eq!(probe.sqlite_write_count, 2);
+    assert_eq!(probe.db_write_count, 2);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -427,9 +420,8 @@ fn invalid_retired_manifest_is_discarded_and_rebuilt_on_writeback() {
     .expect("writeback probe");
     let replay = probe.replay.expect("dependency search output replay");
     let manifest = ClientCacheManifest::load_from_path(&manifest_path).expect("rebuilt manifest");
-    let db_report = ClientDb::inspect(ClientDb::default_path(
-        manifest_path.parent().expect("manifest parent"),
-    ));
+    let db_report =
+        ClientDbEngine::inspect_client_dir(manifest_path.parent().expect("manifest parent"));
 
     assert_eq!(replay.stdout, rendered_stdout.as_bytes());
     assert_eq!(manifest.generations.len(), 1);
@@ -499,6 +491,6 @@ fn dependency_search_packet_writeback_replays_rendered_stdout_artifact_for(view:
     let replay = probe.replay.expect("dependency search output replay");
 
     assert_eq!(replay.stdout, rendered_stdout.as_bytes());
-    assert_eq!(probe.sqlite_write_count, 2);
+    assert_eq!(probe.db_write_count, 2);
     let _ = std::fs::remove_dir_all(root);
 }

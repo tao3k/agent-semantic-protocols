@@ -6,19 +6,17 @@ description = "Turso-backed DB Engine for the agent semantic client cache."
 license = "MIT"
 
 [dependencies]
+agent-semantic-artifacts.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
-rusqlite = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-turso = { workspace = true, optional = true }
-
-[features]
-default = ["turso-backend"]
-turso-backend = ["dep:turso"]
+fs2 = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+turso = { workspace = true }
 
 [[bench]]
-name = "sqlite_cache_hot_path"
+name = "turso_cache_hot_path"
 harness = false
 
 [build-dependencies]

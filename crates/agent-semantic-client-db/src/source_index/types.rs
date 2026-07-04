@@ -178,6 +178,7 @@ pub struct ClientDbSourceIndexScopeFile {
 pub enum ClientDbSourceIndexLookupState {
     MissingDb,
     EmptyIndex,
+    Busy,
     Hit,
     Miss,
 }
@@ -188,6 +189,7 @@ impl ClientDbSourceIndexLookupState {
         match self {
             Self::MissingDb => "missing-db",
             Self::EmptyIndex => "empty-index",
+            Self::Busy => "busy",
             Self::Hit => "hit",
             Self::Miss => "miss",
         }

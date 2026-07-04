@@ -23,15 +23,13 @@ pub(super) fn install_agent_semantic_protocols_skill(
     runtime_profiles: &RuntimeProfiles,
 ) -> Result<InstalledAgentSkillPaths, String> {
     let skill_path = default_agent_skill_path(project_root);
-    let org_state_skill_path = project_state_paths(project_root)?
+    let paths = project_state_paths(project_root)?;
+    let org_state_skill_path = paths
         .protocol_home
         .join("org")
         .join("templates")
         .join("ASP_ORG_SKILL.org");
-    let org_artifacts_path = project_state_paths(project_root)?
-        .protocol_home
-        .join("artifacts")
-        .join("org");
+    let org_artifacts_path = paths.artifacts_dir.join("org");
     let rendered_skill = render_agent_semantic_protocols_installed_skill(
         project_root,
         &org_state_skill_path,
@@ -40,7 +38,6 @@ pub(super) fn install_agent_semantic_protocols_skill(
         runtime_profiles,
     )?;
     write_agent_skill(&skill_path, &rendered_skill)?;
-    remove_skill_contract(&skill_path)?;
     Ok(InstalledAgentSkillPaths {
         skill_path: Some(skill_path),
         plugin_skill_path: None,
@@ -53,15 +50,13 @@ pub(super) fn install_agent_semantic_protocols_plugin_skill(
     runtime_profiles: &RuntimeProfiles,
 ) -> Result<InstalledAgentSkillPaths, String> {
     let plugin_skill_path = plugin_skill_path(project_root)?;
-    let org_state_skill_path = project_state_paths(project_root)?
+    let paths = project_state_paths(project_root)?;
+    let org_state_skill_path = paths
         .protocol_home
         .join("org")
         .join("templates")
         .join("ASP_ORG_SKILL.org");
-    let org_artifacts_path = project_state_paths(project_root)?
-        .protocol_home
-        .join("artifacts")
-        .join("org");
+    let org_artifacts_path = paths.artifacts_dir.join("org");
     let rendered_skill = render_agent_semantic_protocols_plugin_skill(
         project_root,
         &org_state_skill_path,
@@ -70,7 +65,6 @@ pub(super) fn install_agent_semantic_protocols_plugin_skill(
         runtime_profiles,
     )?;
     write_agent_skill(&plugin_skill_path, &rendered_skill)?;
-    remove_skill_contract(&plugin_skill_path)?;
     Ok(InstalledAgentSkillPaths {
         skill_path: None,
         plugin_skill_path: Some(plugin_skill_path),
@@ -131,46 +125,30 @@ fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String,
     let skills = skills
         .as_table_mut()
         .ok_or_else(|| "`skills` must be a TOML table".to_string())?;
-    let mut asp_skill = toml::Table::new();
+    let asp_skill = skills
+        .entry("agent-semantic-protocols".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let asp_skill = asp_skill
+        .as_table_mut()
+        .ok_or_else(|| "`skills.agent-semantic-protocols` must be a TOML table".to_string())?;
     asp_skill.insert(
         "pluginSkill".to_string(),
         toml::Value::String(codex_project_plugin_cache_skill_config_path()?),
     );
-    asp_skill.insert(
-        "aspOrg".to_string(),
-        toml::Value::String(
-            ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org".to_string(),
-        ),
-    );
-    asp_skill.insert(
-        "orgArtifacts".to_string(),
-        toml::Value::String(".cache/agent-semantic-protocol/artifacts/org".to_string()),
-    );
-    skills.insert(
-        "agent-semantic-protocols".to_string(),
-        toml::Value::Table(asp_skill),
-    );
-    let hook = root
-        .entry("hook".to_string())
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
-    let hook = hook
-        .as_table_mut()
-        .ok_or_else(|| "`hook` must be a TOML table".to_string())?;
-    let mut agent_org_artifacts = toml::Table::new();
-    agent_org_artifacts.insert("enabled".to_string(), toml::Value::Boolean(true));
-    agent_org_artifacts.insert("inactiveAfterMinutes".to_string(), toml::Value::Integer(30));
-    agent_org_artifacts.insert(
-        "artifactsPath".to_string(),
-        toml::Value::String(".cache/agent-semantic-protocol/artifacts/org".to_string()),
-    );
-    agent_org_artifacts.insert(
-        "entrySkillPath".to_string(),
-        toml::Value::String(
-            ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org".to_string(),
-        ),
-    );
-    hook.entry("agentOrgArtifacts".to_string())
-        .or_insert_with(|| toml::Value::Table(agent_org_artifacts));
+    asp_skill.remove("aspOrg");
+    asp_skill.remove("orgArtifacts");
+
+    let remove_empty_hook = root
+        .get_mut("hook")
+        .and_then(toml::Value::as_table_mut)
+        .map(|hook| {
+            hook.remove("agentOrgArtifacts");
+            hook.is_empty()
+        })
+        .unwrap_or(false);
+    if remove_empty_hook {
+        root.remove("hook");
+    }
     toml::to_string_pretty(&config).map_err(|error| error.to_string())
 }
 
@@ -191,16 +169,20 @@ fn write_agent_skill(skill_path: &Path, rendered_skill: &str) -> Result<(), Stri
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
+    remove_stale_skill_contract(skill_path)?;
     fs::write(skill_path, format!("{}\n", rendered_skill.trim_end()))
         .map_err(|error| format!("failed to write {}: {error}", skill_path.display()))?;
     Ok(())
 }
 
-fn remove_skill_contract(skill_path: &Path) -> Result<(), String> {
+fn remove_stale_skill_contract(skill_path: &Path) -> Result<(), String> {
     let contract_path = skill_path.with_file_name("SKILL.contract.org");
-    if contract_path.exists() {
-        fs::remove_file(&contract_path)
-            .map_err(|error| format!("failed to remove {}: {error}", contract_path.display()))?;
+    match fs::remove_file(&contract_path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "failed to remove stale {}: {error}",
+            contract_path.display()
+        )),
     }
-    Ok(())
 }

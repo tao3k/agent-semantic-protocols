@@ -1,6 +1,6 @@
 use agent_semantic_hook::{
-    ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block, merge_claude_settings,
-    merge_codex_asp_explorer_role_config, remove_codex_managed_hook_blocks,
+    ROOT_BLOCK_BEGIN, claude_hook_block, codex_hook_block, merge_claude_settings,
+    merge_codex_asp_explorer_role_config,
 };
 use std::path::Path;
 
@@ -22,31 +22,6 @@ fn codex_hook_matcher_omits_apply_patch_surfaces_by_default() {
     assert!(!block.contains("FsWriteFile"));
     assert!(!block.contains("functions\\\\.write"));
     assert!(!block.contains("matcher = \".*\""));
-}
-
-#[test]
-fn codex_plugin_cleanup_removes_managed_hook_blocks_without_dropping_config() {
-    let existing = format!(
-        r#"[features]
-model_context_protocol = true
-
-{ROOT_BLOCK_BEGIN}
-[[hooks.PreToolUse]]
-matcher = "Bash"
-{ROOT_BLOCK_END}
-
-[profiles.default]
-model = "gpt-5"
-"#
-    );
-
-    let cleaned = remove_codex_managed_hook_blocks(&existing);
-
-    assert!(!cleaned.contains(ROOT_BLOCK_BEGIN), "{cleaned}");
-    assert!(!cleaned.contains(ROOT_BLOCK_END), "{cleaned}");
-    assert!(cleaned.contains("model_context_protocol = true"));
-    assert!(cleaned.contains("[profiles.default]"));
-    assert!(cleaned.contains("model = \"gpt-5\""));
 }
 
 #[test]

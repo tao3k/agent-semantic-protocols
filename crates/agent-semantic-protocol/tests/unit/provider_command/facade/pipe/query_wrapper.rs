@@ -76,7 +76,7 @@ fn asp_fd_and_rg_query_help_are_public_query_set_surfaces() {
 }
 
 #[test]
-fn asp_rg_query_uses_source_index_before_native_finder() {
+fn asp_rg_query_uses_source_index_before_query_overlay() {
     let root = temp_project_root("asp-rg-query-wrapper-source-index");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -113,13 +113,16 @@ fn asp_rg_query_uses_source_index_before_native_finder() {
     assert!(stdout.starts_with("[search-rg]"), "{stdout}");
     assert!(stdout.contains("source=source-index"), "{stdout}");
     assert!(stdout.contains("sourceTrace=sourceIndex:used"), "{stdout}");
-    assert!(stdout.contains("finder:skipped"), "{stdout}");
+    assert!(stdout.contains("query-overlay:skipped"), "{stdout}");
     assert!(stdout.contains("packages=src/lib.rs"), "{stdout}");
     assert!(
         stdout.contains("nextCommand=asp fd -query source_index_fixture --workspace ."),
         "{stdout}"
     );
-    assert!(!stdout.contains("sourceTrace=finder:used"), "{stdout}");
+    assert!(
+        !stdout.contains("sourceTrace=query-overlay:used"),
+        "{stdout}"
+    );
     assert!(
         !marker.exists(),
         "source-index fast path should not spawn provider"
@@ -128,7 +131,7 @@ fn asp_rg_query_uses_source_index_before_native_finder() {
 }
 
 #[test]
-fn asp_fd_query_uses_source_index_before_native_finder() {
+fn asp_fd_query_uses_source_index_before_query_overlay() {
     let root = temp_project_root("asp-fd-query-wrapper-source-index");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -165,9 +168,12 @@ fn asp_fd_query_uses_source_index_before_native_finder() {
     assert!(stdout.starts_with("[search-fd]"), "{stdout}");
     assert!(stdout.contains("source=source-index"), "{stdout}");
     assert!(stdout.contains("sourceTrace=sourceIndex:used"), "{stdout}");
-    assert!(stdout.contains("finder:skipped"), "{stdout}");
+    assert!(stdout.contains("query-overlay:skipped"), "{stdout}");
     assert!(stdout.contains("src/lib.rs"), "{stdout}");
-    assert!(!stdout.contains("sourceTrace=finder:used"), "{stdout}");
+    assert!(
+        !stdout.contains("sourceTrace=query-overlay:used"),
+        "{stdout}"
+    );
     assert!(
         !marker.exists(),
         "source-index fast path should not spawn provider"
@@ -267,7 +273,7 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
     .expect("write package json");
     std::fs::write(
         root.join("src/effect.ts"),
-        "export const Fiber = {};\nexport const Queue = {};\nconst staleCache = 'refresh sqlite cache';\n",
+        "export const Fiber = {};\nexport const Queue = {};\nconst staleCache = 'refresh turso cache';\n",
     )
     .expect("write source");
     std::fs::write(
@@ -282,7 +288,7 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
             "-query",
             "Fiber|Queue",
             "-query",
-            "stale|refresh|sqlite|cache",
+            "stale|refresh|turso|cache",
             "--workspace",
             "src",
         ])
@@ -299,7 +305,7 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
     assert!(stdout.starts_with("[search-rg]"), "{stdout}");
     assert!(stdout.contains("querySet=6"), "{stdout}");
     assert!(
-        stdout.contains("query=Fiber|Queue + stale|refresh|sqlite|cache"),
+        stdout.contains("query=Fiber|Queue + stale|refresh|turso|cache"),
         "{stdout}"
     );
     assert!(
@@ -307,7 +313,7 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("queryClauses=C1='Fiber|Queue';C2='stale|refresh|sqlite|cache'"),
+        stdout.contains("queryClauses=C1='Fiber|Queue';C2='stale|refresh|turso|cache'"),
         "{stdout}"
     );
     assert!(stdout.contains("scopeQuality=high"), "{stdout}");
@@ -316,7 +322,7 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("clauseCoverage=C2 matched=stale,refresh,sqlite,cache missing=-"),
+        stdout.contains("clauseCoverage=C2 matched=stale,refresh,turso,cache missing=-"),
         "{stdout}"
     );
     assert!(
@@ -385,14 +391,17 @@ fn asp_fd_query_graph_request_carries_surface_and_query_terms() {
         payload["queryTerms"],
         serde_json::json!(["Fiber", "Runtime", "internal"])
     );
-    assert_eq!(payload["source"], "finder");
-    assert_eq!(payload["candidateSources"], serde_json::json!(["finder"]));
+    assert_eq!(payload["source"], "query-overlay");
+    assert_eq!(
+        payload["candidateSources"],
+        serde_json::json!(["query-overlay"])
+    );
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
     assert!(
         nodes.iter().any(|node| {
             node["kind"].as_str() == Some("item")
                 && node["path"].as_str() == Some("src/internal/FiberRuntime.ts")
-                && node["source"].as_str() == Some("fd-query")
+                && node["source"].as_str() == Some("query-overlay")
         }),
         "{payload}"
     );
@@ -400,7 +409,7 @@ fn asp_fd_query_graph_request_carries_surface_and_query_terms() {
 }
 
 #[test]
-fn asp_rg_query_graph_request_uses_native_content_finder_source() {
+fn asp_rg_query_graph_request_uses_query_overlay_source() {
     let root = temp_project_root("asp-rg-query-wrapper-graph-request");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
@@ -435,8 +444,11 @@ fn asp_rg_query_graph_request_uses_native_content_finder_source() {
         serde_json::from_slice(&output.stdout).expect("graph request json");
     assert_graph_turbo_request_contract(&payload);
     assert_eq!(payload["surface"], "search-rg");
-    assert_eq!(payload["source"], "finder");
-    assert_eq!(payload["candidateSources"], serde_json::json!(["finder"]));
+    assert_eq!(payload["source"], "query-overlay");
+    assert_eq!(
+        payload["candidateSources"],
+        serde_json::json!(["query-overlay"])
+    );
     let actions = payload["actionFrontier"]
         .as_array()
         .expect("actionFrontier");
@@ -458,7 +470,7 @@ fn asp_rg_query_graph_request_uses_native_content_finder_source() {
         nodes.iter().any(|node| {
             node["kind"].as_str() == Some("item")
                 && node["path"].as_str() == Some("src/runtime.ts")
-                && node["source"].as_str() == Some("rg-query")
+                && node["source"].as_str() == Some("query-overlay")
                 && node["symbol"].as_str() == Some("fiberruntime")
                 && node["matchText"]
                     .as_str()
@@ -527,7 +539,7 @@ fn asp_rg_query_prefers_runtime_bin_wrapper() {
     assert!(
         nodes.iter().any(|node| {
             node["kind"].as_str() == Some("item")
-                && node["source"].as_str() == Some("rg-query")
+                && node["source"].as_str() == Some("query-overlay")
                 && node["matchText"]
                     .as_str()
                     .is_some_and(|text| text.contains("WrappedRuntime"))
@@ -545,7 +557,10 @@ fn asp_rg_query_prefers_runtime_bin_wrapper() {
         String::from_utf8_lossy(&seeds_output.stderr)
     );
     let stdout = String::from_utf8(seeds_output.stdout).expect("stdout");
-    assert!(stdout.contains("sourceTrace=finder:used["), "{stdout}");
+    assert!(
+        stdout.contains("sourceTrace=query-overlay:used["),
+        "{stdout}"
+    );
     assert!(stdout.contains("backend=rg"), "{stdout}");
     assert!(stdout.contains("candidateBasis=source-lines"), "{stdout}");
     assert!(stdout.contains("inputCandidates=1"), "{stdout}");
@@ -621,7 +636,7 @@ fn asp_fd_query_uses_runtime_exa_when_fd_is_unavailable() {
         nodes.iter().any(|node| {
             node["kind"].as_str() == Some("item")
                 && node["path"].as_str() == Some("src/internal/FromExaRuntime.ts")
-                && node["source"].as_str() == Some("fd-query")
+                && node["source"].as_str() == Some("query-overlay")
         }),
         "{payload}"
     );

@@ -52,8 +52,9 @@ choosing tool-assisted search flows.  Future =asp.toml= support may add
 
 ** Search history audit is graph-turbo owned
 
-Recorded command artifacts under
-=.cache/agent-semantic-protocol/artifacts/prompt-output= are part of the ASP
+Recorded command artifacts under the State Core artifact root, reported by
+=asp paths --get artifactsDir= and grouped below =prompt-output= are part of the
+ASP
 feedback loop.  The agent should not guess whether a new wrapper is useful or
 whether =search prime= / reasoning quality is improving; it should inspect the
 recorded command cascade as graph-turbo timeline evidence.
@@ -72,24 +73,24 @@ asp search history audit .
 This is equivalent to:
 
 #+begin_src shell
-graph-turbo timeline .cache/agent-semantic-protocol/artifacts
+graph-turbo timeline "$(asp paths --get artifactsDir .)"
 #+end_src
 
 The boundary is intentionally explicit:
 
 - =graph-turbo= must be installed on =PATH=;
-- =asp search history audit [PROJECT_ROOT]= calls exactly
-  =graph-turbo timeline <PROJECT_ROOT>/.cache/agent-semantic-protocol/artifacts=;
+- =asp search history audit [PROJECT_ROOT]= resolves =artifactsDir= through
+  State Core and calls =graph-turbo timeline <ARTIFACTS_DIR>=;
 - no Python source-path probing, =python -m= fallback, or retired statistical
   audit implementation is allowed;
 - agents can call =graph-turbo timeline <ARTIFACT_DIR>= directly when they want
   artifact-level control.
 
-For speed, ASP's Rust SQLite client DB owns the durable artifact-event index.
+For speed, ASP's Rust Turso client DB owns the durable artifact-event index.
 Provider write-back inserts compact =artifact_event= rows next to cache
 generation rows, and =asp search history audit= may pass those rows to
 =graph-turbo timeline --events-json -=. =graph-turbo= must not open ASP's
-SQLite DB directly; the cross-language boundary is the schema-owned
+Turso DB directly; the cross-language boundary is the schema-owned
 =graph-turbo-artifact-events= packet. When no indexed rows exist for old
 history, directory scanning remains an artifact import path, not a second audit
 algorithm.

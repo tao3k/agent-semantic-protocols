@@ -138,7 +138,7 @@
       ],
       "properties": {
         "engine": {
-          "const": "sqlite"
+          "const": "turso"
         },
         "path": {
           "type": "string",

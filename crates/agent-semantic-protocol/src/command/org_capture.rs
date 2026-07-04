@@ -13,7 +13,6 @@ use std::{
 };
 
 const FLOW_DIRS: &[&str] = &["plans", "sdd", "bdd", "tdd", "bdr"];
-const ORG_ARTIFACTS_DIR: &str = "artifacts/org";
 const DEFAULT_ASP_ORG_REPO_URL: &str = "https://github.com/tao3k/org.git";
 const ASP_ORG_REPO_URL_ENV: &str = "ASP_ORG_REPO_URL";
 
@@ -64,16 +63,16 @@ fn run_contract_capture(args: &[String]) -> Result<(), String> {
 }
 
 pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, String> {
-    let state_root = project_state_paths(project_root)?.protocol_home.join("org");
+    let paths = project_state_paths(project_root)?;
+    let state_root = paths.protocol_home.join("org");
     let sync = sync_default_org_state(&state_root)?;
-    let artifacts_root = org_artifacts_root(&state_root)?;
+    let artifacts_root = paths.artifacts_dir.join("org");
     ensure_flow_dirs(&artifacts_root)?;
     Ok(sync)
 }
 
 pub(crate) fn org_artifacts_root_for_project(project_root: &Path) -> Result<PathBuf, String> {
-    let state_root = project_state_paths(project_root)?.protocol_home.join("org");
-    org_artifacts_root(&state_root)
+    Ok(project_state_paths(project_root)?.artifacts_dir.join("org"))
 }
 
 #[derive(Debug, Clone)]
@@ -141,16 +140,6 @@ fn ensure_org_repo_remote(state_root: &Path, repo_url: &str) -> Result<(), Strin
         run_git(&["remote", "set-url", "origin", repo_url], Some(state_root))?;
     }
     Ok(())
-}
-
-fn org_artifacts_root(state_root: &Path) -> Result<PathBuf, String> {
-    let protocol_home = state_root.parent().ok_or_else(|| {
-        format!(
-            "failed to compute ASP Org artifacts root for {}",
-            state_root.display()
-        )
-    })?;
-    Ok(protocol_home.join(ORG_ARTIFACTS_DIR))
 }
 
 fn ensure_org_repo_local_excludes(state_root: &Path) -> Result<(), String> {
@@ -290,7 +279,7 @@ fn required_flag_value<'a>(
 }
 
 fn capture_usage() -> &'static str {
-    "usage: asp org capture --contract CONTRACT_ID --title TITLE --target-file ORG_FILE [--choice KEY=VALUE] [--outline OUTLINE] [--kind KIND] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n\n`capture --contract CONTRACT_ID ...` renders a non-mutating Org entry and validates it against the ASP Org contract registry before returning org-entry. CONTRACT_ID must be explicit, such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.tdd.v1, agent.bdr.v1, agent.prd.v1, or agent.execplan.v1. The agent.task.v1 and agent.plan.v1 capture shapes are materialized from .cache/agent-semantic-protocol/org/templates/<CONTRACT_ID>.org unless the caller overrides kind, tags, properties, or body. When a contract declares `org-contract :type agent-interactive` with `method: choice` and `stage: pre-capture`, capture prints the compact choice window until the caller passes `--choice <id>=N|ID|?`; `<id>` comes from that Org block. ASP resolves CONTRACT_ID from .cache/agent-semantic-protocol/org/contracts/<CONTRACT_ID>.org, synchronizing the Org resource git remote and creating artifacts/org/flow/{plans,sdd,bdd,tdd,bdr} when needed."
+    "usage: asp org capture --contract CONTRACT_ID --title TITLE --target-file ORG_FILE [--choice KEY=VALUE] [--outline OUTLINE] [--kind KIND] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n\n`capture --contract CONTRACT_ID ...` renders a non-mutating Org entry and validates it against the ASP Org contract registry before returning org-entry. CONTRACT_ID must be explicit, such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.tdd.v1, agent.bdr.v1, agent.prd.v1, or agent.execplan.v1. The agent.task.v1 and agent.plan.v1 capture shapes are materialized from the Org resource root reported by `asp paths --get orgStateRoot` unless the caller overrides kind, tags, properties, or body. When a contract declares `org-contract :type agent-interactive` with `method: choice` and `stage: pre-capture`, capture prints the compact choice window until the caller passes `--choice <id>=N|ID|?`; `<id>` comes from that Org block. ASP resolves CONTRACT_ID from the Org resource root reported by `asp paths --get orgStateRoot`, synchronizing the Org resource git remote and creating `$(asp paths --get orgArtifacts)/flow/{plans,sdd,bdd,tdd,bdr}` when needed."
 }
 
 fn capture_contract_requested(args: &[String]) -> bool {

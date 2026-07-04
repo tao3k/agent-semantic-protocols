@@ -1,0 +1,16 @@
+id = "asp-turso-source-index-refresh-lookup-pressure"
+title = "Turso source-index refresh and lookup stay lock-safe under pressure"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-DB-ENGINE-TURSO-CONCURRENCY-003",
+  "RUST-AGENT-ASP-PERF-SOURCE-INDEX-LOOKUP-PRESSURE-001",
+]
+agent_goal = "Keep source-index lookup usable while another lane refreshes the same Turso client DB. Concurrent readers may observe hit, miss, or busy, but must not receive raw WAL lock failures or lose the final indexed owner."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "ClientDbEngine::refresh_source_index_import_from_client_dir",
+  "ClientDbEngine::lookup_source_index_read_model_from_client_dir",
+  "ClientDbSourceIndexLookupState::Busy",
+  "source_index_pressure_fixture",
+]
+inputs = "inputs"
+expected = "expected"

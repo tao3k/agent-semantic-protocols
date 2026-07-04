@@ -37,7 +37,7 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
         candidates
             .iter()
             .any(|candidate| candidate.path == "src/pipe_owner.rs"
-                && candidate.source == "overlay")
+                && candidate.source == "search-overlay")
     );
     assert!(candidates.iter().all(|candidate| {
         candidate.line == 1 && candidate.end_line == 1 && !candidate.path.contains(":1:1")
@@ -110,7 +110,7 @@ fn source_index_acquisition_defers_backend_for_path_like_miss() {
 }
 
 #[test]
-fn source_index_acquisition_projects_candidates_and_skips_finder() {
+fn source_index_acquisition_projects_candidates_and_skips_search_overlay() {
     let lookup = SearchPipeSourceIndexLookup {
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
@@ -133,7 +133,7 @@ fn source_index_acquisition_projects_candidates_and_skips_finder() {
 
     assert_eq!(
         acquisition.decision,
-        SearchPipeSourceIndexDecision::UseAndSkipFinder
+        SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay
     );
     assert_eq!(acquisition.candidates.len(), 1);
     let candidate = &acquisition.candidates[0];

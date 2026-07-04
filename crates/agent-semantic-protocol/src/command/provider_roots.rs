@@ -1,10 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_core::{
+    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, state_core::ResolvedState,
+};
 use agent_semantic_runtime::{
-    project_cache_home_for_roots, project_local_activation_path,
-    project_local_client_cache_manifest_path, project_root_for_activation_path,
+    project_activation_path, project_cache_home_for_roots, project_root_for_activation_path,
+    project_state_paths,
 };
 
 use agent_semantic_search::language_file_spec;
@@ -34,14 +36,16 @@ pub(super) fn effective_project_root_and_args(
     invocation_root: &Path,
     activation_root: &Path,
 ) -> Result<(PathBuf, Vec<String>), String> {
-    validate_code_flag_boundary(args)?;
+    validate_facade_view_args(args)?;
+    let args = args.to_vec();
+    validate_code_flag_boundary(&args)?;
     if let Some((workspace_root, normalized_args)) =
-        explicit_workspace_project_root(language_id, args, invocation_root)?
+        explicit_workspace_project_root(language_id, &args, invocation_root)?
     {
         return Ok((workspace_root, normalized_args));
     }
     if let Some((root, args)) =
-        explicit_positional_project_root(language_id, args, invocation_root, activation_root)?
+        explicit_positional_project_root(language_id, &args, invocation_root, activation_root)?
     {
         return Ok((root, args));
     }
@@ -50,16 +54,58 @@ pub(super) fn effective_project_root_and_args(
         && invocation_root.starts_with(activation_root)
         && invocation_root_is_provider_project(language_id, invocation_root)
     {
-        return Ok((invocation_root.to_path_buf(), args.to_vec()));
+        return Ok((invocation_root.to_path_buf(), args));
     }
 
-    if args.last().is_some_and(|arg| arg == ".")
+    if args.last().is_some_and(|arg| arg == ".") && trailing_dot_is_context_root_only(&args) {
+        let mut normalized_args = args;
+        normalized_args.pop();
+        let project_root = if invocation_root_is_provider_project(language_id, invocation_root) {
+            invocation_root
+        } else {
+            activation_root
+        };
+        Ok((project_root.to_path_buf(), normalized_args))
+    } else if args.last().is_some_and(|arg| arg == ".")
         && invocation_root_is_provider_project(language_id, invocation_root)
     {
-        Ok((invocation_root.to_path_buf(), args.to_vec()))
+        Ok((invocation_root.to_path_buf(), args))
     } else {
-        Ok((activation_root.to_path_buf(), args.to_vec()))
+        Ok((activation_root.to_path_buf(), args))
     }
+}
+
+fn trailing_dot_is_context_root_only(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some("ast-patch" | "guide")
+    )
+}
+
+fn validate_facade_view_args(args: &[String]) -> Result<(), String> {
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "--view" {
+            let Some(value) = args.get(index + 1) else {
+                return Err("--view requires a value".to_string());
+            };
+            if value.starts_with('-') {
+                return Err("--view requires a value".to_string());
+            }
+            index += 2;
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--view=") {
+            if value.is_empty() {
+                return Err("--view requires a value".to_string());
+            }
+            index += 1;
+            continue;
+        }
+        index += 1;
+    }
+    Ok(())
 }
 
 pub(super) fn validate_explicit_workspace_project_root(
@@ -130,6 +176,7 @@ fn validate_workspace_root(language_id: &str, root: &Path) -> Result<(), String>
         )
     })?;
     if metadata.is_dir() {
+        reject_asp_state_workspace_root(root)?;
         return Ok(());
     }
     if metadata.is_file() {
@@ -142,6 +189,41 @@ fn validate_workspace_root(language_id: &str, root: &Path) -> Result<(), String>
         "--workspace requires a directory project root, got non-directory `{}`",
         root.display()
     ))
+}
+
+fn reject_asp_state_workspace_root(root: &Path) -> Result<(), String> {
+    let Some(project_state_root) = asp_project_state_root_ancestor(root) else {
+        return Ok(());
+    };
+    if !project_state_root.join("project.json").is_file() {
+        return Err(format!(
+            "--workspace points inside malformed ASP project state root `{}`; expected `project.json` at `{}`. Use the real checkout workspace instead of `.agent-semantic-protocols/projects/by-id/...`.",
+            project_state_root.display(),
+            project_state_root.join("project.json").display()
+        ));
+    }
+    Err(format!(
+        "--workspace points inside ASP project state root `{}`. ASP state roots are not provider workspaces; use the real checkout workspace and let rollout/session registry map commands to repo/workspace artifacts.",
+        project_state_root.display()
+    ))
+}
+
+fn asp_project_state_root_ancestor(path: &Path) -> Option<PathBuf> {
+    path.ancestors().find_map(|ancestor| {
+        let repo_dir = ancestor.file_name()?.to_str()?;
+        if !repo_dir.starts_with("repo-") {
+            return None;
+        }
+        let by_id_dir = ancestor.parent()?.file_name()?.to_str()?;
+        if by_id_dir != "by-id" {
+            return None;
+        }
+        let projects_dir = ancestor.parent()?.parent()?.file_name()?.to_str()?;
+        if projects_dir != "projects" {
+            return None;
+        }
+        Some(ancestor.to_path_buf())
+    })
 }
 
 fn workspace_bounded_root(root: PathBuf, activation_root: &Path) -> Result<PathBuf, String> {
@@ -171,11 +253,24 @@ fn explicit_positional_project_root(
     invocation_root: &Path,
     activation_root: &Path,
 ) -> Result<Option<(PathBuf, Vec<String>)>, String> {
+    if args.first().is_some_and(|command| command == "search") {
+        validate_search_positional_project_roots(language_id, args, invocation_root)?;
+        return Ok(None);
+    }
     let mut selected = None;
     let check_command = args.first().is_some_and(|command| command == "check");
+    let context_root_only_command = args
+        .first()
+        .is_some_and(|command| matches!(command.as_str(), "ast-patch" | "guide"));
     let query_owner_arg_index = first_query_owner_arg_index(args);
     for (index, value) in args.iter().enumerate().rev() {
+        if index == 0 {
+            continue;
+        }
         if Some(index) == query_owner_arg_index {
+            continue;
+        }
+        if is_search_view_arg(args, index) {
             continue;
         }
         if value.starts_with('-') || arg_is_option_value(args, index) {
@@ -198,6 +293,9 @@ fn explicit_positional_project_root(
             index,
             workspace_bounded_root(selected_root, activation_root)?,
         ));
+        if context_root_only_command {
+            break;
+        }
     }
     let Some((index, selected_root)) = selected else {
         return Ok(None);
@@ -205,6 +303,80 @@ fn explicit_positional_project_root(
     let mut normalized_args = args.to_vec();
     normalized_args.remove(index);
     Ok(Some((selected_root, normalized_args)))
+}
+
+fn validate_search_positional_project_roots(
+    language_id: &str,
+    args: &[String],
+    invocation_root: &Path,
+) -> Result<(), String> {
+    let mut roots = 0usize;
+    for (index, value) in args.iter().enumerate().rev() {
+        if index == 0 || value.starts_with('-') || arg_is_option_value(args, index) {
+            break;
+        }
+        let path = PathBuf::from(value);
+        let absolute = if path.is_absolute() {
+            path
+        } else {
+            invocation_root.join(path)
+        };
+        if search_scope_project_root(language_id, value, &absolute).is_some() {
+            roots += 1;
+            if roots > 1 {
+                return Err("expected at most one PROJECT_ROOT argument".to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn search_scope_project_root(language_id: &str, raw: &str, path: &Path) -> Option<PathBuf> {
+    if raw == "." {
+        return Some(canonical_or_existing(path.to_path_buf()));
+    }
+    if client_cache_manifest_path(path).is_some_and(|manifest_path| manifest_path.is_file()) {
+        return Some(canonical_or_existing(path.to_path_buf()));
+    }
+    language_project_marker_root(language_id, path)
+        .filter(|root| root == &canonical_or_existing(path.to_path_buf()))
+}
+
+fn is_search_view_arg(args: &[String], index: usize) -> bool {
+    if index == 1 && args.first().map(String::as_str) == Some("search") {
+        return true;
+    }
+    index == 0 && args.first().is_some_and(|arg| is_search_view_name(arg))
+}
+
+fn is_search_view_name(arg: &str) -> bool {
+    matches!(
+        arg,
+        "api"
+            | "callsite"
+            | "cfg"
+            | "compare"
+            | "dependency"
+            | "deps"
+            | "docs"
+            | "docs-use"
+            | "features"
+            | "fzf"
+            | "import"
+            | "ingest"
+            | "owner"
+            | "pattern"
+            | "patterns"
+            | "policy"
+            | "prime"
+            | "public-external-types"
+            | "query"
+            | "semantic-facts"
+            | "symbol"
+            | "targets"
+            | "tests"
+            | "workspace"
+    )
 }
 
 fn first_query_owner_arg_index(args: &[String]) -> Option<usize> {
@@ -232,9 +404,12 @@ fn first_query_owner_arg_index(args: &[String]) -> Option<usize> {
 }
 
 fn positional_project_root(language_id: &str, path: &Path, check_command: bool) -> Option<PathBuf> {
-    let activation_path = project_local_activation_path(path);
-    if activation_path.is_file() || project_local_client_cache_manifest_path(path).is_file() {
-        return Some(canonical_or_existing(path.to_path_buf()));
+    if path.exists() {
+        if project_activation_path(path).is_ok_and(|activation_path| activation_path.is_file())
+            || client_cache_manifest_path(path).is_some_and(|manifest_path| manifest_path.is_file())
+        {
+            return Some(canonical_or_existing(path.to_path_buf()));
+        }
     }
     if check_command && path.is_dir() {
         return Some(canonical_or_existing(path.to_path_buf()));
@@ -287,8 +462,16 @@ fn option_takes_value(arg: &str) -> bool {
 }
 
 fn invocation_root_is_provider_project(language_id: &str, invocation_root: &Path) -> bool {
-    project_local_activation_path(invocation_root).is_file()
+    project_activation_path(invocation_root).is_ok_and(|activation_path| activation_path.is_file())
         || language_project_marker_root(language_id, invocation_root).is_some()
+}
+
+fn client_cache_manifest_path(project_root: &Path) -> Option<PathBuf> {
+    project_state_paths(project_root).ok().map(|paths| {
+        paths
+            .client_cache_dir
+            .join(AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE)
+    })
 }
 
 fn canonical_or_existing(path: PathBuf) -> PathBuf {

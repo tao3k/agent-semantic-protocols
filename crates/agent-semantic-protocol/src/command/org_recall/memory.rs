@@ -1,4 +1,5 @@
 use super::model::{OrgPlanCandidate, RankedOrgPlan};
+use agent_semantic_runtime::project_state_paths;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -410,14 +411,14 @@ fn source_memory_engine_command(project_root: &Path) -> Option<Command> {
 
 fn project_memory_engine_binary(project_root: &Path) -> Option<PathBuf> {
     let project_root = absolute_path(project_root, project_root);
-    [
-        ".cache/agent-semantic-protocol/artifacts/bin/asp-memory-engine-current",
-        ".cache/agent-semantic-protocol/artifacts/bin/asp-memory-engine",
-        ".bin/asp-memory-engine",
-    ]
-    .into_iter()
-    .map(|relative| project_root.join(relative))
-    .find(|candidate| candidate.is_file())
+    let mut candidates = Vec::new();
+    if let Ok(paths) = project_state_paths(&project_root) {
+        let artifacts_bin = paths.artifacts_dir.join("bin");
+        candidates.push(artifacts_bin.join("asp-memory-engine-current"));
+        candidates.push(artifacts_bin.join("asp-memory-engine"));
+    }
+    candidates.push(project_root.join(".bin/asp-memory-engine"));
+    candidates.into_iter().find(|candidate| candidate.is_file())
 }
 
 pub(super) fn memory_engine_auto_socket_enabled() -> bool {

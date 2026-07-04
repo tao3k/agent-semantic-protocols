@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-artifact-events.v1.schema.json",
   "title": "Semantic Graph Turbo Artifact Events",
-  "description": "Schema-owned event stream consumed by graph-turbo timeline audits. Rust SQLite indexes can emit this packet so timeline analysis does not need to rescan artifact directories.",
+  "description": "Schema-owned event stream consumed by graph-turbo timeline audits. Rust DB Engine indexes can emit this packet so timeline analysis does not need to rescan artifact directories.",
   "type": "object",
   "additionalProperties": false,
   "required": [

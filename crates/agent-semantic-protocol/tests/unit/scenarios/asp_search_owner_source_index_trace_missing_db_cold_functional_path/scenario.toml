@@ -1,0 +1,14 @@
+id = "asp-search-owner-source-index-trace-missing-db-cold-functional-path"
+title = "ASP search owner reports SourceIndex missing DB before parser fallback"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-SOURCE-INDEX-MISSING-DB-COLD-001",
+]
+agent_goal = "When asp rust search owner <path> items has no source-index DB, it must surface sourceIndex:missing-db before any parser fallback so the agent can refresh the DB instead of assuming SourceIndex participated."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp rust search owner crates/agent-semantic-hook/build.rs items --workspace . --view seeds",
+  "sourceIndex status=missing-db",
+  "reason=sourceIndex:missing-db",
+]
+inputs = "inputs"
+expected = "expected"

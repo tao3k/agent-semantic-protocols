@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "db_engine_cache_status_survives_concurrent_process_read_write_pressure"
+snapshot = "db_engine_cache_status_survives_concurrent_process_read_write_pressure"
+target_total = "100ms"
+max_total = "300ms"
+observed_total = "263ms"
+regression_budget = "75ms"
+memory_budget_bytes = 16777216
+observed_memory_bytes = 4194304
+route_source = "db-engine"
+max_provider_process_count = 0
+max_stdout_bytes = 16384
+fallback_reason = "none"
+target_rationale = "This is a DB Engine pressure gate, not an ASP command startup gate. The benchmark budget is the child-internal DB open/write/read operation latency, not libtest child-process startup. Multiple child processes share one State Core client.turso file and each DB operation must stay in the low-subsecond search pressure budget while avoiding WAL lock errors, retired DB handles, and lost cache generations."
+
+[observed_timings]
+process_db_operation = "263ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

@@ -1,11 +1,9 @@
 //! Codex plugin installation path for `asp install plugin --codex`.
 
-use super::hook_runtime_subagent::{
-    install_codex_asp_explorer_agent, remove_project_codex_asp_explorer_agents,
-};
+use super::hook_runtime_subagent::install_codex_resident_agents;
 use agent_semantic_hook::{
     install_codex_user_project_trust, merge_codex_asp_explorer_role_config,
-    remove_codex_managed_hook_blocks, validate_codex_config_toml,
+    validate_codex_config_toml,
 };
 use std::env;
 use std::fs;
@@ -56,7 +54,6 @@ pub(super) fn install_codex_plugin_hooks(
     scope: CodexPluginScope,
     subagent_model: &str,
 ) -> Result<(PathBuf, String), String> {
-    remove_downstream_codex_plugin_bundle(project_root)?;
     let plugin_cache = ensure_codex_project_plugin_cache_static_files(project_root)?;
     let plugin_manifest = plugin_cache.join(".codex-plugin").join("plugin.json");
     let marketplace_name = ASP_CODEX_PLUGIN_MARKETPLACE_NAME;
@@ -69,8 +66,7 @@ pub(super) fn install_codex_plugin_hooks(
         .to_path_buf();
     fs::create_dir_all(&codex_agent_home)
         .map_err(|error| format!("failed to create {}: {error}", codex_agent_home.display()))?;
-    let subagent_path = install_codex_asp_explorer_agent(&codex_agent_home, subagent_model)?;
-    remove_project_codex_asp_explorer_agents(project_root)?;
+    let subagent_path = install_codex_resident_agents(&codex_agent_home, subagent_model)?;
     let codex_home = match scope {
         CodexPluginScope::Project => Some(project_root.join(".codex")),
         CodexPluginScope::Global => None,
@@ -132,36 +128,6 @@ pub(super) fn install_codex_plugin_hooks(
     ))
 }
 
-fn remove_downstream_codex_plugin_bundle(project_root: &Path) -> Result<(), String> {
-    let plugin_root = project_root.join(ASP_CODEX_PLUGIN_NAME);
-    if !plugin_root.exists() {
-        return Ok(());
-    }
-    if path_has_git_tracked_entries(project_root, ASP_CODEX_PLUGIN_NAME) {
-        return Ok(());
-    }
-    if !plugin_root.is_dir() {
-        return Err(format!(
-            "Codex plugin installation no longer writes {}; remove this non-directory path before installing",
-            super::display_path(project_root, &plugin_root)
-        ));
-    }
-    fs::remove_dir_all(&plugin_root)
-        .map_err(|error| format!("failed to remove {}: {error}", plugin_root.display()))?;
-    Ok(())
-}
-
-fn path_has_git_tracked_entries(project_root: &Path, path: &str) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(project_root)
-        .args(["ls-files", "--"])
-        .arg(path)
-        .output()
-        .map(|output| output.status.success() && !output.stdout.is_empty())
-        .unwrap_or(false)
-}
-
 fn write_codex_plugin_file(path: &Path, content: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -172,19 +138,10 @@ fn write_codex_plugin_file(path: &Path, content: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn remove_codex_plugin_file(path: &Path) -> Result<(), String> {
-    if path.exists() {
-        fs::remove_file(path)
-            .map_err(|error| format!("failed to remove {}: {error}", path.display()))?;
-    }
-    Ok(())
-}
-
 pub(super) fn sync_codex_project_plugin_cache(
     project_root: &Path,
 ) -> Result<Option<PathBuf>, String> {
     let cache_root = ensure_codex_project_plugin_cache_static_files(project_root)?;
-    remove_codex_plugin_file(&cache_root.join(codex_plugin_skill_contract_relative_path()))?;
     Ok(Some(cache_root))
 }
 
@@ -217,6 +174,19 @@ pub(super) fn codex_project_plugin_cache_skill_path(
     Ok(codex_project_plugin_cache_path(project_root)?.join(codex_plugin_skill_relative_path()))
 }
 
+pub(super) fn codex_project_plugin_hooks_present(project_root: &Path) -> bool {
+    match codex_project_plugin_hooks_json_path(project_root) {
+        Ok(path) => path.is_file(),
+        Err(_) => false,
+    }
+}
+
+pub(super) fn codex_project_plugin_hooks_json_path(project_root: &Path) -> Result<PathBuf, String> {
+    Ok(codex_project_plugin_cache_path(project_root)?
+        .join("hooks")
+        .join("hooks.json"))
+}
+
 fn codex_project_plugin_cache_path(project_root: &Path) -> Result<PathBuf, String> {
     Ok(project_root.join(codex_project_plugin_cache_relative_path()?))
 }
@@ -234,12 +204,6 @@ fn codex_plugin_skill_relative_path() -> PathBuf {
     Path::new("skills")
         .join("agent-semantic-protocols")
         .join("SKILL.org")
-}
-
-fn codex_plugin_skill_contract_relative_path() -> PathBuf {
-    Path::new("skills")
-        .join("agent-semantic-protocols")
-        .join("SKILL.contract.org")
 }
 
 fn asp_codex_plugin_version() -> Result<String, String> {
@@ -261,10 +225,8 @@ fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, S
         validate_codex_config_toml(&existing)
             .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
     }
-    let existing = remove_standalone_codex_asp_explorer_role_config(&existing);
-    let merged =
-        normalize_codex_project_plugin_config(&remove_codex_managed_hook_blocks(&existing));
-    if merged != existing {
+    let merged = normalize_codex_project_plugin_config(&existing);
+    if merged != existing || !config_path.is_file() {
         validate_codex_config_toml(&merged).map_err(|error| {
             format!("refusing to write invalid Codex project plugin config TOML: {error}")
         })?;
@@ -281,24 +243,6 @@ fn normalize_codex_project_plugin_config(content: &str) -> String {
     } else {
         format!("{content}\n")
     }
-}
-
-fn remove_standalone_codex_asp_explorer_role_config(existing: &str) -> String {
-    let mut lines = Vec::new();
-    let mut skipping = false;
-    for line in existing.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            skipping = trimmed == "[agents.asp_explorer]" || trimmed == "[agents.\"asp_explorer\"]";
-            if skipping {
-                continue;
-            }
-        }
-        if !skipping {
-            lines.push(line.to_string());
-        }
-    }
-    format!("{}\n", lines.join("\n").trim_end())
 }
 
 fn ensure_codex_asp_explorer_role_config(config_path: &Path) -> Result<(), String> {

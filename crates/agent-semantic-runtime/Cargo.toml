@@ -6,6 +6,8 @@ description = "Runtime state materialization for ASP project-local storage."
 license = "MIT"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 bytes = { workspace = true }

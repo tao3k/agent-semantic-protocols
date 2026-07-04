@@ -1,6 +1,14 @@
 //! Top-level command dispatch for protocol subcommands.
 
-use std::env;
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
+
+use agent_semantic_config::render_hook_client_message_template;
+use agent_semantic_hook::{
+    ClientHookConfig, default_client_config_path, load_client_config_for_project,
+};
 
 use super::agent_session_registry::run_agent_command;
 use super::ast_patch::run_ast_patch_command;
@@ -16,7 +24,10 @@ use super::search_query_wrapper::{is_query_wrapper, run_query_wrapper_command};
 use super::source_access::run_source_access_command;
 use super::sync::run_sync_command;
 
-pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
+pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> {
+    normalize_agent_session_command_args(&mut args)?;
+    reject_file_workspace_for_search(&args)?;
+    enforce_agent_session_asp_query_gate(&args)?;
     match args.first().map(String::as_str) {
         Some("help" | "--help" | "-h") => {
             println!("{}", usage());
@@ -50,6 +61,365 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
         Some(language_id) => run_language_command(language_id, &args[1..]),
         _ => Err(usage()),
     }
+}
+
+fn reject_file_workspace_for_search(args: &[String]) -> Result<(), String> {
+    if !is_search_command_args(args) {
+        return Ok(());
+    }
+    let Some(workspace) = arg_option_value(args, "--workspace") else {
+        return Ok(());
+    };
+    if workspace.starts_with('-') {
+        return Ok(());
+    }
+    let workspace_path = PathBuf::from(workspace);
+    let workspace_path = if workspace_path.is_absolute() {
+        workspace_path
+    } else {
+        env::current_dir()
+            .map_err(|error| format!("failed to resolve current project directory: {error}"))?
+            .join(workspace_path)
+    };
+    if workspace_path.is_file() {
+        return Err(format!(
+            "--workspace requires a directory project root, got file `{}`. Keep the file path as the owner/selector and use a directory workspace, for example `asp gerbil-scheme search owner <file> items --query '<terms>' --workspace . --view seeds`.",
+            workspace_path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn is_search_command_args(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some("search"))
+        || matches!(args.get(1).map(String::as_str), Some("search"))
+}
+
+fn arg_option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    let prefix = format!("{flag}=");
+    args.iter()
+        .find_map(|arg| arg.strip_prefix(&prefix))
+        .or_else(|| {
+            args.windows(2)
+                .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
+        })
+}
+
+fn normalize_agent_session_command_args(args: &mut Vec<String>) -> Result<(), String> {
+    if !super::has_current_agent_session() || !is_org_search_memory_command(args) {
+        return Ok(());
+    }
+    if option_is_present(args, "--session") {
+        return Ok(());
+    }
+    let project_root = std::env::current_dir()
+        .map_err(|error| format!("failed to resolve current project directory: {error}"))?;
+    let now = agent_semantic_client_db::agent_session_unix_timestamp()?;
+    let Some(session) = super::current_registered_session(&project_root)? else {
+        return Ok(());
+    };
+    if session.role == "asp-explore" && session.is_routable_at(now) {
+        args.push("--session".to_string());
+        args.push(session.root_session_id);
+    }
+    Ok(())
+}
+
+fn enforce_agent_session_asp_query_gate(args: &[String]) -> Result<(), String> {
+    if !has_agent_session_env() || !is_agent_session_restricted_asp_command(args) {
+        return Ok(());
+    }
+    if is_org_search_memory_command(args) && option_is_present(args, "--session") {
+        return Ok(());
+    }
+    let project_root = env::current_dir()
+        .map_err(|error| format!("failed to resolve current project directory: {error}"))?;
+    let root_session_id = super::current_root_session_id()
+        .or_else(agent_session_env_id)
+        .unwrap_or_else(|| "unknown-agent-session".to_string());
+    let command = if args.is_empty() {
+        "asp".to_string()
+    } else {
+        format!("asp {}", args.join(" "))
+    };
+    let hook_config = load_dispatch_hook_config(&project_root)?;
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
+    let now = match agent_semantic_client_db::agent_session_unix_timestamp() {
+        Ok(now) => now,
+        Err(error) => {
+            return Err(resident_child_registry_blocked_message(
+                &hook_config,
+                &root_session_id,
+                &command,
+                &error,
+            ));
+        }
+    };
+    let current_session = match super::current_registered_session(&project_root) {
+        Ok(session) => session,
+        Err(error) => {
+            return Err(resident_child_registry_blocked_message(
+                &hook_config,
+                &root_session_id,
+                &command,
+                &error,
+            ));
+        }
+    };
+    if let Some(session) = current_session
+        && session.role == "asp-explore"
+        && session.is_routable_at(now)
+    {
+        return Ok(());
+    }
+    let resident_child =
+        match super::asp_explore_session_for_current_root(&project_root, resident_child_name) {
+            Ok(session) => session,
+            Err(error) => {
+                return Err(resident_child_registry_blocked_message(
+                    &hook_config,
+                    &root_session_id,
+                    &command,
+                    &error,
+                ));
+            }
+        };
+    let resident_child = match resident_child {
+        Some(child) => Some(child),
+        None => match super::asp_explore_session_record_for_current_root(
+            &project_root,
+            resident_child_name,
+        ) {
+            Ok(session) => session,
+            Err(error) => {
+                return Err(resident_child_registry_blocked_message(
+                    &hook_config,
+                    &root_session_id,
+                    &command,
+                    &error,
+                ));
+            }
+        },
+    };
+    if let Some(child) = resident_child {
+        if child.role == "asp-explore" && child.is_routable_at(now) {
+            return Err(resident_child_with_child_message(
+                &hook_config,
+                &child.root_session_id,
+                &child.session_id,
+                &command,
+            ));
+        }
+        return Err(resident_child_invalid_message(
+            &hook_config,
+            &child.root_session_id,
+            &child.session_id,
+            &child.status,
+            &command,
+        ));
+    }
+    Err(resident_child_missing_message(
+        &hook_config,
+        &root_session_id,
+        &command,
+    ))
+}
+
+fn load_dispatch_hook_config(project_root: &Path) -> Result<ClientHookConfig, String> {
+    let config_path = default_client_config_path(&project_root.to_string_lossy());
+    load_client_config_for_project(&config_path, project_root)
+        .map_err(|error| format!("failed to load ASP hook config for agent session gate: {error}"))
+}
+
+fn resident_child_registry_blocked_message(
+    hook_config: &ClientHookConfig,
+    root_session_id: &str,
+    command: &str,
+    registry_error: &str,
+) -> String {
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
+    let template = hook_config
+        .agent_session_messages()
+        .binary_gate_registry_blocked
+        .as_deref()
+        .unwrap_or("ASP query/search command denied because the session registry is unavailable.\ncommand={{command}}");
+    render_hook_client_message_template(
+        template,
+        &[
+            ("residentChildName", resident_child_name),
+            ("rootSessionId", root_session_id),
+            ("registryError", registry_error),
+            ("command", command),
+        ],
+    )
+}
+
+fn resident_child_with_child_message(
+    hook_config: &ClientHookConfig,
+    root_session_id: &str,
+    child_session_id: &str,
+    command: &str,
+) -> String {
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
+    let template = hook_config
+        .agent_session_messages()
+        .binary_gate_with_child
+        .as_deref()
+        .unwrap_or("ASP query/search command denied in main agent session.\ncommand={{command}}");
+    render_hook_client_message_template(
+        template,
+        &[
+            ("residentChildName", resident_child_name),
+            ("rootSessionId", root_session_id),
+            ("childSessionId", child_session_id),
+            ("command", command),
+        ],
+    )
+}
+
+fn resident_child_invalid_message(
+    hook_config: &ClientHookConfig,
+    root_session_id: &str,
+    child_session_id: &str,
+    child_status: &str,
+    command: &str,
+) -> String {
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
+    let create_action = resident_child_create_action(hook_config);
+    let template = hook_config
+        .agent_session_messages()
+        .binary_gate_invalid_child
+        .as_deref()
+        .unwrap_or("ASP query/search command denied by non-routable child.\ncommand={{command}}");
+    render_hook_client_message_template(
+        template,
+        &[
+            ("residentChildName", resident_child_name),
+            (
+                "residentCodexAgentName",
+                hook_config.resident_asp_explore_codex_agent_name(),
+            ),
+            ("createAction", &create_action),
+            ("rootSessionId", root_session_id),
+            ("childSessionId", child_session_id),
+            ("childStatus", child_status),
+            ("command", command),
+        ],
+    )
+}
+
+fn resident_child_missing_message(
+    hook_config: &ClientHookConfig,
+    root_session_id: &str,
+    command: &str,
+) -> String {
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
+    let create_action = resident_child_create_action(hook_config);
+    let template = hook_config
+        .agent_session_messages()
+        .binary_gate_without_child
+        .as_deref()
+        .unwrap_or("ASP query/search command denied in agent session.\ncommand={{command}}");
+    render_hook_client_message_template(
+        template,
+        &[
+            ("residentChildName", resident_child_name),
+            (
+                "residentCodexAgentName",
+                hook_config.resident_asp_explore_codex_agent_name(),
+            ),
+            ("createAction", &create_action),
+            ("rootSessionId", root_session_id),
+            ("command", command),
+        ],
+    )
+}
+
+fn resident_child_create_action(hook_config: &ClientHookConfig) -> String {
+    if env::var_os("CODEX_THREAD_ID").is_some() {
+        return format!(
+            "Codex action: start the configured subagent `{}`",
+            hook_config.resident_asp_explore_codex_agent_name()
+        );
+    }
+    if env::var_os("CLAUDE_CODE_SESSION_ID").is_some()
+        || env::var_os("CLAUDECODE_SESSION_ID").is_some()
+        || env::var_os("CLAUDE_SESSION_ID").is_some()
+    {
+        return "Claude action: start the configured subagent `asp-explorer`".to_string();
+    }
+    "Host action: start the configured resident ASP explore subagent".to_string()
+}
+
+fn has_agent_session_env() -> bool {
+    [
+        "CODEX_THREAD_ID",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDECODE_SESSION_ID",
+        "CLAUDE_SESSION_ID",
+        "CLAUDE_CODE_REMOTE_SESSION_ID",
+        "AGENT_SESSION_ID",
+        "SESSION_ID",
+    ]
+    .iter()
+    .any(|name| {
+        env::var(name)
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty())
+    })
+}
+
+fn agent_session_env_id() -> Option<String> {
+    [
+        "CODEX_THREAD_ID",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDECODE_SESSION_ID",
+        "CLAUDE_SESSION_ID",
+        "CLAUDE_CODE_REMOTE_SESSION_ID",
+        "AGENT_SESSION_ID",
+        "SESSION_ID",
+    ]
+    .iter()
+    .find_map(|name| {
+        env::var(name)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn is_agent_session_restricted_asp_command(args: &[String]) -> bool {
+    let Some(first) = args.first().map(String::as_str) else {
+        return false;
+    };
+    if matches!(first, "rg" | "fd" | "pipe" | "query") {
+        return true;
+    }
+    if first == "search" {
+        return true;
+    }
+    if first == "org" {
+        return args
+            .get(1)
+            .is_some_and(|stage| matches!(stage.as_str(), "query" | "search"));
+    }
+    args.get(1)
+        .is_some_and(|stage| matches!(stage.as_str(), "query" | "search"))
+}
+
+fn is_org_search_memory_command(args: &[String]) -> bool {
+    matches!(
+        (
+            args.first().map(String::as_str),
+            args.get(1).map(String::as_str),
+            args.get(2).map(String::as_str),
+        ),
+        (Some("org"), Some("search"), Some("memory"))
+    )
+}
+
+fn option_is_present(args: &[String], option: &str) -> bool {
+    args.iter().any(|arg| arg == option)
 }
 
 fn usage() -> String {

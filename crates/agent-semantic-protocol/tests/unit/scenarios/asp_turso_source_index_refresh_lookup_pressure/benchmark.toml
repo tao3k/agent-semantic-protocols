@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_lock_errors"
+snapshot = "db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_lock_errors"
+target_total = "50ms"
+max_total = "250ms"
+observed_total = "180ms"
+regression_budget = "50ms"
+memory_budget_bytes = 16777216
+observed_memory_bytes = 4194304
+route_source = "db-engine"
+max_provider_process_count = 0
+max_stdout_bytes = 16384
+fallback_reason = "none"
+target_rationale = "This source-index pressure gate measures the DB Engine import/lookup behavior inside the owning crate, not ASP command startup. The writer repeatedly refreshes a Turso source-index while reader lanes perform lookups; lock pressure must surface as bounded Busy state, not raw WAL locking errors. The ASP search budget keeps this concurrent pressure path below 250ms so the scenario does not normalize the generic 500ms hard ceiling."
+
+[observed_timings]
+source_index_pressure = "180ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

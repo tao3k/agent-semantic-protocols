@@ -1,0 +1,16 @@
+id = "turso-overlay-search-cold-functional-path"
+title = "Turso dynamic overlay search cold functional path"
+policy_ids = [
+  "SEARCH-AGENT-ASP-PERF-TURSO-OVERLAY-COLD-001",
+]
+agent_goal = "Route dirty-code dynamic overlay search through the DB Engine/search adapter lane without writing durable source snapshots or invoking provider processes."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "TursoOverlaySearchDocument",
+  "upsert_turso_overlay_search_document",
+  "search_turso_overlay_documents",
+  "route_source=turso-overlay",
+]
+inputs = "inputs"
+expected = "expected"
+command = "agent_semantic_search::search_turso_overlay_documents"

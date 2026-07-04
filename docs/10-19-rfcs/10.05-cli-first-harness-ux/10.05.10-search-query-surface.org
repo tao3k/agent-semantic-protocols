@@ -24,7 +24,7 @@ ships this as =ts-harness=; Rust/Cargo-specific lanes use =rs-harness=.
 Julia is no longer a bin-parity exclusion.  The provider identity is the
 compiled =asp-julia-harness=, with =julia-project-harness.jl= kept as a
 source-provider development fallback.  RFC 008 lets =agent-semantic-client=
-cache validated Julia provider exports in the local SQLite cache and serve
+cache validated Julia provider exports in the local DB Engine cache and serve
 repeated searches without restarting Julia when the generation is fresh.  That
 cache is an execution optimization; JuliaSyntax remains the parser authority and
 Rust must not invent Julia parser facts.
@@ -659,7 +659,7 @@ may return a bounded =read-owner= frontier, return a =read-plan= frontier, or
 normalize to =search owner <path> items= rather than owner seeds.  A
 =read-owner= response must state the selected path, item, line range,
 truncation status, omitted source status, and executable read locators; it must
-not include =|code= rows, =text= fields, cache ids, SQLite paths, receipt JSON,
+not include =|code= rows, =text= fields, cache ids, DB paths, receipt JSON,
 or unbounded adjacent source.  A =read-plan= or item response must keep code
 omitted and provide executable read locators.  If an agent needs source text,
 the next action is an explicit =--code= request or structured
@@ -1845,7 +1845,7 @@ avoid=raw-read,full-json,broad-fzf
 read-plan flows must return locators/frontier rather than inline code.  Plain
 =query --code= writes only code to stdout, and =--workspace <workspace-root>=
 is the independent workspace override when a root must be specified.  JSON
-artifacts, SQLite cache ids, and receipts are debugging/integration surfaces
+artifacts, DB Engine cache ids, and receipts are debugging/integration surfaces
 and should not appear in the default guide output or non-JSON query output.
 =python -m tools tree-sitter validate search-read-plan-frontier-contract= is
 the package-local executable gate for this search/read-plan rule across Rust,

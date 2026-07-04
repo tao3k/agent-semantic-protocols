@@ -6,9 +6,9 @@ use crate::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsDispatchPlan,
     LanguageOwnerItemsProviderOutput, LanguageOwnerItemsRuntimeOutcome,
     compact_language_owner_items_stdout, language_owner_items_failure,
-    language_owner_items_runtime_receipt, read_language_owner_items_cache,
-    resolve_language_owner_items_runtime_outcome, run_language_owner_items_dispatch_plan,
-    write_language_owner_items_cache,
+    language_owner_items_runtime_receipt, language_owner_items_workspace_root,
+    read_language_owner_items_cache, resolve_language_owner_items_runtime_outcome,
+    run_language_owner_items_dispatch_plan, write_language_owner_items_cache,
 };
 
 #[test]
@@ -251,6 +251,47 @@ fn owner_items_failure_reports_no_fallback() {
 
     assert!(failure.contains("no fallback executed"), "{failure}");
     assert!(failure.contains("provider stderr"), "{failure}");
+}
+
+#[test]
+fn owner_items_workspace_root_defaults_to_project_root() {
+    let project_root = std::path::Path::new("/repo/project");
+    let locator_root = std::path::Path::new("/repo");
+
+    assert_eq!(
+        language_owner_items_workspace_root(project_root, locator_root, None),
+        project_root
+    );
+}
+
+#[test]
+fn owner_items_workspace_root_resolves_relative_workspace_from_locator_root() {
+    let project_root = std::path::Path::new("/repo/project");
+    let locator_root = std::path::Path::new("/repo");
+
+    assert_eq!(
+        language_owner_items_workspace_root(
+            project_root,
+            locator_root,
+            Some(std::path::Path::new("project/./crates/../crates/runtime")),
+        ),
+        std::path::PathBuf::from("/repo/project/crates/runtime")
+    );
+}
+
+#[test]
+fn owner_items_workspace_root_keeps_absolute_workspace() {
+    let project_root = std::path::Path::new("/repo/project");
+    let locator_root = std::path::Path::new("/repo");
+
+    assert_eq!(
+        language_owner_items_workspace_root(
+            project_root,
+            locator_root,
+            Some(std::path::Path::new("/tmp/worktree/./crate")),
+        ),
+        std::path::PathBuf::from("/tmp/worktree/crate")
+    );
 }
 
 fn temp_root(name: &str) -> std::path::PathBuf {

@@ -1,0 +1,636 @@
+//! Runtime status helpers for agent sessions and resident child activity.
+
+use serde::{Deserialize, Serialize};
+
+use crate::codex_rollout_sessions::codex_rollout_paths_for_session_id;
+use std::{
+    env, fs,
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+    time::UNIX_EPOCH,
+};
+
+/// Runtime-visible agent session discovered from host environment variables.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRuntimeSession {
+    /// Host client that supplied the session id.
+    pub client: String,
+    /// Host session id, such as `CODEX_THREAD_ID` or Claude Code session id.
+    pub id: String,
+}
+
+impl AgentRuntimeSession {
+    /// The host-provided id used as recall identity before registry parent lookup.
+    pub fn recall_session_id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// Codex local rollout metadata for a thread/session id.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexRolloutSessionMetadata {
+    pub session_id: String,
+    pub rollout_path: PathBuf,
+    pub rollout_created_at_unix: Option<i64>,
+    pub root_session_id: Option<String>,
+    pub parent_thread_id: Option<String>,
+    pub thread_source: Option<String>,
+    pub agent_role: Option<String>,
+    pub agent_nickname: Option<String>,
+    pub agent_path: Option<String>,
+    pub spawn_depth: Option<i64>,
+    pub model_provider: Option<String>,
+    pub cli_version: Option<String>,
+    pub cwd: Option<String>,
+    pub model: Option<String>,
+    pub collaboration_model: Option<String>,
+    pub sandbox_policy: Option<String>,
+    pub approval_policy: Option<String>,
+    pub permission_profile: Option<String>,
+}
+
+/// Resolve Codex rollout metadata for a session id from local Codex JSONL logs.
+///
+/// This is a passive adapter: it does not send a prompt, resume a session, or
+/// depend on an experimental app-server socket.
+pub fn codex_rollout_session_metadata(
+    session_id: &str,
+) -> Result<Option<CodexRolloutSessionMetadata>, String> {
+    let sessions_dir = codex_sessions_dir()?;
+    if !sessions_dir.is_dir() {
+        return Ok(None);
+    }
+    for path in codex_rollout_paths_for_session_id(&sessions_dir, session_id)? {
+        if let Some(metadata) = read_codex_rollout_metadata(&path, session_id)? {
+            return Ok(Some(metadata));
+        }
+    }
+    Ok(None)
+}
+
+/// Resolve Codex rollout metadata for a recently-created session id.
+///
+/// Registration validation uses this stricter lookup so a long-lived root
+/// session cannot accidentally validate against stale rollout metadata from an
+/// older child lifecycle. The normal metadata lookup remains available for
+/// status and diagnostics.
+pub fn codex_rollout_session_metadata_recent(
+    session_id: &str,
+    reference_unix: i64,
+    max_age_seconds: i64,
+) -> Result<Option<CodexRolloutSessionMetadata>, String> {
+    let sessions_dir = codex_sessions_dir()?;
+    if !sessions_dir.is_dir() {
+        return Ok(None);
+    }
+    for path in codex_rollout_paths_for_session_id(&sessions_dir, session_id)? {
+        let Some(metadata) = read_codex_rollout_metadata(&path, session_id)? else {
+            continue;
+        };
+        if codex_rollout_metadata_is_recent(&metadata, reference_unix, max_age_seconds) {
+            return Ok(Some(metadata));
+        }
+    }
+    Ok(None)
+}
+
+/// Discover the current host agent session from well-known environment ids.
+#[must_use]
+pub fn current_agent_runtime_session() -> Option<AgentRuntimeSession> {
+    let sessions = [
+        ("CODEX_THREAD_ID", "codex"),
+        ("CLAUDE_CODE_SESSION_ID", "claude-code"),
+        ("CLAUDE_CODE_REMOTE_SESSION_ID", "claude-code"),
+    ]
+    .into_iter()
+    .filter_map(|(name, client)| {
+        env_value(name).map(|id| AgentRuntimeSession {
+            client: client.to_string(),
+            id,
+        })
+    })
+    .collect::<Vec<_>>();
+    (sessions.len() == 1).then(|| sessions.into_iter().next().expect("one session"))
+}
+
+fn codex_sessions_dir() -> Result<PathBuf, String> {
+    if let Some(codex_home) = env::var_os("CODEX_HOME") {
+        return Ok(PathBuf::from(codex_home).join("sessions"));
+    }
+    env::var_os("HOME")
+        .map(|home| PathBuf::from(home).join(".codex").join("sessions"))
+        .ok_or_else(|| "HOME is not set; cannot locate Codex sessions".to_string())
+}
+
+fn read_codex_rollout_metadata(
+    path: &Path,
+    session_id: &str,
+) -> Result<Option<CodexRolloutSessionMetadata>, String> {
+    let file = fs::File::open(path)
+        .map_err(|error| format!("failed to open Codex rollout {}: {error}", path.display()))?;
+    let reader = BufReader::new(file);
+    let mut metadata = CodexRolloutSessionMetadata {
+        session_id: session_id.to_string(),
+        rollout_path: path.to_path_buf(),
+        rollout_created_at_unix: path_unix_timestamp(path)?,
+        root_session_id: None,
+        parent_thread_id: None,
+        thread_source: None,
+        agent_role: None,
+        agent_nickname: None,
+        agent_path: None,
+        spawn_depth: None,
+        model_provider: None,
+        cli_version: None,
+        cwd: None,
+        model: None,
+        collaboration_model: None,
+        sandbox_policy: None,
+        approval_policy: None,
+        permission_profile: None,
+    };
+    let mut saw_matching_session_meta = false;
+    for line in reader.lines() {
+        let line = line.map_err(|error| {
+            format!(
+                "failed to read Codex rollout line from {}: {error}",
+                path.display()
+            )
+        })?;
+        let value: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        match value.get("type").and_then(serde_json::Value::as_str) {
+            Some("session_meta") => {
+                let payload = value.get("payload").unwrap_or(&serde_json::Value::Null);
+                let payload_id = string_at(payload, "/id");
+                let payload_session_id = string_at(payload, "/session_id");
+                if payload_id.as_deref() != Some(session_id)
+                    && payload_session_id.as_deref() != Some(session_id)
+                {
+                    continue;
+                }
+                saw_matching_session_meta = true;
+                metadata.root_session_id = payload_session_id;
+                metadata.parent_thread_id = string_at(payload, "/parent_thread_id").or_else(|| {
+                    string_at(payload, "/source/subagent/thread_spawn/parent_thread_id")
+                });
+                metadata.thread_source = string_at(payload, "/thread_source");
+                metadata.agent_role = string_at(payload, "/agent_role")
+                    .or_else(|| string_at(payload, "/source/subagent/thread_spawn/agent_role"));
+                metadata.agent_nickname = string_at(payload, "/agent_nickname")
+                    .or_else(|| string_at(payload, "/source/subagent/thread_spawn/agent_nickname"));
+                metadata.agent_path =
+                    string_at(payload, "/source/subagent/thread_spawn/agent_path");
+                metadata.spawn_depth = i64_at(payload, "/source/subagent/thread_spawn/depth");
+                metadata.model_provider = string_at(payload, "/model_provider");
+                metadata.cli_version = string_at(payload, "/cli_version");
+                metadata.cwd = string_at(payload, "/cwd");
+            }
+            Some("turn_context") => {
+                let payload = value.get("payload").unwrap_or(&serde_json::Value::Null);
+                if let Some(model) = string_at(payload, "/model") {
+                    metadata.model = Some(model);
+                }
+                if let Some(collaboration_model) = string_at(payload, "/collaboration_model") {
+                    metadata.collaboration_model = Some(collaboration_model);
+                }
+                if let Some(sandbox_policy) = string_at(payload, "/sandbox_policy/type") {
+                    metadata.sandbox_policy = Some(sandbox_policy);
+                }
+                if let Some(approval_policy) = string_at(payload, "/approval_policy") {
+                    metadata.approval_policy = Some(approval_policy);
+                }
+                if let Some(permission_profile) = string_at(payload, "/permission_profile/type") {
+                    metadata.permission_profile = Some(permission_profile);
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(saw_matching_session_meta.then_some(metadata))
+}
+
+fn codex_rollout_metadata_is_recent(
+    metadata: &CodexRolloutSessionMetadata,
+    reference_unix: i64,
+    max_age_seconds: i64,
+) -> bool {
+    metadata.rollout_created_at_unix.is_some_and(|created_at| {
+        created_at <= reference_unix && reference_unix - created_at <= max_age_seconds
+    })
+}
+
+fn path_unix_timestamp(path: &Path) -> Result<Option<i64>, String> {
+    let metadata = fs::metadata(path).map_err(|error| {
+        format!(
+            "failed to inspect Codex rollout {}: {error}",
+            path.display()
+        )
+    })?;
+    let created = metadata.created().or_else(|_| metadata.modified()).ok();
+    created
+        .map(|time| {
+            time.duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_secs() as i64)
+                .map_err(|error| {
+                    format!(
+                        "failed to convert Codex rollout timestamp for {}: {error}",
+                        path.display()
+                    )
+                })
+        })
+        .transpose()
+}
+
+fn string_at(value: &serde_json::Value, pointer: &str) -> Option<String> {
+    value
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+}
+
+fn i64_at(value: &serde_json::Value, pointer: &str) -> Option<i64> {
+    value.pointer(pointer).and_then(serde_json::Value::as_i64)
+}
+
+/// Recent ASP artifact activity for a project/workspace.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSessionArtifactActivity {
+    pub artifacts_dir: PathBuf,
+    pub status: AgentSessionArtifactStatus,
+    pub latest_path: Option<PathBuf>,
+    pub latest_updated_at: Option<i64>,
+    pub age_seconds: Option<i64>,
+}
+
+/// Artifact freshness category used as agent-session liveness evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentSessionArtifactStatus {
+    MissingArtifactsDir,
+    NoArtifacts,
+    Recent,
+    Stale,
+}
+
+impl AgentSessionArtifactStatus {
+    /// Stable kebab-case status spelling for CLI reports.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingArtifactsDir => "missing-artifacts-dir",
+            Self::NoArtifacts => "no-artifacts",
+            Self::Recent => "recent",
+            Self::Stale => "stale",
+        }
+    }
+}
+
+/// Host status source available to ASP.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentSessionHostStatusSource {
+    Unavailable,
+    CodexCli,
+}
+
+impl AgentSessionHostStatusSource {
+    /// Stable kebab-case status-source spelling for CLI reports.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::CodexCli => "codex-cli",
+        }
+    }
+}
+
+/// Host session status as understood by ASP.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentSessionHostStatus {
+    Unknown,
+    Active,
+    Idle,
+    NotLoaded,
+    SystemError,
+    Missing,
+}
+
+impl AgentSessionHostStatus {
+    /// Stable kebab-case status spelling for CLI reports.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Active => "active",
+            Self::Idle => "idle",
+            Self::NotLoaded => "not-loaded",
+            Self::SystemError => "system-error",
+            Self::Missing => "missing",
+        }
+    }
+}
+
+/// Provider-aware host status probe result.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSessionHostProbe {
+    pub client: Option<String>,
+    pub thread_id: Option<String>,
+    pub source: AgentSessionHostStatusSource,
+    pub status: AgentSessionHostStatus,
+    pub reason: String,
+    pub raw_status: Option<String>,
+}
+
+/// Combined health summary from registry, host, and artifact evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentSessionHealthStatus {
+    MissingRegistry,
+    RegistryNotRoutable,
+    Healthy,
+    HostHealthyArtifactStale,
+    HostUnknownArtifactRecent,
+    Unknown,
+    Unhealthy,
+}
+
+impl AgentSessionHealthStatus {
+    /// Stable kebab-case health spelling for CLI reports.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingRegistry => "missing-registry",
+            Self::RegistryNotRoutable => "registry-not-routable",
+            Self::Healthy => "healthy",
+            Self::HostHealthyArtifactStale => "host-healthy-artifact-stale",
+            Self::HostUnknownArtifactRecent => "host-unknown-artifact-recent",
+            Self::Unknown => "unknown",
+            Self::Unhealthy => "unhealthy",
+        }
+    }
+}
+
+/// Next action an agent should take after a resident child status check.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentSessionNextAction {
+    StartResidentChildAndRegister,
+    RegisterExistingChildOrReplaceOnlyAfterHostConfirmsUnrecoverable,
+    ResumeOrSendFollowUpToSameChild,
+    ResumeOrSendFollowUpToSameChildBeforeConsideringReplacement,
+}
+
+impl AgentSessionNextAction {
+    /// Stable kebab-case action spelling for CLI reports.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StartResidentChildAndRegister => "start-resident-child-and-register",
+            Self::RegisterExistingChildOrReplaceOnlyAfterHostConfirmsUnrecoverable => {
+                "register-existing-child-or-replace-only-after-host-confirms-unrecoverable"
+            }
+            Self::ResumeOrSendFollowUpToSameChild => "resume-or-send-follow-up-to-same-child",
+            Self::ResumeOrSendFollowUpToSameChildBeforeConsideringReplacement => {
+                "resume-or-send-follow-up-to-same-child-before-considering-replacement"
+            }
+        }
+    }
+}
+
+/// ASP's current host status source.
+#[must_use]
+pub fn agent_session_host_status_source() -> AgentSessionHostStatusSource {
+    AgentSessionHostStatusSource::Unavailable
+}
+
+/// ASP's current host status.
+#[must_use]
+pub fn agent_session_host_status() -> AgentSessionHostStatus {
+    AgentSessionHostStatus::Unknown
+}
+
+/// Host status reason when no stable public status API is available.
+#[must_use]
+pub fn agent_session_host_status_reason() -> &'static str {
+    "no-stable-public-host-session-status-command"
+}
+
+/// Probe the host runtime for a session id when a provider adapter is available.
+#[must_use]
+pub fn agent_session_host_probe(
+    session: Option<&AgentRuntimeSession>,
+    thread_id: Option<&str>,
+) -> AgentSessionHostProbe {
+    let Some(session) = session else {
+        return AgentSessionHostProbe {
+            client: None,
+            thread_id: thread_id.map(str::to_string),
+            source: AgentSessionHostStatusSource::Unavailable,
+            status: AgentSessionHostStatus::Unknown,
+            reason: "no-agent-session-env".to_string(),
+            raw_status: None,
+        };
+    };
+    let thread_id = thread_id.unwrap_or(session.recall_session_id());
+    match session.client.as_str() {
+        "codex" => AgentSessionHostProbe {
+            client: Some(session.client.clone()),
+            thread_id: Some(thread_id.to_string()),
+            source: AgentSessionHostStatusSource::CodexCli,
+            status: AgentSessionHostStatus::Unknown,
+            reason: "codex-cli-session-status-command-not-detected".to_string(),
+            raw_status: None,
+        },
+        _ => AgentSessionHostProbe {
+            client: Some(session.client.clone()),
+            thread_id: Some(thread_id.to_string()),
+            source: AgentSessionHostStatusSource::Unavailable,
+            status: AgentSessionHostStatus::Unknown,
+            reason: "host-session-status-adapter-unavailable".to_string(),
+            raw_status: None,
+        },
+    }
+}
+
+/// Timeout semantics for LLM-backed resident child workers.
+#[must_use]
+pub fn agent_session_timeout_semantics() -> &'static str {
+    "timeout-is-not-duplicate-worker-trigger"
+}
+
+/// Duplicate worker policy for one resident child per root session/name.
+#[must_use]
+pub fn agent_session_duplicate_worker_allowed() -> bool {
+    false
+}
+
+/// Resolve recent ASP artifact activity for a project.
+pub fn agent_session_artifact_activity(
+    project_root: impl AsRef<Path>,
+    now: i64,
+    stale_after_seconds: i64,
+) -> Result<AgentSessionArtifactActivity, String> {
+    let artifacts_dir = crate::state_core::ResolvedState::resolve(project_root.as_ref())?
+        .paths
+        .artifacts_dir;
+    if !artifacts_dir.is_dir() {
+        return Ok(AgentSessionArtifactActivity {
+            artifacts_dir,
+            status: AgentSessionArtifactStatus::MissingArtifactsDir,
+            latest_path: None,
+            latest_updated_at: None,
+            age_seconds: None,
+        });
+    }
+    let latest = latest_artifact_file(&artifacts_dir)?;
+    let Some((latest_path, latest_updated_at)) = latest else {
+        return Ok(AgentSessionArtifactActivity {
+            artifacts_dir,
+            status: AgentSessionArtifactStatus::NoArtifacts,
+            latest_path: None,
+            latest_updated_at: None,
+            age_seconds: None,
+        });
+    };
+    let age_seconds = now.saturating_sub(latest_updated_at);
+    let status = if age_seconds <= stale_after_seconds {
+        AgentSessionArtifactStatus::Recent
+    } else {
+        AgentSessionArtifactStatus::Stale
+    };
+    Ok(AgentSessionArtifactActivity {
+        artifacts_dir,
+        status,
+        latest_path: Some(latest_path),
+        latest_updated_at: Some(latest_updated_at),
+        age_seconds: Some(age_seconds),
+    })
+}
+
+/// Derive the agent action from registry and artifact evidence.
+#[must_use]
+pub fn agent_session_next_action(
+    registry_entry_present: bool,
+    routable: bool,
+    artifact_status: AgentSessionArtifactStatus,
+) -> AgentSessionNextAction {
+    match (registry_entry_present, routable, artifact_status) {
+        (false, _, _) => {
+            AgentSessionNextAction::RegisterExistingChildOrReplaceOnlyAfterHostConfirmsUnrecoverable
+        }
+        (true, false, _) => {
+            AgentSessionNextAction::RegisterExistingChildOrReplaceOnlyAfterHostConfirmsUnrecoverable
+        }
+        (true, true, AgentSessionArtifactStatus::Recent) => {
+            AgentSessionNextAction::ResumeOrSendFollowUpToSameChild
+        }
+        (true, true, _) => {
+            AgentSessionNextAction::ResumeOrSendFollowUpToSameChildBeforeConsideringReplacement
+        }
+    }
+}
+
+/// Combine registry, host, and artifact evidence into a conservative health state.
+#[must_use]
+pub fn agent_session_health_status(
+    registry_entry_present: bool,
+    routable: bool,
+    host_status: AgentSessionHostStatus,
+    artifact_status: AgentSessionArtifactStatus,
+) -> AgentSessionHealthStatus {
+    if !registry_entry_present {
+        return AgentSessionHealthStatus::MissingRegistry;
+    }
+    if !routable {
+        return AgentSessionHealthStatus::RegistryNotRoutable;
+    }
+    match (host_status, artifact_status) {
+        (AgentSessionHostStatus::SystemError | AgentSessionHostStatus::Missing, _) => {
+            AgentSessionHealthStatus::Unhealthy
+        }
+        (
+            AgentSessionHostStatus::Active | AgentSessionHostStatus::Idle,
+            AgentSessionArtifactStatus::Recent,
+        ) => AgentSessionHealthStatus::Healthy,
+        (
+            AgentSessionHostStatus::Active | AgentSessionHostStatus::Idle,
+            AgentSessionArtifactStatus::Stale
+            | AgentSessionArtifactStatus::NoArtifacts
+            | AgentSessionArtifactStatus::MissingArtifactsDir,
+        ) => AgentSessionHealthStatus::HostHealthyArtifactStale,
+        (AgentSessionHostStatus::Unknown, AgentSessionArtifactStatus::Recent) => {
+            AgentSessionHealthStatus::HostUnknownArtifactRecent
+        }
+        _ => AgentSessionHealthStatus::Unknown,
+    }
+}
+
+fn latest_artifact_file(root: &Path) -> Result<Option<(PathBuf, i64)>, String> {
+    let mut latest: Option<(PathBuf, i64)> = None;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir)
+            .map_err(|error| format!("failed to read {}: {error}", dir.display()))?
+        {
+            let entry = entry.map_err(|error| {
+                format!(
+                    "failed to read artifact entry below {}: {error}",
+                    dir.display()
+                )
+            })?;
+            let path = entry.path();
+            let file_type = entry.file_type().map_err(|error| {
+                format!(
+                    "failed to inspect artifact entry {}: {error}",
+                    path.display()
+                )
+            })?;
+            if file_type.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let modified = entry
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .map_err(|error| {
+                    format!("failed to read artifact mtime {}: {error}", path.display())
+                })?;
+            let Ok(duration) = modified.duration_since(UNIX_EPOCH) else {
+                continue;
+            };
+            let updated_at = duration.as_secs() as i64;
+            if latest
+                .as_ref()
+                .is_none_or(|(_, current_updated_at)| updated_at > *current_updated_at)
+            {
+                latest = Some((path, updated_at));
+            }
+        }
+    }
+    Ok(latest)
+}
+
+fn env_value(name: &str) -> Option<String> {
+    std::env::var(name).ok().and_then(non_empty_value)
+}
+
+fn non_empty_value(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}

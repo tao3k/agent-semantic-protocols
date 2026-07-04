@@ -3,7 +3,7 @@ use crate::provider_command::support::{
 };
 
 #[test]
-fn lexical_fallback_collector_matches_multiple_terms_without_native_finder() {
+fn lexical_fallback_collector_matches_multiple_terms_without_search_overlay() {
     let root = temp_project_root("search-lexical-fallback-multi-term");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -38,7 +38,7 @@ fn lexical_fallback_collector_matches_multiple_terms_without_native_finder() {
             "seeds",
         ])
         .output()
-        .expect("run asp rust search lexical without native finder");
+        .expect("run asp rust search lexical without search overlay");
 
     assert!(
         output.status.success(),

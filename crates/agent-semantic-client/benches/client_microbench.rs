@@ -4,8 +4,8 @@ use agent_semantic_client_core::{
     SemanticSchemaId, SemanticSchemaVersion, project_client_cache_dir,
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbSourceIndexImport, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
-    ClientDbSourceIndexQueryKey, ClientDbSourceIndexSource,
+    ClientDbEngine, ClientDbSourceIndexImport, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
+    ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource,
 };
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::fs;
@@ -51,10 +51,14 @@ fn prepare_source_index_bench_db(root: &Path) {
     fs::create_dir_all(root.join(".git")).expect("create project marker");
     let cache_root = project_client_cache_dir(root).expect("client cache dir");
     fs::create_dir_all(&cache_root).expect("create client cache dir");
-    let db_path = ClientDb::default_path(&cache_root);
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
-    db.replace_source_index(&source_index_bench_import(root))
-        .expect("replace source index");
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &cache_root,
+        ClientDbSourceIndexRefreshRequest {
+            import: source_index_bench_import(root),
+            file_count: 512,
+        },
+    )
+    .expect("replace source index");
 }
 
 fn source_index_bench_import(root: &Path) -> ClientDbSourceIndexImport {

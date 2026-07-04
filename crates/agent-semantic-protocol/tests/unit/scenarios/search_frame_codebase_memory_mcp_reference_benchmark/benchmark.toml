@@ -1,0 +1,17 @@
+harness = "libtest"
+test = "search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta"
+snapshot = "search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta"
+target_total = "1ms"
+max_total = "5ms"
+observed_total = "1ms"
+regression_budget = "2ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "search-frame-reference-benchmark"
+max_provider_process_count = 0
+max_stdout_bytes = 8192
+fallback_reason = "none"
+target_rationale = "Search Frame uses codebase-memory-mcp as a reference benchmark. The gate records roundDelta and evidenceAdvantage so compression is measured without becoming a mechanical strict pass/fail floor."
+
+[observed_timings]
+comparison_contract = "1ms"

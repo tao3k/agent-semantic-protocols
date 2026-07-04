@@ -5,6 +5,10 @@ use std::path::Path;
 use serde::Serialize;
 
 use super::turso::connect_turso_client_db;
+use super::turso_operation_lock::acquire_turso_operation_lock;
+use super::turso_statement::{
+    execute_turso_operation_with_lock_retry, run_turso_operation_with_lock_retry,
+};
 
 /// Bounded search/route receipt written through the Turso DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -29,12 +33,15 @@ pub async fn upsert_turso_route_receipt(
     db_path: &Path,
     receipt: &TursoClientDbRouteReceipt,
 ) -> Result<(), String> {
+    let _operation_lock = acquire_turso_operation_lock(db_path, "route-receipt-upsert")?;
     let evidence_ids_json = serde_json::to_string(&receipt.evidence_ids)
         .map_err(|error| format!("failed to encode Turso route receipt evidence ids: {error}"))?;
     let connection = connect_turso_client_db(db_path).await?;
-    connection
-        .execute(
-            "INSERT INTO asp_route_receipt (
+    execute_turso_operation_with_lock_retry(
+        || async {
+            connection
+                .execute(
+                    "INSERT INTO asp_route_receipt (
                 receipt_id,
                 repo_id,
                 workspace_id,
@@ -61,23 +68,27 @@ pub async fn upsert_turso_route_receipt(
                 hit_count = excluded.hit_count,
                 evidence_ids_json = excluded.evidence_ids_json,
                 created_at_ms = excluded.created_at_ms",
-            (
-                receipt.receipt_id.as_str(),
-                receipt.repo_id.as_str(),
-                receipt.workspace_id.as_str(),
-                receipt.scope_id.as_str(),
-                receipt.session_id.as_deref(),
-                receipt.query.as_str(),
-                receipt.route_source.as_str(),
-                receipt.selected_selector.as_deref(),
-                receipt.next_command.as_deref(),
-                i64::from(receipt.hit_count),
-                evidence_ids_json.as_str(),
-                receipt.created_at_ms,
-            ),
-        )
-        .await
-        .map_err(|error| format!("failed to upsert Turso route receipt: {error}"))?;
+                    (
+                        receipt.receipt_id.as_str(),
+                        receipt.repo_id.as_str(),
+                        receipt.workspace_id.as_str(),
+                        receipt.scope_id.as_str(),
+                        receipt.session_id.as_deref(),
+                        receipt.query.as_str(),
+                        receipt.route_source.as_str(),
+                        receipt.selected_selector.as_deref(),
+                        receipt.next_command.as_deref(),
+                        i64::from(receipt.hit_count),
+                        evidence_ids_json.as_str(),
+                        receipt.created_at_ms,
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to upsert Turso route receipt",
+    )
+    .await?;
     Ok(())
 }
 
@@ -128,15 +139,27 @@ pub async fn list_turso_route_receipts(
          ORDER BY created_at_ms DESC, receipt_id
          LIMIT ?3";
     let mut rows = if let Some(session_id) = session_id {
-        connection
-            .query(sql_with_session, (repo_id, workspace_id, session_id, limit))
-            .await
-            .map_err(|error| format!("failed to query Turso route receipts: {error}"))?
+        run_turso_operation_with_lock_retry(
+            || async {
+                connection
+                    .query(sql_with_session, (repo_id, workspace_id, session_id, limit))
+                    .await
+                    .map_err(|error| error.to_string())
+            },
+            "failed to query Turso route receipts",
+        )
+        .await?
     } else {
-        connection
-            .query(sql_without_session, (repo_id, workspace_id, limit))
-            .await
-            .map_err(|error| format!("failed to query Turso route receipts: {error}"))?
+        run_turso_operation_with_lock_retry(
+            || async {
+                connection
+                    .query(sql_without_session, (repo_id, workspace_id, limit))
+                    .await
+                    .map_err(|error| error.to_string())
+            },
+            "failed to query Turso route receipts",
+        )
+        .await?
     };
     let mut receipts = Vec::new();
     while let Some(row) = rows

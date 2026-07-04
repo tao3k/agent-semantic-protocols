@@ -5,9 +5,10 @@ use crate::rust_harness_activation::support::write_fake_provider_binary;
 use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
 
 #[test]
-fn cli_install_prefers_git_toplevel_cache_over_prj_cache_home() {
+fn cli_install_uses_state_core_home_over_prj_cache_home() {
     let root = git_project_root("install-prj-cache-home");
     let codex_home = root.join(".codex-home");
+    let asp_state_home = root.join(".asp-state-home");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
     let prj_cache_home = root.join(".project-cache");
@@ -17,6 +18,7 @@ fn cli_install_prefers_git_toplevel_cache_over_prj_cache_home() {
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("PRJ_CACHE_HOME", &prj_cache_home)
         .env("CODEX_HOME", &codex_home)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
@@ -25,24 +27,31 @@ fn cli_install_prefers_git_toplevel_cache_over_prj_cache_home() {
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8(output.stdout).expect("install stdout");
-    assert!(
-        root.join(".cache")
-            .join("agent-semantic-protocol/hooks/activation.json")
-            .is_file()
-    );
-    assert!(!stdout.contains("profileCache="));
-    assert!(
-        !root
-            .join(".cache")
-            .join("agent-semantic-protocol/hooks/profiles.json")
-            .exists()
-    );
-    assert!(
-        !prj_cache_home
-            .join("agent-semantic-protocol/hooks/profiles.json")
-            .exists()
-    );
+    assert!(installed_activation_path(&asp_state_home).is_file());
+    assert!(!root.join(".cache").exists());
+    assert!(!prj_cache_home.exists());
+}
+
+fn installed_activation_path(state_home: &std::path::Path) -> std::path::PathBuf {
+    let mut matches = Vec::new();
+    collect_activation_paths(state_home, &mut matches);
+    matches.sort();
+    assert_eq!(matches.len(), 1, "activation paths: {matches:?}");
+    matches.remove(0)
+}
+
+fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_activation_paths(&path, matches);
+        } else if path.ends_with("live/hooks/state/activation.json") {
+            matches.push(path);
+        }
+    }
 }
 
 #[test]
@@ -118,7 +127,7 @@ argvSourceGlobAny = [
 ]
 "#,
     )
-    .expect("write stale generated config");
+    .expect("write existing generated config");
 
     let output = protocol_command()
         .env("PATH", &path)

@@ -279,6 +279,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         provider_facts_started_at.elapsed(),
         &provider_facts,
     );
+    let rendered_source = resolved_search_pipe_source(pipe_args.source, &acquisition);
     let surfaces = default_search_surfaces();
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
@@ -289,7 +290,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         query: Some(&pipe_args.seed_query),
         candidates: &acquisition.candidates,
         pipes: &surfaces,
-        source: pipe_args.source.as_str(),
+        source: &rendered_source,
         candidate_sources: &acquisition.candidate_sources,
         source_trace: &source_trace,
         scopes: &pipe_args.scopes,
@@ -307,6 +308,16 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
+}
+
+fn resolved_search_pipe_source(source: SourceSpec, acquisition: &CandidateAcquisition) -> String {
+    acquisition
+        .candidate_sources
+        .iter()
+        .find(|candidate_source| candidate_source.as_str() != "provider")
+        .or_else(|| acquisition.candidate_sources.first())
+        .cloned()
+        .unwrap_or_else(|| source.as_str().to_string())
 }
 
 fn search_pipe_budget_scopes(pipe_args: &super::search_pipe_args::SearchPipeArgs) -> Vec<PathBuf> {

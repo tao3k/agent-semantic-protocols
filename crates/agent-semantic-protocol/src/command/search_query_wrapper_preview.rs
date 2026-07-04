@@ -1,4 +1,4 @@
-//! Finder preview helpers for query wrappers and search pipe plans.
+//! Query-overlay preview helpers for query wrappers and search pipe plans.
 
 use super::search_pipe_model::Candidate;
 use super::search_query_wrapper_candidates::{owner_candidates, package_clusters, rg_scope_next};

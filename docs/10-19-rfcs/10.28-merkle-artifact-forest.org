@@ -1,0 +1,943 @@
+#+TITLE: RFC 10.28: Merkle Artifact Forest for ASP State, DB, and Evidence Artifacts
+#+DATE: 2026-07-02
+#+STATUS: Draft
+#+OWNER: ASP Core
+
+* Summary
+
+This RFC evaluates whether ASP should introduce Merkle-tree based artifact
+identity for the new State Core and Turso-backed DB architecture.
+
+The recommendation is to introduce a *Merkle artifact forest*, not a single
+global Merkle tree. The forest gives source snapshots, provider outputs,
+source-index bundles, compact graphs, evidence graphs, dynamic overlays, search
+receipts, and exported artifacts stable content-derived identities. Turso
+remains the query, transaction, FTS/BM25, and search-adapter engine. Merkle
+roots provide provenance, reuse, invalidation, reproducibility, and garbage
+collection boundaries.
+
+Performance is a first-order design constraint:
+
+- Merkle hashing must not sit on every search hot path.
+- Dirty-code dynamic overlay roots must be cheap and session-scoped.
+- Large payloads must be hashed with streaming/incremental hashing.
+- Turso writes must be batched and root-oriented, not one transaction per node.
+- Stable roots must allow ASP to skip parser/provider work when inputs are
+  unchanged.
+
+* Problem
+
+State Core moved durable ASP state to a global state root. The DB architecture is
+moving toward Turso as the durable engine. This gives ASP a stronger storage
+foundation, but it does not by itself answer artifact identity questions:
+
+- Which source snapshot produced this source-index DB row?
+- Which provider manifest, parser version, schema version, and command produced
+  this compact graph?
+- Can a search receipt be reused after a dirty edit?
+- Which artifacts are safe to garbage collect?
+- How can Python and Julia graph analysis reproduce the exact input graph used
+  by a previous experiment?
+- How can an agent trust that evidence was not mixed from stale project-local
+  cache, line-range hints, or another workspace?
+
+Timestamp-based manifests are not strong enough. Path-based identity is unstable
+across worktrees and global state roots. Display labels and line ranges are not
+executable identity. The new architecture needs a content and provenance layer
+that is stable, cheap to compare, and compatible with parser-owned selectors.
+
+* Decision
+
+Adopt a Merkle artifact forest as an artifact identity layer.
+
+The forest is composed of independent Merkle roots:
+
+#+begin_example
+source_snapshot_root
+provider_output_root
+source_index_bundle_root
+compact_graph_root
+evidence_graph_root
+dynamic_overlay_root
+search_receipt_root
+artifact_export_root
+event_log_checkpoint_root
+#+end_example
+
+Each root has its own lifecycle, GC policy, and performance budget. ASP must not
+maintain one global root for all state under =$ASP_STATE_HOME=.
+
+* ASP Advantage Thesis
+
+Merkle support is only worth introducing if it strengthens the properties that
+make ASP different from generic code search, generic vector memory, or a
+language-agnostic tree-sitter index. The target architecture is not "store more
+files with hashes"; it is a typed evidence identity layer for native parser
+facts, compact graph render output, dynamic overlay search, Turso-backed
+provenance, and Python/Julia graph research.
+
+The advantage is strongest when all of these are true:
+
+- Native harness outputs can be proven as stable artifact leaves without making
+  ASP core understand each language's private syntax rules.
+- Agent-facing search receipts can cite compact artifact roots instead of
+  replaying large JSON packets or line-range identities.
+- Dynamic dirty-code overlays can be session scoped and hash-addressed without
+  forcing every edit into durable DB tables.
+- Turso can query provenance, root lineage, and compact graph facts instead of
+  acting as a blob store.
+- Python and Julia can replay the same graph snapshot from DB rows plus dynamic
+  JSON overlays, making algorithm experiments reproducible and comparable.
+
+If a Merkle layer cannot reduce agent evidence rounds, make graph experiments
+reproducible, or make source/index receipts smaller and more trustworthy, it is
+not pulling its weight in this architecture.
+
+* Maximum-Value Mechanisms
+
+** Native Parser Evidence Roots
+
+ASP's parser advantage comes from language-owned harnesses producing typed facts
+at lower granularity than line-based search. Merkle roots should preserve that
+advantage by hashing provider outputs, parser manifests, schema digests, and
+compact projections as first-class leaves. The executable identity remains
+selector/root/generation based; display labels and line ranges stay diagnostic.
+
+This lets an agent ask "which owner evidence justified this edit?" and get a
+compact root reference that can be re-expanded only when needed.
+
+** Turso Queryable Provenance
+
+Turso integration should not reverse the ownership of state layout. State Core
+owns paths and workspace identity; DB Engine owns durable rows; the artifact
+forest owns integrity and lineage. Turso tables should store artifact roots,
+edges, receipts, and queryable metadata so DB queries can answer:
+
+- which compact graph root fed this render
+- which provider output root produced this owner-items packet
+- which dynamic overlay generation was active for this search
+- which source-index bundle is still valid for this workspace
+
+This is the difference between "hash archives exist" and "the agent can route
+through provenance in fewer turns".
+
+** Dynamic Overlay Without Durable Churn
+
+Dynamic code search is high-churn and should not become a durable DB write on
+every edit. The Merkle design therefore treats overlay roots as workspace and
+session scoped generations. Stable Turso roots describe durable source/index
+state; overlay roots describe active dirty evidence. Search can merge both while
+the receipt still explains which side supplied each candidate.
+
+This keeps dirty search cheap while making the result auditable.
+
+** Python/Julia Research Interface
+
+Python graph implementations and Julia algorithm research need stable snapshots,
+not full copies of every changing artifact. The artifact forest gives them a
+common boundary:
+
+- load graph topology and root metadata from Turso
+- load dynamic or experimental payloads from JSON artifact leaves
+- compare runs by root hash and generation
+- replay a compact graph without depending on current working tree line numbers
+
+That makes research outputs reproducible across sessions and lets new graph
+algorithms improve routing without changing provider CLI contracts.
+
+** Agent Search Turn Reduction
+
+The agent-facing value is fewer searches from intent to evidence. A Merkle root
+must be renderable as a compact proof reference inside search receipts:
+
+#+begin_example
+evidenceRoot: compactGraph:blake3:<hash>
+sourceRoots: [sourceIndexBundle:<hash>, dynamicOverlay:<hash>]
+selector: crates/...#owner-items
+generation: workspace/session scoped
+#+end_example
+
+The agent should be able to trust a compact receipt, ask for expansion only when
+the edit boundary is still uncertain, and avoid re-reading large JSON or broad
+source dumps.
+
+* Value Validation Matrix
+
+| ASP advantage | Merkle mechanism | Required metric | Failure signal |
+|---------------+------------------+-----------------+----------------|
+| Native parser precision | provider output and compact graph roots | same input produces same root across repeated runs | root changes without source/schema/provider change |
+| Low-token agent evidence | compact root refs in render/receipt | receipt can cite evidence without embedding full JSON | render requires large raw JSON for normal decisions |
+| Dynamic overlay search | session-scoped overlay roots | dirty search updates without durable source-index rewrite | every edit rewrites stable DB/source roots |
+| Turso provenance | queryable root/edge tables | DB can answer root lineage and active generation | DB only stores opaque blobs |
+| Python/Julia graph research | reproducible snapshot roots | algorithm runs can replay the same graph by root | experiments depend on current line numbers |
+| Fewer search turns | root-guided evidence expansion | intent-to-snippet path contracts toward 1-2 focused commands | agent still needs repeated broad search to trust evidence |
+
+* Proof Obligations
+
+Before Merkle roots become a public ASP contract, the implementation must prove:
+
+- Root determinism: same repo/workspace/scope/generation/provider inputs produce
+  the same root on repeated runs.
+- Schema sensitivity: changing provider schema or manifest digest changes the
+  affected root.
+- Selector identity: executable identity uses selectors, artifact roots, and
+  generations, not line ranges or display names.
+- Overlay isolation: dynamic overlay roots do not mutate stable source-index
+  roots.
+- Compact render: agent-facing receipts include artifact root references without
+  forcing full JSON expansion.
+- Cross-language reuse: Rust, Python, TypeScript, Org, Julia, and future
+  harnesses can use the shared root schema for common facts, with
+  provider-owned extension fields for language-specific evidence.
+- Research replay: Python and Julia can reconstruct or compare graph snapshots
+  from Turso metadata plus artifact JSON leaves.
+
+* Minimum Evidence Gates
+
+The first implementation stage should add gates that make the value thesis
+measurable:
+
+- =merkle_root_determinism_same_inputs=: repeated provider output yields the
+  same root.
+- =merkle_root_changes_on_provider_manifest_digest=: provider/schema drift
+  invalidates the correct root.
+- =merkle_dynamic_overlay_generation_is_session_scoped=: dirty overlay updates
+  are isolated from stable source-index roots.
+- =merkle_receipt_render_compact_token_budget=: render can cite roots within a
+  small receipt budget.
+- =merkle_python_graph_loader_reconstructs_root=: Python can rebuild graph
+  topology from root metadata and artifact leaves.
+- =merkle_julia_snapshot_diff_replays_root=: Julia can replay two snapshot roots
+  and compare algorithm results.
+
+These gates are the acceptance criteria for claiming that Merkle trees exploit
+ASP's native-parser, DB, graph, and agent-search advantages. Without them the
+feature remains an internal integrity mechanism, not an architecture win.
+
+* Evidence Graph Repair Chain
+
+The current artifact root design is necessary but not sufficient. ASP's larger
+advantage is that evidence is not a flat search result; it is a repair chain:
+
+#+begin_example
+intent -> how-from evidence -> how-fix plan -> patch/change-set -> proof receipt
+#+end_example
+
+This chain should be represented as a Merkle DAG inside the artifact forest.
+Each frame is a typed artifact node with explicit parent roots, compact render
+fields, and optional expansion payloads. The tree is therefore not only a
+storage integrity tool; it becomes the executable skeleton of agent reasoning.
+
+** How-From Frame
+
+The how-from frame answers "why is this evidence relevant?" It links intent,
+selector seeds, provider outputs, source-index roots, dynamic overlay roots,
+and compact graph facts. It should be small enough to render in normal search
+output and complete enough for an agent to avoid broad re-search.
+
+Required references:
+
+- =searchReceipt= root that produced the candidate set.
+- =providerOutput= roots that supplied parser-owned evidence.
+- =sourceIndexBundle= and =dynamicOverlay= roots that explain stable and dirty
+  evidence sources.
+- =compactGraph= or =evidenceGraph= roots that explain topology and rank.
+- selector identities used to expand evidence, without making line ranges
+  executable identity.
+
+** How-Fix Frame
+
+The how-fix frame answers "what change boundary follows from the evidence?" It
+is not a patch yet. It is a typed plan rooted in the how-from frame. The frame
+should identify affected owners, expected edits, related tests, dependency
+edges, and proof obligations before any write occurs.
+
+Required references:
+
+- parent =howFromFrame= root.
+- owner-item roots and dependency roots that define the edit boundary.
+- expected changed selectors or modules.
+- proof requirements such as tests, schema validation, harness gates, or graph
+  invariants.
+- risk facts that should remain visible in compact render.
+
+** Change-Set Frame
+
+The change-set frame answers "what changed?" It is an optional bridge between
+the plan and proof. For high-churn working trees it can describe patch intent,
+changed selectors, generated artifacts, and overlay generation updates without
+forcing every dirty edit into durable DB state.
+
+Required references:
+
+- parent =howFixFrame= root.
+- dynamic overlay generation root for dirty code.
+- stable source snapshot root when changes are materialized.
+- generated artifact roots when render/schema/test fixtures change.
+
+** Proof Receipt Frame
+
+The proof receipt frame answers "why is the change accepted?" It links test
+receipts, schema receipts, provider receipts, formal proof receipts, and graph
+diff receipts back to the change-set and how-fix roots. This is where ASP can
+make proof more than terminal logs: proof becomes queryable, replayable, and
+compressible.
+
+Required references:
+
+- parent =changeSet= or =howFixFrame= root.
+- test/harness/source-index receipts.
+- schema validation receipts.
+- formal proof or model-checking receipts when present.
+- graph diff roots that show topology changed as expected.
+- compact failure facts when proof is incomplete.
+
+** Agent Render Contract
+
+Render should expose the repair chain progressively:
+
+#+begin_example
+howFrom: <root-kind>:blake3:<hash>
+howFix: <root-kind>:blake3:<hash>
+proof: <root-kind>:blake3:<hash>
+nextExpansion: expand how-fix | expand proof | inspect selector
+#+end_example
+
+The normal receipt should not dump raw JSON. It should give enough compact
+evidence for the agent to choose the next action. Expansion commands can then
+materialize only the selected frame. This is the Merkle-backed version of
+progressive disclosure.
+
+** DB And Research Implications
+
+Turso should be able to query the repair chain as edges:
+
+#+begin_example
+howFromFrame -> providerOutput
+howFromFrame -> sourceIndexBundle
+howFixFrame -> howFromFrame
+changeSet -> howFixFrame
+proofReceipt -> changeSet
+proofReceipt -> graphDiff
+#+end_example
+
+Python can implement graph algorithms over these edges for routing, ranking,
+and repair-boundary prediction. Julia can replay snapshots and compare
+algorithms across the same root set. Both should operate on stable root/edge
+metadata plus selected JSON leaves, not on transient line locations.
+
+** Added Root Kinds
+
+The shared artifact root schema should include repair-chain kinds:
+
+- =howFromFrame=: intent-to-evidence provenance.
+- =howFixFrame=: evidence-to-change plan.
+- =changeSet=: changed selector/artifact boundary.
+- =proofReceipt=: proof and validation receipts.
+- =graphDiff=: topology or compact graph delta.
+
+These names are not language specific. Language-specific facts stay in provider
+extension payloads under the corresponding root.
+
+* Goals
+
+- Provide stable artifact identity across State Core, Turso DB, filesystem
+  artifacts, search receipts, and graph exports.
+- Make artifact reuse and invalidation deterministic.
+- Give Python and Julia a reproducible graph/artifact interface.
+- Avoid line ranges, project names, and display labels as executable identity.
+- Keep search hot paths fast by making Merkle roots a cache/provenance layer,
+  not a required per-query recomputation.
+- Support dirty-code dynamic overlays without durable full-ingest per edit.
+- Enable reachability-based artifact GC from protected roots.
+- Make provenance compact enough to render to agents without dumping raw JSON.
+
+* Non-goals
+
+- This RFC does not replace Turso.
+- This RFC does not introduce an independent Tantivy product dependency.
+- This RFC does not make a single global Merkle tree over =$ASP_STATE_HOME=.
+- This RFC does not hash every dirty edit into durable DB state.
+- This RFC does not define a new search ranking algorithm.
+- This RFC does not add an MCP server design.
+
+* Architecture
+
+** Layering
+
+#+begin_example
+native language harnesses
+  -> provider outputs / parser facts
+  -> artifact Merkle roots
+  -> Turso artifact/search/index tables
+  -> ASP search/render/receipt surfaces
+  -> Python implementation + Julia research graph interfaces
+#+end_example
+
+Turso owns:
+
+- transactions
+- queryable state
+- FTS/BM25/search adapter surfaces
+- source-index and structural-index lookup
+- dynamic overlay metadata
+- artifact root registry
+
+Merkle owns:
+
+- content-derived identity
+- provenance
+- deterministic invalidation
+- artifact bundle reuse
+- graph snapshot reproducibility
+- GC reachability
+- compact proof references
+
+The filesystem owns:
+
+- large payload blobs
+- exported graph/artifact bundles
+- debug receipts when too large for inline DB storage
+
+** Forest, Not Global Tree
+
+A single global root would make every event re-root unrelated state. That is
+bad for performance and concurrency. It also makes sessions and dynamic overlays
+fight with durable source-index state.
+
+Instead, roots are scoped:
+
+#+begin_example
+repo_id
+workspace_id
+scope_id
+generation
+root_kind
+root_hash
+#+end_example
+
+Examples:
+
+- A source-index refresh creates a =source_index_bundle_root=.
+- A compact graph render creates a =compact_graph_root=.
+- A dirty session creates a =dynamic_overlay_root=.
+- A search command creates a =search_receipt_root= that references stable and
+  overlay roots.
+
+* Hashing Model
+
+** Hash Function
+
+Use BLAKE3 by default.
+
+Rationale:
+
+- fast streaming hash
+- cheap incremental hashing over large files and JSON payloads
+- available Rust ecosystem support
+- good fit for local artifact identity where cryptographic collision resistance
+  still matters but SHA-256 compatibility is not required
+
+If external interoperability requires SHA-256 later, store it as an optional
+secondary digest. Do not put SHA-256 on the critical path by default.
+
+** Domain Separation
+
+Every hash must include a domain prefix:
+
+#+begin_example
+asp.leaf.v1
+asp.node.v1
+asp.root.v1
+asp.schema.v1
+asp.provider-output.v1
+asp.dynamic-overlay.v1
+#+end_example
+
+This prevents unrelated byte streams from colliding across semantic domains.
+
+** Leaf Hash
+
+#+begin_example
+leaf_hash = BLAKE3(
+  "asp.leaf.v1" ||
+  codec ||
+  media_type ||
+  payload_bytes
+)
+#+end_example
+
+The leaf payload may be:
+
+- normalized JSON
+- provider stdout packet
+- compact graph packet
+- source snippet payload
+- exported artifact file
+- dynamic overlay text patch
+
+** Node Hash
+
+#+begin_example
+node_hash = BLAKE3(
+  "asp.node.v1" ||
+  kind ||
+  schema_id ||
+  schema_version ||
+  producer_hash ||
+  sorted_child_edges ||
+  metadata_hash
+)
+#+end_example
+
+Child edges must be sorted by stable =(role, name, child_hash, ordinal)=.
+
+** Root Hash
+
+#+begin_example
+root_hash = BLAKE3(
+  "asp.root.v1" ||
+  repo_id ||
+  workspace_id ||
+  scope_id ||
+  generation ||
+  root_kind ||
+  node_hash
+)
+#+end_example
+
+The root identity includes State Core identity. This prevents artifacts from
+different workspaces or sessions from being accidentally treated as equivalent
+when their payload happens to match.
+
+* Identity Rules
+
+Merkle identity must include:
+
+- =schema_id=
+- =schema_version=
+- =provider_id=
+- =provider_manifest_digest=
+- parser/harness version
+- normalized command identity when command output is the artifact
+- selector identity for parser-owned source facts
+- source content hash for source-derived facts
+
+Merkle identity must not include:
+
+- display label
+- project name
+- line range as executable identity
+- wall-clock timestamp
+- host-local temporary path
+- command duration
+- non-deterministic JSON field order
+
+Observability fields belong in receipt metadata, not in the Merkle identity.
+
+* Turso Schema Sketch
+
+The first implementation should add a small artifact registry behind the DB
+engine facade.
+
+#+begin_src sql
+CREATE TABLE artifact_object (
+  hash TEXT PRIMARY KEY,
+  hash_algorithm TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  codec TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  storage_uri TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE artifact_node (
+  hash TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  schema_id TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  producer_hash TEXT,
+  payload_hash TEXT,
+  metadata_hash TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE artifact_root (
+  repo_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  scope_id TEXT NOT NULL,
+  generation TEXT NOT NULL,
+  root_kind TEXT NOT NULL,
+  root_hash TEXT NOT NULL,
+  protected INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (repo_id, workspace_id, scope_id, generation, root_kind)
+);
+
+CREATE TABLE artifact_edge (
+  edge_hash TEXT PRIMARY KEY,
+  role TEXT NOT NULL,
+  ordinal INTEGER NOT NULL,
+  parent_repo_id TEXT NOT NULL,
+  parent_workspace_id TEXT NOT NULL,
+  parent_scope_id TEXT NOT NULL,
+  parent_generation TEXT NOT NULL,
+  parent_root_kind TEXT NOT NULL,
+  parent_root_hash TEXT NOT NULL,
+  parent_node_hash TEXT NOT NULL,
+  child_repo_id TEXT NOT NULL,
+  child_workspace_id TEXT NOT NULL,
+  child_scope_id TEXT NOT NULL,
+  child_generation TEXT NOT NULL,
+  child_root_kind TEXT NOT NULL,
+  child_root_hash TEXT NOT NULL,
+  child_node_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE artifact_receipt_root (
+  receipt_id TEXT PRIMARY KEY,
+  command_hash TEXT NOT NULL,
+  search_receipt_root_hash TEXT NOT NULL,
+  evidence_root_hash TEXT,
+  overlay_root_hash TEXT,
+  stable_index_root_hash TEXT,
+  created_at TEXT NOT NULL
+);
+#+end_src
+
+This schema is intentionally root-oriented. The implementation should batch
+insert roots and queryable root edges for a repair-chain bundle in one
+transaction. Node child edges remain part of the node hash input; DB traversal
+uses =artifact_edge= rows that conform to
+=semantic-artifact-edge.v1.schema.json=.
+
+* Performance Model
+
+** Hot Search Path
+
+Search must not recompute a full Merkle root for each query.
+
+Hot path order:
+
+#+begin_example
+receipt/context anchors
+  -> active dynamic overlay root lookup
+  -> stable Turso source/search index root lookup
+  -> provider/native parser only when root cache is missing or stale
+#+end_example
+
+The search command should usually read root hashes, compare generations, and
+query Turso indexes. It should not hash the whole workspace.
+
+** Cold Path
+
+Cold path may compute roots, but must be bounded:
+
+- hash files with streaming BLAKE3
+- parallelize file hashing with a bounded worker pool
+- batch DB writes
+- avoid JSON stringify/parse cycles where typed Rust structs are available
+- compute stable source roots once per generation
+- skip generated/vendor paths using provider-owned ignore facts
+
+Cold path target should be expressed per artifact class, not as one global
+number. Example gates:
+
+#+begin_example
+source_snapshot_root_cold
+source_index_bundle_root_cold
+compact_graph_root_cold
+dynamic_overlay_root_cold
+search_receipt_root_hot
+#+end_example
+
+** Dynamic Overlay
+
+Dirty-code overlays are high churn. They must not be fully materialized as
+durable source-index roots on every edit.
+
+Overlay identity:
+
+#+begin_example
+dynamic_overlay_root =
+  BLAKE3(
+    "asp.dynamic-overlay.v1" ||
+    repo_id ||
+    workspace_id ||
+    session_id ||
+    base_generation ||
+    sorted_dirty_file_hashes ||
+    overlay_patch_hashes
+  )
+#+end_example
+
+The overlay root is session-scoped and short-lived. It is enough to prove that
+search results came from a specific dirty generation. It does not need the same
+GC retention policy as durable source-index roots.
+
+** Provider Output
+
+Provider/harness outputs should be hashed at packet boundaries:
+
+- owner-items packet root
+- query packet root
+- syntax-query packet root
+- dependency facts root
+- compact graph facts root
+
+This lets ASP skip provider work when:
+
+- source root is unchanged
+- provider manifest digest is unchanged
+- command identity is unchanged
+- schema version is unchanged
+
+** DB Cost
+
+Merkle can create many small nodes. Avoid death by DB chatter:
+
+- insert roots/nodes/edges in one transaction per artifact bundle
+- dedupe by =hash= before writing child edges
+- keep large payload bytes out of Turso unless they are small
+- use =artifact_object.storage_uri= for filesystem blobs
+- write search receipts as root references, not full repeated JSON
+
+** Agent Rendering Cost
+
+Agent-facing render should use compact proof references:
+
+#+begin_example
+evidenceRoot: blake3:...
+sourceIndexRoot: blake3:...
+overlayRoot: blake3:...
+producer: rs-harness@...
+schema: semantic-source-index.v1
+#+end_example
+
+Do not render full Merkle nodes by default. Progressive disclosure should expose
+the node graph only when the agent asks for provenance/debug detail.
+
+* Filesystem Layout
+
+Merkle payload storage should live under State Core artifact paths:
+
+#+begin_example
+$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/artifacts/
+  objects/blake3/<prefix>/<hash>
+  bundles/<root_kind>/<root_hash>/manifest.json
+  exports/<root_kind>/<root_hash>/
+#+end_example
+
+The DB is authoritative for roots and reachability. The filesystem stores large
+payloads and export bundles.
+
+* Python and Julia Interfaces
+
+Python should consume Turso artifact tables to implement graph algorithms:
+
+- reachability
+- GC mark-and-sweep
+- graph diff
+- root lineage
+- compact evidence projection
+- benchmark aggregation
+
+Julia should consume artifact roots for research:
+
+- graph ranking experiments
+- topology algorithms
+- parser/provider drift analysis
+- evidence graph reproducibility
+- graph snapshot comparison
+
+Both interfaces should accept root hashes rather than loose JSON dumps.
+
+* Garbage Collection
+
+GC should be reachability-based:
+
+1. Start from protected roots:
+   - latest workspace roots
+   - active session overlay roots
+   - pinned receipt roots
+   - exported artifact roots
+2. Traverse =artifact_edge=.
+3. Mark reachable nodes and objects.
+4. Sweep unreferenced objects after retention windows.
+
+Dynamic overlay roots can have a shorter retention window than durable graph or
+source-index roots.
+
+* Migration Plan
+
+** Phase 1: Content Hash Fields
+
+Add optional =contentHash=, =producerHash=, and =schemaHash= fields to artifact
+manifests and receipts. Do not require full Merkle edges yet.
+
+Validation:
+
+- receipt schema accepts hash fields
+- hash is deterministic for normalized JSON
+- no search hot-path regression
+
+** Phase 2: Artifact Bundle Roots
+
+Introduce bundle roots for:
+
+- source-index refresh
+- compact graph render
+- provider output packet
+- search receipt
+
+Validation:
+
+- repeated runs produce the same root when inputs are unchanged
+- dirty source changes produce a different source root
+- provider manifest changes invalidate provider output roots
+
+** Phase 3: Turso Artifact Registry
+
+Add =artifact_object=, =artifact_node=, =artifact_edge=, =artifact_root= behind
+the DB engine facade.
+
+Validation:
+
+- batch insert benchmark
+- root lookup benchmark
+- source-index warm path remains stable
+- no project-local cache fallback
+
+** Phase 4: Dynamic Overlay Root
+
+Bind dynamic overlay search results to session-scoped overlay roots.
+
+Validation:
+
+- dirty edit changes overlay root
+- stable source-index root does not change on transient dirty edits
+- overlay hot search stays within scenario gate
+
+** Phase 5: GC and Graph Tooling
+
+Add protected root policies, reachability traversal, and Python/Julia root-based
+graph readers.
+
+Validation:
+
+- protected roots survive GC
+- unreferenced objects are swept after retention
+- Python graph loader can reconstruct compact/evidence graph from root
+- Julia experiments can pin and compare root hashes
+
+* Performance Gates
+
+Every phase must add scenario gates. Minimum required gates:
+
+#+begin_example
+artifact_hash_normalized_json_hot
+artifact_hash_large_payload_streaming_cold
+artifact_bundle_insert_turso_batch_cold
+artifact_root_lookup_turso_hot
+source_index_bundle_root_reuse_hot
+dynamic_overlay_root_dirty_edit_hot
+search_receipt_root_render_hot
+artifact_gc_reachability_cold
+#+end_example
+
+Metrics:
+
+- elapsed time
+- bytes hashed
+- object count
+- node count
+- edge count
+- DB transaction count
+- payload bytes written to DB
+- payload bytes written to filesystem
+- reused root count
+- invalidated root count
+
+Performance failures should identify whether time was spent hashing, normalizing,
+writing Turso rows, writing filesystem blobs, or traversing edges.
+
+* Alternatives Considered
+
+** No Merkle Layer
+
+Continue with manifest paths, timestamps, and DB rows.
+
+Rejected because reproducibility, graph comparison, and deterministic
+invalidation remain weak.
+
+** Single Global Merkle Tree
+
+Hash all ASP state into one global root.
+
+Rejected because it makes unrelated state changes invalidate the whole tree and
+creates poor concurrency behavior for multi-session agents.
+
+** Git Object Model Only
+
+Use Git tree/commit hashes as artifact identity.
+
+Rejected because ASP must handle dirty overlays, provider outputs, generated
+graphs, non-Git workspaces, and language harness facts that are not Git objects.
+Git hashes can be referenced as input facts when available, but they are not
+enough.
+
+** Store Full Artifact JSON in Turso Only
+
+Use Turso rows as the only artifact identity.
+
+Rejected because row identity does not naturally provide content-addressed
+dedupe, root comparison, or filesystem blob handling for large artifacts.
+
+* Risks
+
+- Too many tiny nodes can make Turso writes expensive.
+- Hashing normalized JSON can become CPU-heavy if done repeatedly.
+- Poor domain separation can create confusing identity collisions across
+  artifact kinds.
+- Over-rendering provenance can waste agent context.
+- Treating dynamic overlays like durable roots can make dirty-edit search slow.
+
+Mitigations:
+
+- batch writes
+- root-level caching
+- streaming hashes
+- compact proof rendering
+- session-scoped overlay roots
+- performance gates before broad adoption
+
+* Open Questions
+
+- Should BLAKE3 be the only required digest, or should SHA-256 be stored for
+  export interoperability?
+- Which roots are protected by default, and for how long?
+- Should artifact objects be compressed before or after hashing?
+- What is the maximum inline payload size for Turso before using filesystem
+  object storage?
+- Which graph roots should Julia treat as canonical experiment inputs?
+- Which Python graph APIs should be stabilized first?
+
+* Recommendation
+
+Proceed with a phased Merkle artifact forest.
+
+The first implementation should add content-hash fields and bundle roots without
+placing hashing on the search hot path. The second implementation should add the
+Turso artifact registry and dynamic overlay root. Full GC and Python/Julia graph
+interfaces should follow only after roots and receipts are stable.
+
+The expected architectural outcome is:
+
+#+begin_example
+State Core gives durable location and identity.
+Turso gives queryable DB/search/index state.
+Merkle roots give artifact identity, provenance, reuse, invalidation, and GC.
+Native parsers give semantic facts.
+Python and Julia consume root-pinned graph artifacts for implementation and research.
+#+end_example

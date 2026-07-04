@@ -19,8 +19,8 @@ use super::provider_process::{
     run_owner_items_provider_command, run_provider_command,
 };
 use super::provider_roots::{
-    activation_project_root, activation_storage_root, client_backend_cache_home,
-    effective_project_root_and_args, validate_explicit_workspace_project_root,
+    activation_project_root, client_backend_cache_home, effective_project_root_and_args,
+    validate_explicit_workspace_project_root,
 };
 use super::query_direct_read::{
     is_asp_fast_direct_source_read, run_asp_fast_direct_source_read_command,
@@ -149,11 +149,43 @@ fn load_activation_for_language_message() -> Option<HookRuntime> {
 }
 
 fn provider_activation_path(invocation_root: &Path) -> PathBuf {
-    if env::var_os("PRJ_CACHE_HOME").is_some() {
-        return default_activation_path(invocation_root);
-    }
     discover_activation_path(invocation_root)
         .unwrap_or_else(|| default_activation_path(invocation_root))
+}
+
+fn reject_search_file_workspace(args: &[String], invocation_root: &Path) -> Result<(), String> {
+    if !matches!(args.first().map(String::as_str), Some("search")) {
+        return Ok(());
+    }
+    let Some(workspace) = option_value(args, "--workspace") else {
+        return Ok(());
+    };
+    if workspace.starts_with('-') {
+        return Ok(());
+    }
+    let workspace_path = PathBuf::from(workspace);
+    let workspace_path = if workspace_path.is_absolute() {
+        workspace_path
+    } else {
+        invocation_root.join(workspace_path)
+    };
+    if workspace_path.is_file() {
+        return Err(
+            "--workspace requires a directory project root; Keep the file path as the owner/selector"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    let prefix = format!("{flag}=");
+    args.iter()
+        .find_map(|arg| arg.strip_prefix(&prefix))
+        .or_else(|| {
+            args.windows(2)
+                .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
+        })
 }
 
 pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
@@ -257,7 +289,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    if document_language_facade::is_document_language(language_id) {
+    if document_language_facade::is_document_language(language_id)
+        && !(is_asp_fast_search(&command_args)
+            && search_owner_items_owner_path(&command_args).is_some())
+    {
         return document_language_facade::run_document_language_command(
             language_id,
             &command_args,
@@ -273,6 +308,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if run_asp_fast_search_meta_command(language_id, &command_args) {
         return Ok(());
     }
+    reject_search_file_workspace(&command_args, &invocation_root)?;
     validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
     if let Some(result) =
         run_pre_activation_fast_owner_query(language_id, &command_args, &invocation_root)?
@@ -281,7 +317,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
 
     let activation_path = provider_activation_path(&invocation_root);
-    let runtime = load_activation(&activation_path)?;
+    let runtime = load_activation(&activation_path, &invocation_root)?;
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
     let config = AspConfig::load(&invocation_root, &activation_root);
     let (project_root, provider_args) = effective_project_root_and_args(
@@ -632,8 +668,8 @@ fn frontier_receipt_fact_arg<'a>(
     None
 }
 
-fn load_activation(path: &Path) -> Result<HookRuntime, String> {
-    load_or_sync_activation(path, &activation_storage_root(path))
+fn load_activation(path: &Path, invocation_root: &Path) -> Result<HookRuntime, String> {
+    load_or_sync_activation(path, invocation_root)
 }
 
 fn validate_provider_command(args: &[String]) -> Result<(), String> {

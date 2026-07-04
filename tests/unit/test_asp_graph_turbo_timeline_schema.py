@@ -34,7 +34,7 @@ _TIMELINE_SCHEMA = (
 )
 
 
-def test_timeline_events_packet_is_schema_owned_sqlite_boundary(tmp_path) -> None:
+def test_timeline_events_packet_is_schema_owned_db_engine_boundary(tmp_path) -> None:
     write_microburst_repeat_artifacts(tmp_path)
     events = scan_artifact_events(tmp_path)
 

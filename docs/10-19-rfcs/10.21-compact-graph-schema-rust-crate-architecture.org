@@ -288,7 +288,7 @@ The Rust core should optimize for one property: every interactive agent search s
 The recommended dependency posture is:
 - =tokio=, =tokio-util=, =futures-util=, and =bytes= are the provider transport and async orchestration base. They own child-process I/O, framed packets, timeouts, cancellation, bounded fan-out, and async DB calls.
 - =tracing= remains required for stage receipts and live performance diagnosis. Every hot path stage must emit structured spans keyed by project id, workspace id, session id, route id, provider id, generation id, selector id, and cache hit kind.
-- =turso= is the preferred DB Engine v1 replacement path once its local async API, MVCC/concurrent-write behavior, and FTS/vector roadmap satisfy ASP's benchmark gates. =rusqlite= remains the compatibility control until that gate is passed.
+- =turso= is the active DB Engine v1 path. Its local async API, MVCC/concurrent-write behavior, and FTS/vector roadmap are validated through DB-crate-internal control fixtures and benchmark gates, not through a public alternate backend.
 - Turso-backed FTS/BM25 is the preferred persisted lexical backend. Dynamic overlay search should reuse the Turso-owned Tantivy-backed search layer without inserting every dirty edit into the durable Turso DB generation. Direct =tantivy= must remain outside the product dependency graph except for non-product benchmark/control experiments.
 - =moka= is the preferred bounded async cache candidate for hot selector/proof/render caches because the cache itself is concurrent and futures-aware. Values should normally be stored behind =Arc= to avoid expensive clones.
 - =rayon= is the preferred CPU executor for bounded batch CPU work such as token projection, source fingerprinting, static index rebuilds, graph feature extraction, and expensive score fusion. Tokio worker threads must not become the CPU pool.
@@ -301,7 +301,7 @@ async I/O lane
   provider stdin/stdout/stderr, Turso async DB, timers, cancellation
 
 blocking compatibility lane
-  short sync filesystem/rusqlite/retired-path calls via spawn_blocking
+  short sync filesystem/pre-cutover path calls via spawn_blocking
   guarded by semaphores and never used for long-lived workers
 
 CPU lane
@@ -370,7 +370,7 @@ Persisted search returns only the current stable generation by default. Overlay 
 The first implementation gate should be benchmark-driven. Before adding more dependencies, ASP should measure:
 - warm exact-selector path with no provider call;
 - warm receipt-frontier render;
-- Turso/SQLite hot DB lookup;
+- Turso hot DB lookup;
 - Tantivy/Turso overlay search update and query latency;
 - warm provider proof call latency by language;
 - graph frontier expansion latency and allocation count;
@@ -419,7 +419,7 @@ The target design is a small set of crates with one reason to change each:
 | =agent-semantic-contracts= | Versioned Rust types generated or hand-bound from =schemas/=, schema ids, validation helpers, version negotiation, fixture loading | CLI, DB, provider execution, render style |
 | =agent-semantic-render= | Typed render IR, compact graph line grammar, aliases, =L0/L1= stdout projection, omission/avoid rendering, progressive expansion handles | Query planning, graph ranking, DB persistence, provider parsing |
 | =agent-semantic-search-core= | Query plan model, route graph, action frontier, typed graph inputs, graph/router contracts, materializable action model | CLI text, DB backend implementation, language-native parsing |
-| =agent-semantic-db-engine= | DB Engine traits, generations, overlays, Turso/SQLite backend adapters, receipt storage, search read-models | Prompt render policy, language parser facts, CLI argument parsing |
+| =agent-semantic-db-engine= | DB Engine traits, generations, overlays, Turso backend adapters, receipt storage, search read-models | Prompt render policy, language parser facts, CLI argument parsing |
 | =agent-semantic-provider-transport= | Provider process protocol, capability discovery, provider packet transport | Search ranking, render, DB schema |
 | =agent-semantic-client-core= | Stable client API that composes contracts, DB engine, transport, search, and render | Concrete CLI commands, hook policy |
 | =agent-semantic-protocol= | Thin =asp= CLI adapter, argv parsing, command dispatch, stdout/stderr policy | Contract definitions, graph algorithms, DB storage internals, render grammar ownership |

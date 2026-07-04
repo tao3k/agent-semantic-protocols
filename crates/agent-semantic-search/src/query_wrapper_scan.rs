@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::dynamic_overlay::QUERY_OVERLAY_ROUTE_SOURCE;
 use crate::language_neutral_search_file_spec;
 use crate::search_candidate::{RankedSearchCandidate, SearchCandidate, SearchStageReceipt};
 
@@ -131,7 +132,10 @@ pub fn collect_query_wrapper_source_index_candidates(
     if !request.project_root.is_dir() {
         return Ok(None);
     }
-    if matches!(request.lookup.state.as_str(), "missing-db" | "empty-index") {
+    if matches!(
+        request.lookup.state.as_str(),
+        "missing-db" | "empty-index" | "busy"
+    ) {
         return Ok(None);
     }
     let mut candidates = request
@@ -479,7 +483,7 @@ pub fn augment_package_path_candidates(
     for candidate in package_candidates {
         if existing.insert((candidate.path.clone(), candidate.symbol.clone())) {
             candidates.push(QueryWrapperCandidate {
-                source: "package-path-query".to_string(),
+                source: QUERY_OVERLAY_ROUTE_SOURCE.to_string(),
                 confidence: "package-path".to_string(),
                 ..candidate
             });
@@ -544,7 +548,7 @@ fn append_path_candidate(
         symbol: term.clone(),
         selector: None,
         text: display,
-        source: "fd-query".to_string(),
+        source: QUERY_OVERLAY_ROUTE_SOURCE.to_string(),
         confidence: "path".to_string(),
     });
 }
@@ -583,7 +587,7 @@ fn append_content_candidates(
             symbol: term.clone(),
             selector: None,
             text: line.to_string(),
-            source: "rg-query".to_string(),
+            source: QUERY_OVERLAY_ROUTE_SOURCE.to_string(),
             confidence: "content".to_string(),
         });
     }

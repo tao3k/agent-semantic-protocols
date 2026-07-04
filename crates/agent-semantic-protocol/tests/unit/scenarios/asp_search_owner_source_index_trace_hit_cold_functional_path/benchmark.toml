@@ -1,0 +1,18 @@
+harness = "libtest"
+test = "asp_search_owner_source_index_trace_hit_cold_functional_path_stays_inside_scenario_gate"
+snapshot = "asp_search_owner_source_index_trace_hit_cold_functional_path"
+target_total = "1ms"
+max_total = "5ms"
+observed_total = "1ms"
+regression_budget = "2ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 131072
+route_source = "search-owner-source-index-trace"
+max_provider_process_count = 0
+max_stdout_bytes = 1024
+fallback_reason = "none"
+target_rationale = "This is a cold functional render contract. It verifies that a source-index hit is rendered before path-only fallback without opening the DB or spawning a provider."
+
+[observed_timings]
+source_index_trace_render = "1ms"
+provider_process_count = "0us"

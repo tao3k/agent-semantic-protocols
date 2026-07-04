@@ -1,8 +1,9 @@
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{asp_command, org_artifact_target, temp_project_root};
 
 #[test]
 fn asp_org_capture_plan_body_fills_template_slots_without_replacing_skeleton() {
     let root = temp_project_root("org-capture-plan-body-slots");
+    let target = org_artifact_target(&root, "flow/plans/agent-plan-body-slot-test.org");
     let output = asp_command(&root)
         .args([
             "org",
@@ -12,7 +13,7 @@ fn asp_org_capture_plan_body_fills_template_slots_without_replacing_skeleton() {
             "--title",
             "AspGraphsSearch Julia analyzer research integration",
             "--target-file",
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-body-slot-test.org",
+            target.as_str(),
             "--choice",
             "specification=TASK",
             "--body",
@@ -65,15 +66,7 @@ fn asp_org_capture_plan_body_fills_template_slots_without_replacing_skeleton() {
         "{stdout}"
     );
     assert!(
-        !root
-            .join(".cache")
-            .join("agent-semantic-protocol")
-            .join("artifacts")
-            .join("org")
-            .join("flow")
-            .join("plans")
-            .join("agent-plan-body-slot-test.org")
-            .exists(),
+        !std::path::Path::new(&target).exists(),
         "asp org capture with body slots must not create plan file"
     );
 }
@@ -81,6 +74,7 @@ fn asp_org_capture_plan_body_fills_template_slots_without_replacing_skeleton() {
 #[test]
 fn asp_org_capture_plan_body_records_codex_thread_id_as_session_id() {
     let root = temp_project_root("org-capture-plan-codex-thread");
+    let target = org_artifact_target(&root, "flow/plans/agent-plan-thread-scoped.org");
     let output = asp_command(&root)
         .env("CODEX_THREAD_ID", "codex-thread-123")
         .env_remove("CLAUDE_CODE_SESSION_ID")
@@ -97,7 +91,7 @@ fn asp_org_capture_plan_body_records_codex_thread_id_as_session_id() {
             "--title",
             "Thread scoped ASP Org plan",
             "--target-file",
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-thread-scoped.org",
+            target.as_str(),
             "--choice",
             "specification=TASK",
             "--body",
@@ -122,6 +116,7 @@ fn asp_org_capture_plan_body_records_codex_thread_id_as_session_id() {
 #[test]
 fn asp_org_capture_plan_body_does_not_use_generic_agent_session_env() {
     let root = temp_project_root("org-capture-plan-no-generic-agent-session");
+    let target = org_artifact_target(&root, "flow/plans/agent-plan-no-generic-agent-scoped.org");
     let output = asp_command(&root)
         .env_remove("CODEX_THREAD_ID")
         .env_remove("CLAUDE_CODE_SESSION_ID")
@@ -137,7 +132,7 @@ fn asp_org_capture_plan_body_does_not_use_generic_agent_session_env() {
             "--title",
             "No generic agent scoped ASP Org plan",
             "--target-file",
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-no-generic-agent-scoped.org",
+            target.as_str(),
             "--choice",
             "specification=TASK",
             "--body",

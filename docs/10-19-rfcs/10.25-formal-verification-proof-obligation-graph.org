@@ -1,0 +1,1086 @@
+#+TITLE: RFC 10.25 - Formal Verification as Proof-Backed Evidence
+#+PROPERTY: RFC_ID 10.25
+#+PROPERTY: STATUS draft
+#+PROPERTY: UPDATED 2026-07-02
+#+PROPERTY: OWNER asp-core
+#+PROPERTY: RELATED_RFC 10.23-asp-reasoning-evidence-graph-theory,10.24-policy-facts-recipes-schema
+#+PROPERTY: RELATED_RESEARCH .data/axiom-lean-engine
+
+* Summary
+
+This RFC defines how formal verification enters ASP.
+
+Formal verification is not a replacement for search, policy, scenarios, or
+runtime tests. It is a high-trust evidence source for branch legality. It helps
+ASP stop defensive engineering by converting stable architecture claims into
+explicit proof obligations, verified facts, and compact receipts that can be
+used by the Code Reasoning Tree before an agent writes code.
+
+The practical model is:
+
+- EvidenceGraph answers what evidence exists.
+- DynamicTopology answers what the target means inside the current architecture.
+- GraphRoute answers how to jump through that topology with minimal tokens.
+- Policy/Scenarios answer how to change code with high engineering quality.
+- Formal verification adds proof-backed facts that can make a branch legal,
+  illegal, or unproven.
+
+The key design rule is selective formalization. ASP must not try to formalize
+all code. It should formalize stable contracts that sit behind fast-changing
+code:
+
+- schema invariants
+- state-machine transitions
+- parser and renderer round-trip laws
+- selector identity rules
+- cache/index invalidation rules
+- dependency and ownership constraints
+- high-value safety and correctness properties
+
+* Research Source
+
+This document is grounded in the local research checkout:
+
+#+begin_src text
+.data/axiom-lean-engine
+commit: e52b566cb12c4a42ffad1aa28bf884005914616c
+date: 2026-07-01 10:16:56 -0700
+subject: Release v1.4.0
+project: axiom-axle 1.4.0
+#+end_src
+
+The checkout is a Python client and CLI for AXLE, the Axiom Lean Engine API. It
+does not vendor a Lean project directly. Its value for ASP is the interface
+shape around proof verification and Lean metaprogramming utilities:
+
+- =verify_proof=: validates candidate Lean content against a trusted formal
+  statement.
+- =check=: compiles Lean code and reports compiler/tool findings, but this is
+  weaker than strict proof verification.
+- =extract_decls=: splits Lean code into declarations and reports declaration
+  metadata, dependencies, type hashes, tactic counts, heartbeats, timings, and
+  messages.
+- =sorry2lemma= and =have2lemma=: turn incomplete proof state or local proof
+  steps into standalone lemmas.
+- =repair_proofs=: attempts deterministic proof repair, but should be treated
+  as suggestion/evidence rather than a hard policy source.
+
+The AXLE technical report frames AXLE as cloud infrastructure for Lean 4 proof
+manipulation, extraction, and verification. The useful idea for ASP is not the
+cloud service itself. The useful idea is the proof-tool interface:
+
+- separate a trusted statement from a candidate implementation
+- verify the candidate against that statement
+- expose proof failures as structured messages
+- expose declaration graphs and proof metadata as reusable data
+- preserve a receipt that can be referenced without dumping full proof text
+
+* Implementation Report
+
+This section describes the concrete implementation shape. It intentionally skips
+the theory and focuses on how AXLE-style proof tooling can become an ASP
+artifact pipeline that prevents defensive engineering.
+
+** Runtime wiring
+
+#+begin_src mermaid
+flowchart TD
+  Agent["Agent Intent / Read / Search / Edit Signal"]
+  ASP["ASP Rust Runtime"]
+  Where["WhereFrame Builder"]
+  EG["EvidenceGraph Store"]
+  Topology["Dynamic Topology Overlay"]
+  Policy["Policy + Scenario Facts"]
+  ProofQ["Proof Obligation Queue"]
+  PyGraph["Python Graph Runtime"]
+  LeanLane["Lean / AXLE Verification Lane"]
+  AXLE["AXLE API: verify_proof / check / extract_decls"]
+  Receipt["ProofReceipt Artifacts"]
+  How["HowFrame Renderer"]
+  Edit["Agent CodeAction"]
+
+  Agent --> ASP
+  ASP --> Where
+  Where --> EG
+  EG --> Topology
+  Policy --> Topology
+  Topology --> PyGraph
+  PyGraph --> ProofQ
+  ProofQ --> LeanLane
+  LeanLane --> AXLE
+  AXLE --> Receipt
+  Receipt --> EG
+  Receipt --> Topology
+  Topology --> How
+  Policy --> How
+  How --> Edit
+#+end_src
+
+The heavy runtime stays in Rust and Python. Rust owns the command/runtime
+boundary and artifact movement. Python owns graph algorithms and topology
+updates. The Lean/AXLE lane is a selected verification worker, not a universal
+edit hook.
+
+** AXLE lane
+
+#+begin_src mermaid
+flowchart LR
+  Slice["ASP Topology Slice"]
+  Obligation["Generate ProofObligation"]
+  Statement["formal_statement.lean: trusted contract"]
+  Candidate["candidate.lean: model or implementation proof"]
+  Verify["AXLE verify_proof"]
+  Check["AXLE check"]
+  Extract["AXLE extract_decls"]
+  Receipt["proof-receipt.json"]
+  DeclGraph["lean-decl-graph.json"]
+  Evidence["EvidenceGraph Node"]
+
+  Slice --> Obligation
+  Obligation --> Statement
+  Obligation --> Candidate
+  Statement --> Verify
+  Candidate --> Verify
+  Candidate --> Check
+  Candidate --> Extract
+  Verify --> Receipt
+  Check --> Receipt
+  Extract --> DeclGraph
+  Receipt --> Evidence
+  DeclGraph --> Evidence
+#+end_src
+
+This is the direct lesson from AXLE:
+
+- =verify_proof= produces the high-trust pass/fail receipt.
+- =check= is diagnostics and compile feedback, not proof.
+- =extract_decls= produces declaration graph material: dependencies, type
+  hashes, complexity, timings, heartbeats, and messages.
+- =sorry2lemma= and =have2lemma= can split a reasoning path into smaller proof
+  obligations.
+- =repair_proofs= can suggest a candidate, but the suggestion must be verified
+  again before it becomes a fact.
+
+** Defensive branch blocking
+
+#+begin_src mermaid
+flowchart TD
+  Problem["Problem: renderer received packet without selector"]
+  Search["ASP Search: find producer / schema / renderer / tests"]
+  Topology["Topology Slice: producer -> schema -> renderer"]
+  Policy["Policy Fact: selector identity is producer-owned"]
+  Proof["ProofReceipt: selector invariant verified"]
+  BranchA["Candidate A: add renderer fallback to path+line"]
+  BranchB["Candidate B: fix producer/schema contract"]
+  Illegal["BranchLegality: A is illegal"]
+  Legal["BranchLegality: B is legal"]
+  How["HowFrame: show only relevant facts"]
+  Edit["Agent edits producer boundary"]
+
+  Problem --> Search
+  Search --> Topology
+  Topology --> Policy
+  Topology --> Proof
+  Policy --> BranchA
+  Proof --> BranchA
+  Policy --> BranchB
+  Proof --> BranchB
+  BranchA --> Illegal
+  BranchB --> Legal
+  Illegal --> How
+  Legal --> How
+  How --> Edit
+#+end_src
+
+This is the concrete anti-defensive mechanism. The agent is not merely warned
+that fallback code is undesirable. It receives branch legality:
+
+#+begin_src text
+illegal branch:
+  add renderer fallback to path+line
+reason:
+  selector identity is a producer/schema invariant
+proof:
+  proof-receipt:<selector-identity>
+route:
+  edit provider result construction or schema migration
+#+end_src
+
+The agent can still inspect the full proof if necessary, but the default
+HowFrame stays compact.
+
+** Agent-facing sequence
+
+#+begin_src mermaid
+sequenceDiagram
+  participant Agent
+  participant ASP
+  participant Graph as EvidenceGraph
+  participant Topology
+  participant AXLE
+  participant How as HowFrame
+
+  Agent->>ASP: attempts renderer-oriented edit
+  ASP->>Graph: collect selector/schema/render facts
+  Graph->>Topology: build architecture slice
+  Topology->>AXLE: request or reuse selector invariant receipt
+  AXLE-->>Topology: verified receipt
+  Topology->>How: mark renderer fallback illegal
+  How-->>Agent: edit producer/schema, not renderer fallback
+  Agent->>ASP: apply targeted edit
+  ASP->>Graph: record observation
+#+end_src
+
+The key is timing. The proof lane is used when the agent is about to choose a
+branch that depends on a stable invariant. It is not run after every file write.
+
+** Artifact layout
+
+#+begin_src mermaid
+flowchart TD
+  Intent["intent.json"]
+  Where["where-frame.json"]
+  Topology["dynamic-topology.json"]
+  PolicyFacts["policy-facts.json"]
+  ScenarioFacts["scenario-facts.json"]
+  Obligation["proof-obligation.json"]
+  Statement["formal-statement.lean"]
+  Candidate["candidate-proof.lean"]
+  AXLEOutput["axle-response.json"]
+  Receipt["proof-receipt.json"]
+  How["how-frame.org"]
+  Observation["observation.json"]
+
+  Intent --> Where
+  Where --> Topology
+  PolicyFacts --> Topology
+  ScenarioFacts --> Topology
+  Topology --> Obligation
+  Obligation --> Statement
+  Obligation --> Candidate
+  Statement --> AXLEOutput
+  Candidate --> AXLEOutput
+  AXLEOutput --> Receipt
+  Receipt --> Topology
+  Topology --> How
+  How --> Observation
+#+end_src
+
+The full Lean files and raw AXLE response are artifacts. The agent usually reads
+only =how-frame.org= and a compact =proof-receipt.json= summary.
+
+** AXLE tool mapping
+
+#+begin_src mermaid
+flowchart LR
+  Verify["verify_proof: strict pass/fail"]
+  Check["check: compile + warnings"]
+  Extract["extract_decls: declaration deps / type hash / heartbeats"]
+  Sorry["sorry2lemma: extract unfinished goals"]
+  Have["have2lemma: extract local reasoning steps"]
+  Repair["repair_proofs: candidate repair only"]
+
+  Verify --> Receipt["ProofReceipt"]
+  Check --> Diagnostics["Diagnostics"]
+  Extract --> ProofGraph["Proof Dependency Graph"]
+  Sorry --> SubGoals["Proof Subgoals"]
+  Have --> ReasonSteps["Reasoning Steps"]
+  Repair --> Candidate["Candidate Patch"]
+#+end_src
+
+The only AXLE output that can directly prune an ASP branch is a verified
+receipt. Other outputs help diagnose, split, rank, or propose candidates.
+
+** Selective execution
+
+#+begin_src mermaid
+flowchart TD
+  Need["Branch depends on stable invariant"]
+  Generate["Generate or locate ProofObligation"]
+  CacheKey["Compute statement digest + candidate digest"]
+  Hit["Receipt cache hit"]
+  Miss["Receipt cache miss"]
+  Verify["Verify with AXLE or local Lean lane"]
+  Cache["Write ProofReceipt"]
+  Route["Use receipt in DynamicTopology"]
+  Skip["Skip illegal defensive branch"]
+
+  Need --> Generate
+  Generate --> CacheKey
+  CacheKey --> Hit
+  CacheKey --> Miss
+  Miss --> Verify
+  Verify --> Cache
+  Hit --> Route
+  Cache --> Route
+  Route --> Skip
+#+end_src
+
+This keeps cost bounded. Proof verification runs only when a route depends on a
+stable invariant and no valid receipt is available.
+
+** Minimum first implementation
+
+The first implementation should prove one ASP-owned invariant rather than
+attempting broad program correctness:
+
+#+begin_src text
+Invariant:
+  SearchPacket identity is selector-owned and must not fall back to line number.
+
+Artifacts:
+  proof-obligation.json
+  formal-statement.lean
+  candidate-proof.lean
+  axle-response.json
+  proof-receipt.json
+  how-frame.org
+
+Branch rule:
+  renderer path+line fallback is illegal when the selector invariant receipt is
+  valid for the packet schema version.
+#+end_src
+
+This is enough to validate the whole loop: search finds the boundary, topology
+understands ownership, AXLE verifies the invariant model, and HowFrame prevents
+the agent from scattering defensive fallbacks.
+
+** Runnable package demo
+
+The runnable demo lives in the main repository Python package, not in a language
+harness:
+
+#+begin_src sh
+AXLE_TIMEOUT_SECONDS=60 \
+uv run --project packages/python --package agent-semantic-protocols-tools \
+  python -m tools.lean_axle_proof_obligation_demo --timeout-seconds 30
+#+end_src
+
+The Lean proof inputs are real package resources:
+
+#+begin_src text
+packages/python/tools/src/tools/proofs/search_packet_selector_identity/
+  formal_statement.lean
+  candidate_proof.lean
+#+end_src
+
+The Python module reads those files and sends their contents to AXLE. The proof
+source must not be embedded as Python inline strings.
+
+The demo writes artifacts to:
+
+#+begin_src text
+.data/asp-formal-verification-demo/search-packet-selector-identity/
+  schema-projection.json
+  schema-projection-formal.lean
+  schema-projection-candidate.lean
+  proof-obligation.json
+  proof-recipe.json
+  formal-statement.lean
+  candidate-proof.lean
+  axle-response.json
+  proof-receipt.json
+  verification-report.json
+  how-frame.org
+#+end_src
+
+The current demo proves this small model:
+
+#+begin_src text
+producerBugPacket:
+  selectorPresent = false
+  identitySource = pathLine
+
+defensiveRenderer:
+  accepts selector
+  accepts pathLine fallback
+
+selectorOnlyRenderer:
+  accepts only selector identity with selectorPresent = true
+
+verified claims:
+  producerBugPacket is not contractValid
+  defensiveRenderer accepts producerBugPacket
+  defensiveRenderer is not rendererCompliant
+  producerFixedPacket is contractValid
+  selectorOnlyRenderer is rendererCompliant
+#+end_src
+
+Before sending the proof to AXLE, the Python tools package also reads the real
+shared search schema:
+
+#+begin_src text
+schemas/semantic-search-packet.v1.schema.json
+#+end_src
+
+It projects the schema-owned selector/display facts into generated Lean:
+
+#+begin_src text
+item.structuralSelector -> executable-selector
+item.displayLineRange -> display-only
+item.sourceLocatorHint -> display-only
+routeAction.selector -> executable-selector
+routeAction.displayLineRange -> display-only
+routeAction.sourceLocatorHint -> display-only
+windowSetTarget.structuralSelector -> executable-selector
+windowSetTarget.displayLineRange -> display-only
+windowSetTarget.sourceLocatorHint -> display-only
+#+end_src
+
+The generated Lean theorem is included before the hand-written renderer model,
+so the proof receipt now contains two evidence layers:
+
+#+begin_src text
+real schema projection:
+  semantic-search-packet has executable selector fields and display-only line
+  locator fields
+
+formal branch model:
+  defensive renderer accepts invalid pathLine producer output
+  selector-only renderer is compliant
+#+end_src
+
+Expected receipt shape:
+
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.semantic-proof-receipt",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.formal-verification",
+  "protocolVersion": "1",
+  "receiptId": "proof-receipt:search-packet-selector-identity:v1",
+  "checker": "axle.verify_proof",
+  "environment": "lean-4.31.0",
+  "okay": true,
+  "failedDeclarations": [],
+  "schemaProjection": {
+    "sourceSchema": "schemas/semantic-search-packet.v1.schema.json",
+    "formalLeanPath": "schema-projection-formal.lean",
+    "candidateLeanPath": "schema-projection-candidate.lean",
+    "facts": [
+      {
+        "id": "item.structuralSelector",
+        "owner": "item",
+        "field": "structuralSelector",
+        "role": "executable-selector"
+      },
+      {
+        "id": "routeAction.displayLineRange",
+        "owner": "routeAction",
+        "field": "displayLineRange",
+        "role": "display-only"
+      }
+    ]
+  },
+  "validatedClaims": [
+    {
+      "id": "producer-bug-packet-invalid",
+      "verified": true,
+      "meaning": "producerBugPacket violates contractValid",
+      "theorem": "producer_bug_packet_invalid"
+    },
+    {
+      "id": "defensive-renderer-accepts-invalid-packet",
+      "verified": true,
+      "meaning": "defensiveRenderer accepts producerBugPacket",
+      "theorem": "defensive_renderer_accepts_invalid_packet"
+    },
+    {
+      "id": "defensive-renderer-not-compliant",
+      "verified": true,
+      "meaning": "defensiveRenderer is not rendererCompliant",
+      "theorem": "defensive_renderer_not_compliant"
+    },
+    {
+      "id": "producer-fixed-packet-valid",
+      "verified": true,
+      "meaning": "producerFixedPacket satisfies contractValid",
+      "theorem": "producer_fixed_packet_valid"
+    },
+    {
+      "id": "selector-only-renderer-compliant",
+      "verified": true,
+      "meaning": "selectorOnlyRenderer satisfies rendererCompliant",
+      "theorem": "selector_only_renderer_compliant"
+    }
+  ],
+  "defensiveEngineeringAssessment": {
+    "result": "blocked",
+    "blockedBranch": "renderer-path-line-fallback",
+    "correctBoundary": "provider-result-construction-boundary"
+  },
+  "branchLegalityUpdate": {
+    "illegal": ["renderer-path-line-fallback"],
+    "legal": [
+      "fix-provider-selector-construction",
+      "schema-migration-if-contract-changed"
+    ]
+  }
+}
+#+end_src
+
+This demo intentionally keeps the proof model small, but it no longer proves
+only enum inequality. It proves the actual defensive-engineering shape:
+
+#+begin_src text
+consumer fallback accepts invalid producer output
+therefore the fallback branch is not rendererCompliant
+therefore branchLegality can block that edit path
+#+end_src
+
+The goal is still not to prove the full ASP implementation yet. The goal is to
+validate the end-to-end shape:
+
+#+begin_src text
+ProofObligation -> ProofRecipe -> AXLE verify_proof -> ProofReceipt -> HowFrame
+#+end_src
+
+* Why This Matters For ASP
+
+ASP is trying to solve two core problems for agents:
+
+1. Where to change code.
+2. How to change code well.
+
+Search, Query, EvidenceGraph, DynamicTopology, and GraphRoute mainly solve
+"where". Policy and Scenarios mainly solve "how". Formal verification improves
+both, but it must enter through facts, not through broad hooks.
+
+The failure mode we want to avoid is defensive engineering:
+
+#+begin_quote
+The agent sees an uncertain consumer boundary and adds more optional checks,
+fallbacks, duplicated validation, or lossy compatibility code. The code may
+pass tests, but the architecture gets weaker because the real invariant was not
+made explicit.
+#+end_quote
+
+Formal verification changes the decision surface:
+
+#+begin_quote
+If the invariant is supposed to hold at the producer boundary, ASP should create
+or locate a proof obligation for that invariant. If the proof receipt exists,
+HowFrame can tell the agent not to add a consumer fallback. If the proof receipt
+does not exist, HowFrame can route the agent to the owner boundary where the
+invariant must be established.
+#+end_quote
+
+This is a different level of guidance than a generic policy warning. It says:
+
+- this branch is illegal because it hides the invariant at the wrong boundary
+- this branch is legal because the invariant is proven or scenario-backed
+- this branch is unproven and needs a receipt before the edit should proceed
+
+* Compilation Is Not Verification
+
+AXLE exposes the distinction that ASP must preserve:
+
+- =check= answers whether Lean code compiles and reports findings.
+- =verify_proof= answers whether candidate content satisfies a formal statement.
+
+For ASP this maps to:
+
+- tests/scenarios can say a behavior was observed
+- policy can say an edit shape is recommended or forbidden
+- formal proof can say a property follows from a model or statement
+
+These are not interchangeable.
+
+An agent should not treat "it compiled" as "the architecture invariant holds".
+It should also not treat "policy said this is preferred" as "the proof exists".
+The receipt must preserve evidence class and trust level.
+
+* Trust Levels
+
+Formal proof receipts must carry a trust level. Lean proof validation has
+different threat models:
+
+- =compile=: code elaborates and builds.
+- =axiom-audited=: proof does not rely on unwanted axioms or =sorry=.
+- =verify-proof=: candidate satisfies a trusted formal statement.
+- =external-checker=: proof was rechecked by a stricter external checker path
+  such as lean4checker/comparator style validation.
+
+ASP should start with honest-proof assumptions for internal engineering
+invariants. For untrusted or externally supplied proofs, the receipt must be
+marked as requiring external checker validation before it can prune branches.
+
+* Core Objects
+
+** ProofObligation
+
+A ProofObligation is a stable question that should be answerable by a proof,
+scenario, benchmark, or human review.
+
+It is not a line-number target. It must be selector-owned.
+
+Minimal fields:
+
+#+begin_src json
+{
+  "schema": "semantic-proof-obligation.v1",
+  "id": "proof-obligation:<stable-id>",
+  "project": "<project-id>",
+  "topologySlice": "<topology-slice-id>",
+  "ownerSelector": "<selector>",
+  "intent": "<why this obligation exists>",
+  "claim": "<plain-language claim>",
+  "formalStatementRef": "<artifact-ref-or-inline-hash>",
+  "evidenceClass": "formal-proof",
+  "trustRequired": "verify-proof",
+  "createdFrom": ["policy-fact:<id>", "scenario:<id>", "topology:<id>"],
+  "status": "open|verified|disproved|stale"
+}
+#+end_src
+
+Examples:
+
+- Every search packet identity is selector-based and does not require line
+  numbers for stable identity.
+- Rendering a compact graph preserves node identity.
+- A Turso cache invalidation transition cannot leave an active stale manifest
+  for the same selector.
+- A provider command result either contains a schema-valid error receipt or a
+  schema-valid evidence packet.
+
+** ProofReceipt
+
+A ProofReceipt is the compact result that the agent reads.
+
+#+begin_src json
+{
+  "schema": "semantic-proof-receipt.v1",
+  "id": "proof-receipt:<stable-id>",
+  "obligationId": "proof-obligation:<stable-id>",
+  "checker": "axle.verify_proof",
+  "environment": "lean-4.28.0",
+  "sourceCommit": "e52b566cb12c4a42ffad1aa28bf884005914616c",
+  "okay": true,
+  "failedDeclarations": [],
+  "trustLevel": "verify-proof",
+  "toolMessagesDigest": "<hash>",
+  "formalStatementDigest": "<hash>",
+  "candidateDigest": "<hash>",
+  "timings": {
+    "totalMs": 160
+  },
+  "validFor": {
+    "selectors": ["<selector>"],
+    "schemaVersions": ["semantic-search-packet.v1"]
+  }
+}
+#+end_src
+
+The receipt is what enters EvidenceGraph and HowFrame. The full proof text is an
+artifact behind a reference. The agent should usually see the receipt first,
+not the full Lean file.
+
+** FormalFact
+
+A FormalFact is the agent-facing projection of a receipt.
+
+It should be compact enough to fit in a HowFrame:
+
+#+begin_src text
+formalFact:
+  claim: SearchPacket identity is selector-owned, not line-owned.
+  appliesTo: semantic-search-packet.v1 producer boundary
+  status: verified
+  receipt: proof-receipt:search-packet-selector-identity
+  branchEffect: consumer line-number fallback is illegal
+#+end_src
+
+** BranchLegality
+
+Formal facts update DynamicTopology branch legality:
+
+#+begin_src text
+branch:
+  candidate: add consumer fallback when selector is missing
+  legality: illegal
+  reason: producer invariant is verified; missing selector is a producer bug
+  route: edit producer contract or schema migration, not consumer fallback
+#+end_src
+
+This is where formal verification directly attacks defensive programming.
+
+* Placement In The ASP Stack
+
+#+begin_src mermaid
+flowchart TD
+  Intent["User Intent / Tool Action"]
+  Understanding["Intent Understanding"]
+  WhereFrame["WhereFrame: search and evidence target"]
+  EvidenceGraph["EvidenceGraph: facts, receipts, artifacts"]
+  Topology["DynamicTopology: architecture slice"]
+  GraphRoute["GraphRoute: navigation algorithm"]
+  Policy["Policy + Scenarios: how-to-change facts"]
+  ProofObligation["ProofObligation"]
+  AXLE["AXLE / Lean verification"]
+  ProofReceipt["ProofReceipt"]
+  HowFrame["HowFrame: progressive guidance"]
+  ReasoningTree["Code Reasoning Tree"]
+  Edit["CodeAction"]
+  Observation["Observation: parse/test/policy/proof"]
+
+  Intent --> Understanding
+  Understanding --> WhereFrame
+  WhereFrame --> EvidenceGraph
+  EvidenceGraph --> Topology
+  Topology --> GraphRoute
+  Topology --> Policy
+  Policy --> ProofObligation
+  Topology --> ProofObligation
+  ProofObligation --> AXLE
+  AXLE --> ProofReceipt
+  ProofReceipt --> EvidenceGraph
+  ProofReceipt --> Topology
+  Topology --> HowFrame
+  Policy --> HowFrame
+  HowFrame --> ReasoningTree
+  ReasoningTree --> Edit
+  Edit --> Observation
+  Observation --> EvidenceGraph
+#+end_src
+
+The important ordering is:
+
+1. WhereFrame and EvidenceGraph locate the relevant architecture slice.
+2. DynamicTopology determines which branch choices are meaningful.
+3. Policy/Scenarios provide engineering constraints and learned recipes.
+4. Proof obligations are created or reused for stable claims.
+5. Proof receipts update branch legality.
+6. HowFrame renders only the relevant facts to the agent.
+
+Proof is not a hook that runs on every edit. It is a selected evidence action
+when the current branch depends on a stable invariant.
+
+* Progressive Agent Disclosure
+
+Formal verification is valuable only if it stays compact.
+
+Agent-facing disclosure should have three levels:
+
+** L0: Decision Fact
+
+#+begin_src text
+FormalFact: selector identity is verified at producer boundary.
+Do not add line-number fallback in consumers.
+Route missing selector to provider contract or schema migration.
+#+end_src
+
+** L1: Receipt Summary
+
+#+begin_src text
+ProofReceipt search-packet-selector-identity:
+  checker: axle.verify_proof
+  trust: verify-proof
+  appliesTo: semantic-search-packet.v1
+  failedDeclarations: []
+  branchEffect: consumer fallback illegal
+#+end_src
+
+** L2: Full Artifact
+
+The full Lean statement, candidate proof, AXLE request, and tool messages are
+available only when the agent explicitly needs to inspect or revise the proof.
+
+This keeps token cost low while preserving traceability.
+
+* Mental Simulation: Avoiding Defensive Engineering
+
+Intent:
+
+#+begin_quote
+Fix search packet rendering after a provider starts omitting selector metadata
+in one path.
+#+end_quote
+
+Naive agent plan:
+
+1. Add =Option<String>= handling to every renderer.
+2. Fall back to path plus line number when selector is absent.
+3. Add tests for missing selector.
+
+This "works", but it damages ASP because selector identity is the core rule
+that prevents line-number-native search.
+
+ASP with formal verification:
+
+1. WhereFrame locates provider result construction, renderer, schema, and
+   search packet tests.
+2. DynamicTopology identifies the producer boundary and renderer consumer.
+3. EvidenceGraph finds a FormalFact:
+
+   #+begin_src text
+   selector identity is required and verified for semantic-search-packet.v1
+   #+end_src
+
+4. HowFrame marks the consumer fallback branch as illegal.
+5. Policy says the fix must happen at the producer/schema boundary.
+6. The agent edits the provider result builder or schema migration, not every
+   downstream renderer.
+7. Observation runs schema tests and updates EvidenceGraph. If the invariant
+   changed, a new ProofObligation is opened rather than weakening all
+   consumers.
+
+The result is not "more checks". It is fewer, better-placed checks.
+
+* How This Relates To Policy And Scenarios
+
+Policy and Scenarios are still required.
+
+Policy answers:
+
+- Which edit shapes are high quality?
+- Which edit shapes are architecture damage?
+- Which dependency or runtime patterns are preferred?
+- Which local recipes have benchmark or snapshot support?
+
+Scenarios answer:
+
+- Did this recipe work in a representative benchmark?
+- What latency, memory, packet size, and failure cases were observed?
+- Which dependency or implementation path was validated?
+
+Formal verification answers:
+
+- Is this stable claim proven against a trusted statement?
+- Does the candidate implementation preserve the stated invariant?
+- Can this branch be pruned because it violates a proven property?
+
+They should be combined inside HowFrame:
+
+#+begin_src text
+HowFrame:
+  target: provider result construction
+  policyFacts:
+    - do not create consumer fallbacks for producer-owned invariants
+  scenarioFacts:
+    - selector-only search reduced repeated query turns in scenario X
+  formalFacts:
+    - selector identity invariant verified for packet schema v1
+  illegalBranches:
+    - path+line fallback in renderer
+  legalBranches:
+    - fix provider construction
+    - bump schema and migrate receipts if invariant changed
+#+end_src
+
+* How This Relates To Topology And GraphRoute
+
+Topology is the map of the current architecture slice. It says:
+
+- what the target is
+- which owners and dependencies are connected
+- which edges are hot paths
+- which historical failures matter
+- which policy/scenario/proof facts apply
+- which branches are legal
+
+GraphRoute is the navigation algorithm. It decides:
+
+- where to jump next
+- which evidence node is enough
+- whether to expand or stay compact
+- whether a proof receipt makes a search branch unnecessary
+
+Formal verification belongs to Topology as branch legality evidence. It does
+not replace GraphRoute. A proof receipt can make GraphRoute skip a branch, but
+GraphRoute is still the algorithm that chooses the skip.
+
+* Python And Julia Roles
+
+Python is the runtime graph implementation layer:
+
+- ingest ProofObligation and ProofReceipt artifacts
+- connect receipts to selectors, schemas, policy facts, and scenarios
+- update EvidenceGraph and DynamicTopology
+- implement graph algorithms that route the agent to the smallest sufficient
+  evidence slice
+- expose compact HowFrame projections
+
+Julia is the research and evaluation layer:
+
+- replay sessions
+- compare topology-jump strategies
+- measure whether proof-backed branch pruning reduces turns
+- find ranking failures where formal facts were ignored or overused
+- test graph algorithms before they become Python runtime behavior
+
+Julia should not become the runtime for proof checks. It should evaluate the
+strategy and feed better algorithms back to Python.
+
+* Why Native Parsers Still Matter
+
+AXLE is strongest for Lean artifacts. ASP's advantage is broader:
+
+- native language harnesses can locate stable selectors and semantic owners
+  inside Rust, Python, Julia, Gerbil, TypeScript, and future languages
+- those selectors can generate proof obligations over stable models
+- Python can connect proof obligations to cross-language topology
+- Policy/Scenarios can decide which obligations are worth creating
+
+The proof layer is therefore downstream of native parsing. ASP should not
+replace parser-owned evidence with generic text extraction. It should use native
+parsers to decide what is stable enough to formalize.
+
+* What To Learn From AXLE
+
+** Statement and candidate must be separate
+
+ASP should model formal verification as:
+
+#+begin_src text
+trusted statement + candidate artifact -> proof receipt
+#+end_src
+
+The trusted statement should usually be generated from a schema, protocol, or
+architecture contract, not from the same code that is being edited.
+
+** =check= is lower trust than =verify_proof=
+
+Compilation is useful for feedback, but it is not enough to prune
+architecture branches. Branch legality requires the stronger receipt when a
+proof-backed claim is involved.
+
+** Declaration extraction is graph material
+
+=extract_decls= exposes declaration-level dependencies and complexity metrics.
+For ASP, equivalent fields should enter the graph as proof topology:
+
+- declaration selector
+- local type dependencies
+- local value dependencies
+- external dependencies
+- type hash
+- proof complexity
+- heartbeats and timings
+- messages and failed declarations
+
+These facts are useful for ranking proof obligations and for finding expensive
+or fragile proof nodes.
+
+** Repair tools are not policy
+
+=repair_proofs= is useful as a candidate generator or diagnosis tool, but ASP
+must not treat repair output as automatically high quality. Repair output should
+flow through Policy/Scenarios and, when relevant, another proof receipt.
+
+** Version and environment must be explicit
+
+AXLE's behavior depends on Lean version, Mathlib environment, import handling,
+and tool defaults. ASP receipts must pin:
+
+- checker
+- checker version or source commit
+- Lean environment
+- import handling mode
+- formal statement digest
+- candidate digest
+- trust level
+
+* Initial Integration Plan
+
+** Phase 0: Research artifact
+
+Completed by this RFC:
+
+- clone AXLE into =.data/axiom-lean-engine=
+- record commit and version
+- identify proof-check, declaration-extraction, and proof-manipulation tools
+- map them into ASP evidence/topology/policy theory
+
+** Phase 1: Schema draft
+
+Add shared schemas:
+
+- =semantic-proof-obligation.v1.schema.json=
+- =semantic-proof-receipt.v1.schema.json=
+- optional =semantic-formal-fact.v1.schema.json=
+
+These schemas should be language-neutral and selector-owned.
+
+** Phase 2: Scenario contract
+
+Add Org scenarios that test the decision behavior, not just proof execution:
+
+- consumer fallback should be rejected when producer invariant has a proof
+  receipt
+- missing proof receipt should open an obligation rather than silently weaken a
+  policy
+- stale proof receipt should not prune a branch after schema version changes
+
+** Phase 3: Experimental Lean lane
+
+Add an experimental lane that can call AXLE or a local Lean checker for small
+model proofs. This lane must not become required for normal ASP use.
+
+It should support:
+
+- produce formal statement artifact
+- produce candidate proof artifact
+- run checker
+- write receipt
+- attach receipt to EvidenceGraph
+
+** Phase 4: Topology integration
+
+DynamicTopology should consume FormalFacts as branch-legality inputs:
+
+- legal branch
+- illegal branch
+- unproven branch
+- stale branch
+
+GraphRoute can then avoid branches that are already illegal or proven
+unnecessary.
+
+** Phase 5: Julia replay
+
+Replay sessions to answer:
+
+- Did proof-backed branch pruning reduce search/edit turns?
+- Did it prevent defensive fallbacks?
+- Which proof obligations were too expensive or too abstract?
+- Which policies should request formal facts earlier?
+
+* Non-Goals
+
+- Do not build an agent MCP server around AXLE.
+- Do not require Lean or AXLE for every ASP workflow.
+- Do not formalize fast-changing code directly.
+- Do not expose full proof artifacts to the agent unless requested.
+- Do not replace Policy/Scenarios with proof repair tools.
+- Do not treat online proof verification as the only trust path.
+
+* Open Questions
+
+1. Which ASP invariants should be first-class proof obligations?
+2. Should proof obligations be generated from schemas, Org contracts, Rust type
+   models, or all three?
+3. Which trust level is enough for internal ASP engineering invariants?
+4. How should stale receipts be invalidated when a schema or topology slice
+   changes?
+5. How should Python rank proof obligations against scenario facts and policy
+   facts?
+6. Which Julia replay metrics best show that proof-backed branch pruning reduces
+   turns without hiding necessary evidence?
+
+* Current Recommendation
+
+ASP should adopt formal verification as a branch-legality evidence layer.
+
+The first implementation target should not be arbitrary program correctness.
+It should be ASP's own stable contracts:
+
+- selector identity
+- schema packet invariants
+- renderer round-trip invariants
+- cache/index state transitions
+- topology branch legality
+
+This is the highest-leverage path because these invariants are exactly where
+defensive engineering currently appears. Proving or explicitly disproving them
+lets the agent choose the right boundary instead of scattering fallbacks across
+the codebase.

@@ -31,10 +31,10 @@ fn is_version_arg(arg: &str) -> bool {
 fn fast_search_usage(language_id: &str, subcommand: Option<&str>) -> String {
     match subcommand {
         Some("pipe") => format!(
-            "usage: asp {language_id} search pipe <question-or-feature-term> [--selector SELECTOR] [--query TERMS] [--workspace PROJECT_ROOT] [--source auto|provider|finder|ingest] [--view seeds|graph-turbo-request] [scope...]\n\nBuilds an ASP-owned search frontier from an LLM-compressed code search seed. Use --selector with --query to bind an exact code owner and context terms without shell-joining query/search commands."
+            "usage: asp {language_id} search pipe <refinement-query> [--selector SELECTOR] [--query TERMS] [--workspace PROJECT_ROOT] [--source auto|provider|search-overlay|ingest] [--view seeds|graph-turbo-request] [scope...]\n\nBuilds an ASP-owned refinement frontier after lexical/dependency evidence is ambiguous. Use --selector with --query to bind an exact code owner and context terms without shell-joining query/search commands. Do not use pipe for CLI-command lexical searches."
         ),
         Some("lexical") => format!(
-            "usage: asp {language_id} search lexical <term-or-error> [items|tests|deps] [--view seeds|graph-turbo-request] [owner...]\n\nRuns bounded lexical recall and renders an ASP-owned search frontier."
+            "usage: asp {language_id} search lexical <term-or-error> [items|tests|deps] [--view seeds|graph-turbo-request] [owner...]\n\nRuns bounded lexical recall through the dynamic overlay/source index and renders an ASP-owned search frontier."
         ),
         Some("deps" | "dependency") => format!(
             "usage: asp {language_id} search deps <dependency-or-api> [api-term] [--workspace PROJECT_ROOT] [--view hits|seeds|public-external-types]\n\nReads current manifest dependency topology and renders dependency-owned next actions."

@@ -2,23 +2,9 @@
 
 #[path = "unit/db.rs"]
 mod db;
-#[path = "unit/db/artifact_events.rs"]
-mod db_artifact_events;
-#[path = "unit/db/engine.rs"]
+#[path = "unit/db/engine/mod.rs"]
 mod db_engine;
-#[path = "unit/db/invalidation.rs"]
-mod db_invalidation;
-#[path = "unit/db/provider_command_selection.rs"]
-mod db_provider_command_selection;
-#[path = "unit/db/recent_generations.rs"]
-mod db_recent_generations;
-#[path = "unit/db/source_index.rs"]
-mod db_source_index;
-#[path = "unit/db/structural_index/mod.rs"]
-mod db_structural_index;
-#[path = "unit/db/syntax_query.rs"]
-mod db_syntax_query;
-#[path = "unit/db/syntax_query_flush.rs"]
-mod db_syntax_query_flush;
-#[path = "unit/db/syntax_query_structural.rs"]
-mod db_syntax_query_structural;
+#[path = "unit/db/engine_provider_command.rs"]
+mod db_engine_provider_command;
+#[path = "unit/db/engine_source_index.rs"]
+mod db_engine_source_index;

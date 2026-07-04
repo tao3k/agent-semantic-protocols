@@ -45,10 +45,7 @@ fn git_toplevel_is_first_project_identity_for_workspace_packages() {
         layout.activation_path,
         Some(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
     );
-    assert_eq!(
-        layout.artifacts_dir,
-        Some(root.join(".cache/agent-semantic-protocol/artifacts"))
-    );
+    assert_eq!(layout.artifacts_dir, None);
     assert_eq!(
         layout.runtime_home,
         Some(root.join(".cache/agent-semantic-protocol/runtime"))

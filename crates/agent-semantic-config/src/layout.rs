@@ -13,7 +13,6 @@ const SEMANTIC_AGENT_PROTOCOL_DIR: &str = "agent-semantic-protocol";
 const SEMANTIC_AGENT_PROTOCOL_HOOK_DIR: &str = "agent-semantic-protocol/hooks";
 const SEMANTIC_AGENT_PROTOCOL_HOOK_STATE_DIR: &str = "agent-semantic-protocol/hooks/state";
 const SEMANTIC_AGENT_PROTOCOL_CLIENT_DIR: &str = "agent-semantic-protocol/client";
-const SEMANTIC_AGENT_PROTOCOL_ARTIFACTS_DIR: &str = "agent-semantic-protocol/artifacts";
 const SEMANTIC_AGENT_PROTOCOL_RUNTIME_DIR: &str = "agent-semantic-protocol/runtime";
 const SEMANTIC_AGENT_PROTOCOL_RUNTIME_BIN_DIR: &str = "agent-semantic-protocol/runtime/bin";
 const SEMANTIC_AGENT_PROTOCOL_PROVIDER_LOCK_DIR: &str = "agent-semantic-protocol/runtime/providers";
@@ -69,9 +68,12 @@ pub struct ProjectRuntimeLayout {
     pub hook_state_dir: Option<PathBuf>,
     /// Hook activation path.
     pub activation_path: Option<PathBuf>,
-    /// Client manifest and SQLite directory.
+    /// Client manifest and DB Engine directory.
     pub client_cache_dir: Option<PathBuf>,
     /// Provider/client artifact directory.
+    ///
+    /// State Core owns the v2 artifact root. Config runtime layout does not
+    /// expose a project-local artifact authority.
     pub artifacts_dir: Option<PathBuf>,
     /// Runtime command-shim directory.
     pub runtime_home: Option<PathBuf>,
@@ -144,9 +146,7 @@ pub fn project_runtime_layout_with_env(
     let client_cache_dir = cache_home
         .as_ref()
         .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_CLIENT_DIR));
-    let artifacts_dir = cache_home
-        .as_ref()
-        .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_ARTIFACTS_DIR));
+    let artifacts_dir = None;
     let runtime_home = cache_home
         .as_ref()
         .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_RUNTIME_DIR));
@@ -220,11 +220,6 @@ pub fn project_activation_path(project_root: impl AsRef<Path>) -> Result<PathBuf
 /// Return the agent semantic client cache directory for an activated project.
 pub fn project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_CLIENT_DIR))
-}
-
-/// Return the agent semantic artifacts directory for an activated project.
-pub fn project_artifacts_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_ARTIFACTS_DIR))
 }
 
 /// Return the runtime command-shim directory for provider execution.

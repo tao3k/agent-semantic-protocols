@@ -58,7 +58,7 @@ fn owner_items_search_writeback_replays_prompt_output_artifact() {
     let replay = probe.replay.expect("owner output replay");
 
     assert_eq!(replay.stdout, stdout.as_bytes());
-    assert_eq!(probe.sqlite_write_count, 2);
+    assert_eq!(probe.db_write_count, 2);
     let cache_report = ClientCacheManifest::inspect_project(&root);
     let cache_root = cache_report.cache_root.expect("cache root");
     let analysis_dir = artifacts_root_from_cache_root(&cache_root).join("analysis-metadata");
@@ -243,7 +243,6 @@ fn prime_seed_prompt_output_writeback_adds_search_output_replay_artifact() {
         ]);
     let stdout = "[search-prime] root=. alg=fast-prime-frontier-v1\n\
 |decision purpose=decision-primer answer=false code=false capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"\n\
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\
 G>{O:selects}\n\
@@ -260,7 +259,7 @@ rank=O frontier=O.owner\n";
     let replay = probe.replay.expect("search output replay");
 
     assert_eq!(replay.stdout, stdout.as_bytes());
-    assert_eq!(probe.sqlite_write_count, 2);
+    assert_eq!(probe.db_write_count, 2);
     let _ = std::fs::remove_dir_all(root);
 }
 

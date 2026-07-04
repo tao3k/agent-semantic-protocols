@@ -4,7 +4,6 @@ use crate::{
     merge_search_candidates_with_receipt, search_candidate_has_executable_line_identity,
     search_lexical_overlay, source_index_candidate_to_search_candidate, source_index_lookup_terms,
 };
-#[cfg(feature = "turso-overlay")]
 use crate::{TursoStructuralIndexSearchHit, structural_index_hit_to_search_candidate};
 
 #[test]
@@ -47,7 +46,11 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
     );
     let candidate = lexical_overlay_hit_to_search_candidate(&hits[0], "session-1/base-1");
 
-    assert_eq!(candidate.route_source, "dynamic-overlay");
+    assert_eq!(candidate.route_source, "search-overlay");
+    assert_eq!(
+        candidate.proof_source,
+        "agent-semantic-search/search-overlay"
+    );
     assert_eq!(candidate.fallback_reason, "none");
     assert_eq!(candidate.identity_kind, "selector");
     assert_eq!(
@@ -60,6 +63,12 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
     );
     assert!(
         candidate
+            .rank_features
+            .iter()
+            .any(|feature| feature.name == "search-overlay-score")
+    );
+    assert!(
+        candidate
             .field_hits
             .iter()
             .any(|field| field.field == "search_text")
@@ -67,7 +76,6 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
     assert!(!search_candidate_has_executable_line_identity(&candidate));
 }
 
-#[cfg(feature = "turso-overlay")]
 #[test]
 fn structural_index_hit_projects_selector_generation_and_stable_route() {
     let terms = source_index_lookup_terms("parse config serde_json");
@@ -111,7 +119,6 @@ fn shared_search_candidate_detects_executable_line_identity() {
     assert!(search_candidate_has_executable_line_identity(&candidate));
 }
 
-#[cfg(feature = "turso-overlay")]
 #[test]
 fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index() {
     let terms = source_index_lookup_terms("overlay fixture");
@@ -151,7 +158,7 @@ fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index
         overlay_candidate,
     ]);
 
-    assert_eq!(ranked[0].candidate.route_source, "dynamic-overlay");
+    assert_eq!(ranked[0].candidate.route_source, "search-overlay");
     assert_eq!(ranked[1].candidate.route_source, "turso-fts");
     assert_eq!(ranked[2].candidate.route_source, "source-index");
 }
@@ -181,7 +188,7 @@ fn merge_search_candidates_prefers_overlay_selector_then_stable_source_index() {
 
     let ranked = merge_search_candidates(vec![source_index_candidate, overlay_candidate]);
 
-    assert_eq!(ranked[0].candidate.route_source, "dynamic-overlay");
+    assert_eq!(ranked[0].candidate.route_source, "search-overlay");
     assert_eq!(ranked[0].selector_bonus, 1);
     assert_eq!(ranked[1].candidate.route_source, "source-index");
 }

@@ -2,11 +2,9 @@
 
 use std::path::Path;
 
-#[cfg(feature = "turso-backend")]
 use sha2::{Digest, Sha256};
 
 /// Persist a bounded route receipt for a validated search packet when Turso is active.
-#[cfg(feature = "turso-backend")]
 pub(super) fn maybe_write_turso_route_receipt_for_search_packet(
     project_root: &Path,
     packet_bytes: &[u8],
@@ -68,18 +66,6 @@ pub(super) fn maybe_write_turso_route_receipt_for_search_packet(
         .ok()
 }
 
-/// No-op route receipt writeback when the Turso backend is not compiled in.
-#[cfg(not(feature = "turso-backend"))]
-pub(super) fn maybe_write_turso_route_receipt_for_search_packet(
-    project_root: &Path,
-    packet_bytes: &[u8],
-    rendered_stdout: &[u8],
-) -> Option<()> {
-    let _ = (project_root, packet_bytes, rendered_stdout);
-    None
-}
-
-#[cfg(feature = "turso-backend")]
 fn route_receipt_source(packet: &serde_json::Value) -> String {
     if let Some(source) = packet
         .get("routeSource")
@@ -119,7 +105,6 @@ fn route_receipt_source(packet: &serde_json::Value) -> String {
     }
 }
 
-#[cfg(feature = "turso-backend")]
 fn selected_selector(packet: &serde_json::Value) -> Option<String> {
     packet
         .get("selectedSelector")
@@ -130,7 +115,6 @@ fn selected_selector(packet: &serde_json::Value) -> Option<String> {
         .or_else(|| first_array_string(packet, "owners", "selector"))
 }
 
-#[cfg(feature = "turso-backend")]
 fn first_array_string(packet: &serde_json::Value, array_key: &str, field: &str) -> Option<String> {
     packet
         .get(array_key)
@@ -139,7 +123,6 @@ fn first_array_string(packet: &serde_json::Value, array_key: &str, field: &str) 
         .find_map(|value| value.get(field)?.as_str().map(ToOwned::to_owned))
 }
 
-#[cfg(feature = "turso-backend")]
 fn rendered_next_command(rendered_stdout: &[u8]) -> Option<String> {
     let stdout = std::str::from_utf8(rendered_stdout).ok()?;
     let marker = "next=\"";
@@ -149,7 +132,6 @@ fn rendered_next_command(rendered_stdout: &[u8]) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
-#[cfg(feature = "turso-backend")]
 fn route_evidence_ids(packet: &serde_json::Value) -> Vec<String> {
     let mut ids = Vec::new();
     for (array_key, fields) in [
@@ -175,7 +157,6 @@ fn route_evidence_ids(packet: &serde_json::Value) -> Vec<String> {
     ids
 }
 
-#[cfg(feature = "turso-backend")]
 fn hit_count(packet: &serde_json::Value, evidence_count: usize) -> u32 {
     for key in ["hits", "owners", "nodes"] {
         if let Some(values) = packet.get(key).and_then(serde_json::Value::as_array) {
@@ -185,7 +166,6 @@ fn hit_count(packet: &serde_json::Value, evidence_count: usize) -> u32 {
     evidence_count.min(u32::MAX as usize) as u32
 }
 
-#[cfg(feature = "turso-backend")]
 fn route_receipt_id(
     repo_id: &str,
     workspace_id: &str,

@@ -9,8 +9,18 @@ fn asp_unit_scenarios_cover_perf_sensitive_query_search_subcommands() {
 }
 
 #[test]
+fn asp_language_scenarios_define_cold_first_performance_gates() {
+    super::support::asp_language_scenarios_define_cold_first_performance_gates();
+}
+
+#[test]
 fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gate() {
     super::support::asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gate();
+}
+
+#[test]
+fn search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta() {
+    super::support::search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta();
 }
 
 #[test]
@@ -22,6 +32,17 @@ fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate() {
 fn asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_gate() {
     super::support::asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_gate(
     );
+}
+
+#[test]
+fn asp_search_owner_source_index_trace_missing_db_cold_functional_path_stays_inside_scenario_gate()
+{
+    super::support::asp_search_owner_source_index_trace_missing_db_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_search_owner_source_index_trace_hit_cold_functional_path_stays_inside_scenario_gate() {
+    super::support::asp_search_owner_source_index_trace_hit_cold_functional_path_stays_inside_scenario_gate();
 }
 
 #[test]
@@ -142,11 +163,25 @@ fn scenario_benchmark_duration_contract_rejects_zero_budget() {
     super::support::scenario_benchmark_duration_contract_rejects_zero_budget();
 }
 
-#[cfg(feature = "turso-overlay")]
 #[test]
 fn asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate() {
     super::support::asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate(
     );
+}
+
+#[test]
+fn asp_turso_db_engine_concurrent_process_pressure_stays_inside_scenario_gate() {
+    super::support::asp_turso_db_engine_concurrent_process_pressure_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_gate() {
+    super::support::asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_gate();
+}
+
+#[test]
+fn asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate() {
+    super::support::asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate();
 }
 
 #[test]
@@ -160,8 +195,8 @@ fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
 }
 
 #[test]
-fn asp_rg_query_source_index_miss_skips_native_finder_gate() {
-    super::support::asp_rg_query_source_index_miss_skips_native_finder_gate();
+fn asp_rg_query_source_index_miss_skips_search_overlay_gate() {
+    super::support::asp_rg_query_source_index_miss_skips_search_overlay_gate();
 }
 
 #[test]

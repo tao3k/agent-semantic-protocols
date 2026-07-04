@@ -3,7 +3,7 @@ use crate::provider_command::support::{asp_command, temp_project_root};
 use super::support::write_org_elements_fixture;
 
 #[test]
-fn org_facade_search_pipe_uses_document_element_chain() {
+fn org_facade_search_pipe_uses_document_lexical_overlay_chain() {
     let root = temp_project_root("org-document-search-pipe");
     write_org_elements_fixture(&root);
 
@@ -33,7 +33,7 @@ fn org_facade_search_pipe_uses_document_element_chain() {
 }
 
 #[test]
-fn md_facade_search_pipe_uses_document_element_chain() {
+fn md_facade_search_pipe_uses_document_lexical_overlay_chain() {
     let root = temp_project_root("md-document-search-pipe");
     std::fs::write(
         root.join("guide.md"),
@@ -70,14 +70,14 @@ fn assert_document_pipe_packet(packet: &serde_json::Value, language_id: &str, ma
     assert_eq!(packet["surface"], "search-pipe");
     assert_eq!(
         packet["candidateSources"],
-        serde_json::json!(["document-element"])
+        serde_json::json!(["search-overlay"])
     );
-    assert_eq!(packet["sourceTrace"][0]["source"], "document-element");
+    assert_eq!(packet["sourceTrace"][0]["source"], "search-overlay");
     assert_eq!(packet["sourceTrace"][0]["status"], "used");
     let nodes = packet["graph"]["nodes"].as_array().expect("graph nodes");
     assert!(
         nodes.iter().any(|node| {
-            node["source"] == "document-element"
+            matches!(node["source"].as_str(), Some("overlay" | "overlay-path"))
                 && node["locator"]
                     .as_str()
                     .is_some_and(|locator| locator.starts_with(&format!("{language_id}://")))

@@ -1,13 +1,9 @@
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{artifacts_root, asp_command, temp_project_root};
 
 #[test]
 fn asp_org_archive_done_moves_done_records_under_archives() {
     let root = temp_project_root("org-document-command-archive-done");
-    let org_artifacts = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org");
+    let org_artifacts = artifacts_root(&root).join("org");
     let plans = org_artifacts.join("flow").join("plans");
     std::fs::create_dir_all(&plans).expect("create plans dir");
     let done = plans.join("done-plan.org");

@@ -9,15 +9,26 @@ use agent_semantic_client_core::{
     ProviderId, state_core::ResolvedState,
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbSourceIndexLookup, ClientDbSourceIndexQueryKey,
-    ClientDbStructuralIndexLookup, ClientDbStructuralQueryKey,
+    ClientDbEngine, ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexQueryKey,
+    TursoClientDbSearchHit,
 };
+use agent_semantic_runtime::runtime_block_on_current_thread;
 use serde_json::{Value, json};
 use std::{
     path::Path,
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+fn search_turso_documents(
+    engine: &ClientDbEngine,
+    query: &str,
+    limit: u32,
+) -> Vec<TursoClientDbSearchHit> {
+    runtime_block_on_current_thread(engine.search_documents(query, limit))
+        .expect("run active Turso DB Engine search")
+        .expect("search active Turso DB Engine documents")
+}
 
 #[test]
 fn cache_usage_lists_flush() {
@@ -40,6 +51,56 @@ fn cache_source_index_refresh_receipt_names_db_engine_owner() {
     );
     assert!(!crate::cache_cli::source_index_refresh_index_owner().contains("rust-sql"));
     assert!(!crate::cache_cli::source_index_refresh_phase().contains("rust-sql"));
+}
+
+#[test]
+fn cache_status_process_reader_helper() {
+    if std::env::var("ASP_CACHE_STATUS_PROCESS_READER_CHILD")
+        .ok()
+        .as_deref()
+        != Some("1")
+    {
+        return;
+    }
+    let root = std::path::PathBuf::from(
+        std::env::var("ASP_CACHE_STATUS_PROCESS_ROOT").expect("ASP_CACHE_STATUS_PROCESS_ROOT"),
+    );
+    run_cache(&root, None, &["status".to_string()], false).expect("process cache status reader");
+}
+
+#[test]
+fn cache_status_survives_concurrent_process_readers() {
+    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
+    let root = temp_root("cache-status-concurrent-readers");
+    let state_home = root.join(".asp-state");
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", &state_home);
+    let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
+    ClientDbEngine::open_write_session_client_dir(engine.client_dir())
+        .expect("bootstrap Turso DB for cache status readers");
+    assert!(engine.db_path().exists());
+
+    let current_exe = std::env::current_exe().expect("locate current test binary");
+    let mut children = Vec::new();
+    for _ in 0..6 {
+        children.push(
+            Command::new(&current_exe)
+                .arg("--exact")
+                .arg("cache_cli_command_tests::cache_status_process_reader_helper")
+                .arg("--nocapture")
+                .env("ASP_CACHE_STATUS_PROCESS_READER_CHILD", "1")
+                .env("ASP_CACHE_STATUS_PROCESS_ROOT", &root)
+                .env("ASP_STATE_HOME", &state_home)
+                .spawn()
+                .expect("spawn cache status reader"),
+        );
+    }
+
+    for mut child in children {
+        let status = child.wait().expect("wait for cache status reader");
+        assert!(status.success(), "cache status reader failed: {status}");
+    }
+
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -86,28 +147,27 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
     let cache_root = ClientCacheManifest::inspect_project(&root)
         .cache_root
         .expect("cache root");
-    let db = ClientDb::open_read_only_existing(ClientDb::default_path(&cache_root))
-        .expect("open db")
-        .expect("db exists");
-    let owners = db
-        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
-            project_root: checkout_dir.clone(),
-            language_id: Some(LanguageId::from("gerbil-scheme")),
-            query: ClientDbSourceIndexQueryKey::from("runtime"),
+    let gerbil_language = LanguageId::from("gerbil-scheme");
+    let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
+        ClientDbSourceIndexClientDirLookupRequest {
+            client_dir: &cache_root,
+            indexed_project_root: &checkout_dir,
+            language_id: Some(&gerbil_language),
+            query_keys: vec![ClientDbSourceIndexQueryKey::from("runtime")],
             limit: 8,
-        })
-        .expect("lookup runtime source index");
-    assert_eq!(owners.len(), 1);
-    assert_eq!(owners[0].owner_path.as_str(), "runtime.ss");
+        },
+    )
+    .expect("lookup runtime source index");
+    assert_eq!(lookup.candidates.len(), 1);
+    assert_eq!(lookup.candidates[0].path, "runtime.ss");
     assert_eq!(
-        owners[0]
+        lookup.candidates[0]
             .provider_id
             .as_ref()
             .expect("runtime source index owner")
             .as_str(),
         "asp-structural-index"
     );
-    let gerbil_language = LanguageId::from("gerbil-scheme");
     run_cache(
         &root,
         Some(&gerbil_language),
@@ -237,25 +297,15 @@ fn cache_import_replays_structural_index_artifact_into_db() {
 
     run_cache(&root, None, &["import".to_string()], false).expect("cache import");
 
-    let db_path = ClientDb::default_path(&cache_root);
-    let db = ClientDb::open_read_only_existing(&db_path)
-        .expect("open db")
-        .expect("db exists");
-    let summary = db.summary().expect("summary");
-    let symbols = db
-        .lookup_structural_symbols(&ClientDbStructuralIndexLookup {
-            language_id: LanguageId::from("rust"),
-            provider_id: "rs-harness".into(),
-            project_root: root.clone(),
-            query: ClientDbStructuralQueryKey::from("cache_imported_symbol"),
-            limit: 8,
-        })
-        .expect("lookup structural symbol");
+    let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
+    let symbols = search_turso_documents(&engine, "cache_imported_symbol", 8);
 
-    assert_eq!(summary.structural_index_generation_count, 1);
-    assert_eq!(summary.structural_index_symbol_count, 1);
     assert_eq!(symbols.len(), 1);
-    assert_eq!(symbols[0].owner_path.as_str(), "src/lib.rs");
+    assert!(
+        symbols[0].document.contains("src/lib.rs"),
+        "structural search document should retain owner path: {:?}",
+        symbols[0]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -22,7 +22,7 @@ Current strengths:
 - Org/Markdown providers already keep document query/search separate from source-language packets, which is the right precedent for policy facts.
 Current gaps:
 - =software-criterion-catalog.v1= defines the canon and repair-recipe vocabulary, but it does not say which facts are active in a concrete workspace, owner, selector, dependency, or session.
-- =software-criterion-extension-report.v1= gives ecosystem/profile findings an envelope, but it is still a report shape, not the common runtime fact shape consumed by =EvidenceGraph=, =ReasoningTree=, and =GraphRoute=.
+- =software-criterion-extension-report.v1= gives ecosystem/profile findings an envelope, but it is still a report shape, not the common runtime fact shape consumed by =ReasoningTree=, =EvidenceGraph=, =DynamicTopology=, and =GraphRoute=.
 - =semantic-provider-facts.v1= is useful for graph enrichment, but it is intentionally generic and cannot express agent timing such as =before-write=, =during-write=, =test-selection=, or =suppress-route=.
 - Existing hook/classifier policy is mostly a boundary and denial system. That remains necessary, but it cannot be the main mechanism for improving code quality before the agent writes code.
 Therefore the missing layer is:
@@ -700,61 +700,101 @@ The Org side is the audited narrative and query surface:
 The JSON side is the machine packet:
 #+begin_src json
 {
-  "schemaId": "agent.semantic-protocols.task-frame-archive",
+  "schemaId": "semantic-where-frame.v1",
   "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.where-frame",
+  "protocolVersion": "1",
+  "frameId": "wf.search-overlay",
+  "topologyId": "topology.search-overlay",
   "taskFrameId": "tf.dirty-overlay.2026-07-01",
-  "status": "completed",
-  "intentId": "intent.search-overlay-performance",
-  "projectId": "agent-semantic-protocols",
-  "featureId": "search-overlay",
-  "archivedAt": "2026-07-01T00:00:00Z",
-  "scope": {
-    "owners": ["crates/.../search_overlay.rs"],
-    "tests": ["tests/.../dirty_overlay_multi_session.rs"],
-    "artifacts": ["compact-render-output-stable"]
+  "intent": {
+    "text": "find the search-overlay owner and evidence",
+    "terms": ["search-overlay", "dynamic overlay", "route_source"],
+    "targetClass": "owner"
   },
-  "whereFrame": {
-    "frameId": "wf.search-overlay",
-    "evidenceGeneration": "gen.42",
-    "complete": true,
-    "missing": []
+  "recommendedNext": {
+    "kind": "selector",
+    "command": "asp rust query crates/agent-semantic-search/src/dynamic_overlay.rs items --workspace . --code",
+    "selector": "rust:item:agent_semantic_search::dynamic_overlay",
+    "reason": "owner evidence is needed before edit synthesis"
   },
-  "howFrame": {
-    "frameId": "hf.search-overlay",
-    "derivedFrom": "wf.search-overlay",
-    "evidenceGeneration": "gen.42",
-    "complete": true,
-    "policyScenarioIds": ["dirty-overlay-multi-session-search"],
-    "validFor": ["feature:search-overlay", "edit-group:overlay-merge"],
-    "invalidatedBy": ["scope-expansion", "stale-generation", "failed-validation"]
+  "confirmed": [
+    {
+      "kind": "owner",
+      "id": "agent-semantic-search.dynamic-overlay",
+      "selector": "rust:item:agent_semantic_search::dynamic_overlay"
+    }
+  ],
+  "missingEvidence": [
+    {
+      "kind": "scenario",
+      "reason": "cold functional route has not been validated for this edit group",
+      "nextCommand": "cargo test -p agent-semantic-protocol --test unit_test scenario_performance_gate::scenario_benchmark"
+    }
+  ],
+  "avoid": [
+    {
+      "action": "line-range read",
+      "reason": "line ranges are display hints, not executable identity"
+    }
+  ],
+  "searchPlan": [
+    {
+      "stepId": "search.owner",
+      "command": "asp rust query crates/agent-semantic-search/src/dynamic_overlay.rs items --workspace . --code",
+      "expectedEvidence": ["owner selector", "route source", "test owner"]
+    }
+  ],
+  "evidence": ["ev.dynamic-overlay.owner"]
+}
+#+end_src
+#+begin_src json
+{
+  "schemaId": "semantic-how-frame.v1",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.how-frame",
+  "protocolVersion": "1",
+  "frameId": "hf.search-overlay",
+  "whereFrameId": "wf.search-overlay",
+  "topologyId": "topology.search-overlay",
+  "taskFrameId": "tf.dirty-overlay.2026-07-01",
+  "decision": {
+    "summary": "move overlay merge logic in the search crate and preserve route-source receipts",
+    "editGroupId": "eg.overlay-merge",
+    "targetSelectors": ["rust:item:agent_semantic_search::dynamic_overlay"]
   },
-  "editGroups": [
+  "why": [
+    "WhereFrame confirmed the search crate owns dynamic overlay behavior",
+    "line-range selectors are not legal executable identity",
+    "route-source receipts must remain stable for scenario gates"
+  ],
+  "illegal": [
     {
-      "editGroupId": "eg.overlay-merge",
-      "owners": ["crates/.../search_overlay.rs"],
-      "result": "applied"
+      "branch": "add command-local fallback search",
+      "reason": "command/* must stay a thin parse/dispatch/render facade"
     }
   ],
-  "observations": [
+  "validate": [
     {
-      "kind": "scenario-benchmark",
-      "id": "dirty-overlay-multi-session-search",
-      "result": "matched"
+      "kind": "scenario",
+      "command": "cargo test -p agent-semantic-protocol --test unit_test scenario_performance_gate::scenario_benchmark"
     }
   ],
-  "promotedFacts": [
-    {
-      "kind": "topology-context",
-      "summary": "stable index and dirty overlay merge before compact render"
-    }
-  ],
-  "ephemeralEvidence": [
-    {
-      "kind": "session-only",
-      "summary": "temporary candidate list not valid outside this generation"
-    }
-  ],
-  "followUpHints": []
+  "evidence": ["ev.dynamic-overlay.owner", "ev.dynamic-overlay.scenario"],
+  "branchLegality": {
+    "targetRole": "orchestrator",
+    "trustBoundary": "dirty-overlay",
+    "invariantOwner": "agent-semantic-search.dynamic-overlay",
+    "allowedRecoveries": ["route-source receipt", "bounded overlay fallback"],
+    "prunedBranches": [
+      {
+        "branch": "consumer-side fallback",
+        "reason": "search owner must provide the route; command fallback would split the contract"
+      }
+    ],
+    "evidenceGaps": ["cold functional scenario result"],
+    "validation": ["schema", "scenario", "test"]
+  }
 }
 #+end_src
 The split is intentional:
@@ -904,6 +944,148 @@ Policy recipes become recipe nodes connected to:
 - whether the branch reduced search/write/review turns;
 - whether the recipe caused a false route, stale selector, or unnecessary edit.
 =GraphRoute= should use this state to make policy compact and contextual. A known fact should not be repeated every turn unless it changes the next action.
+* WhereFrame search routing
+The =WhereFrame= owns the search question. It must not decide edit shape. It
+answers:
+
+#+begin_src text
+Given the current intent and topology slice,
+where should the agent search next,
+what evidence is already confirmed,
+what evidence is still missing,
+and which search/read/write actions should be avoided?
+#+end_src
+
+This keeps search from degenerating into line-number windows or broad source
+reads. A first-level =WhereFrame= should expose only:
+
+#+begin_src text
+intent:
+  normalized query terms and target class
+recommendedNext:
+  exact selector, command, or query-set; plus one reason
+confirmed:
+  owners, selectors, schemas, tests, receipts, or prior facts already proven
+missingEvidence:
+  the smallest next evidence gap and the command that can close it
+avoid:
+  stale selectors, broad reads, project-local cache fallbacks, or write attempts
+searchPlan:
+  bounded fan-out/fan-in steps when one query cannot close the evidence gap
+evidence:
+  ids, not pasted artifacts
+#+end_src
+
+The first public JSON contract for this search projection is
+[[file:../../schemas/semantic-where-frame.v1.schema.json][semantic-where-frame.v1]].
+It links to =semantic-dynamic-topology.v1= through =topologyId= and stays
+separate from edit strategy. A =WhereFrame= can recommend that evidence is now
+sufficient for an edit group, but it does not encode the edit group itself.
+
+* HowFrame branch legality
+The =HowFrame= is the place where policy facts and scenarios become concrete editing judgment. It should not repeat generic advice that a strong model already knows. It should answer a narrower question:
+#+begin_src text
+Given the localized target and current topology slice,
+which edit branches are architecturally legal,
+which branches are risky but allowed with proof,
+and which branches should be pruned before code is written?
+#+end_src
+This is how policy avoids becoming a small linter in the prompt. The model already knows ordinary good style. ASP adds project-specific and evidence-backed facts:
+- this selector is an internal invariant owner, so consumer-side fallback is not a legal repair;
+- this selector is an external boundary, so validation/recovery/reporting is legal and expected;
+- this dependency route has benchmark evidence, so introducing a second allocation, broad async spawn, or global lock must be justified by a scenario receipt;
+- this snapshot proves downstream agents depend on =recommendedNext=, =avoid=, or a compact render field, so the edit must preserve that contract;
+- this scenario records a previous failure mode, so the edit should pick the proven recipe before attempting a wider redesign.
+The minimum =HowFrame.branchLegality= projection is:
+#+begin_src json
+{
+  "targetRole": "internal-invariant|external-boundary|adapter|renderer|validator|orchestrator|unknown",
+  "trustBoundary": "external-input|internal-contract|legacy-migration|dirty-overlay|unknown",
+  "invariantOwner": "selector-or-owner-id",
+  "allowedRecoveries": ["validate-at-boundary", "bounded-compatibility", "schema-migration"],
+  "prunedBranches": [
+    {
+      "branch": "consumer-side fallback",
+      "reason": "target is internal-contract; missing producer evidence must route to owner/schema/test instead"
+    }
+  ],
+  "evidenceGaps": ["missing producer proof", "stale snapshot", "no benchmark receipt for hot path"],
+  "validation": ["parser", "schema", "scenario", "snapshot", "benchmark", "test"]
+}
+#+end_src
+The first public JSON contract for this projection is
+[[file:../../schemas/semantic-how-frame.v1.schema.json][semantic-how-frame.v1]].
+It links to =semantic-where-frame.v1= through =whereFrameId= and to
+=semantic-dynamic-topology.v1= through =topologyId=. It keeps the default prompt
+surface compact: decision, why, illegal branches, validation, evidence ids, and
+branch legality.
+The agent-facing render must stay compact. A first-level =HowFrame= should expose only:
+#+begin_src text
+decision:
+  edit shape
+why:
+  1-3 active facts
+illegal:
+  pruned branch and reason
+validate:
+  exact command/scenario/snapshot receipt
+evidence:
+  ids, not pasted artifacts
+#+end_src
+If the agent asks for more detail, the render can progressively disclose the policy fact, scenario, snapshot, benchmark receipt, or prior failure. The default frame should not paste every matching policy.
+* Benchmark and snapshot fact split
+Benchmark and snapshot both become policy facts, but they prove different things.
+
+Performance evidence uses the phase-neutral
+[[file:../../schemas/semantic-performance-gate.v1.schema.json][semantic-performance-gate.v1]]
+contract. The first priority is a =cold-path= =functionality= gate: the command
+must work from a cold cache with correct source, selector, route, and render
+semantics before ASP claims hot-path optimization. Warm, hot, dynamic-overlay,
+and source-index gates are follow-up phases over the same receipt shape.
+Durations are numeric =elapsedMs= / =elapsedSeconds= values; subsecond targets
+use fractional milliseconds instead of placeholder strings such as =0ms=.
+
+Benchmark facts prove cost and behavior under pressure:
+- latency, memory, allocation, concurrency, throughput, or hot-path budget;
+- which implementation shape previously satisfied the budget;
+- which dependency or algorithm choice is proven in a scenario;
+- which regression should block or redirect a recipe.
+Snapshot facts prove contract and compatibility:
+- exact output fields, packet shape, render shape, and downstream agent affordances;
+- selector ownership and project-local invariant expectations;
+- what changed between generations;
+- which compatibility branch is allowed because real consumers still exist.
+The =HowFrame= must not merge these into a vague "quality policy". A good frame says whether the edit pressure is performance, contract stability, safety, migration, token budget, or architecture cohesion, then selects only the fact type that changes the edit.
+* Policy facts across languages
+Policy is language-wide, not Rust-only and not Gerbil-only. Each language harness owns native parser/compiler/ecosystem evidence for how to change code in that language. ASP owns the shared protocol that turns those facts into compact =HowFrame= material.
+The language harness contract is:
+#+begin_src text
+native parser/compiler/project ecosystem
+-> language-owned policy facts and scenario receipts
+-> shared PolicyFact / PolicyRecipe packet
+-> EvidenceGraph + DynamicTopology
+-> compact HowFrame for the agent
+#+end_src
+This means a new language harness should not reimplement ASP search, graph routing, or compact rendering. It should provide high-quality native facts:
+- structural identities and owner selectors;
+- dependency and ecosystem-specific constraints;
+- scenarios that prove performance, safety, migration, or quality recipes;
+- snapshots that prove stable contracts;
+- focused validation commands and receipts.
+ASP can then apply the same =WhereFrame= / =HowFrame= / =TaskFrameArchive= loop for every language.
+* Python and Julia feedback loop
+Python and Julia sit at different levels of the same graph system.
+Python is the production runtime for graph intelligence. It consumes Rust/search/artifact inputs, builds =EvidenceGraph= and =DynamicTopology= projections, ranks =GraphRoute= jumps, and renders compact frames for the agent.
+Julia is the offline research lane. It replays many sessions and asks which topology jumps, policy facts, and branch-legality predictors actually reduce turns, token cost, bad edits, and repeated searches. Julia does not sit on the prompt-critical runtime path.
+The promotion rule is:
+#+begin_src text
+runtime artifacts -> Julia replay and analysis
+-> validated graph feature / ranking improvement / branch predictor
+-> Python production implementation
+-> Rust schema validation and compact render
+-> agent-facing WhereFrame or HowFrame
+#+end_src
+This keeps research open-ended without making the live agent path slow or unstable.
 * DB and overlay policy
 Stable policy facts can be persisted when they are backed by stable parser/compiler/project evidence.
 Dynamic policy facts should live in overlay/session storage when they depend on dirty code, current branch edits, active subagent context, or temporary reasoning branches.

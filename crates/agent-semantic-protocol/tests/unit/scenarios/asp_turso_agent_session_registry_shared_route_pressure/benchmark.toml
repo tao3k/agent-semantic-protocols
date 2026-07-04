@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "agent_session_registry_concurrent_process_register_shared_route_does_not_unique_fail"
+snapshot = "agent_session_registry_concurrent_process_register_shared_route_does_not_unique_fail"
+target_total = "100ms"
+max_total = "300ms"
+observed_total = "250ms"
+regression_budget = "75ms"
+memory_budget_bytes = 16777216
+observed_memory_bytes = 4194304
+route_source = "db-engine"
+max_provider_process_count = 0
+max_stdout_bytes = 16384
+fallback_reason = "none"
+target_rationale = "This pressure gate records the child-internal Turso registry open/register operation budget, not libtest child-process startup. Multiple child processes register the same project/root/name route and the DB Engine must converge one routable row without surfacing unique constraint or WAL lock failures. The scenario must not normalize the generic 500ms hard ceiling for search-adjacent registry pressure."
+
+[observed_timings]
+registry_db_operation = "250ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

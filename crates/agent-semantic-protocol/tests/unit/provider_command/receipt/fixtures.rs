@@ -152,11 +152,11 @@ const PRIME_DECISION_PRIMER_RENDER_ABI: &str = concat!(
     "purpose=decision-primer;",
     "answer=false;",
     "code=false;",
-    "capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
-    "ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code;",
+    "capabilities=lexical,pipe,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
+    "ladder=lexical>fd-query|rg-query>owner-items>selector-code>pipe;",
     "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
     "risk=broad-direct-read,manual-window-scan,repeat-prime;",
-    "next=search pipe <question-or-feature-term> --view seeds"
+    "next=search lexical <question-or-feature-term> owner tests --view seeds"
 );
 
 fn normalized_path(path: &std::path::Path) -> String {

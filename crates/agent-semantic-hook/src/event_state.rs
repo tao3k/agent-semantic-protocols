@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_runtime::{ensure_project_hook_cache_dir, ensure_project_hook_state_dir};
+use agent_semantic_runtime::ensure_project_hook_state_dir;
 use serde_json::{Value, json};
 
 use crate::event_replay::{
@@ -22,6 +22,11 @@ const DENY_REPLAY_WINDOW_MS: u128 = 3 * 60 * 1000;
 const SEARCH_PIPE_FEEDBACK_WINDOW_MS: u128 = 10 * 60 * 1000;
 const HOOK_EVENT_STATE_TAIL_BYTES: u64 = 1024 * 1024;
 const HOOK_EVENT_STATE_TAIL_LINE_CAP: usize = 4096;
+
+fn should_preserve_agent_session_route_message(decision: &HookDecision) -> bool {
+    decision.fields.contains_key("agentSessionAction")
+        && decision.fields.contains_key("agentSessionRoute")
+}
 const HOOK_EVENT_STATE_MAX_BYTES: u64 = HOOK_EVENT_STATE_TAIL_BYTES * 4;
 
 /// Recent search state for a prompt/session that needs `search pipe`.
@@ -56,6 +61,11 @@ pub fn apply_repeated_deny_replay(
         Value::String(recovery_ref.clone()),
     );
     let source_access_replay = is_source_access_replay_key(&replay_key);
+    if source_access_replay {
+        insert_asp_explore_recovery_action_fields(decision);
+    }
+    let preserve_agent_session_route_message =
+        should_preserve_agent_session_route_message(decision);
     let compact_first_source_access_replay =
         source_access_replay && should_compact_source_access_deny_message(decision);
 
@@ -64,7 +74,12 @@ pub fn apply_repeated_deny_replay(
             "denyReplay".to_string(),
             Value::String("record".to_string()),
         );
-        if compact_first_source_access_replay {
+        if preserve_agent_session_route_message {
+            decision.fields.insert(
+                "denyReplayMessagePolicy".to_string(),
+                Value::String("preserve-agent-session-route".to_string()),
+            );
+        } else if compact_first_source_access_replay {
             decision.message = compact_source_access_deny_message(decision, &recovery_ref);
         }
         return Ok(false);
@@ -74,12 +89,48 @@ pub fn apply_repeated_deny_replay(
         "denyReplay".to_string(),
         Value::String("repeated".to_string()),
     );
+    if preserve_agent_session_route_message {
+        decision.fields.insert(
+            "denyReplayMessagePolicy".to_string(),
+            Value::String("preserve-agent-session-route".to_string()),
+        );
+        return Ok(true);
+    }
     decision.message = if source_access_replay {
         compact_source_access_deny_message(decision, &recovery_ref)
     } else {
         repeated_deny_message(decision)
     };
     Ok(true)
+}
+
+fn insert_asp_explore_recovery_action_fields(decision: &mut HookDecision) {
+    decision
+        .fields
+        .entry("requiredAction".to_string())
+        .or_insert_with(|| Value::String("send-to-asp-explore".to_string()));
+    decision
+        .fields
+        .entry("nextAction".to_string())
+        .or_insert_with(|| {
+            Value::String("run-asp-command-in-registered-asp-explore-child".to_string())
+        });
+    decision
+        .fields
+        .entry("targetAgentName".to_string())
+        .or_insert_with(|| Value::String("asp-explore".to_string()));
+    decision
+        .fields
+        .entry("targetAgentRole".to_string())
+        .or_insert_with(|| Value::String("asp-explore".to_string()));
+    decision
+        .fields
+        .entry("forbiddenUntilResolved".to_string())
+        .or_insert_with(|| Value::String("raw-source-fallback".to_string()));
+    decision
+        .fields
+        .entry("completionReceipt".to_string())
+        .or_insert_with(|| Value::String("asp-explore-child-command".to_string()));
 }
 
 /// Append one compact hook decision record to `events.jsonl`.
@@ -306,19 +357,7 @@ pub fn remove_incompatible_hook_event_state(
     project_root: &Path,
 ) -> Result<Option<PathBuf>, String> {
     let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
-    let mut removed_path = remove_incompatible_hook_event_state_path(&state_path)?;
-    let previous_cache_state_path =
-        ensure_project_hook_cache_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
-    if previous_cache_state_path != state_path && previous_cache_state_path.is_file() {
-        fs::remove_file(&previous_cache_state_path).map_err(|error| {
-            format!(
-                "failed to remove previous hook state {}: {error}",
-                previous_cache_state_path.display()
-            )
-        })?;
-        removed_path.get_or_insert(previous_cache_state_path);
-    }
-    Ok(removed_path)
+    remove_incompatible_hook_event_state_path(&state_path)
 }
 
 fn remove_incompatible_hook_event_state_path(state_path: &Path) -> Result<Option<PathBuf>, String> {

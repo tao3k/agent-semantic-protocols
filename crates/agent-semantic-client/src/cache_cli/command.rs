@@ -11,11 +11,10 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheManifestReport, CacheManifestStatus,
     ClientCacheManifest, ClientCachePath, ClientDbBackend, ClientDbEngineDurability,
-    ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbFileName, ClientDbFutureBackend,
-    ClientDbFutureBackendReportReceipt, ClientDbJournalMode, ClientDbRuntimePragmasReceipt,
-    ClientDbSqliteReceipt, ClientDbStatus, ClientMethod, ClientReceipt, ClientRepoId,
-    ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId, LanguageId, ProjectContext,
-    ProviderId, ProviderRegistrySnapshot, StateLayout,
+    ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbFileName, ClientDbStatus,
+    ClientMethod, ClientReceipt, ClientRepoId, ClientScopeId, ClientStateLayoutVersion,
+    ClientWorkspaceId, LanguageId, ProjectContext, ProviderId, ProviderRegistrySnapshot,
+    StateLayout,
 };
 use agent_semantic_client_db::{ClientDbEngine, ClientDbEngineReport, ClientDbReport};
 use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout_in_client_cache};
@@ -117,15 +116,16 @@ pub(crate) fn run_cache(
             let db_engine_report = ClientDbEngine::resolve(project_root)
                 .ok()
                 .map(|engine| engine.inspect());
-            let db_report = db_engine_report
+            let db_engine_available = db_engine_report.is_some();
+            let active_db_report = db_engine_report
                 .as_ref()
-                .map(|report| &report.sqlite_report);
+                .map(|report| ClientDbEngine::inspect_client_dir(&report.client_dir));
             let mut receipt = ClientReceipt::cache_status(provenance, &cache_report);
             if let Some(db_engine_report) = &db_engine_report {
                 apply_db_engine_report_to_receipt(&mut receipt, db_engine_report);
             }
-            receipt.sqlite_read_count = Some(u64::from(db_report.is_some()));
-            receipt.sqlite_write_count = Some(0);
+            receipt.db_read_count = Some(u64::from(db_engine_available));
+            receipt.db_write_count = Some(0);
             let (activation, provider_count) = match &snapshot {
                 Ok(snapshot) => (
                     snapshot.activation_path.display().to_string(),
@@ -140,7 +140,7 @@ pub(crate) fn run_cache(
             };
             println!(
                 "[asp-cache] status={} route=local-cache activation={} providers={} cacheRoot={} manifest={} generations={} rawSourceStored={}",
-                cache_status_line(&cache_report, db_report),
+                cache_status_line(&cache_report, active_db_report.as_ref()),
                 activation,
                 provider_count,
                 display_optional_path(cache_report.cache_root.as_deref()),
@@ -154,9 +154,9 @@ pub(crate) fn run_cache(
                 cache_report.status.as_str()
             );
             print_db_engine_status(db_engine_report.as_ref());
-            print_db_status(db_report);
+            print_db_status(active_db_report.as_ref());
             print_cache_reason(&cache_report);
-            println!("|reason phase=phase-1-client-db-sql arrow=false providerCommands=0");
+            println!("|reason phase=db-engine-turso arrow=false providerCommands=0");
             if snapshot.is_err() {
                 println!("|cmd install=asp install plugin --codex .");
                 println!("|cmd guide=asp guide");
@@ -177,18 +177,15 @@ pub(crate) fn run_cache(
             let cache_report = ClientCacheManifest::inspect_project(project_root);
             let manifest = ClientCacheManifest::load_from_path(state_layout.cache_manifest_path())?;
             let cache_root = state_layout.client_cache_dir();
-            let mut db_session = ClientDbEngine::open_write_session_client_dir(cache_root)?;
-            db_session.import_manifest(&manifest)?;
+            ClientDbEngine::import_manifest_from_client_dir(cache_root, &manifest)?;
             let structural_index_imported_count =
-                import_structural_index_artifacts(cache_root, &mut db_session, &manifest)?;
-            let db_report = db_session
-                .inspect()
-                .unwrap_or_else(|_| ClientDbEngine::inspect_client_dir(cache_root));
+                import_structural_index_artifacts(cache_root, &manifest)?;
+            let db_report = ClientDbEngine::inspect_client_dir(cache_root);
             let mut receipt =
                 ClientReceipt::cache_report(ClientMethod::CacheImport, provenance, &cache_report);
             apply_project_db_report_to_receipt(&mut receipt, project_root, &db_report);
-            receipt.sqlite_read_count = Some(1);
-            receipt.sqlite_write_count = Some(1 + structural_index_imported_count);
+            receipt.db_read_count = Some(0);
+            receipt.db_write_count = Some(0);
             println!(
                 "[asp-cache] status=imported route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={} structuralIndexImported={}",
                 display_optional_path(cache_report.cache_root.as_deref()),
@@ -203,9 +200,7 @@ pub(crate) fn run_cache(
                 cache_report.status.as_str()
             );
             print_db_status(Some(&db_report));
-            println!(
-                "|reason phase=phase-1-client-db-sql action=import arrow=false providerCommands=0"
-            );
+            println!("|reason phase=db-engine-turso action=import arrow=false providerCommands=0");
             if receipt_json {
                 let receipt = serde_json::to_string(&receipt)
                     .map_err(|error| format!("failed to serialize receipt: {error}"))?;
@@ -338,8 +333,8 @@ pub(crate) fn run_cache(
             );
             receipt.cache_status = agent_semantic_client_core::CacheStatus::Invalidated;
             apply_project_db_report_to_receipt(&mut receipt, project_root, &db_report);
-            receipt.sqlite_read_count = Some(1);
-            receipt.sqlite_write_count = Some(1);
+            receipt.db_read_count = Some(1);
+            receipt.db_write_count = Some(1);
             println!(
                 "[asp-cache] status=flushed route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={} flushedSyntaxRows={}",
                 display_optional_path(updated_cache_report.cache_root.as_deref()),
@@ -355,7 +350,7 @@ pub(crate) fn run_cache(
             );
             print_db_status(Some(&db_report));
             println!(
-                "|reason phase=phase-1-client-db-sql action=flush-syntax-rows manifestArtifactsDeleted=false providerCommands=0"
+                "|reason phase=db-engine-turso action=flush-syntax-rows manifestArtifactsDeleted=false providerCommands=0"
             );
             if receipt_json {
                 let receipt = serde_json::to_string(&receipt)
@@ -400,8 +395,8 @@ pub(crate) fn run_cache(
                 ClientReceipt::cache_report(receipt_method, provenance, &updated_cache_report);
             receipt.cache_status = agent_semantic_client_core::CacheStatus::Invalidated;
             apply_project_db_report_to_receipt(&mut receipt, project_root, &db_report);
-            receipt.sqlite_read_count = Some(1);
-            receipt.sqlite_write_count = Some(1);
+            receipt.db_read_count = Some(1);
+            receipt.db_write_count = Some(1);
             println!(
                 "[asp-cache] status={} route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={} {}={}",
                 status,
@@ -419,7 +414,7 @@ pub(crate) fn run_cache(
             );
             print_db_status(Some(&db_report));
             println!(
-                "|reason phase=phase-1-client-db-sql action={} manifestArtifactsDeleted=false providerCommands=0",
+                "|reason phase=db-engine-turso action={} manifestArtifactsDeleted=false providerCommands=0",
                 action
             );
             if receipt_json {
@@ -635,9 +630,8 @@ fn cache_status_line(
 fn print_db_engine_status(engine_report: Option<&ClientDbEngineReport>) {
     if let Some(engine_report) = engine_report {
         println!(
-            "|dbEngine backend={} futureBackend={} layoutVersion={} repoId={} workspaceId={} scopeId={} clientDir={} manifestPath={} dbPath={} artifactPath={}",
+            "|dbEngine backend={} layoutVersion={} repoId={} workspaceId={} scopeId={} clientDir={} manifestPath={} dbPath={} artifactPath={}",
             engine_report.backend,
-            engine_report.future_backend,
             engine_report.layout_version,
             engine_report.repo_id,
             engine_report.workspace_id,
@@ -649,7 +643,7 @@ fn print_db_engine_status(engine_report: Option<&ClientDbEngineReport>) {
         );
     } else {
         println!(
-            "|dbEngine backend=unavailable futureBackend=unavailable layoutVersion=unavailable repoId=unavailable workspaceId=unavailable scopeId=unavailable clientDir=unavailable manifestPath=unavailable dbPath=unavailable artifactPath=unavailable"
+            "|dbEngine backend=unavailable layoutVersion=unavailable repoId=unavailable workspaceId=unavailable scopeId=unavailable clientDir=unavailable manifestPath=unavailable dbPath=unavailable artifactPath=unavailable"
         );
     }
 }
@@ -733,7 +727,8 @@ fn apply_db_engine_report_to_receipt(
     engine_report: &ClientDbEngineReport,
 ) {
     receipt.db_engine = Some(db_engine_receipt(engine_report));
-    apply_db_report_to_receipt(receipt, &engine_report.sqlite_report);
+    let active_report = ClientDbEngine::inspect_client_dir(&engine_report.client_dir);
+    apply_db_report_to_receipt(receipt, &active_report);
 }
 
 fn apply_project_db_report_to_receipt(
@@ -754,7 +749,6 @@ fn apply_project_db_report_to_receipt(
 fn db_engine_receipt(engine_report: &ClientDbEngineReport) -> ClientDbEngineReceipt {
     ClientDbEngineReceipt {
         backend: ClientDbBackend::from(engine_report.backend),
-        future_backend: ClientDbFutureBackend::from(engine_report.future_backend),
         layout_version: ClientStateLayoutVersion::from(engine_report.layout_version),
         db_file_name: ClientDbFileName::from(engine_report.db_file_name),
         schema_version: engine_report.schema_version,
@@ -775,65 +769,6 @@ fn db_engine_receipt(engine_report: &ClientDbEngineReport) -> ClientDbEngineRece
         repo_id: ClientRepoId::from(engine_report.repo_id.clone()),
         workspace_id: ClientWorkspaceId::from(engine_report.workspace_id.clone()),
         scope_id: ClientScopeId::from(engine_report.scope_id.clone()),
-        future_backend_report: ClientDbFutureBackendReportReceipt {
-            backend: ClientDbFutureBackend::from(engine_report.future_backend_report.backend),
-            status: engine_report.future_backend_report.status.to_string(),
-            db_file_name: ClientDbFileName::from(engine_report.future_backend_report.db_file_name),
-            schema_bootstrap: engine_report
-                .future_backend_report
-                .schema_bootstrap
-                .to_string(),
-            durability: ClientDbEngineDurability::from(
-                engine_report.future_backend_report.durability,
-            ),
-            features: ClientDbEngineFeaturesReceipt {
-                async_io: engine_report.future_backend_report.features.async_io,
-                concurrent_writes: engine_report
-                    .future_backend_report
-                    .features
-                    .concurrent_writes,
-                fts: engine_report.future_backend_report.features.fts,
-                vector: engine_report.future_backend_report.features.vector,
-                overlay_search: engine_report.future_backend_report.features.overlay_search,
-                sync: engine_report.future_backend_report.features.sync,
-                encryption: engine_report.future_backend_report.features.encryption,
-            },
-            db_path: ClientCachePath::from_path(&engine_report.future_backend_report.db_path),
-            reason: engine_report
-                .future_backend_report
-                .reason
-                .map(str::to_string),
-        },
-        sqlite_report: sqlite_receipt(&engine_report.sqlite_report),
-    }
-}
-
-fn sqlite_receipt(db_report: &ClientDbReport) -> ClientDbSqliteReceipt {
-    ClientDbSqliteReceipt {
-        db_path: ClientCachePath::from_path(&db_report.db_path),
-        status: db_report.status.clone(),
-        generation_count: db_report.generation_count,
-        syntax_row_generation_count: db_report.syntax_row_generation_count,
-        syntax_row_match_count: db_report.syntax_row_match_count,
-        syntax_row_capture_count: db_report.syntax_row_capture_count,
-        structural_index_generation_count: db_report.structural_index_generation_count,
-        structural_index_owner_count: db_report.structural_index_owner_count,
-        structural_index_symbol_count: db_report.structural_index_symbol_count,
-        structural_index_dependency_usage_count: db_report.structural_index_dependency_usage_count,
-        source_index_generation_count: db_report.source_index_generation_count,
-        source_index_owner_count: db_report.source_index_owner_count,
-        source_index_selector_count: db_report.source_index_selector_count,
-        artifact_event_count: db_report.artifact_event_count,
-        raw_source_stored: db_report.raw_source_stored,
-        runtime_pragmas: db_report.runtime_pragmas.as_ref().map(|pragmas| {
-            ClientDbRuntimePragmasReceipt {
-                journal_mode: ClientDbJournalMode::from(pragmas.journal_mode.as_str().to_string()),
-                synchronous: pragmas.synchronous,
-                busy_timeout_ms: u64::try_from(pragmas.busy_timeout_ms).unwrap_or_default(),
-                foreign_keys: pragmas.foreign_keys,
-            }
-        }),
-        reason: db_report.reason.clone(),
     }
 }
 

@@ -28,7 +28,7 @@ fn search_pipe_source_option_controls_graph_request_source() {
             "pipe",
             "HookDecision ClientReceipt",
             "--source",
-            "finder",
+            "search-overlay",
             "--view",
             "graph-turbo-request",
             ".",
@@ -48,10 +48,13 @@ fn search_pipe_source_option_controls_graph_request_source() {
         payload["queryTerms"],
         serde_json::json!(["HookDecision", "ClientReceipt"])
     );
-    assert_eq!(payload["source"], "finder");
-    assert_eq!(payload["candidateSources"], serde_json::json!(["finder"]));
+    assert_eq!(payload["source"], "search-overlay");
+    assert_eq!(
+        payload["candidateSources"],
+        serde_json::json!(["search-overlay"])
+    );
     let source_trace = payload["sourceTrace"].as_array().expect("sourceTrace");
-    assert_eq!(source_trace[0]["source"], "finder");
+    assert_eq!(source_trace[0]["source"], "search-overlay");
     assert_eq!(source_trace[0]["status"], "used");
     assert_eq!(source_trace[0]["matched"], 2);
     assert_eq!(source_trace[0]["missing"], 0);
@@ -135,7 +138,7 @@ fn search_pipe_finder_respects_gitignore_and_configured_hidden_dirs() {
             "pipe",
             "VisibleHit HiddenHit IgnoredHit BlockedHit",
             "--source",
-            "finder",
+            "search-overlay",
             "--view",
             "graph-turbo-request",
             ".",

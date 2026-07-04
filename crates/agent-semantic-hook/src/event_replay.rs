@@ -87,6 +87,14 @@ pub(crate) fn compact_source_access_deny_message(
 ) -> String {
     let reason = replay_reason_label(decision);
     if decision.fields.get("denyReplay").and_then(Value::as_str) == Some("repeated") {
+        if let Some(message) = render_compact_source_access_template(
+            decision,
+            "sourceAccessCompactRepeatedMessage",
+            &reason,
+            recovery_ref,
+        ) {
+            return message;
+        }
         return format!(
             "ASP denied source access again (`{reason}`). Use the active recovery lane; do not retry raw source tools.\nrecoveryRef={recovery_ref}"
         );
@@ -98,13 +106,51 @@ pub(crate) fn compact_source_access_deny_message(
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
+        if let Some(message) = render_compact_source_access_template(
+            decision,
+            "sourceAccessCompactSubagentMessage",
+            &reason,
+            recovery_ref,
+        ) {
+            return message;
+        }
         return format!(
             "ASP denied source access (`{reason}`) inside asp-explore. Use ASP query/search routes and return compact `[asp-search-subagent]` evidence.\nrecoveryRef={recovery_ref}"
         );
     }
 
+    if let Some(message) = render_compact_source_access_template(
+        decision,
+        "sourceAccessCompactMessage",
+        &reason,
+        recovery_ref,
+    ) {
+        return message;
+    }
     format!(
         "ASP denied source access (`{reason}`). Use asp-explore for ASP search/query; start and register it once if no asp-explore session is registered.\nrecoveryRef={recovery_ref}"
+    )
+}
+
+fn render_compact_source_access_template(
+    decision: &HookDecision,
+    field: &str,
+    reason: &str,
+    recovery_ref: &str,
+) -> Option<String> {
+    let template = decision.fields.get(field)?.as_str()?;
+    let resident_child_name = decision
+        .fields
+        .get("residentChildName")
+        .and_then(Value::as_str)
+        .unwrap_or("asp-explore");
+    Some(
+        template
+            .replace("{{reason}}", reason)
+            .replace("{{recoveryRef}}", recovery_ref)
+            .replace("{{residentChildName}}", resident_child_name)
+            .trim()
+            .to_string(),
     )
 }
 

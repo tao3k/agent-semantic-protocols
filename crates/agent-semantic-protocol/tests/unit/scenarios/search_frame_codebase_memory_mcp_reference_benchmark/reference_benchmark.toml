@@ -1,0 +1,5 @@
+codebaseMemoryMcpQueryRounds = 3
+aspSearchQueryRounds = 2
+roundDelta = -1
+selectorEvidence = "selector-bound nextCommand from Search Frame owner-items evidence"
+evidenceAdvantage = "ASP records native parser selector identity plus replayable Search Frame, EvidenceGraph, WhereFrame, and HowFrame receipts."

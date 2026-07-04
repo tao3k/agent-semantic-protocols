@@ -12,7 +12,7 @@ fn asp_rg_query_graph_request_avoids_repeating_query_pack_after_repeated_query_c
     .expect("write package json");
     std::fs::write(
         root.join("src/effect.ts"),
-        "export const Fiber = {};\nexport const Queue = {};\nconst staleCache = 'refresh sqlite cache';\n",
+        "export const Fiber = {};\nexport const Queue = {};\nconst staleCache = 'refresh turso cache';\n",
     )
     .expect("write source");
 
@@ -22,7 +22,7 @@ fn asp_rg_query_graph_request_avoids_repeating_query_pack_after_repeated_query_c
             "-query",
             "Fiber|Queue",
             "-query",
-            "stale|refresh|sqlite|cache",
+            "stale|refresh|turso|cache",
             "--view",
             "graph-turbo-request",
             "src",
@@ -40,12 +40,12 @@ fn asp_rg_query_graph_request_avoids_repeating_query_pack_after_repeated_query_c
     assert_graph_turbo_request_contract(&payload);
     assert_eq!(
         payload["queryTerms"],
-        serde_json::json!(["Fiber", "Queue", "stale", "refresh", "sqlite", "cache"]),
+        serde_json::json!(["Fiber", "Queue", "stale", "refresh", "turso", "cache"]),
         "{payload}"
     );
     assert_eq!(
         payload["queryClauses"],
-        serde_json::json!(["Fiber|Queue", "stale|refresh|sqlite|cache"]),
+        serde_json::json!(["Fiber|Queue", "stale|refresh|turso|cache"]),
         "{payload}"
     );
     let actions = payload["actionFrontier"]
@@ -59,7 +59,7 @@ fn asp_rg_query_graph_request_avoids_repeating_query_pack_after_repeated_query_c
     assert_eq!(actions[1]["capabilityId"], serde_json::json!("rg"));
     assert_eq!(
         actions[1]["fields"]["queryClauses"],
-        serde_json::json!(["Fiber|Queue", "stale|refresh|sqlite|cache"]),
+        serde_json::json!(["Fiber|Queue", "stale|refresh|turso|cache"]),
         "{payload}"
     );
     let _ = std::fs::remove_dir_all(root);

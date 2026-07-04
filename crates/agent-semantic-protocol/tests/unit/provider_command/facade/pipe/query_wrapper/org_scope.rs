@@ -28,7 +28,10 @@ fn asp_rg_query_reads_explicit_org_file_scope() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("sourceTrace=finder:used["), "{stdout}");
+    assert!(
+        stdout.contains("sourceTrace=query-overlay:used["),
+        "{stdout}"
+    );
     assert!(!stdout.contains("rankedEvidence="), "{stdout}");
     assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
     assert!(!stdout.contains("actionFrontier="), "{stdout}");
@@ -70,7 +73,10 @@ fn asp_rg_query_reads_yaml_workflow_scope() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("sourceTrace=finder:used["), "{stdout}");
+    assert!(
+        stdout.contains("sourceTrace=query-overlay:used["),
+        "{stdout}"
+    );
     assert!(stdout.contains("workflows/ci.yml"), "{stdout}");
     assert!(
         stdout.contains("nextClasses=fd-query,scoped-rg-query,owner-items"),

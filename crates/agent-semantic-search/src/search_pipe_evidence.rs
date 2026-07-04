@@ -190,7 +190,7 @@ pub fn search_pipe_parser_handles(
 }
 
 #[must_use]
-pub fn search_pipe_finder_handles(
+pub fn search_pipe_search_overlay_handles(
     candidates: &[SearchPipeEvidenceCandidate],
     terms: &[SearchPipeQueryTerm],
 ) -> Vec<String> {
@@ -198,7 +198,7 @@ pub fn search_pipe_finder_handles(
         .iter()
         .filter(|term| {
             candidates.iter().any(|candidate| {
-                candidate.source == "finder" && search_pipe_weak_match(candidate, term)
+                candidate.source == "search-overlay" && search_pipe_weak_match(candidate, term)
             })
         })
         .map(|term| term.raw.clone())
@@ -211,7 +211,7 @@ fn owner_local_symbol_exact_match(
 ) -> bool {
     !matches!(
         candidate.source.as_str(),
-        "finder" | "finder-path" | "fd-query" | "rg-query" | "ingest"
+        "search-overlay" | "finder" | "finder-path" | "fd-query" | "rg-query" | "ingest"
     ) && candidate.symbol == term.raw
 }
 

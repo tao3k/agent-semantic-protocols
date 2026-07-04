@@ -2,13 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-db-engine-manifest.v1.schema.json",
   "title": "Semantic DB Engine Manifest",
-  "description": "DB Engine-owned active client manifest written below the State Core live/client directory. State Core may create a minimal phase-1 manifest, but the DB Engine rewrites this contract with active backend evidence.",
+  "description": "DB Engine-owned active client manifest written below the State Core live/client directory. Turso is the only active DB Engine backend in this contract.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "layoutVersion",
     "backend",
-    "futureBackend",
     "repoId",
     "workspaceId",
     "scopeId",
@@ -20,22 +19,13 @@
     "dbPath",
     "artifactPath",
     "manifestPath",
-    "generationManifestPath",
-    "sqliteControlDbPath",
-    "futureBackendReport",
-    "sqliteReport"
+    "generationManifestPath"
   ],
   "properties": {
     "layoutVersion": {
       "const": "state-v2"
     },
     "backend": {
-      "enum": [
-        "sqlite-v1",
-        "turso"
-      ]
-    },
-    "futureBackend": {
       "const": "turso"
     },
     "repoId": {
@@ -50,22 +40,16 @@
       "const": "default"
     },
     "dbFileName": {
-      "enum": [
-        "client.sqlite3",
-        "client.turso"
-      ]
+      "const": "client.turso"
     },
     "schemaVersion": {
       "const": 1
     },
     "durability": {
-      "enum": [
-        "sqlite-file",
-        "turso-local-file"
-      ]
+      "const": "turso-local-file"
     },
     "features": {
-      "$ref": "#/$defs/activeEngineFeatures"
+      "$ref": "#/$defs/tursoFeatures"
     },
     "clientDir": {
       "type": "string",
@@ -73,7 +57,7 @@
     },
     "dbPath": {
       "type": "string",
-      "pattern": "/live/client/client\\.(sqlite3|turso)$"
+      "pattern": "/live/client/client\\.turso$"
     },
     "artifactPath": {
       "type": "string",
@@ -86,65 +70,9 @@
     "generationManifestPath": {
       "type": "string",
       "pattern": "/live/client/cache-manifest\\.json$"
-    },
-    "sqliteControlDbPath": {
-      "type": "string",
-      "pattern": "/live/client/client\\.sqlite3$"
-    },
-    "futureBackendReport": {
-      "$ref": "#/$defs/tursoReport"
-    },
-    "sqliteReport": {
-      "$ref": "#/$defs/sqliteReport"
     }
   },
   "$defs": {
-    "activeEngineFeatures": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/sqliteFeatures"
-        },
-        {
-          "$ref": "#/$defs/tursoFeatures"
-        }
-      ]
-    },
-    "sqliteFeatures": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "asyncIo",
-        "concurrentWrites",
-        "fts",
-        "vector",
-        "overlaySearch",
-        "sync",
-        "encryption"
-      ],
-      "properties": {
-        "asyncIo": {
-          "const": false
-        },
-        "concurrentWrites": {
-          "const": false
-        },
-        "fts": {
-          "const": false
-        },
-        "vector": {
-          "const": false
-        },
-        "overlaySearch": {
-          "const": false
-        },
-        "sync": {
-          "const": false
-        },
-        "encryption": {
-          "const": false
-        }
-      }
-    },
     "tursoFeatures": {
       "type": "object",
       "additionalProperties": false,
@@ -152,19 +80,35 @@
         "asyncIo",
         "concurrentWrites",
         "fts",
+        "ftsIndexMethod",
         "vector",
         "overlaySearch",
         "sync",
-        "encryption"
+        "encryption",
+        "multiProcessWal",
+        "serializedWriterSlot",
+        "busyTimeoutMs",
+        "openLockRetryAttempts",
+        "openLockRetryBaseMs",
+        "openLockRetryMaxMs",
+        "statementLockRetryAttempts",
+        "operationLock",
+        "operationLockRetryAttempts",
+        "operationLockRetryMs",
+        "mvcc",
+        "beginConcurrent"
       ],
       "properties": {
         "asyncIo": {
           "const": true
         },
         "concurrentWrites": {
-          "const": true
+          "const": false
         },
         "fts": {
+          "const": true
+        },
+        "ftsIndexMethod": {
           "const": true
         },
         "vector": {
@@ -174,139 +118,46 @@
           "const": true
         },
         "sync": {
-          "const": true
+          "const": false
         },
         "encryption": {
           "const": false
-        }
-      }
-    },
-    "sqliteReport": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "dbPath",
-        "status",
-        "generationCount",
-        "syntaxRowGenerationCount",
-        "syntaxRowMatchCount",
-        "syntaxRowCaptureCount",
-        "structuralIndexGenerationCount",
-        "structuralIndexOwnerCount",
-        "structuralIndexSymbolCount",
-        "structuralIndexDependencyUsageCount",
-        "sourceIndexGenerationCount",
-        "sourceIndexOwnerCount",
-        "sourceIndexSelectorCount",
-        "artifactEventCount",
-        "rawSourceStored",
-        "runtimePragmas",
-        "reason"
-      ],
-      "properties": {
-        "dbPath": {
-          "type": "string",
-          "minLength": 1
         },
-        "status": {
-          "enum": [
-            "missing",
-            "present",
-            "invalid"
-          ]
+        "multiProcessWal": {
+          "const": true
         },
-        "generationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "syntaxRowGenerationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "syntaxRowMatchCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "syntaxRowCaptureCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "structuralIndexGenerationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "structuralIndexOwnerCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "structuralIndexSymbolCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "structuralIndexDependencyUsageCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "sourceIndexGenerationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "sourceIndexOwnerCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "sourceIndexSelectorCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "artifactEventCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "rawSourceStored": {
-          "type": "boolean"
-        },
-        "runtimePragmas": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/sqliteRuntimePragmas"
-            }
-          ]
-        },
-        "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
-    },
-    "sqliteRuntimePragmas": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "journalMode",
-        "synchronous",
-        "busyTimeoutMs",
-        "foreignKeys"
-      ],
-      "properties": {
-        "journalMode": {
-          "type": "string",
-          "minLength": 1
-        },
-        "synchronous": {
-          "type": "integer"
+        "serializedWriterSlot": {
+          "const": true
         },
         "busyTimeoutMs": {
-          "type": "integer",
-          "minimum": 0
+          "const": 5000
         },
-        "foreignKeys": {
-          "type": "boolean"
+        "openLockRetryAttempts": {
+          "const": 80
+        },
+        "openLockRetryBaseMs": {
+          "const": 5
+        },
+        "openLockRetryMaxMs": {
+          "const": 200
+        },
+        "statementLockRetryAttempts": {
+          "const": 80
+        },
+        "operationLock": {
+          "const": true
+        },
+        "operationLockRetryAttempts": {
+          "const": 240
+        },
+        "operationLockRetryMs": {
+          "const": 250
+        },
+        "mvcc": {
+          "const": false
+        },
+        "beginConcurrent": {
+          "const": false
         }
       }
     },
@@ -368,6 +219,32 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "dbRuntimePragmas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "journalMode",
+        "synchronous",
+        "busyTimeoutMs",
+        "foreignKeys"
+      ],
+      "properties": {
+        "journalMode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synchronous": {
+          "type": "integer"
+        },
+        "busyTimeoutMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "foreignKeys": {
+          "type": "boolean"
         }
       }
     }

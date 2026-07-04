@@ -101,7 +101,7 @@ stronger native-parser-backed language syntax search system.
    syntax query ABI, because that can silently redirect a query to the wrong
    owner.
 
-9. /Normalized row replay is keyed by query AST/ABI./  SQLite syntax rows may be
+9. /Normalized row replay is keyed by query AST/ABI./  Turso syntax rows may be
    replayed only when the request query compiles to the same tree-sitter ABI
    fingerprint as the stored provider packet, the selector identity matches, and
    the row generation's file hashes are fresh.  Exact forwarded argv,
@@ -158,10 +158,10 @@ records that proof.
 * Agent command-selection calibration
 
 The syntax ABI is not adopted until real agent command traces use it.  Artifact
-history under each provider root is therefore an acceptance surface, not only a
+history under State Core =artifactsDir=, indexed by repository, workspace,
+scope, and provider, is therefore an acceptance surface, not only a
 debug cache.  A 2026-06-06 audit of
-=languages/*/.cache/agent-semantic-protocol/artifacts= showed the current
-failure mode:
+artifact data showed the failure mode:
 
 - Rust recorded 90 provider commands: 49 =query/direct-source-read= commands,
   36 =search/owner= commands, 4 other query commands, 1 =search/prime= command,
@@ -688,14 +688,14 @@ The cache execution shape is:
 #+begin_example
 asp <language> query/search
   -> resolve project root, provider, grammar profile, and request fingerprint
-  -> probe local SQLite generation
+  -> probe local DB Engine generation
   -> on exact prompt-output hit:
        replay prompt-output artifact
   -> on packet artifact hit:
        load a previously validated semantic-tree-sitter-query packet
        render compact output or linked search/query/read packet
   -> on normalized-row hit:
-       query syntax captures and native fact refs from SQLite
+       query syntax captures and native fact refs from Turso
        render through ASP shared renderer
   -> on miss or stale generation:
        call native provider CLI or provider export
@@ -727,7 +727,7 @@ path+sha256 freshness rows from validated locator fields such as =selector=,
 =read=, =path=, and capture/match ranges; it must not derive semantic facts from
 raw source text or rendered stdout.
 Renderer or row-projection changes use an explicit syntax row ABI flush, not a
-SQLite schema-version bump.  The client records the current syntax row ABI in
+Turso schema-version bump.  The client records the current syntax row ABI in
 cache metadata, for example =syntaxQueryRowAbiVersion=, and when it changes the
 client deletes only the =syntax_query_*= row family.  Provider artifacts, normal
 cache generations, and unrelated search/query rows remain intact and can refresh
@@ -757,7 +757,7 @@ Providers may choose one of two render profiles while sharing the same
 Both profiles are valid only when they are rendered from provider-native
 projection over an ASP-compiled plan.  They are not separate query protocols and
 must not create =ts-query=, =syntax-query=, or raw-query command families.
-Both profiles must suppress =artifactId=, SQLite path hints, cache roots,
+Both profiles must suppress =artifactId=, DB path hints, cache roots,
 receipt JSON, raw source windows, full node lists, and unbounded capture text in
 default non-JSON output.
 
@@ -788,7 +788,7 @@ locator/frontier evidence for search-style recovery without inline source or
 cache debugging state, and Rust's reference read-plan must remain
 =mode=range-frontier= with =omit=code=.
 
-Recommended SQLite families:
+Recommended Turso families:
 
 #+begin_example
 syntax_query_generation
@@ -962,7 +962,7 @@ exercise native parser facts without requiring another runtime boundary.
 2. Add artifact family =semantic-tree-sitter-query/<id>.json= or a compatible
    query artifact namespace, and replay exact non-=--code= syntax locator
    output from validated packet artifacts.
-3. Normalize syntax query rows into SQLite from validated
+3. Normalize syntax query rows into Turso from validated
    =semantic-tree-sitter-query.v1= packets; rows store project-relative ranges,
    capture names/text, native fact refs, and artifact refs, never raw source.
 4. Add exact artifact replay for identical request fingerprints.
@@ -1122,7 +1122,7 @@ Provider validation:
 
 ASP cache validation:
 
-- cold native provider call writes packet artifact and SQLite rows
+- cold native provider call writes packet artifact and DB Engine rows
 - identical request replays artifact without provider execution
 - repeated compatible request uses normalized rows without provider execution
 - stale generation invokes provider and refreshes rows
@@ -1183,7 +1183,7 @@ rules before richer v2 projection layers move into default guide output.
 
 1. =asp <language> query --treesitter-query <pattern> .= prints locator/frontier
    output by default.
-   Prompt-noise ban: without source windows, cache ids, SQLite paths, receipt JSON, or artifact ids.
+   Prompt-noise ban: without source windows, cache ids, DB paths, receipt JSON, or artifact ids.
 2. =asp <language> query --selector <exact> --treesitter-query <pattern> --workspace . --code=
    prints pure source code and rejects broad multi-match code extraction unless
    the provider can prove a unique match.
@@ -1457,7 +1457,7 @@ Evidence rules:
 1. Search/read-plan recovery remain discovery surfaces, and =search prime= remains a discovery surface; all of them
    must not inline source code.
 2. =query --treesitter-query= without =--code= must render locator/frontier
-   evidence, not artifact ids, SQLite paths, receipt JSON, or raw source windows.
+   evidence, not artifact ids, DB paths, receipt JSON, or raw source windows.
 3. =query --selector <exact> --treesitter-query <pattern> --code= must print only source text for the selected exact or unique match.
 4. Cache speedup may be claimed only when the receipt reports =cacheClaim=hit= or
    a validated normalized-row replay path.  =warm-provider= is not a cache hit.

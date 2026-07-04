@@ -1,0 +1,930 @@
+#+title: 10.29 Turso DB Engine Best Practices
+#+date: 2026-07-03
+#+status: draft
+
+* Purpose
+
+This document is the ASP-owned downstream guide for writing Turso-backed DB
+Engine code. It exists because Turso is not just a filename-compatible database
+file replacement for ASP: its value is async Rust integration, local-first
+state, Tantivy-powered FTS/BM25, vector/search extensibility, and AI-agent write
+concurrency.
+
+The DB Engine implementation must follow Turso's documented concurrency model
+instead of hiding file-lock failures behind broad external locks.
+
+Primary upstream references:
+
+- https://docs.turso.tech/tursodb/concurrent-writes
+- https://docs.turso.tech/sql-reference/multiprocess-access
+- https://docs.turso.tech/sql-reference/experimental-features
+- https://docs.turso.tech/sql-reference/functions/fts
+- https://docs.turso.tech/sql-reference/compatibility
+- https://docs.turso.tech/sql-reference/pragmas
+- https://docs.turso.tech/guides/code-indexing
+- https://docs.turso.tech/guides/agent-databases
+- https://docs.turso.tech/libsql
+- https://docs.rs/turso/latest/turso/
+- https://github.com/tursodatabase/turso
+- https://github.com/tursodatabase/turso/blob/main/docs/manual.md
+- https://github.com/tursodatabase/turso/issues/7213
+- https://github.com/tursodatabase/turso/issues
+
+This guide must be refreshed when ASP changes its =turso= crate version or when
+Turso changes the documented status of multi-process WAL, MVCC, =BEGIN
+CONCURRENT=, index-method FTS, or local sync. The RFC is downstream policy, not
+an upstream mirror: only the pieces that affect ASP's DB Engine and search
+runtime belong here.
+
+At the 2026-07-03 audit point, this workspace resolves
+=agent-semantic-client-db -> turso v0.7.0-pre.14=. The workspace dependency
+disables Turso default features and enables crate feature =fts= explicitly.
+=multiprocess_wal= and =index_method= are runtime =Builder= flags and must be
+enabled by the DB Engine open helper, not by scattered callers. Turso's docs.rs
+page may lag behind that pre-release, so DB Engine changes must check both the
+official user docs and the actual crate/API resolved by the workspace lockfile.
+
+* ASP Upstream-Derived Contract
+Turso integration work must start from upstream user documentation and the resolved workspace crate, then encode the result in ASP's DB Engine boundary. The DB Engine owner is responsible for re-auditing these upstream pages before changing open flags, transaction mode, FTS indexes, or sync/encryption/CDC behavior:
+- [[https://docs.turso.tech/llms.txt][Turso docs index]] for discovering current user-facing pages.
+- [[https://docs.turso.tech/sdk/introduction][Turso SDK overview]] and [[https://docs.turso.tech/sdk/rust/reference][Rust SDK reference]] for current package/API guidance.
+- [[https://docs.turso.tech/tursodb/concurrent-writes][Concurrent writes]] for MVCC and =BEGIN CONCURRENT= retry semantics.
+- [[https://docs.turso.tech/sql-reference/multiprocess-access][Multi-process access]] for CLI/subagent multi-process opening rules.
+- [[https://docs.turso.tech/sql-reference/pragmas][PRAGMA reference]] for =journal_mode=, =busy_timeout=, WAL, and CDC knobs.
+- [[https://docs.turso.tech/sql-reference/functions/fts][Full-text search]] for Tantivy-backed FTS, tokenizers, BM25 scoring, highlighting, and index maintenance.
+- [[https://github.com/tursodatabase/turso][tursodatabase/turso]] plus current upstream issues for beta risks that must become ASP gates instead of assumptions.
+
+The downstream contract is:
+- Use =turso= as the DB Engine package. Do not design new code around =libsql= or retired RustSQL/rusqlite compatibility layers.
+- Resolve the crate version from the workspace lockfile before citing API details. At this audit point ASP uses =turso v0.7.0-pre.14=, while public docs.rs may describe an older stable release.
+- Keep all Turso opens behind =agent-semantic-client-db=. CLI commands, hooks, search commands, source-index code, and session-registry code must not construct =turso::Builder= directly.
+- Treat local CLI/subagent usage and future high-throughput runtime usage as different lanes. The flags and retry strategy are not interchangeable.
+
+* ASP Concurrency Lanes
+Turso's concurrency story is strong, but it is not automatic under every topology. ASP has three separate lanes:
+
+| Lane | ASP usage | Required policy |
+|------+-----------+-----------------|
+| Current CLI/subagent process lane | Many =asp= OS processes opening the same =client.turso= under one state root. | Open only through the DB Engine helper with =experimental_multiprocess_wal(true)= and the same feature set for every opener. Set a finite =busy_timeout= on every connection. Writers are still serialized; retry must be explicit. |
+| Future single-process high-throughput DB runtime lane | A resident DB runtime owns one =Database= handle and exposes async read/write services to commands. | Prefer one process with many connections. Enable =PRAGMA journal_mode = 'mvcc'= only inside this lane. Use =BEGIN CONCURRENT= for optimistic write transactions and retry the entire transaction body on =Busy=, =BusySnapshot=, or conflict errors. |
+| Search/FTS lane | Stable source-index and durable artifacts that benefit from FTS/BM25. | Enable =experimental_index_method(true)= at open time, create =USING fts= indexes with explicit tokenizers/weights, and keep dirty dynamic overlay outside durable source DB until committed. |
+
+Do not combine the multi-process WAL lane with the MVCC lane. Upstream documents multi-process WAL as experimental and not supported under =BEGIN CONCURRENT=. For ASP this means the current process-per-command architecture should first be made reliable with =multiprocess_wal=, =busy_timeout=, and process pressure gates. MVCC is a later resident-runtime optimization, not a bandage for CLI lock failures.
+
+* ASP Turso Implementation Rules
+The DB Engine open helper is the only legal place to encode Turso runtime features. It must:
+- Build local DBs with the workspace-pinned =turso= crate and report the exact crate version/capabilities in DB Engine diagnostics.
+- Enable =experimental_multiprocess_wal(true)= for the current CLI/subagent lane.
+- Enable =experimental_index_method(true)= when the DB can create or query Turso FTS indexes.
+- Apply =busy_timeout= through the Turso connection API or =PRAGMA busy_timeout= immediately after connect.
+- Emit capability flags for =multiprocess_wal=, =serialized_writer_slot=,
+  =busy_timeout=, =fts_index_method=, =operation_lock=, =mvcc=, and
+  =begin_concurrent=. The current CLI/subagent lane must report
+  =concurrentWrites=false=, =multiProcessWal=true=, =serializedWriterSlot=true=,
+  =mvcc=false=, and =beginConcurrent=false=.
+- Return structured lock/conflict diagnostics that distinguish incompatible open mode, busy timeout, retryable transaction conflict, and non-retryable storage errors.
+
+Write paths must be explicit about retry scope:
+- Single statement writes may retry only if the statement is idempotent by DB identity, such as =INSERT OR REPLACE= by stable primary key.
+- Multi-statement writes must retry the whole transaction body after rollback.
+- =BEGIN CONCURRENT= retry is only valid in the future resident runtime lane after =journal_mode= is set to =mvcc=.
+- Search overlay updates must not be forced into the durable DB just to get dynamic search speed; overlays remain session/generation scoped and feed the search adapter separately.
+
+FTS/search implementation must use Turso's semantics directly:
+- Use =CREATE INDEX ... USING fts= instead of SQLite FTS virtual-table assumptions.
+- Use =fts_match= for filtering, =fts_score= for BM25 ranking, and =fts_highlight= only for render snippets.
+- Model code identifiers with explicit fields: exact symbol/name fields should use =raw= tokenization, prose/code text can use =default=, and substring/camelCase assistance can use an =ngram= projection field.
+- Run =OPTIMIZE INDEX= only after controlled bulk imports or when a pressure gate shows query degradation. Do not run it on every command.
+- Track upstream FTS correctness issues as ASP gates when we rely on transaction rollback visibility, trigger-updated rows, ALTER TABLE schema replay, or scalar/indexed query equivalence.
+
+* ASP Pressure Gates
+Every Turso behavior that ASP depends on needs a reproducible gate:
+- Multi-process open pressure: spawn several =asp= processes opening the same state-root =client.turso= and assert no =client.turso-wal= lock failure when all open through the DB Engine helper.
+- Concurrent register/write pressure: stress agent-session registration and artifact-event writes with stable primary keys and assert no unique-constraint crash path.
+- Source-index FTS gate: build a small source-index table, create weighted FTS indexes, and verify =fts_match= plus =fts_score= returns expected owners without falling back to path-only finder.
+- Dynamic overlay gate: dirty code search must hit overlay candidates without writing volatile snapshots into durable Turso source tables.
+- Future MVCC gate: in a single resident process, set =journal_mode= to =mvcc=, run =BEGIN CONCURRENT= write workers, and assert conflict rollback/retry receipts rather than hidden busy loops.
+
+These gates are part of the best-practice contract. A green unit test for schema bootstrap is not enough evidence that ASP is using Turso's concurrency model correctly.
+
+* 2026-07-03 Upstream User-Docs Audit
+
+The implementation policy in this file is based on the following user-facing
+Turso documentation facts.
+
+| Upstream page | Fact ASP relies on | ASP design consequence |
+|---------------+--------------------+------------------------|
+| [[https://docs.turso.tech/sdk/rust/reference][Rust reference]] | The =turso= crate is the local/embedded Rust engine with async I/O and MVCC concurrent writes; =libsql= is the remote/existing-libSQL lane. | ASP's local client DB should use =turso= directly through =agent-semantic-client-db=, not a compatibility wrapper around retired RustSQL/rusqlite paths. |
+| [[https://docs.turso.tech/tursodb/concurrent-writes][Concurrent writes]] | Default mode has one writer at a time; =PRAGMA journal_mode = 'mvcc'= plus =BEGIN CONCURRENT= allows concurrent writers; conflicts must roll back and retry. | High-throughput agent writes need transaction-body retry and idempotent row identity; statement-only retry is not sufficient. |
+| [[https://docs.turso.tech/sql-reference/multiprocess-access][Multi-process access]] | Multiple OS processes require experimental =multiprocess_wal=; it uses a shared =.tshm= coordinator; writers are still serialized; all live openers must use the same mode. | Current ASP process-per-command CLI/subagent lane must always open through a single helper with =experimental_multiprocess_wal(true)=. |
+| [[https://docs.turso.tech/sql-reference/multiprocess-access][Multi-process limitations]] | Multi-process WAL is not supported under MVCC / =BEGIN CONCURRENT=. | ASP needs two lanes: process-safe CLI WAL today, and a future single-process DB runtime for MVCC writer throughput. |
+| [[https://docs.turso.tech/sql-reference/experimental-features][Experimental features]] | =index_method= enables =CREATE INDEX ... USING= for FTS/custom indexes; =multiprocess_wal= is also experimental. | DB reports must expose capability flags and pressure-gate receipts; command code must not silently assume FTS is available. |
+| [[https://docs.turso.tech/sql-reference/functions/fts][Full-text search]] | Turso FTS is Tantivy-powered and uses =CREATE INDEX ... USING fts= with =fts_match=, =fts_score=, and =fts_highlight=; it is not SQLite FTS5 syntax. | Source-index search SQL must use Turso FTS syntax and return candidate selectors for parser/graph rerank. |
+| [[https://docs.turso.tech/sql-reference/functions/fts][FTS limitations]] | FTS has no snippet function, no automatic segment merging, no read-your-writes inside a transaction, and no =MATCH= operator syntax. | ASP should use =OPTIMIZE INDEX= after bulk refreshes, avoid querying FTS before commit, and keep snippets/rendering outside Turso FTS. |
+| [[https://docs.turso.tech/guides/code-indexing][Code indexing guide]] | Turso's recommended code index combines chunk metadata, file hashes, FTS over identifiers/signatures/snippets, and vector search. | ASP should adapt the shape to native-parser selectors and artifact hashes, not copy line-range identity from the example schema. |
+| [[https://docs.turso.tech/guides/agent-databases][Agent databases guide]] | Agent state can be local-first, per-agent, shared-with-sync, or hub-and-spoke. | ASP's State Core remains local-first; shared/cloud sync is a later DB Engine capability, not a reason to change state identity. |
+
+This audit also changes the interpretation of the observed
+=client.turso-wal= lock failure: Turso is strong at agent/concurrent workloads
+when the correct lane is used, but a process-per-command CLI must opt into
+=multiprocess_wal= consistently. Without that, a second process opening the
+same local file can fail before it reaches any dynamic overlay/search routing
+decision.
+
+* 2026-07-03 Implementation Audit
+
+The workspace-resolved implementation target is =turso v0.7.0-pre.14= from
+crates.io. Local dependency inspection confirms the API surface ASP should wrap:
+
+- =turso::Builder= stores runtime feature flags, including
+  =experimental_multiprocess_wal(true)= and =experimental_index_method(true)=;
+- =turso::Connection= exposes =busy_timeout= and =prepare_cached=;
+- Turso errors include =Busy= and =BusySnapshot=;
+- =TransactionBehavior= includes =Deferred=, =Immediate=, and =Exclusive=;
+- =BEGIN CONCURRENT= is expressed through SQL today, not through a dedicated
+  Rust enum variant.
+
+ASP policy from this implementation audit:
+
+- all local DB opens must use the DB Engine helper;
+- the helper must enable =experimental_multiprocess_wal(true)= for the current
+  CLI/subagent lane;
+- the helper must enable =experimental_index_method(true)= before creating FTS
+  indexes;
+- connections should set a bounded =busy_timeout= where supported, but ASP
+  still needs outer retry for open/bootstrap/transaction-body failures because
+  busy timeout does not cover every cross-process open race;
+- write surfaces must classify =Busy=, =BusySnapshot=, lock errors, and
+  documented coordination races as retryable only at the DB Engine boundary.
+
+* Downstream Maintenance Contract
+
+This file is the downstream Turso practice document for ASP. It must be updated
+whenever any of these inputs change:
+
+- the workspace =turso= crate version or feature set;
+- the active State Core DB filename, manifest field, or DB Engine report shape;
+- Turso changes the documented status of =multiprocess_wal=, =mvcc=,
+  =BEGIN CONCURRENT=, FTS/index methods, CDC, sync, or encryption;
+- ASP adds a new Turso table family, write path, search adapter, pressure gate,
+  or DB runtime lane;
+- an observed pressure receipt adds a new retry class or invalidates an old
+  retry class.
+
+The maintenance flow is:
+
+1. Read the official Turso user docs first.
+
+   Check Rust SDK, concurrent writes, multi-process access, experimental
+   features, PRAGMAs, FTS, code indexing, content caching, agent databases, and
+   compatibility. User docs define the public behavior ASP should rely on.
+
+2. Check the implementation target second.
+
+   The workspace lockfile and resolved crate API are the executable target.
+   docs.rs can lag pre-release crates, so inspect both docs.rs and the actual
+   resolved crate/API before changing code.
+
+3. Translate upstream facts into ASP policy.
+
+   Do not copy example schemas blindly. Turso docs often use line-oriented code
+   indexing examples; ASP must adapt those examples to repo/workspace/session
+   identity, parser-owned selectors, artifact hashes, and rebuildable facts.
+
+4. Add or update the pressure gate with the implementation.
+
+   A Turso best practice is not accepted in ASP until a focused gate proves the
+   relevant lane: process pressure for CLI/subagent code, transaction-body
+   retry for MVCC/runtime code, and query-shape gates for FTS.
+
+5. Keep command crates out of the implementation.
+
+   The command crate may render a receipt that says which Turso capability was
+   used. It must not open Turso, create indexes, classify DB errors, or own
+   retry loops.
+
+* ASP Turso Coding Recipes
+
+** Current CLI/subagent process lane
+
+Use this lane for today's public CLI, hook, subagent, cache, source-index,
+agent-session, artifact, and route-receipt writes.
+
+#+begin_src text
+// owned by agent-semantic-client-db
+let db = turso::Builder::new_local(client_turso_path)
+    .experimental_multiprocess_wal(true)
+    .experimental_index_method(true)
+    .build()
+    .await?;
+let conn = db.connect()?;
+conn.busy_timeout(5 seconds)?;
+
+retry_open_or_statement_if_turso_lock_classified();
+bootstrap_schema_in_owner_module();
+write_short_idempotent_transaction();
+#+end_src
+
+Rules:
+
+- do not set =PRAGMA journal_mode = 'mvcc'= in this lane;
+- do not use =BEGIN CONCURRENT= in this lane;
+- all live openers must use the same multi-process WAL mode;
+- retry open/bootstrap/statement/transaction failures only when the DB Engine
+  classifier says the error is a known Turso lock/busy/coordination class;
+- prefer deterministic ids and =ON CONFLICT= convergence so retries are safe.
+
+** Future high-throughput DB runtime lane
+
+Use this lane only after ASP has a single-process DB runtime boundary that owns
+connections for many agent writes. It is the lane that can exploit Turso's MVCC
+write throughput.
+
+#+begin_src text
+// owned by a future DB Engine runtime, not command code
+setup once:
+  PRAGMA journal_mode = 'mvcc'
+
+for each idempotent write batch:
+  retry bounded:
+    BEGIN CONCURRENT
+    write non-overlapping rows
+    COMMIT
+    on Busy / BusySnapshot / conflict:
+      ROLLBACK
+      retry full transaction body
+#+end_src
+
+Rules:
+
+- transaction retry must rerun the full body, not the last failed statement;
+- row identity must avoid hot shared rows when possible;
+- computation, parsing, ranking, and serialization happen before the
+  transaction begins;
+- this runtime is an ASP DB Engine execution boundary, not an MCP server.
+
+** Turso FTS/code-search lane
+
+Use this lane for stable source-index generations and persisted search
+documents. Do not use it to force every dirty buffer into durable DB state.
+
+#+begin_src text
+CREATE INDEX owner_search_idx
+ON asp_source_index_owner_search
+USING fts (
+  name WITH tokenizer=default,
+  signature WITH tokenizer=default,
+  selector WITH tokenizer=raw,
+  path_tokens WITH tokenizer=ngram
+)
+WITH (weights = 'name=4.0,signature=2.0,selector=3.0,path_tokens=1.0');
+
+SELECT owner_id, selector, fts_score(name, signature, selector, path_tokens, ?1) AS score
+FROM asp_source_index_owner_search
+WHERE fts_match(name, signature, selector, path_tokens, ?1)
+ORDER BY score DESC
+LIMIT ?2;
+#+end_src
+
+ASP-specific constraints:
+
+- =selector= is exact/identity evidence; keep it separate from prose fields;
+- source snippets are parser/render facts, not FTS identity;
+- FTS returns candidates, then parser graph/rank chooses agent-facing evidence;
+- use =OPTIMIZE INDEX= after bulk stable-generation refreshes when query
+  pressure shows segment cost;
+- record capability/fallback receipts for every FTS route.
+
+* Upstream Semantics ASP Depends On
+
+Turso's public documentation and implementation imply four different concerns
+that ASP must keep separate.
+
+| Concern | Upstream behavior | ASP consequence |
+|---------+-------------------+-----------------|
+| Local Rust SDK | The recommended Rust local engine is the =turso= crate, with native async Rust support. | DB Engine code should be async-native and should not rebuild a retired RustSQL/rusqlite abstraction around it. |
+| Multi-process access | A second OS process cannot share the same local DB file unless =multiprocess_wal= is enabled; all live openers must use the same mode. | Current ASP CLI/subagent commands must open through one helper that always enables =experimental_multiprocess_wal(true)=. |
+| MVCC concurrent writes | =PRAGMA journal_mode = 'mvcc'= plus =BEGIN CONCURRENT= allows optimistic concurrent writers, but conflicts must rollback and retry. | The future high-throughput runtime must retry full transaction bodies and design rows for non-overlapping writes. |
+| Tantivy FTS / BM25 | Turso FTS uses =CREATE INDEX ... USING fts= plus =fts_match= / =fts_score=; it is not SQLite FTS5 syntax. | Stable source-index/search tables may use Turso FTS, but only through DB Engine/search adapter contracts with capability receipts. |
+| Feature flags | FTS/index methods and multi-process WAL are experimental feature flags. | ASP must pressure-test them and keep a clear fallback/control plan at the DB Engine boundary, not in command code. |
+
+Two upstream constraints are architectural:
+
+- multi-process WAL is for sharing a local DB file across OS processes, but it
+  still serializes writers through a shared writer slot;
+- MVCC =BEGIN CONCURRENT= is the actual high-write-throughput path, but Turso
+  currently documents that multi-process WAL is not supported under MVCC.
+
+Therefore, ASP must not claim that current process-per-command DB writes have
+already captured Turso's maximum AI-write advantage. They have captured the
+correct local multi-process safety lane. The larger write-throughput advantage
+requires the DB runtime lane described below.
+
+* Two Concurrency Lanes
+
+ASP has two different concurrency shapes. They must not be collapsed into one
+generic "retry locked database" policy.
+
+** Lane A: current CLI and subagent multi-process state
+
+ASP currently invokes DB operations from many independent CLI processes:
+
+- main agent commands
+- hook commands
+- =asp-explore= / subagent commands
+- cache/source-index refresh commands
+- installed =asp= invocations
+
+For this lane, the best Turso fit is:
+
+- open the local DB with =experimental_multiprocess_wal(true)=;
+- enable =experimental_index_method(true)= when the DB owns FTS/search indexes;
+- keep writes in short transactions;
+- keep DDL/bootstrap separate from hot writes;
+- use Turso busy/locked retry for open, DDL, and transaction begin/commit;
+- treat first-open multi-process WAL coordination races such as
+  =shared WAL coordination map magic mismatch= as retryable open errors;
+- do not use =PRAGMA journal_mode = mvcc= in this lane;
+- do not use =BEGIN CONCURRENT= in this lane.
+
+Reason: Turso's multi-process WAL documentation says the default local DB mode
+is safe for multiple threads/connections inside one process, but a second OS
+process opening the same file is rejected unless multi-process WAL is enabled.
+The same documentation also says multi-process WAL is not supported under MVCC.
+
+This means ASP's current CLI architecture needs cross-process WAL coordination
+first. It may still serialize writers across processes, but it prevents the
+bad failure mode where one agent leaves =client.turso-wal= locked and other
+agents cannot even open the DB.
+
+Implementation rule: =client.turso= must be opened only through the DB Engine
+Turso connection helper. A command, cache path, provider-command path, search
+path, or agent-session path must not call =turso::Builder::new_local= directly.
+This keeps multi-process WAL, index-method enablement, and retry classification
+consistent.
+
+Current correct transaction shape for this lane:
+
+#+begin_src text
+open through DB Engine Turso helper
+bootstrap schema with statement-level lock retry
+repeat up to bounded attempts:
+  BEGIN IMMEDIATE
+  write already-computed rows
+  COMMIT
+  if locked/busy/magic-mismatch:
+    ROLLBACK if needed
+    sleep bounded exponential backoff
+    retry whole transaction body
+#+end_src
+
+This lane is appropriate for today's =asp cache=, source-index read model,
+artifact event writes, provider-command selection rows, and route receipts
+while they are reached through separate CLI processes.
+
+** Lane B: future DB runtime for high-throughput AI writer concurrency
+
+To fully exploit Turso's AI-write advantage, ASP needs a DB runtime boundary
+where many agent writes share one process and one owned =turso::Database= /
+connection-pool policy. In that lane, the best Turso fit is:
+
+- set =PRAGMA journal_mode = 'mvcc'= during DB setup;
+- use =BEGIN CONCURRENT= for non-overlapping high-volume writes;
+- detect =Busy=, =BusySnapshot=, and conflict errors;
+- rollback and retry the whole transaction body;
+- keep application compute outside exclusive transactions where possible;
+- design rows so independent agents write non-overlapping primary keys.
+
+Reason: Turso's concurrent-write mode is optimistic MVCC. It allows multiple
+transactions to make progress together, but conflict detection happens at
+commit. If two transactions touch the same rows, one must rollback and retry.
+
+This lane is the target for artifact events, route receipts, search receipts,
+dynamic topology facts, and other append/upsert-heavy AI-agent telemetry.
+
+Correct future transaction shape for this lane:
+
+#+begin_src text
+DB runtime owns one process-local Turso database/pool
+setup once: PRAGMA journal_mode = 'mvcc'
+repeat until success or retry budget exhausted:
+  BEGIN CONCURRENT
+  write non-overlapping append/upsert rows
+  COMMIT
+  if Busy, BusySnapshot, or conflict:
+    ROLLBACK
+    retry full transaction body
+#+end_src
+
+This runtime is an internal ASP DB Engine execution boundary. It is not an MCP
+server and does not change the public CLI contract.
+
+* Current ASP Implementation Contract
+
+The current implementation is considered correct only if all of the following
+remain true:
+
+- =TURSO_BACKEND= is the active DB Engine backend token;
+- the local file name is =client.turso= under State Core's client dir;
+- the DB Engine report/manifest do not expose a retired SQLite/RustSQL backend
+  as an active or future backend;
+- all Turso open paths flow through the DB Engine helper;
+- the helper enables =experimental_multiprocess_wal(true)= for the current
+  process-per-command lane;
+- search-capable DB files enable =experimental_index_method(true)= before FTS
+  schema is created;
+- the active DB Engine report says =concurrentWrites=false=, =sync=false=,
+  =multiProcessWal=true=, =serializedWriterSlot=true=, =operationLock=true=,
+  =mvcc=false=, and =beginConcurrent=false= until ASP has a resident DB runtime
+  lane that can legally use Turso MVCC;
+- successful Turso connections configure a bounded =busy_timeout= so statement
+  stepping uses Turso's own busy handler before ASP's outer retry layer sees an
+  error;
+- DDL/bootstrap statements use bounded lock retry;
+- write APIs retry full transaction bodies and rollback on retryable failures;
+- dynamic dirty-code overlay search is not forced into durable DB writes just
+  to get lexical search behavior;
+- command-layer code remains a thin caller and does not implement DB retry,
+  schema bootstrap, FTS index creation, or transaction policy itself.
+
+If a caller needs a new DB feature, the feature belongs behind the DB Engine or
+search adapter surface first. The command crate may dispatch and render only.
+
+* Full-Text Search And Code Search Rules
+
+Turso FTS is a real search subsystem, not a compatibility alias for SQLite FTS5.
+ASP should use it where it fits, but the query shape must be explicit because
+the upstream FTS path is still experimental.
+
+** Stable source-index lane
+
+Use Turso FTS for stable, persisted source-index data:
+
+- owner item names;
+- signatures;
+- semantic selectors;
+- path tokens;
+- doc/comment summary fields where the parser already owns the chunk.
+
+Do not persist every dirty buffer edit merely to run FTS. Dynamic dirty-code
+overlay remains a search-adapter lane that may reuse Turso/Tantivy semantics
+without committing dirty source to durable =client.turso=.
+
+** Index design
+
+Source-index FTS tables should be narrow and candidate-oriented. They should
+return stable candidate IDs and selectors; the native parser graph still owns
+semantic precision.
+
+Recommended field split:
+
+| Field | Tokenizer intent | Weight intent |
+|-------+------------------+---------------|
+| =name= | identifier/camel-case tokens | highest |
+| =signature= | default/code-ish text | high |
+| =selector= | raw or exact selector lane | high for direct selector hits |
+| =path_tokens= | path components, not display labels | medium |
+| =summary= | prose/doc text when available | lower |
+
+Rules:
+
+- index TEXT fields only; do not rely on implicit coercion of numeric or JSON
+  fields into FTS;
+- keep selector/path identity outside line ranges;
+- use weighted FTS as a candidate generator, then combine with graph rank,
+  receipt anchors, semantic selectors, and parser-owned facts;
+- prefer separate exact/raw selector lanes over stuffing exact IDs into a prose
+  tokenizer;
+- record the FTS feature flag and index method in DB Engine capability receipts.
+
+** Query-shape allowlist
+
+Current ASP FTS queries must stay inside a conservative allowlist until upstream
+FTS issues are closed and covered by our pressure gates:
+
+- query the base FTS-indexed table directly;
+- order candidate collection by =fts_score(..., query)= before applying a
+  top-k limit;
+- if the final presentation order is path/selector/graph order, first collect
+  a bounded candidate set by FTS score, then reorder in ASP code;
+- avoid =fts_match= through views, CTEs, derived tables, or query shapes that
+  can trigger scalar fallback semantics;
+- avoid trigger-maintained FTS tables until the trigger + FTS panic class is
+  proven fixed for the workspace Turso version;
+- pressure-test field filters and boolean queries before exposing them to
+  agent-facing query composition.
+
+This allowlist is based on current upstream issue classes: scalar fallback can
+diverge from Tantivy query semantics, non-TEXT and identifier handling can
+diverge, and LIMIT pushdown can be wrong when SQL's final order is not FTS-score
+order. ASP should learn from these issues rather than hiding them behind broad
+fallbacks.
+
+** FTS fallback policy
+
+If Turso FTS is unavailable or unstable for a route, the fallback is not a
+command-local string matcher and not a resurrected fzf path. The fallback is a
+search-adapter capability decision:
+
+#+begin_src text
+receipt/context anchors
+-> dynamic overlay adapter
+-> Turso FTS/BM25 stable source-index, if capability says ready
+-> parser-owned native selector/query lane
+-> semantic/vector fallback, when available
+#+end_src
+
+Every fallback must emit a receipt field that says why FTS was not used:
+=fts:feature-disabled=, =fts:index-missing=, =fts:query-shape-denied=,
+=fts:upstream-risk-control=, or =fts:runtime-error=. The command layer must
+only render that receipt.
+
+* Retry Classification
+
+Current ASP retryable Turso messages/classes:
+
+- =locking error=;
+- =locked=;
+- =busy=;
+- =Busy= / =BusySnapshot= in typed errors where available;
+- =conflict= for MVCC =BEGIN CONCURRENT= lanes;
+- =shared WAL coordination map magic mismatch= and shorter =magic mismatch=
+  forms during first-open/reopen races.
+- =shared WAL coordination file is smaller than the coordination header= and
+  shorter =coordination header= forms during concurrent first-open races while
+  the =.tshm= coordinator file is being initialized.
+
+Retry classification must stay narrow enough to avoid hiding corruption or
+schema-contract bugs. Any new retryable string must be justified by an upstream
+Turso issue, document, or observed pressure-gate receipt.
+
+Backoff must be bounded. Sub-second receipts must use sub-second units rather
+than reporting misleading =0ms= values.
+
+* Write Path Rules
+
+1. Treat the current ASP operation lock as a visible CLI-lane control, not the
+   target high-throughput architecture.
+
+   The process-per-command lane may use a bounded =operationLock= around short
+   DB Engine writes while Turso =multiprocess_wal= remains experimental and
+   pressure receipts prove out the lock classes. This lock must be reported in
+   =ClientDbEngine.features= as =operationLock=true= with retry counts, so it is
+   never mistaken for native MVCC write concurrency. The future resident DB
+   runtime lane must not rely on this lock for normal data writes; it should use
+   Turso MVCC and full transaction-body retry after its own pressure gates pass.
+
+2. Prefer one connection-open path.
+
+   Every ASP Turso open must go through the DB Engine connection helper so
+   =experimental_multiprocess_wal(true)=, FTS/index-method features, and retry
+   policy are consistent.
+
+3. DDL is not the hot path.
+
+   Bootstrap tables and indexes before pressure gates when possible. Runtime
+   write APIs may converge schema, but schema convergence should use statement
+   retry and should not wrap the whole data write in a coarse lock.
+
+4. Data writes must be idempotent or append-addressed.
+
+   Concurrent retry is only safe when the transaction body can be re-run:
+   =INSERT ... ON CONFLICT DO UPDATE=, append-only event IDs, generation IDs,
+   or deterministic receipt IDs.
+
+5. Retry the transaction body, not the failed statement alone.
+
+   For MVCC =BEGIN CONCURRENT=, conflict handling is transaction-level. On a
+   retryable error, rollback and rerun the full transaction body.
+
+6. Keep long computation outside write transactions.
+
+   Parser work, graph construction, lexical overlay projection, and artifact
+   rendering should happen before the write transaction begins. The transaction
+   should persist already-computed rows.
+
+* ASP Pressure Gates
+
+The DB Engine test suite must include explicit pressure gates instead of only
+unit-smoke tests.
+
+Minimum gates:
+
+- concurrent artifact-event writers:
+  many agent-like writers insert distinct artifact paths into one =client.turso=;
+- concurrent route-receipt writers:
+  many search routes persist independent receipts;
+- source-index refresh plus read pressure:
+  one refresh runs while lookups/inspect calls run;
+- process-level open pressure:
+  multiple CLI processes open the same =client.turso= with multi-process WAL;
+- process-level registry pressure:
+  multiple CLI processes register distinct agent sessions into one
+  =session-registry.turso=;
+- provider-command selection pressure:
+  multiple CLI processes replace distinct context fingerprints under the same
+  project root and verify that one context cannot delete another context's rows;
+- future runtime MVCC gate:
+  one-process multi-task =BEGIN CONCURRENT= writers with retry.
+
+The pressure receipt must report:
+
+- writer count;
+- operation count;
+- elapsed time in sub-second units when below one second;
+- retry count;
+- maximum attempts for any writer;
+- whether the lane used =multiprocess_wal= or =mvcc/begin-concurrent=.
+
+The process-level gates are not optional. The user-facing ASP workload is many
+agents, hooks, and installed =asp= processes contending for the same state root.
+Thread-only tests cannot prove that lane.
+
+* How To Write New Turso DB Engine Code
+
+Use this checklist before adding a Turso-backed surface:
+
+1. Choose the lane explicitly.
+
+   If the caller is a normal CLI/hook/subagent command, it is Lane A. If the
+   caller is an internal long-lived DB runtime, it may be Lane B.
+
+2. Keep row identity deterministic.
+
+   Use repo/workspace/session/generation/context IDs and semantic selectors.
+   Do not use project display names or line ranges as executable identity.
+
+3. Precompute expensive payloads before =BEGIN=.
+
+   Parser output, graph facts, JSON serialization, search documents, and proof
+   frames should be ready before the transaction begins.
+
+4. Make the transaction idempotent.
+
+   Prefer append IDs, deterministic receipt IDs, or =INSERT ... ON CONFLICT DO
+   UPDATE=. Retrying the full transaction must not duplicate logical events.
+
+5. Put bootstrap in the owning DB module.
+
+   DDL belongs next to the DB surface owner. The command crate must not create
+   tables or indexes.
+
+6. Add a process-pressure test first for CLI surfaces.
+
+   A single-process smoke test proves correctness only inside one Rust test
+   process. ASP's failure mode is cross-process WAL contention.
+
+7. Record timing honestly.
+
+   If the operation is below one second, report microseconds or milliseconds
+   with precision. Never report =0ms= for a non-zero operation.
+
+* Developer Checklist For Turso Code
+
+This is the downstream checklist for adding or reviewing Turso-backed code in
+ASP.
+
+1. Check the workspace-resolved Turso version first.
+
+   The lockfile version is the implementation target. Official docs establish
+   public semantics, but pre-release APIs may differ from docs.rs.
+
+2. Do not call =turso::Builder::new_local= outside the DB Engine adapter.
+
+   A direct call bypasses multi-process WAL, index-method flags, and retry
+   classification.
+
+3. Keep SQL parameters parameterized.
+
+   Dynamic table/index names may be constants owned by the DB module; values
+   must be parameters. Do not format agent/user text into SQL.
+
+4. Keep FTS SQL boring.
+
+   Base table, TEXT columns, score-ordered candidate collection, bounded limit,
+   rerank outside SQL. Do not use clever SQL shapes until they have an upstream
+   issue audit and a local pressure gate.
+
+5. Make every write retry-safe.
+
+   Retrying the whole transaction must produce the same logical DB state:
+   deterministic IDs, append event IDs, or =ON CONFLICT= convergence.
+
+6. Separate bootstrap from runtime writes.
+
+   Schema creation/index creation belongs in the DB owner module and should be
+   lock-retried. Hot command handlers should persist already-computed rows.
+
+7. Add the pressure gate with the feature.
+
+   CLI-facing DB writes need process pressure. Search/FTS features need both a
+   functional cold gate and a query-shape regression gate.
+
+* Upstream Implementation Re-Audit Map
+
+Every Turso version bump must refresh this map before changing ASP DB code.
+The user documentation defines the behavior ASP may rely on; the implementation
+map confirms whether the resolved crate still exposes the same execution hooks.
+
+| Area | User-doc page | Implementation file / symbol to re-check | ASP question |
+|------+---------------+-------------------------------------------+--------------|
+| Rust local engine | Rust SDK quickstart/reference | =bindings/rust/src/lib.rs=, =turso::Builder=, =Database::connect= | Does the resolved crate still expose one async local open path ASP can wrap centrally? |
+| Experimental flags | Experimental Features | =Builder::experimental_multiprocess_wal=, =Builder::experimental_index_method=, feature string construction | Can ASP still enable process WAL and FTS through one DB Engine helper? |
+| Process sharing | Multi-Process Access | shared WAL coordinator code, =multiprocess_wal= tests/issues, =.tshm= behavior | Are all ASP CLI/subagent openers using the same mode, and do pressure gates cover first-open races? |
+| MVCC writers | Concurrent Writes / PRAGMAs | =BEGIN CONCURRENT= example, =Error::Busy=, =Error::BusySnapshot=, conflict strings | Does the future runtime retry the full transaction body rather than one statement? |
+| FTS/BM25 | Full-Text Search / Extensions | =core/index_method/fts.rs=, tokenizers, Tantivy directory/cache constants, FTS issue tracker | Are ASP queries still inside the conservative FTS allowlist? |
+| WAL/checkpoint | PRAGMAs / Checkpoint | =wal_checkpoint= behavior, sync checkpoint APIs where relevant | Do receipts expose WAL size/checkpoint pressure when ASP starts bulk refreshes? |
+| Sync/cloud | Rust SDK sync / Agent Databases | =turso::sync= builder APIs | Is sync still explicitly out of State Core identity, and only a future DB Engine capability? |
+
+The re-audit must produce one of three outcomes:
+
+- =unchanged=: no ASP code changes, but the RFC audit date may be refreshed;
+- =policy-only=: docs change because upstream semantics changed but current ASP
+  code still stays within the allowed lane;
+- =implementation-required=: DB Engine code and pressure gates must change in
+  the same patchset.
+
+Do not upgrade the workspace Turso version if this map cannot be refreshed.
+
+* ASP Surface Matrix
+
+New Turso-backed work must choose its surface before writing code. The surface
+determines the open mode, transaction style, and required test gate.
+
+| ASP surface | Durable DB? | Turso lane | Required write shape | Required gate |
+|-------------+-------------+------------+----------------------+---------------|
+| State manifest / cache status | yes | Lane A multi-process WAL | short idempotent upsert, statement/bootstrap retry | process open pressure |
+| Source-index stable generation | yes | Lane A + FTS/index-method | bulk refresh outside command, commit before FTS read | cold functional lookup plus refresh/read pressure |
+| Owner/search candidate FTS | yes, stable generation only | Lane A + FTS/index-method | score-bounded candidate query, parser/graph rerank outside SQL | FTS query-shape regression |
+| Dynamic dirty-code overlay | no durable source write | search adapter, not DB persistence | in-memory/session overlay with Turso-compatible scoring semantics when available | cold functional overlay gate plus warm latency gate |
+| Agent session registry | yes | Lane A multi-process WAL | deterministic project/root/session identity, upsert/close-aware reuse | process registry pressure |
+| Artifact/Merkle/proof frames | yes | Lane A now, Lane B later | append-addressed or deterministic idempotent rows | concurrent artifact/proof writer pressure |
+| Route/search receipts | yes | Lane A now, Lane B later | append receipt id or convergent upsert | concurrent receipt writer pressure |
+| Future DB runtime telemetry | yes | Lane B MVCC / =BEGIN CONCURRENT= | full transaction-body retry after rollback | single-process MVCC writer pressure |
+
+The command crate may only select a surface and render the receipt. It must not
+decide the Turso lane, construct the Turso builder, classify DB errors, create
+FTS indexes, or implement retry loops.
+
+* Authoring Standard
+
+ASP Turso code should be written in this shape:
+
+#+begin_src text
+command/client caller
+  -> DB Engine facade method with typed request
+      -> surface-owned bootstrap/schema module
+      -> shared Turso open helper
+      -> shared retry classifier
+      -> short transaction or candidate query
+      -> typed receipt/report
+  -> command render only
+#+end_src
+
+Required review questions:
+
+1. Is the feature owned by =agent-semantic-client-db= or another owning crate,
+   instead of =agent-semantic-protocol/src/command/*=?
+2. Does the caller pass semantic identity, not display names or line ranges?
+3. Does the write retry the full logical transaction safely?
+4. Does the code use Turso FTS syntax, not SQLite FTS5 =MATCH= syntax?
+5. Does the pressure gate exercise the same process/runtime shape as production?
+6. Does the receipt expose the lane and fallback reason when Turso is not used?
+
+If any answer is "no", the patch is not a Turso best-practice implementation
+yet. It is a compatibility patch and should not be presented as DB Engine
+architecture progress.
+
+* Open Upstream Risks To Track
+
+- Turso Database is still documented as beta. ASP should not remove backups,
+  manifests, receipts, or rebuildable artifacts merely because the local DB
+  exists.
+- Multi-process WAL is documented as experimental and has strict local
+  filesystem requirements. State roots on NFS/SMB/FUSE-like mounts should be
+  rejected or warned before pressure gates are trusted.
+- Turso documents that multi-process WAL and MVCC are not the same lane and
+  should not be mixed. ASP must not enable =PRAGMA journal_mode = 'mvcc'= in
+  the current process-per-command =client.turso= lane.
+- Open upstream issues around multi-process WAL and stale cross-process reads
+  mean ASP should prefer short-lived connections for CLI operations and keep
+  pressure tests in CI.
+- FTS/index-method support is experimental. Search adapter code must expose
+  capability flags and receipts so unstable FTS behavior can be diagnosed at
+  the DB Engine boundary.
+
+* Current ASP Decision
+
+For the current architecture, ASP DB Engine should use Turso multi-process WAL
+for =client.turso= because ASP calls are process-per-command today.
+
+For the next architecture, ASP should introduce an internal DB runtime boundary
+that can use Turso MVCC and =BEGIN CONCURRENT= for high-throughput AI writes.
+That runtime is not an MCP server. It is a DB Engine execution boundary owned
+by ASP crates, with CLI commands acting as thin callers.
+
+* Non-goals
+
+- Do not reintroduce retired SQLite/RustSQL code paths.
+- Do not use line ranges as DB identity.
+- Do not make dynamic dirty-code overlay durable only to make search easier.
+- Do not keep fzf as the canonical dynamic-search implementation.
+- Do not add broad dead-code allowance attributes.
+* Downstream Implementation Guide
+
+The maintained downstream guide for writing Turso-backed ASP DB Engine code is:
+
+- [[file:../status/turso-db-engine-implementation-guide.org][Turso DB Engine Implementation Guide]]
+
+RFC 10.29 owns the architectural decision and accepted constraints.  The guide
+owns reviewable engineering practice: builder flags, connection policy,
+transaction policy, retry classification, FTS/code-search schema, dynamic
+overlay boundaries, and pressure gates.  Any Turso DB Engine change that touches
+open mode, transaction mode, retry behavior, FTS schema, source-index import, or
+agent-session concurrency must update the guide in the same patchset.
+
+* Agent-native concurrency substrate
+
+Turso must not be treated as a generic SQL store in ASP.  The target DB
+architecture is an agent-native concurrency substrate: the database owns the
+durable conflict semantics for multi-session, multi-agent, artifact, overlay,
+memory, topology, and evidence writes.
+
+The upstream concurrency model matters for the schema shape:
+
+- default local Turso still behaves like a single-writer database;
+- maximum write concurrency requires MVCC journal mode plus =BEGIN CONCURRENT=;
+- concurrent transactions that touch the same rows can conflict and must be
+  retried by the DB Engine;
+- CDC is useful for observability, but CDC and MVCC are mutually exclusive on
+  the same connection, so P0 uses explicit visibility receipts instead of CDC.
+
+Primary references:
+
+- [[https://docs.turso.tech/tursodb/concurrent-writes][Turso Concurrent Writes]]
+- [[https://github.com/tursodatabase/turso/blob/main/docs/manual.md][Turso manual / CDC]]
+
+This leads to a strict ASP write-shape rule: high-fan-out agent data should be
+append-only or content-addressed by default, and only small convergence points
+should use compare-and-swap or merge policy.
+
+** P0 schema direction
+
+- =session_log= is append-only.  Agent lifecycle, tool events, route receipts,
+  and visibility receipts are inserted as facts rather than updating a hot
+  session row.
+- Multiple sessions are topology branches, not directory isolation.  Branch
+  edges include =spawned_from=, =delegates=, =proposes_merge=,
+  =accepted_merge=, and =supersedes=.
+- Multiple agents write independently by default.  Coordination is required
+  only at artifact pointers, memory promotion, task claims, and merge
+  decisions.
+- Artifacts are content-addressed and immutable.  Names such as "latest result"
+  are pointers, and pointer movement must use CAS or an explicit merge policy.
+- Workspace state follows copy-on-write overlay semantics.  Agents can write
+  overlay state freely; promotion to parent or project state requires a merge
+  receipt.
+- Memory rows must carry =source_session_id=, =source_artifact_hash=,
+  =confidence=, =validity_scope=, and =supersedes_memory_id=.  Memory recall is
+  not just vector search; it is provenance-bearing evidence.
+- Recall counters must not hot-update the memory row.  Use recall events or
+  sharded counters, then compact asynchronously, so recall traffic does not
+  destroy MVCC write parallelism.
+
+** Performance contract
+
+Scenario benchmarks must not encode process startup or libtest child-process
+coordination as DB latency.  Multi-process pressure gates are correctness and
+stress gates; the performance budget must be measured inside the child around
+the DB Engine operation itself.
+
+Current P0 acceptance:
+
+- no public scenario benchmark may set a seconds-level target for a local
+  client DB operation;
+- child-internal DB open/write/read pressure must stay in the millisecond /
+  subsecond range;
+- schema/bootstrap convergence may use an exclusive operation lock, but normal
+  append-only writes and independent branch writes should migrate toward MVCC
+  =BEGIN CONCURRENT= lanes;
+- if a write path needs an exclusive lock, the benchmark must explain whether
+  the lock protects schema convergence, pointer CAS, merge decision, or a
+  temporary pre-MVCC adapter gap.
+
+** MVCC cutover plan
+
+P0 keeps explicit receipts and operation locks for schema convergence while
+removing accidental full bootstrap from hot paths.  P1 introduces MVCC lanes:
+
+1. append-only =session_log= writes with =BEGIN CONCURRENT= and retry on
+   conflict;
+2. immutable artifact insert by content hash, where conflict means the same
+   artifact already exists;
+3. overlay event writes partitioned by =repo_id/workspace_id/session_id=;
+4. memory recall events or sharded counters;
+5. CAS pointer updates for =latest= artifact pointers, task claims, and merge
+   decisions.
+
+CDC remains a later observability lane.  It must use a separate connection mode
+or a non-MVCC diagnostic path and cannot be assumed to coexist with the primary
+MVCC writer connection.

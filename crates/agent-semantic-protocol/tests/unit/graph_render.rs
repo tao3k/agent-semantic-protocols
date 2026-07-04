@@ -380,15 +380,15 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
     assert!(output.contains("budget=handles:12"));
     assert!(output.contains("|decision purpose=decision-primer answer=false code=false"));
     assert!(output.contains(
-        "capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query"
+        "capabilities=lexical,pipe,fd-query,rg-query,owner-items,selector-code,treesitter-query"
     ));
-    assert!(output.contains("ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code"));
+    assert!(output.contains("ladder=lexical>fd-query|rg-query>owner-items>selector-code>pipe"));
     assert!(
         output.contains("history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath")
     );
     assert!(output.contains("risk=broad-direct-read,manual-window-scan,repeat-prime"));
     assert!(output.contains(
-        "next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\""
+        "next=\"asp rust search lexical '<question-or-feature-term>' owner tests --workspace . --view seeds\""
     ));
     assert!(output.contains(
         "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next"

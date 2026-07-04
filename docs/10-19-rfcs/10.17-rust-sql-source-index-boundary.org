@@ -4,10 +4,10 @@
 
 * One-sentence summary
 
-ASP source indexing is Rust-owned SQL infrastructure: language providers emit
-bounded semantic facts, while Rust owns workspace source discovery, owner
-identity, selector ranges, cache invalidation, query acceleration, and optional
-=gtags= seed import.
+ASP source indexing is Rust-owned DB Engine infrastructure: language providers
+emit bounded semantic facts, while Rust owns workspace source discovery, owner
+identity, selector ranges, cache invalidation, query acceleration,
+Turso-backed stable lookup, and optional external seed import.
 
 * Problem
 
@@ -26,7 +26,7 @@ provider facts, or a provider-local recursive scan.
 
 Rust owns the workspace source index.
 
-The Rust source index is SQL-backed and owns:
+The Rust source index is DB Engine-backed and owns:
 
 - workspace source discovery
 - file identity
@@ -48,7 +48,7 @@ include walking the whole workspace for every broad search, maintaining
 provider-local source caches, ranking owners, or implementing provider-local
 owner discovery.
 
-Broad search resolves candidate owners through the Rust SQL source index first.
+Broad search resolves candidate owners through the Rust DB Engine source index first.
 Only after Rust chooses an owner set may the CLI invoke language providers for
 bounded semantic fact extraction or owner-local validation.
 
@@ -68,18 +68,18 @@ outside the active project source-index scope, because broad project search must
 not rank versioned runtime mirrors ahead of the workspace being edited.
 
 =asp cache runtime-source acquire= is the materialization boundary for those
-mirrors. After clone/fetch/checkout succeeds, the command must build Rust SQL
-source-index rows for the checkout root in the project client DB with
+mirrors. After clone/fetch/checkout succeeds, the command must write DB Engine
+source-index rows for the checkout root in the active project client DB with
 =rawSourceStored=false=. The source-index generation project root is the
 checkout directory, not the active workspace root. Rows use the acquired
 language id and the supplied =--index-owner= as the owner/provider identity,
 retain file hashes with byte length and mtime, skip VCS metadata directories,
 and index only source-like files for the acquired language.
 
-The acquisition receipt must report =sourceIndex=refreshed=, the SQLite DB path,
-generation id, checkout project root, file count, owner count, selector count,
-and =rawSourceStored=false=. This does not replace provider structural
-artifacts: =asp cache import= remains the next command for replaying
+The acquisition receipt must report =sourceIndex=refreshed=, the active DB
+Engine path, generation id, checkout project root, file count, owner count,
+selector count, reused-generation state, and =rawSourceStored=false=. This does
+not replace provider structural artifacts: =asp cache import= remains the next command for replaying
 provider-emitted structural-index artifacts into the same client DB.
 
 Refresh is incremental. If the latest matching project-root/schema generation
@@ -112,7 +112,7 @@ slow recursive source scan.
 This is an agent-facing requirement. The agent must be able to tell whether the
 next step is:
 
-- build or refresh the Rust SQL source index
+- build or refresh the Rust DB Engine source index
 - install package dependencies
 - ask a provider for bounded owner facts
 - narrow the query
@@ -121,7 +121,7 @@ next step is:
 * Dependency Incremental Index
 
 Dependency search is not a prompt-output cache and not a raw source cache. It is
-a Rust-owned incremental SQL index derived from durable project facts.
+a Rust-owned incremental DB Engine index derived from durable project facts.
 
 The dependency index input keys are:
 
@@ -241,7 +241,7 @@ If a provider lacks batch projection or packet-out support, Rust may use a compa
 * Cold Warm Hot Gates
 Search/query performance is verified in three states.
 
-Cold path may build or refresh source, fact, or dependency indexes. Its receipt must report provider process count, provider elapsed time, indexed files, indexed owners, indexed facts, changed input hashes, SQLite write counts, graph-turbo time, render time, packet-out mode, and the explicit refresh command that produced the state.
+Cold path may build or refresh source, fact, or dependency indexes. Its receipt must report provider process count, provider elapsed time, indexed files, indexed owners, indexed facts, changed input hashes, Turso write counts, graph-turbo time, render time, packet-out mode, and the explicit refresh command that produced the state.
 
 Warm broad search must answer from Rust-owned source/fact/dependency indexes before exact projection. It should not start a language provider for workspace owner discovery, dependency topology, broad search ranking, or graph-turbo input assembly. Warm receipts must expose =sourceIndexHit=, =factIndexHit= or =dependencyIndexHit= as applicable, =providerProcessCount=, first route, graph-turbo time, and render time.
 
@@ -356,7 +356,7 @@ silently changing ASP state ownership.
 State paths must be derived from the shared state layout, not rebuilt in each
 cache, activation, source-index, or history module. The layout owns the state
 root, client cache directory, cache manifest path, artifact directory, and
-SQLite database parent. The state root is the protocol directory, normally
+Turso database parent. The state root is the protocol directory, normally
 =<git-toplevel>/.cache/agent-semantic-protocol=. The client cache directory is
 =<state-root>/client= and the artifact directory is =<state-root>/artifacts=.
 Mutation and audit paths should consume the layout before opening, rewriting,
@@ -365,7 +365,7 @@ or backfilling state.
 State paths must be derived from the shared state layout, not rebuilt in each
 cache, activation, source-index, or history module. The layout owns the state
 root, client cache directory, cache manifest path, artifact directory, and
-SQLite database parent.
+Turso database parent.
 
 The state root is the protocol directory, normally
 =<git-toplevel>/.cache/agent-semantic-protocol=. The client cache directory is

@@ -2,9 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use agent_semantic_runtime::{
-    project_local_activation_path, project_local_client_cache_manifest_path,
-};
+use agent_semantic_client_core::AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE;
+use agent_semantic_runtime::project_state_paths;
 
 #[derive(Debug)]
 pub(crate) struct ParsedArgs {
@@ -98,11 +97,17 @@ pub(crate) fn parse_client_args(
     }
     if !explicit_project_root
         && should_infer_positional_project_root(command.as_deref())
-        && let Some(root) = positional_project_root(language_id, &forwarded_args, &project_root)
+        && let Some(root) = positional_project_root(
+            language_id,
+            command.as_deref(),
+            &forwarded_args,
+            &project_root,
+        )
     {
         if forwarded_args.len() > 1
             && positional_project_root(
                 language_id,
+                command.as_deref(),
                 &forwarded_args[..forwarded_args.len() - 1],
                 &project_root,
             )
@@ -129,9 +134,17 @@ fn should_infer_positional_project_root(command: Option<&str>) -> bool {
 
 fn positional_project_root(
     language_id: Option<&str>,
+    command: Option<&str>,
     forwarded_args: &[String],
     cwd: &Path,
 ) -> Option<PathBuf> {
+    if is_search_view_arg(
+        command,
+        forwarded_args,
+        forwarded_args.len().checked_sub(1)?,
+    ) {
+        return None;
+    }
     let value = forwarded_args.last()?;
     if value.starts_with('-') {
         return None;
@@ -145,13 +158,54 @@ fn positional_project_root(
     if value == "." {
         return Some(canonical_or_existing(absolute));
     }
-    if project_local_activation_path(&absolute).is_file()
-        || project_local_client_cache_manifest_path(&absolute).is_file()
-    {
+    if project_state_paths(&absolute).is_ok_and(|paths| {
+        paths
+            .client_cache_dir
+            .join(AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE)
+            .is_file()
+    }) {
         return Some(canonical_or_existing(absolute));
     }
     let language_id = language_id?;
     language_project_marker_root(language_id, &absolute)
+}
+
+fn is_search_view_arg(command: Option<&str>, forwarded_args: &[String], index: usize) -> bool {
+    command == Some("search")
+        && index == 0
+        && forwarded_args
+            .first()
+            .is_some_and(|arg| is_search_view_name(arg))
+}
+
+fn is_search_view_name(arg: &str) -> bool {
+    matches!(
+        arg,
+        "api"
+            | "callsite"
+            | "cfg"
+            | "compare"
+            | "dependency"
+            | "deps"
+            | "docs"
+            | "docs-use"
+            | "features"
+            | "fzf"
+            | "import"
+            | "ingest"
+            | "owner"
+            | "pattern"
+            | "patterns"
+            | "policy"
+            | "prime"
+            | "public-external-types"
+            | "query"
+            | "semantic-facts"
+            | "symbol"
+            | "targets"
+            | "tests"
+            | "workspace"
+    )
 }
 
 fn resolve_project_root(value: &str, invocation_root: &Path) -> PathBuf {

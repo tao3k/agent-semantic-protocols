@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_runtime::project_state_paths;
 use serde_json::json;
 
 pub(super) fn run_paths_command(args: &[String]) -> Result<(), String> {
@@ -88,24 +87,42 @@ impl ProjectPaths {
                 requested_root.display()
             )
         })?;
-        let paths = project_state_paths(&project_root)?;
-        let org_state_root = paths.protocol_home.join("org");
+        let context = agent_semantic_client_core::ProjectContext::resolve(&project_root)?;
+        let project_state_paths = agent_semantic_runtime::project_state_paths(&project_root)?;
+        let state_layout = context.state_layout();
+        let state_root = state_layout.state_root();
+        let protocol_home = state_root;
+        let hook_cache_dir = project_state_paths.hook_cache_dir;
+        let hook_state_dir = project_state_paths.hook_state_dir;
+        let activation_path = project_state_paths.activation_path;
+        let runtime_home = state_root.join("runtime");
+        let runtime_bin_dir = runtime_home.join("bin");
+        let provider_lock_dir = runtime_home.join("provider-locks");
+        let org_state_root = protocol_home.join("org");
         let org_state_skill = org_state_root.join("templates").join("ASP_ORG_SKILL.org");
-        let org_artifacts = paths.artifacts_dir.join("org");
+        let org_artifacts = state_layout.artifacts_dir().join("org");
         let org_flow = org_artifacts.join("flow");
 
         let mut fields = BTreeMap::new();
-        fields.insert("projectRoot", path_string(&project_root));
-        fields.insert("protocolHome", path_string(&paths.protocol_home));
-        fields.insert("hookCacheDir", path_string(&paths.hook_cache_dir));
-        fields.insert("hookStateDir", path_string(&paths.hook_state_dir));
-        fields.insert("activation", path_string(&paths.activation_path));
-        fields.insert("clientCacheDir", path_string(&paths.client_cache_dir));
-        fields.insert("artifactsDir", path_string(&paths.artifacts_dir));
-        fields.insert("runtimeHome", path_string(&paths.runtime_home));
-        fields.insert("runtimeBinDir", path_string(&paths.runtime_bin_dir));
-        fields.insert("providerBinDir", path_string(&paths.provider_bin_dir));
-        fields.insert("providerLockDir", path_string(&paths.provider_lock_dir));
+        fields.insert("projectRoot", path_string(context.cwd()));
+        fields.insert("stateRoot", path_string(state_root));
+        fields.insert("protocolHome", path_string(protocol_home));
+        fields.insert(
+            "cacheManifest",
+            path_string(state_layout.cache_manifest_path()),
+        );
+        fields.insert("hookCacheDir", path_string(&hook_cache_dir));
+        fields.insert("hookStateDir", path_string(&hook_state_dir));
+        fields.insert("activation", path_string(&activation_path));
+        fields.insert(
+            "clientCacheDir",
+            path_string(state_layout.client_cache_dir()),
+        );
+        fields.insert("artifactsDir", path_string(state_layout.artifacts_dir()));
+        fields.insert("runtimeHome", path_string(&runtime_home));
+        fields.insert("runtimeBinDir", path_string(&runtime_bin_dir));
+        fields.insert("providerBinDir", path_string(&runtime_bin_dir));
+        fields.insert("providerLockDir", path_string(&provider_lock_dir));
         fields.insert("orgStateRoot", path_string(&org_state_root));
         fields.insert("orgStateSkill", path_string(&org_state_skill));
         fields.insert("orgArtifacts", path_string(&org_artifacts));

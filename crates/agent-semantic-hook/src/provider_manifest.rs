@@ -133,6 +133,7 @@ fn activate_provider(
     package_roots: Vec<String>,
 ) -> Result<ActivatedProviderConfig, String> {
     Ok(ActivatedProviderConfig {
+        search_capabilities: serde_json::Value::Null,
         manifest_id: manifest.manifest_id.clone(),
         manifest_digest: provider_manifest_digest(manifest)
             .map_err(|error| format!("failed to digest provider manifest: {error:?}"))?,

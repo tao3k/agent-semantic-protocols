@@ -262,5 +262,5 @@ fn display_path(project_root: &Path, path: &Path) -> String {
 }
 
 fn archive_usage() -> &'static str {
-    "usage: asp org archive done [--artifacts-root PATH] [--archive-dir DIR] [--dry-run]\n\n`archive done` moves .org files containing DONE task headings from the active ASP Org artifacts tree into DIR while preserving their relative path and adding ARCHIVED_FROM metadata. The default artifacts root is .cache/agent-semantic-protocol/artifacts/org for the current project, and the default archive dir is archives. Run with --dry-run after `asp org query --kind task --field todo=DONE --exclude-dir archives --workspace <artifacts-root> --content` to review the parser-selected DONE tasks before moving files."
+    "usage: asp org archive done [--artifacts-root PATH] [--archive-dir DIR] [--dry-run]\n\n`archive done` moves .org files containing DONE task headings from the active ASP Org artifacts tree into DIR while preserving their relative path and adding ARCHIVED_FROM metadata. The default artifacts root is the path returned by `asp paths --get orgArtifacts`, and the default archive dir is archives. Run with --dry-run after `asp org query --kind task --field todo=DONE --exclude-dir archives --workspace <artifacts-root> --content` to review the parser-selected DONE tasks before moving files."
 }

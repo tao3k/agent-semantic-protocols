@@ -12,9 +12,11 @@ use super::support::{codex_plugin_install_args, git_project_root, protocol_comma
 #[test]
 fn cli_install_uses_static_provider_manifest_without_running_guide() {
     let root = git_project_root("install-static-provider-manifest");
+    let asp_state_home = root.join(".asp-state-home");
     let provider_path = write_failing_provider_binary(&root, "py-harness");
     let output = protocol_command()
         .env("PATH", &provider_path)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
         .output()
@@ -24,9 +26,8 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let activation =
-        std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
-            .expect("installed activation");
+    let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
+        .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
     assert!(
         registry
@@ -73,6 +74,7 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
 #[test]
 fn cli_install_runtime_profile_prefers_project_bin_provider() {
     let root = git_project_root("install-project-bin-provider");
+    let asp_state_home = root.join(".asp-state-home");
     let external_root = git_project_root("install-external-provider");
     let project_provider_path = write_fake_provider_binary(&root, "py-harness");
     let external_provider_path = write_fake_provider_file(&external_root, "py-harness", 0o755);
@@ -80,6 +82,7 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
         .expect("provider path");
     let output = protocol_command()
         .env("PATH", path)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
         .output()
@@ -90,9 +93,8 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let activation =
-        std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
-            .expect("installed activation");
+    let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
+        .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
     let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
     let python_profile = runtime_profiles
@@ -122,6 +124,7 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
 #[test]
 fn cli_install_asp_toml_can_disable_language_and_override_provider_binary() {
     let root = git_project_root("install-asp-toml-provider-config");
+    let asp_state_home = root.join(".asp-state-home");
     let empty_path = root.join("empty-path");
     std::fs::create_dir_all(&empty_path).expect("empty path");
     write_fake_provider_file(&root, "custom-py-harness", 0o755);
@@ -159,6 +162,7 @@ enabled = false
     let path = env::join_paths([root.join(".bin"), empty_path]).expect("join PATH");
     let output = protocol_command()
         .env("PATH", &path)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
         .output()
@@ -169,9 +173,8 @@ enabled = false
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let activation =
-        std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
-            .expect("installed activation");
+    let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
+        .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
     assert_eq!(registry.providers.len(), 1);
     let python = registry
@@ -215,9 +218,11 @@ enabled = false
 #[test]
 fn cli_install_writes_executable_python_ingest_route() {
     let root = git_project_root("install-python");
+    let asp_state_home = root.join(".asp-state-home");
     let provider_path = write_fake_provider_binary(&root, "py-harness");
     let output = protocol_command()
         .env("PATH", &provider_path)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
         .output()
@@ -228,9 +233,8 @@ fn cli_install_writes_executable_python_ingest_route() {
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let activation =
-        std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
-            .expect("installed activation");
+    let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
+        .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
     let python = registry
         .providers
@@ -252,4 +256,26 @@ fn cli_install_writes_executable_python_ingest_route() {
         ]
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+fn installed_activation_path(root: &std::path::Path) -> std::path::PathBuf {
+    let mut matches = Vec::new();
+    collect_activation_paths(root, &mut matches);
+    matches.sort();
+    assert_eq!(matches.len(), 1, "activation paths: {matches:?}");
+    matches.remove(0)
+}
+
+fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_activation_paths(&path, matches);
+        } else if path.ends_with("live/hooks/state/activation.json") {
+            matches.push(path);
+        }
+    }
 }

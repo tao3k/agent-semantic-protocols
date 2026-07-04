@@ -63,7 +63,9 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub agent_session_guide: HookClientAgentSessionGuideConfig,
     #[serde(default)]
-    pub asp_session_policy: HookClientAspSessionPolicyConfig,
+    pub agent_session_messages: HookClientAgentSessionMessagesConfig,
+    #[serde(default)]
+    pub agents: HookClientAgentsConfig,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
 }
@@ -94,31 +96,97 @@ pub struct HookClientAgentSessionGuideConfig {
     pub show: Option<String>,
     #[serde(default)]
     pub reuse: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+/// Optional agent-facing hook decision text for session routing.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAgentSessionMessagesConfig {
+    #[serde(default)]
+    pub session_start_reuse: Option<String>,
+    #[serde(default)]
+    pub session_start_bootstrap: Option<String>,
+    #[serde(default)]
+    pub missing_resident_explore: Option<String>,
+    #[serde(default)]
+    pub main_restricted_with_child: Option<String>,
+    #[serde(default)]
+    pub main_restricted_without_child: Option<String>,
+    #[serde(default)]
+    pub testing_with_child: Option<String>,
+    #[serde(default)]
+    pub testing_without_child: Option<String>,
+    #[serde(default)]
+    pub binary_gate_with_child: Option<String>,
+    #[serde(default)]
+    pub binary_gate_without_child: Option<String>,
+    #[serde(default)]
+    pub binary_gate_invalid_child: Option<String>,
+    #[serde(default)]
+    pub binary_gate_registry_blocked: Option<String>,
+    #[serde(default)]
+    pub source_access_compact: Option<String>,
+    #[serde(default)]
+    pub source_access_compact_repeated: Option<String>,
+    #[serde(default)]
+    pub source_access_compact_subagent: Option<String>,
 }
 
 /// Hook policy for ASP command routing inside agent sessions.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookClientAspSessionPolicyConfig {
-    #[serde(default = "default_enabled")]
-    pub enabled: bool,
-    #[serde(default = "default_asp_session_policy_resident_child_name")]
-    pub resident_child_name: String,
-    #[serde(default = "default_asp_session_policy_resident_codex_agent_name")]
-    pub resident_codex_agent_name: String,
-    #[serde(default = "default_asp_session_policy_main_allowed_prefixes")]
-    pub main_allowed_asp_command_prefixes: Vec<String>,
+pub struct HookClientAgentsConfig {
+    #[serde(default = "default_resident_agent_configs")]
+    pub resident_agents: Vec<HookClientResidentAgentConfig>,
 }
 
-impl Default for HookClientAspSessionPolicyConfig {
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientResidentAgentConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    pub name: String,
+    pub role: String,
+    #[serde(default)]
+    pub codex_agent_name: String,
+    pub lifecycle: String,
+    #[serde(default)]
+    pub main_allowed_asp_command_prefixes: Vec<String>,
+    #[serde(default)]
+    pub command_prefixes: Vec<String>,
+}
+
+impl Default for HookClientAgentsConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
-            resident_child_name: default_asp_session_policy_resident_child_name(),
-            resident_codex_agent_name: default_asp_session_policy_resident_codex_agent_name(),
-            main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
+            resident_agents: default_resident_agent_configs(),
         }
     }
+}
+
+fn default_resident_agent_configs() -> Vec<HookClientResidentAgentConfig> {
+    vec![
+        HookClientResidentAgentConfig {
+            enabled: true,
+            name: default_explore_resident_agent_name(),
+            role: default_explore_resident_agent_role(),
+            codex_agent_name: default_explore_resident_codex_agent_name(),
+            lifecycle: "asp-command".to_string(),
+            main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
+            command_prefixes: Vec::new(),
+        },
+        HookClientResidentAgentConfig {
+            enabled: true,
+            name: default_testing_resident_agent_name(),
+            role: default_testing_resident_agent_role(),
+            codex_agent_name: default_testing_resident_codex_agent_name(),
+            lifecycle: "testing-command".to_string(),
+            main_allowed_asp_command_prefixes: Vec::new(),
+            command_prefixes: default_asp_testing_command_prefixes(),
+        },
+    ]
 }
 
 /// Parsed ASP project config from `.agents/asp.toml`.
@@ -131,11 +199,8 @@ pub struct AspProjectConfigFile {
 
 /// Hook-owned ASP project config.
 #[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AspProjectHookConfig {
-    #[serde(default)]
-    pub agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
-}
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspProjectHookConfig {}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,9 +219,7 @@ pub struct HookClientAgentOrgArtifactsConfig {
     pub enabled: bool,
     #[serde(default = "default_agent_org_artifacts_inactive_after_minutes")]
     pub inactive_after_minutes: u64,
-    #[serde(default = "default_agent_org_artifacts_path")]
     pub artifacts_path: String,
-    #[serde(default = "default_agent_org_artifacts_entry_skill_path")]
     pub entry_skill_path: String,
     #[serde(default)]
     pub archive_warning: HookClientAgentOrgArtifactsArchiveWarningConfig,
@@ -292,6 +355,12 @@ pub fn default_hook_client_config_template() -> String {
     default_hook_client_config_template_for_source_extensions(DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS)
 }
 
+/// Parse the embedded default hook config template.
+pub fn default_hook_client_config_file() -> Result<HookClientConfigFile, String> {
+    toml::from_str(&default_hook_client_config_template())
+        .map_err(|error| format!("failed to parse default hook client config template: {error}"))
+}
+
 /// Render the seed global hook config file for active provider source extensions.
 pub fn default_hook_client_config_template_for_source_extensions<I, S>(
     source_extensions: I,
@@ -313,6 +382,15 @@ where
         .replace("@HOOK_PROTOCOL_ID@", HOOK_PROTOCOL_ID)
         .replace("@HOOK_PROTOCOL_VERSION@", HOOK_PROTOCOL_VERSION)
         .replace("@ARGV_SOURCE_GLOBS@", &argv_source_globs)
+}
+
+/// Render a hook client message template with `{{key}}` placeholders.
+pub fn render_hook_client_message_template(template: &str, values: &[(&str, &str)]) -> String {
+    let mut rendered = template.to_string();
+    for (key, value) in values {
+        rendered = rendered.replace(&format!("{{{{{key}}}}}"), value);
+    }
+    rendered.trim().to_string()
 }
 
 fn render_argv_source_globs<I, S>(source_extensions: I) -> String
@@ -352,11 +430,15 @@ fn normalize_source_extension(source_extension: &str) -> Option<String> {
     }
 }
 
-fn default_asp_session_policy_resident_child_name() -> String {
+fn default_explore_resident_agent_name() -> String {
     "asp-explore".to_string()
 }
 
-fn default_asp_session_policy_resident_codex_agent_name() -> String {
+fn default_explore_resident_agent_role() -> String {
+    "asp_explorer".to_string()
+}
+
+fn default_explore_resident_codex_agent_name() -> String {
     "asp_explorer".to_string()
 }
 
@@ -368,6 +450,32 @@ fn default_asp_session_policy_main_allowed_prefixes() -> Vec<String> {
         "agent session",
         "org recall",
         "org capture",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+fn default_testing_resident_agent_name() -> String {
+    "asp-testing".to_string()
+}
+
+fn default_testing_resident_agent_role() -> String {
+    "asp_testing".to_string()
+}
+
+fn default_testing_resident_codex_agent_name() -> String {
+    "asp_testing".to_string()
+}
+
+fn default_asp_testing_command_prefixes() -> Vec<String> {
+    [
+        "cargo test",
+        "cargo check",
+        "cargo build",
+        "pytest",
+        "uv run pytest",
+        "just test",
     ]
     .into_iter()
     .map(str::to_string)
@@ -412,7 +520,7 @@ fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_recovery_prompt(&config.recovery_prompt)?;
     validate_agent_session_guide(&config.agent_session_guide)?;
-    validate_asp_session_policy(&config.asp_session_policy)?;
+    validate_resident_agents(&config.agents.resident_agents)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules)
 }
@@ -440,18 +548,35 @@ fn validate_agent_session_guide(config: &HookClientAgentSessionGuideConfig) -> R
     validate_optional_non_empty("agentSessionGuide.reuse", config.reuse.as_deref())
 }
 
-fn validate_asp_session_policy(config: &HookClientAspSessionPolicyConfig) -> Result<(), String> {
+fn validate_resident_agents(configs: &[HookClientResidentAgentConfig]) -> Result<(), String> {
+    for config in configs {
+        validate_resident_agent(config)?;
+    }
+    Ok(())
+}
+
+fn validate_resident_agent(config: &HookClientResidentAgentConfig) -> Result<(), String> {
+    validate_optional_non_empty("agents.residentAgents[].name", Some(config.name.as_str()))?;
+    validate_optional_non_empty("agents.residentAgents[].role", Some(config.role.as_str()))?;
+    if !config.codex_agent_name.is_empty() {
+        validate_optional_non_empty(
+            "agents.residentAgents[].codexAgentName",
+            Some(config.codex_agent_name.as_str()),
+        )?;
+    }
     validate_optional_non_empty(
-        "aspSessionPolicy.residentChildName",
-        Some(config.resident_child_name.as_str()),
-    )?;
-    validate_optional_non_empty(
-        "aspSessionPolicy.residentCodexAgentName",
-        Some(config.resident_codex_agent_name.as_str()),
+        "agents.residentAgents[].lifecycle",
+        Some(config.lifecycle.as_str()),
     )?;
     for prefix in &config.main_allowed_asp_command_prefixes {
         validate_optional_non_empty(
-            "aspSessionPolicy.mainAllowedAspCommandPrefixes[]",
+            "agents.residentAgents[].mainAllowedAspCommandPrefixes[]",
+            Some(prefix.as_str()),
+        )?;
+    }
+    for prefix in &config.command_prefixes {
+        validate_optional_non_empty(
+            "agents.residentAgents[].commandPrefixes[]",
             Some(prefix.as_str()),
         )?;
     }
@@ -683,14 +808,6 @@ fn default_enabled() -> bool {
 
 fn default_agent_org_artifacts_inactive_after_minutes() -> u64 {
     30
-}
-
-fn default_agent_org_artifacts_path() -> String {
-    ".cache/agent-semantic-protocol/artifacts/org".to_string()
-}
-
-fn default_agent_org_artifacts_entry_skill_path() -> String {
-    ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org".to_string()
 }
 
 fn default_agent_org_artifacts_archive_warning_threshold() -> usize {

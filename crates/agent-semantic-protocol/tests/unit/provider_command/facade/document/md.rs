@@ -33,6 +33,45 @@ fn md_facade_uses_native_orgize_dependency() {
 }
 
 #[test]
+fn md_facade_search_lexical_uses_asp_fast_search() {
+    let root = temp_project_root("md-document-lexical-fast-search");
+    std::fs::write(root.join("guide.md"), "# Document Prime\n").expect("write md fixture");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let orgize = bin_dir.join("orgize");
+    std::fs::write(&orgize, "#!/bin/sh\nexit 42\n").expect("write orgize");
+    make_executable(&orgize);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .args([
+            "md",
+            "search",
+            "lexical",
+            "Document",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp md lexical search");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("[graph-frontier]"), "stdout={stdout}");
+    assert!(
+        stdout.contains("provider-root:language-root(md:.)"),
+        "stdout={stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn md_facade_search_toc_returns_toc_for_keyword_matched_documents() {
     let root = temp_project_root("md-document-toc");
     std::fs::write(

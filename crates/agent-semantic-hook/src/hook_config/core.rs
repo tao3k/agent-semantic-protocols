@@ -1,9 +1,9 @@
 use agent_semantic_config::{
-    HookClientAgentOrgArtifactsConfig, HookClientConfigDecision, HookClientConfigFile,
-    HookClientConfigReasonKind, HookClientConfigRouteKind, HookClientConfigStdinMode,
-    HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
-    default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
-    load_asp_project_config_file, load_hook_client_config_file,
+    HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
+    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientRuleConfig,
+    HookClientRuleMatchConfig, HookClientRuleRouteConfig, default_hook_client_config_template,
+    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
+    load_hook_client_config_file,
 };
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use crate::command::path_like_token_matches;
 use crate::hook_config::AspSessionPolicy;
+use crate::hook_config::agent_org_config::compile_agent_org_artifacts_config;
 use crate::hook_config_agent_org::{
     AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
 };
@@ -37,6 +38,26 @@ pub struct ClientHookConfig {
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
     recovery_prompt: CompiledRecoveryPromptConfig,
     asp_session_policy: AspSessionPolicy,
+    agent_session_messages: agent_semantic_config::HookClientAgentSessionMessagesConfig,
+}
+
+impl ClientHookConfig {
+    /// Return the agent-facing session message templates.
+    pub fn agent_session_messages(
+        &self,
+    ) -> &agent_semantic_config::HookClientAgentSessionMessagesConfig {
+        &self.agent_session_messages
+    }
+
+    /// Return the resident child session name used for ASP exploration.
+    pub fn resident_asp_explore_child_name(&self) -> &str {
+        self.asp_session_policy.resident_child_name()
+    }
+
+    /// Return the configured Codex agent name used for ASP exploration.
+    pub fn resident_asp_explore_codex_agent_name(&self) -> &str {
+        self.asp_session_policy.resident_codex_agent_name()
+    }
 }
 
 #[derive(Debug)]
@@ -148,10 +169,10 @@ where
 /// Load and compile hook config rules.
 pub fn load_client_config(path: &Path) -> Result<ClientHookConfig, String> {
     let parsed = load_hook_client_config_file(path)?;
-    compile_config(parsed, None)
+    compile_config(parsed)
 }
 
-/// Load optional user hook config plus ASP project policy from `.agents/asp.toml`.
+/// Load optional user hook config and validate hook-owned project config fields.
 pub fn load_client_config_for_project(
     path: &Path,
     project_root: &Path,
@@ -162,8 +183,8 @@ pub fn load_client_config_for_project(
         HookClientConfigFile::default()
     };
     let agent_config_path = project_agent_config_path(project_root);
-    let agent_config = load_asp_project_config_file(&agent_config_path)?;
-    compile_config(parsed, agent_config.hook.agent_org_artifacts)
+    load_asp_project_config_file(&agent_config_path)?;
+    compile_config(parsed)
 }
 
 impl ClientHookConfig {
@@ -568,10 +589,13 @@ impl RuleRoute {
     }
 }
 
-fn compile_config(
-    config: HookClientConfigFile,
-    project_agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
-) -> Result<ClientHookConfig, String> {
+fn compile_config(config: HookClientConfigFile) -> Result<ClientHookConfig, String> {
+    let default_agent_session_messages =
+        agent_semantic_config::default_hook_client_config_file()?.agent_session_messages;
+    let agent_session_messages = merge_agent_session_messages(
+        config.agent_session_messages,
+        default_agent_session_messages,
+    );
     let semantic_ast_patch_enabled = config
         .experimental
         .get("semanticAstPatch")
@@ -589,14 +613,60 @@ fn compile_config(
     Ok(ClientHookConfig {
         rules,
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
-        agent_org_artifacts: project_agent_org_artifacts
-            .or(config.agent_org_artifacts)
-            .map(CompiledAgentOrgArtifactsConfig::try_from)
-            .transpose()?
-            .unwrap_or_else(CompiledAgentOrgArtifactsConfig::disabled),
+        agent_org_artifacts: compile_agent_org_artifacts_config(config.agent_org_artifacts)?,
         recovery_prompt: config.recovery_prompt.into(),
-        asp_session_policy: AspSessionPolicy::try_from(config.asp_session_policy)?,
+        agent_session_messages,
+        asp_session_policy: AspSessionPolicy::try_from(config.agents)?,
     })
+}
+
+fn merge_agent_session_messages(
+    mut config: agent_semantic_config::HookClientAgentSessionMessagesConfig,
+    defaults: agent_semantic_config::HookClientAgentSessionMessagesConfig,
+) -> agent_semantic_config::HookClientAgentSessionMessagesConfig {
+    if config.session_start_reuse.is_none() {
+        config.session_start_reuse = defaults.session_start_reuse;
+    }
+    if config.session_start_bootstrap.is_none() {
+        config.session_start_bootstrap = defaults.session_start_bootstrap;
+    }
+    if config.missing_resident_explore.is_none() {
+        config.missing_resident_explore = defaults.missing_resident_explore;
+    }
+    if config.main_restricted_with_child.is_none() {
+        config.main_restricted_with_child = defaults.main_restricted_with_child;
+    }
+    if config.main_restricted_without_child.is_none() {
+        config.main_restricted_without_child = defaults.main_restricted_without_child;
+    }
+    if config.testing_with_child.is_none() {
+        config.testing_with_child = defaults.testing_with_child;
+    }
+    if config.testing_without_child.is_none() {
+        config.testing_without_child = defaults.testing_without_child;
+    }
+    if config.binary_gate_with_child.is_none() {
+        config.binary_gate_with_child = defaults.binary_gate_with_child;
+    }
+    if config.binary_gate_without_child.is_none() {
+        config.binary_gate_without_child = defaults.binary_gate_without_child;
+    }
+    if config.binary_gate_invalid_child.is_none() {
+        config.binary_gate_invalid_child = defaults.binary_gate_invalid_child;
+    }
+    if config.binary_gate_registry_blocked.is_none() {
+        config.binary_gate_registry_blocked = defaults.binary_gate_registry_blocked;
+    }
+    if config.source_access_compact.is_none() {
+        config.source_access_compact = defaults.source_access_compact;
+    }
+    if config.source_access_compact_repeated.is_none() {
+        config.source_access_compact_repeated = defaults.source_access_compact_repeated;
+    }
+    if config.source_access_compact_subagent.is_none() {
+        config.source_access_compact_subagent = defaults.source_access_compact_subagent;
+    }
+    config
 }
 
 impl TryFrom<HookClientRuleConfig> for CompiledHookRule {

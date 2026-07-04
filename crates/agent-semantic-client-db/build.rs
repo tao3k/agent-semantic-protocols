@@ -10,16 +10,16 @@ fn main() {
         )
         .with_criterion_performance_verification()
         .with_latency_sensitive_performance_owner(
-            "src/db.rs",
-            "sqlite cache lookups and artifact timeline writes sit on provider replay hot paths",
+            "src/engine/facade.rs",
+            "DB Engine facade routes provider replay hot paths through active Turso adapters",
         )
         .with_latency_sensitive_performance_owner(
-            "src/pragmas.rs",
-            "sqlite runtime pragmas control cache query latency under repeated agent searches",
+            "src/engine/turso_cache.rs",
+            "Turso cache generation lookup and invalidation sit on repeated agent search replay paths",
         )
         .with_availability_stability_owner(
-            "src/db.rs",
-            "sqlite cache schema and transaction boundaries must remain stable under repeated agent writeback and replay",
+            "src/engine/turso.rs",
+            "Turso bootstrap schema and transaction boundaries must remain stable under repeated agent writeback and replay",
         );
     assert_rust_project_harness_cargo_check_clean_from_env_with_config(&config);
     assert_rust_project_harness_verification_from_env_with_config(&config, "client db");

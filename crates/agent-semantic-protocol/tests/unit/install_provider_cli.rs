@@ -220,8 +220,8 @@ fn install_language_gerbil_uses_release_asset_prefix_and_installs_gslph() {
         String::from_utf8_lossy(&output.stderr)
     );
     let bin = home.join(".local/bin/gslph");
-    let package_binary = root.join(
-        ".cache/agent-semantic-protocol/runtime/providers/gerbil-scheme/v0.1.0/x86_64-unknown-linux-gnu/bin/gerbil-scheme-harness",
+    let package_binary = home.join(
+        ".agent-semantic-protocols/runtime/provider-locks/gerbil-scheme/v0.1.0/x86_64-unknown-linux-gnu/bin/gerbil-scheme-harness",
     );
     assert!(bin.is_file(), "missing installed gslph {}", bin.display());
     assert!(
@@ -249,7 +249,7 @@ fn install_language_gerbil_uses_release_asset_prefix_and_installs_gslph() {
         "provider install must not copy package companions or build artifacts into ~/.local/bin"
     );
     let lock = std::fs::read_to_string(
-        root.join(".cache/agent-semantic-protocol/runtime/providers/gerbil-scheme.lock.toml"),
+        home.join(".agent-semantic-protocols/runtime/provider-locks/gerbil-scheme.lock.toml"),
     )
     .expect("read Gerbil lock");
     assert!(lock.contains("binary = \"gslph\""), "{lock}");
@@ -386,10 +386,11 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     assert!(stdout.contains("[asp-install]"), "{stdout}");
     assert!(stdout.contains("rev=v0.1.2"), "{stdout}");
 
-    let runtime = root.join(".cache/agent-semantic-protocol/runtime");
+    let runtime = home.join(".agent-semantic-protocols/runtime");
     let bin = home.join(".local/bin/rs-harness");
-    let package_binary = runtime.join("providers/rust/v0.1.2/x86_64-unknown-linux-gnu/rs-harness");
-    let lock = runtime.join("providers/rust.lock.toml");
+    let package_binary =
+        runtime.join("provider-locks/rust/v0.1.2/x86_64-unknown-linux-gnu/rs-harness");
+    let lock = runtime.join("provider-locks/rust.lock.toml");
     assert!(bin.is_file(), "missing runtime bin {}", bin.display());
     assert!(
         package_binary.is_file(),
@@ -470,8 +471,8 @@ fn assert_install_language_pinned_release_ignores_asp_toml_provider_bin() {
         !root.join("tools/rs-harness-config").exists(),
         "asp.toml language bin must not be an install target"
     );
-    let package_binary = root.join(
-        ".cache/agent-semantic-protocol/runtime/providers/rust/v0.1.2/x86_64-unknown-linux-gnu/rs-harness",
+    let package_binary = home.join(
+        ".agent-semantic-protocols/runtime/provider-locks/rust/v0.1.2/x86_64-unknown-linux-gnu/rs-harness",
     );
     assert_eq!(
         std::fs::read(&bin).expect("read configured provider"),

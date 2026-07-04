@@ -1,0 +1,220 @@
+#+title: 10.30 Search Frame Contract
+#+startup: overview
+
+* One-sentence summary
+
+The Search Frame is the first agent-facing frame: it decides how to search from
+the current evidence state, emits one replayable next command plus receipts, and
+stops before WhereFrame location synthesis or HowFrame edit strategy.
+
+* Scope
+
+This RFC owns the "how to search" contract.
+
+In scope:
+
+- evidence-state classification before running a search command;
+- canonical search/query route selection;
+- fail-closed recovery after hook deny, no-hit, stale index, provider timeout,
+  or resident-child session mismatch;
+- compact output fields that make the next action executable;
+- scenario and benchmark gates for the Search Frame.
+
+Out of scope:
+
+- deciding the final edit location; that belongs to WhereFrame;
+- deciding the edit plan, rollback, or validation strategy; that belongs to
+  HowFrame;
+- creating another search backend beside provider-owned parser facts, ASP
+  source-index/overlay routing, and Turso DB Engine surfaces.
+
+* Dynamic overlay lane contract
+=dynamic overlay= is the shared dirty-code overlay domain. The Search Frame
+exposes it through two route sources:
+- =query-overlay= for ASP query-set commands such as =asp fd -query= and
+  =asp rg -query=;
+- =search-overlay= for ASP search commands such as =asp ... search ...= and
+  =search pipe=.
+
+The two lanes are not interchangeable. Query wrappers must render
+=query-overlay= in =source=, =candidateSources=, and =sourceTrace= when the query
+overlay participates or is skipped. Search pipe/search routes must render
+=search-overlay= for their overlay lane. =finder= is not a public Search Frame
+route source.
+* Frame boundary
+
+Search Frame answers:
+
+- what evidence state is known now;
+- which ASP command is the only canonical next search/read action;
+- what fallback is allowed if the action cannot run;
+- what fallback is forbidden;
+- what receipt proves progress or a bounded stop condition.
+
+WhereFrame answers where to inspect or edit after enough search evidence exists.
+HowFrame answers how to change safely after WhereFrame has selected the target
+boundary.
+
+The Search Frame may emit candidate owner paths, selectors, dependencies, tests,
+and action classes. It must not encode edit groups, patch strategy, rollback
+steps, or validation plans.
+
+* Evidence-state router
+
+Search is not a mandatory pipeline. The router must start from the narrowest
+state whose preconditions are already satisfied:
+
+| Evidence state | Canonical route | Allowed fallback | Forbidden fallback | Completion receipt |
+| exact parser selector known | =asp <lang> query --selector <selector> --workspace <root> --code= | owner-local search for neighboring context | raw file read, line selector as semantic identity | selector code receipt with provider/source trace |
+| owner path known | =asp <lang> search owner <owner> items --query <terms> --workspace <root> --view seeds= | bounded owner item enumeration with empty query | workspace-wide raw grep | owner-items packet or parser-visible module receipt |
+| dependency/API known | =asp <lang> search deps <dependency[@version][::api]> --workspace <root> --view seeds= | local provider docs/use/crate-source actions | web/docs search while local actions exist | dependency frontier receipt |
+| document selector known | =asp org\vert md query --selector <selector> --workspace <root> --content= | document metadata query for adjacent element | whole-file document read | document element-content receipt |
+| test/failure/policy id known | provider-owned guide/check/search route exposed by failure packet | search owner for cited file or policy owner | broad search for error prose | failure-bound nextCommand receipt |
+| previous =nextCommand= known | replay the exact bounded =nextCommand= | refresh only if packet says stale/missing DB | invent a different tool because the first action was slow | replay receipt or structured failure |
+| workspace or language unknown | =asp search prime --workspace <root> --view seeds= | language guide/doctor command | prime before every known-owner/known-selector action | owner/language map receipt |
+| ambiguous natural-language query | =asp <lang> search pipe '<question>' --workspace <root> --view seeds= | query-set refinement command emitted by pipe | direct source read, repeated identical pipe | query-pack/sourceTrace receipt |
+| no-hit from provider/index | emitted =nextCommand= from no-hit packet | one narrower query or source-index refresh when named | repeating same command | no-hit receipt with bounded stop or next |
+| hook denies raw source access | resident =asp-explore= child runs ASP search/query route | register/reuse/resume child per session guide | raw grep/read/list fallback | child command receipt or registry-blocked receipt |
+| child active but parent wait expires | inspect rollout heartbeat/session status | continue waiting if activity advanced | timeout == child dead | active-running/silent/completed receipt |
+| provider process deadline reached | provider-owned timeout or process-group timeout | bounded interrupt receipt | orphaned provider child | timeout-no-orphan receipt |
+
+Every compact output path must expose =nextCommand=, =nextClasses=,
+=sourceTrace=, and =avoid= when it asks the agent to continue searching.
+
+* Recovery rules
+
+Search Frame recovery is positive routing, not defensive fallback.
+
+- A deny message must include the exact next ASP command family or the
+  resident-child bootstrap action.
+- A stale or missing source-index packet must say whether to refresh or continue
+  with provider, =query-overlay=, or =search-overlay= facts.
+- A no-hit packet must include at most one preferred next command plus a bounded
+  stop condition.
+- A provider timeout must report process ownership and orphan status.
+- A parent wait deadline must consult rollout activity before declaring a child
+  stuck.
+- Repeating the exact failed command is allowed only when the receipt says the
+  blocking state changed.
+
+* Scenario gates
+
+The Search Frame is not complete until these scenarios exist and run as gates:
+
+| Scenario | Purpose | Gate class |
+| selector_query_exact_code | exact selector bypasses prime/pipe | cold functional |
+| owner_items_known_owner | owner-local item search stays bounded | cold functional + latency |
+| dependency_api_local_first | dependency route beats web/docs fallback | cold functional |
+| document_selector_content | document selectors use element content, not whole files | cold functional |
+| document_pipe_lexical_overlay | ambiguous document pipe uses lexical overlay before full document parse | cold functional + warm latency |
+| search_pipe_ambiguous_query | ambiguous query yields query-pack and nextCommand | cold functional + latency |
+| source_index_hit | source-index hit skips provider or matching overlay lane fallback | cold functional |
+| source_index_missing_db | missing DB emits refresh or provider/query-overlay/search-overlay receipt | cold functional |
+| source_index_stale | stale index cannot masquerade as current evidence | cold functional |
+| dynamic_overlay_dirty_code | overlay candidates rank before durable stable DB | cold functional + warm latency |
+| no_hit_bounded_next | no-hit emits one bounded next action | cold functional |
+| hook_deny_to_asp_explore | raw source deny routes to resident ASP search child | recovery |
+| parent_wait_deadline_but_child_active | rollout heartbeat prevents false timeout | recovery |
+| provider_timeout_no_orphan | timeout kills/owns provider process group | recovery |
+| silent_search_requires_bounded_interrupt_receipt | silent child gets bounded interrupt evidence | recovery |
+
+Hot latency gates follow only after the cold functional gates pass.
+
+* Current implementation checkpoint
+
+Implemented or partially implemented:
+
+- =agent-semantic-search= exports source-index lookup, dynamic overlay,
+  =query-overlay=, =search-overlay=, query wrapper, graph seed decision, pipe
+  source, document candidates, provider annotations, and Turso overlay search
+  surfaces.
+- Search package scenario monitoring exists for unit and integration surfaces.
+- Document lexical overlay has a package-local warm-path scenario.
+- Protocol scenario performance gates already name query/search/deps/fd/fzf/
+  owner/pipe/rg/source-index/provider-facts policy ids.
+- RFC 10.05 already states that search flow is evidence-state driven and that
+  =prime= and =pipe= are not mandatory preludes.
+- RFC 10.21 already orders DB/search work as cold functional gates before hot
+  gates.
+
+Observed gaps:
+
+- The Search Frame matrix is not yet the public contract that renderers and
+  hook recovery messages share.
+- Some ASP source-index packets still return path-only discovery without enough
+  owner-items/frontier evidence for an agent to continue without guessing.
+- Document =search pipe= has package-level lexical overlay coverage, but still
+  needs protocol-level Search Frame closure across Org and Markdown packets.
+- The main-session deny path can still fail to route through a valid
+  =asp-explore= child when root/parent metadata mismatches.
+- Root-language code query for non-Rust languages still has empty-output
+  failures in facade tests.
+- Some search pipe snapshot failures show output drift rather than a reviewed
+  Search Frame contract update.
+- Lexical workspace rejection has exceeded its latency gate.
+
+* EvidenceGraph flow gate
+
+Search Frame is the agent-facing entry point, but it is not the whole search
+architecture. For the =codebase-memory-mcp= comparison, every Search Frame path
+must be able to promote compact search evidence into the EvidenceGraph flow:
+
+#+begin_src text
+intent
+-> lexical / identifier / semantic seeds
+-> native selector expansion
+-> ownership, dependency, test, and artifact topology
+-> dynamic overlay reconciliation
+-> ranked EvidenceGraph bundle
+-> Search Frame receipt
+-> WhereFrame
+-> HowFrame
+#+end_src
+
+The source-index owner-items path is the first implementation target because it
+already exposes source-index hit/miss, exact owner queries, Search Frame
+receipts, and scenario latency gates. The flow is not closed until that path
+emits exact selector candidates or a selector-bound =nextCommand= before any
+broad search command.
+
+* Round-budget comparison benchmark
+
+The Search Frame objective is to use =codebase-memory-mcp= as the reference
+benchmark for few-turn repository search. The benchmark counts ASP search/query
+commands and reference playbook rounds, not model messages:
+
+=codebase-memory-mcp= is not a mechanical pass/fail floor. Search Frame records
+the reference baseline and the ASP result:
+
+#+begin_src text
+roundDelta = aspSearchQueryRounds - codebaseMemoryMcpQueryRounds
+#+end_src
+
+Negative roundDelta is the preferred compression win. Zero or positive
+roundDelta is acceptable only when the Search Frame / EvidenceGraph receipts
+prove a stronger result, such as native parser selector identity, dirty-tree
+overlay freshness, recovery evidence, or legal WhereFrame/HowFrame action
+framing.
+
+| Step | Budget | Passing evidence |
+| ambiguous intent -> owner cluster | <= 2 commands | owner candidates with =sourceTrace= and =avoid= |
+| owner cluster -> exact selector | <= 2 commands | parser-owned selector candidates or selector query |
+| exact selector -> edit boundary | <= 1 command | WhereFrame-ready evidence and validation route |
+
+A scenario passes only if it reaches authoritative selector evidence within the
+budget and does not emit raw-source, path-only, display-line-only, or generic
+=asp rg= / =asp fd= fallback as the preferred next action. Commands may still
+exist as diagnostic tools, but they cannot be the Search Frame success path.
+
+* Closure criteria
+
+Search Frame work is complete when:
+
+- every evidence state in the router table has a scenario;
+- every scenario has a benchmark or explicit cold functional gate;
+- compact output consistently emits =nextCommand=, =nextClasses=,
+  =sourceTrace=, =avoid=, and a receipt for stop/failure paths;
+- hook deny recovery reaches an ASP search/query child or a structured
+  registry-blocked receipt without raw fallback;
+- the protocol facade search/query test set is green or each remaining failure
+  is explicitly moved out of Search Frame scope.

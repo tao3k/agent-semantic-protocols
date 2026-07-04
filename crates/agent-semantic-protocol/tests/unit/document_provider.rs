@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -10,8 +11,7 @@ fn markdown_query_no_hit_returns_recovery_actions() {
     )
     .expect("write markdown fixture");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .args([
             "md",
             "query",
@@ -78,8 +78,7 @@ fn markdown_query_skips_hidden_directories_by_default() {
     )
     .expect("write hidden markdown fixture");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .args([
             "md",
             "query",
@@ -129,8 +128,7 @@ fn markdown_query_can_include_configured_hidden_directories() {
     )
     .expect("write hidden markdown fixture");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .args([
             "md",
             "query",
@@ -167,8 +165,7 @@ fn markdown_provider_can_be_disabled_from_project_config() {
     std::fs::write(root.join("README.md"), "# Project\n\nVisible prose.\n")
         .expect("write markdown fixture");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
+    let output = asp_command(&root)
         .args([
             "md",
             "search",
@@ -199,4 +196,16 @@ fn temp_project_root(name: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-protocol-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
     root
+}
+
+fn asp_command(root: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command
+        .current_dir(root)
+        .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_PARENT_THREAD_ID")
+        .env_remove("CLAUDE_CODE_SESSION_ID")
+        .env_remove("AGENT_SESSION_ID")
+        .env_remove("SESSION_ID");
+    command
 }

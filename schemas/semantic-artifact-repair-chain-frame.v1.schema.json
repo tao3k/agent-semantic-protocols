@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-artifact-repair-chain-frame.v1.schema.json",
+  "title": "ASP Merkle repair-chain frame v1",
+  "description": "Typed Merkle frame linking how-from evidence, how-fix plans, change sets, graph diffs, and proof receipts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "frameKind",
+    "root",
+    "contentHash",
+    "parents"
+  ],
+  "properties": {
+    "frameKind": {
+      "enum": [
+        "howFromFrame",
+        "howFixFrame",
+        "changeSet",
+        "proofReceipt",
+        "graphDiff"
+      ]
+    },
+    "root": {
+      "$ref": "#/$defs/artifactRootRef"
+    },
+    "contentHash": {
+      "$ref": "#/$defs/artifactHash"
+    },
+    "parents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/repairChainParentRef"
+      }
+    }
+  },
+  "$defs": {
+    "artifactHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "blake3"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "artifactRootRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoId",
+        "workspaceId",
+        "scopeId",
+        "generation",
+        "rootKind",
+        "rootHash",
+        "nodeHash"
+      ],
+      "properties": {
+        "repoId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootKind": {
+          "enum": [
+            "artifactExport",
+            "changeSet",
+            "compactGraph",
+            "dynamicOverlay",
+            "eventLogCheckpoint",
+            "evidenceGraph",
+            "graphDiff",
+            "howFixFrame",
+            "howFromFrame",
+            "proofReceipt",
+            "providerOutput",
+            "searchReceipt",
+            "sourceIndexBundle",
+            "sourceSnapshot"
+          ]
+        },
+        "rootHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "nodeHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "producerHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "schemaHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "contentHash": {
+          "$ref": "#/$defs/artifactHash"
+        }
+      }
+    },
+    "repairChainParentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "ordinal",
+        "root"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "root": {
+          "$ref": "#/$defs/artifactRootRef"
+        }
+      }
+    }
+  }
+}

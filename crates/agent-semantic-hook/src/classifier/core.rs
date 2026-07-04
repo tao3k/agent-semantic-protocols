@@ -207,6 +207,32 @@ fn classify_invalid_asp_facade(
             Value::String(language_id.to_string()),
         );
     }
+    fields.insert(
+        "requiredAction".to_string(),
+        Value::String("send-to-asp-explore".to_string()),
+    );
+    fields.insert(
+        "nextAction".to_string(),
+        Value::String(
+            "translate-to-supported-asp-facade-and-run-in-registered-asp-explore-child".to_string(),
+        ),
+    );
+    fields.insert(
+        "targetAgentName".to_string(),
+        Value::String("asp-explore".to_string()),
+    );
+    fields.insert(
+        "targetAgentRole".to_string(),
+        Value::String("asp-explore".to_string()),
+    );
+    fields.insert(
+        "forbiddenUntilResolved".to_string(),
+        Value::String("raw-source-fallback".to_string()),
+    );
+    fields.insert(
+        "completionReceipt".to_string(),
+        Value::String("asp-explore-child-command".to_string()),
+    );
     Some(HookDecision {
         schema_id: HOOK_DECISION_SCHEMA_ID,
         schema_version: HOOK_DECISION_SCHEMA_VERSION,

@@ -1,4 +1,4 @@
-//! Rust SQLite artifact-event rows for provider write-back.
+//! Turso artifact-event rows for provider write-back.
 
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};

@@ -8,35 +8,47 @@
 #+RELATED: 10.21-asp-db-engine-state-and-search-architecture.org
 
 * One-sentence summary
-ASP treats platform session identifiers as identity facts, but treats ASP-owned
-heartbeat, TTL, expiration, and GC records as the lifecycle truth for root and
-child agent sessions.
+ASP treats platform session identifiers as identity facts, but makes the
+=asp= binary gate the authority for search/query routing, resident child
+validation, heartbeat, TTL, expiration, and GC records.
 
 * Problem
 ASP now routes expensive search and query work through a resident
-=asp-explore= child session. That requires durable state:
+=asp-explore= child session. Hook messages can help the main agent recover
+early, but they are not a sufficient enforcement boundary: a hook can be
+missing, stale, or bypassed by another runtime. The =asp= binary must therefore
+check the session before any search/query class command runs or writes
+artifacts.
+
+That requires durable state:
 
 - the root agent session id, usually from =CODEX_THREAD_ID= in Codex
 - the child session id returned by the subagent runtime
 - the child role, name, and parent/root relationship
+- whether the child was registered and validated against the expected
+  =asp-explorer.toml= profile
 - whether the child is still usable for search routing
 - when stale child rows should stop being routed to
 - when historical rows can be archived or removed
 
 Codex and other agent runtimes can provide deterministic session ids, but they
-do not provide a portable, stable active-session truth source through their
-public command line interfaces. ASP therefore cannot make routing decisions by
-asking the platform whether a session id is currently alive.
+do not provide one portable, stable active-session truth source. ASP therefore
+separates three concerns: environment ids identify the current runtime session,
+the registry owns root/child relationships, and optional platform adapters
+validate child profile/status when the host exposes a stable JSON status
+contract.
 
 * Source Model
 Session identity and session lifecycle are separate contracts.
 
 | Contract | Owner | Examples | Stability |
 |----------+-------+----------+-----------|
-| Identity | agent runtime | =CODEX_THREAD_ID=, =CLAUDE_CODE_SESSION_ID=, =ASP_ROOT_SESSION_ID= | process/session scoped |
+| Identity | agent runtime | =CODEX_THREAD_ID=, =CLAUDE_CODE_SESSION_ID=, =AGENT_SESSION_ID=, =SESSION_ID= | process/session scoped |
 | Registry | ASP DB | root id, child id, parent id, name, role, status | durable |
+| Binary gate | =asp= runtime/dispatch | restricted command class, current role, child validation | authoritative before query/search |
 | Liveness | ASP DB | heartbeat, last_seen, expires_at, last_tool_event | ASP-owned |
-| Reconcile | optional platform adapter | Codex app thread status, future Claude status | best-effort |
+| Profile validation | platform adapter + expected config | Codex agent status JSON, =asp-explorer.toml= fingerprint | required before routing child search/query |
+| Reconcile | optional platform adapter | Codex CLI session status, future Claude status | best-effort |
 
 ASP must never require a platform active-list API for normal routing.
 
@@ -47,9 +59,10 @@ The current Codex CLI exposes saved-session operations such as =resume=,
 sessions, but it is not an active-session list and does not prove that a thread
 is currently executing.
 
-=codex app-server= and =codex remote-control= expose daemon management and
-transport tooling, but they do not provide a stable CLI contract for listing
-all active thread ids.
+A Codex adapter should use a stable Codex CLI status JSON command when one is
+available. If no such public CLI command is available, the adapter reports
+=unknown= and leaves binary gate routing to the registry plus artifact
+evidence.
 
 ** Codex Desktop host
 The Codex desktop host can expose thread summaries with statuses such as
@@ -69,20 +82,381 @@ ASP resolves the current session id from the current process environment.
 
 Resolution rule:
 
-1. Collect supported runtime session environment variables.
+1. Collect supported runtime session environment variables, currently
+   =CODEX_THREAD_ID=, Claude Code session variables, =AGENT_SESSION_ID=, and
+   =SESSION_ID=.
 2. If exactly one supported id exists, use it as the current =SESSION_ID=.
-3. If =ASP_ROOT_SESSION_ID= exists and differs from the current id, use it as
-   the root recall id and treat the current id as a child candidate.
+3. If multiple supported variables exist with the same id, use that id.
 4. If multiple supported runtime ids exist and disagree, fail closed instead of
    guessing priority.
 5. If no supported runtime id exists, ASP is outside an agent session and must
    not infer one from CWD, transcript path, or saved-session files.
 
 This deliberately avoids priority ordering between Codex and Claude. A single
-agent process should have one runtime session identity. If multiple identities
-are present, the environment is ambiguous.
+agent process should have one runtime session identity. Root/child identity is
+not resolved from an ASP-owned environment variable. If the current session is a
+registered child, ASP discovers its root by registry lookup; otherwise the
+current runtime id is the root candidate.
+
+ASP must not introduce an =ASP_ROOT_SESSION_ID= public contract. That would
+make ASP responsible for proving which platform runtime is active, while the
+real authority is the host runtime environment plus the registry relationship.
+
+** Codex Thread Signal And Child Discovery
+
+A non-empty =CODEX_THREAD_ID= is a positive Codex runtime signal. It identifies
+the current host thread and enables Codex-specific reconciliation, but it is not
+by itself lifecycle truth. The registry remains the routing authority.
+
+When Codex thread APIs are available, ASP MAY use them as an adapter for child
+discovery. The parent should enumerate threads with =list_threads=, select
+threads whose =source_thread_id= or delegation source matches the current root
+thread, and then use =read_thread= to inspect recent turn status, errors, and
+update timestamps. Thread title, tags, delegation payload, or configured agent
+name MAY be used as secondary evidence to identify a resident role such as
+=asp-explore=.
+
+Codex child discovery is additive evidence. A discovered child thread can
+confirm that a registry row is still associated with a host thread, expose the
+host-reported model, and clarify whether a child is active, idle, completed, or
+silent. Missing, stale, or partial Codex thread results MUST NOT cause raw
+source fallback and MUST NOT override a valid registry row without explicit
+non-routable evidence.
+
+The Codex adapter SHOULD persist the discovered host facts in the session
+activity snapshot keyed by =sessionId=. It MUST NOT encode dynamic activity in
+the session id string itself. Stable identity belongs in the session key;
+changing activity, validation, model, sandbox, and liveness observations belong
+in the associated registry/activity record.
+
+** SessionStart Topology Validation
+
+Session start is the earliest reliable point to prevent nested resident-worker
+creation. When a new Codex-backed session starts and =CODEX_THREAD_ID= is
+present, the ASP hook SHOULD run a bounded topology validation before allowing
+restricted ASP search/query work to proceed.
+
+The validation input is the current root thread id, the starting child thread
+id, the configured resident role, and any host facts available from Codex thread
+APIs. If the host exposes =source_thread_id=, the hook SHOULD enumerate sibling
+threads under the same parent and count children with the same resident role. If
+the host API only exposes known-thread reads, the hook MUST fall back to
+registry/delegation evidence and persist the parent relationship when the child
+is registered.
+
+For =asp-explore=, the validation result MUST answer whether exactly one
+routable resident child exists for the parent root session. A child session MUST
+NOT create another =asp-explore= child for itself. If validation finds that the
+current session is already a resident child, restricted ASP commands MUST route
+within that child and MUST NOT request another nested resident worker.
+
+The hook MAY require a topology receipt before continuing. The receipt SHOULD
+include the parent thread id, child thread id, discovered sibling count, matched
+resident role, validation status, and next action. Failure to obtain host thread
+facts is not raw-source fallback permission; it is a bounded reconciliation
+state that must route through registry status, resume, or deny.
+
+SessionStart MUST also check registration before allowing a child session to
+run restricted ASP work. A newly opened subagent has a child session id, but it
+may not have the parent thread id in its local environment. The hook therefore
+uses the child session id to query the ASP session registry and recover the
+registered project/root context.
+
+The registration gate is:
+
+1. Look up the child session id in the registry.
+2. Read the registered =projectId= and, when present, the =rootSessionId=,
+   =parentThreadId=, role, model, and sandbox validation facts.
+3. If no registry row or project context exists, deny SessionStart with a
+   registration instruction for the child:
+   =asp agent session register --name <resident-name> --child-session-id <child-session-id> --role <role>=.
+4. After registration succeeds, write or refresh =activitySnapshotShort= and
+   continue the lifecycle validation loop.
+
+This gate makes registration the handoff between Codex child creation and ASP
+lifecycle ownership. =projectId= is used here to locate the project-scoped
+registry record and configuration. It is still not the resident ownership key;
+the routable resident key remains the root/parent/child/role relationship.
+
+The topology MUST NOT use project id as its primary key. A subagent may be
+opened in a host thread that is not represented under the same project folder
+view as the parent, and users may have many projects, parent threads, and
+subagents open at the same time. =projectId= is useful for repo/workspace
+scoping, but resident-child ownership is keyed by =rootSessionId=,
+=parentThreadId=, =childThreadId=, and =role=.
+
+#+begin_src mermaid
+flowchart TD
+    User["User opens many Codex threads"] --> ParentA["Parent thread A\nCODEX_THREAD_ID=A\nrootSessionId=A"]
+    User --> ParentB["Parent thread B\nCODEX_THREAD_ID=B\nrootSessionId=B"]
+
+    ParentA -->|SessionStart spawn| ChildA1["Child thread A1\nrole=asp-explore"]
+    ParentA -->|SessionStart spawn| ChildA2["Probe/other child A2\nrole=default"]
+    ParentB -->|SessionStart spawn| ChildB1["Child thread B1\nrole=asp-explore"]
+
+    ChildA1 -. "may not appear under same\nproject folder view" .-> HostInventory["Codex host thread inventory\nDesktop/internal source of truth"]
+    ChildA2 -. "may not appear in list_threads" .-> HostInventory
+    ChildB1 -. "may not appear in list_threads" .-> HostInventory
+
+    HostInventory -->|"if exposed: source_thread_id"| Discovery["Topology discovery\nparentThreadId -> childThreadIds"]
+    ParentA -->|"fallback when source_thread_id is absent"| SnapshotA["activitySnapshotShort\nroot=A\nparent=A\nchild=A1\nrole=asp-explore\nstate=active|idle|closed"]
+    ChildA1 -->|"SessionStart writes receipt"| SnapshotA
+    ChildA2 -->|"SessionStart writes receipt"| SnapshotA2["activitySnapshotShort\nroot=A\nparent=A\nchild=A2\nrole=default"]
+    ChildB1 -->|"SessionStart writes receipt"| SnapshotB["activitySnapshotShort\nroot=B\nparent=B\nchild=B1\nrole=asp-explore"]
+
+    Discovery --> Registry["ASP session registry\nresident ownership index"]
+    SnapshotA --> Registry
+    SnapshotA2 --> Registry
+    SnapshotB --> Registry
+
+    Registry --> Guard["Resident guard\nunique(rootSessionId, role, name)\nfor routable asp-explore"]
+    Guard --> DecisionA["Parent A may route to A1\nmust not spawn nested asp-explore"]
+    Guard --> DecisionB["Parent B may route to B1\nno conflict with Parent A"]
+#+end_src
+
+In this model, two parents may each have an =asp-explore= child without
+conflict, because the uniqueness scope includes =rootSessionId=. A child thread
+cannot infer its parent from project folder membership. It must either receive
+the parent relation from the host (=source_thread_id= / delegation metadata) or
+write it during SessionStart into =activitySnapshotShort=. That snapshot is the
+fallback source of truth when =list_threads= only exposes user-visible thread
+summaries.
+
+** Codex Source Owners For Lifecycle Control
+
+Current Codex Desktop evidence shows that the model-facing =list_threads=
+surface is not enough to control subagent lifecycle. It behaves as a readable
+thread list or summary surface and does not expose the full resident subagent
+inventory that the Desktop UI can display.
+
+The source owner for the readable list projection is:
+
+- =.data/codex/codex-rs/thread-store/src/local/list_threads.rs=
+
+ASP MUST NOT treat that list projection as the authoritative lifecycle control
+API. It can be used to browse known user-visible threads, but it does not by
+itself prove how many resident subagents exist under a root thread and it does
+not close, destroy, reset, or reconcile child workers.
+
+The lifecycle-control research boundary is:
+
+- =.data/codex/codex-rs/app-server/src/request_processors/thread_lifecycle.rs=
+- =.data/codex/codex-rs/app-server/src/request_processors.rs=
+- =.data/codex/codex-rs/app-server-protocol/src/protocol/v2/thread.rs=
+- =.data/codex/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs=
+
+The rollout and event-observation boundary is:
+
+- =.data/codex/codex-rs/rollout-trace/src/thread.rs=
+- =.data/codex/codex-rs/rollout-trace/src/reducer/thread.rs=
+- =.data/codex/codex-rs/analytics/src/events.rs=
+- =.data/codex/codex-rs/analytics/src/reducer.rs=
+
+The identity boundary includes:
+
+- =.data/codex/codex-rs/agent-identity/src/lib.rs=
+- =.data/codex/codex-rs/app-server-protocol/schema/typescript/SubAgentSource.ts=
+
+ASP integration work SHOULD start from =thread_lifecycle.rs= and
+=thread_data.rs=. =list_threads.rs= is only a diagnostic input. A complete
+resident-child lifecycle loop needs the lifecycle processor, thread data model,
+rollout trace, and identity facts to feed =activitySnapshotShort=.
+
+* Binary Gate Model
+
+** Resident Agent Policy Configuration And Guardrails
+
+The resident =asp-explore= child is a policy-configured worker, not an
+untyped background thread. Its model, agent role, root thread, parent thread,
+and sandbox expectations MUST be validated against the configured agent
+profile before the child is considered routable.
+
+The model is configurable by policy. Runtime validation MUST compare the
+expected model and role from the ASP agent profile with the host-reported child
+thread facts. A mismatch is a validation failure unless the profile explicitly
+allows that migration. The validation receipt SHOULD record both expected and
+actual values so an operator can distinguish a stale child from an intentional
+model update.
+
+Sandbox posture is part of the same guardrail. A child that is expected to be
+read-only but is reported as write-capable MUST NOT be silently accepted. The
+registry MAY keep the child as a warning state for diagnosis, but routing
+decisions MUST treat the warning as policy evidence and MAY require reconcile,
+resume with corrected configuration, or deny before dispatching search/query
+work.
+
+Duplicate worker policy is scoped by =(rootSessionId, role, name)=. For a given
+root session, creating a second active =asp-explore= worker is forbidden while a
+routable child exists. Timeout by itself is not replacement evidence. The parent
+MUST first inspect registry status, child thread activity, and rollout activity,
+then resume or reconcile the existing child before considering replacement.
+The =asp= binary gate is the authoritative enforcement point. Hook decisions are
+helpful recovery and UX hints, but every search/query class command must pass
+the binary gate before provider execution or artifact writeback.
+
+#+begin_src mermaid
+flowchart TD
+  A["asp command starts"] --> B{"Is search/query class?"}
+  B -- "no" --> C["Allow normal ASP command"]
+  B -- "yes" --> D{"Runtime SESSION_ID exists?"}
+  D -- "no" --> E["Outside agent session: allow CLI use"]
+  D -- "yes" --> F["Resolve current session from env"]
+  F --> G["Lookup global agent session registry by root SESSION_ID"]
+  G --> H{"Current session role = asp-explore?"}
+  H -- "yes" --> I{"Codex rollout matches asp-explorer.toml?"}
+  I -- "yes" --> J["Allow search/query and write artifacts"]
+  I -- "no" --> K["Deny: wrong child config"]
+  H -- "no" --> L{"Root has validated asp-explore child?"}
+  L -- "yes" --> M["Deny main command: resume/send to validated child"]
+  L -- "no" --> N["Deny: create asp-explore child from asp-explorer.toml and register"]
+#+end_src
+
+Restricted command classes include:
+
+- =asp rg=, =asp fd=, =asp pipe=, =asp query=, and =asp search=
+- =asp org query= and =asp org search=
+- =asp <language> query= and =asp <language> search=
+
+Allowed command classes in the main/root session include session management,
+hook diagnostics, install/configuration commands, and non-search Org lifecycle
+commands such as capture, archive, recall, and checkpoint commands.
+
+** Parent Wait And Rollout Activity Flow
+
+#+begin_src mermaid
+flowchart TD
+    A["Main agent attempts denied source/search fallback"] --> B["Hook deny receipt"]
+    B --> C["requiredAction=send-to-asp-explore<br/>nextAction=run-asp-command-in-registered-asp-explore-child"]
+    C --> D["Reuse or register asp-explore child"]
+    D --> E["Child runs parser-owned ASP query/search"]
+    E --> F{"Parent wait deadline reached?"}
+    F -- "No" --> G["Read child result when available"]
+    F -- "Yes" --> H["Run: asp agent session status --name asp-explore --json"]
+    H --> I{"rolloutActivity.status"}
+    I -- "active-running" --> J["Child has heartbeat<br/>recentHeartbeats <= 3<br/>wait patiently"]
+    J --> F
+    I -- "completed" --> K["Turn closed<br/>read child result"]
+    I -- "silent" --> L["No recent heartbeat<br/>send bounded status or interrupt request before retry"]
+    I -- "orphan-risk" --> M["Open running session is stale<br/>check process/orphan state before retry"]
+    L --> H
+    M --> N["Do not start replacement until orphan risk is resolved"]
+
+    E --> O["Provider command execution"]
+    O --> P{"Provider runtime deadline?"}
+    P -- "No deadline" --> Q["Run with default ProviderProcessLimits"]
+    P -- "Deadline set" --> R["Use ASP internal ProviderProcessLimits.timeout"]
+    R --> S["Transport terminates provider process group"]
+    S --> T["Timeout receipt without orphan provider child"]
+#+end_src
+
+** Child Resume And Replacement Flow
+
+#+begin_src mermaid
+flowchart TD
+    A["Main session needs asp-explore"] --> B["Run: asp agent session reuse/status"]
+    B --> C{"Routable registry row?"}
+    C -- "No row or invalid" --> D["Create configured asp_explorer child"]
+    D --> E["Register returned child id"]
+    E --> F["Verify status routable=true"]
+
+    C -- "Yes" --> G["Send task to existing child"]
+    F --> G
+    G --> H{"send_input accepted?"}
+    H -- "Yes" --> I["Enter rolloutActivity wait flow"]
+    H -- "No" --> J["resume_agent existing child"]
+
+    J --> K{"resume accepted?"}
+    K -- "Yes" --> L["Retry send_input with bounded attempt"]
+    L --> H
+    K -- "No" --> M["Run: asp agent session status --name asp-explore --json"]
+
+    M --> N{"Failure class"}
+    N -- "active-running heartbeat" --> O["Wait patiently; do not replace"]
+    O --> I
+    N -- "completed previous turn" --> P["Try send or resume again"]
+    P --> H
+    N -- "silent no progress" --> Q["Request bounded status or interrupt receipt"]
+    Q --> M
+    N -- "orphan-risk" --> R["Resolve process or orphan risk first"]
+    R --> M
+    N -- "host not found or validation failed" --> S["Mark old child non-routable"]
+    S --> D
+
+    H -. "wait_agent timeout only" .-> T["Not replacement evidence"]
+    T --> M
+#+end_src
+
+** Lean Recovery Obligations
+
+The agent-facing recovery flow is modeled as a small state machine in
+~tests/fixtures/agent_session_recovery/agent_session_recovery.lean~.
+
+The proof obligations are intentionally focused on failure handling and
+multi-step trace safety:
+
+- parent wait deadline does not imply child replacement
+- active-running heartbeat does not imply child replacement
+- send failure resumes the existing child before replacement
+- resume failure queries session status before replacement
+- completed previous turn is read/reused, not replaced by itself
+- model abnormal close is distinct from completed turn and may replace
+- provider timeout records an internal timeout receipt and process-group cleanup without replacing the agent child
+- replacement only follows host-not-found, validation failure, model abnormal close, or bounded no-progress exhaustion
+- any trace with no replacement evidence cannot contain a replace action
+- bounded retry preserves non-replacement while budget remains
+- an underspecified hook deny receipt permits raw fallback in the model; the sound receipt must include requiredAction, nextAction, completionReceipt, and a raw-fallback prohibition
+- the standalone recovery policy never emits raw fallback; every modeled failure maps to an ASP protocol action
+
+Validation command:
+
+#+begin_src sh
+lean tests/fixtures/agent_session_recovery/agent_session_recovery.lean
+#+end_src
+
+Unit gate:
+
+#+begin_src sh
+uv run --project packages/python --package agent-semantic-protocols-tools \
+  pytest -o addopts='' tests/unit/semantic_proof_artifact_schema/test_session_recovery_lean_proof.py
+#+end_src
 
 * Registry Model
+
+** Thread Status And Liveness Taxonomy
+
+ASP registry state is the durable owner of routing, while host thread and
+rollout facts are liveness observations. The status vocabulary below is the
+shared policy surface for resident children:
+
+- =active=: a current turn is running or recent heartbeat/activity exists.
+- =idle=: the child thread is loaded and routable, but no current turn is
+  running.
+- =completed=: the latest delegated turn completed and its result can be read.
+- =timeout=: a wait deadline expired, but the child has not been proven dead.
+- =stale=: no recent heartbeat, artifact update, or host event exists within
+  the configured freshness window.
+- =dead=: the child is non-routable because validation failed, the host reports
+  the thread/process is gone, or the registry row can no longer be reconciled
+  with host evidence.
+
+=timeout= and =stale= are routing constraints, not replacement commands. A
+parent wait deadline, such as a 180 second tool wait, is not enough to classify
+a child as stuck. The parent MUST query the child by session/thread id and read
+the rollout last event, last heartbeat, current turn id, and terminal event
+before assigning =stale=, =dead=, or replacement status. Long-running searches
+that continue to emit rollout events are =active= or =running= even when the
+parent wait call times out.
+
+=timeout= and =stale= MUST trigger bounded status checks, resume attempts, or
+reconciliation before a new worker is spawned. =dead= MAY permit replacement,
+but only after the parent records the validation or host evidence that made the
+old child non-routable.
+
+Duplicate-worker detection MUST aggregate all known children under the same
+root session and role. Counting only the current child row is insufficient; the
+parent must consider registry rows, Codex child threads when available, and
+rollout activity before deciding whether another worker would violate the
+single-resident-child contract.
 ASP stores the durable relationship in an agent session registry DB.
 
 Canonical row intent:
@@ -104,25 +478,70 @@ Canonical row intent:
 | last_tool_event | Last hook event that touched this session. |
 | last_command | Compact command surface, not full source output. |
 | last_evidence_ref | Compact evidence/checkpoint reference. |
+| expected_profile_path | Expected resident child profile, for example =~/.codex/agents/asp-explorer.toml=. |
+| expected_profile_fingerprint | Stable digest of the profile ASP expected at registration time. |
+| platform_profile_fingerprint | Stable digest of the profile observed from platform status when available. |
+| validation_status | =passed=, =failed=, =unknown=, or =not-required=. |
+| validation_reason | Compact mismatch or adapter reason. |
+| validated_at | Last successful or failed validation timestamp. |
 | metadata_json | Provider-specific metadata that is not part of routing. |
 
-Identity fields are stable. Liveness fields are monotonic observations. Metadata
-must not be required to decide routing.
+Identity fields are stable. Liveness fields are monotonic observations.
+Validation fields are routing inputs for resident search/query children.
+Metadata must not be required to decide routing.
 
-* Resident Child Reuse Contract
-ASP must prefer an existing registered child session over creating a new one.
+** activitySnapshotShort Lifecycle Loop
 
-Before any main/root agent starts a new =asp-explore= worker, it must query the
-registry for a routable child under the current root session:
+The registry row is durable identity. =activitySnapshotShort= is the bounded
+activity fact attached to that identity. It is the right place to store
+short-lived host facts such as parent thread id, child thread id, role, model,
+current turn id, lifecycle state, last event time, last heartbeat time,
+terminal event, last artifact update, close request, destroy request, and
+reconciliation status.
+
+Every Codex-backed child session SHOULD write an =activitySnapshotShort= record
+at session start before it is allowed to run restricted ASP search/query work.
+The record MUST include the root session id, parent thread id when known, child
+thread id, resident role, expected model, actual model when available, sandbox
+posture, and initial lifecycle state. This write is the topology receipt used by
+SessionStart validation.
+
+The lifecycle loop is:
+
+1. =start=: create or discover the child thread, write
+   =activitySnapshotShort=, validate topology, then mark the child routable only
+   after the receipt is present.
+2. =resume=: reuse a known child when the registry row and host facts still
+   reconcile; refresh =lastSeenAt=, current turn id, last event, last
+   heartbeat, terminal event, and activity state.
+3. =close=: mark the child =closing= or =closed= when work is complete or the
+   user closes the thread. Closing prevents new work but keeps enough evidence
+   for recovery and audit.
+4. =destroy=: mark =destroyRequested= and then =destroyed= when the host thread,
+   process, or worker has been torn down. Destroyed children are not routable.
+5. =reset=: clear or archive stale =activitySnapshotShort= facts for a root
+   session when a workday, thread, or task boundary ends. Reset MUST preserve
+   durable audit evidence while removing active routing claims.
+
+Close and destroy are different operations. Closing a thread is a lifecycle
+state transition; destroying it is host cleanup. A closed child MAY still be
+read for result recovery. A destroyed child MUST NOT be resumed unless the host
+explicitly reports that the same thread has been restored.
+
+The daily or task-end cleanup loop SHOULD enumerate all known children for the
+root session, close routable but idle children when no task needs them, destroy
+or archive dead children, and reset resident-name claims that would otherwise
+block future work. This cleanup MUST be idempotent so repeated SessionStart or
+thread-close hooks do not create duplicate workers or lose recovery evidence.
+
+* Resident Child Resume Contract
+ASP must prefer an existing validated child session over creating a new one.
+
+Before any main/root agent starts a new =asp-explore= worker, it must ask ASP
+for the routable child under the current root session:
 
 #+begin_src sh
-asp agent session show --name asp-explore
-#+end_src
-
-or:
-
-#+begin_src sh
-asp agent session list --active
+asp agent session resume --name asp-explore --json
 #+end_src
 
 If a routable =asp-explore= child exists, the main/root agent must resume or
@@ -132,29 +551,49 @@ child for the same root.
 Creating a new child is allowed only when:
 
 - no =asp-explore= row exists under the current root
-- the existing row is =stale=, =expired=, =archived=, or otherwise not routable
+- the existing row is =stale=, =expired=, =archived=, =invalid=, or otherwise
+  not routable
 - the platform-specific resume/send operation reports that the child session no
-  longer exists, and ASP records the old row as stale or expired before
-  registering the replacement
+  longer exists, and ASP records the old row as stale or expired before a
+  replacement can become active
 
 This rule is mandatory for token control and memory consistency. A root session
 should have at most one routable child named =asp-explore= at a time.
 
-* Duplicate Child Policy
-The registry should enforce a single routable child per =(root_session_id,
-name)= pair.
+* Registration Validation Policy
+The public registration surface only accepts the new child id:
 
-When a registration request arrives for =--name asp-explore= and another
-routable child with that name already exists under the same root, ASP should not
-silently create a second active child. It should either:
+#+begin_src sh
+asp agent session register \
+  --name asp-explore \
+  --child-session-id <child-session-id> \
+  --role asp-explore
+#+end_src
 
-- return the existing routable child session id and instruct the caller to
-  resume/reuse it
-- or require an explicit replacement mode that marks the old row =expired=
-  before activating the new row
+Registration must validate the child before it writes an active routable row.
+The validation is internal to ASP and must not require an agent-visible
+=--old-child-session-id= or separate =validate= step.
 
-Replacement must be explicit. Accidental duplicate registration is a lifecycle
-error, not a normal scale-out behavior.
+Validation checks:
+
+- resolve the current root session id from runtime env and registry lookup
+- load the expected profile, for example =~/.codex/agents/asp-explorer.toml=
+- query the platform status/config adapter for the new child session id when
+  available
+- compare expected profile fields and fingerprints against the observed child
+  status/config
+- reject registration when the child was created with the wrong model, role,
+  tools, permissions, or config fingerprint
+
+When validation fails, ASP must not create an active row. It returns compact
+instructions to close or discard the wrong child, create a new =asp-explore=
+using the expected profile, and run the same =register= command again with the
+new child id.
+
+When validation succeeds, ASP may internally mark older routable children with
+the same =(root_session_id, name)= as =replaced= or =invalid= before activating
+the new row. The old child id is registry history, not public agent-facing CLI
+input.
 
 * Lifecycle States
 ASP uses soft lifecycle states.
@@ -165,11 +604,14 @@ ASP uses soft lifecycle states.
 | idle | Not currently observed but within idle TTL. | yes, with refresh |
 | stale | Past active/idle TTL but not archived. | no |
 | expired | Explicitly expired or past hard TTL. | no |
+| invalid | Registration or later validation failed. | no |
+| replaced | Superseded by a newer validated child under the same root/name. | no |
 | archived | Kept for memory/recovery only. | no |
 | deleted | Physically removed by GC. | no |
 
 Routing must only use =active= or =idle= rows whose =expires_at= is absent or in
-the future.
+the future and whose resident-child validation status is =passed= when the row
+is used for ASP search/query routing.
 
 * TTL Policy
 TTL is an ASP policy, not a platform fact.
@@ -205,6 +647,11 @@ Heartbeat must not store full command output, source dumps, or large search
 packets. It stores compact evidence refs and command summaries only.
 
 * Hook Stage Responsibilities
+Hook stages are recovery and UX layers. They should reduce wasted turns by
+telling the main agent what to do early, but they are not the authoritative
+security or routing boundary. The =asp= binary gate must repeat the session
+check before every search/query class command.
+
 ** session-start
 Resolve the current root =SESSION_ID=. If no active =asp-explore= child exists
 for that root, return a compact instruction for the main agent to create one
@@ -222,25 +669,26 @@ visible =--root-session-id= in the normal same-session path.
 
 If a routable =asp-explore= child already exists, session-start must not ask the
 main agent to create a new one. It should return the existing child session id
-and instruct the main agent to resume or reuse that child.
+and instruct the main agent to resume that child.
 
 ** pre-tool
 If the current session is the root/main session and it attempts ASP search or
-query exploration, ASP checks for an active or idle =asp-explore= child.
+query exploration, the hook may check for an active or idle =asp-explore= child
+and return an early routing instruction.
 
-- If a routable child exists, deny the main command and return the child id.
-- If no child exists, deny and instruct creation/registration.
-- If the child exists but is stale/expired, deny and instruct recreation or
+- If a routable child exists, return the child id and resume instruction.
+- If no child exists, instruct creation/registration.
+- If the child exists but is stale/expired/invalid, instruct recreation or
   heartbeat recovery.
-- If the current session role is =asp-explore= and it is routable, allow ASP
-  search and query commands.
+- If the current session role is =asp-explore= and it is routable, let the
+  command proceed; the binary gate still validates before provider execution.
 
-The deny message for an existing child must be resume-first. It should say:
+The pre-tool message for an existing child must be resume-first. It should say:
 
 #+begin_example
-Reuse registered asp-explore child session <child-session-id>.
+Resume registered asp-explore child session <child-session-id>.
 Resume or send this search/query to that child; do not spawn another asp-explore
-for this root unless reuse fails and the old child is expired.
+for this root unless resume fails and the old child is expired.
 #+end_example
 
 ** post-tool
@@ -281,7 +729,7 @@ Child =asp-explore= session:
 | destructive source mutation | deny |
 
 * CLI Contract
-New or tightened commands:
+Agent-facing commands:
 
 #+begin_src sh
 asp agent session register \
@@ -289,14 +737,18 @@ asp agent session register \
   --child-session-id <child-session-id> \
   --role asp-explore
 
-asp agent session heartbeat [--child-session-id <id>] [--role <role>]
+asp agent session resume --name asp-explore --json
 
+asp agent session status --name asp-explore --json
+#+end_src
+
+Administrative and diagnostic commands may include:
+
+#+begin_src sh
+asp agent session heartbeat [--child-session-id <id>] [--role <role>]
 asp agent session list --active
 asp agent session list --all
 asp agent session show --name asp-explore
-
-asp agent session reuse --name asp-explore
-
 asp agent session expire --ttl <duration>
 asp agent session gc --older-than <duration> [--dry-run]
 asp agent session reconcile --provider codex [--dry-run]
@@ -306,10 +758,10 @@ The normal same-session path should not require users or agents to pass
 =--root-session-id=. That flag remains for cross-session administration and
 debugging.
 
-=asp agent session reuse --name asp-explore= should return a compact routable
-child receipt when one exists. If no child is routable it should return a
-machine-readable miss that session-start and pre-tool can use to emit the
-creation/register instruction.
+=asp agent session resume --name asp-explore --json= should return a compact
+routable child receipt when one exists. If no child is routable it should
+return a machine-readable miss that session-start, pre-tool, and the binary gate
+can use to emit the creation/register instruction.
 
 * Reconcile Contract
 Reconcile is optional and best-effort.
@@ -371,8 +823,10 @@ For a single root session with several plans, recall should rank by:
 | Multiple conflicting runtime ids | Fail closed and ask for explicit session id or environment cleanup. |
 | Root has no child | Deny main search/query and instruct child creation/register. |
 | Child exists but expired | Deny main search/query and instruct recreation/heartbeat recovery. |
-| Child exists and is routable | Deny main search/query and instruct resume/reuse; do not spawn a replacement. |
+| Child exists and is routable | Deny main search/query and instruct resume; do not spawn a replacement. |
 | Duplicate active child registration | Reject or require explicit replacement; do not silently create another routable child. |
+| Child profile mismatch at register | Reject registration; return recreate-with-expected-profile instructions. |
+| Child profile mismatch after register | Mark row invalid and deny routing until a correctly configured child registers. |
 | Child role mismatch | Deny child search/query until role is corrected. |
 | Platform active list missing | Continue using ASP heartbeat. |
 | DB unavailable | Fail closed for main search/query routing; allow diagnostic commands. |
@@ -389,29 +843,36 @@ The session registry stores routing and checkpoint metadata. It must not store:
 Evidence refs should point to durable artifacts with their own access policy.
 
 * Migration Plan
-1. Extend the session registry schema with heartbeat and expiration fields.
+1. Extend the session registry schema with heartbeat, expiration, validation,
+   and profile fingerprint fields.
 2. Add status normalization and TTL refresh helpers.
-3. Add =asp agent session reuse --name asp-explore=.
-4. Add duplicate-child protection for active/idle =(root_session_id, name)=.
-5. Add =asp agent session heartbeat=.
-6. Add =asp agent session list --active= and status refresh before list/show.
-7. Update session-start and pre-tool messages to be resume-first.
-8. Update pre-tool route guard to reject stale/expired children.
-9. Update post-tool to write compact command/evidence receipts.
-10. Add optional reconcile adapters behind provider-specific commands.
-11. Add GC with =--dry-run= first.
+3. Add =asp agent session resume --name asp-explore --json=.
+4. Add register-time profile validation for =asp-explore= child sessions.
+5. Add duplicate-child protection for active/idle =(root_session_id, name)=.
+6. Move restricted search/query enforcement into the =asp= binary gate.
+7. Add =asp agent session heartbeat=.
+8. Add =asp agent session list --active= and status refresh before list/show.
+9. Update session-start and pre-tool messages to be resume-first recovery hints.
+10. Update post-tool to write compact command/evidence receipts.
+11. Add optional reconcile adapters behind provider-specific commands.
+12. Add GC with =--dry-run= first.
 
 * RFC Closure Gates
 - A root session without =asp-explore= denies main ASP search/query and emits
   the register instruction.
 - A root session with active =asp-explore= denies main ASP search/query and
-  emits the child id with resume/reuse instructions.
+  emits the child id with resume instructions.
 - Session-start with an active =asp-explore= child does not ask the main agent
   to spawn a new child.
-- Registering another active =asp-explore= under the same root is rejected or
-  requires explicit replacement.
+- Registering an =asp-explore= child with the wrong platform profile is rejected
+  before the row becomes routable.
+- Registering a valid =asp-explore= under the same root internally replaces or
+  invalidates older routable rows without requiring an agent-visible old child
+  id.
 - A stale/expired child is not routed to.
 - An =asp-explore= child can run ASP search/query while active or idle.
+- The =asp= binary gate rejects restricted search/query commands even when hook
+  pre-tool did not trigger.
 - =asp agent session list --active= never returns expired rows.
 - =asp agent session gc --dry-run= reports affected rows without mutation.
 - Post-tool receipts update heartbeat and compact evidence refs without storing
@@ -423,7 +884,45 @@ Evidence refs should point to durable artifacts with their own access policy.
 - Should =asp-explore= have a shorter active TTL than other worker roles?
 - Should reconcile adapters live in the hook runtime crate or in provider-owned
   session adapters?
-- Should archived rows remain in the same SQLite/Turso database or move to an
+- Should archived rows remain in the same Turso database or move to an
   archive file/table?
 - Should =post-tool= write one receipt per command or one compact rolling
   receipt per session?
+** Codex Rollout Source Of Truth
+*** Activity And Resident Role Facts
+The rollout parser owns both topology and liveness facts. It SHOULD parse =session_meta=, =turn_context=, spawn =function_call_output= records, and structured event records into a root-scoped index keyed by session id. Each indexed session SHOULD expose an activity report with =status=, =lastEventAt=, =lastHeartbeatAt=, recent heartbeat records, terminal-event evidence, running-child evidence, and scanned-line count.
+
+Activity status is evidence, not a wall-clock shortcut. A long-running child is not stale merely because an arbitrary timeout elapsed. ASP MUST compare the last parsed rollout event and terminal/running markers before classifying a session as =active=, =silent=, or =closed=. If no exact rollout file exists for a known session id, that is a Codex lifecycle/logging invariant failure, not permission to fall back to raw source access.
+
+Resident-child identity MUST come from the configured resident child name and resident agent role. Defaults may describe the ASP explorer lane, but topology validation and register instructions MUST NOT treat =asp-explore= as a protocol constant.
+
+
+Codex rollout JSONL under =CODEX_HOME/sessions= is the deterministic source of
+truth for agent lifecycle topology. The local environment can identify the
+current thread through =CODEX_THREAD_ID=, but it does not reliably expose the
+parent thread, resident role, project id, or spawn depth. Those facts MUST be
+recovered from rollout =session_meta=, =turn_context=, and parent
+=function_call_output= spawn records.
+
+Given a known session id, rollout lookup is a strong invariant:
+
+1. Locate the rollout file by exact session id, for example with a file-index
+   query equivalent to =rg --files --glob "**/rollout-*<session-id>.jsonl"
+   "$CODEX_HOME/sessions"=.
+2. If no file is found for that exact session id, treat the state as a Codex
+   lifecycle/logging invariant failure. Do not silently create another resident
+   child, do not fall back to recursive directory scans, and do not infer a date
+   shard by decoding the session id in ASP.
+3. Parse the first matching rollout =session_meta= to recover
+   =rootSessionId=, =parentThreadId=, =threadSource=, =agentRole=,
+   =agentNickname=, and spawn =depth=.
+4. Parse the parent rollout spawn ledger to discover child ids from
+   =function_call_output= records that contain =agent_id=. Root-scoped lifecycle
+   indexing is therefore =root rollout -> child ids -> exact child rollout=,
+   not global scan then filter.
+
+For =asp-explore=, a rollout-derived record with =depth > 1= or
+=parentThreadId= pointing at another =asp-explore= child is a nested resident
+violation. Registry rows and =activitySnapshotShort= MUST be reconciled from
+the rollout-derived topology instead of treating registry miss or stale
+multi-agent state as permission to spawn a replacement.

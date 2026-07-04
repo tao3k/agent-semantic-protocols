@@ -15,7 +15,6 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
 
     let output = asp_command(&root)
         .env("HOME", root.join("home"))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "ast-patch",
@@ -103,7 +102,6 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     .to_string();
     let mut child = asp_command(&root)
         .env("HOME", root.join("home"))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["rust", "ast-patch", "apply", "--packet", "-", "."])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

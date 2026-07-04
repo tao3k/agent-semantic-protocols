@@ -3,32 +3,24 @@
 //! DB Engine facade and control adapters for `agent-semantic-client`.
 
 mod agent_session_registry;
-pub mod db;
 pub mod engine;
 mod evidence_graph;
-pub mod pragmas;
 mod source_index;
 mod structural_index;
 mod syntax_query;
+mod types;
 
 pub use agent_semantic_client_core::ClientDbStatus;
 pub use agent_session_registry::{
-    AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionRecord, AgentSessionRegisterRequest,
-    AgentSessionRegistry, AgentSessionToolEventRequest, agent_session_status_is_routable,
-    agent_session_unix_timestamp,
-};
-pub use db::{
-    AGENT_SEMANTIC_CLIENT_DB_FILE, AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION, ClientDb,
-    ClientDbArtifactEvent, ClientDbGenerationHit, ClientDbGenerationLookup,
-    ClientDbProviderCommandSelection, ClientDbReport, ClientDbSummary, ClientDbSyntaxCaptureReplay,
-    ClientDbSyntaxNodeType, ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryLookup,
-    ClientDbSyntaxQueryReplay,
+    AGENT_SESSION_REGISTRY_DB_NAME, AGENT_SESSION_STATUS_INVALID, AgentSessionLookupRequest,
+    AgentSessionRecord, AgentSessionRegisterRequest, AgentSessionRegistry,
+    AgentSessionToolEventRequest, agent_session_normalized_metadata_json,
+    agent_session_status_is_routable, agent_session_unix_timestamp,
 };
 pub use engine::{
     ClientDbBackend, ClientDbEngine, ClientDbEngineDurability, ClientDbEngineFeatures,
     ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
 };
-#[cfg(feature = "turso-backend")]
 pub use engine::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
     TURSO_BOOTSTRAP_TABLE, TURSO_EDGE_TABLE, TURSO_ENTITY_TABLE, TURSO_OVERLAY_DOCUMENT_TABLE,
@@ -44,7 +36,6 @@ pub use evidence_graph::{
     ClientDbEvidenceGraph, ClientDbEvidenceGraphEdge, ClientDbEvidenceGraphNode,
     source_index_evidence_graph, structural_index_evidence_graph,
 };
-pub use pragmas::{ClientDbJournalMode, ClientDbRuntimePragmas};
 pub use source_index::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
@@ -71,4 +62,12 @@ pub use structural_index::{
     ClientDbStructuralIndexStats, ClientDbStructuralKind, ClientDbStructuralLocator,
     ClientDbStructuralName, ClientDbStructuralOwner, ClientDbStructuralPath,
     ClientDbStructuralQueryKey, ClientDbStructuralSource, ClientDbStructuralSymbol,
+};
+pub use types::{
+    AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION, ClientDbArtifactEdge, ClientDbArtifactEvent,
+    ClientDbArtifactHash, ClientDbArtifactRepairChainFrame, ClientDbArtifactRoot,
+    ClientDbGenerationHit, ClientDbGenerationLookup, ClientDbProofReceipt,
+    ClientDbProviderCommandSelection, ClientDbReport, ClientDbSummary, ClientDbSyntaxCaptureReplay,
+    ClientDbSyntaxNodeType, ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryLookup,
+    ClientDbSyntaxQueryReplay,
 };

@@ -18,9 +18,10 @@ fn search_suggest_is_advisory_and_does_not_spawn_provider() {
             "search",
             "suggest",
             "HookDecision ClientReceipt",
+            "--workspace",
+            ".",
             "--view",
             "commands",
-            ".",
         ])
         .output()
         .expect("run asp rust search suggest");
@@ -39,8 +40,12 @@ fn search_suggest_is_advisory_and_does_not_spawn_provider() {
     assert!(stdout.contains("asp search history audit ."), "{stdout}");
     assert!(
         stdout.contains(
-            "asp rust search pipe 'HookDecision ClientReceipt' --workspace . --view seeds"
+            "asp rust search lexical 'HookDecision ClientReceipt' owner tests --workspace . --view seeds"
         ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("when=\"lexical/dependency evidence is ambiguous\""),
         "{stdout}"
     );
     let removed_option = format!("--{}", "pipe");
@@ -76,9 +81,10 @@ fn search_suggest_from_history_stays_advisory() {
             "suggest",
             "HookDecision ClientReceipt",
             "--from-history",
+            "--workspace",
+            ".",
             "--view",
             "commands",
-            ".",
         ])
         .output()
         .expect("run asp rust search suggest from history");

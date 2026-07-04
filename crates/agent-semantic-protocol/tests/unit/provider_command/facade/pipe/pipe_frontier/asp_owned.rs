@@ -41,7 +41,8 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.starts_with("[search-pipe]"), "{stdout}");
     assert!(
-        stdout.contains("lang=rust view=seeds source=auto ranker=graph-turbo:owner-query"),
+        stdout
+            .contains("lang=rust view=seeds source=search-overlay ranker=graph-turbo:owner-query"),
         "{stdout}"
     );
     assert!(
@@ -66,13 +67,17 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         "{stdout}"
     );
     assert!(stdout.contains("provider:partial"), "{stdout}");
-    assert!(stdout.contains("finder:used"), "{stdout}");
+    assert!(stdout.contains("search-overlay:used"), "{stdout}");
     assert!(
         stdout.contains("handles=inputTerms=HookDecision,ClientReceipt contextTerms=- ownerSeedTerms=HookDecision,ClientReceipt conceptTerms=-"),
         "{stdout}"
     );
     assert!(
         stdout.contains("parserHandles=HookDecision@src/generated/lib.rs:1"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("searchOverlayHandles=HookDecision,ClientReceipt"),
         "{stdout}"
     );
     assert!(
@@ -124,8 +129,9 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     assert_compact_search_action_contract(&stdout);
     assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp rust query --selector src/generated/lib.rs:")
-            && stdout.contains(" --workspace . --code"),
+        stdout.contains(
+            "nextCommand=asp rust search owner src/generated/lib.rs items --query 'HookDecision|ClientReceipt|hookdecision|clientreceipt' --workspace . --view seeds"
+        ),
         "{stdout}"
     );
     assert!(!stdout.contains("commandHandles="), "{stdout}");
@@ -142,7 +148,9 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         "{stdout}"
     );
     assert!(
-        stdout.contains("omit=source,full-candidate-list,raw-finder-output,long-field-signatures"),
+        stdout.contains(
+            "omit=source,full-candidate-list,raw-search-overlay-output,long-field-signatures"
+        ),
         "{stdout}"
     );
     let removed_generated_omit = ["generated", "files"].join("-");
@@ -254,7 +262,7 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
     assert!(stdout.contains("src/main.ss"), "{stdout}");
     assert!(
         stdout.contains(
-            "nextCommand=asp gerbil-scheme query --selector build.ss:1:1 --workspace . --code"
+            "nextCommand=asp gerbil-scheme search owner gerbil.pkg items --query 'local|alias' --workspace . --view seeds"
         ),
         "{stdout}"
     );
@@ -388,7 +396,9 @@ fn search_pipe_splits_api_compounds_before_seed_quality_analysis() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp rust query --selector"),
+        stdout.contains(
+            "nextCommand=asp rust search owner src/buf/buf_mut.rs items --query 'bufmut|trait|unsafe|BufMut' --workspace . --view seeds"
+        ),
         "{stdout}"
     );
     assert!(!stdout.contains("fdQuery="), "{stdout}");
@@ -440,7 +450,7 @@ fn search_pipe_preserves_rust_path_compounds_as_precise_symbol_terms() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp rust query --selector src/runtime/handle.rs:1:1 --workspace . --code"
+            "nextCommand=asp rust search owner src/runtime/handle.rs items --query 'Tokio|guard|owner|runtime' --workspace . --view seeds"
         ),
         "{stdout}"
     );
@@ -601,7 +611,7 @@ fn search_pipe_auto_clauses_suppress_cross_package_selector_drift() {
     assert!(stdout.contains("long-field-signatures:concept"), "{stdout}");
     assert!(!stdout.contains("through:context"), "{stdout}");
     assert!(!stdout.contains("smoke:context"), "{stdout}");
-    assert!(stdout.contains("risk=package-drift"), "{stdout}");
+    assert!(stdout.contains("package-drift"), "{stdout}");
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
     assert!(stdout.contains("nextCommand=asp "), "{stdout}");
     assert!(!stdout.contains("fdQuery="), "{stdout}");

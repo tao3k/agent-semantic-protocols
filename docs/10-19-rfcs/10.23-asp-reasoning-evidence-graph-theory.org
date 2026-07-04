@@ -1,11 +1,11 @@
 * One-sentence summary
-ASP should treat agent reasoning as typed, replayable, graph-transforming evidence: =ReasoningTree= records how a run moved, =EvidenceGraph= stores reusable evidence across runs, and =GraphRoute= navigates that evidence toward exact selectors, commands, tests, edits, and writing actions.
+ASP should treat agent reasoning as typed, replayable, graph-transforming evidence: =ReasoningTree= records how a run moved, =EvidenceGraph= stores reusable evidence across runs, =DynamicTopology= explains the current architecture state and legal reasoning branches, and =GraphRoute= navigates toward exact selectors, commands, tests, edits, and writing actions.
 * Scope
 This RFC is the core theory document for ASP reasoning, evidence, topology, and agent-facing navigation.
 
 It owns:
 - the user and agent mental model for code-as-reasoning;
-- the distinction between =ReasoningTree=, =EvidenceGraph=, and =GraphRoute=;
+- the distinction between =ReasoningTree=, =EvidenceGraph=, =DynamicTopology=, and =GraphRoute=;
 - the principle that reasoning actions should become typed evidence;
 - the principle that executable code identity must be selector/entity/generation/overlay identity, not line ranges;
 - the improvement scheme that connects native parsers, DB Engine state, dynamic overlays, Python graph-route ranking, Julia offline replay, and compact render.
@@ -27,6 +27,145 @@ This theory should be the shared conceptual root for the surrounding RFCs:
   -> 10.24 policy facts and recipes as runtime quality evidence
   -> 10.06 compact graph render and agent-facing evidence projection
 #+end_src
+
+* Authoritative correction: DynamicTopology as the fourth layer
+The earlier three-layer framing is incomplete. The stable theory is a four-layer model:
+
+#+begin_src mermaid
+flowchart LR
+  RT["ReasoningTree<br/>How this run got here"] --> EG["EvidenceGraph<br/>What evidence exists and how it connects"]
+  EG --> DT["DynamicTopology<br/>What the current target is in the architecture"]
+  DT --> GR["GraphRoute<br/>Where the agent should go next"]
+  GR --> NA["NextAction<br/>Exact selector / command / recovery"]
+  NA --> RT
+#+end_src
+
+=ReasoningTree= records how one agent run moved. =EvidenceGraph= stores typed reusable evidence across runs. =DynamicTopology= projects that evidence into the current architecture state. =GraphRoute= is the navigation algorithm that chooses the next jump from the graph plus topology.
+
+This distinction is mandatory:
+
+#+begin_src text
+Topology:
+  dynamic architecture state for the current project/feature/task
+  map + current road conditions + architecture roles + legal/illegal branches
+
+GraphRoute:
+  navigation/ranking/jump algorithm over EvidenceGraph + DynamicTopology
+#+end_src
+
+Topology is dynamic because every search, query, read, observation, validation, and archive action can add or invalidate topology edges. It is the key to multi-hop search, token control, and long-running agent work because the model should not rediscover the same local architecture every turn.
+
+Topology answers:
+
+#+begin_src text
+What is this target?
+What owns it?
+What does it produce or consume?
+Which invariant or boundary does it sit on?
+Which tests, docs, scenarios, and prior failures prove that role?
+Which reasoning branches are legal here?
+Which facts are stale because the task, generation, or feature scope changed?
+#+end_src
+
+The minimum =TopologySlice= for an agent turn should include:
+
+- target role: writer, reader, adapter, boundary, renderer, validator, orchestrator, or invariant owner;
+- ownership: package/module/language harness/schema owner;
+- structural edges: produces, consumes, validates, depends-on, routes-to, renders, persists;
+- trust boundary: external input, internal invariant, legacy migration zone, dirty overlay, or unknown;
+- pressure: hot path, memory pressure, token budget, concurrency, stale-index risk, or prompt-critical render;
+- proof: schema, test, benchmark, snapshot, scenario, prior failure, RFC/ADR, or task archive;
+- applicable policy/scenario ids for the current topology slice.
+
+The first public JSON contract for this slice is
+[[file:../../schemas/semantic-dynamic-topology.v1.schema.json][semantic-dynamic-topology.v1]].
+It is intentionally a compact topology projection, not the full graph and not
+the full reasoning history.
+
+The production loop is:
+
+#+begin_src text
+ReasoningTree
+-> EvidenceGraph / overlay
+-> DynamicTopology
+-> GraphRoute
+-> WhereFrame / recommendedNext
+-> HowFrame when evidence is sufficient for an edit group
+-> ReasoningTree
+#+end_src
+
+The first public JSON contracts are split by responsibility:
+
+- [[file:../../schemas/semantic-dynamic-topology.v1.schema.json][semantic-dynamic-topology.v1]] projects the current architecture/topology state.
+- [[file:../../schemas/semantic-where-frame.v1.schema.json][semantic-where-frame.v1]] says how to search, what is confirmed, what evidence is still missing, what to avoid, and when to stop searching and synthesize a write strategy.
+- [[file:../../schemas/semantic-how-frame.v1.schema.json][semantic-how-frame.v1]] says how to change, which edit branches are legal or pruned, and how to validate the edit group.
+
+* Branch legality and defensive programming
+Code-as-reasoning makes one important failure mode visible: a code branch is often a reasoning branch materialized into source.
+
+A defensive branch such as a fallback, default, catch-all, optional unwrap, broad recovery, or silent compatibility path carries an implicit claim:
+
+#+begin_src text
+This failure can happen here, and this recovery is architecturally legal.
+#+end_src
+
+ASP should not accept that claim because the code shape looks safe. The branch must connect to topology-backed evidence.
+
+The branch rule is:
+
+#+begin_src text
+A defensive branch is allowed only when EvidenceGraph + DynamicTopology prove it
+as a boundary recovery, legacy migration, or explicitly accepted compatibility path.
+Otherwise it is an unproven reasoning branch and should be pruned.
+#+end_src
+
+The topology roles decide the action:
+
+- external boundary: validate, recover, and report with context;
+- internal invariant: do not fallback in the consumer; fix the producer, schema, constructor, or writer and add validation evidence;
+- legacy migration zone: allow bounded compatibility only with version evidence, expiry, and receipts;
+- unknown role: route to missing topology evidence before writing.
+
+This is the theoretical reason ASP can reduce defensive programming without making the model weaker. It does not forbid careful code. It moves uncertainty out of runtime fallback code and into =EvidenceGraph= as an explicit evidence gap:
+
+#+begin_src text
+evidenceGap:
+  missing proof that selector X is always produced by owner Y
+
+recommendedNext:
+  route to producer/schema/test before adding consumer fallback
+#+end_src
+
+The model should not be told only "avoid defensive programming". It should be shown why a branch is legal or illegal in the current topology slice.
+
+* Python and Julia ownership
+The runtime and research boundary is strict.
+
+Python owns the production graph intelligence runtime:
+
+- build and update production =EvidenceGraph= projections from Rust/artifact inputs;
+- compute =DynamicTopology= slices for the active feature/task;
+- run graph-route ranking, next-jump selection, diversity, and failure-aware routing;
+- assemble compact =QualityFrame= / =WhereFrame= / =HowFrame= projections for the agent;
+- emit deterministic, schema-backed packets that Rust can validate and render.
+
+Julia owns offline graph algorithm research:
+
+- replay large session and artifact corpora;
+- evaluate which topology jumps reduce turns and token cost;
+- compare ranking algorithms, graph features, failure-aware routing, and branch-legality predictors;
+- find Python production ranking failures and produce corrected features;
+- study whether topology projection reduces defensive branches and repeated searches.
+
+The promotion path is:
+
+#+begin_src text
+Agent actions -> artifacts/archives -> Julia replay/research
+-> validated graph feature or algorithm -> Python production runtime
+-> Rust-rendered compact frame -> Agent action
+#+end_src
+
+Julia does not sit on the prompt-critical runtime path. Python does not own open-ended notebook research. Rust remains the fast substrate for CLI, DB, search engine integration, schema validation, and compact render.
 
 The direction of dependency matters. Core ASP theory should not live inside an external reference note. External research notes may point here when they explain how an outside system maps into ASP.
 * Core principle
@@ -97,8 +236,8 @@ Agent-grade codebase reasoning also needs to know:
 - whether the action can be replayed without re-running providers.
 
 ASP should therefore treat a reasoning action as the beginning of evidence construction, not as the final artifact.
-* Three-layer model
-The core theory has three separate layers.
+* Legacy three-layer framing
+This section is retained as historical compression only. The authoritative model is the four-layer model above: =ReasoningTree=, =EvidenceGraph=, =DynamicTopology=, and =GraphRoute=.
 
 #+begin_src mermaid
 flowchart LR
@@ -138,7 +277,8 @@ or recovery action should the agent use next?
 The relationship is:
 - =ReasoningTree= produces dynamic evidence;
 - =EvidenceGraph= joins dynamic evidence with stable codebase, artifact, Org, and DB facts;
-- =GraphRoute= reads the graph and chooses the next action;
+- =DynamicTopology= projects graph evidence into the current architecture state;
+- =GraphRoute= reads the graph plus topology and chooses the next action;
 - the next action creates more reasoning evidence.
 * Layer boundaries
 The boundaries are strict.
@@ -147,12 +287,12 @@ The boundaries are strict.
 
 =EvidenceGraph= is not a transcript dump. It is a typed evidence substrate. It should store or reference facts that can be reused: selectors, entities, dependencies, tests, artifacts, search receipts, route receipts, render receipts, overlay facts, and bounded reasoning metadata.
 
-=GraphRoute= is not the full reasoning history. It is a ranked navigation result. It should be compact and agent-actionable: exact selector, owner, dependency, test, edit target, writing anchor, or recovery action.
+=GraphRoute= is not the full reasoning history and not the topology itself. It is a ranked navigation result over EvidenceGraph plus DynamicTopology. It should be compact and agent-actionable: exact selector, owner, dependency, test, edit target, writing anchor, or recovery action.
 
 The production loop is:
 
 #+begin_src text
-ReasoningTree -> EvidenceGraph/overlay -> GraphRoute
+ReasoningTree -> EvidenceGraph/overlay -> DynamicTopology -> GraphRoute
 -> compact render/recommendedNext -> ReasoningTree
 #+end_src
 

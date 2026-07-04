@@ -1,0 +1,16 @@
+id = "turso-overlay-search-warm-latency-path"
+title = "Turso dynamic overlay search warm latency path"
+policy_ids = [
+  "SEARCH-AGENT-ASP-PERF-TURSO-OVERLAY-WARM-001",
+]
+agent_goal = "Keep repeated dirty-code overlay searches on the warmed DB Engine/search adapter lane without provider fallback, fzf fallback, or durable dirty-source snapshots."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "search_turso_overlay_documents",
+  "TursoOverlaySearchDocument",
+  "phase=warm",
+  "route_source=turso-overlay",
+]
+inputs = "inputs"
+expected = "expected"
+command = "agent_semantic_search::search_turso_overlay_documents"

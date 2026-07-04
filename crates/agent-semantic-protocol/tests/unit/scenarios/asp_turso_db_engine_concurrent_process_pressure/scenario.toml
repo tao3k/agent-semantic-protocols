@@ -1,0 +1,16 @@
+id = "asp-turso-db-engine-concurrent-process-pressure"
+title = "Turso DB Engine survives multi-process client state pressure"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-DB-ENGINE-TURSO-CONCURRENCY-001",
+  "RUST-AGENT-ASP-PERF-DB-ENGINE-TURSO-PRESSURE-001",
+]
+agent_goal = "Keep the State Core client DB usable when multiple agent/search lanes open the same client.turso file: bootstrap, cache writeback, and read lookup must converge without surfacing WAL lock errors or retired DB routes."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "ClientDbEngine::open_write_session_client_dir",
+  "ClientDbEngine::open_read_session_client_dir",
+  "client.turso.operation.lock",
+  "process-cache-status",
+]
+inputs = "inputs"
+expected = "expected"

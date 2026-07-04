@@ -50,7 +50,7 @@ fn cache_status_reports_missing_manifest_with_receipt() {
         receipt["clientDbPath"]
             .as_str()
             .expect("clientDbPath")
-            .ends_with("/live/client/client.sqlite3")
+            .ends_with("/live/client/client.turso")
     );
     assert_eq!(receipt["clientDbStatus"], "missing");
     assert_eq!(receipt["clientDbGenerationCount"], 0);
@@ -329,8 +329,8 @@ fn cache_flush_syntax_rows_keeps_generations_without_spawning_provider() {
     assert_eq!(receipt["clientDbSyntaxRowCaptureCount"], 0);
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
-    assert_eq!(receipt["sqliteReadCount"], 1);
-    assert_eq!(receipt["sqliteWriteCount"], 1);
+    assert_eq!(receipt["dbReadCount"], 1);
+    assert_eq!(receipt["dbWriteCount"], 1);
 
     let _ = std::fs::remove_dir_all(root);
 }

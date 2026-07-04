@@ -1,0 +1,387 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-how-frame.v1.schema.json",
+  "title": "Semantic HowFrame v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "frameId",
+    "whereFrameId",
+    "topologyId",
+    "decision",
+    "why",
+    "illegal",
+    "validate",
+    "evidence",
+    "branchLegality"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "semantic-how-frame.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocolVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "frameId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "whereFrameId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "topologyId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "taskFrameId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changeShape"
+      ],
+      "properties": {
+        "changeShape": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string"
+        },
+        "recommendedNext": {
+          "type": "string"
+        }
+      }
+    },
+    "searchActionFrame": {
+      "$ref": "#/$defs/searchActionFrame"
+    },
+    "editActionFrame": {
+      "$ref": "#/$defs/editActionFrame"
+    },
+    "why": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/activeFact"
+      }
+    },
+    "illegal": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/prunedBranch"
+      }
+    },
+    "validate": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/validationRef"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceRef"
+      }
+    },
+    "branchLegality": {
+      "$ref": "#/$defs/branchLegality"
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "activeFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "summary"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "branchLegality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetRole",
+        "trustBoundary",
+        "allowedRecoveries",
+        "prunedBranches",
+        "evidenceGaps",
+        "validation"
+      ],
+      "properties": {
+        "targetRole": {
+          "enum": [
+            "writer",
+            "reader",
+            "internal-invariant",
+            "invariant-owner",
+            "external-boundary",
+            "boundary",
+            "adapter",
+            "renderer",
+            "validator",
+            "orchestrator",
+            "unknown"
+          ]
+        },
+        "trustBoundary": {
+          "enum": [
+            "external-input",
+            "internal-contract",
+            "legacy-migration",
+            "dirty-overlay",
+            "unknown"
+          ]
+        },
+        "invariantOwner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowedRecoveries": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "validate-at-boundary",
+              "bounded-compatibility",
+              "schema-migration",
+              "route-to-owner",
+              "refresh-evidence"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "prunedBranches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/prunedBranch"
+          }
+        },
+        "evidenceGaps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "validation": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "parser",
+              "schema",
+              "scenario",
+              "snapshot",
+              "benchmark",
+              "test"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "searchActionFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frameId",
+        "actionKind",
+        "intent",
+        "command",
+        "evidence",
+        "stopCondition"
+      ],
+      "properties": {
+        "frameId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionKind": {
+          "const": "search"
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceRef"
+          }
+        },
+        "stopCondition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "editActionFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frameId",
+        "actionKind",
+        "mutationKind",
+        "target",
+        "preconditions",
+        "validation"
+      ],
+      "properties": {
+        "frameId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionKind": {
+          "const": "edit"
+        },
+        "mutationKind": {
+          "enum": [
+            "apply-patch",
+            "ast-patch",
+            "schema-change",
+            "doc-update",
+            "test-update",
+            "refactor"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "validation": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/validationRef"
+          }
+        },
+        "rollback": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "prunedBranch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "branch",
+        "reason"
+      ],
+      "properties": {
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "validationRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "commandOrId"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "parser",
+            "schema",
+            "scenario",
+            "snapshot",
+            "benchmark",
+            "test"
+          ]
+        },
+        "commandOrId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receiptId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

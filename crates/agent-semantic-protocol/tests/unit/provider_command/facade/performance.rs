@@ -349,6 +349,9 @@ fn provider_facts_receive_bounded_candidate_input() {
     );
 
     let output = asp_command(&root)
+        .env_remove("CODEX_THREAD_ID")
+        .env_remove("ASP_AGENT_SESSION")
+        .env_remove("ASP_AGENT_SESSION_NAME")
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", &cache_home)
         .args([
@@ -545,6 +548,68 @@ fn search_pipe_generic_action_query_skips_source_index_inside_phase_gate() {
         ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS,
     );
     assert_render_trace_under_gate(&["rust", "search", "pipe", "generic-action-query"], &stdout);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_command_like_query_rejects_before_backend_collection_inside_gate() {
+    let root = temp_project_root("search-pipe-command-like-query-gate");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    write_regular_search_fixtures(&root);
+    let provider_path = bin_dir.join("rs-harness");
+    std::fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\nprintf called > '{}'\nsleep 4\nprintf 'unexpected provider call\\n'\n",
+            marker.display()
+        ),
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+    write_activation(
+        &root,
+        &[provider("rust", vec![provider_path.display().to_string()])],
+    );
+
+    let started_at = Instant::now();
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "asp cache status source-index refresh",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run command-like search pipe");
+    let elapsed = started_at.elapsed();
+    let parser_reject_gate = ASP_FACADE_PERFORMANCE_GATE + Duration::from_secs(1);
+
+    assert!(
+        !output.status.success(),
+        "search pipe unexpectedly succeeded"
+    );
+    assert!(
+        elapsed < parser_reject_gate,
+        "command-like search pipe should fail before backend collection; elapsed={elapsed:?} gate={parser_reject_gate:?}"
+    );
+    assert!(
+        !marker.exists(),
+        "command-like pipe should not reach provider"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stderr.contains("search pipe is a refinement/combinator surface"),
+        "{stderr}"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

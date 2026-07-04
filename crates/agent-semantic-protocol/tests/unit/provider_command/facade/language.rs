@@ -1,6 +1,5 @@
 use std::env;
 use std::path::PathBuf;
-use std::process::Command;
 
 use crate::provider_command::support::{
     asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
@@ -41,8 +40,7 @@ fn search_prime_facade_uses_native_frontier_without_provider_spawn() {
     );
     for (language, _, label) in providers.iter().copied() {
         let call_count_path = root.join(format!("{label}-provider-count"));
-        let first_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-            .current_dir(&root)
+        let first_output = asp_command(&root)
             .env("PATH", &bin_dir)
             .env("PRJ_CACHE_HOME", &cache_home)
             .args([language, "search", "prime", "--view", "seeds", "."])
@@ -61,8 +59,7 @@ fn search_prime_facade_uses_native_frontier_without_provider_spawn() {
             "{first_stdout}"
         );
         assert!(!call_count_path.exists(), "{first_stdout}");
-        let second_output = Command::new(env!("CARGO_BIN_EXE_asp"))
-            .current_dir(&root)
+        let second_output = asp_command(&root)
             .env("PATH", &bin_dir)
             .env("PRJ_CACHE_HOME", &cache_home)
             .args([language, "search", "prime", "--view", "seeds", "."])
@@ -167,7 +164,9 @@ fn language_facade_rejects_unsupported_language_without_unrelated_provider_recov
         "{stderr}"
     );
     assert!(
-        stderr.contains("Active language facades: gerbil-scheme|rust|typescript."),
+        stderr.contains(
+            "Known language facades: rust|typescript|python|julia|gerbil-scheme|org|md."
+        ),
         "{stderr}"
     );
     assert!(stderr.contains("asp providers"), "{stderr}");

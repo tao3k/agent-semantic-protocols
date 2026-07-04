@@ -89,6 +89,7 @@ fn runtime_profiles_for_activation_uses_provider_command_prefix() {
             binary: provider.binary.clone(),
             execution: provider.execution,
             provider_command_prefix: provider.provider_command_prefix.clone(),
+            search_capabilities: serde_json::Value::default(),
             coverage: crate::protocol_activation::ActivationCoverage {
                 package_roots: provider.package_roots.clone(),
                 source_roots: provider.source_roots.clone(),

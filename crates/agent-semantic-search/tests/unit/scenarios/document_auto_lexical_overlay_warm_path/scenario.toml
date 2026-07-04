@@ -1,0 +1,16 @@
+id = "document-auto-lexical-overlay-warm-path"
+title = "Document auto acquisition uses lexical overlay before parser document elements"
+policy_ids = [
+  "SEARCH-AGENT-ASP-PERF-SUBCOMMAND-DOCUMENT-AUTO-LEXICAL-OVERLAY-001",
+]
+agent_goal = "Keep agent-facing Org and Markdown lexical search on the search package dynamic overlay route so broad document discovery does not full-parse every document before lexical filtering."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "collect_search_pipe_document_acquisition",
+  "SearchPipeSourceMode::Auto",
+  "sourceTrace=finder:used",
+  "candidate.source=overlay",
+]
+inputs = "inputs"
+expected = "expected"
+command = "agent_semantic_search::collect_search_pipe_document_acquisition(SearchPipeSourceMode::Auto)"

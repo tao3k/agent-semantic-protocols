@@ -9,7 +9,7 @@ use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_quality_model::SearchPipeQuality;
 use super::search_pipe_seed_decision::SeedActionIntent;
 use super::search_query_wrapper_preview::fd_query_preview_from_candidates;
-use super::{search_pipe_model::Candidate, search_pipe_projection::candidate_selector};
+use super::{search_pipe_model::Candidate, search_pipe_projection::candidate_executable_selector};
 
 pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) language_id: &'a str,
@@ -59,7 +59,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     let actions = if !projected_selector_actions.is_empty() {
         projected_selector_actions
     } else if quality.allow_query_selector {
-        concrete_pipe_actions(language_id, candidates, ranked_compact)
+        concrete_pipe_actions(candidates, ranked_compact)
     } else {
         Vec::new()
     };
@@ -95,7 +95,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
 {fd_preview_line}\
 {next_command_line}\
 nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector\n\
-omit=source,full-candidate-list,raw-finder-output,long-field-signatures\n\
+omit=source,full-candidate-list,raw-search-overlay-output,long-field-signatures\n\
 avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read\n",
     )
 }
@@ -234,7 +234,6 @@ fn package_prefix(path: &str) -> Option<String> {
 }
 
 fn concrete_pipe_actions(
-    language_id: &str,
     candidates: &[Candidate],
     ranked_compact: Option<&str>,
 ) -> Vec<PipeAction> {
@@ -244,17 +243,16 @@ fn concrete_pipe_actions(
             return actions;
         }
     }
-    concrete_pipe_actions_from_candidates(language_id, candidates)
+    concrete_pipe_actions_from_candidates(candidates)
 }
 
-pub(super) fn concrete_pipe_actions_from_candidates(
-    language_id: &str,
-    candidates: &[Candidate],
-) -> Vec<PipeAction> {
+pub(super) fn concrete_pipe_actions_from_candidates(candidates: &[Candidate]) -> Vec<PipeAction> {
     let mut actions = Vec::new();
     let mut selectors = HashSet::new();
     for candidate in candidates.iter().take(12) {
-        let selector = candidate_selector(language_id, candidate);
+        let Some(selector) = candidate_executable_selector(candidate) else {
+            continue;
+        };
         if !selectors.insert(selector.clone()) {
             continue;
         }

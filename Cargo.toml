@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/agent-semantic-artifacts",
     "crates/agent-semantic-config",
     "crates/agent-semantic-runtime",
     "crates/agent-semantic-client",
@@ -16,8 +17,10 @@ exclude = ["languages/orgize", "languages/rust-lang-project-harness"]
 resolver = "2"
 
 [workspace.dependencies]
+agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
 tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "process", "rt", "time"] }
 
+blake3 = "1"
 bstr = "1"
 bytes = "1"
 criterion = "0.8.2"
@@ -29,7 +32,6 @@ orgize = { path = "languages/orgize", features = ["md"] }
 libc = "0.2"
 memchr = "2"
 rust-lang-project-harness = { path = "languages/rust-lang-project-harness", default-features = false }
-rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"

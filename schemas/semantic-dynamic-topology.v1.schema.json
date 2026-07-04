@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-dynamic-topology.v1.schema.json",
+  "title": "Semantic Dynamic Topology v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "topologyId",
+    "project",
+    "scope",
+    "target",
+    "ownership",
+    "structuralEdges",
+    "trustBoundary",
+    "pressures",
+    "proofs",
+    "staleFacts",
+    "branchLegality"
+  ],
+  "properties": {
+    "schemaId": { "const": "semantic-dynamic-topology.v1" },
+    "schemaVersion": { "const": "1" },
+    "protocolId": { "type": "string", "minLength": 1 },
+    "protocolVersion": { "type": "string", "minLength": 1 },
+    "topologyId": { "type": "string", "minLength": 1 },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root"],
+      "properties": {
+        "root": { "type": "string", "minLength": 1 },
+        "repoId": { "type": "string", "minLength": 1 },
+        "workspaceId": { "type": "string", "minLength": 1 },
+        "scopeId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["task", "feature", "selector", "owner", "workspace", "session"]
+        },
+        "taskFrameId": { "type": "string", "minLength": 1 },
+        "featureId": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "evidenceGeneration": { "type": "string", "minLength": 1 }
+      }
+    },
+    "target": { "$ref": "#/$defs/topologyTarget" },
+    "ownership": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ownerRef" }
+    },
+    "structuralEdges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/topologyEdge" }
+    },
+    "trustBoundary": {
+      "enum": [
+        "external-input",
+        "internal-contract",
+        "legacy-migration",
+        "dirty-overlay",
+        "unknown"
+      ]
+    },
+    "pressures": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "hot-path",
+          "cold-path",
+          "memory-pressure",
+          "token-budget",
+          "concurrency",
+          "stale-index-risk",
+          "prompt-critical-render",
+          "contract-stability",
+          "migration"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "proofs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/proofRef" }
+    },
+    "staleFacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/staleFact" }
+    },
+    "branchLegality": { "$ref": "#/$defs/topologyBranchLegality" },
+    "policyRefs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "topologyTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role"],
+      "properties": {
+        "role": {
+          "enum": [
+            "writer",
+            "reader",
+            "adapter",
+            "boundary",
+            "renderer",
+            "validator",
+            "orchestrator",
+            "invariant-owner",
+            "internal-invariant",
+            "external-boundary",
+            "unknown"
+          ]
+        },
+        "selector": { "type": "string", "minLength": 1 },
+        "ownerPath": { "type": "string", "minLength": 1 },
+        "languageId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string" }
+      }
+    },
+    "ownerRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "enum": ["package", "module", "language-harness", "schema", "test", "doc", "artifact"]
+        },
+        "id": { "type": "string", "minLength": 1 },
+        "selector": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "topologyEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "kind"],
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": [
+            "produces",
+            "consumes",
+            "validates",
+            "depends-on",
+            "routes-to",
+            "renders",
+            "persists",
+            "blocks",
+            "recovers"
+          ]
+        },
+        "evidenceId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "proofRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "enum": ["schema", "test", "benchmark", "snapshot", "scenario", "prior-failure", "rfc", "adr", "archive"]
+        },
+        "id": { "type": "string", "minLength": 1 },
+        "selector": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["active", "stale", "missing", "superseded"] }
+      }
+    },
+    "staleFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "supersededBy": { "type": "string", "minLength": 1 }
+      }
+    },
+    "topologyBranchLegality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["legalBranches", "illegalBranches", "unknownBranches"],
+      "properties": {
+        "legalBranches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/topologyBranchRule" }
+        },
+        "illegalBranches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/topologyBranchRule" }
+        },
+        "unknownBranches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/topologyBranchGap" }
+        }
+      }
+    },
+    "topologyBranchRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "reason"],
+      "properties": {
+        "branch": { "$ref": "#/$defs/topologyBranchKind" },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidenceId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "topologyBranchGap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "evidenceGap"],
+      "properties": {
+        "branch": { "$ref": "#/$defs/topologyBranchKind" },
+        "evidenceGap": { "type": "string", "minLength": 1 },
+        "recommendedNext": { "type": "string", "minLength": 1 }
+      }
+    },
+    "topologyBranchKind": {
+      "enum": [
+        "boundary-validation",
+        "consumer-side-fallback",
+        "producer-fix",
+        "schema-migration",
+        "bounded-compatibility",
+        "refresh-evidence",
+        "broad-catch-all",
+        "silent-default",
+        "unknown"
+      ]
+    }
+  }
+}

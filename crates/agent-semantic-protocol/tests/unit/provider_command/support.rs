@@ -1,6 +1,5 @@
 use agent_semantic_client_core::state_core::{ASP_STATE_HOME_ENV, ResolvedState};
 use agent_semantic_hook::{builtin_provider_manifests, provider_manifest_digest};
-use agent_semantic_runtime::{project_activation_path, project_local_activation_path};
 use serde_json::json;
 use std::env;
 use std::ffi::OsString;
@@ -16,16 +15,12 @@ pub(super) const CACHE_SOURCE_SHA256: &str =
 pub(crate) struct ProviderSpec {
     language_id: &'static str,
     command_prefix: Vec<String>,
-    owner_items: bool,
-    dependency_topology: bool,
 }
 
 pub(crate) fn provider(language_id: &'static str, command_prefix: Vec<String>) -> ProviderSpec {
     ProviderSpec {
         language_id,
         command_prefix,
-        owner_items: false,
-        dependency_topology: false,
     }
 }
 
@@ -33,35 +28,28 @@ pub(crate) fn provider_with_owner_items(
     language_id: &'static str,
     command_prefix: Vec<String>,
 ) -> ProviderSpec {
-    ProviderSpec {
-        language_id,
-        command_prefix,
-        owner_items: true,
-        dependency_topology: false,
-    }
+    provider(language_id, command_prefix)
 }
 
 pub(super) fn provider_with_dependency_topology(
     language_id: &'static str,
     command_prefix: Vec<String>,
 ) -> ProviderSpec {
-    ProviderSpec {
-        language_id,
-        command_prefix,
-        owner_items: false,
-        dependency_topology: true,
-    }
+    provider(language_id, command_prefix)
 }
 
 pub(crate) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
-    let activation_path =
-        project_activation_path(root).unwrap_or_else(|_| project_local_activation_path(root));
+    let activation_path = state_home(root)
+        .join("hooks")
+        .join("state")
+        .join("activation.json");
     write_activation_to(root, &activation_path, providers);
 }
 
 pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers: &[ProviderSpec]) {
     let activation_dir = activation_path.parent().expect("activation parent");
     std::fs::create_dir_all(activation_dir).expect("create activation dir");
+    let package_root = root.display().to_string();
     let providers: Vec<_> = providers
         .iter()
         .map(|spec| {
@@ -70,7 +58,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 .find(|manifest| manifest.language_id == spec.language_id)
                 .unwrap_or_else(|| panic!("missing manifest for {}", spec.language_id));
             let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
-            let mut provider = json!({
+            let provider = json!({
                 "manifestId": manifest.manifest_id,
                 "manifestDigest": manifest_digest,
                 "languageId": manifest.language_id,
@@ -79,26 +67,13 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 "execution": manifest.execution,
                 "providerCommandPrefix": spec.command_prefix,
                 "coverage": {
-                    "packageRoots": ["."],
+                    "packageRoots": [package_root.clone()],
                     "sourceRoots": manifest.source.default_source_roots,
                     "configFiles": manifest.source.default_config_files,
                     "sourceExtensions": manifest.source.default_extensions,
                     "ignoredPathPrefixes": manifest.source.default_ignored_path_prefixes
                 }
             });
-            if spec.owner_items || spec.dependency_topology {
-                provider["searchCapabilities"] = json!({
-                    "ownerItems": spec.owner_items,
-                    "dependencyTopology": spec.dependency_topology
-                });
-            }
-            if spec.dependency_topology {
-                provider["routes"] = json!({
-                    "dependencyTopology": {
-                        "argv": [manifest.binary]
-                    }
-                });
-            }
             provider
         })
         .collect();
@@ -202,6 +177,14 @@ pub(super) fn artifacts_root(root: &Path) -> PathBuf {
     resolved_state(root).paths.artifacts_dir
 }
 
+pub(super) fn org_artifact_target(root: &Path, relative: &str) -> String {
+    artifacts_root(root)
+        .join("org")
+        .join(relative)
+        .display()
+        .to_string()
+}
+
 pub(super) fn state_home(root: &Path) -> PathBuf {
     root.join("home").join(".agent-semantic-protocols")
 }
@@ -231,6 +214,11 @@ pub(crate) fn asp_command(root: &Path) -> Command {
         .env_remove("ASP_MEMORY_ENGINE")
         .env_remove("ASP_MEMORY_ENGINE_SOCKET")
         .env_remove("ASP_MEMORY_ENGINE_SOCKET_DIR")
+        .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_PARENT_THREAD_ID")
+        .env_remove("CLAUDE_CODE_SESSION_ID")
+        .env_remove("AGENT_SESSION_ID")
+        .env_remove("SESSION_ID")
         .env_remove("PRJ_CACHE_HOME");
     command
 }

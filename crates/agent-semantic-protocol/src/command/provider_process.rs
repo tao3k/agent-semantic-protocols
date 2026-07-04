@@ -8,9 +8,12 @@ use std::collections::BTreeMap;
 use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use super::install_provider_target::{home_dir, resolve_provider_binary_invocation};
 use super::search_config::AspConfig;
+
+const ASP_PROVIDER_TIMEOUT_MS_ENV: &str = "ASP_PROVIDER_TIMEOUT_MS";
 
 pub(super) fn run_provider_command(
     language_id: &str,
@@ -81,6 +84,7 @@ pub(super) fn run_provider_command_with_stdin(
     cache_home: &Path,
     stdin: Vec<u8>,
 ) -> Result<ProviderProcessOutput, String> {
+    let limits = default_provider_process_limits()?;
     run_provider_command_with_stdin_limits(
         language_id,
         provider,
@@ -88,7 +92,7 @@ pub(super) fn run_provider_command_with_stdin(
         project_root,
         cache_home,
         stdin,
-        ProviderProcessLimits::default(),
+        limits,
     )
 }
 
@@ -167,9 +171,32 @@ fn run_provider_process(
         forwarded,
         project_root,
         cache_home,
-        limits: ProviderProcessLimits::default(),
+        limits: default_provider_process_limits()?,
         stdin: StdinMode::Inherit,
     })
+}
+
+fn default_provider_process_limits() -> Result<ProviderProcessLimits, String> {
+    let mut limits = ProviderProcessLimits::default();
+    limits.timeout = provider_timeout_from_env()?;
+    Ok(limits)
+}
+
+fn provider_timeout_from_env() -> Result<Option<Duration>, String> {
+    let Ok(value) = env::var(ASP_PROVIDER_TIMEOUT_MS_ENV) else {
+        return Ok(None);
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let millis = trimmed.parse::<u64>().map_err(|error| {
+        format!("{ASP_PROVIDER_TIMEOUT_MS_ENV} must be an integer number of milliseconds: {error}")
+    })?;
+    if millis == 0 {
+        return Ok(None);
+    }
+    Ok(Some(Duration::from_millis(millis)))
 }
 
 struct ProviderProcessRun<'a> {

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[path = "../../src/command/hook.rs"]
 mod hook;
 #[path = "../../src/command/hook_runtime_context.rs"]
@@ -17,6 +15,23 @@ mod hook_runtime {
     pub(crate) fn run_hook_runtime_args(_args: Vec<String>) -> Result<(), String> {
         Ok(())
     }
+}
+
+const _: fn(&[String]) -> Result<(), String> = hook::run_hook_command;
+const _: fn(Vec<String>) -> Result<(), String> = hook_runtime::run_hook_runtime_args;
+const _: fn() -> Result<protocol_binary::ProtocolBinaryInstall, String> =
+    protocol_binary::ensure_protocol_binary_installed_for_path;
+const _: fn() -> Option<std::path::PathBuf> = protocol_binary::protocol_binary_on_path;
+
+#[test]
+fn protocol_binary_install_fields_are_contract_visible() {
+    let install = protocol_binary::ProtocolBinaryInstall {
+        path: std::path::PathBuf::from("asp"),
+        status: "found",
+    };
+
+    assert_eq!(install.path, std::path::PathBuf::from("asp"));
+    assert_eq!(install.status, "found");
 }
 
 fn args(values: &[&str]) -> Vec<String> {

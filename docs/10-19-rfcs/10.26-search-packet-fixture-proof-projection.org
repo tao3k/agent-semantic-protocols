@@ -1,0 +1,499 @@
+#+TITLE: RFC 10.26 Search Packet Fixture Proof Projection
+#+STARTUP: showall
+
+* Status
+:PROPERTIES:
+:RFC_ID: 10.26
+:STATUS: draft
+:OWNER: asp-policy-scenarios
+:SCHEMA: semantic-proof-receipt.v1
+:RELATED: 10.25-formal-verification-proof-obligation-graph.org
+:END:
+
+This RFC companion records the next proof boundary after the formal
+verification proof-obligation graph: concrete semantic-search-packet fixtures
+must be projected into proof facts before a defensive renderer branch can be
+accepted or rejected.
+
+The key distinction is:
+
+- Schema projection proves what the protocol says a field means.
+- Packet fixture projection proves what a concrete provider output actually
+  exposes.
+- AXLE/Lean proves which branch is legal for the current obligation.
+
+This keeps defensive-engineering rejection out of prose. The receipt carries a
+small, auditable proof summary that EvidenceGraph and DynamicTopology can use as
+branch-legality input.
+
+* Problem
+Search packet schema can permit display locator fields because they are useful
+for humans and compact rendering. That does not make them executable identity.
+
+A defensive renderer fallback can appear attractive:
+
+#+begin_src text
+if selector is missing, use path:line from displayLineRange/sourceLocatorHint
+#+end_src
+
+That branch hides the producer bug. It makes an invalid packet look usable,
+weakens the selector-first contract, and reintroduces line-number identity under
+active agent edits.
+
+The proof lane must therefore distinguish two facts:
+
+- The JSON packet is schema-valid.
+- The packet is contract-valid for executable search identity.
+
+* Contract Shape
+The proof receipt now carries two projections.
+
+** schemaProjection
+This comes from =schemas/semantic-search-packet.v1.schema.json=.
+
+It records field roles:
+
+- =item.structuralSelector= is executable selector identity.
+- =routeAction.selector= is executable selector identity.
+- =windowSetTarget.structuralSelector= is executable selector identity.
+- =displayLineRange= and =sourceLocatorHint= are display-only fields.
+
+** packetProjection
+This comes from a concrete packet fixture or future provider-output capture.
+
+It records only proof-relevant facts:
+
+- source kind: =contract-fixture= or =provider-output=
+- source packet path
+- generated Lean statement path
+- generated Lean candidate path
+- identity kind
+- contract validity
+- projected field facts
+
+The packet projection must not dump the whole packet into the agent-facing
+receipt. It gives the agent a compact branch decision and keeps the full packet
+available for audit or replay.
+
+* Current Packet Sources
+The current proof demo uses contract fixtures:
+
+- =tests/fixtures/semantic_search_packet/bad_path_line_identity_packet.json=
+- =tests/fixtures/semantic_search_packet/good_selector_identity_packet.json=
+
+Both fixtures must validate against =semantic-search-packet.v1=. The same
+packetProjection shape is also valid for future =provider-output= captures.
+
+The bad fixture is intentionally schema-valid but contract-invalid:
+
+#+begin_src json
+{
+  "identityKind": "path-line-only",
+  "contractValid": false
+}
+#+end_src
+
+It exposes =displayLineRange= and =sourceLocatorHint=, but no executable selector.
+
+The good fixture is schema-valid and contract-valid:
+
+#+begin_src json
+{
+  "identityKind": "selector-owned",
+  "contractValid": true
+}
+#+end_src
+
+It may still expose display hints, but executable identity is owned by selector
+fields.
+
+* Proof Flow
+#+begin_src mermaid
+flowchart TD
+  Schema["semantic-search-packet.v1.schema.json"]
+  BadFixture["bad_path_line_identity_packet.json"]
+  GoodFixture["good_selector_identity_packet.json"]
+  SchemaProjection["schema-projection.json"]
+  PacketProjection["packet-projection.json"]
+  FormalLean["formal-statement.lean"]
+  CandidateLean["candidate-proof.lean"]
+  AXLE["AXLE verify_proof"]
+  Receipt["proof-receipt.json"]
+  Topology["DynamicTopology branch legality"]
+  EvidenceGraph["EvidenceGraph receipt edge"]
+
+  Schema --> SchemaProjection
+  BadFixture --> PacketProjection
+  GoodFixture --> PacketProjection
+  SchemaProjection --> FormalLean
+  PacketProjection --> FormalLean
+  SchemaProjection --> CandidateLean
+  PacketProjection --> CandidateLean
+  FormalLean --> AXLE
+  CandidateLean --> AXLE
+  AXLE --> Receipt
+  Receipt --> Topology
+  Receipt --> EvidenceGraph
+#+end_src
+
+* Agent Disclosure
+The agent-facing packet projection should be progressive.
+
+Level 0:
+
+#+begin_src text
+SearchPacket identity is selector-owned. A packet with only display line
+locators is not contract-valid. Do not add renderer path+line fallback.
+#+end_src
+
+Level 1:
+
+#+begin_src text
+receiptId=proof-receipt:search-packet-selector-identity:v1
+identityKind=path-line-only
+contractValid=false
+illegalBranch=renderer-path-line-fallback
+legalBranches=fix-provider-selector-construction,schema-migration-if-contract-changed
+#+end_src
+
+Level 2:
+
+Reveal =packet-projection.json=, =formal-statement.lean=, and
+=candidate-proof.lean= only when the proof lane is being debugged.
+
+* Why This Blocks Defensive Engineering
+The branch is blocked because the proof has two independent anchors:
+
+- Schema projection says display locators are not executable selectors.
+- Packet projection says the concrete bad packet has only display locators.
+
+Therefore the renderer fallback is not a fix. It accepts an invalid producer
+output. The legal branch is to repair provider result construction or explicitly
+migrate the schema if the contract itself changes.
+
+This is the point where LLM behavior improves: the model is not merely told
+"avoid defensive programming." It receives a compact proof receipt that says
+which branch is illegal, why it is illegal, and where the correction boundary
+lives.
+
+* Next Boundary
+The current packet projection can already describe =provider-output= sources.
+The next boundary is to capture those sources from the Rust provider:
+
+- capture a real Rust provider semantic-search-packet output
+- validate it against =semantic-search-packet.v1=
+- project it into the same packetProjection shape
+- reuse the same Lean proof obligation
+- attach the receipt to EvidenceGraph and DynamicTopology
+
+That step turns this from a contract fixture into a runtime/provider regression
+gate.
+
+The proof gate is already source-kind aware:
+
+#+begin_src sh
+uv run --project packages/python --package agent-semantic-protocols-tools \
+  python -m tools.lean_axle_proof_obligation_demo \
+  --search-packet .data/provider-captures/rs-harness-search-prime.json \
+  --packet-source-kind provider-output
+#+end_src
+
+In a hook-managed agent session, provider capture itself must use the active ASP
+search route with a registered =asp-explore= child session. If that child session
+is absent, the correct behavior is to report the missing session rather than
+forge a provider-output artifact from a fixture.
+
+* Provider Capture Preconditions
+The provider-output proof gate is ready, but capture must satisfy all of these
+preconditions:
+
+- =asp-explore= is registered and routable for the root session.
+- the registered child session has =thread_source=subagent=, role
+  =asp_explorer=, and the configured ASP explorer agent path.
+- Rust provider install resolves to an executable =rs-harness=.
+- the capture command returns a JSON packet whose =schemaId= is
+  =agent.semantic-protocols.semantic-search-packet=.
+
+If the child session is created by a generic multi-agent role without the
+configured ASP explorer agent path, ASP may reject registration. If it is forced
+or repaired manually, the registry should still surface validation warnings such
+as sandbox drift.
+
+* Provider Capture Failure Modes
+The current observed failure mode is not in the proof gate:
+
+#+begin_src text
+failed to spawn provider process /Users/guangtao/.local/bin/rs-harness:
+No such file or directory (os error 2)
+#+end_src
+
+This can happen even when the binary exists and is directly executable. That
+means the capture blocker belongs to ASP provider launch, argument routing, cwd
+selection, or hook recovery, not to Lean/AXLE verification.
+
+Observed capture constraints:
+
+- direct =rs-harness search ... --json= is denied by the hook as
+  =agent-search-json= and routed back to ASP search.
+- =asp rust search pipe --help= exposes =--workspace= and =--view= but no
+  =--json= output flag.
+- =asp rust search prime= is vulnerable to argument/cwd drift in the observed
+  run: provider launch evidence pointed at cwd-like suffixes such as =prime= or
+  =seeds=.
+- =asp rust search pipe= can return compact evidence, but it is not currently a
+  provider-output JSON capture lane.
+
+Therefore the next engineering fix is a first-class provider capture command or
+a repaired ASP search JSON route. The proof gate should not bypass the hook by
+shelling directly to =rs-harness --json= unless the hook contract explicitly
+allows that route.
+
+* Open Defect: Provider Output Capture Launch Blocker
+:PROPERTIES:
+:DEFECT_ID: provider-output-capture-launch-blocker
+:STATUS: open
+:BOUNDARY: asp-provider-launch
+:END:
+
+The current capture blocker has been narrowed to ASP provider launch and source
+recovery, not to the Rust provider binary itself.
+
+Confirmed facts:
+
+- =asp-explore= is registered, active, and routable.
+- =/Users/guangtao/.local/bin/rs-harness= exists after
+  =asp install language rust --from-workspace=.
+- the same =rs-harness= binary can run =--help= directly from both the main
+  session and the =asp-explore= child session.
+- =asp rust agent doctor --json --workspace .= can emit the Rust language
+  registry and confirms =semantic-search-packet= output descriptors.
+- =asp rust search pipe --help= exposes =--workspace= and =--view= but no
+  =--json= capture flag.
+- direct =rs-harness search ... --json= remains hook-denied as
+  =agent-search-json= and is routed back to ASP search.
+
+Failing route:
+
+#+begin_src text
+asp rust search prime --workspace <repo> --view seeds
+#+end_src
+
+Observed failure:
+
+#+begin_src text
+failed to spawn provider process /Users/guangtao/.local/bin/rs-harness:
+No such file or directory (os error 2)
+#+end_src
+
+Important interpretation:
+
+- this error must not be treated as proof-gate failure;
+- this error must not be worked around by forging =provider-output= from a
+  fixture;
+- this error must not be hidden by falling back from provider cwd to the current
+  process cwd, because that would be defensive engineering at the wrong layer.
+
+The next implementation task is to inspect and repair the ASP launch/capture
+boundary. The relevant narrowed symbols are:
+
+- =run_provider_command=
+- =run_provider_command_with_stdin=
+- =run_provider_command_with_stdin_limits=
+- =run_provider_process_with_stdin=
+- =resolve_provider_program=
+- =resolve_provider_program_from=
+- =run_transport_process=
+- =ProviderProcessSpec=
+
+The evidence collected so far shows:
+
+- =run_provider_process_with_stdin= passes
+  =cwd: project_root.to_path_buf()= into =ProviderProcessSpec=;
+- =program= is resolved separately by =resolve_provider_program(program,
+  project_root)=;
+- the provider command wrappers split =invocation= into =program= and
+  =forwarded=, while =project_root= is passed as a separate argument;
+- =project_root_candidate= rejects flag-looking tokens and only accepts paths
+  that exist as directories.
+
+Therefore the likely fault is one of:
+
+- a caller passes the wrong =project_root= into the provider command wrapper;
+- a caller constructs =invocation= and =project_root= from different parser
+  assumptions;
+- the transport process reports cwd =ENOENT= as provider binary =ENOENT=;
+- source-access recovery prevents locating the caller and must be repaired
+  before code changes are safe.
+
+Acceptance criteria for closing this defect:
+
+- ASP exposes a hook-approved JSON capture route for semantic-search-packet
+  provider output, or =asp rust search ... --json= works through ASP without
+  direct =rs-harness= bypass.
+- The route writes a real provider-output packet whose =schemaId= is
+  =agent.semantic-protocols.semantic-search-packet=.
+- That packet validates against =semantic-search-packet.v1=.
+- The packet can be passed to:
+
+#+begin_src sh
+uv run --project packages/python --package agent-semantic-protocols-tools \
+  python -m tools.lean_axle_proof_obligation_demo \
+  --search-packet .data/provider-captures/<packet>.json \
+  --packet-source-kind provider-output
+#+end_src
+
+- The resulting receipt validates against =semantic-proof-receipt.v1= and is
+  attachable to EvidenceGraph/DynamicTopology.
+
+* Provider Output Capture Follow-up: Launch Fixed, Selector Proof Still Gated
+:PROPERTIES:
+:DEFECT_ID: provider-output-capture-launch-blocker
+:STATUS: partially-closed
+:DATE: 2026-07-02
+:BOUNDARY: asp-provider-launch client-backend-argument-routing
+:END:
+
+The original launch blocker was reproduced and repaired in the ASP language
+facade/client-backend path.
+
+Failing command before repair:
+
+#+begin_src sh
+asp rust search workspace --workspace <repo> --view seeds
+#+end_src
+
+Observed bad launch:
+
+#+begin_src text
+cwd=<repo>/seeds argv=rs-harness search workspace --view
+cwd=<repo>/workspace argv=rs-harness search
+#+end_src
+
+Root cause:
+
+- =--view seeds= is an ASP facade/render option, not a provider positional
+  project root.
+- =search workspace= contains a search-view token, not a project root.
+- The protocol layer stripped/normalized part of the facade args, then the
+  client backend parsed the remaining search-view token as a positional
+  =PROJECT_ROOT=.
+
+Repair:
+
+- =provider_roots::effective_project_root_and_args= strips facade =--view=
+  arguments before provider root/cwd selection.
+- =provider_roots::explicit_positional_project_root= excludes search-view
+  tokens from positional project-root inference.
+- =agent_semantic_client::cli_args::parse_client_args= excludes the first
+  forwarded =search= view token from client-backend positional root inference.
+- =agent-semantic-config= now depends on =toml= because the hook client config
+  parser uses =toml::from_str=.
+- =dispatch.rs= now has the resident-child message helpers needed by the
+  current registry gate path, restoring =asp= binary compilation.
+
+Verified capture after repair:
+
+#+begin_src sh
+target/debug/asp rust search workspace \
+  --workspace /Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols \
+  --json \
+  > .data/asp-formal-verification-demo/provider-output-capture/rust-search-workspace-packet.json
+#+end_src
+
+Receipt:
+
+- exit code: =0=
+- =schemaId=: =agent.semantic-protocols.semantic-search-packet=
+- =method=: =search/workspace=
+- package count: =12=
+- no provider stderr
+
+The command also works with the compact facade view:
+
+#+begin_src sh
+target/debug/asp rust search workspace --workspace <repo> --view seeds
+#+end_src
+
+and no longer attempts to launch the provider with =cwd=<repo>/seeds= or
+=cwd=<repo>/workspace=.
+
+Selector-proof status:
+
+- =search/workspace= provider output is a real =semantic-search-packet=, but it
+  is package/topology evidence and has no executable selector identity.
+- =search/symbol effective_project_root_and_args --json= also produced a real
+  provider-output packet, but the hits did not expose =selector= or
+  =structuralSelector= fields.
+- Passing either packet to
+  =tools.lean_axle_proof_obligation_demo --packet-source-kind provider-output=
+  correctly yields =contractValid=false= and =identityKind=missing=.
+
+This is the desired formal behavior: the proof gate must not prove selector
+identity from packets that do not carry executable selector facts. The remaining
+work is not provider launch; it is to capture or produce a provider-output
+search packet whose items/route actions expose executable selector identity.
+
+Next acceptance criteria:
+
+- Identify a hook-approved provider-output command that emits selector-bearing
+  =semantic-search-packet= facts, for example owner-items or route actions.
+- Ensure that command terminates within the normal capture budget.
+- Save the packet under =.data/asp-formal-verification-demo/provider-output-capture/=.
+- Re-run the proof demo with =--packet-source-kind provider-output= and require
+  =contractValid=true= before using the receipt to prune defensive renderer
+  branches.
+
+* Missing Identity Provider Output Verification
+The first provider-output follow-up exposed a proof-projection bug rather than
+an AXLE or Lean failure. A real workspace-level provider packet may have no
+executable selector and no display-only locator. That packet projects to:
+
+#+begin_src json
+{
+  "sourceKind": "provider-output",
+  "identityKind": "missing",
+  "contractValid": false
+}
+#+end_src
+
+The initial fixture Lean template treated every contract-invalid packet as
+=path-line-only= and therefore generated a proposition requiring:
+
+#+begin_src lean
+fixture_*_hasDisplayOnlyLocator = true
+#+end_src
+
+That was wrong for =missing= identity. The projection now keeps the packet
+identity class distinct:
+
+- =path-line-only= proves =rejects_path_line_fallback=.
+- =missing= proves =rejects_missing_identity=.
+- =selector-owned= proves =accepts_selector_identity=.
+
+This matters because provider-output receipts must not prove a more specific
+fact than the packet supports. A missing selector can still block the defensive
+renderer fallback branch, but it must do so as a missing-identity contract
+failure, not as path+line fallback evidence.
+
+Verification receipt:
+
+#+begin_src text
+direnv exec . uv run --project packages/python/tools \
+  python -m tools.lean_axle_proof_obligation_demo \
+  --out-dir .data/asp-formal-verification-demo/current-provider-workspace \
+  --search-packet .data/asp-formal-verification-demo/provider-output-capture/rust-search-workspace-packet.json \
+  --packet-source-kind provider-output
+
+okay=true
+identityKind=missing
+contractValid=false
+failedDeclarations=[]
+summaryForAgent="AXLE verified a contract-invalid missing packet. Do not add renderer fallback to path+line; fix the provider/schema boundary."
+#+end_src
+
+This is the sharper proof boundary:
+
+- Lean proves the branch legality statement.
+- The packet projection decides which packet fact is actually available.
+- The receipt can update topology branch legality only when the proof is true
+  for that exact projection.

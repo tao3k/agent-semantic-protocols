@@ -1,928 +1,173 @@
-#+TITLE: RFC 10.19 - Global ASP state root and artifact layout
+#+TITLE: RFC 10.19 - Global ASP State Root and Artifact Layout
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-28
 #+OPTIONS: toc:2
 
 * One-sentence summary
-
-ASP should move durable state from project-local =.cache/agent-semantic-protocol=
-directories into a global state root, keyed by stable repository, workspace,
-and package-scope identity, while keeping every artifact traceable back to the
-exact project invocation that produced it.
-
-* Problem
-
-Current runtime layout is project-local. The Rust configuration layer resolves
-state through the git toplevel first and writes under:
-
-#+begin_src text
-<git-toplevel>/.cache/agent-semantic-protocol/
-#+end_src
-
-The existing layout contains hook state, client DB/cache, artifacts, runtime
-shims, and provider locks under the project cache root. This is convenient for
-early local development, but it becomes weak once ASP is used as a durable
-agent substrate:
-
-- one repository accumulates many unrelated transient and durable artifacts;
-- multiple clones or worktrees of the same repository cannot share stable
-  project identity safely;
-- monorepos need package/scope boundaries below the git toplevel;
-- Python, Julia, Rust, TypeScript, Org, and future providers need a common
-  artifact index instead of each language reconstructing path conventions;
-- project-local cache paths make cross-project recall and data-science analysis
-  awkward;
-- artifacts are hard to find from a later ASP invocation unless the agent knows
-  the original project path;
-- storing state under the edited project creates unnecessary repository
-  pressure, even when files are ignored by git.
-
-The v2 state layout must make ASP state a first-class local database and
-artifact system, not an accidental subdirectory of whichever repository the
-agent is editing.
-
-* Current code context
-
-Current implementation evidence:
-
-- =agent_semantic_config::project_runtime_layout= resolves the git toplevel,
-  then sets =cache_home= to =<git-toplevel>/.cache=.
-- =PRJ_CACHE_HOME= exists in current code, but v2 state-root design does not
-  carry it forward as a public state-root path.
-- =ProjectRuntimeLayout= currently exposes =protocol_home=, =hook_cache_dir=,
-  =hook_state_dir=, =client_cache_dir=, =artifacts_dir=, =runtime_bin_dir=, and
-  =provider_lock_dir= below the project cache root.
-- =agent_semantic_client_core::ProjectContext= already centralizes
-  =git_toplevel=, =project_home=, =project_env=, and =StateLayout=.
-
-The new design should evolve these existing owner boundaries instead of
-scattering path logic across CLI, cache replay, hook runtime, provider
-activation, and Org recall code.
-
-* Goals
-
-- make =$HOME/.agent-semantic-protocols= the canonical default state root;
-- support an explicit override through a single environment variable;
-- make project-local cache a current-implementation source only, not a v2
-  state-root mode;
-- derive stable repository/project identity from git and manifest evidence;
-- distinguish repository identity from workspace instance identity;
-- support monorepos through package/language scope identities;
-- make every artifact traceable to project, workspace, scope, provider,
-  command, schema, and generation;
-- make artifacts easy for Python and Julia analysis without bespoke path
-  guessing;
-- make analyzer experiment receipts reproducible across Python production graph
-  work and Julia algorithm research;
-- keep the state root usable from local CLI, hooks, providers, Python, and
-  Julia without an agent MCP server;
-- make code-search generations, receipts, snippet locators, dependency facts,
-  and dynamic JSON artifacts traceable across repository/workspace/scope
-  identity;
-- preserve native language ecosystem evidence such as Cargo metadata, Python
-  import/test facts, Julia Project/Manifest and notebook outputs, TypeScript
-  compiler/package facts, Org contracts, and analyzer receipts;
-- keep raw source text out of state by default;
-- support future Turso-native client DB, CDC, static dependency topology,
-  vector/FTS ranking inputs, and sync/encryption experiments.
-
-* Non-goals
-
-- do not use project display name as executable identity;
-- do not use path line ranges as artifact identity;
-- do not make network sync required for local state lookup;
-- do not require a monorepo to define one language package;
-- do not make provider-local caches authoritative over Rust-owned client state;
-- do not make an agent MCP server the state owner, control plane, or identity
-  boundary;
-- do not let line ranges become executable code-search or writing-evidence
-  identity;
-- do not include =PRJ_CACHE_HOME= in the v2 state-root contract;
-- do not require v2 implementations to read or write project-local cache roots.
+ASP durable state lives under a global State Core root, keyed by stable
+repo/workspace/scope identity, while every DB row and artifact remains
+traceable to the exact invocation that produced it.
 
 * State root selection
-
-Phase 1 State Core uses exactly one executable state-root override:
-=ASP_STATE_HOME=. When it is set, every durable client DB, manifest, and
-artifact path is resolved under that directory. When it is unset, ASP uses
-=$HOME/.agent-semantic-protocols=. =PRJ_CACHE_HOME= is not part of the v2
-contract and must not affect State Core resolution.
-
-The old project-local =<git-toplevel>/.cache/agent-semantic-protocol= path is
-diagnostic evidence only. =asp state locate= may report that the path exists so
-an operator can audit old data, but Phase 1 must not read it as a fallback,
-copy data from it, or silently migrate it.
-
-* Crate ownership and command boundary
-
-State Core is owned by =agent-semantic-client-core=. The
-=agent-semantic-protocol= command layer must stay a thin public facade: parse
-CLI arguments, call the package-owned service, and render the returned typed
-report. It must not reconstruct state-root paths, compute repo/workspace
-identity, choose DB/artifact directories, or own source-index refresh/search
-algorithms.
-
-The intended ownership split is:
-
+State Core has one executable override:
 #+begin_src text
-agent-semantic-protocol::command -> CLI parsing, dispatch, compact rendering
-agent-semantic-client-core      -> state root, repo/workspace/scope identity, manifests
-agent-semantic-client-db        -> SQLite v1 source-index/client DB storage services
-future Turso DB package         -> Turso backend implementation behind State Core paths
+ASP_STATE_HOME
 #+end_src
 
-New state commands should therefore expose package interfaces instead of
-adding heavy implementation into =crates/agent-semantic-protocol/src/command/*=.
-When a command needs new behavior, first define the typed service boundary in
-the owning crate, then call it from the command facade.
-
-The v2 state-root selection order should be:
-
-#+begin_src text
-1. ASP_STATE_HOME, if set
-2. $HOME/.agent-semantic-protocols
-#+end_src
-
-=ASP_STATE_HOME= is the canonical variable because it describes ASP state
-directly. =PRJ_CACHE_HOME= is intentionally not part of the v2 contract.
-
-The default root is intentionally user-global:
-
+When unset, ASP uses:
 #+begin_src text
 $HOME/.agent-semantic-protocols
 #+end_src
 
-This keeps ASP state outside edited repositories while preserving local-first
-behavior. Future XDG-style aliases can be added, but the user-facing ASP path
-should be stable and easy to inspect.
+=PRJ_CACHE_HOME= is not part of the State Core v2 contract. The project-local
+=<git-toplevel>/.cache/agent-semantic-protocol= path is diagnostic evidence
+only. =asp state locate= may report that it exists, but v2 implementations must
+not read it as a fallback, copy data from it, or silently migrate it.
 
-The state root is a local protocol substrate, not an agent MCP server work
-directory. MCP adapters, if they exist later, should resolve projects through
-the same =ASP_STATE_HOME= and registry tables instead of creating their own
-session-scoped state or cache layout.
-
-RFC 10.20 adds a code-search-specific pressure test for this layout. The state
-root must be able to locate search generations, receipts, snippets, dynamic
-JSON payloads, and analyzer outputs without asking the agent to remember a
-project-local cache path:
-
-#+begin_src text
-$ASP_STATE_HOME/
-  registry/
-    repos/
-    workspaces/
-    scopes/
-  db/
-    asp.db
-  artifacts/
-    code-search/
-      generations/
-      receipts/
-      snippets/
-      dynamic-json/
-    analyzer/
-      python/
-      julia/
-#+end_src
-
-The physical layout can still evolve, but the trace must be stable:
-
-#+begin_src text
-repo_id -> workspace_id -> scope_id -> generation_id -> provider_id ->
-search_receipt_id -> selector/snippet/artifact
-#+end_src
-
-Global hook defaults live under the same state root:
-#+begin_src text
-$ASP_STATE_HOME/hooks/config.toml
-#+end_src
-When =ASP_STATE_HOME= is unset, the default path is =$HOME/.agent-semantic-protocols/hooks/config.toml=. This file owns common hook policy and recovery prompt templates that are not project-specific. Project-local hook config may still overlay it for repository-specific rules, but common agent-session behavior should not be copied into each project.
 * Identity model
+Executable identity must not depend on display labels, project names, or line
+ranges.
 
-** Repository identity
+Repository identity:
+- is derived from git toplevel, common gitdir/worktree metadata, remote URL
+  evidence when available, and root-path fallback hash when git evidence is
+  missing;
+- is stable across worktrees for the same repository;
+- uses display labels only as aliases.
 
-The repository identity is the durable top-level project bucket.
+Workspace identity:
+- is derived from the concrete checkout/worktree root, gitdir/worktree metadata,
+  and repo id;
+- differs between worktrees that share a repo id;
+- is the default bucket for live DB state, hook runtime events, session registry
+  rows, and artifacts.
 
-When inside git, it is derived from:
+Scope identity:
+- defaults to the workspace scope until a package/language manifest narrows it;
+- is where monorepo package, provider, dependency, and analyzer facts attach.
 
-- canonical git toplevel real path;
-- gitdir / worktree metadata;
-- normalized primary remote URL when present;
-- repository display label, usually the git directory basename;
-- optional first commit / root commit evidence when available.
-
-The executable id is a hash over normalized evidence, not the display label:
-
-#+begin_src text
-repo_id = repo-v1:<hash(normalized-remote | gitdir | root-path-fallback)>
-#+end_src
-
-The display label may be =agent-semantic-protocols= or =turso=, but the label is
-only for humans. Same-name repositories, forks, temporary checkouts, and copied
-directories must not collide.
-
-When outside git, ASP uses a local-root identity:
-
-#+begin_src text
-repo_id = local-v1:<hash(canonical-root-path)>
-#+end_src
-
-This gives non-git projects usable state without pretending they are stable
-repository identities.
-
-** Workspace identity
-
-A workspace identity is the concrete checkout or worktree where an ASP command
-ran. It is separate from repository identity because multiple worktrees can
-share the same repository history while having different uncommitted files.
-
-Inputs:
-
-- repo id;
-- canonical git toplevel path;
-- git worktree id or gitdir path;
-- current branch / detached head evidence for diagnostics;
-- current command cwd relative to workspace root.
-
-Shape:
-
-#+begin_src text
-workspace_id = ws-v1:<hash(repo_id | canonical-worktree-root | gitdir)>
-#+end_src
-
-All live source index and uncommitted-worktree-sensitive cache rows are scoped
-to =workspace_id= unless they are proven immutable by commit/tree hash.
-
-** Scope identity
-
-A scope identity is the language/package/project boundary below a repository or
-workspace. This is the monorepo unit.
-
-Examples:
-
-- Rust =Cargo.toml= package or workspace member;
-- Python =pyproject.toml= project;
-- Julia =Project.toml= package;
-- TypeScript =package.json= / =tsconfig.json= project;
-- Gerbil =gerbil.pkg= package;
-- Org document set or contract root.
-
-The stable scope id should use anchor path and language, not manifest content:
-
-#+begin_src text
-scope_id = scope-v1:<hash(repo_id | language_id | relative-anchor-path | scope-kind)>
-#+end_src
-
-Manifest and lockfile content hashes are generation evidence under the scope.
-They should not change the scope id every time dependencies change.
-
-** Run identity
-
-Every ASP invocation that writes artifacts gets a run id:
-
-#+begin_src text
-run_id = run-v1:<timestamp | session-id | command-hash>
-#+end_src
-
-The run record links command argv, cwd, repo id, workspace id, scope ids,
-provider ids, schema ids, DB generation ids, and artifact ids. This is the
-minimum audit bridge from a future question back to the exact ASP run that
-produced the evidence.
-
-* Proposed directory layout
-
-The minimum Phase 1 layout is:
+* Canonical layout
+The current physical layout is:
 #+begin_src text
 $ASP_STATE_HOME/
   VERSION
   state.json
-  registry/events.jsonl
-  aliases/by-display-name/
-  projects/by-id/<repo_id>/
-    project.json
-    workspaces/<workspace_id>/
-      workspace.json
-      live/client/
-        manifest.json
-        client.sqlite3
-        cache-manifest.json
-      artifacts/
-#+end_src
-
-The =live/client/manifest.json= file is the State Core manifest. It records
-=layoutVersion=, =backend=sqlite-v1=, =futureBackend=turso=, =repoId=,
-=workspaceId=, =scopeId=, =dbPath=, =artifactPath=, and the cache generation
-manifest path. Turso must consume this manifest later rather than define a
-different root layout.
-
-The global state root should be organized by identity, not by display name:
-
-#+begin_src text
-$HOME/.agent-semantic-protocols/
-  VERSION
-  state.json
+  session-registry.turso
   registry/
-    projects.turso
-    artifacts.turso
     events.jsonl
   aliases/
     by-display-name/
-    by-git-remote/
-    by-local-root/
   projects/
     by-id/
       <repo_id>/
         project.json
-        aliases.json
         workspaces/
           <workspace_id>/
             workspace.json
             live/
               client/
-                client.sqlite3
                 client.turso
-              hooks/
-                activation.json
-                state/
-              runtime/
-                bin/
-                providers/
-              artifacts/
-                index.jsonl
-                org/
-                search/
-                query/
-                provider/
-                analysis/
-                experiments/
-                notebooks/
-                receipts/
-              scopes/
-                <scope_id>/
-                  scope.json
-                  generations/
-                  source-index/
-                  structural-index/
-                  dependency-index/
-                  provider-artifacts/
-                  receipts/
-        immutable/
-          commits/
-          manifests/
-          lockfiles/
-          schemas/
-  blobs/
-    by-sha256/
-  tmp/
-  archives/
-  gc/
+                manifest.json
+                hooks/
+                  events/
+                  ttl/
+                  dispatcher/
+            artifacts/
+              org/
+              prompt-output/
+              provider/
+              analyzer/
 #+end_src
 
-Display-name aliases point into =projects/by-id=. They are never authoritative.
-The registry DB stores the reverse lookup so an ASP command running in any
-workspace can resolve:
-
+The trace must remain stable even if the physical layout evolves:
 #+begin_src text
-cwd -> repo_id -> workspace_id -> scope_id -> artifact set
+repo_id -> workspace_id -> scope_id -> generation_id -> provider_id ->
+search_receipt_id -> selector/snippet/artifact
 #+end_src
 
-* Audit layout
+* Manifest contract
+=live/client/manifest.json= is written by the owning State Core/DB Engine
+service, not by command code. It records:
+- =stateLayoutVersion= =state-v2=;
+- =backend= =turso=;
+- =futureBackend= =turso= while the report schema still carries that field;
+- repo/workspace/scope ids;
+- DB path;
+- artifact path;
+- generation manifest path;
+- schema/report versions.
 
-This section is the explicit directory contract to audit. Every directory has a
-single owner and a retention class. Directories named by ids use executable
-identity. Directories named by labels are aliases only.
+=stateLayoutVersion= versions the on-disk State Core layout. It is separate
+from schema and protocol versions, which remain attached to their individual
+JSON contracts.
 
+Commands must call typed services to obtain these paths. They must not
+reconstruct =projects/by-id/...= manually.
+
+* Crate ownership
+The command crate is a public facade only:
 #+begin_src text
-$ASP_STATE_HOME/                         # default: $HOME/.agent-semantic-protocols
-  VERSION                                # state layout version, plain text
-  state.json                             # root metadata: schema, created_at, host policy
-  lock                                   # root-level process lock for migrations only
-
-  registry/                              # global lookup and audit indexes
-    projects.turso                       # repo/workspace/scope registry
-    artifacts.turso                      # artifact registry and query indexes
-    events.jsonl                         # append-only root event stream
-    migrations.jsonl                     # state-layout migration receipts
-    gc.jsonl                             # garbage-collection receipts
-
-  aliases/                               # human lookup only, never executable identity
-    by-display-name/<label>.json         # label -> repo_id candidates
-    by-git-remote/<remote_hash>.json     # normalized remote -> repo_id candidates
-    by-local-root/<path_hash>.json       # canonical local root -> repo_id candidates
-    by-scope-anchor/<anchor_hash>.json   # manifest/document anchor -> scope_id candidates
-
-  projects/
-    by-id/<repo_id>/                     # durable repository bucket
-      project.json                       # repo identity evidence and display labels
-      aliases.json                       # current labels, remotes, known local roots
-      policy.json                        # local retention/privacy/sync policy
-
-      immutable/                         # hash-bound state reusable across workspaces
-        commits/<commit_id>/             # commit/tree-scoped derived facts
-        manifests/<manifest_hash>/       # manifest snapshots and parsed package facts
-        lockfiles/<lock_hash>/           # lockfile/resolver snapshots
-        schemas/<schema_id>/             # schema snapshots used by artifacts
-        providers/<provider_id>/         # provider registry descriptor snapshots
-        dependency-topology/             # static dependency graph by package id/hash
-
-      workspaces/
-        <workspace_id>/                  # concrete checkout/worktree bucket
-          workspace.json                 # worktree root, gitdir, branch/head diagnostics
-          runs/                          # command-run metadata
-            <run_id>.json                # argv, cwd, env digest, linked artifacts
-
-          live/                          # mutable state for this dirty workspace
-            client/
-              client.turso               # future Turso v2 client DB
-              client.sqlite3             # optional SQLite v1 while still implemented
-              manifest.json              # DB/generation manifest for quick diagnostics
-            hooks/
-              activation.json            # hook activation for this workspace
-              state/                     # append-only hook event state
-            runtime/
-              bin/                       # command shims scoped by activation policy
-              providers/                 # provider release locks and resolved binaries
-            temp/
-              imports/                   # incomplete imports; safe to clean on crash
-              downloads/                 # provider/runtime temporary downloads
-
-          scopes/
-            <scope_id>/                  # language/package/document scope
-              scope.json                 # language, kind, anchor path, provider ownership
-              generations/               # generation metadata by provider/schema
-              source-index/              # source owner/file/selector index artifacts
-              structural-index/          # parser/native fact index artifacts
-              dependency-index/          # usage rows tied to static topology
-              search-index/              # FTS/vector/rank input, no parser authority
-              provider-artifacts/        # raw provider packets, schema-valid only
-              receipts/                  # scope-local refresh/import receipts
-
-          artifacts/                     # human and machine artifacts from runs
-            index.jsonl                  # workspace artifact index mirror
-            org/                         # plans, RFC drafts, reviews, contract traces
-            search/                      # search packets, graph frontiers, query sets
-            query/                       # exact query receipts and projections
-            dependency/                  # dependency search and topology receipts
-            provider/                    # provider doctor/export/schema receipts
-            analysis/                    # Python/Julia-readable analysis outputs
-            experiments/                 # analyzer experiment receipts and metrics
-            notebooks/                   # notebooks and derived data-science reports
-            benchmarks/                  # benchmark receipts and result summaries
-            migrations/                  # workspace/scope migration receipts
-            sync/                        # optional sync receipts, if enabled
-            receipts/                    # command receipts not tied to a narrower kind
-
-  blobs/
-    by-sha256/<sha256[0:2]>/<sha256>     # content-addressed payloads, no raw source by default
-
-  tmp/
-    <run_id>/                            # crash-safe temporary run workspace
-
-  archives/
-    projects/<repo_id>/                  # cold durable artifacts removed from hot lookup
-
-  gc/
-    candidates/                          # proposed deletions
-    tombstones/                          # deletion records
+agent-semantic-protocol::command -> parse CLI, dispatch, compact render
+agent-semantic-runtime::state_core -> state root, repo/workspace/scope identity
+agent-semantic-client-core -> client-facing State Core services and reports
+agent-semantic-client-db -> DB Engine schema, Turso path, sessions, manifests
+agent-semantic-search -> search routing, overlays, source-index lookup
+language harnesses -> native parser facts and shared packets
 #+end_src
 
-** Audit ownership table
+When a command needs new behavior, first define the typed service in the owning
+crate, then call it from the command facade.
 
-| Path | Owner | Retention | Notes |
-|------+-------+-----------+-------|
-| =VERSION= | state layout | durable | guards incompatible migrations |
-| =registry/projects.turso= | Rust client/config | durable | source of repo/workspace/scope lookup |
-| =registry/artifacts.turso= | Rust client/artifact registry | durable | primary artifact search surface |
-| =registry/events.jsonl= | all writers through state API | durable append-only | root audit stream |
-| =aliases/= | state resolver | derived | rebuildable from project registry |
-| =projects/by-id/<repo_id>/project.json= | state resolver | durable | executable repo identity evidence |
-| =immutable/= | cache/index importers | derived or durable by hash | reusable across workspaces |
-| =workspaces/<workspace_id>/workspace.json= | state resolver | durable | checkout/worktree identity |
-| =workspaces/<workspace_id>/live/= | hook/client/runtime | live | dirty-worktree-sensitive |
-| =scopes/<scope_id>/= | provider registry + Rust client | live/derived | monorepo package/document boundary |
-| =artifacts/index.jsonl= | artifact registry | durable append-only | Python/Julia streaming surface |
-| =artifacts/org/= | Org workflow | durable | plans/RFCs/reviews/contract traces |
-| =artifacts/search/= | search client | durable or derived | compact packets and graph frontiers |
-| =artifacts/analysis/= | Python/Julia analysis | durable | analysis products, not authority |
-| =blobs/by-sha256/= | artifact registry | content-addressed | raw source disallowed by default |
-| =tmp/= | command runner | temporary | safe to clean after run expiry |
-| =archives/= | state archive | durable cold | not in hot lookup by default |
-| =gc/= | state GC | audit | candidate and tombstone records |
+* Artifact contract
+Artifacts are durable evidence, not raw source mirrors. By default, State Core
+should store bounded packets, receipts, selector locators, graph facts, route
+receipts, and analyzer outputs. Raw source text is excluded unless a schema
+explicitly permits a bounded snippet or replay artifact.
 
-* Artifact taxonomy
+Python and Julia analysis should be able to locate:
+- DB Engine reports and route receipts;
+- source/search generations;
+- provider packet artifacts;
+- prompt-output and compact render receipts;
+- Org plans/checkpoints;
+- analyzer experiment outputs;
+- dynamic JSON overlay artifacts.
 
-Artifacts should be grouped by use, but indexed by metadata rather than path
-convention.
+Python owns production graph-route algorithms. Julia owns offline algorithm
+research and measurement. Both consume the same State Core identity and DB
+Engine paths.
 
-** Org artifacts
-
-Location:
-
-#+begin_src text
-artifacts/org/
-#+end_src
-
-Contents:
-
-- plans;
-- RFC drafts;
-- adversarial reviews;
-- recall summaries;
-- contract traces;
-- durable agent state.
-
-Org artifacts must include metadata fields for repo id, workspace id, scope id
-when applicable, document id, heading id, contract id, run id, and timestamp.
-
-** Search artifacts
-
-Location:
-
-#+begin_src text
-artifacts/search/
-artifacts/query/
-#+end_src
-
-Contents:
-
-- search packet receipts;
-- graph frontier receipts;
-- query selector receipts;
-- dependency search receipts;
-- fan-out / fan-in subagent receipts;
-- compact render snapshots.
-
-Search artifacts must record stable identity:
-
-- provider =structuralSelector= or =nativeFactId=;
-- owner id and file hash;
-- query key and generation id;
-- package id / dependency id;
-- display line ranges only as hints.
-
-** Provider artifacts
-
-Location:
-
-#+begin_src text
-artifacts/provider/<language_id>/<provider_id>/
-#+end_src
-
-Contents:
-
-- provider export packets;
-- parser-owned native facts;
-- schema validation receipts;
-- provider doctor snapshots;
-- package/project discovery receipts.
-
-Provider artifacts are not the source of broad search ownership. They are
-inputs to Rust-owned source, structural, dependency, and search indexes.
-
-** Analysis artifacts
-
-Location:
-
-#+begin_src text
-artifacts/analysis/
-artifacts/experiments/
-artifacts/notebooks/
-#+end_src
-
-These are for Python, Julia, and data-science workflows. They should never have
-to infer meaning from directory names alone. The registry DB should index
-stable identities, hot fields, hashes, timestamps, and JSON locators. Dynamic
-JSON remains the payload layer for high-churn, bulky, or one-off research
-evidence.
-
-Required index surfaces:
-
-- append-only =index.jsonl= for easy Python/Julia streaming;
-- JSON locator rows for selective payload loading;
-- optional Arrow/Parquet derived tables for large analysis;
-- Turso registry tables for interactive lookup;
-- schema ids on every row.
-
-Python and Julia analysis should be able to load:
-
-#+begin_src text
-artifact_id, repo_id, workspace_id, scope_id, language_id, provider_id,
-schema_id, generation_id, run_id, artifact_kind, relative_path, created_at,
-source_hashes, dependency_hashes, command_method, dynamic_json_path,
-payload_hash, payload_kind
-#+end_src
-
-without scanning provider-specific folder conventions.
-Analyzer experiment receipts should additionally record:
-#+begin_src text
-experiment_id, input_snapshot_id, algorithm_id, algorithm_version,
-parameter_hash, metric_schema_id, metric_values, input_generation_ids,
-normalized_query_key, route_graph_state_id, candidate_count,
-selected_edge_count, timestamp_coverage, output_artifact_ids
-#+end_src
-Python graph-turbo and Julia research can share these identifiers while keeping
-their roles separate. Python may consume validated graph/rank features for the
-production lane. Julia may publish algorithm research and candidate
-improvements. Neither analyzer lane should mutate source, provider,
-dependency, or route-authority facts directly.
-Not every analyzer field belongs in Turso. Fields should move into DB tables
-only when they are stable join keys, common filters, metric columns, or
-production candidates. Volatile code/search/provider payloads should stay as
-dynamic JSON and be loaded through DB-selected artifact ids.
-
-** Receipts
-
-Receipts are first-class artifacts:
-
-- command receipts;
-- cache invalidation receipts;
-- CDC receipts;
-- migration receipts;
-- benchmark receipts;
-- sync receipts;
-- GC receipts.
-
-Receipts explain why state changed. They should be append-only and cheap to
-query.
-
-* Global registry
-
-The global root owns two registry layers:
-
-** Project registry
-
-Tracks:
-
-- repo id;
-- display label;
-- git remotes;
-- known local roots;
-- workspaces;
-- scope anchors;
-- last seen timestamps;
-- state schema version;
-- canonical client DB path.
-
-** Artifact registry
-
-Tracks:
-
-- artifact id;
-- run id;
-- repo id;
-- workspace id;
+* State locate command
+=asp state locate= and =asp state locate --json= are diagnostics over State
+Core. They must include:
+- state root;
+- repo id and display label;
+- workspace id and display label;
 - scope id;
-- language id;
-- provider id;
-- schema id / version;
-- generation id;
-- artifact kind;
-- storage path;
-- content hash;
-- source evidence hashes;
-- dependency evidence hashes;
-- raw-source-stored flag;
-- dynamic JSON path and payload hash;
-- input snapshot id;
-- analyzer experiment id;
-- algorithm id and metric schema id;
-- retention class.
+- client dir;
+- manifest path;
+- DB path;
+- artifact path;
+- backend and future backend fields;
+- layout version;
+- project-local cache detection as a diagnostic-only field.
 
-The artifact registry is the contract for Python/Julia analysis. The directory
-layout is an implementation detail behind the registry.
+The CLI must call the State Core service. It must not compose paths itself.
 
-* Static vs dynamic state
+* Non-goals
+- no agent MCP server as state owner;
+- no project display name as executable identity;
+- no line range as search/write identity;
+- no =PRJ_CACHE_HOME= in the v2 state-root contract;
+- no project-local cache fallback;
+- no provider-local cache as authority over Rust-owned client state.
 
-The layout must separate static, mostly immutable evidence from live workspace
-state.
-
-** Static / immutable evidence
-
-Stored under:
-
-#+begin_src text
-projects/by-id/<repo_id>/immutable/
-#+end_src
-
-Examples:
-
-- manifest hash snapshots;
-- lockfile hash snapshots;
-- schema files and schema ids;
-- dependency topology rows by package id and resolver hash;
-- provider registry descriptor snapshots;
-- commit/tree-scoped source index generations when available.
-
-These facts are safe to reuse across workspaces when their hashes match.
-
-** Dynamic workspace state
-
-Stored under:
-
-#+begin_src text
-projects/by-id/<repo_id>/workspaces/<workspace_id>/live/
-#+end_src
-
-Examples:
-
-- source index for uncommitted files;
-- structural index for current working tree;
-- hook event state;
-- command activation;
-- current provider command selection;
-- run receipts;
-- local runtime provider locks;
-- temporary imports.
-
-This prevents one dirty worktree from poisoning another worktree's state.
-
-* Monorepo behavior
-
-Git toplevel defines the repository boundary, not the package boundary.
-
-Language providers then define scope boundaries from manifests and provider
-registry descriptors. In a monorepo, one repo id may own many scope ids:
-
-#+begin_src text
-repo_id
-  scope: rust Cargo workspace root
-  scope: rust crate member A
-  scope: python pyproject package B
-  scope: julia Project.toml package C
-  scope: org contract document set
-#+end_src
-
-Search should route through static scope topology first:
-
-#+begin_src text
-cwd -> repo_id -> workspace_id -> candidate scope ids -> provider facts
-#+end_src
-
-The current directory selects a default scope, but broad search can include
-neighbor scopes only when the command or search packet makes that scope
-expansion visible.
-
-* Project lookup and traceability
-
-Every ASP command that writes or reads state should be able to print a compact
-state locator:
-
-#+begin_src text
-stateRoot=$HOME/.agent-semantic-protocols
-repoId=repo-v1:...
-workspaceId=ws-v1:...
-scopeIds=scope-v1:...
-artifacts=...
-clientDb=...
-#+end_src
-
-New diagnostic commands:
-
-#+begin_src shell
-asp state locate --workspace .
-asp state projects
-asp state project inspect --workspace .
-asp state artifacts --workspace . --kind search
-asp state migrate --workspace .
-asp state gc --dry-run
-#+end_src
-
-Existing commands should include state identity in receipts:
-
-- =asp cache status=;
-- =asp cache source-index lookup=;
-- =asp <language> search ...=;
-- =asp <language> query ...=;
-- =asp org recall plans=;
-- hook doctor / activation commands.
-
-* Migration plan
-
-** Phase 0 - read-only discovery
-
-- add global state-root resolver;
-- implement =asp state locate=;
-- report global target identity and current implementation paths as discovery
-  evidence only;
-- do not create or select project-local cache roots from v2 commands.
-
-** Phase 1 - dual-write non-destructive metadata
-
-- write project/workspace/scope registry entries to global state;
-- link currently discovered project-local artifact paths as imported evidence
-  only when an explicit migration/import command asks for that;
-- add receipts proving the mapping.
-
-** Phase 2 - global-write client DB and artifacts
-
-- move new client DB and artifacts to global state root;
-- write migration receipts;
-- make =ASP_STATE_HOME= and the default home root the only v2 state-root
-  selection mechanisms.
-
-** Phase 3 - Turso-native state DB
-
-- store registry and client DB in Turso v2 when enabled;
-- add CDC receipts for artifact and cache invalidation events;
-- add static dependency topology tables;
-- keep SQLite v1 import path until migration gates pass.
-
-** Phase 4 - project-local cache retirement
-
-- stop creating new project-local state by default;
-- do not add =--state-root project-local= to the public v2 surface;
-- provide garbage-collection and archive commands.
-
-* Safety and privacy
-
-Global state contains sensitive metadata:
-
-- repository names;
-- local paths;
-- git remotes;
-- dependency names;
-- query history;
-- artifact paths;
-- provider versions.
-
-Therefore:
-
-- executable ids should be hashes, not display names;
-- raw local paths are stored in metadata only when needed for local lookup;
-- sync/export must support path and remote redaction;
-- raw source text remains disallowed by default;
-- encryption at rest should be evaluated with the Turso v2 engine;
-- =asp state export= must make redaction explicit.
-
-* Retention and garbage collection
-
-State classes:
-
-- =live= current workspace state;
-- =durable= plans, RFCs, validated provider packets, benchmark receipts;
-- =derived= re-creatable indexes and views;
-- =temporary= incomplete command runs;
-- =archive= old durable artifacts kept out of hot lookup.
-
-GC must not delete durable Org plans, RFCs, migration receipts, or benchmark
-receipts without explicit user action. Derived indexes can be rebuilt from
-provider artifacts and static hashes, so they can have shorter retention.
-
-* Acceptance criteria
-
+* Validation gates
+- =ASP_STATE_HOME= set/unset tests pass;
+- git repo, worktree, and non-git identity tests pass;
+- same display name does not collide;
+- =PRJ_CACHE_HOME= does not affect State Core;
+- manifest JSON includes layout/backend/ids/DB/artifact paths;
 - =asp state locate --json= validates against
-  =schemas/semantic-state-locate-report.v1.schema.json=.
-- =repo_id= is derived from git remote, git common dir/git dir, or canonical
-  root path fallback; display names are aliases only.
-- =workspace_id= is derived from concrete checkout/worktree root, git dir, and
-  =repo_id=; main checkout and linked worktree share =repo_id= but differ in
-  =workspace_id=.
-- =project name=, display labels, and line ranges are never executable state
-  identity.
-- v2 client DB paths resolve to
-  =$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/live/client/client.sqlite3=.
-- Existing project-local cache may be reported as =projectLocalCache= evidence
-  but must not be selected as a v2 fallback.
-
-- one ASP command can resolve cwd to state root, repo id, workspace id, and
-  candidate scope ids;
-- same repository cloned into two paths does not collide accidentally;
-- two worktrees of the same repository do not overwrite each other's live
-  source/structural index state;
-- monorepo package scopes are separately addressable;
-- Python and Julia can load artifact indexes from stable JSONL or table
-  surfaces without path guessing;
-- every artifact links back to run id, repo id, workspace id, scope id, schema
-  id, provider id, and generation id where applicable;
-- no new default state writes go into project-local =.cache= after the default
-  switch;
-- v2 commands do not use =PRJ_CACHE_HOME= or project-local cache as a state-root
-  selector;
-- state receipts do not use display labels, project names, or line ranges as
-  executable identity.
-
-* Open questions
-
-- Should the default root be exactly =$HOME/.agent-semantic-protocols= on every
-  platform, or should XDG paths be supported as aliases?
-- Should repo id prefer remote URL or local gitdir when both are available?
-- Should provider runtime binaries be global by provider version, or workspace
-  local by activation policy?
-- Which artifact kinds must remain human-readable Org/JSONL, and which can move
-  to Turso/Arrow derived tables?
-- How much project path metadata should sync/export redact by default?
-- Should current code keep =PRJ_CACHE_HOME= internally until the v2 resolver
-  lands, or should it be removed in the same implementation series?
-
-* Initial recommendation
-
-Adopt a global state root with identity-based project directories:
-
-#+begin_src text
-$HOME/.agent-semantic-protocols/projects/by-id/<repo_id>/workspaces/<workspace_id>/
-#+end_src
-
-Use project names only as aliases. Use git and manifest evidence for identity.
-Store artifacts through a global registry that is easy for Python and Julia to
-load. Do not carry =PRJ_CACHE_HOME= or project-local =.cache= as a v2
-compatibility mode.
+  =schemas/semantic-state-locate-report.v2.schema.json=;
+- no command-layer path helper reconstructs State Core v2 paths directly.

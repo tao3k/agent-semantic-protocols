@@ -1,917 +1,145 @@
-#+TITLE: RFC 10.18 - ASP DB Engine v1 and Turso backend
+#+TITLE: RFC 10.18 - ASP DB Engine v1 and Turso Backend
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-28
 #+OPTIONS: toc:2
 
 * One-sentence summary
+ASP owns a DB Engine v1 contract for durable search, state, topology,
+artifact evidence, and future writing workflows; Turso is the production
+backend and the public backend token is =turso=.
 
-ASP should define its own DB Engine as the durable substrate for search,
-state, dependency topology, artifact evidence, and future writing workflows;
-Turso Database is the target backend that should fully replace the current
-=rusqlite=/SQLite v1 adapter once the DB Engine gates pass.
+* Contract
+The DB Engine is the product boundary. Providers and command facades emit
+schema-valid facts; search, query, recall, artifact review, and writing
+workflows consume typed DB Engine read models. Public contracts must not expose
+old DB handles, old backend tokens, or project-local cache fallback routes.
 
-* Motivation
+The stable public contract is:
+- backend token: =turso=
+- schema version: =1=
+- state root: State Core under =ASP_STATE_HOME= or =$HOME/.agent-semantic-protocols=
+- active DB file: =live/client/client.turso=
+- active manifest: =live/client/manifest.json=
+- durable artifact root: the paired State Core workspace artifact directory
 
-The current client DB is SQLite-backed through =rusqlite=. That is a good v1
-storage layer for local cache rows, source index rows, structural index rows,
-artifact events, provider-command selections, and hot replay lookups.
+=futureBackend=turso= remains only as a v1 report field during the cutover
+window. It is not a second backend and not a version suffix.
 
-However, replacing =rusqlite= only to keep the same synchronous single-writer
-shape is not enough. A useful migration must first promote the storage layer
-into an ASP-owned DB Engine contract. The engine is the product boundary:
-providers and commands write schema-valid facts into it; search, query, recall,
-artifact review, and future writing workflows read from it.
-
-Turso matters because it may implement this engine better than SQLite v1 for
-the agent loop:
-
+* Turso rationale
+Turso is useful because it matches the agent loop better than a synchronous
+single-writer storage shape:
+- async local access aligned with Tokio provider transport;
 - concurrent source and structural index imports;
-- cache invalidation that can be observed as durable DB changes;
-- async local DB access aligned with Tokio provider transport;
-- ranking inputs from vector / full-text features without weakening parser
-  authority;
-- local-first sync for optional Cloud / cross-agent state propagation;
-- encrypted local metadata and cache state;
-- agent-friendly DB introspection surfaces.
-
-The compatibility target is therefore a validation baseline, not the product
-goal. ASP can intentionally create a Turso DB Engine format that is not readable
-by SQLite when an engine feature pays for that boundary. The design question is
-not "should ASP use Turso"; it is "what DB Engine does ASP need, and how does
-the Turso backend satisfy it while replacing the current =rusqlite= adapter."
-
-* Backend replacement contract
-The new architecture target is a Turso-backed DB Engine, not an indefinite
-multi-backend matrix. The current =rusqlite= adapter and =client.sqlite3= file
-are phase-1 compatibility scaffolding:
-- keep =sqlite-v1= only as the active backend while State Core, manifests,
-  source-index paths, and command boundaries are being stabilized;
-- record =futureBackend=turso= as the migration direction, not as a parallel
-  optional mode;
-- remove =rusqlite= from the production DB Engine path after Turso satisfies
-  schema, source-index, structural-index, artifact-event, receipt, inspect,
-  benchmark, and recovery gates;
-- do not preserve =rusqlite= as a long-lived fallback once the Turso cutover is
-  accepted;
-- keep any fallback/control behavior before cutover as explicit validation
-  scaffolding, not as part of the target architecture.
-
-This also means ASP should use Turso-owned FTS/BM25 and search facilities for
-durable indexed generations once the backend is active. Dynamic dirty-code
-overlay search may reuse Turso's search implementation only through the DB
-Engine boundary; ASP should not introduce =tantivy= as a second product backend
-alongside Turso.
-* Phase 1 implementation checkpoint
-ASP now has a DB Engine facade before any Turso backend switch:
-- =crates/agent-semantic-client-db/src/engine/= owns =ClientDbEngine= and =ClientDbBackend= through a thin module facade plus backend adapters.
-- =ClientDbEngineBackend= is the adapter seam; =SqliteClientDbEngineBackend= is the current implementation used by =ClientDbEngine= for open and inspect calls.
-- The backend contract reports =dbFileName=, =schemaVersion=, =durability=, and feature flags for async I/O, concurrent writes, FTS, vector, overlay search, sync, and encryption.
-- Command-facing Rust code uses engine-level calls such as =ClientDbEngine::open_or_create= and =ClientDbEngine::inspect_backend=; =sqlite-v1= names stay inside the adapter/report boundary.
-- The active backend token is =sqlite-v1=, implemented by the existing =ClientDb= rusqlite adapter and schema version 1.
-- The recorded future backend token is =turso=, without a =v2= suffix.
-- =ClientDbEngineReport= exposes backend, future backend, layout version, DB file name, schema version, durability, feature flags, repo/workspace/scope ids, client dir, manifest path, DB path, artifact path, the reportable Turso future backend skeleton, and the active SQLite adapter report.
-- =schemas/semantic-db-engine-report.v1.schema.json= fixes the analyzer-facing JSON shape for that report during the =sqlite-v1= transition.
-- Engine resolution consumes State Core paths, including =live/client/client.sqlite3=, =live/client/manifest.json=, and the paired workspace artifact path.
-- Production client cache/source-index/writeback/replay/history paths now go through the DB Engine facade or its client-dir path helper instead of spelling =client.sqlite3= from command-facing code.
-- Dynamic dirty-code owner-items search is deliberately outside the durable DB write path. =agent-semantic-search= owns hot/cold-path search orchestration, candidate projection, overlay merge, owner-items overlay ranking, and compact dynamic rendering; =agent-semantic-client= only consumes that service through client/cache/receipt facades. Item semantics still come from =languages/*-harness= command-line interfaces or schema-valid overlay artifacts. Turso FTS/BM25 should replace durable generation search after cutover, while dirty overlay search should reuse Turso-owned search semantics through the DB Engine/search adapter without inserting every transient edit into the production generation.
-- =asp cache status= renders a compact =|dbEngine= row so CLI consumers and analyzers can recover the DB Engine contract without reverse-engineering =client.sqlite3= paths.
-- =ClientReceipt.dbEngine= embeds the same DB Engine report into =agent-semantic-client-receipt.v1= JSON for cache status, import, flush, and invalidate receipts.
-- =schemas/agent-semantic-client-receipt.v1.schema.json= carries the receipt-side =dbEngine= contract with =backend=sqlite-v1=, =futureBackend=turso=, =layoutVersion=state-v2=, repo/workspace/scope ids, State Core paths, and the active SQLite report.
-- The compact =|dbEngine= row is a CLI shorthand only; the receipt JSON is the analyzer-facing contract for DB/state progress.
-- The phase-2 skeleton adds =futureBackendReport= for =turso=. It reports the planned Turso DB file, bootstrap status, durability class, and capability flags for async I/O, concurrent writes, FTS, overlay search, and sync while keeping =sqlite-v1= as the active backend until cutover gates pass.
-- =agent-semantic-client-db= owns the feature-gated =turso-backend= dependency gate, so the real Turso open/bootstrap/query implementation lands behind the DB Engine facade instead of the client command layer.
-- The feature-gated Turso path now implements real open/bootstrap/query behavior behind this facade: =ClientDbEngine::bootstrap_active_turso= creates =client.turso=, applies schema version =1=, creates graph/search/overlay tables, and exercises graph plus stable/overlay search adapters. The workspace-level =turso= dependency enables Turso's =fts= feature so the Tantivy-backed search stack is reached through the DB Engine boundary, not through a direct ASP =tantivy= backend. The next phase is production traffic, route receipt, and BM25 score/ranking cutover rather than changing State Core layout, keeping =rusqlite= as a permanent peer, or reintroducing project-local cache as a fallback.
-- The feature-gated Turso path also has the first route receipt table and adapter. =asp_route_receipt= records bounded search/route replay evidence with repo/workspace/scope/session ids, query, route source, selected selector, next command, hit count, evidence ids, and caller-provided timestamp. =schemas/semantic-db-route-receipt.v1.schema.json= is the analyzer-facing JSON contract for this row family. The production-facing API is now =ClientDbEngine::upsert_route_receipt= / =ClientDbEngine::list_route_receipts=, with the lower-level Turso adapter kept behind the DB crate. =agent-semantic-client --features turso-backend= writes this receipt during validated search-packet writeback through a runtime-owned current-thread async bridge and the DB Engine facade, not by constructing a Turso path or calling a Turso adapter directly. The feature-gated smoke gate asserts graph/search/receipt writes stay on the active =client.turso= path and do not materialize the SQLite control file. The production cutover still needs warm worker ownership and Python graph-route consumption, but the schema, DB-owned facade, and first client writeback path are executable.
-- Source-index stable data now has a DB Engine read-model projection into Turso. =ClientDbEngine::persist_source_index_read_model= consumes a =ClientDbSourceIndexImport=, bootstraps the active =client.turso= backend, persists the source-index EvidenceGraph into =asp_graph_entity= / =asp_graph_edge=, and writes =source-index= namespace rows into =asp_search_document= for stable FTS lookup. The feature-gated smoke gate searches the projected source-index function name through =search_turso_documents= and verifies it returns a stable selector-bearing hit. The real =cache source-index refresh= path also calls this facade under =agent-semantic-client --features turso-backend= after the SQLite control refresh succeeds, and the reused-generation branch rebuilds the stable import from current files so the Turso read model is still materialized when an existing SQLite generation is reused. This is the first executable bridge from existing SQLite/source-index DTOs into the Turso graph/search read model; it does not change public command output or require command-layer ranking logic.
-- The DB/search cutover cannot be accepted without millisecond-level performance gates. Hot cache/source-index/overlay routes must stay in single-digit or low double-digit milliseconds for focused queries, and every language harness scenario must record elapsed time, provider spawn count, stdout bytes, route source, and fallback reason.
-* Source context
-
-Current ASP contract:
-
-- RFC 10.17 makes the Rust source index SQL-backed and Rust-owned. Providers
-  emit bounded native facts; they must not own broad workspace search, cache
-  invalidation, route selection, graph ranking, or dependency cache.
-- RFC 10.08 keeps =agent-semantic-client= local-first, with native providers as
-  parser authority and a shared compact prompt contract.
-- =crates/agent-semantic-client-db= currently exports the SQLite DB surface.
-  It opens =client.sqlite3= with =rusqlite::Connection=, configures WAL-oriented
-  pragmas, and exposes read/write APIs for cache generations, syntax replay,
-  structural index, source index, provider command selections, and artifact
-  events.
-- Source and structural index refreshes already have clear transaction seams:
-  generation write, old row clear, owner/symbol/dependency/selector writes,
-  commit, then stats lookup.
-- The current benchmark surface is
-  =crates/agent-semantic-client-db/benches/sqlite_cache_hot_path.rs= and covers
-  path inspect, open report, syntax query replay, structural symbol lookup,
-  structural dependency lookup, and structural import refresh.
-
-Current analyzer research context:
-
-- =analyzers/AspGraphsSearch.jl= studies ASP search/query artifacts as a typed
-  action-flow dataset. Its research docs define JSON inventory tables, search
-  packet tables, provider command tables, action taxonomy tables, phase tables,
-  and timestamp gap tables.
-- Python =asp_graph_turbo= owns the production graph-ranking lane. It is the
-  runtime place for sparse graph backends, typed personalized PageRank, cached
-  reachability, diversity ranking, read-loop guards, and router decisions.
-- Julia owns the offline research lane. It measures artifacts, reconstructs
-  flows, explores graph algorithms and statistics, and publishes replayable
-  Pluto reports. It should not become a second production ranker.
-- Current analyzer gaps are exactly DB Engine gaps: incomplete event timestamps,
-  missing session/prompt/action/parent ids, weak file-mtime phase inference,
-  missing =recommendedNext= adoption status, missing route graph state, missing
-  candidate counts, and no stable place to store experiment outputs.
-
-Related code-search reference context:
-- RFC 10.20 studies =codebase-memory-mcp= as an external code-search substrate. Its useful lesson for ASP is the durable pre-indexed graph, FTS/BM25, semantic/vector retrieval, graph traversal, snippet retrieval, and benchmark playbook behind the MCP adapter.
-- The report explicitly rejects making an agent MCP server the ASP architecture. MCP can be a future adapter over stable ASP commands and receipts; it must not own indexing, ranking, project identity, or artifact layout.
-- DB Engine v1 should therefore include code-search generations, files, entities, edges, terms, optional vectors, snippets, receipts, and dynamic JSON locators as engine-level read-models.
-- The stronger ASP advantage is native provider analysis. Rust, Python, Julia, TypeScript, Org, Gerbil, and future providers should bring their ecosystem facts into the same DB read-model: package metadata, imports, tests, route ownership, manifests, contracts, notebooks, and analyzer receipts.
-Turso-first lexical search update:
-- RFC 10.20 narrows the text-search backend decision. The preferred DB Engine experiment should use Turso-backed FTS/BM25 over ASP entity documents.
-- Direct =tantivy= integration should not become an ASP product dependency. When Turso FTS is available and can satisfy tokenizer, update-latency, and field-weighting requirements, ASP should consume the Turso-owned Tantivy-backed search layer instead of building an independent Tantivy backend.
-- Dynamic code must not be indexed as raw source lines. Providers should emit stable entity rows with =source_hash=, =generation_id=, =entity_id=, =selector=, =qualified_name=, =signature=, =display_range=, and provider-built identifier search text.
-- CamelCase / snake_case / path-segment expansion should be computed by ASP providers or the DB Engine projection layer before insertion into the FTS index, so query behavior is deterministic across backends.
-- The search-visible view should point only at the current generation; stale rows should be tombstoned or retained as audit evidence, never returned as default actionable evidence.
-Memory-aware search update:
-- RFC 10.20 adds context-resumable search. The DB Engine must store enough evidence state for the router to choose =skip=, =resume=, or =refine= instead of forcing every prompt through a cold retrieval flow.
-- Search receipts should record anchors, candidate sets, graph frontiers, rejected routes, selected actions, index generations, source hashes, and freshness decisions.
-- Topology rows should make common jumps cheap: selector to owner/package/dependency/tests, dependency to import sites and wrappers, test to covered selectors, Org heading to referenced selectors, and prior receipt to its active frontier.
-- The router may skip FTS/BM25 only when the anchor is selector-first, freshness is current or explicitly stale-accepted, and the prior receipt scope matches the current intent.
-- Analyzer tables should expose warm-path metrics such as =new_retrieval_avoided_rate=, =context_jump_success_rate=, =receipt_refinement_success_rate=, and =false_skip_rate=.
-Dynamic overlay update:
-- Turso FTS/BM25 should index the stable base generation and accepted checkpoints. It must not be treated as the synchronous global index for every dirty edit produced by concurrent sessions or subagents.
-- The DB Engine should define overlay namespaces by =project_id=, =workspace_id=, =worktree_id=, =session_id=, =subagent_id=, and =base_generation=.
-- Overlay state should store dirty-file hashes, patch receipts, changed/deleted selector ids, bounded snippets, parse-delta summaries, active test/policy failures, and temporary overlay-local entity ids when stable selectors are not yet available.
-- The search router should merge memory, receipt anchors, active overlays, dirty-file provider parses, stable Turso FTS/BM25, and semantic/vector fallback in that order.
-- Durable DB writes for overlays should be debounced, batched, or checkpointed. Hot token maps and speculative parse deltas may remain in memory; only replayable receipts and bounded evidence need persistence.
-- Accepted overlays should compact into a new stable generation. Rejected overlays remain session-scoped audit evidence and must not pollute the project-wide search-visible view.
-Turso/Tantivy search dependency update:
-- The DB Engine should converge on one lexical-search family. Persisted generations use Turso FTS/BM25; dynamic overlays should use the same Turso-owned Tantivy-backed search semantics without inserting every dirty edit into the durable Turso DB generation.
-- If Turso exposes a stable reusable Rust search package for its FTS layer, ASP should depend on that package for overlay search. If Turso does not expose that boundary yet, ASP should add an adapter around Turso's FTS/search implementation or keep direct =tantivy= usage only in non-product benchmark/control experiments. Direct =tantivy= must not replace =fzf= as a second long-lived ASP search backend.
-- =fzf= should be removed as an agent-facing search/ranking backend after parity. It may exist only as a temporary migration adapter or human interactive affordance.
-- The replacement gate should compare =fzf= and Turso/Tantivy overlay search on recall@k, MRR/nDCG, warm update latency, dirty-buffer indexing cost, selector stability after edits, and false-positive-at-1.
-- The DB Engine must not expose two conflicting ranking semantics. All lexical results should return selector-first packets with shared field-hit metadata and graph-fusion inputs.
-Combinator query receipt update:
-- RFC 10.11 and RFC 10.20 define a combined search plan where tree-sitter-compatible S-expression patterns provide coarse structural candidates, native provider queries provide semantic proof, and Python graph fusion ranks the evidence packet.
-- The DB Engine should store =structuralProof=, =nativeProof=, and =fusionProof= as separate receipt sections instead of collapsing them into one search score.
-- Structural proof rows should include grammar id, query AST hash, captures, predicate results, structural spans, and candidate counts.
-- Native proof rows should include provider id, selector, semantic facts, omitted facts, rejection reasons, source fingerprint, and exact read/action locator.
-- Fusion proof rows should include graph seeds, edge types, rank inputs, diversity decisions, confidence, and final action source.
-- Analyzer and Julia research tables should expose candidate counts, latency, token cost, false positives, false negatives, and edit/test feedback per combinator stage.
-* Phase 1 dynamic overlay checkpoint
-- =agent-semantic-search= now owns an internal =dynamic_overlay= service boundary with overlay namespaces, dirty owner/entity documents, identifier expansion for camelCase/snake_case/path segments, owner-scoped lexical ranking, and a backend trait that can be implemented by Turso-owned search later.
-- The default implementation is an in-memory control backend for dirty owner-item overlays. It is not a product-level second search backend and it does not introduce direct =tantivy= as an ASP dependency.
-- The workspace dependency table now includes feature-gated =turso = 0.7.0-pre.14=. =agent-semantic-client= exposes a =turso-overlay= feature so the Turso adapter can be wired behind the overlay boundary without making default builds pay for the dependency tree.
-- =render_dynamic_owner_items_frontier= and =render_dynamic_owner_items_code= now query through the overlay boundary instead of using an ad hoc direct matcher over harness-provided items.
-Default planner metric update:
-- The DB Engine should store =PlanTrace= for every search packet that considered a combinator route, including route choice, internal stages, external command count, candidate counts per stage, proof gain, fallback reason, graph confidence, and final action source.
-- Analyzer tables should compute =combinator_win_rate= by comparing one combinator packet against the shortest non-combinator path for the same prompt class.
-- Julia research notebooks should be able to replay route decisions and test alternative graph policies without re-running providers against source.
-- The production Python graph layer should consume this feedback loop to update route thresholds, diversity budgets, and abstention rules.
-External Turso source context, current as of 2026-06-28:
-
-- Turso Database is an in-process SQL database written in Rust and compatible
-  with SQLite; its README still marks the database beta and advises caution
-  with production data.
-- The Rust reference describes the =turso= crate as local / embedded database
-  plus sync, built on the Turso Database rewrite with concurrent writes (MVCC)
-  and async I/O.
-- The Rust API is async: build a local DB with =Builder::new_local(...).build().await=,
-  connect, then =execute= / =query= / =prepare= / =transaction= with =await=.
-- Turso features and roadmap include =BEGIN CONCURRENT= / MVCC, CDC, async I/O,
-  vector support, improved schema management, encryption at rest, DBSP
-  incremental computation, Tantivy-backed FTS, multi-process WAL coordination,
-  sync push/pull, and a CLI MCP server. The CLI MCP server is recorded only as
-  an ecosystem fact; it is not an ASP architecture input.
-- Compatibility is real but not complete. The compatibility document lists
-  partial query language, PRAGMA, and C API support; it also documents
-  Turso-specific PRAGMAs such as CDC capture, encryption keys, MVCC checkpoint
-  tuning, and =require_where= safety.
-
-Primary references:
-
-- [[https://github.com/tursodatabase/turso][tursodatabase/turso README]]
-- [[https://raw.githubusercontent.com/tursodatabase/turso/main/COMPAT.md][Turso compatibility notes]]
-- [[https://docs.turso.tech/sdk/rust/reference][Turso Rust SDK reference]]
-- [[https://turso.tech/blog/beyond-the-single-writer-limitation-with-tursos-concurrent-writes][Turso concurrent writes / MVCC]]
-
-* Decision framing
-
-** The solution is ASP DB Engine v1
-
-The DB Engine v1 project should be scoped as:
-
-#+begin_src text
-ASP DB Engine contract -> typed state/fact/artifact tables ->
-backend adapters -> Turso backend experiments -> measured agent-loop gains
-#+end_src
-
-The engine owns:
-
-- state-root project/workspace/scope/run identity;
-- client cache generations;
-- source index rows;
-- structural index rows;
-- dependency topology and usage rows;
-- artifact registry rows;
-- search/query receipts;
-- Org planning and writing evidence indexes;
-- analyzer research read-models and experiment result rows;
-- runtime receipts and change events;
-- backend diagnostics.
-
-Turso is a backend implementation of this ASP DB Engine. SQLite v1 is the
-current backend. Future backends are allowed only if they implement the same
-engine contract and preserve parser/provider authority.
-
-RFC 10.20 adds a concrete code-search pressure test for this boundary: a
-backend migration is valuable only if it improves selector-first search,
-durable graph/dependency facts, snippet locators, search receipts, and the
-DB-plus-dynamic-JSON interface used by Python and Julia analyzers.
-
-** Agent MCP server is not the architecture
-
-ASP should not be designed as an agent MCP server. The project boundary is:
-
-#+begin_src text
-local CLI / hook / provider protocol -> ASP DB Engine -> artifact registry ->
-search/query/recall/writing workflows
-#+end_src
-
-An MCP server can exist later as an adapter over stable ASP commands and typed
-receipts, but it must not own:
-
-- project identity;
-- provider authority;
-- search identity;
-- artifact storage;
-- cache invalidation;
-- graph ranking;
-- analyzer experiment state;
-- writing workflow state.
-
-This matters because MCP server design pulls the system toward session RPC,
-tool advertisement, and client-specific affordances. ASP needs the opposite
-center of gravity: parser-owned facts, durable local state, reproducible CLI
-receipts, and backend-visible engine contracts that Python and Julia can replay
-without depending on one agent client's server lifecycle.
-
-** Compatibility-only migration is rejected
-
-The DB Engine v1 project should not be scoped as:
-
-#+begin_src text
-rusqlite API parity -> same tables -> same sync calls -> same benchmark names
-#+end_src
-
-That path increases dependency and maturity risk without changing the agent
-system. It also hides the real migration cost: Turso's strongest Rust surface is
-async, while the current DB API is synchronous.
-
-** Backend-specific features must surface through the engine
-
-Turso-specific features are useful only when they become ASP Engine
-capabilities with typed receipts:
-
-#+begin_src text
-MVCC -> concurrent import/read contract
-CDC -> invalidation/change-event contract
-Vector/FTS -> ranking-input contract
-Sync -> optional state propagation contract
-Encryption -> local metadata protection contract
-#+end_src
-
-The engine can keep enough SQL compatibility to port schema and queries, but it
-may use backend-only features when they improve ASP behavior and are visible in
-receipts, tests, schemas, or benchmarks.
-
-** Line numbers are not search identity
-
-ASP search, query, recall, and future writing workflows must not use line
-numbers as the primary identity for code, documents, dependencies, or evidence.
-Line numbers are unstable under real agent development: edits, formatting,
-imports, generated sections, Org planning, and subagent patches shift them
-quickly. If a search workflow treats =path:start:end= as executable identity, it
-turns a useful display hint into a brittle selector and creates false precision.
-
-The durable identity model is:
-
-- provider-owned =structuralSelector= for parser entities;
-- provider-owned =nativeFactId= for native semantic facts;
-- Rust-owned owner id, file hash, query key, generation id, and artifact id;
-- dependency package id plus manifest / lockfile / resolver hash;
-- Org heading id, contract id, property key, or document element id;
-- source locator and display line ranges only as human-facing evidence.
-
-ASP DB Engine storage strengthens this rule because it can keep multiple stable
-identity tables and change streams. A code or document edit may invalidate a
-line range, but it should not invalidate the semantic identity until the parser
-or document provider says the structural fact changed.
-
-** Static facts should carry more of the search load
-
-Dependencies, manifests, lockfiles, provider registry descriptors, schema ids,
-package roots, and resolved-version facts are comparatively static. They should
-be indexed more aggressively than dynamic source text because they do not suffer
-from line-number drift and they define durable project topology.
-
-ASP should use static facts to reduce pressure on dynamic search:
-
-- manifest and lockfile hashes bound dependency identity;
-- package roots and source roots bound owner scope;
-- provider registry descriptors bound available commands and exact provider
-  authority;
-- schema ids and generation ids bound cache validity;
-- dependency usage facts can be invalidated per owner instead of per line.
-
-This makes dependency search a stronger planning primitive. The agent can ask
-which dependency, package, provider, schema, or generation is implicated before
-asking for volatile source projections.
-
-** Analyzer research is a first-class engine consumer
-
-The DB Engine must deliberately support the analyzer loop:
-
-#+begin_src text
-Rust providers / CLI receipts -> dynamic JSON artifacts + ASP DB Engine facts ->
-Python production graph lane + Julia research lane ->
-validated algorithm candidates -> typed engine receipts
-#+end_src
-
-This is a better boundary than both extremes. The current artifact-only
-workflow leaves Julia compensating for weak timestamps, missing action edges,
-missing strategy fields, and scattered JSON directories. A DB-only workflow
-would be too rigid because code, prompt, search packet, and provider-output
-details change quickly and many of those payloads are valuable only for one
-research pass.
-
-The engine should therefore index stable facts and point to dynamic JSON
-payloads instead of absorbing the whole artifact lake. JSON remains useful for
-high-change, low-certainty, or bulky evidence. The DB stores the durable join
-keys, hot columns, schema ids, hashes, timestamps, route facts, and experiment
-receipts that let Julia select the right JSON subset without scanning
-everything.
-
-The engine should expose stable read-models for both analyzer roles:
-
-- Python consumes graph facts, route facts, cache state, and ranking inputs for
-  production search strategy implementation.
-- Julia consumes DB snapshots plus selected dynamic JSON payloads for algorithm
-  research: centrality, route-promotion, repeated-search pressure, slow-path
-  diagnosis, burst detection, candidate-set pressure, and telemetry gap
-  analysis.
-- Rust remains the owner of provider facts, schema validation, mutation paths,
-  and public command semantics.
-- Analyzer outputs are append-only experiment receipts until a separate RFC or
-  implementation PR promotes one algorithm into production.
-
-The required advantage is not only faster SQL. It is a hybrid research
-interface: stable ids, strong event time, causal action edges, normalized query
-keys, route graph state, candidate counts, selected edges, cache-hit state, JSON
-locators, and experiment result rows that can be replayed across versions.
-
-* Engine capability opportunity map
-
-** Async engine API
-
-Opportunity:
-
-- align DB Engine I/O with the Tokio provider transport direction in RFC 10.08;
-- avoid blocking the agent client hot path during cache miss import, artifact
-  ingestion, or large source-index refresh;
-- enable concurrent provider process execution and DB import without ad hoc
-  thread pools.
-
-Experiment:
-
-- create a Turso backend adapter that implements async open, execute, query,
-  transaction, and stats operations for the ASP DB Engine contract;
-- run the existing hot path benchmark through a Tokio runtime;
-- compare sync =rusqlite= wall-clock latency against async Turso under mixed
-  lookup/import load.
-
-Acceptance:
-
-- no change to provider authority;
-- no raw source storage;
-- equal lookup correctness on existing cache fixtures;
-- measurable lower blocked time under concurrent provider/import workloads.
-
-** MVCC and =BEGIN CONCURRENT=
-
-Opportunity:
-
-- let independent providers import source index, structural index, syntax
-  replay, and artifact event rows without serializing all writes behind one
-  SQLite writer;
-- reduce =SQLITE_BUSY=-style failure paths and busy-timeout tuning;
-- make multi-agent / subagent cache refresh practical without partitioning into
-  separate DB files.
-
-Experiment:
-
-- create a write-contention benchmark with N concurrent roles;
-- role A imports source-index generations;
-- role B imports structural-index generations;
-- role C writes artifact events;
-- role D writes provider command selection rows;
-- reader roles continuously run hot lookups;
-- compare =rusqlite= WAL mode against Turso with concurrent transactions.
-
-Acceptance:
-
-- correctness is row-equivalent after replay;
-- reader latency does not regress beyond an agreed threshold;
-- write throughput improves or write conflict behavior becomes easier for
-  agents to recover from;
-- receipt reports conflict retries and committed row counts.
-
-** CDC-driven invalidation
-
-Opportunity:
-
-- replace scattered invalidation reasoning with a durable DB change stream;
-- let =asp cache status= and =asp search= explain why a generation became stale;
-- emit artifact-trail receipts from the same source of truth as cache rows.
-
-Experiment:
-
-- enable Turso CDC for cache generation, source index, structural index, and
-  artifact event tables;
-- build a prototype =asp cache changes= command that reads the CDC stream and
-  renders compact invalidation events:
-  - generation inserted / replaced;
-  - owner rows cleared;
-  - selector rows inserted;
-  - artifact event updated.
-
-Acceptance:
-
-- invalidation receipt is reconstructable from DB changes;
-- no provider source text is stored in CDC payloads;
-- repeated imports produce deterministic change-event counts;
-- old manual invalidation tests can be cross-checked against CDC output.
-
-** Vector and FTS ranking inputs
-
-Opportunity:
-
-- store query embeddings, symbol-name vectors, owner summaries, and compact
-  graph-frontier vectors as rank inputs;
-- use FTS for exact / fuzzy term matching over query keys, symbols, and artifact
-  metadata;
-- improve =search pipe= frontier selection without making the DB a semantic
-  parser.
-
-Boundary:
-
-- vector / FTS output is rank evidence only;
-- parser-owned identity remains =structuralSelector= or =nativeFactId=;
-- prompt-visible line ranges remain display hints, not executable selectors.
-
-Experiment:
-
-- add an experimental rank table keyed by owner id and native fact id;
-- index only schema-valid metadata and compact summaries, not raw source text;
-- compare graph-turbo ranking with and without Turso vector / FTS features on
-  existing ASP search receipts.
-
-Acceptance:
-
-- top-N owner recall improves on known benchmark prompts;
-- no parser-authority contract changes;
-- every ranked result includes provenance back to provider facts or cache rows;
-- rank features can be disabled without changing search correctness.
-
-** Static dependency substrate
-
-Opportunity:
-
-- turn dependency search into a durable topology layer instead of a text search
-  over manifests and imports;
-- answer package, version, usage, docs-use, public API, and test-reachability
-  questions from stable ids and hashes;
-- give broad search a static owner-scope prior before touching dynamic source
-  facts.
-
-Boundary:
-
-- dependency package ids and resolver hashes are executable identity;
-- import owner locators point back to parser-owned facts;
-- line ranges remain display-only evidence;
-- dependency facts can drive route selection, but provider parsers still own
-  semantic code identity.
-
-Experiment:
-
-- build an engine-owned dependency topology table, first backed by Turso, keyed
-  by language, package id, manifest hash, lockfile hash, resolver hash,
-  provider id, and project root;
-- add derived lookup rows for dependency usage owners, related tests,
-  docs-use facts, and public external types;
-- compare current =asp <language> search deps= output against Turso-derived
-  warm-path output.
-
-Acceptance:
-
-- warm dependency search avoids full provider scans when static hashes are
-  unchanged;
-- changing a source file invalidates only usage rows for that owner;
-- changing a manifest or lockfile invalidates the affected package/version
-  topology rows;
-- receipts show static hash evidence, not line-number evidence.
-
-** Analyzer research interface
-
-Opportunity:
-
-- turn the current artifact lake into typed engine read-models that Python and
-  Julia can consume without forcing every JSON packet into the DB;
-- let Julia iterate on search-speed and route-quality algorithms from stable
-  action/event tables plus selected dynamic JSON payloads instead of weak
-  reconstruction;
-- let Python consume validated graph features as production implementation
-  inputs without depending on notebook-specific formats;
-- create a feedback path where algorithm experiments become measurable engine
-  receipts before they change public search behavior.
-
-Boundary:
-
-- analyzer tables are derived read-models unless explicitly promoted into
-  engine-owned facts;
-- dynamic JSON artifacts remain the right home for high-churn payloads, rare
-  research fields, and bulky provider outputs;
-- Julia notebooks may write experiment result rows, but not mutate source,
-  provider, dependency, or route-authority facts;
-- Python graph-turbo remains the production graph lane;
-- every experiment row must record input snapshot id, algorithm id, parameter
-  set, metric definitions, and source engine generation ids.
-
-Experiment:
-
-- materialize engine views for =action_events=, =provider_commands=,
-  =search_packets=, =route_decisions=, =query_keys=, =graph_strategy_events=,
-  =artifact_scopes=, =json_artifact_locators=, =timestamp_coverage=, and
-  =instrumentation_gaps=;
-- expose read-only adapters for Python and Julia that query the same engine
-  schema;
-- port one existing Julia report from artifact JSON scans to DB Engine views;
-- compare runtime, row counts, missing-field coverage, graph metrics, and
-  recommendation stability against the current analyzer pipeline.
-
-Acceptance:
-
-- Julia can reproduce the current search optimization reports from engine
-  views plus selected JSON payloads without relying on file mtime as strong
-  evidence;
-- Python and Julia agree on normalized query keys, action ids, scope ids, and
-  graph node ids;
-- algorithm results are written as append-only experiment receipts;
-- a production route change can cite an experiment receipt, input snapshot, and
-  metric delta instead of a notebook-only conclusion.
-
-** DBSP incremental view maintenance
-
-Opportunity:
-
-- materialize derived tables such as latest generation by project, owner search
-  frontier, dependency usage frontier, and artifact timelines incrementally;
-- reduce repeated aggregation over cache and index tables during hot searches.
-
-Experiment:
-
-- prototype one derived view:
-  - latest valid generation per language/provider/project/schema;
-  - or owner query-key frontier per project root.
-- compare normal SQL aggregation vs incremental view refresh under repeated
-  import cycles.
-
-Acceptance:
-
-- same rows as current queries;
-- lower warm-path latency or lower query count;
-- deterministic rebuild from base tables.
-
-** Sync push/pull
-
-Opportunity:
-
-- local-first remains default, but optional sync can propagate cache metadata,
-  artifact events, and index receipts across devices, CI, or Cloud Flight;
-- future enterprise/cloud work can consume DB-level state without inventing a
-  second protocol.
-
-Experiment:
-
-- mark a subset of tables as sync-safe:
-  - cache generation metadata;
-  - source/structural index locators and hashes;
-  - artifact events;
-  - provider command selection fingerprints.
-- exclude raw source by schema.
-- run a local push/pull prototype against a test remote.
-
-Acceptance:
-
-- sync is opt-in and never required for local search;
-- project roots and paths are normalized or redacted according to policy;
-- conflict handling is documented in receipts;
-- local DB rebuild still works without network access.
-
-** Encryption at rest
-
-Opportunity:
-
-- protect cache metadata that may reveal workspace structure, query history,
-  provider versions, and artifact paths;
-- create a real reason to accept non-SQLite-readable DB files.
-
-Experiment:
-
-- create =client.turso= with encryption enabled;
-- run existing inspect, import, lookup, and rebuild tests;
-- verify that fallback tooling reports engine/encryption state instead of
-  trying to open the DB as SQLite.
-
-Acceptance:
-
-- DB can be opened only through the configured Turso engine;
-- receipts explain encryption state without leaking keys;
-- tests cover wrong-key and missing-key diagnostics.
-
-** Non-goal: MCP / agent DB inspection as core architecture
-
-Turso CLI MCP mode is out of scope for DB Engine v1 experiments. It may be a
-future external adapter over stable ASP commands, but it should not shape the
-engine schema, state root, provider protocol, search protocol, analyzer
-interface, writing workflow, or acceptance gates.
-
-The DB Engine must stay testable and useful through local CLI receipts, typed
-provider facts, and durable artifact registries. Agent-client-specific server
-lifecycles are not evidence identity and are not required for Python or Julia
-analysis.
-
-** Turso-specific safety PRAGMAs
-
-Opportunity:
-
-- =require_where= can reduce accidental destructive update/delete statements in
-  generated SQL or migration scripts;
-- MVCC checkpoint and CDC PRAGMAs can become first-class runtime diagnostics.
-
-Experiment:
-
-- enable =require_where= for agent-generated SQL sessions;
-- add runtime report fields for Turso-specific PRAGMAs.
-
-Acceptance:
-
-- destructive migrations are explicit and tested;
-- runtime report distinguishes SQLite mode from ASP DB Engine v1 Turso backend
-  mode.
-
-* Experiment matrix
-
-| ID | Name | Scope | Primary value | Gate |
-|----+------+-------+---------------+------|
-| E0 | Engine API spike | =agent-semantic-client-db= scratch module | Prove async engine open/query/transaction shape | Compiles and runs one import/lookup |
-| E1 | Backend schema portability | current DB migrations | Know which SQL/PRAGMA statements must change | All current tables created through the engine |
-| E2 | Engine hot path parity | current criterion benchmark port | Establish backend baseline cost | Results row-equivalent |
-| E3 | Concurrent import | source/structural/artifact writes | Prove MVCC value | Better throughput or clearer conflict receipts |
-| E4 | CDC invalidation | cache/index tables | Replace hidden invalidation reasoning | Deterministic change stream |
-| E5 | Vector/FTS rank input | search frontier rows | Improve owner selection | Better recall without parser drift |
-| E6 | DBSP derived views | latest generation / frontier view | Reduce warm aggregation cost | Faster warm path or fewer queries |
-| E7 | Sync prototype | metadata-only subset | Future cloud/cross-agent state | Local-first preserved |
-| E8 | Encryption prototype | whole Turso DB file | Protect local metadata | clear wrong-key diagnostics |
-| E10 | Engine static dependency topology | manifests / lockfiles / usage facts | Stable search planning without line identity | Hash-bound warm path |
-| E11 | Analyzer research interface | action/event/search/route read-models | Julia/Python algorithm loop | Reproducible experiment receipts |
-| E12 | Code-search read-model | native provider selectors / entities / dependency facts / test reachability / snippets / receipts | Make code search a DB Engine feature, not MCP-tool behavior | No executable line-range identity |
-
-* Metrics
-
-Every experiment should capture:
-
-- cold open latency;
-- warm lookup latency;
-- import throughput;
-- reader latency during concurrent writes;
-- conflict / retry count;
-- DB file size and WAL/log size;
-- provider command count;
-- compact packet size;
-- row counts by table;
-- receipt bytes;
-- selector identity type used by each result;
-- count of display-only line hints in the result;
-- analyzer input snapshot id and experiment id;
-- timestamp coverage by table;
-- route recommendation adoption count;
-- graph candidate count and selected edge count when available;
-- whether raw source text was stored;
-- whether the result is rebuildable from provider artifacts.
-
-* Go / no-go gates
-
-The Turso backend becomes a serious default-backend candidate only if at least
-one backend-specific experiment produces a material ASP DB Engine benefit that
-SQLite v1 compatibility does not:
-
-- concurrent import/read behavior improves enough to matter for multi-provider
-  or multi-agent workflows;
-- CDC removes an existing class of cache invalidation ambiguity;
-- vector/FTS improves search frontier quality while preserving parser
-  authority;
-- static dependency topology reduces broad dynamic search and avoids line-based
-  identity;
-- analyzer read-models let Julia and Python reproduce algorithm experiments
-  from stable engine facts instead of weak artifact reconstruction;
-- encryption/sync creates a required product capability;
-- async DB integration reduces blocked agent hot-path time.
-
-Default backend switch remains blocked until:
-
-- all current DB unit tests pass through the Turso backend adapter or have
-  intentional DB Engine v1 replacements;
-- benchmark receipts exist for SQLite v1 and the Turso backend;
-- runtime reports distinguish =sqlite-v1= from =asp-db-engine-v1/turso=;
-- failure modes are agent-readable;
-- the Turso DB can be rebuilt from provider artifacts and file hashes;
-- no executable path uses =path:start:end= or display line ranges as identity;
-- analyzer experiment receipts are append-only and cite the exact engine
-  snapshot, algorithm id, parameters, and metric definitions;
-- no raw source text is stored unless a future RFC explicitly changes that
-  contract.
-
-* Implementation sketch
-
-State Core owns the durable layout before the Turso engine is introduced.
-Phase 1 therefore keeps the current SQLite backend and only changes where the
-client DB and artifacts live. The State Core manifest records
-=backend=sqlite-v1= and =futureBackend=turso= so the later engine migration
-has an explicit handoff point.
-
-The Turso DB Engine must consume the State Core manifest and paths:
-#+begin_src text
-$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/live/client/manifest.json
-$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/live/client/client.sqlite3
-$ASP_STATE_HOME/projects/by-id/<repo_id>/workspaces/<workspace_id>/artifacts/
-#+end_src
-
-It must not introduce a second project identity model, use project display
-names as executable identity, or restore project-local cache fallback. Old
-=.cache/agent-semantic-protocol= data remains audit evidence until a later,
-explicit migration RFC.
-
-The Turso migration also must not make
-=crates/agent-semantic-protocol/src/command/*= the DB engine owner. Command
-modules are public facade code: they may parse CLI arguments, dispatch to a
-typed service, and render compact output. DB open/refresh/search, source-index
-lookup, manifest interpretation, backend selection, and later Turso/Tantivy
-integration belong in package-owned services below the command layer. The first
-target owners are =agent-semantic-client-core= for State Core identity/paths
-and =agent-semantic-client-db= for SQLite v1 source-index/client DB services;
-the Turso package consumes those service contracts rather than replacing them
-with command-local implementation.
-
-** Phase 0 - RFC and source survey
-
-- Keep this RFC as the ASP DB Engine decision owner.
-- Do not change the public search contract yet.
-- Record exact Turso version, feature flags, and linked compatibility document
-  before each experiment run.
-
-** Phase 1 - Engine boundary
-
-- Introduce an internal engine abstraction around:
-  - open read-only existing;
-  - open or create writable;
-  - transaction;
-  - execute;
-  - query rows;
-  - runtime report;
-  - checkpoint / stats when supported.
-- Keep the existing =ClientDb= API stable where possible.
-- Add an explicit engine enum:
-  - =sqlite-v1= -> =client.sqlite3=;
-  - =turso= -> =client.turso=.
-
-** Phase 2 - Parity tests and benchmark port
-
-- Port DB unit tests to run over both engines when the SQL surface is shared.
-- Add Turso-backend-only tests for async, CDC, encryption, and sync separately.
-- Rename or clone hot path benchmarks so SQLite and Turso are compared by
-  engine, not by old filename assumptions.
-
-** Phase 3 - Backend capability experiments
-
-- Implement E3 / E4 first because they directly affect ASP cache/index value.
-- Implement E5 only after provenance and parser-authority checks are in place.
-- Implement E7 / E8 as optional backend capability experiments, not default
-  behavior.
-- Implement E11 once action ids, normalized query keys, route decision fields,
-  and timestamp coverage are available as engine facts.
-
-** Phase 4 - Backend default decision
-
-- Keep SQLite v1 default until the Turso backend has receipts that show a
-  concrete advantage and acceptable maturity risk.
-- If the advantage is strong but maturity is still risky, expose an
-  opt-in =ASP_CLIENT_DB_ENGINE=turso= path.
-- Promote only after CI, sandtable, real-project evidence, and rebuild
-  receipts agree.
-
-* Open questions
-
-- Which Turso feature should be the first proof: MVCC concurrent imports or CDC
-  invalidation?
-- Should vector/FTS ranking live in the client DB crate or in a separate rank
-  feature crate that consumes DB rows?
-- What metadata is safe to sync by default, and what path/project identifiers
-  need redaction?
-- Should encrypted local DBs be the default for user workspaces or only for
-  enterprise / sensitive modes?
-- How should Cloud Flight and Turso sync coexist without creating two cloud
-  protocols for the agent?
-
-* Initial recommendation
-
-Start with the ASP DB Engine v1 boundary plus a scratch Turso backend behind an
-opt-in feature flag, then run three experiments in order:
-
-1. E1/E2 schema + hot-path parity, to bound migration cost.
-2. E3 concurrent import/read benchmark, to test the highest-value performance
-   claim for ASP.
-3. E4 CDC invalidation, to test the strongest agent-observability claim.
-
-If neither E3 nor E4 produces a durable ASP Engine advantage, do not promote the
-Turso backend. If either does, proceed to vector/FTS ranking and sync/encryption
-as second-wave backend capability experiments.
-* Provider performance receipt update
-DB Engine v1 must make provider execution performance observable at fine granularity. The goal is not only faster storage; the goal is to stop paying cold command-line harness cost for every small agent query.
-
-Every search/query/render receipt should record a stage breakdown:
-#+begin_src text
-routePlanMs
-trustGateMs
-providerStartMs
-providerHandshakeMs
-providerQueryMs
-providerParseMs
-changeDetectMs
-dbReadMs
-dbWriteMs
-ftsSearchMs
-overlayMergeMs
-graphRankMs
-renderIrMs
-stdoutRenderMs
-materializeActionMs
-totalMs
-#+end_src
-
-The receipt should also record:
-- =providerExecutionLane= with values such as =cold-cli=, =warm-worker=, =embedded-rust=, or =analysis-lane=;
-- =cacheHitKind= for source facts, selector facts, dependency topology, route plan, graph rank, lexical search, render IR, and trust decision reuse;
-- =providerSessionId= for warm workers;
-- =providerManifestHash= and =providerExecutableDigest=;
-- =sourceGenerationId=, =overlayGenerationId=, and =baseGenerationId=;
-- =trustDecisionRef= and the trust inputs that allowed reuse;
-- =schemaVersion= for every packet and receipt section.
-
-The DB Engine should store warm-worker lifecycle rows:
-| Field | Purpose |
-| =providerSessionId= | stable id for a long-lived worker |
-| =projectId/worktreeId/languageId/providerId= | worker namespace |
-| =openedAt/closedAt= | lifecycle timing |
-| =schemaVersions= | negotiated packet versions |
-| =trustDecisionRef= | trust-gate reuse boundary |
-| =sourceGenerationId= | loaded base generation |
-| =overlayGenerationId= | active dirty overlay |
-| =startupMs/handshakeMs= | amortized cold cost |
-| =closeReason= | normal, invalidated, crashed, trust-refresh, schema-mismatch |
-
-Turso experiments should be evaluated against this receipt surface. A backend is not better merely because one query is faster; it must improve the right stage without hiding correctness cost. For example, Turso FTS can improve =ftsSearchMs=, but it does not remove =providerStartMs= unless provider execution moved to warm or embedded lanes. A Turso-owned Tantivy-backed overlay adapter can improve dirty-buffer search, but it does not solve stale selectors unless =changeDetectMs= and selector invalidation are accurate.
-
-Trust gates are part of performance, not a separate policy afterthought. Reused trust decisions must be explicit DB facts keyed by provider executable digest, argv capability class, workspace trust profile, schema version, provider manifest hash, environment policy fingerprint, and command/action capability. If any of those inputs change, the DB Engine must force trust refresh before returning warm-path evidence.
-
-Analyzer tables should expose =cold_start_avoided_rate=, =warm_worker_hit_rate=, =trust_reuse_rate=, =trust_refresh_rate=, =provider_startup_amortized_ms=, =stage_bottleneck_rank=, =selector_invalidation_precision=, and =stale_fact_return_rate=. Julia can use these receipts to distinguish algorithm failure from execution-shape failure.
-* Rust crate architecture boundary
-RFC 10.21 owns the Rust crate architecture for compact graph schema, render IR, search-core extraction, and CLI thinning. This DB Engine RFC should not make the storage layer responsible for prompt render policy or graph-routing ownership.
-
-The DB Engine stores =L2= evidence: schema-valid packets, render IR, render receipts, search receipts, overlays, generations, and replay metadata. The render crate chooses =L0/L1= prompt output. The CLI should compose those layers through client-core rather than becoming the owner of schema, render, graph, and DB behavior.
-* Agent render observability update
-The DB Engine should store render receipts separately from prompt stdout. Prompt stdout is =L0/L1= compact render; the DB stores the full =L2= replay surface.
-
-Render receipts should include =renderLayer=, =stdoutBytes=, =estimatedPromptTokens=, =aliasCount=, =visibleNodeCount=, =visibleEdgeCount=, =frontierCount=, =omissionCount=, =avoidCount=, =expansionHandles=, and =jsonSuppressed=true= for normal search output.
-
-Expansion receipts should record which handle was opened, the source packet generation, the selector/source fingerprint, returned bytes, returned token estimate, and whether the expansion changed the chosen action.
-
-Analyzer tables should compare render variants on =tokens_to_actionable_selector=, =first_frontier_adoption_rate=, =expansion_needed_rate=, =wrong_expansion_rate=, =broad_read_avoided_rate=, and =json_request_rate=.
-
-Julia research should replay render receipts beside search receipts so algorithm experiments can evaluate not only ranking quality, but also whether the graph projection was too wide, too narrow, or missing the relation that the agent needed. Python production ranking should consume this feedback as a render budget and confidence boundary. More graph does not automatically mean better search; the router should widen the render only when confidence, ambiguity, or omitted-risk warrants it.
-* Executable Turso overlay checkpoint
-The first executable Turso phase now implements real local-file bootstrap and document read/write behavior behind the DB Engine facade. =bootstrap_turso_client_db= creates =client.turso= plus the initial =asp_db_engine_bootstrap=, =asp_graph_entity=, =asp_search_document=, and =asp_overlay_document= tables. The DB crate exposes feature-gated =upsert_turso_search_document=, =upsert_turso_overlay_document=, and =search_turso_documents= for adapter validation. This is still pre-cutover: State Core layout is unchanged, =sqlite-v1= remains the active validation backend, and no project-local cache fallback is reintroduced.
-
-The first overlay consumer belongs to =agent-semantic-search=. Its feature-gated =turso-overlay= adapter exposes search-owned overlay document/hit DTOs and wraps the DB adapter internally, so =agent-semantic-client= does not become the overlay search engine. The protocol scenario =asp_turso_overlay_search_adapter_cold_functional_path= validates this path with a fresh Turso fixture, zero provider/native-finder processes, no executable line-range identity, and a 25ms max query budget.
+- observable cache invalidation through durable DB state;
+- Turso-owned FTS/BM25 for stable generation search;
+- overlay-search capability through the DB Engine boundary;
+- future sync, encryption, CDC, and vector experiments without changing State
+  Core paths.
+
+ASP should consume Turso-owned search semantics through the DB Engine. It
+should not introduce a long-lived direct =tantivy= backend, and it should not
+let dynamic dirty-code overlay writes pollute stable project generations.
+
+* Implementation checkpoint
+The implementation target is now executable in =agent-semantic-client-db=:
+- =ClientDbEngine= resolves State Core paths and exposes backend, layout
+  version, repo/workspace/scope identity, DB path, manifest path, client dir,
+  artifact path, and backend capability reports.
+- =ClientDbEngineBackend= is the adapter seam; the Turso adapter owns active
+  =client.turso= traffic in production builds.
+- =schemas/semantic-db-engine-report.v1.schema.json= and
+  =schemas/agent-semantic-client-receipt.v1.schema.json= are the analyzer-facing
+  report contracts.
+- =asp cache status= renders a compact =|dbEngine= row only as CLI shorthand;
+  receipt JSON is the durable analyzer surface.
+- =ClientReceipt.dbEngine= embeds the DB Engine report for cache status, import,
+  flush, invalidate, writeback, and replay receipts.
+
+The Turso backend currently owns these traffic families behind the DB Engine
+facade:
+- cache-generation read model;
+- syntax-query replay object;
+- provider-command selection;
+- artifact events;
+- agent session registry storage;
+- graph entity and edge projections;
+- stable search documents;
+- overlay documents;
+- source-index generation, owner, selector, and search projection;
+- structural-index read model;
+- route receipts.
+
+* Source-index and structural-index boundary
+Source-index stable data is written through
+=ClientDbEngine::refresh_source_index_import_from_client_dir=. The method
+bootstraps =client.turso=, writes generation/owner/selector rows, persists the
+source-index EvidenceGraph into =asp_graph_entity= / =asp_graph_edge=, and
+writes =source-index= namespace rows into =asp_search_document= for stable FTS
+lookup.
+
+Structural-index data follows the same DB Engine rule: packet parsing and raw
+source rejection stay in the owning crate, while the DB Engine owns durable
+generation rows, graph projection, search documents, and lookup facades.
+
+* Dynamic overlay boundary
+Dynamic dirty-code search is not a stable-generation write path. The router
+should merge evidence in this order:
+1. receipt/context anchors;
+2. active overlay facts;
+3. dirty-file provider parse facts;
+4. stable Turso FTS/BM25 over current generations;
+5. semantic/vector fallback when available.
+
+Overlay state is keyed by repo/workspace/session/base generation and should
+store bounded replayable evidence only: dirty hashes, patch receipts,
+changed/deleted selector ids, parse-delta summaries, active failures, and
+temporary overlay-local entity ids. Accepted overlays compact into a new stable
+generation; rejected overlays remain session-scoped audit evidence.
+
+* Command and crate ownership
+=crates/agent-semantic-protocol/src/command/*= must stay a thin public facade:
+parse CLI arguments, dispatch to package-owned services, and render typed
+reports. It must not construct DB paths, open the DB, rank search candidates, or
+hard-code language-specific database behavior.
+
+Ownership is:
+- =agent-semantic-runtime::state_core= resolves State Core identity and paths;
+- =agent-semantic-client-core= exposes client-facing State Core services;
+- =agent-semantic-client-db= owns DB Engine schema, open/bootstrap, read/write
+  sessions, and Turso adapters;
+- =agent-semantic-search= owns search routing, overlay merge, candidate
+  projection, and source-index lookup orchestration;
+- language harnesses own native parse facts and shared schema packets.
+
+* Validation gates
+The Turso cutover is accepted only when these gates pass:
+- public docs/schemas contain no old backend token or version-suffixed Turso
+  backend name;
+- =cargo test -p agent-semantic-client-db= passes;
+- =cargo test -p agent-semantic-client-core= passes;
+- client receipt and DB Engine report schema tests pass;
+- =asp state locate --json= and =asp cache status= expose State Core paths and
+  =backend=turso=;
+- source-index cold functional gate refreshes a clean workspace and then search
+  returns =source=source-index= instead of silently falling back to finder;
+- overlay search uses DB Engine/search-adapter semantics and keeps stable
+  generations clean;
+- per-language cold functional gates record elapsed time, provider spawn count,
+  stdout bytes, route source, and fallback reason.
+* Turso Best Practices Reference
+
+The downstream implementation guide for Turso-specific concurrency, retries,
+multi-process CLI access, and future MVCC writer runtime is maintained in:
+
+- [[file:10.29-turso-db-engine-best-practices.org][10.29 Turso DB Engine Best Practices]]
+
+Any DB Engine code change that touches Turso =Builder= flags, connection
+pragmas, transaction mode, retry classification, or FTS schema must first
+refresh the 10.29 upstream-doc audit against the official Turso docs and the
+workspace-resolved =turso= crate.
+
+This RFC remains the architecture target: Turso replaces the retired RustSQL /
+SQLite implementation as ASP's DB Engine. The best-practices guide is the
+normative downstream implementation policy for Turso opens, transaction retry,
+multi-process CLI access, pressure gates, and the future high-throughput AI
+writer runtime.

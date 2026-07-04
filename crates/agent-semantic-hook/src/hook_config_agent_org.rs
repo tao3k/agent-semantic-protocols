@@ -85,9 +85,8 @@ impl Default for CompiledAgentOrgArtifactsConfig {
         Self {
             enabled: false,
             inactive_after_minutes: 30,
-            artifacts_path: PathBuf::from(".cache/agent-semantic-protocol/artifacts/org"),
-            entry_skill_path: ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
-                .to_string(),
+            artifacts_path: PathBuf::new(),
+            entry_skill_path: String::new(),
             archive_warning: CompiledAgentOrgArtifactsArchiveWarningConfig::default(),
         }
     }

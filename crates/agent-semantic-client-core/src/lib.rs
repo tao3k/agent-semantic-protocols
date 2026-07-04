@@ -10,7 +10,7 @@ pub mod project_context;
 pub mod provider_scope;
 pub mod receipt;
 pub mod request;
-pub mod state_core;
+pub use agent_semantic_runtime::state_core;
 pub mod types;
 
 pub use activation::{
@@ -38,18 +38,16 @@ pub use provider_scope::{
 };
 pub use receipt::{
     AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID, AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID,
-    ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbFutureBackendReportReceipt,
-    ClientDbRuntimePragmasReceipt, ClientDbSqliteReceipt, ClientReceipt, ExecutionRoute,
-    NativeProvenance, ProviderCommandReceipt,
+    ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbRuntimePragmasReceipt,
+    ClientReceipt, ExecutionRoute, NativeProvenance, ProviderCommandReceipt,
 };
 pub use types::{
     ByteCount, CacheArtifactId, CacheExportMethod, CacheGenerationId, CacheStatus, ClientCachePath,
-    ClientDbBackend, ClientDbEngineDurability, ClientDbFileName, ClientDbFutureBackend,
-    ClientDbJournalMode, ClientDbStatus, ClientRepoId, ClientScopeId, ClientStateLayoutVersion,
-    ClientWorkspaceId, CompactArtifactId, ElapsedMillis, LanguageId, ProviderId,
-    SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
-    SyntaxQueryAstAbiFingerprint, SyntaxQueryGrammarId, SyntaxQueryGrammarProfileVersion,
-    SyntaxQuerySelector,
+    ClientDbBackend, ClientDbEngineDurability, ClientDbFileName, ClientDbJournalMode,
+    ClientDbStatus, ClientRepoId, ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId,
+    CompactArtifactId, ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId,
+    SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion, SyntaxQueryAstAbiFingerprint,
+    SyntaxQueryGrammarId, SyntaxQueryGrammarProfileVersion, SyntaxQuerySelector,
 };
 pub use {
     agent_semantic_tree_sitter::{
@@ -88,3 +86,6 @@ mod request_tests;
 #[cfg(test)]
 #[path = "../tests/unit/state_core.rs"]
 mod state_core_tests;
+#[cfg(test)]
+#[path = "../tests/unit/test_support.rs"]
+mod test_support;

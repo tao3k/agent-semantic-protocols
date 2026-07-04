@@ -2,7 +2,6 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
 
-use agent_semantic_runtime::ensure_project_hook_state_dir;
 use serde_json::Value;
 
 use crate::rust_harness_activation::support::{asp_command, root_owned_rust_activation_json};
@@ -45,11 +44,32 @@ pub(super) fn run_hook_decision(root: &Path, event: &str, payload: Value) -> Val
 }
 
 pub(super) fn last_hook_event(root: &Path) -> Value {
-    let state_dir = ensure_project_hook_state_dir(root).expect("hook state dir");
-    let events = std::fs::read_to_string(state_dir.join("events.jsonl")).expect("hook event state");
+    let events = std::fs::read_to_string(hook_event_state_path(root)).expect("hook event state");
     let line = events
         .lines()
         .last()
         .expect("at least one recorded hook event");
     serde_json::from_str(line).expect("hook event JSON")
+}
+
+fn hook_event_state_path(root: &Path) -> std::path::PathBuf {
+    let mut matches = Vec::new();
+    collect_hook_event_state_paths(root, &mut matches);
+    matches.sort();
+    assert_eq!(matches.len(), 1, "hook event state paths: {matches:?}");
+    matches.remove(0)
+}
+
+fn collect_hook_event_state_paths(dir: &Path, matches: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_hook_event_state_paths(&path, matches);
+        } else if path.ends_with("live/hooks/state/events.jsonl") {
+            matches.push(path);
+        }
+    }
 }

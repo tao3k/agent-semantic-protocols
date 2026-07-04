@@ -143,8 +143,8 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     assert_client_db_runtime_profile(&receipt);
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
-    assert_eq!(receipt["sqliteReadCount"], 2);
-    assert_eq!(receipt["sqliteWriteCount"], 0);
+    assert_eq!(receipt["dbReadCount"], 2);
+    assert_eq!(receipt["dbWriteCount"], 0);
     assert!(receipt["elapsedMs"].as_u64().is_some());
     assert_eq!(
         receipt["providerCommands"]
@@ -190,8 +190,8 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     assert_client_db_runtime_profile(&external_receipt);
     assert_eq!(external_receipt["providerCommandCount"], 0);
     assert_eq!(external_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(external_receipt["sqliteReadCount"], 2);
-    assert_eq!(external_receipt["sqliteWriteCount"], 0);
+    assert_eq!(external_receipt["dbReadCount"], 2);
+    assert_eq!(external_receipt["dbWriteCount"], 0);
     assert!(external_receipt["elapsedMs"].as_u64().is_some());
     assert_eq!(
         external_receipt["providerCommands"]
@@ -265,8 +265,8 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     assert_client_db_runtime_profile(&receipt);
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
-    assert_eq!(receipt["sqliteReadCount"], 2);
-    assert_eq!(receipt["sqliteWriteCount"], 0);
+    assert_eq!(receipt["dbReadCount"], 2);
+    assert_eq!(receipt["dbWriteCount"], 0);
     assert!(receipt["elapsedMs"].as_u64().is_some());
     assert_eq!(
         receipt["providerCommands"]
@@ -312,8 +312,8 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     assert_client_db_runtime_profile(&external_receipt);
     assert_eq!(external_receipt["providerCommandCount"], 0);
     assert_eq!(external_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(external_receipt["sqliteReadCount"], 2);
-    assert_eq!(external_receipt["sqliteWriteCount"], 0);
+    assert_eq!(external_receipt["dbReadCount"], 2);
+    assert_eq!(external_receipt["dbWriteCount"], 0);
     assert!(external_receipt["elapsedMs"].as_u64().is_some());
     assert_eq!(
         external_receipt["providerCommands"]

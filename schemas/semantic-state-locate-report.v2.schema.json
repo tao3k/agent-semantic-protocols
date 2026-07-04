@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-state-locate-report.v2.schema.json",
+  "title": "Semantic State Locate Report v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "stateLayoutVersion",
+    "stateHome",
+    "repoId",
+    "workspaceId",
+    "scopeId",
+    "repoDisplayName",
+    "workspaceDisplayName",
+    "checkoutRoot",
+    "gitToplevel",
+    "gitDir",
+    "remoteUrl",
+    "dbPath",
+    "artifactPath",
+    "manifestPath",
+    "generationManifestPath",
+    "backend",
+    "projectLocalCache"
+  ],
+  "properties": {
+    "stateLayoutVersion": {
+      "const": "state-v2"
+    },
+    "stateHome": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repoId": {
+      "type": "string",
+      "pattern": "^repo-[0-9a-f]{16}$"
+    },
+    "workspaceId": {
+      "type": "string",
+      "pattern": "^workspace-[0-9a-f]{16}$"
+    },
+    "scopeId": {
+      "const": "default"
+    },
+    "repoDisplayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceDisplayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checkoutRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "gitToplevel": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "gitDir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "remoteUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "dbPath": {
+      "type": "string",
+      "pattern": "/live/client/client\\.turso$"
+    },
+    "artifactPath": {
+      "type": "string",
+      "pattern": "/artifacts$"
+    },
+    "manifestPath": {
+      "type": "string",
+      "pattern": "/live/client/manifest\\.json$"
+    },
+    "generationManifestPath": {
+      "type": "string",
+      "pattern": "/live/client/cache-manifest\\.json$"
+    },
+    "backend": {
+      "enum": [
+        "turso"
+      ]
+    },
+    "projectLocalCache": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "exists"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "exists": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

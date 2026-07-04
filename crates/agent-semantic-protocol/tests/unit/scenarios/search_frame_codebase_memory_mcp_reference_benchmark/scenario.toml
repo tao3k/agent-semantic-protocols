@@ -1,0 +1,15 @@
+id = "search-frame-codebase-memory-mcp-reference-benchmark"
+title = "Search Frame records codebase-memory-mcp reference benchmark evidence"
+policy_ids = [
+  "RUST-AGENT-ASP-SEARCH-FRAME-CODEBASE-MEMORY-MCP-REFERENCE-001",
+  "RUST-AGENT-ASP-EVIDENCE-GRAPH-ROUND-DELTA-001",
+]
+agent_goal = "Keep codebase-memory-mcp as a reference benchmark for Search Frame and EvidenceGraph work: record reference rounds, ASP rounds, roundDelta, selectorEvidence, and evidenceAdvantage without turning the comparison into a strict pass/fail floor."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "roundDelta = aspSearchQueryRounds - codebaseMemoryMcpQueryRounds",
+  "reference benchmark",
+  "evidenceAdvantage",
+]
+inputs = "inputs"
+expected = "expected"

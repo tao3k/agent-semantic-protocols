@@ -35,7 +35,7 @@ pub(crate) struct ProviderCacheReplay {
     pub(crate) stdout: Bytes,
     pub(crate) syntax_artifact_id: Option<CacheArtifactId>,
     pub(crate) packet_bytes: Option<ByteCount>,
-    pub(crate) sqlite_read_count: u64,
+    pub(crate) db_read_count: u64,
 }
 
 impl ProviderCacheReplay {
@@ -44,7 +44,7 @@ impl ProviderCacheReplay {
             stdout: stdout.into(),
             syntax_artifact_id: None,
             packet_bytes: None,
-            sqlite_read_count: 0,
+            db_read_count: 0,
         }
     }
 
@@ -57,7 +57,7 @@ impl ProviderCacheReplay {
             stdout: stdout.into(),
             syntax_artifact_id: Some(syntax_artifact_id),
             packet_bytes: Some(ByteCount::from_len(packet_bytes)),
-            sqlite_read_count: 0,
+            db_read_count: 0,
         }
     }
 
@@ -70,7 +70,7 @@ impl ProviderCacheReplay {
             stdout: stdout.into(),
             syntax_artifact_id,
             packet_bytes: packet_bytes.map(ByteCount::new),
-            sqlite_read_count: 1,
+            db_read_count: 1,
         }
     }
 }

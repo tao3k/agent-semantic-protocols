@@ -21,7 +21,6 @@
     "manifestPath",
     "generationManifestPath",
     "backend",
-    "futureBackend",
     "projectLocalCache"
   ],
   "properties": {
@@ -56,17 +55,26 @@
       "minLength": 1
     },
     "gitToplevel": {
-      "type": ["string", "null"]
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "gitDir": {
-      "type": ["string", "null"]
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "remoteUrl": {
-      "type": ["string", "null"]
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "dbPath": {
       "type": "string",
-      "pattern": "/live/client/client\\.(sqlite3|turso)$"
+      "pattern": "/live/client/client\\.turso$"
     },
     "artifactPath": {
       "type": "string",
@@ -81,10 +89,9 @@
       "pattern": "/live/client/cache-manifest\\.json$"
     },
     "backend": {
-      "enum": ["sqlite-v1", "turso"]
-    },
-    "futureBackend": {
-      "const": "turso"
+      "enum": [
+        "turso"
+      ]
     },
     "projectLocalCache": {
       "anyOf": [
@@ -94,7 +101,10 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["path", "exists"],
+          "required": [
+            "path",
+            "exists"
+          ],
           "properties": {
             "path": {
               "type": "string",

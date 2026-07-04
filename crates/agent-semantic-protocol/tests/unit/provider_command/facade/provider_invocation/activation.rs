@@ -29,7 +29,7 @@ fn asp_toml_provider_bin_name_uses_home_local_binary() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "home args=[evidence]\n"
+        "home args=[evidence][.]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -64,7 +64,7 @@ fn language_facade_prefers_home_local_provider_before_activation_prefix() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "home args=[evidence]\n"
+        "home args=[evidence][.]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }

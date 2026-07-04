@@ -1,12 +1,25 @@
 # Semantic Search Schemas
 
-Policy boundary: ASP EvidenceGraph/GraphRoute owns least-search target localization and decides where to edit through stable selectors, owners, tests, dependency edges, snapshots, benchmarks, and topology context. Language policy receives that target context and tells the agent how to edit and validate safely; it does not own broad search or primary file selection.
+Policy boundary: ASP EvidenceGraph, DynamicTopology, and GraphRoute own least-search target localization and decide where to edit through stable selectors, owners, tests, dependency edges, snapshots, benchmarks, and topology context. Language policy receives that target context and tells the agent how to edit and validate safely; it does not own broad search or primary file selection.
+`semantic-where-frame.v1.schema.json`, `semantic-dynamic-topology.v1.schema.json`, and `semantic-how-frame.v1.schema.json` are the prompt-facing frame contracts for the where/how loop. WhereFrame localizes the edit boundary and exposes the next smallest search/query action. DynamicTopology projects the current architecture slice, including owner edges, pressure, trust boundary, stale facts, and branch legality. HowFrame consumes the localized boundary plus topology and policy/scenario facts to tell the agent how to edit, which branches are illegal, and which parser/schema/scenario/snapshot/benchmark/test evidence should validate the edit. These frames should carry ids and compact facts, not pasted source or line-number identity.
 `semantic-policy-fact.v1.schema.json` and `semantic-policy-recipe.v1.schema.json` are the runtime policy layer between the software criterion canon and agent reasoning. Policy facts say which criterion/profile/ecosystem claims are active for a workspace, package, owner, selector, entity, dependency, test, artifact, scenario, profile, or session. Policy recipes say how an agent should improve, repair, test, document, or suppress a route when those facts are visible. They are evidence-backed and selector/entity/generation/overlay scoped; path/line data is display-only and must not become executable identity.
 Scenario benchmark evidence and behavior snapshot evidence are first-class policy evidence kinds: benchmarks project route quality, budget, dependency usage under the current architecture, resource pressure, failure mode, and expected resolution facts, while snapshots project observable behavior, output contract, and compact-render stability facts. Dependency-oriented scenarios are not dependency tutorials; they are benchmark-backed architecture facts that connect documentation, upstream source, research notes, benchmark artifacts, topology context, and verification receipts to the way this project should use the dependency.
 Normal agent rendering should expose these facts through a progressive `QualityFrame`: a small read-model for one intent and candidate edit boundary, with architecture pressure, decision rules, change shape, guardrails, and validation shown first and exact fact/recipe/snapshot/benchmark references expanded only on demand.
 Gerbil-style language policy evidence extends the same layer with runtime-source, compiler-evidence, language-rule, standard-library, and macro-pattern evidence kinds. These let a provider prove macro boundaries, active runtime constraints, medium-weight compiler evidence, module import rules, and native style policy without turning provider-specific details into root schema fields.
-Rust search-quality policy and Gerbil language-policy evidence are the first two mature practice cases for a single shared obligation: ASP EvidenceGraph/GraphRoute decides where to edit through least-search target localization, while every language harness policy receives that target context and tells the agent how to edit and validate safely. Shared policy facts can now represent edit strategy, cross-language capability, topology context, graph-route evidence as target context, topology updates, provider capabilities, prior failures, and plan-selection or architecture-context use. Providers should map their strongest native facts into these shared families so the agent receives a compact QualityFrame while coding, not a full policy catalog.
+Rust search-quality policy and Gerbil language-policy evidence are the first two mature practice cases for a single shared obligation: ASP EvidenceGraph, DynamicTopology, and GraphRoute decide where to edit through least-search target localization, while every language harness policy receives that target context and tells the agent how to edit and validate safely. Shared policy facts can now represent edit strategy, cross-language capability, topology context, graph-route evidence as target context, topology updates, provider capabilities, prior failures, and plan-selection or architecture-context use. Providers should map their strongest native facts into these shared families so the agent receives a compact QualityFrame while coding, not a full policy catalog.
 `semantic-task-frame-archive.v1.schema.json` owns the machine-readable archive packet for task/feature-scoped reasoning state. It records the completed, suspended, superseded, or handed-off TaskFrame plus the WhereFrame/HowFrame references, scope, edit groups, observations, promoted facts, and ephemeral evidence that must not cross task boundaries. The matching Org archive is the human-auditable and `asp org query` surface; the JSON packet is the replayable machine state for validation, project evidence promotion, and downstream Python/Julia analysis. Together they form the artifact lattice for long-running agent work: `taskFrameId`, `intentId`, `featureId`, `evidenceGeneration`, parser selectors, scenario ids, snapshot ids, benchmark ids, receipt ids, and artifact ids connect EvidenceGraph, topology Org, policy/scenario facts, observations, and archives without forcing those payloads into the prompt. Search/query commands must not create these archives as hidden side effects; an explicit archive action closes or hands off a TaskFrame.
+
+`semantic-proof-obligation.v1.schema.json`, `semantic-proof-recipe.v1.schema.json`,
+`semantic-proof-receipt.v1.schema.json`, and
+`semantic-formal-verification-report.v1.schema.json` own the formal-verification
+artifact loop for proof-backed branch legality. Proof obligations are
+EvidenceGraph/DynamicTopology-owned questions about stable invariants; proof
+recipes are Policy/Scenarios-owned instructions for how to verify them; proof
+receipts are compact checker results that can update branch legality; formal
+verification reports expand receipts for audit and replay. Lean/AXLE is one
+executor for this loop, not the owner of the protocol. The agent-facing surface
+should normally read the receipt or HowFrame summary first and expand to Lean
+proof artifacts only when debugging the proof lane.
 
 `semantic-language-registry.v1.schema.json` is the language-server-style
 provider registry. It records the semantic language protocol, language ids,
@@ -90,7 +103,7 @@ or sparse relation banks consume those facts.
 shape for parser-owned owner, symbol, file-hash, and dependency-usage rows. It
 exists to make warm search replay index-first without storing source code:
 providers emit names, locators, dependency identities, query keys, and freshness
-hashes; the Rust client owns SQLite storage, invalidation, and replay
+hashes; the Rust client owns Turso storage, invalidation, and replay
 eligibility. Lightweight provider interfaces may leave workspace-wide
 `symbols`, `dependencyUsages`, and `syntaxFacts` empty on the hot path while
 still emitting parser-owned totals such as `symbolTotal`,
@@ -176,7 +189,7 @@ schema-visible facts instead of prompt inference.
 `agent-semantic-client-cache-manifest.v1.schema.json`, and
 `agent-semantic-client-receipt.v1.schema.json` own the agent semantic client/backend
 envelope. They describe route mode, provider set, privacy policy, cache
-generation provenance, SQLite client DB status, execution route, provider
+generation provenance, Turso client DB status, execution route, provider
 command counts, and native provider provenance. They do not duplicate `semantic-search-packet` or
 `semantic-query-packet`, and they do not rename the lower layers:
 `agent-semantic-protocol` still owns shared protocol rendering and
@@ -192,15 +205,15 @@ row replay, and warm-provider gaps. Runtime DB diagnostics expose observed
 `clientDbJournalMode`, `clientDbSynchronous`, `clientDbBusyTimeoutMs`, and
 `clientDbForeignKeys` so WAL/busy-timeout drift is machine-visible in cache
 status and replay receipts. `cache-import` receipts describe explicit
-SQLite imports from a validated provider-owned manifest. Manifest re-imports
+DB Engine imports from a validated provider-owned manifest. Manifest re-imports
 must preserve unrelated normalized row families rather than replacing the parent
 generation in a way that cascades syntax rows away. `cache-invalidate`
 receipts describe
-local SQLite generation-row invalidation and do not imply manifest or artifact
+local DB Engine generation-row invalidation and do not imply manifest or artifact
 deletion. `cache flush syntax-rows` deletes only normalized syntax query row
 families and preserves manifest generations plus artifact provenance. In
 local-native receipts, `warm-provider`
-means a matching SQLite generation was found but provider execution still
+means a matching DB Engine generation was found but provider execution still
 supplied the output; only `hit` means the client served output from cache. The
 initial replay surface covers provider-owned `prompt-output/*.txt` artifacts,
 `search/*.json` semantic-search-packet artifacts rendered through shared compact
@@ -525,7 +538,7 @@ locator-frontier profile, and TypeScript/Python render the `corpus-locator`
 profile. These are render profiles over frontier facts, not "compact frontier"
 protocols. Both profiles are valid only when backed by the same ASP-compiled
 tree-sitter query plan and provider-native projection, and neither profile may
-expose cache ids, SQLite paths, receipts, full node lists, or raw source windows
+expose cache ids, DB paths, receipts, full node lists, or raw source windows
 in default non-JSON output.
 
 `parser-compact-case.v1.schema.json` and
@@ -660,7 +673,7 @@ ASP state storage is rooted at `${PRJ_CACHE_HOME}/agent-semantic-protocol` when
 the explicit override is set, otherwise at
 `<git-toplevel>/.cache/agent-semantic-protocol`. In monorepos, package roots and
 subdirectories do not create separate ASP `.cache` homes; package root facts
-belong in manifests, SQLite rows, receipts, and artifacts under the shared git
+belong in manifests, DB Engine rows, receipts, and artifacts under the shared git
 toplevel state root.
 
 `semantic-agent-hook-client-config.v1.schema.json` is the optional client-side
@@ -1035,13 +1048,13 @@ as `depends_on`, `version_locked`, `imports`, `uses_api`, `documented_by`,
 `example_of`, and `tested_by`.
 
 `semantic-graph-turbo-artifact-events.v1.schema.json` is the schema-owned event
-stream between ASP's Rust SQLite cache and graph-turbo timeline audit. It
+stream between ASP's Rust DB Engine cache and graph-turbo timeline audit. It
 records compact artifact events for command, prompt-output, search, query,
 search-output, and tree-sitter-query artifacts without storing provider stdout
 or source windows. `semantic-graph-turbo-artifact-timeline.v1.schema.json` is
 the matching audit report contract. It owns session, microburst, repeat,
 fanout, action-summary, and efficiency-estimate fields so `asp search history
-audit` can use SQLite-indexed events for speed while graph-turbo remains the
+audit` can use Turso-indexed events for speed while graph-turbo remains the
 ranking and timeline algorithm owner.
 
 Large-library packets should keep source and runtime limits explicit instead

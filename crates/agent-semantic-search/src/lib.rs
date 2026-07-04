@@ -16,7 +16,7 @@ mod graph_query_owner_seed;
 mod graph_seed_decision;
 mod graph_topology_projection;
 mod lexical_overlay;
-mod native_finder;
+mod owner_items_source_index_trace;
 mod pipe_candidates;
 mod pipe_source;
 mod prompt_output_replay;
@@ -27,6 +27,7 @@ mod query_wrapper_scan;
 mod search_candidate;
 mod search_language_files;
 mod search_lexical_replay;
+mod search_overlay;
 mod search_packet_replay;
 mod search_pipe_evidence;
 mod search_pipe_quality;
@@ -34,10 +35,8 @@ mod search_pipe_query_pack;
 mod search_query_budget;
 mod source_index_lookup;
 mod source_index_rank;
-#[cfg(feature = "turso-overlay")]
 mod structural_index_search;
 mod syntax_query_replay;
-#[cfg(feature = "turso-overlay")]
 mod turso_overlay_search;
 
 pub use document_candidates::{
@@ -48,6 +47,9 @@ pub use dynamic_candidates::{
     DynamicSearchCandidate, DynamicSearchCandidateRequest, DynamicSearchRootCandidateRequest,
     IngestSearchCandidate, collect_dynamic_lexical_overlay_candidates,
     collect_dynamic_lexical_overlay_candidates_from_roots, collect_ingest_search_candidates,
+};
+pub use dynamic_overlay::{
+    DynamicOverlayLane, QUERY_OVERLAY_ROUTE_SOURCE, SEARCH_OVERLAY_ROUTE_SOURCE,
 };
 pub use dynamic_search::{
     DynamicOwnerItem, DynamicOwnerItemsRequest, DynamicOwnerPath, DynamicOwnerQuery,
@@ -85,22 +87,22 @@ pub use lexical_overlay::{
     LexicalOverlayCandidateHit, LexicalOverlayDocument, LexicalOverlaySearchHit,
     LexicalOverlaySearchRequest, search_lexical_overlay, search_lexical_overlay_candidates,
 };
-pub use native_finder::{
-    NativeFinderCandidate, NativeFinderCandidates, NativeFinderCollectionRequest,
-    NativeFinderConfig, NativeFinderProvenance, NativeFinderSurface,
-    collect_native_finder_candidates,
+pub use owner_items_source_index_trace::{
+    OwnerItemsSourceIndexTrace, OwnerItemsSourceIndexTraceRender, OwnerItemsSourceIndexTraceStream,
+    owner_items_source_index_trace, render_owner_items_source_index_lookup_trace,
+    render_owner_items_source_index_trace, source_index_owner_query,
 };
 pub use pipe_candidates::{
     SearchPipeCandidate, SearchPipeCandidateRequest, collect_search_pipe_candidates,
 };
 pub use pipe_source::{
     SearchPipeDocumentAcquisitionRequest, SearchPipeFailureAcquisitionRequest,
-    SearchPipeFinderAcquisition, SearchPipeFinderAcquisitionRequest, SearchPipeSourceAcquisition,
-    SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
-    SearchPipeSourceIndexAcquisitionRequest, SearchPipeSourceIndexCandidate,
-    SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate, SearchPipeSourceIndexLookup,
-    SearchPipeSourceMode, collect_search_pipe_document_acquisition,
-    collect_search_pipe_failure_acquisition, collect_search_pipe_finder_acquisition,
+    SearchPipeSearchOverlayAcquisition, SearchPipeSearchOverlayAcquisitionRequest,
+    SearchPipeSourceAcquisition, SearchPipeSourceAcquisitionTrace,
+    SearchPipeSourceIndexAcquisition, SearchPipeSourceIndexAcquisitionRequest,
+    SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate,
+    SearchPipeSourceIndexLookup, SearchPipeSourceMode, collect_search_pipe_document_acquisition,
+    collect_search_pipe_failure_acquisition, collect_search_pipe_search_overlay_acquisition,
     collect_search_pipe_source_index_acquisition, failure_candidate_query,
 };
 pub use prompt_output_replay::{
@@ -137,7 +139,6 @@ pub use query_wrapper_scan::{
     collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
     query_candidate_priority,
 };
-#[cfg(feature = "turso-overlay")]
 pub use search_candidate::structural_index_hit_to_search_candidate;
 pub use search_candidate::{
     FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,
@@ -151,13 +152,18 @@ pub use search_language_files::{
 pub use search_lexical_replay::{
     SearchLexicalReplayRequest, search_lexical_packet_matches_request,
 };
+pub use search_overlay::{
+    SearchOverlayCandidate, SearchOverlayCandidates, SearchOverlayCollectionRequest,
+    SearchOverlayConfig, SearchOverlayProvenance, SearchOverlaySurface,
+    collect_search_overlay_candidates,
+};
 pub use search_packet_replay::{
     output_with_delegation_hint_lines, search_output_artifact_replay_safe,
 };
 pub use search_pipe_evidence::{
-    SearchPipeEvidenceCandidate, search_pipe_declaration_header_match, search_pipe_finder_handles,
-    search_pipe_handle_paths, search_pipe_high_value_matches, search_pipe_high_value_missing,
-    search_pipe_is_high_value_term, search_pipe_parser_handles, search_pipe_path_exact_match,
+    SearchPipeEvidenceCandidate, search_pipe_declaration_header_match, search_pipe_handle_paths,
+    search_pipe_high_value_matches, search_pipe_high_value_missing, search_pipe_is_high_value_term,
+    search_pipe_parser_handles, search_pipe_path_exact_match, search_pipe_search_overlay_handles,
     search_pipe_strong_match, search_pipe_weak_match, search_pipe_weak_reason,
 };
 pub use search_pipe_quality::{
@@ -186,7 +192,6 @@ pub use source_index_rank::{
     SourceIndexRankCandidate, rank_source_index_candidates, reorder_source_index_candidates,
     source_index_lookup_terms,
 };
-#[cfg(feature = "turso-overlay")]
 pub use structural_index_search::{
     TursoStructuralIndexCandidateRequest, TursoStructuralIndexSearchHit,
     collect_turso_structural_index_ranked_candidates,
@@ -198,12 +203,14 @@ pub use syntax_query_replay::{
     SyntaxQueryReplayCapture, SyntaxQueryRowsReplay, render_semantic_tree_sitter_query_rows_stdout,
     render_semantic_tree_sitter_query_stdout,
 };
-#[cfg(feature = "turso-overlay")]
 pub use turso_overlay_search::{
     TursoOverlaySearchDocument, TursoOverlaySearchHit, bootstrap_turso_overlay_search_store,
     search_turso_overlay_documents, upsert_turso_overlay_search_document,
 };
 
+#[cfg(test)]
+#[path = "../tests/unit/document_auto_lexical_overlay_scenario.rs"]
+mod document_auto_lexical_overlay_scenario_tests;
 #[cfg(test)]
 #[path = "../tests/unit/dynamic_search_candidates.rs"]
 mod dynamic_search_candidates_tests;
@@ -232,6 +239,9 @@ mod graph_seed_decision_tests;
 #[path = "../tests/unit/graph_topology_projection.rs"]
 mod graph_topology_projection_tests;
 #[cfg(test)]
+#[path = "../tests/unit/owner_items_source_index_trace.rs"]
+mod owner_items_source_index_trace_tests;
+#[cfg(test)]
 #[path = "../tests/unit/pipe_candidates.rs"]
 mod pipe_candidates_tests;
 #[cfg(test)]
@@ -255,6 +265,9 @@ mod search_language_files_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_lexical_replay.rs"]
 mod search_lexical_replay_tests;
+#[cfg(test)]
+#[path = "../tests/unit/search_package_scenarios.rs"]
+mod search_package_scenarios_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_packet_replay.rs"]
 mod search_packet_replay_tests;

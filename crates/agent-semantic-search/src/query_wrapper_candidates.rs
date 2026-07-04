@@ -6,14 +6,14 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+use crate::dynamic_overlay::DynamicOverlayLane;
 use crate::{
-    NativeFinderCollectionRequest, NativeFinderConfig, NativeFinderSurface, QueryCandidateAppend,
-    QueryWrapperCandidate, QueryWrapperCandidateSurface, QueryWrapperScanConfig,
-    QueryWrapperSearchCandidateRequest, QueryWrapperSourceIndexLookup,
-    QueryWrapperSourceIndexRequest, RankedSearchCandidate, SearchStageReceipt,
-    augment_package_path_candidates, collect_native_finder_candidates,
+    QueryCandidateAppend, QueryWrapperCandidate, QueryWrapperCandidateSurface,
+    QueryWrapperScanConfig, QueryWrapperSearchCandidateRequest, QueryWrapperSourceIndexLookup,
+    QueryWrapperSourceIndexRequest, RankedSearchCandidate, SearchOverlayCollectionRequest,
+    SearchOverlayConfig, SearchOverlaySurface, SearchStageReceipt, augment_package_path_candidates,
     collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
-    language_neutral_search_file_spec, query_candidate_priority,
+    collect_search_overlay_candidates, language_neutral_search_file_spec, query_candidate_priority,
 };
 
 /// Search surface for query-wrapper commands.
@@ -42,27 +42,17 @@ pub fn query_wrapper_ranked_search_candidates(
     if terms.is_empty() {
         return Ok(Vec::new());
     }
-    #[cfg(feature = "turso-overlay")]
-    {
-        let query = terms.join(" ");
-        let limit = query_wrapper_ranked_search_limit(surface);
-        crate::collect_turso_structural_index_ranked_candidates(
-            crate::TursoStructuralIndexCandidateRequest {
-                project_root,
-                query: query.as_str(),
-                limit,
-            },
-        )
-    }
-    #[cfg(not(feature = "turso-overlay"))]
-    {
-        let _ = surface;
-        let _ = project_root;
-        Ok(Vec::new())
-    }
+    let query = terms.join(" ");
+    let limit = query_wrapper_ranked_search_limit(surface);
+    crate::collect_turso_structural_index_ranked_candidates(
+        crate::TursoStructuralIndexCandidateRequest {
+            project_root,
+            query: query.as_str(),
+            limit,
+        },
+    )
 }
 
-#[cfg(feature = "turso-overlay")]
 fn query_wrapper_ranked_search_limit(surface: QueryWrapperSearchSurface) -> u32 {
     match surface {
         QueryWrapperSearchSurface::Fd => 16,
@@ -514,11 +504,20 @@ pub fn query_wrapper_source_index_trace_projection(
         Value::from(trace.elapsed.as_millis().min(u128::from(u64::MAX)) as u64),
     );
     fields.insert("state".to_string(), Value::from(trace.lookup.state.clone()));
-    if status != "used" {
-        fields.insert(
-            "nextCommand".to_string(),
-            Value::from("asp cache source-index refresh"),
-        );
+    match status {
+        "used" => {}
+        "busy" => {
+            fields.insert(
+                "nextCommand".to_string(),
+                Value::from("retry source-index lookup or continue query-overlay"),
+            );
+        }
+        _ => {
+            fields.insert(
+                "nextCommand".to_string(),
+                Value::from("asp cache source-index refresh"),
+            );
+        }
     }
     QueryWrapperSourceIndexTraceProjection {
         source: "sourceIndex".to_string(),
@@ -535,6 +534,7 @@ fn query_wrapper_source_index_status(state: &str) -> &'static str {
         "hit" => "used",
         "missing-db" => "missing-db",
         "empty-index" => "empty-index",
+        "busy" => "busy",
         "miss" => "miss",
         _ => "unknown",
     }
@@ -625,7 +625,7 @@ pub struct QueryWrapperCandidateCollection {
     pub source_index_trace: Option<QueryWrapperSearchSourceIndexTrace>,
     pub search_stage_receipts: Vec<SearchStageReceipt>,
     pub search_stage_trace_projections: Vec<QueryWrapperSearchStageTraceProjection>,
-    pub finder_skipped_after_source_index: bool,
+    pub query_overlay_skipped_after_source_index: bool,
     pub candidate_sources: Vec<String>,
 }
 
@@ -676,7 +676,8 @@ pub fn collect_query_wrapper_candidate_collection(
 
     if !fd_query_prefers_internal_scan(request.surface, request.terms, request.native_args)
         && let Some(mut collection) =
-            collect_native_finder_candidates(NativeFinderCollectionRequest {
+            collect_search_overlay_candidates(SearchOverlayCollectionRequest {
+                lane: DynamicOverlayLane::Query,
                 surface: native_surface,
                 language_id: "query-wrapper",
                 file_spec_override: Some(language_neutral_search_file_spec()),
@@ -685,7 +686,7 @@ pub fn collect_query_wrapper_candidate_collection(
                 locator_root: &display_root,
                 roots: &roots,
                 terms: request.terms,
-                config: NativeFinderConfig {
+                config: SearchOverlayConfig {
                     ignore_dirs: request.ignore_dirs,
                     include_hidden_dirs: request.include_hidden_dirs,
                 },
@@ -699,11 +700,11 @@ pub fn collect_query_wrapper_candidate_collection(
             return Ok(QueryWrapperCandidateCollection {
                 candidates: Vec::new(),
                 trace_fields: collection.provenance.trace_fields(0),
-                source_index_trace: None,
+                source_index_trace: busy_source_index_trace(request.source_index_lookup.as_ref()),
                 search_stage_receipts: Vec::new(),
                 search_stage_trace_projections: Vec::new(),
-                finder_skipped_after_source_index: false,
-                candidate_sources: vec!["finder".to_string()],
+                query_overlay_skipped_after_source_index: false,
+                candidate_sources: vec![query_overlay_route_source().to_string()],
             });
         }
         if !collection.candidates.is_empty() {
@@ -738,11 +739,11 @@ pub fn collect_query_wrapper_candidate_collection(
             return Ok(QueryWrapperCandidateCollection {
                 candidates,
                 trace_fields,
-                source_index_trace: None,
+                source_index_trace: busy_source_index_trace(request.source_index_lookup.as_ref()),
                 search_stage_receipts: Vec::new(),
                 search_stage_trace_projections: Vec::new(),
-                finder_skipped_after_source_index: false,
-                candidate_sources: vec!["finder".to_string()],
+                query_overlay_skipped_after_source_index: false,
+                candidate_sources: vec![query_overlay_route_source().to_string()],
             });
         }
     }
@@ -789,11 +790,11 @@ pub fn collect_query_wrapper_candidate_collection(
     Ok(QueryWrapperCandidateCollection {
         candidates,
         trace_fields,
-        source_index_trace: None,
+        source_index_trace: busy_source_index_trace(request.source_index_lookup.as_ref()),
         search_stage_receipts: Vec::new(),
         search_stage_trace_projections: Vec::new(),
-        finder_skipped_after_source_index: false,
-        candidate_sources: vec!["finder".to_string()],
+        query_overlay_skipped_after_source_index: false,
+        candidate_sources: vec![query_overlay_route_source().to_string()],
     })
 }
 
@@ -837,9 +838,13 @@ fn collect_ranked_search_query_candidates(
         source_index_trace: None,
         search_stage_receipts: vec![collection.stage_receipt],
         search_stage_trace_projections,
-        finder_skipped_after_source_index: false,
+        query_overlay_skipped_after_source_index: false,
         candidate_sources,
     })
+}
+
+fn query_overlay_route_source() -> &'static str {
+    DynamicOverlayLane::Query.route_source()
 }
 
 fn collect_source_index_query_candidates(
@@ -877,9 +882,20 @@ fn collect_source_index_query_candidates(
         }),
         search_stage_receipts: Vec::new(),
         search_stage_trace_projections: Vec::new(),
-        finder_skipped_after_source_index: true,
+        query_overlay_skipped_after_source_index: true,
         candidate_sources: vec!["source-index".to_string()],
     }))
+}
+
+fn busy_source_index_trace(
+    source_index_lookup: Option<&QueryWrapperSourceIndexLookup>,
+) -> Option<QueryWrapperSearchSourceIndexTrace> {
+    let lookup = source_index_lookup?;
+    (lookup.state == "busy").then(|| QueryWrapperSearchSourceIndexTrace {
+        lookup: lookup.clone(),
+        candidate_count: 0,
+        elapsed: Duration::ZERO,
+    })
 }
 
 fn cohesive_query_candidates(
@@ -957,7 +973,7 @@ fn candidate_matches_term(candidate: &QueryWrapperCandidate, term: &str) -> bool
 }
 
 fn query_wrapper_candidate_from_native(
-    candidate: crate::NativeFinderCandidate,
+    candidate: crate::SearchOverlayCandidate,
 ) -> QueryWrapperCandidate {
     QueryWrapperCandidate {
         path: candidate.path,
@@ -1007,10 +1023,10 @@ fn display_root(locator_root: &Path, scopes: &[PathBuf], roots: &[PathBuf]) -> P
     }
 }
 
-fn native_surface(surface: QueryWrapperSearchSurface) -> NativeFinderSurface {
+fn native_surface(surface: QueryWrapperSearchSurface) -> SearchOverlaySurface {
     match surface {
-        QueryWrapperSearchSurface::Fd => NativeFinderSurface::Path,
-        QueryWrapperSearchSurface::Rg => NativeFinderSurface::Content,
+        QueryWrapperSearchSurface::Fd => SearchOverlaySurface::Path,
+        QueryWrapperSearchSurface::Rg => SearchOverlaySurface::Content,
     }
 }
 

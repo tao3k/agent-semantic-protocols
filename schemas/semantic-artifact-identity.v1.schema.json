@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-artifact-identity.v1.schema.json",
+  "title": "ASP Semantic Artifact Identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "hashAlgorithm",
+    "roots"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "semantic-artifact-identity"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "hashAlgorithm": {
+      "const": "blake3"
+    },
+    "roots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifactRoot"
+      }
+    }
+  },
+  "$defs": {
+    "artifactHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "blake3"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "artifactRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoId",
+        "workspaceId",
+        "scopeId",
+        "generation",
+        "rootKind",
+        "rootHash",
+        "nodeHash"
+      ],
+      "properties": {
+        "repoId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootKind": {
+          "type": "string",
+          "enum": [
+            "artifactExport",
+            "changeSet",
+            "compactGraph",
+            "dynamicOverlay",
+            "eventLogCheckpoint",
+            "evidenceGraph",
+            "graphDiff",
+            "howFixFrame",
+            "howFromFrame",
+            "proofReceipt",
+            "providerOutput",
+            "searchReceipt",
+            "sourceIndexBundle",
+            "sourceSnapshot"
+          ]
+        },
+        "rootHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "nodeHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "producerHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "schemaHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "contentHash": {
+          "$ref": "#/$defs/artifactHash"
+        }
+      }
+    }
+  }
+}

@@ -25,7 +25,7 @@ pub(super) struct SearchPipeQuality {
     pub(super) concept_terms: Vec<String>,
     pub(super) page_index_handles: Vec<String>,
     pub(super) parser_handles: Vec<String>,
-    pub(super) finder_handles: Vec<String>,
+    pub(super) search_overlay_handles: Vec<String>,
     pub(super) next_query_pack_hint: Option<String>,
     pub(super) clause_coverages: Vec<ClauseCoverage>,
 }

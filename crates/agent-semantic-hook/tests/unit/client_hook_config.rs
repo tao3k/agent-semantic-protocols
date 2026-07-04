@@ -139,7 +139,7 @@ fn builtin_source_argv_rule_matches_command_names_not_harness_subcommands() {
 fn deny_decision_mentions_agent_org_artifact_entry_when_inactive() {
     let root = temp_root("agent-org-artifacts-inactive");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(true)).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, true)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -158,9 +158,11 @@ fn deny_decision_mentions_agent_org_artifact_entry_when_inactive() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert!(decision.message.contains("ASP Org Artifact Entry:"));
-    assert!(decision.message.contains(
-        "Read @.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org before continuing"
-    ));
+    let entry_skill_path = org_state_skill_path(&root);
+    assert!(decision.message.contains(&format!(
+        "Read @{} before continuing",
+        entry_skill_path.display()
+    )));
     let artifacts_path = org_artifacts_root(&root);
     assert!(
         decision
@@ -188,7 +190,7 @@ fn deny_decision_mentions_agent_org_artifact_entry_when_inactive() {
             .fields
             .get("agentOrgArtifactsEntrySkillPath")
             .and_then(|path| path.as_str()),
-        Some(".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org")
+        Some(entry_skill_path.to_str().expect("utf8 entry skill path"))
     );
     let plans_path = artifacts_path.join("flow").join("plans");
     let expected_capture_command_prefix = format!(
@@ -230,7 +232,7 @@ fn deny_decision_mentions_agent_org_artifact_entry_when_inactive() {
 fn deny_decision_mentions_agent_org_artifact_entry_by_default() {
     let root = temp_root("agent-org-artifacts-default-enabled");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_default_config()).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_default_config(&root)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -262,11 +264,7 @@ fn deny_decision_mentions_agent_org_artifact_entry_by_default() {
 #[test]
 fn deny_decision_mentions_agent_org_artifact_entry_when_recent_org_has_no_contract_binding() {
     let root = temp_root("agent-org-artifacts-simple-org-not-active");
-    let artifact = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org")
+    let artifact = org_artifacts_root(&root)
         .join("flow")
         .join("plans")
         .join("current.org");
@@ -277,7 +275,7 @@ fn deny_decision_mentions_agent_org_artifact_entry_when_recent_org_has_no_contra
     )
     .expect("write simple org artifact");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(true)).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, true)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -309,18 +307,14 @@ fn deny_decision_mentions_agent_org_artifact_entry_when_recent_org_has_no_contra
 #[test]
 fn deny_decision_skips_agent_org_artifact_entry_when_recent_contract_bound_org_exists() {
     let root = temp_root("agent-org-artifacts-contract-bound-active");
-    let artifact = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org")
+    let artifact = org_artifacts_root(&root)
         .join("flow")
         .join("plans")
         .join("current.org");
     fs::create_dir_all(artifact.parent().expect("artifact parent")).expect("artifact dir");
     fs::write(&artifact, contract_bound_org("Current")).expect("write contract-bound org artifact");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(true)).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, true)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -346,18 +340,14 @@ fn deny_decision_skips_agent_org_artifact_entry_when_recent_contract_bound_org_e
 #[test]
 fn deny_decision_mentions_agent_org_artifact_entry_when_recent_org_archive_exists() {
     let root = temp_root("agent-org-artifacts-org-archive-not-active");
-    let artifact = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org")
+    let artifact = org_artifacts_root(&root)
         .join("flow")
         .join("plans")
         .join("current.org_archive");
     fs::create_dir_all(artifact.parent().expect("artifact parent")).expect("artifact dir");
     fs::write(&artifact, "* Current\n").expect("write org_archive artifact");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(true)).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, true)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -389,17 +379,13 @@ fn deny_decision_mentions_agent_org_artifact_entry_when_recent_org_archive_exist
 #[test]
 fn deny_decision_ignores_recent_org_archive_under_archive_dir() {
     let root = temp_root("agent-org-artifacts-archive-dir-ignored");
-    let artifact = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org")
+    let artifact = org_artifacts_root(&root)
         .join("archive")
         .join("current.org_archive");
     fs::create_dir_all(artifact.parent().expect("artifact parent")).expect("artifact dir");
     fs::write(&artifact, "* Archived\n").expect("write archived org artifact");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(true)).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, true)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -432,7 +418,7 @@ fn deny_decision_ignores_recent_org_archive_under_archive_dir() {
 fn deny_decision_skips_agent_org_artifact_entry_when_disabled() {
     let root = temp_root("agent-org-artifacts-disabled");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(false)).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, false)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -460,7 +446,7 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
     let root = temp_root("agent-org-artifacts-archive-warning");
     write_org_artifact_set(&root, 10, &["flow/plans/done-01.org"]);
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(true)).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, true)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -553,19 +539,7 @@ fn allow_decision_renders_agent_org_archive_warning() {
     let root = temp_root("agent-org-artifacts-archive-warning-allow");
     write_org_artifact_set(&root, 10, &["flow/plans/done-01.org"]);
     let config_path = root.join("config.toml");
-    fs::write(
-        &config_path,
-        r#"
-schemaId = "agent.semantic-protocols.hook.client-config"
-schemaVersion = "1"
-protocolId = "agent.semantic-protocols.hook"
-protocolVersion = "1"
-
-[agentOrgArtifacts]
-enabled = true
-"#,
-    )
-    .expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, true)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -626,11 +600,7 @@ enabled = true
 fn deny_decision_skips_archive_warning_below_threshold_or_inside_archives() {
     let root = temp_root("agent-org-artifacts-archive-warning-skipped");
     write_org_artifact_set(&root, 9, &["flow/plans/done-01.org"]);
-    let archived = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org")
+    let archived = org_artifacts_root(&root)
         .join("archives")
         .join("flow")
         .join("plans")
@@ -638,7 +608,7 @@ fn deny_decision_skips_archive_warning_below_threshold_or_inside_archives() {
     fs::create_dir_all(archived.parent().expect("archived parent")).expect("archive dir");
     fs::write(&archived, "* DONE Archived\n").expect("write archived done");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(true)).expect("write config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, true)).expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -666,22 +636,18 @@ fn deny_decision_skips_archive_warning_below_threshold_or_inside_archives() {
 }
 
 #[test]
-fn agent_config_disables_agent_org_archive_warning() {
-    let root = temp_root("agent-config-disables-agent-org-archive-warning");
+fn client_config_disables_agent_org_archive_warning() {
+    let root = temp_root("client-config-disables-agent-org-archive-warning");
     write_org_artifact_set(&root, 10, &["flow/plans/done-01.org"]);
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_config(true)).expect("write config");
-    let agent_config_path = root.join(".agents").join("asp.toml");
-    fs::create_dir_all(agent_config_path.parent().expect("agent config parent"))
-        .expect("agent config dir");
-    fs::write(
-        &agent_config_path,
+    let mut config_text = agent_org_artifacts_config(&root, true);
+    config_text.push_str(
         r#"
-[hook.agentOrgArtifacts.archiveWarning]
+[agentOrgArtifacts.archiveWarning]
 enabled = false
 "#,
-    )
-    .expect("write agent config");
+    );
+    fs::write(&config_path, config_text).expect("write config");
     let config = load_client_config_for_project(&config_path, &root).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -709,21 +675,10 @@ enabled = false
 }
 
 #[test]
-fn agent_config_disables_agent_org_artifact_recovery() {
-    let root = temp_root("agent-config-disables-agent-org-artifacts");
+fn client_config_disables_agent_org_artifact_recovery() {
+    let root = temp_root("client-config-disables-agent-org-artifacts");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, agent_org_artifacts_default_config()).expect("write config");
-    let agent_config_path = root.join(".agents").join("asp.toml");
-    fs::create_dir_all(agent_config_path.parent().expect("agent config parent"))
-        .expect("agent config dir");
-    fs::write(
-        &agent_config_path,
-        r#"
-[hook.agentOrgArtifacts]
-enabled = false
-"#,
-    )
-    .expect("write agent config");
+    fs::write(&config_path, agent_org_artifacts_config(&root, false)).expect("write config");
     let config = load_client_config_for_project(&config_path, &root).expect("load client config");
     let mut registry = registry();
     registry.project_root = root.display().to_string();
@@ -742,6 +697,30 @@ enabled = false
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert!(!decision.message.contains("ASP Org Artifact Entry:"));
     assert!(!decision.fields.contains_key("agentOrgArtifactsStatus"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn project_config_rejects_agent_org_artifacts_overlay() {
+    let root = temp_root("project-config-rejects-agent-org-artifacts-overlay");
+    let config_path = root.join("config.toml");
+    fs::write(&config_path, agent_org_artifacts_default_config(&root)).expect("write config");
+    let agent_config_path = root.join(".agents").join("asp.toml");
+    fs::create_dir_all(agent_config_path.parent().expect("agent config parent"))
+        .expect("agent config dir");
+    fs::write(
+        &agent_config_path,
+        r#"
+[hook.agentOrgArtifacts]
+enabled = false
+"#,
+    )
+    .expect("write agent config");
+
+    let err = load_client_config_for_project(&config_path, &root).expect_err("reject agent config");
+    assert!(err.contains("agentOrgArtifacts"), "{err}");
+    assert!(err.contains("unknown field"), "{err}");
 
     let _ = fs::remove_dir_all(root);
 }
@@ -908,10 +887,25 @@ fn canonical(path: &Path) -> PathBuf {
 }
 
 fn org_artifacts_root(root: &Path) -> PathBuf {
-    root.join(".cache")
-        .join("agent-semantic-protocol")
+    state_home(root)
+        .join("projects")
+        .join("by-id")
+        .join("repo-test")
+        .join("workspaces")
+        .join("workspace-test")
         .join("artifacts")
         .join("org")
+}
+
+fn org_state_skill_path(root: &Path) -> PathBuf {
+    state_home(root)
+        .join("org")
+        .join("templates")
+        .join("ASP_ORG_SKILL.org")
+}
+
+fn state_home(root: &Path) -> PathBuf {
+    root.join("home").join(".agent-semantic-protocols")
 }
 
 fn write_org_artifact_set(root: &Path, count: usize, done_files: &[&str]) {
@@ -949,7 +943,9 @@ Keep recoverable ASP Org state.
     )
 }
 
-fn agent_org_artifacts_config(enabled: bool) -> String {
+fn agent_org_artifacts_config(root: &Path, enabled: bool) -> String {
+    let artifacts_path = org_artifacts_root(root);
+    let entry_skill_path = org_state_skill_path(root);
     format!(
         r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
@@ -960,8 +956,8 @@ protocolVersion = "1"
 [agentOrgArtifacts]
 enabled = {enabled}
 inactiveAfterMinutes = 30
-artifactsPath = ".cache/agent-semantic-protocol/artifacts/org"
-entrySkillPath = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
+artifactsPath = "{}"
+entrySkillPath = "{}"
 
 [[rules]]
 id = "deny-rg"
@@ -975,18 +971,25 @@ message = "matched configured rg"
 [rules.match]
 tool = "Bash"
 commandAny = ["rg"]
-"#
+"#,
+        artifacts_path.display().to_string().replace('\\', "\\\\"),
+        entry_skill_path.display().to_string().replace('\\', "\\\\")
     )
 }
 
-fn agent_org_artifacts_default_config() -> &'static str {
-    r#"
+fn agent_org_artifacts_default_config(root: &Path) -> String {
+    let artifacts_path = org_artifacts_root(root);
+    let entry_skill_path = org_state_skill_path(root);
+    format!(
+        r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
 
 [agentOrgArtifacts]
+artifactsPath = "{}"
+entrySkillPath = "{}"
 
 [[rules]]
 id = "deny-rg"
@@ -1000,5 +1003,8 @@ message = "matched configured rg"
 [rules.match]
 tool = "Bash"
 commandAny = ["rg"]
-"#
+"#,
+        artifacts_path.display().to_string().replace('\\', "\\\\"),
+        entry_skill_path.display().to_string().replace('\\', "\\\\")
+    )
 }

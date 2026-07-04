@@ -1,0 +1,40 @@
+id = "search-package-linear-performance-monitoring"
+title = "Search package surfaces stay under scenario benchmark monitoring"
+policy_ids = [
+  "SEARCH-AGENT-ASP-PERF-PACKAGE-LINEAR-MONITORING-001",
+]
+agent_goal = "Keep every agent-semantic-search unit and integration surface represented by package-local scenario benchmark monitoring so new search behavior cannot land without a performance contract."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "document_auto_lexical_overlay_scenario",
+  "dynamic_search_candidates",
+  "evidence_graph_rank",
+  "graph_candidate_projection",
+  "graph_candidate_sparsity",
+  "graph_evidence_projection",
+  "graph_node_projection",
+  "graph_owner_rank",
+  "graph_query_owner_seed",
+  "graph_seed_decision",
+  "graph_topology_projection",
+  "owner_items_source_index_trace",
+  "pipe_candidates",
+  "prompt_output_replay",
+  "provider_candidate_annotations",
+  "query_packet_replay",
+  "query_wrapper_candidates",
+  "search_candidate",
+  "search_language_files",
+  "search_lexical_replay",
+  "search_packet_replay",
+  "search_pipe_evidence",
+  "search_pipe_quality",
+  "search_pipe_query_pack",
+  "search_query_budget",
+  "source_index_rank",
+  "syntax_query_replay",
+  "turso_overlay_search",
+]
+inputs = "inputs"
+expected = "expected"
+command = "cargo test -p agent-semantic-search search_package_linear_performance_monitoring_covers_all_unit_surfaces"

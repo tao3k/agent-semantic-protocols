@@ -7,7 +7,6 @@ use agent_semantic_client_db::{
     ClientDbEngine, ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexLookupResult,
     ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexQueryKey,
 };
-#[cfg(feature = "turso-overlay")]
 use agent_semantic_runtime::runtime_block_on_current_thread;
 
 use crate::{reorder_source_index_candidates, source_index_lookup_terms};
@@ -75,21 +74,18 @@ pub fn lookup_source_index_in_cache(
         return Ok(lookup);
     }
 
-    #[cfg(feature = "turso-overlay")]
-    {
-        let engine = ClientDbEngine::resolve(request.cache_project_root)?;
-        if let Some(read_model_lookup) = turso_source_index_lookup_hit(
-            runtime_block_on_current_thread(engine.lookup_source_index_read_model(
-                request.query,
-                request.language_id,
-                request.limit,
-            )),
-        )? {
-            return Ok(rank_source_index_lookup_result(
-                read_model_lookup,
-                request.query,
-            ));
-        }
+    let engine = ClientDbEngine::resolve(request.cache_project_root)?;
+    if let Some(read_model_lookup) = turso_source_index_lookup_hit(
+        runtime_block_on_current_thread(engine.lookup_source_index_read_model(
+            request.query,
+            request.language_id,
+            request.limit,
+        )),
+    )? {
+        return Ok(rank_source_index_lookup_result(
+            read_model_lookup,
+            request.query,
+        ));
     }
     Ok(lookup)
 }
@@ -112,7 +108,6 @@ pub fn lookup_source_index_in_client_cache_dir(
         return Ok(lookup);
     }
 
-    #[cfg(feature = "turso-overlay")]
     if let Some(read_model_lookup) =
         turso_source_index_lookup_hit(runtime_block_on_current_thread(
             ClientDbEngine::lookup_source_index_read_model_from_client_dir(
@@ -131,7 +126,6 @@ pub fn lookup_source_index_in_client_cache_dir(
     Ok(lookup)
 }
 
-#[cfg(feature = "turso-overlay")]
 fn turso_source_index_lookup_hit(
     lookup: Result<Result<ClientDbSourceIndexLookupResult, String>, String>,
 ) -> Result<Option<ClientDbSourceIndexLookupResult>, String> {

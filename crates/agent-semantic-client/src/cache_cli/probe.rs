@@ -27,8 +27,8 @@ pub(crate) struct ProviderCacheProbe {
     db_report: ClientDbReport,
     pub(crate) cache_status: CacheStatus,
     provenance: Vec<NativeProvenance>,
-    pub(crate) sqlite_read_count: u64,
-    pub(crate) sqlite_write_count: u64,
+    pub(crate) db_read_count: u64,
+    pub(crate) db_write_count: u64,
     pub(crate) replay: Option<ProviderCacheReplay>,
 }
 
@@ -49,7 +49,7 @@ pub(crate) fn provider_cache_probe(
         .as_ref()
         .and_then(|db_session| db_session.inspect().ok())
         .unwrap_or_else(|| ClientDbEngine::inspect_client_dir(cache_root));
-    let mut sqlite_read_count = if db_report.status == ClientDbStatus::Present {
+    let mut db_read_count = if db_report.status == ClientDbStatus::Present {
         1
     } else {
         0
@@ -65,7 +65,7 @@ pub(crate) fn provider_cache_probe(
             .zip(selected_provider)
             .zip(export_method.clone())
             .and_then(|((db_session, provider), export_method)| {
-                sqlite_read_count += 1;
+                db_read_count += 1;
                 let request_fingerprint =
                     request_lookup_fingerprint(provider, project_root, &export_method, request);
                 db_session
@@ -103,7 +103,7 @@ pub(crate) fn provider_cache_probe(
             {
                 return None;
             }
-            sqlite_read_count += 1;
+            db_read_count += 1;
             load_fresh_prime_replay(
                 db_session,
                 cache_root,
@@ -122,7 +122,7 @@ pub(crate) fn provider_cache_probe(
             {
                 return None;
             }
-            sqlite_read_count += 1;
+            db_read_count += 1;
             load_fresh_lexical_replay(
                 db_session,
                 cache_root,
@@ -172,9 +172,8 @@ pub(crate) fn provider_cache_probe(
         db_report,
         cache_status,
         provenance,
-        sqlite_read_count: sqlite_read_count
-            + replay.as_ref().map_or(0, |replay| replay.sqlite_read_count),
-        sqlite_write_count: 0,
+        db_read_count: db_read_count + replay.as_ref().map_or(0, |replay| replay.db_read_count),
+        db_write_count: 0,
         replay,
     })
 }
@@ -353,8 +352,8 @@ pub(crate) fn apply_provider_cache_probe(receipt: &mut ClientReceipt, probe: &Pr
         receipt.client_db_busy_timeout_ms = u64::try_from(pragmas.busy_timeout_ms).ok();
         receipt.client_db_foreign_keys = Some(pragmas.foreign_keys);
     }
-    receipt.sqlite_read_count = Some(probe.sqlite_read_count);
-    receipt.sqlite_write_count = Some(probe.sqlite_write_count);
+    receipt.db_read_count = Some(probe.db_read_count);
+    receipt.db_write_count = Some(probe.db_write_count);
 }
 
 pub(crate) fn cache_hit_receipt(

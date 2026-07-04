@@ -1381,12 +1381,12 @@ Completed:
   packet fingerprint remains part of the key so changed graph/source facts do
   not replay stale sparse matrices.
 - [X] Python graph turbo has an offline artifact evaluator that converts cached
-  =semantic-search-packet= artifacts under
-  =.cache/agent-semantic-protocol/artifacts/search= into schema-owned graph
+  =semantic-search-packet= artifacts under the State Core =artifactsDir= search
+  subtree, discoverable with =asp paths --get artifactsDir=, into schema-owned graph
   turbo requests, then records conversion count, duplicate target compression,
   rank size, path count, and second-pass cache hits.  This is the first
   repeatable local baseline for measuring the effect of typed sparse ranking on
-  real ASP cache artifacts.
+  real ASP artifacts.
 - [X] The offline artifact evaluator also extracts historical provider command
   targets from prompt-output command artifacts and reports
   =historicalCommandCoverage= over same-language input-target candidate
@@ -1473,7 +1473,7 @@ Completed:
   =providerProcessesSpawned=1=.  Running the equivalent
   =--view=seeds= form immediately after changed the exact request fingerprint
   but replayed through =route=local-cache= with =cacheStatus=hit=,
-  =providerProcessesSpawned=0=, =sqliteReadCount=3=, =sqliteWriteCount=0=,
+  =providerProcessesSpawned=0=, =dbReadCount=3=, =dbWriteCount=0=,
   =elapsedMs=19=, and byte-identical 1095-byte stdout.
 - [X] Timeline output now reports =typedFrontierPromotion= actions for repeated
   typed-frontier search groups.  Each action records =decision=promote=,
@@ -1504,8 +1504,8 @@ Completed:
   Finally, running the original query with =tests owner= changed the exact
   request fingerprint, skipped the unrelated latest generation through packet
   query matching, and replayed through =route=local-cache= with
-  =cacheStatus=hit=, =providerProcessesSpawned=0=, =sqliteReadCount=3=,
-  =sqliteWriteCount=0=, =elapsedMs=37=, and byte-identical 1226-byte stdout.
+  =cacheStatus=hit=, =providerProcessesSpawned=0=, =dbReadCount=3=,
+  =dbWriteCount=0=, =elapsedMs=37=, and byte-identical 1226-byte stdout.
 - [X] Timeline output now reports =ownerCollapse= actions for repeated
   =search/owner= groups.  Each action records =decision=collapse=,
   =replacement=promote-to-owner-query-item-test-frontier=, repeat count, span,
@@ -1513,7 +1513,8 @@ Completed:
   can be converted into a single hotter owner-local item/test frontier.
 - [X] Real artifact validation shows the owner-collapse layer is now a larger
   target than fuzzy promotion in the current local history.  The timeline
-  report over =.cache/agent-semantic-protocol/artifacts= found
+  report over the resolved State Core =artifactsDir= is the current path; the
+  legacy project-local artifact slice measured here found
   =collapsibleOwnerSearches=51= across 27 groups; top candidates are Rust
   =crates/agent-semantic-protocol/src/command/provider.rs= with 7 calls / 6
   repeats, =crates/agent-semantic-hook/src/classifier.rs= with 6 calls / 5
@@ -1548,7 +1549,7 @@ Completed:
   The filtered window recomputes sessions, repeated searches, fuzzy promotion,
   owner collapse, prime suppression, fanout hotspots, and optimization targets
   from only the selected events.  A real local =--recent-sessions 1= report
-  over =.cache/agent-semantic-protocol/artifacts= produced =eventCount=186=,
+  over =$(asp paths --get artifactsDir .)= produced =eventCount=186=,
   =actionEventCount=89=, =repeatSearches=8=, =promotableTypedFrontierSearches=5=,
   =collapsibleOwnerSearches=3=, and =suppressiblePrimeSearches=0=.  Its current
   top post-change target is TypeScript =src/cli/protocol.ts= with

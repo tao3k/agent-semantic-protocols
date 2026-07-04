@@ -4,6 +4,7 @@ use crate::provider_command::support::{asp_command, make_executable, temp_projec
 #[test]
 fn asp_rg_query_batches_terms_into_one_runtime_call_per_root() {
     let root = temp_project_root("asp-rg-query-batched-runtime-wrapper");
+    let _ = std::fs::remove_dir_all(&root);
     let runtime_bin = root.join(".cache/agent-semantic-protocol/runtime/bin");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::create_dir_all(&runtime_bin).expect("create runtime bin");

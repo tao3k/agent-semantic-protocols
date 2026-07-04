@@ -106,7 +106,7 @@ pub(super) fn parser_handles(
     )
 }
 
-pub(super) fn finder_handles(candidates: &[Candidate], terms: &[QueryTerm]) -> Vec<String> {
+pub(super) fn search_overlay_handles(candidates: &[Candidate], terms: &[QueryTerm]) -> Vec<String> {
     let search_candidates = candidates
         .iter()
         .map(search_candidate_from_protocol)
@@ -115,7 +115,7 @@ pub(super) fn finder_handles(candidates: &[Candidate], terms: &[QueryTerm]) -> V
         .iter()
         .map(search_term_from_protocol)
         .collect::<Vec<_>>();
-    agent_semantic_search::search_pipe_finder_handles(&search_candidates, &search_terms)
+    agent_semantic_search::search_pipe_search_overlay_handles(&search_candidates, &search_terms)
 }
 
 fn search_candidate_from_protocol(

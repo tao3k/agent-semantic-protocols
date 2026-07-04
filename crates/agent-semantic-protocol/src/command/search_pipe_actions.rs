@@ -127,7 +127,22 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         false
     };
     if !pushed_preview_owner_items
+        && !pushed_preferred_owner_items
+        && request.fd_preview.is_none()
+        && let Some(handle) = owner_items_handle(request.quality, request.candidates)
+        && let Some((owner, query)) = handle.split_once(':')
+    {
+        actions.push(owner_items_action(
+            request.language_id,
+            scope_arg,
+            owner,
+            query,
+        ));
+        pushed_preferred_owner_items = true;
+    }
+    if !pushed_preview_owner_items
         && !pushed_fd_query
+        && !pushed_preferred_owner_items
         && (request.fd_preview.is_none() || !request.quality.allow_query_selector)
         && let Some(fd_query) = &request.quality.fd_query
     {

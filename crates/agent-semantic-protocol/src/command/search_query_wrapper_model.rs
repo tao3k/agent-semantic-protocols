@@ -1,5 +1,7 @@
 //! Query-wrapper shared data model.
 
+use agent_semantic_search::QUERY_OVERLAY_ROUTE_SOURCE;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct FdQueryPreview {
     pub(super) owner_candidates: Vec<String>,
@@ -45,7 +47,7 @@ impl QueryWrapperSurface {
     }
 
     pub(super) fn source_name(self) -> &'static str {
-        "finder"
+        QUERY_OVERLAY_ROUTE_SOURCE
     }
 
     pub(super) fn next_classes(self, quality: &QueryWrapperQuality) -> &'static str {

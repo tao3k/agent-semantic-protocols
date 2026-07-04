@@ -24,7 +24,7 @@ fn query_wrapper_source_index_lookup_skips_empty_terms() {
 fn query_wrapper_source_index_lookup_projection_preserves_client_fields() {
     let lookup =
         query_wrapper_source_index_lookup_from_client_result(ClientDbSourceIndexLookupResult {
-            db_path: PathBuf::from("live/client/client.sqlite3"),
+            db_path: PathBuf::from("live/client/client.turso"),
             state: ClientDbSourceIndexLookupState::Hit,
             candidates: vec![ClientDbSourceIndexCandidate {
                 path: "src/lib.rs".to_string(),
@@ -36,7 +36,7 @@ fn query_wrapper_source_index_lookup_projection_preserves_client_fields() {
             }],
         });
 
-    assert_eq!(lookup.db_path, PathBuf::from("live/client/client.sqlite3"));
+    assert_eq!(lookup.db_path, PathBuf::from("live/client/client.turso"));
     assert_eq!(lookup.state, "hit");
     assert_eq!(lookup.candidates[0].path, "src/lib.rs");
     assert_eq!(lookup.candidates[0].language_id.as_deref(), Some("rust"));

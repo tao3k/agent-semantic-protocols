@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate"
+target_total = "5ms"
+max_total = "35ms"
+observed_total = "0us"
+regression_budget = "30ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 0
+route_source = "search-overlay"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "Document auto acquisition should stay inside search-package lexical overlay/finder routing. Parser-owned document-element acquisition remains available only for explicit provider mode."
+
+[observed_timings]
+overlay_collect = "0us"
+provider_process_count = "0us"
+native_finder_process_count = "0us"
+render = "0us"

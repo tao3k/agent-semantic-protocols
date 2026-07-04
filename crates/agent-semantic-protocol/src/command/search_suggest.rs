@@ -58,6 +58,11 @@ fn parse_search_suggest_args(args: &[String]) -> Result<SearchSuggestArgs, Strin
                     .clone();
                 index += 2;
             }
+            "--workspace" => {
+                args.get(index + 1)
+                    .ok_or_else(|| "--workspace requires a value".to_string())?;
+                index += 2;
+            }
             value if value.starts_with('-') => {
                 return Err(format!("unknown search suggest option: {value}"));
             }
@@ -87,8 +92,8 @@ fn render_search_suggest(language_id: &str, args: &SearchSuggestArgs) -> String 
         "[search-suggest] lang={language_id} view=commands source=advisory history={history_mode}\n\
 |contract executes=false provider=false planner=false output=commands\n\
 |history audit=\"asp search history audit .\"\n\
-|prefer pipe=\"asp {language_id} search pipe {query} --workspace . --view seeds\"\n\
 |prefer lexical=\"asp {language_id} search lexical {query} owner tests --workspace . --view seeds\"\n\
+|prefer pipe=\"asp {language_id} search pipe {query} --workspace . --view seeds\" when=\"lexical/dependency evidence is ambiguous\"\n\
 |reasoning owner-query=\"asp {language_id} search reasoning owner-query --owner <path> --query {query} --workspace . --view seeds\"\n\
 |avoid provider-spawn,source-scan,manual-ingest,shell-pipe,natural-language-planning\n"
     )

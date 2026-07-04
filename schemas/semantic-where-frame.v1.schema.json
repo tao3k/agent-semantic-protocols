@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-where-frame.v1.schema.json",
+  "title": "Semantic WhereFrame v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "frameId",
+    "topologyId",
+    "intent",
+    "recommendedNext",
+    "confirmed",
+    "missingEvidence",
+    "avoid",
+    "searchPlan",
+    "evidence"
+  ],
+  "properties": {
+    "schemaId": { "const": "semantic-where-frame.v1" },
+    "schemaVersion": { "const": "1" },
+    "protocolId": { "type": "string", "minLength": 1 },
+    "protocolVersion": { "type": "string", "minLength": 1 },
+    "frameId": { "type": "string", "minLength": 1 },
+    "topologyId": { "type": "string", "minLength": 1 },
+    "taskFrameId": { "type": "string", "minLength": 1 },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "raw": { "type": "string" },
+        "terms": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "recommendedNext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "query-selector",
+            "owner-items",
+            "search-lexical",
+            "search-deps",
+            "source-index",
+            "test-resolution",
+            "schema-query",
+            "topology-query",
+            "policy-query",
+            "scenario-query",
+            "stop-and-synthesize-how"
+          ]
+        },
+        "command": { "type": "string", "minLength": 1 },
+        "selector": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string" }
+      }
+    },
+    "confirmed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owners", "selectors", "tests"],
+      "properties": {
+        "owners": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceRef" }
+        },
+        "selectors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceRef" }
+        },
+        "tests": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceRef" }
+        },
+        "schemas": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceRef" }
+        }
+      }
+    },
+    "missingEvidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "reason"],
+        "properties": {
+          "kind": {
+            "enum": [
+              "owner",
+              "selector",
+              "dependency",
+              "test",
+              "schema",
+              "policy",
+              "benchmark",
+              "snapshot"
+            ]
+          },
+          "reason": { "type": "string", "minLength": 1 },
+          "nextCommand": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "avoid": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action", "reason"],
+        "properties": {
+          "action": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "searchPlan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step", "kind"],
+        "properties": {
+          "step": { "type": "integer", "minimum": 1 },
+          "kind": {
+            "enum": [
+              "query-selector",
+              "owner-items",
+              "search-lexical",
+              "search-deps",
+              "source-index",
+              "test-resolution",
+              "schema-query",
+              "topology-query",
+              "policy-query",
+              "scenario-query"
+            ]
+          },
+          "command": { "type": "string", "minLength": 1 },
+          "purpose": { "type": "string" },
+          "stopCondition": { "type": "string" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidenceRef" }
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "selector": { "type": "string", "minLength": 1 },
+        "ownerPath": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

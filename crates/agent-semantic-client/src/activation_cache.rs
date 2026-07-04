@@ -1,4 +1,4 @@
-//! SQLite-backed provider activation selection guard.
+//! Turso-backed provider activation selection guard.
 
 use std::env;
 use std::fs;
@@ -42,10 +42,11 @@ fn ensure_generated_activation_provider_commands_current(
     let runtime = load_or_sync_activation(&activation_path, project_root)?;
     let context_fingerprint = provider_command_selection_context_fingerprint(project_root)?;
     let db_engine = ClientDbEngine::resolve(project_root)?;
-    if let Some(db_session) = ClientDbEngine::open_read_session_client_dir(db_engine.client_dir())?
-        && let Some(cached) =
-            db_session.lookup_provider_command_selections(project_root, &context_fingerprint)?
-        && cached.iter().all(cached_provider_executable_is_fresh)
+    if let Some(cached) = ClientDbEngine::lookup_provider_command_selections_from_client_dir(
+        db_engine.client_dir(),
+        project_root,
+        &context_fingerprint,
+    )? && cached.iter().all(cached_provider_executable_is_fresh)
     {
         if runtime_matches_cached_provider_commands(&runtime, &cached) {
             return Ok(());
@@ -63,8 +64,12 @@ fn ensure_generated_activation_provider_commands_current(
         .iter()
         .map(provider_command_selection_row)
         .collect::<Vec<_>>();
-    ClientDbEngine::open_write_session_client_dir(db_engine.client_dir())?
-        .replace_provider_command_selections(project_root, &context_fingerprint, &current_rows)?;
+    ClientDbEngine::replace_provider_command_selections_from_client_dir(
+        db_engine.client_dir(),
+        project_root,
+        &context_fingerprint,
+        &current_rows,
+    )?;
     if !runtime_matches_provider_commands(&runtime, &current) {
         sync_activation_from_current_selection(
             project_root,

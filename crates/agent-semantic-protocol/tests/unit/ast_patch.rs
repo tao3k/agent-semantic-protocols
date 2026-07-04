@@ -1,8 +1,8 @@
-#![allow(dead_code)]
-
 #[allow(clippy::module_inception)]
 #[path = "../../src/command/ast_patch.rs"]
 mod ast_patch;
+
+const _: fn(&[String]) -> Result<(), String> = ast_patch::run_ast_patch_command;
 
 use serde_json::json;
 

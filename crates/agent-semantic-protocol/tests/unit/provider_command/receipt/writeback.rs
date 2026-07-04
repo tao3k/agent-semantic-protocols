@@ -8,7 +8,7 @@ use crate::provider_command::support::{
     write_stdout_stderr_provider,
 };
 
-const PRIME_DECISION_LINE: &str = "|decision purpose=decision-primer answer=false code=false capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"";
+const PRIME_DECISION_LINE: &str = "|decision purpose=decision-primer answer=false code=false capabilities=lexical,pipe,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=lexical>fd-query|rg-query>owner-items>selector-code>pipe history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search lexical '<question-or-feature-term>' owner tests --workspace . --view seeds\"";
 
 fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
@@ -57,8 +57,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert_eq!(first_receipt["clientDbStatus"], "present");
     assert_eq!(first_receipt["clientDbGenerationCount"], 1);
     assert_eq!(first_receipt["providerCommandCount"], 1);
-    assert_eq!(first_receipt["sqliteReadCount"], 2);
-    assert_eq!(first_receipt["sqliteWriteCount"], 2);
+    assert_eq!(first_receipt["dbReadCount"], 2);
+    assert_eq!(first_receipt["dbWriteCount"], 2);
     assert_eq!(
         first_receipt["providerCommands"][0]["stdoutBytes"].as_u64(),
         Some(stdout_text.len() as u64)
@@ -160,8 +160,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert_eq!(second_receipt["cacheStatus"], "hit");
     assert_eq!(second_receipt["providerCommandCount"], 0);
     assert_eq!(second_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(second_receipt["sqliteReadCount"], 2);
-    assert_eq!(second_receipt["sqliteWriteCount"], 0);
+    assert_eq!(second_receipt["dbReadCount"], 2);
+    assert_eq!(second_receipt["dbWriteCount"], 0);
 
     let invalidate_output = asp_command(&root)
         .env("PATH", &bin_dir)
@@ -247,8 +247,8 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert_eq!(fourth_receipt["cacheStatus"], "hit");
     assert_eq!(fourth_receipt["providerCommandCount"], 0);
     assert_eq!(fourth_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(fourth_receipt["sqliteReadCount"], 2);
-    assert_eq!(fourth_receipt["sqliteWriteCount"], 0);
+    assert_eq!(fourth_receipt["dbReadCount"], 2);
+    assert_eq!(fourth_receipt["dbWriteCount"], 0);
 
     write_marker_provider(&bin_dir, "rs-harness", &different_args_called);
     let fifth_output = asp_command(&root)
@@ -408,8 +408,8 @@ esac
     assert_eq!(first_search_receipt["clientDbGenerationCount"], 1);
     assert_eq!(first_search_receipt["providerCommandCount"], 1);
     assert_eq!(first_search_receipt["providerProcessesSpawned"], 1);
-    assert_eq!(first_search_receipt["sqliteReadCount"], 2);
-    assert_eq!(first_search_receipt["sqliteWriteCount"], 2);
+    assert_eq!(first_search_receipt["dbReadCount"], 2);
+    assert_eq!(first_search_receipt["dbWriteCount"], 2);
     let search_provider_args =
         std::fs::read_to_string(&search_provider_args_log).expect("read search provider args");
     assert!(
@@ -464,8 +464,8 @@ esac
     assert_eq!(second_search_receipt["cacheStatus"], "hit");
     assert_eq!(second_search_receipt["providerCommandCount"], 0);
     assert_eq!(second_search_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(second_search_receipt["sqliteReadCount"], 2);
-    assert_eq!(second_search_receipt["sqliteWriteCount"], 0);
+    assert_eq!(second_search_receipt["dbReadCount"], 2);
+    assert_eq!(second_search_receipt["dbWriteCount"], 0);
     let search_provider_args_after_hit = std::fs::read_to_string(&search_provider_args_log)
         .expect("read search provider args after hit");
     assert_eq!(
@@ -560,8 +560,8 @@ esac
             .iter()
             .any(|arg| arg.as_str() == Some("--json"))
     );
-    assert_eq!(first_receipt["sqliteReadCount"], 2);
-    assert_eq!(first_receipt["sqliteWriteCount"], 2);
+    assert_eq!(first_receipt["dbReadCount"], 2);
+    assert_eq!(first_receipt["dbWriteCount"], 2);
     let provider_args =
         std::fs::read_to_string(&provider_args_log).expect("read provider args log");
     assert!(
@@ -614,8 +614,8 @@ esac
     assert_eq!(second_receipt["cacheStatus"], "hit");
     assert_eq!(second_receipt["providerCommandCount"], 0);
     assert_eq!(second_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(second_receipt["sqliteReadCount"], 2);
-    assert_eq!(second_receipt["sqliteWriteCount"], 0);
+    assert_eq!(second_receipt["dbReadCount"], 2);
+    assert_eq!(second_receipt["dbWriteCount"], 0);
     let provider_args_after_hit =
         std::fs::read_to_string(&provider_args_log).expect("read provider args after hit");
     assert_eq!(provider_args_after_hit.lines().count(), provider_arg_count);
@@ -700,7 +700,7 @@ esac
     assert_eq!(receipt["cacheManifestStatus"], "invalid");
     assert_eq!(receipt["providerCommandCount"], 1);
     assert_eq!(receipt["providerProcessesSpawned"], 1);
-    assert_eq!(receipt["sqliteWriteCount"], 0);
+    assert_eq!(receipt["dbWriteCount"], 0);
     assert!(receipt.get("cacheWritebackProviderCommandCount").is_none());
     assert!(receipt.get("cacheWritebackProviderCommands").is_none());
     let _ = std::fs::remove_dir_all(root);
@@ -779,8 +779,8 @@ esac
     assert_eq!(first_receipt["cacheStatus"], "miss");
     assert_eq!(first_receipt["providerCommandCount"], 1);
     assert_eq!(first_receipt["providerProcessesSpawned"], 1);
-    assert_eq!(first_receipt["sqliteReadCount"], 2);
-    assert_eq!(first_receipt["sqliteWriteCount"], 2);
+    assert_eq!(first_receipt["dbReadCount"], 2);
+    assert_eq!(first_receipt["dbWriteCount"], 2);
     assert!(first_receipt["packetBytes"].as_u64().unwrap_or_default() > 0);
     assert!(
         first_receipt
@@ -829,8 +829,8 @@ esac
     assert_eq!(second_receipt["cacheStatus"], "hit");
     assert_eq!(second_receipt["providerCommandCount"], 0);
     assert_eq!(second_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(second_receipt["sqliteReadCount"], 2);
-    assert_eq!(second_receipt["sqliteWriteCount"], 0);
+    assert_eq!(second_receipt["dbReadCount"], 2);
+    assert_eq!(second_receipt["dbWriteCount"], 0);
     let provider_args_after_hit =
         std::fs::read_to_string(&provider_args_log).expect("read provider args after hit");
     assert_eq!(provider_args_after_hit.lines().count(), 1);
@@ -945,8 +945,8 @@ esac
     assert_eq!(first_receipt["cacheStatus"], "miss");
     assert_eq!(first_receipt["providerCommandCount"], 1);
     assert_eq!(first_receipt["providerProcessesSpawned"], 1);
-    assert_eq!(first_receipt["sqliteReadCount"], 2);
-    assert_eq!(first_receipt["sqliteWriteCount"], 3);
+    assert_eq!(first_receipt["dbReadCount"], 2);
+    assert_eq!(first_receipt["dbWriteCount"], 3);
     assert_eq!(first_receipt["clientDbSyntaxRowGenerationCount"], 1);
     assert_eq!(first_receipt["clientDbSyntaxRowMatchCount"], 1);
     assert_eq!(first_receipt["clientDbSyntaxRowCaptureCount"], 1);
@@ -993,8 +993,8 @@ esac
     assert_eq!(second_receipt["cacheStatus"], "hit");
     assert_eq!(second_receipt["providerCommandCount"], 0);
     assert_eq!(second_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(second_receipt["sqliteReadCount"], 2);
-    assert_eq!(second_receipt["sqliteWriteCount"], 0);
+    assert_eq!(second_receipt["dbReadCount"], 2);
+    assert_eq!(second_receipt["dbWriteCount"], 0);
     assert_eq!(second_receipt["clientDbSyntaxRowGenerationCount"], 1);
     assert_eq!(second_receipt["clientDbSyntaxRowMatchCount"], 1);
     assert_eq!(second_receipt["clientDbSyntaxRowCaptureCount"], 1);
@@ -1040,8 +1040,8 @@ esac
     assert_eq!(third_receipt["cacheStatus"], "hit");
     assert_eq!(third_receipt["providerCommandCount"], 0);
     assert_eq!(third_receipt["providerProcessesSpawned"], 0);
-    assert_eq!(third_receipt["sqliteReadCount"], 3);
-    assert_eq!(third_receipt["sqliteWriteCount"], 0);
+    assert_eq!(third_receipt["dbReadCount"], 3);
+    assert_eq!(third_receipt["dbWriteCount"], 0);
     assert_eq!(third_receipt["clientDbSyntaxRowGenerationCount"], 1);
     assert_eq!(third_receipt["clientDbSyntaxRowMatchCount"], 1);
     assert_eq!(third_receipt["clientDbSyntaxRowCaptureCount"], 1);

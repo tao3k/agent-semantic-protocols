@@ -1,4 +1,4 @@
-//! Public value types for `semantic-structural-index` SQLite rows.
+//! Public value types for `semantic-structural-index` Turso rows.
 
 use std::path::PathBuf;
 

@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-proof-recipe.v1.schema.json",
+  "title": "Semantic Proof Recipe v1",
+  "description": "A policy/scenario-owned recipe describing how to verify a proof obligation and how much to disclose to an agent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "recipeId",
+    "obligationId",
+    "owner",
+    "goal",
+    "executor",
+    "inputs",
+    "output",
+    "agentDisclosure"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-proof-recipe"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.formal-verification"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "recipeId": {
+      "$ref": "#/$defs/id"
+    },
+    "obligationId": {
+      "$ref": "#/$defs/id"
+    },
+    "owner": {
+      "enum": ["asp-policy-scenarios", "asp-evidence-graph", "asp-dynamic-topology", "custom"]
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executor": {
+      "$ref": "#/$defs/executor"
+    },
+    "inputs": {
+      "$ref": "#/$defs/inputs"
+    },
+    "output": {
+      "$ref": "#/$defs/output"
+    },
+    "agentDisclosure": {
+      "$ref": "#/$defs/agentDisclosure"
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "integer" },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "tool", "environment"],
+      "properties": {
+        "kind": {
+          "enum": ["lean-axle", "lean-local", "custom"]
+        },
+        "tool": {
+          "enum": ["verify_proof", "check", "extract_decls", "custom"]
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ignoreImports": {
+          "type": "boolean"
+        },
+        "timeoutSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formalStatement", "candidateProof"],
+      "properties": {
+        "formalStatement": {
+          "$ref": "#/$defs/proofInput"
+        },
+        "candidateProof": {
+          "$ref": "#/$defs/proofInput"
+        }
+      }
+    },
+    "proofInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receiptPath", "attachToEvidenceGraph", "updateTopologyBranchLegality"],
+      "properties": {
+        "receiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attachToEvidenceGraph": {
+          "type": "boolean"
+        },
+        "updateTopologyBranchLegality": {
+          "type": "boolean"
+        }
+      }
+    },
+    "agentDisclosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level0", "level1", "level2"],
+      "properties": {
+        "level0": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level1": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level2": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

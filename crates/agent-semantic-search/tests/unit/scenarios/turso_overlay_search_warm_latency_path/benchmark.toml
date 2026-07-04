@@ -1,0 +1,20 @@
+harness = "libtest"
+test = "turso_overlay_search_warm_latency_path_stays_inside_scenario_gate"
+phase = "warm"
+target_total = "75ms"
+max_total = "250ms"
+observed_total = "120ms"
+regression_budget = "175ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 4194304
+route_source = "turso-overlay"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "After bootstrap and one warmup query, repeated dirty-code overlay searches should stay inside the Turso-owned search adapter lane. The gate measures three warmed overlay queries and excludes debug binary startup, command parsing, and initial fixture bootstrap."
+
+[observed_timings]
+overlay_search_warm_queries = "120ms"
+provider_process_count = "1us"
+native_finder_process_count = "1us"
+render = "1us"

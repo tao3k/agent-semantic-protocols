@@ -1,12 +1,13 @@
-//! Candidate collection and finder previews for query wrappers.
+//! Candidate collection and query-overlay previews for query wrappers.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client::lookup_query_wrapper_source_index;
 use agent_semantic_search::{
-    QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
-    QueryWrapperSearchStageTraceProjection, QueryWrapperSearchSurface,
+    QUERY_OVERLAY_ROUTE_SOURCE, QueryWrapperSearchClause, QueryWrapperSearchRequest,
+    QueryWrapperSearchSourceIndexTrace, QueryWrapperSearchStageTraceProjection,
+    QueryWrapperSearchSurface,
     collect_query_wrapper_candidate_collection as collect_search_query_wrapper_candidate_collection,
     query_wrapper_clauses as search_query_wrapper_clauses, query_wrapper_owner_candidates,
     query_wrapper_package_clusters_from_paths,
@@ -52,7 +53,7 @@ impl QueryCandidateCollection {
             candidates: Vec::new(),
             trace_fields,
             source_trace: Vec::new(),
-            candidate_sources: vec!["finder".to_string()],
+            candidate_sources: vec![QUERY_OVERLAY_ROUTE_SOURCE.to_string()],
         }
     }
 }
@@ -109,13 +110,27 @@ pub(super) fn collect_query_candidate_collection(
             source_index_lookup,
         })?;
     let mut source_trace = Vec::new();
+    let search_stage_trace_empty = collection.search_stage_trace_projections.is_empty();
     for projection in collection.search_stage_trace_projections {
         source_trace.push(query_wrapper_search_stage_trace(projection));
     }
     if let Some(trace) = collection.source_index_trace {
         source_trace.push(query_wrapper_source_index_trace(trace));
-        if collection.finder_skipped_after_source_index {
-            source_trace.push(SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0));
+        if search_stage_trace_empty {
+            let query_overlay_matched = collection.candidates.len();
+            source_trace.push(SearchPipeSourceTrace::new(
+                QUERY_OVERLAY_ROUTE_SOURCE,
+                if collection.query_overlay_skipped_after_source_index {
+                    "skipped"
+                } else if query_overlay_matched == 0 {
+                    "empty"
+                } else {
+                    "used"
+                },
+                query_overlay_matched,
+                usize::from(query_overlay_matched == 0),
+                query_overlay_matched,
+            ));
         }
     }
     Ok(QueryCandidateCollection {
@@ -135,7 +150,7 @@ fn query_wrapper_source_index_lookup_defers_to_ranked(
 ) -> bool {
     lookup
         .as_ref()
-        .is_none_or(|lookup| matches!(lookup.state.as_str(), "missing-db" | "empty-index"))
+        .is_none_or(|lookup| matches!(lookup.state.as_str(), "missing-db" | "empty-index" | "busy"))
 }
 
 fn query_wrapper_source_index_trace(

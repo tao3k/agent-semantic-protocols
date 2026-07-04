@@ -19,7 +19,7 @@ fn main() {
         )
         .with_latency_sensitive_performance_owner(
             "src/search_history.rs",
-            "search history audit uses sqlite-backed artifact timelines and graph-turbo dispatch",
+            "search history audit uses Turso-backed artifact timelines and graph-turbo dispatch",
         )
         .with_availability_stability_owner(
             "src/provider_method.rs",

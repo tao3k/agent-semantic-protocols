@@ -15,7 +15,6 @@ mod hook_config;
 mod hook_config_agent_org;
 mod hook_config_global;
 mod hook_recovery_prompt;
-mod profile_registry;
 mod protocol;
 mod protocol_activation;
 mod provider_manifest;
@@ -41,7 +40,7 @@ pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
     codex_user_trust_state_status, default_claude_settings_path, install_codex_user_trust_state,
     merge_claude_settings, merge_codex_asp_explorer_role_config, merge_codex_config,
-    remove_codex_managed_hook_blocks, validate_claude_settings_json, validate_codex_config_toml,
+    validate_claude_settings_json, validate_codex_config_toml,
 };
 pub use codex_project_trust::install_codex_user_project_trust;
 pub use dev_context::{ActiveContextRecord, record_active_context};
@@ -55,7 +54,6 @@ pub use hook_config::{
     load_client_config_for_project,
 };
 pub use hook_config_global::default_global_client_config_path;
-pub use profile_registry::remove_retired_codex_hook_cache_files;
 pub use protocol::{
     ActionPolicy, AgentHookError, CommandTemplate, DecisionKind, DecisionRoute, DecisionRouteKind,
     DecisionSubject, HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION,

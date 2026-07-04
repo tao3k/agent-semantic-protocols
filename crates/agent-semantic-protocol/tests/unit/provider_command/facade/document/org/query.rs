@@ -267,9 +267,86 @@ fn org_facade_search_memory_defaults_to_codex_thread_id() {
 "#,
     )
     .expect("write org memory fixture");
+    let agents_dir = root.join("home").join(".codex").join("agents");
+    std::fs::create_dir_all(&agents_dir).expect("create codex agents dir");
+    let agent_path = agents_dir.join("asp-explorer.toml");
+    std::fs::write(
+        &agent_path,
+        "name = \"asp_explorer\"\nmodel = \"gpt-5.3-codex-spark\"\nsandbox_mode = \"read-only\"\n",
+    )
+    .expect("write asp explorer config");
+    let rollout_dir = root
+        .join("home")
+        .join(".codex")
+        .join("sessions")
+        .join("2026")
+        .join("07")
+        .join("01");
+    std::fs::create_dir_all(&rollout_dir).expect("create codex rollout dir");
+    let session_meta = serde_json::json!({
+        "type": "session_meta",
+        "payload": {
+            "session_id": "codex-thread-a",
+            "id": "codex-child-a",
+            "parent_thread_id": "codex-thread-a",
+            "thread_source": "subagent",
+            "agent_role": "asp_explorer",
+            "agent_nickname": "ASP search",
+            "source": {
+                "subagent": {
+                    "thread_spawn": {
+                        "parent_thread_id": "codex-thread-a",
+                        "depth": 1,
+                        "agent_role": "asp_explorer",
+                        "agent_nickname": "ASP search",
+                        "agent_path": agent_path.display().to_string()
+                    }
+                }
+            }
+        }
+    });
+    let turn_context = serde_json::json!({
+        "type": "turn_context",
+        "payload": {
+            "model": "gpt-5.3-codex-spark",
+            "sandbox_policy": {"type": "read-only"},
+            "approval_policy": "never",
+            "permission_profile": {"type": "disabled"}
+        }
+    });
+    std::fs::write(
+        rollout_dir.join("rollout-test-codex-child-a.jsonl"),
+        format!("{session_meta}\n{turn_context}\n"),
+    )
+    .expect("write codex rollout");
+
+    let register = asp_command(&root)
+        .env("CODEX_THREAD_ID", "codex-thread-a")
+        .env_remove("CLAUDE_CODE_SESSION_ID")
+        .env_remove("CLAUDE_CODE_REMOTE_SESSION_ID")
+        .env_remove("AGENT_SESSION_ID")
+        .env_remove("SESSION_ID")
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--name",
+            "asp-explore",
+            "--child-session-id",
+            "codex-child-a",
+            "--role",
+            "asp-explore",
+        ])
+        .output()
+        .expect("register asp-explore child");
+    assert!(
+        register.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&register.stderr)
+    );
 
     let output = asp_command(&root)
-        .env("CODEX_THREAD_ID", "codex-thread-a")
+        .env("CODEX_THREAD_ID", "codex-child-a")
         .env_remove("CLAUDE_CODE_SESSION_ID")
         .env_remove("CLAUDE_CODE_REMOTE_SESSION_ID")
         .env_remove("AGENT_SESSION_ID")
@@ -307,7 +384,7 @@ fn org_facade_search_memory_defaults_to_codex_thread_id() {
 }
 
 #[test]
-fn org_facade_search_memory_does_not_default_to_generic_agent_session_env() {
+fn org_facade_search_memory_denies_generic_agent_session_without_child() {
     let root = temp_project_root("org-document-search-memory-no-generic-agent-session");
     std::fs::write(
         root.join("plan.org"),
@@ -343,16 +420,17 @@ fn org_facade_search_memory_does_not_default_to_generic_agent_session_env() {
         ])
         .output()
         .expect("run asp org search memory");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
+        stderr.contains("ASP query/search command denied in agent session"),
+        "{stderr}"
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-
-    assert!(stdout.contains("Generic agent session task"), "{stdout}");
-    assert!(stdout.contains("session=\"agent-session-a\""), "{stdout}");
-    assert!(stdout.contains("Other session task"), "{stdout}");
+    assert!(stderr.contains("rootSessionId=agent-session-a"), "{stderr}");
+    assert!(
+        stderr.contains("no active asp-explore child session is registered"),
+        "{stderr}"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }

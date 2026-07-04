@@ -5,7 +5,7 @@ use agent_semantic_client_core::{
     ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderId, SemanticSchemaId,
     syntax_query_ast_abi_fingerprint,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbGenerationHit, ClientDbSyntaxQueryLookup};
+use agent_semantic_client_db::{ClientDbEngine, ClientDbGenerationHit, ClientDbSyntaxQueryLookup};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -14,29 +14,33 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing() {
     let root = temp_root("syntax-row-replay");
     let cache_root = v2_cache_root(&root);
-    let db_path = ClientDb::default_path(&cache_root);
+    let db_path = ClientDbEngine::db_path_for_client_dir(&cache_root);
     write_syntax_replay_sources(&root);
     let generation = syntax_generation(&root);
     let manifest = manifest_from_generation(&cache_root, generation.clone());
     let packet = syntax_packet_with_matches();
     let packet_bytes = serde_json::to_vec(&packet).expect("packet bytes");
     let packet_len = packet_bytes.len();
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
+        .expect("open DB Engine write session");
 
     db.import_manifest(&manifest).expect("import manifest");
     db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
         .expect("import syntax rows");
-    let direct_replay = ClientDb::lookup_syntax_query_replay(&ClientDbSyntaxQueryLookup {
-        db_path: db_path.clone(),
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        project_root: root.clone(),
-        query_ast_fingerprint: syntax_query_ast_abi_fingerprint(
-            "(function_item\n  name: (identifier) @function.name)",
-        )
-        .expect("query AST fingerprint"),
-        selector: Some("src/lib.rs:1:80".to_string()),
-    })
+    let direct_replay = ClientDbEngine::lookup_syntax_query_replay_from_client_dir(
+        &cache_root,
+        &ClientDbSyntaxQueryLookup {
+            db_path: db_path.clone(),
+            language_id: LanguageId::from("rust"),
+            provider_id: ProviderId::from("rs-harness"),
+            project_root: root.clone(),
+            query_ast_fingerprint: syntax_query_ast_abi_fingerprint(
+                "(function_item\n  name: (identifier) @function.name)",
+            )
+            .expect("query AST fingerprint"),
+            selector: Some("src/lib.rs:1:80".to_string()),
+        },
+    )
     .expect("direct row lookup");
     assert!(direct_replay.is_some(), "syntax query rows should replay");
 
@@ -63,7 +67,7 @@ fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing
         replay.packet_bytes.map(|bytes| bytes.as_u64()),
         Some(packet_len.min(u64::MAX as usize) as u64)
     );
-    assert_eq!(replay.sqlite_read_count, 1);
+    assert_eq!(replay.db_read_count, 1);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -71,12 +75,12 @@ fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing
 fn semantic_tree_sitter_query_row_replay_rejects_stale_source_hashes() {
     let root = temp_root("syntax-row-replay-stale");
     let cache_root = v2_cache_root(&root);
-    let db_path = ClientDb::default_path(&cache_root);
     write_syntax_replay_sources(&root);
     let generation = syntax_generation(&root);
     let manifest = manifest_from_generation(&cache_root, generation.clone());
     let packet_bytes = serde_json::to_vec(&syntax_packet_with_matches()).expect("packet bytes");
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
+        .expect("open DB Engine write session");
 
     db.import_manifest(&manifest).expect("import manifest");
     db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
@@ -102,12 +106,12 @@ fn semantic_tree_sitter_query_row_replay_rejects_stale_source_hashes() {
 fn semantic_tree_sitter_query_row_replay_does_not_fallback_to_prompt_stdout() {
     let root = temp_root("syntax-row-replay-no-prompt-fallback");
     let cache_root = v2_cache_root(&root);
-    let db_path = ClientDb::default_path(&cache_root);
     write_syntax_replay_sources(&root);
     let generation = syntax_generation(&root);
     let manifest = manifest_from_generation(&cache_root, generation.clone());
     let packet_bytes = serde_json::to_vec(&syntax_packet_with_matches()).expect("packet bytes");
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
+        .expect("open DB Engine write session");
 
     db.import_manifest(&manifest).expect("import manifest");
     db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
@@ -266,7 +270,7 @@ rank=Q frontier=Q.lexical\n";
         std::str::from_utf8(replay.stdout.as_ref()).expect("utf8"),
         stdout
     );
-    assert_eq!(replay.sqlite_read_count, 0);
+    assert_eq!(replay.db_read_count, 0);
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -8,69 +8,6 @@ mod unix {
         include_str!("../../../../languages/org/templates/ASP_ORG_SKILL.org");
 
     #[test]
-    fn cleans_retired_project_hook_config() {
-        let root = temp_project_root("codex-plugin-cleans-retired-hooks");
-        let codex_home = root.join(".codex-home");
-        std::fs::create_dir_all(&codex_home).expect("create codex home");
-        let project_config = root.join(".codex/config.toml");
-        std::fs::create_dir_all(project_config.parent().expect("project config parent"))
-            .expect("create project config parent");
-        std::fs::write(
-            &project_config,
-            format!(
-                "model = \"gpt-5\"\n\n[marketplaces.asp-project]\nlast_updated = \"2026-06-15T00:57:21Z\"\nsource_type = \"local\"\nsource = \"{}\"\n\n{}\n",
-                root.display(),
-                agent_semantic_hook::codex_hook_block(&root)
-            ),
-        )
-        .expect("write retired project hook config");
-
-        let fake_bin = write_fake_codex_cli(&root);
-        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-            .current_dir(&root)
-            .env("CODEX_HOME", &codex_home)
-            .env("PATH", prepend_path(&fake_bin))
-            .env("PRJ_CACHE_HOME", root.join(".cache"))
-            .args(["install", "plugin", "--codex", "."])
-            .output()
-            .expect("run asp install plugin --codex");
-        assert!(
-            output.status.success(),
-            "stdout={} stderr={}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("[plugin-install]"), "stdout={stdout}");
-        assert_no_downstream_plugin_bundle(&root);
-        assert_project_plugin_cache_refreshed(&root);
-
-        let content = std::fs::read_to_string(&project_config).expect("read project config");
-        assert!(content.contains("model = \"gpt-5\""), "{content}");
-        assert!(content.contains("source = \".\""), "{content}");
-        assert!(!content.contains("last_updated ="), "{content}");
-        assert!(!content.contains(&root.display().to_string()), "{content}");
-        assert!(!content.contains("[agents.asp_explorer]"), "{content}");
-        assert!(
-            !content.contains(agent_semantic_hook::ROOT_BLOCK_BEGIN),
-            "{content}"
-        );
-        assert!(!content.contains("[[hooks."), "{content}");
-        assert!(!content.contains("asp hook "), "{content}");
-
-        let user_config =
-            std::fs::read_to_string(codex_home.join("config.toml")).expect("read user config");
-        assert!(user_config.contains("[projects."), "{user_config}");
-        assert!(
-            user_config.contains("[agents.asp_explorer]"),
-            "{user_config}"
-        );
-        assert!(!user_config.contains("[hooks.state."), "{user_config}");
-
-        std::fs::remove_dir_all(root).expect("cleanup temp project root");
-    }
-
-    #[test]
     fn install_plugin_codex_runs_project_installer() {
         let root = temp_project_root("codex-plugin-unified-install");
         let codex_home = root.join(".codex-home");
@@ -80,14 +17,14 @@ mod unix {
             .expect("create agent config parent");
         std::fs::write(&agent_config_path, "[providers.org]\nenabled = false\n")
             .expect("write canonical agent config");
-        write_stale_plugin_skill_contract(&root);
-        write_stale_project_plugin_cache(&root);
+        write_existing_project_plugin_cache(&root);
 
         let fake_bin = write_fake_codex_cli(&root);
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(&root)
             .env("CODEX_HOME", &codex_home)
             .env("PATH", prepend_path(&fake_bin))
+            .env("ASP_STATE_HOME", root.join(".state"))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(["install", "plugin", "--codex", "."])
             .output()
@@ -110,7 +47,7 @@ mod unix {
             stdout.contains("pluginCache=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0"),
             "stdout={stdout}"
         );
-        assert_no_downstream_plugin_bundle(&root);
+        assert_current_agent_config(&root);
         assert_project_plugin_cache_refreshed(&root);
         let agent_config = std::fs::read_to_string(root.join(".agents").join("asp.toml"))
             .expect("read agent config");
@@ -132,6 +69,7 @@ mod unix {
             .current_dir(&root)
             .env("CODEX_HOME", &codex_home)
             .env("PATH", prepend_path(&fake_bin))
+            .env("ASP_STATE_HOME", root.join(".state"))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(["install", "plugin", "--codex", "."])
             .output()
@@ -161,19 +99,7 @@ mod unix {
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
     }
 
-    fn write_stale_plugin_skill_contract(root: &Path) {
-        let contract_path = root
-            .join("asp-codex-plugin")
-            .join("skills")
-            .join("agent-semantic-protocols")
-            .join("SKILL.contract.org");
-        std::fs::create_dir_all(contract_path.parent().expect("plugin skill dir"))
-            .expect("create plugin skill dir");
-        std::fs::write(&contract_path, "* stale user-layer contract\n")
-            .expect("write stale plugin skill contract");
-    }
-
-    fn write_stale_project_plugin_cache(root: &Path) {
+    fn write_existing_project_plugin_cache(root: &Path) {
         let cache_skill_path = project_plugin_cache_root(root)
             .join("skills")
             .join("agent-semantic-protocols")
@@ -182,12 +108,9 @@ mod unix {
             .expect("create cache skill dir");
         std::fs::write(
             &cache_skill_path,
-            format!(
-                "* ASP\n| REFER_ORG | ={}/.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org= |\n",
-                root.display()
-            ),
+            "* ASP\nexisting project plugin cache skill\n",
         )
-        .expect("write stale plugin cache skill");
+        .expect("write existing plugin cache skill");
     }
 
     fn write_tracked_plugin_source_bundle(root: &Path) {
@@ -224,31 +147,7 @@ mod unix {
         );
     }
 
-    fn assert_no_downstream_plugin_bundle(root: &Path) {
-        let plugin_root = root.join("asp-codex-plugin");
-        assert!(
-            !plugin_root.exists(),
-            "Codex plugin install must not write downstream plugin bundle under {}",
-            plugin_root.display()
-        );
-        let project_skill_dir = root
-            .join(".agents")
-            .join("skills")
-            .join("agent-semantic-protocols");
-        assert!(
-            !project_skill_dir.join("SKILL.org").exists(),
-            "Codex plugin install must not write project SKILL.org under {}",
-            project_skill_dir.display()
-        );
-        assert!(
-            !project_skill_dir.join("SKILL.contract.org").exists(),
-            "Codex plugin install must not write project SKILL.contract.org under {}",
-            project_skill_dir.display()
-        );
-        assert!(
-            !root.join("asp.toml").exists(),
-            "install must not write top-level asp.toml"
-        );
+    fn assert_current_agent_config(root: &Path) {
         let agent_config_path = root.join(".agents").join("asp.toml");
         assert!(
             agent_config_path.is_file(),
@@ -262,34 +161,19 @@ mod unix {
             "{agent_config}"
         );
         assert!(
-            !agent_config.contains("template = \"SKILL.org\""),
-            "{agent_config}"
-        );
-        assert!(
             agent_config.contains(
                 "pluginSkill = \".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org\""
             ),
             "{agent_config}"
         );
+        assert!(!agent_config.contains("aspOrg"), "{agent_config}");
+        assert!(!agent_config.contains("orgArtifacts"), "{agent_config}");
         assert!(
-            agent_config.contains("ASP_ORG_SKILL.org#asp-org"),
+            !agent_config.contains("[hook.agentOrgArtifacts]"),
             "{agent_config}"
         );
-        assert!(
-            agent_config
-                .contains("orgArtifacts = \".cache/agent-semantic-protocol/artifacts/org\""),
-            "{agent_config}"
-        );
-        assert!(!agent_config.contains("orgSkill"), "{agent_config}");
-        let marketplace_path = root
-            .join(".agents")
-            .join("plugins")
-            .join("marketplace.json");
-        assert!(
-            !marketplace_path.exists(),
-            "Codex plugin install must not write marketplace catalog under {}",
-            marketplace_path.display()
-        );
+        assert!(!agent_config.contains("artifactsPath"), "{agent_config}");
+        assert!(!agent_config.contains("entrySkillPath"), "{agent_config}");
     }
 
     fn assert_project_plugin_cache_refreshed(root: &Path) {
@@ -313,28 +197,9 @@ mod unix {
         assert_eq!(skill, format!("{}\n", ASP_ORG_SKILL_TEMPLATE.trim_end()));
         assert!(skill.contains("* ASP Org"), "{skill}");
         assert!(skill.contains(":SKILL_ID: asp-org"), "{skill}");
-        assert!(!skill.contains("SKILL.contract.org"), "{skill}");
-        assert!(!skill.contains("Contract Assertions"), "{skill}");
-        assert!(!skill.contains("asp-skill-has-root-heading"), "{skill}");
-        assert!(
-            !skill.contains("Generated from the repository root =SKILL.org="),
-            "{skill}"
-        );
-        assert!(!skill.contains("#+CONTRACT_ORG:"), "{skill}");
-        assert!(
-            skill.contains(".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"),
-            "{skill}"
-        );
-        assert!(
-            skill.contains(".cache/agent-semantic-protocol/artifacts/org"),
-            "{skill}"
-        );
+        assert!(skill.contains("asp paths --get orgStateSkill"), "{skill}");
+        assert!(skill.contains("asp paths --get orgArtifacts"), "{skill}");
         assert!(!skill.contains(&root.display().to_string()), "{skill}");
-        assert!(
-            !cache_skill_dir.join("SKILL.contract.org").exists(),
-            "plugin cache must not contain SKILL.contract.org under {}",
-            cache_skill_dir.display()
-        );
     }
 
     fn project_plugin_cache_root(root: &Path) -> PathBuf {

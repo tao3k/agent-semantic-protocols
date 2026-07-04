@@ -6,20 +6,8 @@ pub(super) fn is_document_language(language_id: &str) -> bool {
     document_provider::is_document_language(language_id)
 }
 
-pub(super) fn candidate_end_line(candidate: &Candidate) -> usize {
-    candidate.end_line.max(candidate.line)
-}
-
-pub(super) fn candidate_selector(language_id: &str, candidate: &Candidate) -> String {
-    if let Some(selector) = &candidate.selector {
-        return selector.clone();
-    }
-    let end_line = candidate_end_line(candidate);
-    if is_document_language(language_id) {
-        format!("{}:{}-{end_line}", candidate.path, candidate.line)
-    } else {
-        format!("{}:{}:{end_line}", candidate.path, candidate.line)
-    }
+pub(super) fn candidate_executable_selector(candidate: &Candidate) -> Option<String> {
+    candidate.selector.clone()
 }
 
 pub(super) fn query_projection_kind(language_id: &str) -> &'static str {

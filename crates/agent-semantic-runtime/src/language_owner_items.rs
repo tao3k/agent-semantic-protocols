@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
@@ -109,6 +109,42 @@ pub fn language_owner_source_path(project_root: &Path, owner: &Path) -> PathBuf 
     } else {
         project_root.join(owner)
     }
+}
+
+/// Resolve the workspace root used for owner-items dispatch.
+///
+/// Command layers parse the optional workspace argument, but runtime owns the
+/// path materialization policy shared by language harness owner-items.
+#[must_use]
+pub fn language_owner_items_workspace_root(
+    project_root: &Path,
+    locator_root: &Path,
+    explicit_workspace: Option<&Path>,
+) -> PathBuf {
+    let Some(workspace) = explicit_workspace else {
+        return project_root.to_path_buf();
+    };
+    let workspace = if workspace.is_absolute() {
+        workspace.to_path_buf()
+    } else {
+        locator_root.join(workspace)
+    };
+    normalize_language_owner_items_path(&workspace)
+}
+
+fn normalize_language_owner_items_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(value) => normalized.push(value),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
 }
 
 /// Read a cached language harness `owner-items` response when present.

@@ -36,7 +36,7 @@ fn asp_fd_query_empty_seeds_prints_compact_no_output_receipt() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("noOutput reason=no-candidates sourceTrace=finder:empty"),
+        stdout.contains("noOutput reason=no-candidates sourceTrace=query-overlay:empty"),
         "{stdout}"
     );
     assert!(
@@ -95,7 +95,7 @@ fn asp_rg_query_empty_seeds_prints_compact_no_output_receipt() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("noOutput reason=no-candidates sourceTrace=finder:empty"),
+        stdout.contains("noOutput reason=no-candidates sourceTrace=query-overlay:empty"),
         "{stdout}"
     );
     assert!(

@@ -65,7 +65,7 @@ search/query/recall/writing commands -> stable receipts -> agent action
 That difference matters. ASP already has a protocol-first, CLI-first, provider-neutral shape. The opportunity is to absorb the search-substrate lessons without inheriting MCP-server identity, session coupling, or tool-list-driven architecture.
 
 The stronger ASP opportunity is native language analysis. =codebase-memory-mcp=
-builds one broad code graph from vendored parsers, LSP enrichment, SQLite,
+builds one broad code graph from vendored parsers, LSP enrichment, Turso,
 FTS, vectors, and MCP tools. ASP can build a typed multi-layer evidence graph
 from provider-owned language implementations:
 
@@ -251,7 +251,7 @@ Line ranges may remain display hints only.
 ASP should therefore introduce a =TextSearchBackend= / =LexicalSearchBackend= seam before depending on =tantivy= directly from public search code:
 - baseline backend: current scanner / candidate collection / =fzf= compatible ranking;
 - experiment backend: =tantivy= index over DB Engine entity documents;
-- future backend: Turso / SQLite FTS backend if the DB Engine makes that cheaper;
+- future backend: Turso / Turso FTS backend if the DB Engine makes that cheaper;
 - common output: selector-first candidate packets with field-hit metadata, score, generation id, and index freshness.
 
 The adoption test should be empirical. Do not remove =fzf= until =tantivy= wins these measurements on real ASP workflows:
@@ -561,7 +561,7 @@ Under this design =fzf= is not an agent-facing search backend. Human-only intera
 * Paper reread: tree-sitter as coarse structure, native parser as proof
 The Codebase-Memory paper's strongest lesson is not that tree-sitter is more semantically precise than native provider parsers. It is the opposite: tree-sitter is useful because it is a portable, fast, error-tolerant, cross-language structural substrate that can cheaply materialize a broad graph before the agent asks a question.
 
-The paper's implementation uses tree-sitter across 66 languages to extract definitions, calls, imports, references, routes, tests, and relationship edges, then stores them in SQLite and exposes structural tools to agents. It reports the win in exactly the place ASP cares about: graph-native questions avoid repeated grep/read loops and reduce tool calls and tokens. The paper also records the limits: full source context, exhaustive call-site grep, macro-heavy code, runtime behavior, reflection, and dynamic dispatch remain weak spots.
+The paper's implementation uses tree-sitter across 66 languages to extract definitions, calls, imports, references, routes, tests, and relationship edges, then stores them in Turso and exposes structural tools to agents. It reports the win in exactly the place ASP cares about: graph-native questions avoid repeated grep/read loops and reduce tool calls and tokens. The paper also records the limits: full source context, exhaustive call-site grep, macro-heavy code, runtime behavior, reflection, and dynamic dispatch remain weak spots.
 
 For ASP this implies a hybrid search theorem:
 #+begin_src text

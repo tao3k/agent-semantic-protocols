@@ -1,12 +1,9 @@
 //! Structural index row storage for local cache-first search recall.
 
-mod api;
-mod lookup;
 mod packet;
-mod storage;
-mod text;
 mod types;
 
+pub(crate) use packet::parse_structural_index_packet_import;
 pub use types::{
     ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,
     ClientDbStructuralIndexLookup, ClientDbStructuralIndexRefreshPlan,

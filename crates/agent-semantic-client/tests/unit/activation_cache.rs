@@ -1,6 +1,5 @@
-use agent_semantic_client_core::{
-    ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId, state_core::ResolvedState,
-};
+use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
+use agent_semantic_client_db::ClientDbEngine;
 use agent_semantic_hook::{build_default_activation, write_activation};
 
 use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
@@ -45,13 +44,11 @@ fn cached_activation_loader_refreshes_stale_provider_command_prefix() {
     let rewritten = std::fs::read_to_string(&activation_path).expect("read rewritten activation");
     assert!(rewritten.contains(&expected_prefix));
     assert!(!rewritten.contains(&provider_v1.display().to_string()));
-    let db_path = ResolvedState::resolve(&root)
-        .expect("state core")
-        .paths
-        .client_db_path;
+    let engine = ClientDbEngine::resolve(&root).expect("db engine");
+    let db_path = engine.db_path();
     assert!(
         db_path.is_file(),
-        "provider selection cache DB should exist"
+        "provider selection Turso DB should exist"
     );
     assert!(!root.join(".cache-home").exists());
     let _ = std::fs::remove_dir_all(root);

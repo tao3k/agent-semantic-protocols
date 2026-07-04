@@ -1,5 +1,10 @@
+use agent_semantic_client_db::{
+    ClientDbSourceIndexCandidate, ClientDbSourceIndexLookupResult, ClientDbSourceIndexLookupState,
+    ClientDbSourceIndexSourceKind,
+};
 use agent_semantic_search::{
     EvidenceGraphRankNode, evidence_graph_rank_terms, rank_evidence_graph_nodes,
+    render_owner_items_source_index_lookup_trace,
 };
 
 #[test]
@@ -82,4 +87,52 @@ fn evidence_graph_rank_terms_are_language_neutral_identifier_axes() {
             "src/lib".to_string()
         ]
     );
+}
+
+#[test]
+fn owner_items_source_index_trace_reports_missing_db_before_parser_fallback() {
+    let line = render_owner_items_source_index_lookup_trace(
+        "crates/agent-semantic-hook/build.rs",
+        &ClientDbSourceIndexLookupResult {
+            db_path: "live/client/client.turso".into(),
+            state: ClientDbSourceIndexLookupState::MissingDb,
+            candidates: Vec::new(),
+        },
+    );
+
+    assert!(line.contains("status=missing-db"), "{line}");
+    assert!(line.contains("source=source-index"), "{line}");
+    assert!(line.contains("reason=sourceIndex:missing-db"), "{line}");
+    assert!(
+        line.contains("next=asp_cache_source-index_refresh"),
+        "{line}"
+    );
+}
+
+#[test]
+fn owner_items_source_index_trace_reports_hit_before_path_only_fallback() {
+    let line = render_owner_items_source_index_lookup_trace(
+        "crates/agent-semantic-hook/build.rs",
+        &ClientDbSourceIndexLookupResult {
+            db_path: "live/client/client.turso".into(),
+            state: ClientDbSourceIndexLookupState::Hit,
+            candidates: vec![ClientDbSourceIndexCandidate {
+                path: "crates/agent-semantic-hook/build.rs".to_string(),
+                language_id: None,
+                provider_id: None,
+                source_kind: ClientDbSourceIndexSourceKind::Other("turso-source-index".to_string()),
+                line_count: Some(8),
+                query_keys: vec!["build".to_string(), "build.rs".to_string()],
+            }],
+        },
+    );
+
+    assert!(line.contains("status=hit"), "{line}");
+    assert!(line.contains("source=source-index"), "{line}");
+    assert!(
+        line.contains("path=crates/agent-semantic-hook/build.rs"),
+        "{line}"
+    );
+    assert!(!line.contains("owner-not-found"), "{line}");
+    assert!(!line.contains("path-only"), "{line}");
 }

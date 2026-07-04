@@ -19,7 +19,7 @@ const SEMANTIC_STRUCTURAL_INDEX_SCHEMA_VERSION: &str = "1";
 const SEMANTIC_STRUCTURAL_INDEX_PROTOCOL_ID: &str = "agent.semantic-protocols.semantic-language";
 const SEMANTIC_STRUCTURAL_INDEX_PROTOCOL_VERSION: &str = "1";
 
-pub(super) fn parse_structural_index_packet_import(
+pub(crate) fn parse_structural_index_packet_import(
     generation: &ClientCacheGeneration,
     packet_bytes: &[u8],
 ) -> Result<ClientDbStructuralIndexImport, String> {

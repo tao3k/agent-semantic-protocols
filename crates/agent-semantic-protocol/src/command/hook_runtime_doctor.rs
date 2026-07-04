@@ -1,6 +1,6 @@
 use super::{
-    codex_enforcement_report, display_path, ensure_supported_client, flag_value, project_root_arg,
-    protocol_binary_on_path,
+    codex_enforcement_report, codex_project_plugin_hooks_present, display_path,
+    ensure_supported_client, flag_value, project_root_arg, protocol_binary_on_path,
 };
 use agent_semantic_hook::{
     DecisionKind, HOOK_PROTOCOL_ID, HookClassificationRequest, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END,
@@ -46,11 +46,15 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     } else {
         "missing"
     };
-    let root_hook = if client == "claude" {
+    let legacy_root_hook = if client == "claude" {
         config.contains("asp hook") && config.contains("--client claude")
     } else {
         config.contains(ROOT_BLOCK_BEGIN) && config.contains(ROOT_BLOCK_END)
     };
+    let project_plugin_hook =
+        client == "codex" && codex_project_plugin_hooks_present(&project_root);
+    let root_hook = legacy_root_hook || project_plugin_hook;
+    let hook_mode = hook_mode_label(client, legacy_root_hook, project_plugin_hook);
     let hook_binary_path = protocol_binary_on_path();
     let hook_binary = hook_binary_path.is_some();
     let hook_binary_path = hook_binary_path
@@ -96,33 +100,58 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     } else {
         None
     };
-    let trust = trust_status.as_ref().is_some_and(|status| status.trusted);
+    let plugin_only_hook = project_plugin_hook && !legacy_root_hook;
+    let trust = trust_status.as_ref().is_some_and(|status| {
+        if plugin_only_hook {
+            status.project_trusted
+        } else {
+            status.trusted
+        }
+    });
     let project_trust = trust_status
         .as_ref()
         .is_some_and(|status| status.project_trusted);
-    let hook_state_trust = trust_status
-        .as_ref()
-        .is_some_and(|status| status.hook_state_trusted);
+    let hook_state_trust = if plugin_only_hook {
+        project_trust
+    } else {
+        trust_status
+            .as_ref()
+            .is_some_and(|status| status.hook_state_trusted)
+    };
     let trust_missing_count = trust_status
         .as_ref()
-        .map(|status| status.missing_events.len())
+        .map(|status| {
+            if plugin_only_hook {
+                0
+            } else {
+                status.missing_events.len()
+            }
+        })
         .unwrap_or(0);
     let trust_stale_count = trust_status
         .as_ref()
-        .map(|status| status.stale_events.len())
+        .map(|status| {
+            if plugin_only_hook {
+                0
+            } else {
+                status.stale_events.len()
+            }
+        })
         .unwrap_or(0);
     let trust_config = trust_status
         .as_ref()
         .map(|status| status.trust_config_path.display().to_string())
         .unwrap_or_else(|| "unavailable".to_string());
     println!(
-        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
+        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
         display_path(&project_root, &client_config_path),
         client_config_status,
         root_hook,
+        hook_mode,
+        project_plugin_hook,
         trust,
         project_trust,
         hook_state_trust,
@@ -163,8 +192,10 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     }
     if client == "codex" && root_hook {
         println!(
-            "|codex-app projectConfig={} projectTrust={} hookStateTrust={} reloadHint=restart-open-codex-app-thread-after-install",
+            "|codex-app projectConfig={} hookMode={} pluginHook={} projectTrust={} hookStateTrust={} reloadHint=restart-open-codex-app-thread-after-install",
             display_path(&project_root, &config_path),
+            hook_mode,
+            project_plugin_hook,
             project_trust,
             hook_state_trust,
         );
@@ -175,11 +206,13 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         println!("|trust project=untrusted reason=project-not-trusted");
     }
     if let Some(status) = trust_status.as_ref()
+        && !plugin_only_hook
         && !status.missing_events.is_empty()
     {
         println!("|trust missing={}", status.missing_events.join(","));
     }
     if let Some(status) = trust_status.as_ref()
+        && !plugin_only_hook
         && !status.stale_events.is_empty()
     {
         println!("|trust stale={}", status.stale_events.join(","));
@@ -227,6 +260,26 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+fn hook_mode_label(
+    client: &str,
+    legacy_root_hook: bool,
+    project_plugin_hook: bool,
+) -> &'static str {
+    if client != "codex" {
+        return if legacy_root_hook {
+            "client-config"
+        } else {
+            "missing"
+        };
+    }
+    match (legacy_root_hook, project_plugin_hook) {
+        (true, true) => "mixed",
+        (true, false) => "project-config",
+        (false, true) => "codex-plugin",
+        (false, false) => "missing",
+    }
 }
 
 fn decision_kind_label(kind: DecisionKind) -> &'static str {

@@ -1,0 +1,90 @@
+#+TITLE: 10.23 Project ASP Config and Global ASP Home Boundary
+#+FILETAGS: :asp:rfc:config:state:
+
+* Status
+:PROPERTIES:
+:RFC_ID: 10.23
+:STATUS: active
+:OWNER: agent-semantic-protocols
+:END:
+
+This note records the boundary between project-local ASP configuration and the
+global ASP home state tree.
+
+* Boundary
+Project-local =.agents/asp.toml= is a project configuration surface. It may keep
+project-owned provider activation, lookup, and plugin skill entries that are
+meaningful when the project is copied or checked out elsewhere.
+
+Global ASP home owns derived state paths. Agent Org artifacts, ASP Org skill
+templates, session registries, and workspace-scoped live state resolve through
+the ASP home/project/workspace identity model. They should not be written into
+project-local =.agents/asp.toml= as absolute paths.
+
+* Generated Config Rule
+The installer should keep only the project-level
+=skills.agent-semantic-protocols.pluginSkill= entry in project
+=.agents/asp.toml=. It should not generate these formerly explicit keys:
+
+- =skills.agent-semantic-protocols.aspOrg=
+- =skills.agent-semantic-protocols.orgArtifacts=
+- =hook.agentOrgArtifacts.artifactsPath=
+- =hook.agentOrgArtifacts.entrySkillPath=
+- =hook.agentOrgArtifacts.enabled=
+- =hook.agentOrgArtifacts.inactiveAfterMinutes=
+
+When an older project config already contains these keys, the merge step should
+remove them. Runtime hook clients must resolve the corresponding values from
+ASP home defaults instead.
+
+* Strict ASP Explorer Mode
+ASP exploration should have a documented strict mode for environments where the
+main session may keep broader workspace permissions but ASP evidence collection
+must stay read-only.
+
+The default policy should be strict mode. Global ASP TOML owns the default:
+
+#+begin_src toml
+[agents.asp_explore]
+strictMode = true
+#+end_src
+
+Project-local =.agents/asp.toml= may override that default without taking
+ownership of ASP home state:
+
+#+begin_src toml
+[hook.agents.aspExplore]
+strictMode = false
+#+end_src
+
+The merge order is:
+
+1. compiled runtime defaults
+2. global ASP TOML
+3. project-local =.agents/asp.toml=
+
+The project value wins only for that project. This keeps the global preference
+auditable while allowing projects with different threat or workflow boundaries
+to opt in or out explicitly.
+
+Strict mode is policy-level documentation for now. Runtime sandbox enforcement
+is intentionally deferred. The intended execution model is:
+
+- the main session may keep the access needed for edits, registry writes, and
+  project orchestration
+- ASP exploration runs through a separate read-only Codex session or equivalent
+  sidecar
+- communication between the main session and the ASP explorer is by compact
+  evidence receipts, not by granting the sidecar write access
+
+Until sandbox enforcement is implemented, clients should treat =strictMode= as
+the contract to preserve when adding future hook/runtime behavior. They should
+not infer that registering or opening an ASP explorer session proves live
+read-only execution.
+
+* Rationale
+The new architecture gives each repository/workspace a stable global ASP home
+node. That node is the correct owner for durable agent state and generated Org
+contracts. Repeating those absolute paths in project-local config makes the
+project file non-portable, creates stale path drift, and hides the real owner of
+state lifecycle decisions.

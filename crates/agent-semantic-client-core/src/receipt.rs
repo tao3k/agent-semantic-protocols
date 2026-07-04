@@ -6,11 +6,11 @@ use crate::cache_manifest::{CacheManifestReport, CacheManifestStatus};
 use crate::request::ClientMethod;
 use crate::types::{
     ByteCount, CacheArtifactId, CacheStatus, ClientCachePath, ClientDbBackend,
-    ClientDbEngineDurability, ClientDbFileName, ClientDbFutureBackend, ClientDbJournalMode,
-    ClientDbStatus, ClientRepoId, ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId,
-    CompactArtifactId, ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId,
-    SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion, SyntaxQueryAstAbiFingerprint,
-    SyntaxQueryGrammarId, SyntaxQueryGrammarProfileVersion, SyntaxQuerySelector,
+    ClientDbEngineDurability, ClientDbFileName, ClientDbJournalMode, ClientDbStatus, ClientRepoId,
+    ClientScopeId, ClientStateLayoutVersion, ClientWorkspaceId, CompactArtifactId, ElapsedMillis,
+    LanguageId, ProviderId, SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId,
+    SemanticSchemaVersion, SyntaxQueryAstAbiFingerprint, SyntaxQueryGrammarId,
+    SyntaxQueryGrammarProfileVersion, SyntaxQuerySelector,
 };
 
 /// Schema id for `agent-semantic-client-receipt.v1`.
@@ -69,7 +69,6 @@ pub struct ProviderCommandReceipt {
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbEngineReceipt {
     pub backend: ClientDbBackend,
-    pub future_backend: ClientDbFutureBackend,
     pub layout_version: ClientStateLayoutVersion,
     pub db_file_name: ClientDbFileName,
     pub schema_version: i64,
@@ -82,8 +81,6 @@ pub struct ClientDbEngineReceipt {
     pub repo_id: ClientRepoId,
     pub workspace_id: ClientWorkspaceId,
     pub scope_id: ClientScopeId,
-    pub future_backend_report: ClientDbFutureBackendReportReceipt,
-    pub sqlite_report: ClientDbSqliteReceipt,
 }
 
 /// Capability flags reported by the active DB Engine backend.
@@ -99,44 +96,7 @@ pub struct ClientDbEngineFeaturesReceipt {
     pub encryption: bool,
 }
 
-/// Planned replacement backend report nested under the DB Engine receipt.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientDbFutureBackendReportReceipt {
-    pub backend: ClientDbFutureBackend,
-    pub status: String,
-    pub db_file_name: ClientDbFileName,
-    pub schema_bootstrap: String,
-    pub durability: ClientDbEngineDurability,
-    pub features: ClientDbEngineFeaturesReceipt,
-    pub db_path: ClientCachePath,
-    pub reason: Option<String>,
-}
-
-/// SQLite transition-backend report nested under the DB Engine receipt.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientDbSqliteReceipt {
-    pub db_path: ClientCachePath,
-    pub status: ClientDbStatus,
-    pub generation_count: u32,
-    pub syntax_row_generation_count: u32,
-    pub syntax_row_match_count: u32,
-    pub syntax_row_capture_count: u32,
-    pub structural_index_generation_count: u32,
-    pub structural_index_owner_count: u32,
-    pub structural_index_symbol_count: u32,
-    pub structural_index_dependency_usage_count: u32,
-    pub source_index_generation_count: u32,
-    pub source_index_owner_count: u32,
-    pub source_index_selector_count: u32,
-    pub artifact_event_count: u32,
-    pub raw_source_stored: bool,
-    pub runtime_pragmas: Option<ClientDbRuntimePragmasReceipt>,
-    pub reason: Option<String>,
-}
-
-/// Runtime SQLite pragmas observed through the current DB Engine adapter.
+/// Runtime DB pragmas observed through the current DB Engine adapter.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbRuntimePragmasReceipt {
@@ -175,9 +135,9 @@ pub struct ClientReceipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub packet_bytes: Option<ByteCount>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sqlite_read_count: Option<u64>,
+    pub db_read_count: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sqlite_write_count: Option<u64>,
+    pub db_write_count: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_writeback_provider_command_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -274,8 +234,8 @@ impl ClientReceipt {
             syntax_query_grammar_profile_version: None,
             syntax_query_selector: None,
             packet_bytes: None,
-            sqlite_read_count: None,
-            sqlite_write_count: None,
+            db_read_count: None,
+            db_write_count: None,
             cache_writeback_provider_command_count: None,
             cache_writeback_provider_processes_spawned: None,
             cache_writeback_provider_elapsed_ms: None,
@@ -341,8 +301,8 @@ impl ClientReceipt {
             syntax_query_grammar_profile_version: None,
             syntax_query_selector: None,
             packet_bytes: None,
-            sqlite_read_count: None,
-            sqlite_write_count: None,
+            db_read_count: None,
+            db_write_count: None,
             cache_writeback_provider_command_count: None,
             cache_writeback_provider_processes_spawned: None,
             cache_writeback_provider_elapsed_ms: None,

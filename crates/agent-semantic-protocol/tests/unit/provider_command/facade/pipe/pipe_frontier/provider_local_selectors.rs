@@ -62,7 +62,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp rust query --selector src/lib.rs:1:1 --workspace languages/rust-harness --code"
+            "nextCommand=asp rust search owner src/lib.rs items --query 'Vec|vec|collection|fields' --workspace languages/rust-harness --view seeds"
         ),
         "{stdout}"
     );

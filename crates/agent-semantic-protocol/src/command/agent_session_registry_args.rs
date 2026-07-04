@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <register|list|show|reuse> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--root-session-id ID] [--parent-session-id ID] [--role ROLE] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--active] [--replace] [--json]"
+    "usage: asp agent session <register|list|show|reuse|status|lifecycle audit|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--root-session-id ID] [--parent-session-id ID] [--role ROLE] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -14,6 +14,17 @@ pub(super) enum SessionCommand {
     List,
     Show,
     Reuse,
+    Status,
+    LifecycleAudit,
+    Resume,
+    Fork,
+    Archive,
+    Close,
+    Gc,
+    Reconcile,
+    Delete,
+    Unarchive,
+    SwitchModel,
 }
 
 pub(super) struct SessionArgs {
@@ -30,10 +41,13 @@ pub(super) struct SessionArgs {
     pub(super) status: Option<String>,
     pub(super) metadata_json: Option<String>,
     pub(super) expires_at: Option<i64>,
+    pub(super) artifact_stale_after_seconds: i64,
     pub(super) all: bool,
     pub(super) active: bool,
     pub(super) replace: bool,
+    pub(super) force: bool,
     pub(super) json: bool,
+    pub(super) codex_args: Vec<String>,
 }
 
 impl SessionArgs {
@@ -52,14 +66,23 @@ impl SessionArgs {
             status: None,
             metadata_json: None,
             expires_at: None,
+            artifact_stale_after_seconds: 1800,
             all: false,
             active: false,
             replace: false,
+            force: false,
             json: false,
+            codex_args: Vec::new(),
         };
+        let mut passthrough_codex_args = false;
         let mut index = 0;
         while index < args.len() {
             let arg = &args[index];
+            if passthrough_codex_args {
+                parsed.codex_args.push(arg.clone());
+                index += 1;
+                continue;
+            }
             match arg.as_str() {
                 "-h" | "--help" | "help" => parsed.help = true,
                 "--guide" | "guide" => parsed.guide = true,
@@ -69,6 +92,39 @@ impl SessionArgs {
                 "list" | "ls" if index == 0 => parsed.command = SessionCommand::List,
                 "show" | "get" if index == 0 => parsed.command = SessionCommand::Show,
                 "reuse" if index == 0 => parsed.command = SessionCommand::Reuse,
+                "status" if index == 0 => parsed.command = SessionCommand::Status,
+                "lifecycle-audit" if index == 0 => {
+                    parsed.command = SessionCommand::LifecycleAudit;
+                }
+                "lifecycle" if index == 0 => {
+                    index += 1;
+                    match args.get(index).map(String::as_str) {
+                        Some("audit") => parsed.command = SessionCommand::LifecycleAudit,
+                        Some(other) => {
+                            return Err(format!(
+                                "unknown asp agent session lifecycle subcommand `{other}`"
+                            ));
+                        }
+                        None => {
+                            return Err("asp agent session lifecycle requires subcommand `audit`"
+                                .to_string());
+                        }
+                    }
+                }
+                "resume" if index == 0 => parsed.command = SessionCommand::Resume,
+                "fork" if index == 0 => parsed.command = SessionCommand::Fork,
+                "archive" if index == 0 => parsed.command = SessionCommand::Archive,
+                "close" if index == 0 => parsed.command = SessionCommand::Close,
+                "gc" if index == 0 => parsed.command = SessionCommand::Gc,
+                "reconcile" if index == 0 => parsed.command = SessionCommand::Reconcile,
+                "delete" if index == 0 => parsed.command = SessionCommand::Delete,
+                "unarchive" if index == 0 => parsed.command = SessionCommand::Unarchive,
+                "switch-model" | "switch" if index == 0 => {
+                    parsed.command = SessionCommand::SwitchModel
+                }
+                "--" if is_codex_wrapper_command(parsed.command) => {
+                    passthrough_codex_args = true;
+                }
                 "--state-root" => {
                     index += 1;
                     parsed.state_root = Some(PathBuf::from(required_flag_value(
@@ -120,10 +176,31 @@ impl SessionArgs {
                         format!("--expires-at requires a unix timestamp integer: {error}")
                     })?);
                 }
+                "--artifact-stale-after-seconds" => {
+                    index += 1;
+                    let value = non_empty_flag(args, index, "--artifact-stale-after-seconds")?;
+                    parsed.artifact_stale_after_seconds =
+                        value.parse::<i64>().map_err(|error| {
+                            format!("--artifact-stale-after-seconds requires an integer: {error}")
+                        })?;
+                    if parsed.artifact_stale_after_seconds < 0 {
+                        return Err(
+                            "--artifact-stale-after-seconds must be non-negative".to_string()
+                        );
+                    }
+                }
                 "--all" => parsed.all = true,
                 "--active" => parsed.active = true,
                 "--replace" => parsed.replace = true,
+                "--force"
+                    if matches!(parsed.command, SessionCommand::Delete | SessionCommand::Gc) =>
+                {
+                    parsed.force = true;
+                }
                 "--json" => parsed.json = true,
+                _ if is_codex_wrapper_command(parsed.command) => {
+                    parsed.codex_args.push(arg.clone());
+                }
                 _ if arg.starts_with('-') => return Err(format!("unknown session flag `{arg}`")),
                 _ => return Err(format!("unknown session subcommand `{arg}`")),
             }
@@ -133,8 +210,19 @@ impl SessionArgs {
     }
 }
 
+pub(super) fn is_codex_wrapper_command(command: SessionCommand) -> bool {
+    matches!(
+        command,
+        SessionCommand::Resume
+            | SessionCommand::Fork
+            | SessionCommand::Archive
+            | SessionCommand::Delete
+            | SessionCommand::Unarchive
+    )
+}
+
 pub(super) fn session_guide(command: SessionCommand) -> Result<String, String> {
-    let guide = load_agent_session_guide();
+    let guide = render_agent_session_guide(load_agent_session_guide());
     guide_text_for(&guide, command)
         .map(str::to_string)
         .ok_or_else(|| "agent session guide is not configured in hooks/config.toml".to_string())
@@ -149,6 +237,75 @@ fn guide_text_for(
         SessionCommand::List => guide.list.as_deref(),
         SessionCommand::Show => guide.show.as_deref(),
         SessionCommand::Reuse => guide.reuse.as_deref(),
+        SessionCommand::Status => guide.status.as_deref(),
+        SessionCommand::LifecycleAudit => Some(
+            "asp agent session lifecycle audit guide\n\
+Read-only lifecycle audit for the current root session.\n\
+Combines ASP registry rows with Codex rollout session/activity evidence without creating, closing, or deleting sessions.\n\
+asp agent session lifecycle audit --json",
+        ),
+        SessionCommand::Close => Some(
+            "asp agent session close guide\n\
+Archive one registered session by --name or --child-session-id.\n\
+asp agent session close --name <resident-name>",
+        ),
+        SessionCommand::Gc => Some(
+            "asp agent session gc guide\n\
+Delete archived, closed, expired, or invalid sessions. Use --force to delete matched sessions regardless of status.\n\
+asp agent session gc --name <resident-name> --force",
+        ),
+        SessionCommand::Reconcile => Some(
+            "asp agent session reconcile guide\n\
+Refresh expired registry entries and report lifecycle cleanup candidates.\n\
+asp agent session reconcile --json",
+        ),
+        SessionCommand::Resume => Some(
+            "asp agent session resume guide\n\
+Action step flow for saved-session resume:\n\
+1. Shell action: resolve an already registered child or pass an explicit saved session id.\n\
+   asp agent session status --name <resident-name> --json\n\
+2. Shell action: resume that existing saved session.\n\
+   asp agent session resume --name <resident-name>\n\
+This does not create a resident ASP child session.\n\
+If no configured resident child is registered, use bootstrap flow instead:\n\
+asp agent session register --guide",
+        ),
+        SessionCommand::Fork => Some(
+            "asp agent session fork guide\n\
+Action step flow for saved-session fork:\n\
+1. Shell action: resolve an already registered child or pass an explicit saved session id.\n\
+   asp agent session status --name <resident-name> --json\n\
+2. Shell action: fork that existing saved session.\n\
+   asp agent session fork --name <resident-name>\n\
+This does not create a resident ASP child session.\n\
+If no configured resident child is registered, do not use fork as bootstrap.\n\
+Use bootstrap flow instead:\n\
+asp agent session register --guide",
+        ),
+        SessionCommand::Archive => Some(
+            "asp agent session archive guide\n\
+Wrap Codex saved-session archive.\n\
+Use an explicit session id, or resolve a registered child by --name/--child-session-id.\n\
+asp agent session archive --name <resident-name>",
+        ),
+        SessionCommand::Delete => Some(
+            "asp agent session delete guide\n\
+Wrap Codex saved-session delete.\n\
+Use --force for non-interactive UUID deletion.\n\
+asp agent session delete --name <resident-name> --force",
+        ),
+        SessionCommand::Unarchive => Some(
+            "asp agent session unarchive guide\n\
+Wrap Codex saved-session unarchive.\n\
+Use an explicit session id, or resolve a registered child by --name/--child-session-id.\n\
+asp agent session unarchive --name <resident-name>",
+        ),
+        SessionCommand::SwitchModel => Some(
+            "asp agent session switch-model guide\n\
+Update the active platform model mapping after a capacity warning or explicit model switch.\n\
+For Codex sessions this writes ~/.agent-semantic-protocols/agents/config.toml and updates ASP-owned Codex agent projections.\n\
+asp agent session switch-model --model <model-id> --json",
+        ),
     }
     .filter(|value| !value.trim().is_empty())
 }
@@ -160,6 +317,7 @@ fn agent_session_guide_has_any_text(
         || guide_text_for(guide, SessionCommand::List).is_some()
         || guide_text_for(guide, SessionCommand::Show).is_some()
         || guide_text_for(guide, SessionCommand::Reuse).is_some()
+        || guide_text_for(guide, SessionCommand::Status).is_some()
 }
 
 fn load_agent_session_guide() -> agent_semantic_config::HookClientAgentSessionGuideConfig {
@@ -201,9 +359,7 @@ fn default_agent_session_guide() -> agent_semantic_config::HookClientAgentSessio
     agent_semantic_config::HookClientAgentSessionGuideConfig {
         register: Some(
             "asp agent session register guide\n\
-Register child agent sessions so the root agent can recall active exploration state.\n\
-Use CODEX_THREAD_ID as the root session when available.\n\
-asp agent session register --name asp-explore --child-session-id <child-session-id> --role asp-explore"
+Guide template failed to load. Run `asp sync` or install hooks, then rerun `asp agent session register --guide`."
                 .to_string(),
         ),
         list: Some(
@@ -218,10 +374,93 @@ Show one registered child session by --name or --child-session-id."
         ),
         reuse: Some(
             "asp agent session reuse guide\n\
-Reuse an existing routable child session for the current root before starting another.\n\
-asp agent session reuse --name asp-explore --json"
+Guide template failed to load. Run `asp agent session register --guide` for bootstrap steps."
                 .to_string(),
         ),
+        status: Some(
+            "asp agent session status guide\n\
+Guide template failed to load. Run `asp agent session register --guide` when nextAction=start-resident-child-and-register."
+                .to_string(),
+        ),
+    }
+}
+
+fn render_agent_session_guide(
+    mut guide: agent_semantic_config::HookClientAgentSessionGuideConfig,
+) -> agent_semantic_config::HookClientAgentSessionGuideConfig {
+    let host = agent_host_guide();
+    for text in [
+        &mut guide.register,
+        &mut guide.list,
+        &mut guide.show,
+        &mut guide.reuse,
+        &mut guide.status,
+    ] {
+        if let Some(value) = text {
+            *value = render_agent_session_guide_text(value, &host);
+        }
+    }
+    guide
+}
+
+fn render_agent_session_guide_text(text: &str, host: &AgentHostGuide) -> String {
+    text.replace("{{hostLabel}}", host.host_label)
+        .replace("{{sessionEnv}}", host.session_env)
+        .replace("{{createAction}}", host.create_action)
+        .replace("{{configSource}}", host.config_source)
+        .replace("{{hostProjection}}", host.host_projection)
+}
+
+struct AgentHostGuide {
+    host_label: &'static str,
+    session_env: &'static str,
+    create_action: &'static str,
+    config_source: &'static str,
+    host_projection: &'static str,
+}
+
+fn agent_host_guide() -> AgentHostGuide {
+    if env::var_os("CODEX_THREAD_ID").is_some() {
+        return AgentHostGuide {
+            host_label: "codex",
+            session_env: "CODEX_THREAD_ID",
+            create_action: "Codex action: start the configured subagent `asp_explorer`",
+            config_source: "~/.agent-semantic-protocols/agents/asp-explorer_codex.toml",
+            host_projection: "~/.codex/agents/asp-explorer.toml",
+        };
+    }
+    for env_name in [
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDECODE_SESSION_ID",
+        "CLAUDE_SESSION_ID",
+    ] {
+        if env::var_os(env_name).is_some() {
+            return AgentHostGuide {
+                host_label: "claude",
+                session_env: env_name,
+                create_action: "Claude action: start the configured subagent `asp-explorer`",
+                config_source: "~/.agent-semantic-protocols/agents/asp-explorer_claude.md",
+                host_projection: "~/.claude/agents/asp-explorer.md",
+            };
+        }
+    }
+    for env_name in ["AGENT_SESSION_ID", "SESSION_ID"] {
+        if env::var_os(env_name).is_some() {
+            return AgentHostGuide {
+                host_label: "generic-agent",
+                session_env: env_name,
+                create_action: "Host action: start the configured resident ASP explore subagent",
+                config_source: "~/.agent-semantic-protocols/agents/",
+                host_projection: "host agent config directory",
+            };
+        }
+    }
+    AgentHostGuide {
+        host_label: "none",
+        session_env: "not detected",
+        create_action: "Host action: start the configured resident ASP explore subagent only after entering a supported agent session",
+        config_source: "~/.agent-semantic-protocols/agents/",
+        host_projection: "host agent config directory",
     }
 }
 

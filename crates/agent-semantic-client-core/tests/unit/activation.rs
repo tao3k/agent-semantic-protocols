@@ -162,24 +162,57 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
 }
 
 #[test]
-fn parent_activation_sync_keeps_requested_project_root() {
+fn explicit_activation_path_keeps_requested_project_root() {
     let _guard = ENV_LOCK.lock().expect("env lock");
-    let _activation_env = EnvVarGuard::unset(ASP_PROVIDER_ACTIVATION_PATH_ENV);
     let _cache_home_env = EnvVarGuard::unset("PRJ_CACHE_HOME");
     let root = temp_root("activation-parent-sync");
     let child = root.join("packages/child");
-    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+    let activation_path = root.join("state/hooks/activation.json");
+    let _activation_env = EnvVarGuard::set(ASP_PROVIDER_ACTIVATION_PATH_ENV, &activation_path);
     std::fs::create_dir_all(&child).expect("create child project");
     std::fs::create_dir_all(activation_path.parent().expect("activation parent"))
         .expect("create activation parent");
-    std::fs::write(&activation_path, "{not json").expect("write stale activation");
     let provider_path = write_fake_provider_binary(&root, "py-harness");
     let _path_env = EnvVarGuard::set("PATH", provider_path);
+    let manifest = builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == "python")
+        .expect("python manifest");
+    let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
+    let expected_project_root = child.display().to_string();
+    let activation = json!({
+        "schemaId": HOOK_ACTIVATION_SCHEMA_ID,
+        "schemaVersion": HOOK_ACTIVATION_SCHEMA_VERSION,
+        "protocolId": HOOK_PROTOCOL_ID,
+        "protocolVersion": HOOK_PROTOCOL_VERSION,
+        "projectRoot": expected_project_root,
+        "generatedBy": { "runtime": "asp", "version": "test" },
+        "providers": [{
+            "manifestId": manifest.manifest_id,
+            "manifestDigest": manifest_digest,
+            "languageId": manifest.language_id,
+            "providerId": manifest.provider_id,
+            "binary": manifest.binary,
+            "execution": manifest.execution,
+            "providerCommandPrefix": ["py-harness"],
+            "coverage": {
+                "packageRoots": ["."],
+                "sourceRoots": manifest.source.default_source_roots,
+                "configFiles": manifest.source.default_config_files,
+                "sourceExtensions": manifest.source.default_extensions,
+                "ignoredPathPrefixes": manifest.source.default_ignored_path_prefixes
+            }
+        }]
+    });
+    std::fs::write(
+        &activation_path,
+        serde_json::to_string_pretty(&activation).expect("activation json"),
+    )
+    .expect("write activation");
 
     let snapshot = ProviderRegistrySnapshot::load(&child).expect("snapshot");
     assert_eq!(snapshot.activation_path, activation_path);
 
-    let expected_project_root = child.display().to_string();
     let activation_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(&snapshot.activation_path).expect("read activation"),
     )

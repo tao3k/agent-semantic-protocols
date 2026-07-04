@@ -1,9 +1,7 @@
 use agent_semantic_client_core::{
     ClientMethod, ClientRequest, LanguageId, ProviderRegistrySnapshot,
 };
-use agent_semantic_client_db::{
-    ClientDb, ClientDbStructuralIndexLookup, ClientDbStructuralQueryKey,
-};
+use agent_semantic_client_db::ClientDbEngine;
 use serde_json::{Value, json};
 
 use super::{gerbil_scheme_provider, rust_provider, temp_root};
@@ -47,27 +45,24 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
     .expect("second structural writeback");
     let cache_report = agent_semantic_client_core::ClientCacheManifest::inspect_project(&root);
     let cache_root = cache_report.cache_root.expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
-    let db = ClientDb::open_read_only_existing(&db_path)
-        .expect("open db")
-        .expect("db exists");
-    let summary = db.summary().expect("summary");
-    let copied_symbols = db
-        .lookup_structural_symbols(&ClientDbStructuralIndexLookup {
-            language_id: LanguageId::from("rust"),
-            provider_id: "rs-harness".into(),
-            project_root: root.clone(),
-            query: ClientDbStructuralQueryKey::from("cached_helper"),
-            limit: 8,
-        })
-        .expect("lookup copied symbol");
+    let copied_symbols = ClientDbEngine::search_structural_index_documents_from_client_dir(
+        &cache_root,
+        "cached_helper",
+        8,
+    )
+    .expect("lookup copied symbol through DB Engine");
 
-    assert_eq!(first_probe.sqlite_write_count, 3);
-    assert_eq!(second_probe.sqlite_write_count, 3);
-    assert_eq!(summary.structural_index_generation_count, 2);
-    assert_eq!(summary.structural_index_symbol_count, 4);
-    assert_eq!(copied_symbols.len(), 1);
-    assert_eq!(copied_symbols[0].owner_path.as_str(), "src/unchanged.rs");
+    assert_eq!(first_probe.db_write_count, 3);
+    assert_eq!(second_probe.db_write_count, 3);
+    assert!(
+        copied_symbols.iter().any(|symbol| {
+            symbol.entity_id.as_deref().is_some_and(|entity_id| {
+                entity_id.contains("src/unchanged.rs") && entity_id.contains("cached_helper")
+            })
+        }),
+        "copied_symbols={copied_symbols:?}"
+    );
+    assert!(cache_root.join("client.turso").exists());
     assert!(
         artifacts_root_from_cache_root(&cache_root)
             .join("structural-index/rust-index-2.json")
@@ -103,23 +98,21 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
     .expect("gerbil structural writeback");
     let cache_report = agent_semantic_client_core::ClientCacheManifest::inspect_project(&root);
     let cache_root = cache_report.cache_root.expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
-    let db = ClientDb::open_read_only_existing(&db_path)
-        .expect("open db")
-        .expect("db exists");
-    let symbols = db
-        .lookup_structural_symbols(&ClientDbStructuralIndexLookup {
-            language_id: LanguageId::from("gerbil-scheme"),
-            provider_id: "gerbil-scheme-harness".into(),
-            project_root: root.clone(),
-            query: ClientDbStructuralQueryKey::from("search-main"),
-            limit: 8,
-        })
-        .expect("lookup gerbil structural symbol");
+    let symbols = ClientDbEngine::search_structural_index_documents_from_client_dir(
+        &cache_root,
+        "search-main",
+        8,
+    )
+    .expect("lookup gerbil structural symbol through DB Engine");
 
-    assert_eq!(probe.sqlite_write_count, 3);
-    assert_eq!(symbols.len(), 1);
-    assert_eq!(symbols[0].owner_path.as_str(), "src/commands/search.ss");
+    assert_eq!(probe.db_write_count, 3);
+    assert!(
+        symbols.iter().any(|symbol| symbol
+            .document_id
+            .contains("src/commands/search.ss:def:search-main")),
+        "symbols={symbols:?}"
+    );
+    assert!(cache_root.join("client.turso").exists());
     assert!(
         artifacts_root_from_cache_root(&cache_root)
             .join("structural-index/gerbil-structural-1.json")

@@ -21,8 +21,8 @@ mod tools_cli;
 
 pub use agent_semantic_client_core::LanguageId;
 pub use agent_semantic_runtime::{
-    LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_path_exists,
-    run_language_owner_items_dispatch_plan,
+    LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_items_workspace_root,
+    language_owner_path_exists, run_language_owner_items_dispatch_plan,
 };
 pub use cli::{run_cli_args, run_cli_from_env};
 pub use source_index::{

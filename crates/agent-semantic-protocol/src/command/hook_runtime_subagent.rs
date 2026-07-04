@@ -1,9 +1,8 @@
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
-const CODEX_ASP_EXPLORER_MODEL: &str = "gpt-5.3-codex-spark";
-const CLAUDE_ASP_EXPLORER_MODEL: &str = "haiku";
+const CODEX_DEFAULT_RESIDENT_AGENT_MODEL: &str = "gpt-5.4-mini";
+const CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL: &str = "haiku";
 
 pub(super) fn subagent_model_arg(client: &str, model: Option<&str>) -> Result<String, String> {
     let model = match model {
@@ -14,97 +13,114 @@ pub(super) fn subagent_model_arg(client: &str, model: Option<&str>) -> Result<St
     Ok(model.to_string())
 }
 
-pub(super) fn install_claude_asp_explorer_agent(
+pub(super) fn install_claude_resident_agents(
     project_root: &Path,
     subagent_model: &str,
 ) -> Result<PathBuf, String> {
+    let contents = claude_resident_search_agent(subagent_model)?;
+    let canonical_path = asp_agent_config_path("asp-explorer", "claude", "md")?;
+    write_agent_config(&canonical_path, contents.as_bytes())?;
     let path = project_root
         .join(".claude")
         .join("agents")
         .join("asp-explorer.md");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        remove_stale_agent_files(
-            parent,
-            &[
-                "asp-explorer-owner.md",
-                "asp-explorer-rg.md",
-                "asp-explorer-selector.md",
-            ],
-        )?;
-    }
-    let contents = claude_asp_explorer_agent(subagent_model)?;
-    fs::write(&path, contents.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
+    project_agent_config(&canonical_path, &path)?;
+    let testing_contents = claude_resident_testing_agent(subagent_model)?;
+    let testing_canonical_path = asp_agent_config_path("asp-testing", "claude", "md")?;
+    write_agent_config(&testing_canonical_path, testing_contents.as_bytes())?;
+    let testing_path = project_root
+        .join(".claude")
+        .join("agents")
+        .join("asp-testing.md");
+    project_agent_config(&testing_canonical_path, &testing_path)?;
     Ok(path)
 }
 
-pub(super) fn install_codex_asp_explorer_agent(
+pub(super) fn install_codex_resident_agents(
     codex_home: &Path,
     subagent_model: &str,
 ) -> Result<PathBuf, String> {
+    let contents = codex_resident_search_agent(subagent_model)?;
+    let canonical_path = asp_agent_config_path("asp-explorer", "codex", "toml")?;
+    write_agent_config(&canonical_path, contents.as_bytes())?;
     let path = codex_home.join("agents").join("asp-explorer.toml");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        remove_stale_agent_files(
-            parent,
-            &[
-                "asp-explorer-owner.toml",
-                "asp-explorer-rg.toml",
-                "asp-explorer-selector.toml",
-            ],
-        )?;
-    }
-    let contents = codex_asp_explorer_agent(subagent_model)?;
-    fs::write(&path, contents.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
+    project_agent_config(&canonical_path, &path)?;
+    let testing_contents = codex_resident_testing_agent(subagent_model)?;
+    let testing_canonical_path = asp_agent_config_path("asp-testing", "codex", "toml")?;
+    write_agent_config(&testing_canonical_path, testing_contents.as_bytes())?;
+    let testing_path = codex_home.join("agents").join("asp-testing.toml");
+    project_agent_config(&testing_canonical_path, &testing_path)?;
     Ok(path)
 }
 
-pub(super) fn remove_project_codex_asp_explorer_agents(project_root: &Path) -> Result<(), String> {
-    let agents_dir = project_root.join(".codex").join("agents");
-    if !agents_dir.is_dir() {
-        return Ok(());
+fn asp_agent_config_path(name: &str, client: &str, extension: &str) -> Result<PathBuf, String> {
+    Ok(agent_semantic_runtime::state_core::resolve_state_home()?
+        .join("agents")
+        .join(format!("{name}_{client}.{extension}")))
+}
+
+fn write_agent_config(path: &Path, contents: &[u8]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
-    remove_stale_agent_files(
-        &agents_dir,
-        &[
-            "asp-explorer.toml",
-            "asp-explorer-owner.toml",
-            "asp-explorer-rg.toml",
-            "asp-explorer-selector.toml",
-        ],
-    )
+    fs::write(path, contents)
+        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
+    Ok(())
+}
+
+fn project_agent_config(source: &Path, target: &Path) -> Result<(), String> {
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    match fs::symlink_metadata(target) {
+        Ok(metadata) => {
+            if metadata.is_dir() {
+                return Err(format!("cannot replace directory {}", target.display()));
+            }
+            fs::remove_file(target)
+                .map_err(|error| format!("failed to replace {}: {error}", target.display()))?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!("failed to inspect {}: {error}", target.display()));
+        }
+    }
+    link_or_copy_agent_config(source, target)
+}
+
+#[cfg(unix)]
+fn link_or_copy_agent_config(source: &Path, target: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(source, target).map_err(|error| {
+        format!(
+            "failed to symlink {} -> {}: {error}",
+            target.display(),
+            source.display()
+        )
+    })
+}
+
+#[cfg(not(unix))]
+fn link_or_copy_agent_config(source: &Path, target: &Path) -> Result<(), String> {
+    fs::copy(source, target).map(|_| ()).map_err(|error| {
+        format!(
+            "failed to copy {} -> {}: {error}",
+            source.display(),
+            target.display()
+        )
+    })
 }
 
 fn default_subagent_model(client: &str) -> &'static str {
     match client {
-        "codex" => CODEX_ASP_EXPLORER_MODEL,
-        "claude" => CLAUDE_ASP_EXPLORER_MODEL,
+        "codex" => CODEX_DEFAULT_RESIDENT_AGENT_MODEL,
+        "claude" => CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL,
         _ => unreachable!("client support checked before model default"),
     }
 }
 
-fn remove_stale_agent_files(parent: &Path, file_names: &[&str]) -> Result<(), String> {
-    for file_name in file_names {
-        let path = parent.join(file_name);
-        match fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "failed to remove stale generated subagent {}: {error}",
-                    path.display()
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn codex_asp_explorer_agent(subagent_model: &str) -> Result<String, String> {
+fn codex_resident_search_agent(subagent_model: &str) -> Result<String, String> {
     Ok(format!(
         r#"name = "asp_explorer"
 description = "ASP search/query evidence explorer."
@@ -117,11 +133,29 @@ developer_instructions = """
 """
 "#,
         toml_basic_string(subagent_model)?,
-        asp_explorer_instructions()
+        resident_search_instructions()
     ))
 }
 
-fn claude_asp_explorer_agent(subagent_model: &str) -> Result<String, String> {
+fn codex_resident_testing_agent(subagent_model: &str) -> Result<String, String> {
+    Ok(format!(
+        r#"name = "asp_testing"
+description = "ASP test/build execution lane."
+nickname_candidates = ["ASP test", "ASP check", "ASP build"]
+model = {}
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Run only ASP-routed test, check, build, and compile commands for the current project.
+Do not edit files. Return compact evidence: command, exit status, failing target,
+first actionable error, and next command when useful.
+"""
+"#,
+        toml_basic_string(subagent_model)?
+    ))
+}
+
+fn claude_resident_search_agent(subagent_model: &str) -> Result<String, String> {
     Ok(format!(
         r#"---
 name: asp-explorer
@@ -135,11 +169,30 @@ maxTurns: 8
 {}
 "#,
         yaml_single_quoted(subagent_model)?,
-        asp_explorer_instructions()
+        resident_search_instructions()
     ))
 }
 
-fn asp_explorer_instructions() -> &'static str {
+fn claude_resident_testing_agent(subagent_model: &str) -> Result<String, String> {
+    Ok(format!(
+        r#"---
+name: asp-testing
+description: ASP test/build execution lane.
+tools: Bash, Read, Glob, Grep
+model: {}
+permissionMode: acceptEdits
+maxTurns: 8
+---
+
+Run only ASP-routed test, check, build, and compile commands for the current project.
+Do not edit files. Return compact evidence: command, exit status, failing target,
+first actionable error, and next command when useful.
+"#,
+        yaml_single_quoted(subagent_model)?
+    ))
+}
+
+fn resident_search_instructions() -> &'static str {
     r#"You are the ASP explorer.
 
 Do not edit files.
@@ -148,10 +201,11 @@ Follow ASP recommendedNext or nextCommand when present; stop retrying a command 
 Return compact evidence for the assigned branch; do not spawn subagents.
 
 Prefer:
-- asp <language> search pipe '<question-or-feature-term>' --workspace . --view seeds
+- asp <language> search lexical '<term-or-error>' owner tests --workspace . --view seeds
 - asp fd -query '<owner-or-path terms>' .
 - asp rg -query '<content-or-error terms>' .
 - asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace . --view seeds
+- asp <language> search pipe '<refinement-query>' --workspace . --view seeds only after lexical/dependency evidence is ambiguous
 - asp <language> query --selector <exact-selector> --workspace . --code
 
 Return one compact receipt line:

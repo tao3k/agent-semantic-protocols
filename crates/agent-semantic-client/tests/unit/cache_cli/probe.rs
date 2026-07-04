@@ -5,7 +5,7 @@ use agent_semantic_client_core::{
     ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderExecution, ProviderId,
     ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbGenerationHit};
+use agent_semantic_client_db::{ClientDbEngine, ClientDbGenerationHit};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -102,7 +102,6 @@ fn tree_sitter_rows_replay_when_latest_unrelated_generation_is_stale() {
     let cache_root = ClientCacheManifest::inspect_project(&root)
         .cache_root
         .expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
     std::fs::write(
         root.join("src/lib.rs"),
         "pub fn parse_query() -> usize {\n    1\n}\n",
@@ -117,7 +116,8 @@ fn tree_sitter_rows_replay_when_latest_unrelated_generation_is_stale() {
     );
     let fresh_manifest = manifest_from_generation(&cache_root, fresh_generation.clone());
     let packet_bytes = serde_json::to_vec(&syntax_packet_with_matches()).expect("packet bytes");
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
+        .expect("open DB Engine write session");
     db.import_manifest(&fresh_manifest)
         .expect("import fresh manifest");
     db.import_semantic_tree_sitter_query_packet(&fresh_generation, &packet_bytes)
@@ -154,7 +154,7 @@ fn tree_sitter_rows_replay_when_latest_unrelated_generation_is_stale() {
 
     assert_eq!(probe.cache_status, CacheStatus::Hit);
     assert!(stdout.contains("C=capture:function.name(parse_query)@src/lib.rs:10!code"));
-    assert_eq!(replay.sqlite_read_count, 1);
+    assert_eq!(replay.db_read_count, 1);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -168,7 +168,6 @@ fn tree_sitter_rows_are_stale_when_matching_source_hash_changes() {
     let cache_root = ClientCacheManifest::inspect_project(&root)
         .cache_root
         .expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
     std::fs::write(
         root.join("src/lib.rs"),
         "pub fn parse_query() -> usize {\n    1\n}\n",
@@ -182,7 +181,8 @@ fn tree_sitter_rows_are_stale_when_matching_source_hash_changes() {
     );
     let manifest = manifest_from_generation(&cache_root, generation.clone());
     let packet_bytes = serde_json::to_vec(&syntax_packet_with_matches()).expect("packet bytes");
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
+        .expect("open DB Engine write session");
     db.import_manifest(&manifest).expect("import manifest");
     db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
         .expect("import syntax rows");
@@ -216,7 +216,6 @@ fn prime_seed_probe_rejects_latest_fresh_prime_generation_after_fingerprint_miss
     let cache_root = ClientCacheManifest::inspect_project(&root)
         .cache_root
         .expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
     let stdout = "[search-prime] root=. view=seeds alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,O:owner\n\
@@ -231,7 +230,8 @@ rank=O frontier=O.owner\n";
         vec![hash_project_file(&root, "src/lib.rs")],
     );
     let manifest = manifest_from_generation(&cache_root, generation);
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
+        .expect("open DB Engine write session");
     db.import_manifest(&manifest).expect("import manifest");
     drop(db);
 
@@ -250,7 +250,7 @@ rank=O frontier=O.owner\n";
 
     assert_eq!(probe.cache_status, CacheStatus::Miss);
     assert!(probe.replay.is_none());
-    assert_eq!(probe.sqlite_read_count, 3);
+    assert_eq!(probe.db_read_count, 3);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -265,7 +265,6 @@ fn lexical_seed_probe_reuses_latest_fresh_matching_query_after_fingerprint_miss(
     let cache_root = ClientCacheManifest::inspect_project(&root)
         .cache_root
         .expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
     let stdout = "[search-lexical] q=cache replay view=seeds alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,Q:query\n\
@@ -289,7 +288,8 @@ rank=Q frontier=Q.lexical\n";
         "lexical-fresh.txt",
     );
     let manifest = manifest_from_generation(&cache_root, generation);
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
+        .expect("open DB Engine write session");
     db.import_manifest(&manifest).expect("import manifest");
     std::thread::sleep(Duration::from_secs(1));
     let unrelated_generation = search_lexical_generation_with_artifacts(
@@ -323,7 +323,7 @@ rank=Q frontier=Q.lexical\n";
         std::str::from_utf8(replay.stdout.as_ref()).expect("utf8"),
         stdout
     );
-    assert_eq!(probe.sqlite_read_count, 3);
+    assert_eq!(probe.db_read_count, 3);
     let _ = std::fs::remove_dir_all(root);
 }
 

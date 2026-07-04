@@ -1,7 +1,7 @@
 use crate::{
     SearchPipeEvidenceCandidate, SearchPipeQueryTerm, SearchPipeTermRole,
-    search_pipe_declaration_header_match, search_pipe_finder_handles, search_pipe_parser_handles,
-    search_pipe_strong_match, search_pipe_weak_reason,
+    search_pipe_declaration_header_match, search_pipe_parser_handles,
+    search_pipe_search_overlay_handles, search_pipe_strong_match, search_pipe_weak_reason,
 };
 
 #[test]
@@ -25,7 +25,7 @@ fn search_pipe_evidence_matches_declarations_and_rust_compound_paths() {
 }
 
 #[test]
-fn search_pipe_evidence_projects_parser_and_finder_handles() {
+fn search_pipe_evidence_projects_parser_and_search_overlay_handles() {
     let candidates = vec![
         candidate(
             "src/router.rs",
@@ -39,7 +39,7 @@ fn search_pipe_evidence_projects_parser_and_finder_handles() {
             3,
             "CacheStatus",
             "CacheStatus hit",
-            "finder",
+            "search-overlay",
         ),
     ];
     let terms = vec![
@@ -52,7 +52,7 @@ fn search_pipe_evidence_projects_parser_and_finder_handles() {
         vec!["SearchRouter@src/router.rs:7".to_string()]
     );
     assert_eq!(
-        search_pipe_finder_handles(&candidates, &terms),
+        search_pipe_search_overlay_handles(&candidates, &terms),
         vec!["CacheStatus".to_string()]
     );
 }

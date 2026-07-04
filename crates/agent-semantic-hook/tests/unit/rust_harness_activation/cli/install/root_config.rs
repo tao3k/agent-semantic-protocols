@@ -17,9 +17,6 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
-    write_retired_hook_cache(&root);
-    write_incompatible_current_hook_events(&root);
-    write_retired_semantic_agent_protocol_config(&root);
 
     let output = protocol_command()
         .env("PATH", &path)
@@ -43,7 +40,6 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     );
     assert!(protocol_bin_dir.join("asp").is_file());
     assert_installed_codex_plugin_skill(&root);
-    assert_no_profile_registry(&root);
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
     assert_codex_config(&config, &root);
@@ -54,7 +50,6 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert_plugin_entries(&parsed_config);
     assert_no_codex_user_trust_config(&codex_home);
     assert_codex_asp_explorer(&codex_home, "gpt-5.3-codex-spark");
-    assert_retired_codex_split_subagents_removed(&root);
     assert_installed_activation(&root);
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -86,7 +81,7 @@ fn cli_install_accepts_existing_project_marketplace_source_when_root_matches() {
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert!(stdout.contains("pluginMarketplace=asp-project"));
     assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
-    assert!(stdout.contains("subagent=.codex-home/agents/asp-explorer.toml"));
+    assert!(stdout.contains("subagent=.asp-state-home/agents/asp-explorer_codex.toml"));
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
     let canonical_root = std::fs::canonicalize(&root).expect("canonical project root");
@@ -115,101 +110,22 @@ source = "."
     .expect("write project Codex marketplace source");
 }
 
-fn write_retired_hook_cache(root: &std::path::Path) {
-    let current_cache_dir = root.join(".cache/agent-semantic-protocol/hooks");
-    std::fs::create_dir_all(&current_cache_dir).expect("create current hook cache dir");
-    std::fs::write(current_cache_dir.join("profiles.json"), r#"{"stale":true}"#)
-        .expect("write stale current profile registry");
-    std::fs::write(
-        current_cache_dir.join("profiles.ts-harness.json"),
-        r#"{"stale":true}"#,
-    )
-    .expect("write stale current provider profile shard");
-    let retired_profiles_dir = root.join(".codex/agent-semantic-hook");
-    std::fs::create_dir_all(&retired_profiles_dir).expect("create retired profiles dir");
-    std::fs::write(
-        retired_profiles_dir.join("profiles.ts-harness.json"),
-        r#"{"stale":true}"#,
-    )
-    .expect("write stale provider profile shard");
-    std::fs::write(
-        retired_profiles_dir.join("profiles.json"),
-        r#"{"stale":true}"#,
-    )
-    .expect("write stale provider profile registry");
-    std::fs::write(retired_profiles_dir.join("events.jsonl"), "{}\n")
-        .expect("write stale hook event cache");
-    std::fs::write(
-        retired_profiles_dir.join("activation.json"),
-        r#"{"stale":true}"#,
-    )
-    .expect("write stale activation");
-    let retired_cache_dir = root.join(".cache/agent-semantic-hook");
-    std::fs::create_dir_all(&retired_cache_dir).expect("create retired cache dir");
-    std::fs::write(retired_cache_dir.join("profiles.json"), r#"{"stale":true}"#)
-        .expect("write stale cache profile registry");
-    std::fs::write(retired_cache_dir.join("events.jsonl"), "{}\n")
-        .expect("write stale cache events");
-    std::fs::write(
-        retired_cache_dir.join("activation.json"),
-        r#"{"stale":true}"#,
-    )
-    .expect("write stale cache activation");
-    let retired_protocol_cache_dir = root.join(".cache/semantic-agent-protocol/hooks");
-    std::fs::create_dir_all(&retired_protocol_cache_dir)
-        .expect("create retired protocol cache dir");
-    std::fs::write(
-        retired_protocol_cache_dir.join("profiles.json"),
-        r#"{"stale":true}"#,
-    )
-    .expect("write stale semantic protocol profile registry");
-    std::fs::write(retired_protocol_cache_dir.join("events.jsonl"), "{}\n")
-        .expect("write stale semantic protocol events");
-    std::fs::write(
-        retired_protocol_cache_dir.join("activation.json"),
-        r#"{"stale":true}"#,
-    )
-    .expect("write stale semantic protocol activation");
-}
-
-fn write_incompatible_current_hook_events(root: &std::path::Path) {
-    let current_cache_dir = root.join(".cache/agent-semantic-protocol/hooks");
-    std::fs::create_dir_all(&current_cache_dir).expect("create current hook cache dir");
-    std::fs::write(
-        current_cache_dir.join("events.jsonl"),
-        r#"{"schemaId":"agent.semantic-protocols.agent-semantic-hook-event","protocolId":"agent.semantic-protocols.agent-hooks"}"#,
-    )
-    .expect("write incompatible hook event state");
-}
-
 fn assert_install_stdout(stdout: &str) {
     assert!(stdout.contains("[plugin-install] client=codex"));
     assert!(stdout.contains("activation="));
-    assert!(stdout.contains("agent-semantic-protocol/hooks/activation.json"));
     assert!(stdout.contains("userConfigStatus=missing"));
-    assert!(!stdout.contains("clientConfig="));
-    assert!(!stdout.contains("globalClientConfig="));
-    assert!(!stdout.contains("profileCache="));
-    assert!(!stdout.contains("agent-semantic-protocol/hooks/profiles.json"));
-    assert!(!stdout.contains("skill="));
-    assert!(!stdout.contains("skillContract="));
     assert!(
         stdout.contains(
             "pluginSkill=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org"
         )
     );
-    assert!(!stdout.contains("pluginSkillContract="));
     assert!(stdout.contains("pluginCache=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0"));
     assert!(stdout.contains("pluginScope=project"));
     assert!(stdout.contains("pluginMarketplace=asp-project"));
-    assert!(!stdout.contains("pluginMarketplaceConfig="));
     assert!(stdout.contains("config=.codex/config.toml"));
     assert!(stdout.contains("projectConfig=.codex/config.toml"));
     assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
-    assert!(!stdout.contains("projectHookConfig="));
-    assert!(!stdout.contains("trustConfig="));
-    assert!(stdout.contains("subagent=.codex-home/agents/asp-explorer.toml"));
-    assert!(!stdout.contains("subagents="));
+    assert!(stdout.contains("subagent=.asp-state-home/agents/asp-explorer_codex.toml"));
     assert!(stdout.contains("binary=asp"));
     assert!(stdout.contains("binaryInstall=installed"));
     assert!(stdout.contains("binaryPath="));
@@ -224,7 +140,6 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
-    write_stale_codex_subagents(&root);
 
     let output = protocol_command()
         .env("PATH", &path)
@@ -246,12 +161,9 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert!(stdout.contains("pluginScope=project"));
     assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
-    assert!(stdout.contains("subagent=.codex-home/agents/asp-explorer.toml"));
-    assert!(!stdout.contains("subagents="));
-    assert!(!stdout.contains(".codex/agents/asp-explorer-selector.toml"));
+    assert!(stdout.contains("subagent=.asp-state-home/agents/asp-explorer_codex.toml"));
     assert_codex_user_asp_explorer_role_config(&codex_home);
     assert_codex_asp_explorer(&codex_home, "gpt-5.4-mini");
-    assert_retired_codex_split_subagents_removed(&root);
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -301,7 +213,6 @@ fn cli_install_writes_claude_custom_subagent_by_default() {
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
-    write_stale_claude_subagents(&root);
 
     let output = protocol_command()
         .env("PATH", &path)
@@ -325,118 +236,19 @@ fn cli_install_writes_claude_custom_subagent_by_default() {
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert!(stdout.contains("[agent-install] client=claude"));
     assert!(stdout.contains("subagent=.claude/agents/asp-explorer.md"));
-    assert!(!stdout.contains("subagents="));
-    assert!(!stdout.contains(".claude/agents/asp-explorer-selector.md"));
     assert_claude_asp_explorer(&root, "haiku");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 fn assert_installed_codex_plugin_skill(root: &std::path::Path) {
     assert!(
-        !root
-            .join(".agents/skills/agent-semantic-protocols/SKILL.org")
-            .exists(),
-        "Codex plugin installation should remove the retired project skill copy"
-    );
-    assert!(
-        !root
-            .join(".agents/skills/agent-semantic-protocols/SKILL.contract.org")
-            .exists(),
-        "Codex plugin installation should remove the retired project skill contract copy"
-    );
-    assert!(
-        !root
-            .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
-            .exists(),
-        "Codex plugin installation should remove the retired project plugin SKILL.org"
-    );
-    assert!(
         root.join(".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org")
             .exists(),
         "Codex plugin installation should materialize the installed cache SKILL.org"
     );
-    assert!(
-        !root
-            .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.contract.org")
-            .exists(),
-        "Codex plugin installation should not generate plugin skill contracts"
-    );
-}
-
-fn assert_no_profile_registry(root: &std::path::Path) {
-    assert!(
-        !root
-            .join(".cache/agent-semantic-protocol/hooks/profiles.json")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".cache/agent-semantic-protocol/hooks/profiles.ts-harness.json")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".codex/agent-semantic-hook/profiles.ts-harness.json")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".codex/agent-semantic-hook/profiles.json")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".codex/agent-semantic-hook/events.jsonl")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".cache/agent-semantic-hook/profiles.json")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".cache/agent-semantic-hook/events.jsonl")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".cache/semantic-agent-protocol/hooks/profiles.json")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".cache/semantic-agent-protocol/hooks/events.jsonl")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".cache/semantic-agent-protocol/hooks/activation.json")
-            .exists()
-    );
-    assert!(
-        !root
-            .join(".cache/agent-semantic-protocol/hooks/events.jsonl")
-            .exists()
-    );
 }
 
 fn assert_codex_config(config: &str, root: &std::path::Path) {
-    assert!(!config.contains("# BEGIN agent-semantic-protocol agent hooks"));
-    assert!(!config.contains("# BEGIN semantic-agent-protocol agent hooks"));
-    assert!(!config.contains("# BEGIN agent-semantic-hook agent hooks"));
-    assert!(!config.contains("hook_bin="));
-    assert!(!config.contains("exec semantic-agent-protocol"));
-    assert!(!config.contains("exec agent-semantic-hook"));
-    assert!(!config.contains(".codex/agent-semantic-hook/bin/agent-semantic-hook"));
-    assert!(!config.contains("[[hooks."));
-    assert!(!config.contains("exec asp hook pre-tool --client codex"));
-    assert!(!config.contains("exec asp hook user-prompt --client codex"));
-    assert!(!config.contains("exec asp hook stop --client codex"));
-    assert!(!config.contains("asp hook --client codex"));
-    assert!(config.matches("[hooks.state.").count() == 0);
-    assert!(!config.contains("ts-harness agent hook --client codex"));
-    assert!(!config.contains("rs-harness agent hook --client codex"));
     assert!(config.contains("[marketplaces.asp-project]"));
     assert!(config.contains("source_type = \"local\""));
     let canonical_root = std::fs::canonicalize(root).expect("canonical project root");
@@ -456,7 +268,7 @@ fn assert_no_codex_user_trust_config(codex_home: &std::path::Path) {
     let config = std::fs::read_to_string(config_path).expect("read Codex user config");
     assert!(
         !config.contains("[hooks.state."),
-        "Codex plugin installation should not write retired hook trust state"
+        "Codex plugin installation should not write hook trust state"
     );
     assert!(!config.contains("agent-semantic-protocol trusted hook state"));
 }
@@ -496,20 +308,15 @@ fn assert_claude_asp_explorer(root: &std::path::Path, model: &str) {
     assert!(agent.contains("permissionMode: plan"));
     assert!(agent.contains("maxTurns: 8"));
     assert_asp_explorer_instructions(&agent);
-    for stale in [
-        "asp-explorer-owner.md",
-        "asp-explorer-rg.md",
-        "asp-explorer-selector.md",
-    ] {
-        assert!(
-            !root.join(".claude/agents").join(stale).exists(),
-            "stale generated Claude subagent was not removed: {stale}"
-        );
-    }
 }
 
 fn assert_codex_asp_explorer(codex_home: &std::path::Path, model: &str) {
-    let path = codex_home.join("agents/asp-explorer.toml");
+    let path = codex_home
+        .parent()
+        .expect("Codex home parent")
+        .join(".asp-state-home")
+        .join("agents")
+        .join("asp-explorer_codex.toml");
     let agent = std::fs::read_to_string(&path).expect("installed Codex ASP explorer agent");
     let parsed = toml::from_str::<toml::Value>(&agent).expect("Codex ASP explorer is valid TOML");
     let table = parsed
@@ -542,101 +349,19 @@ fn assert_asp_explorer_instructions(instructions: &str) {
     assert!(lower.contains("source"));
 }
 
-fn write_stale_codex_subagents(root: &std::path::Path) {
-    let dir = root.join(".codex/agents");
-    std::fs::create_dir_all(&dir).expect("create stale Codex agents dir");
-    for stale in [
-        "asp-explorer.toml",
-        "asp-explorer-owner.toml",
-        "asp-explorer-rg.toml",
-        "asp-explorer-selector.toml",
-    ] {
-        std::fs::write(dir.join(stale), "name = \"stale\"\n").expect("write stale Codex agent");
-    }
-}
-
-fn assert_retired_codex_split_subagents_removed(root: &std::path::Path) {
-    for stale in [
-        "asp-explorer.toml",
-        "asp-explorer-owner.toml",
-        "asp-explorer-rg.toml",
-        "asp-explorer-selector.toml",
-    ] {
-        assert!(
-            !root.join(".codex/agents").join(stale).exists(),
-            "retired Codex split subagent should be removed during plugin installation: {stale}"
-        );
-    }
-}
-
-fn write_stale_claude_subagents(root: &std::path::Path) {
-    let dir = root.join(".claude/agents");
-    std::fs::create_dir_all(&dir).expect("create stale Claude agents dir");
-    for stale in [
-        "asp-explorer-owner.md",
-        "asp-explorer-rg.md",
-        "asp-explorer-selector.md",
-    ] {
-        std::fs::write(dir.join(stale), "---\nname: stale\n---\n")
-            .expect("write stale Claude agent");
-    }
-}
-
-fn write_retired_semantic_agent_protocol_config(root: &std::path::Path) {
-    let codex_dir = root.join(".codex");
-    std::fs::create_dir_all(&codex_dir).expect("create retired codex config dir");
-    std::fs::write(
-        codex_dir.join("config.toml"),
-        r#"[features]
-hooks = true
-unified_exec = true
-
-# BEGIN semantic-agent-protocol agent hooks
-[[hooks.PreToolUse]]
-matcher = "Read"
-
-[[hooks.PreToolUse.hooks]]
-type = "command"
-timeout = 5
-statusMessage = "Checking old semantic hook"
-command = '''
-exec semantic-agent-protocol hook pre-tool --client codex
-'''
-# END semantic-agent-protocol agent hooks
-
-[agents.asp_explorer]
-description = "retired standalone role"
-config_file = "agents/asp-explorer.toml"
-"#,
-    )
-    .expect("write retired semantic-agent-protocol config");
-}
-
 fn assert_agent_config(root: &std::path::Path) {
     let agent_config =
         std::fs::read_to_string(root.join(".agents/asp.toml")).expect("installed agent config");
     assert!(agent_config.contains("[skills.agent-semantic-protocols]"));
-    assert!(agent_config.contains("[hook.agentOrgArtifacts]"));
-    assert!(agent_config.contains("enabled = true"));
-    assert!(agent_config.contains("inactiveAfterMinutes = 30"));
-    assert!(
-        agent_config.contains("artifactsPath = \".cache/agent-semantic-protocol/artifacts/org\"")
-    );
-    assert!(agent_config.contains(
-        "entrySkillPath = \".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org\""
-    ));
+    assert!(!agent_config.contains("[hook.agentOrgArtifacts]"));
+    assert!(!agent_config.contains("aspOrg"));
+    assert!(!agent_config.contains("orgArtifacts"));
     toml::from_str::<toml::Value>(&agent_config).expect("agent config is valid TOML");
 }
 
 fn assert_installed_activation(root: &std::path::Path) {
-    assert!(
-        !root
-            .join(".codex/agent-semantic-hook/bin/agent-semantic-hook")
-            .exists()
-    );
     let activation =
-        std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
-            .expect("installed activation");
+        std::fs::read_to_string(installed_activation_path(root)).expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
     let rust_provider = registry
         .providers
@@ -658,4 +383,26 @@ fn assert_installed_activation(root: &std::path::Path) {
             "seeds"
         ]
     );
+}
+
+fn installed_activation_path(root: &std::path::Path) -> std::path::PathBuf {
+    let mut matches = Vec::new();
+    collect_activation_paths(&root.join(".asp-state-home"), &mut matches);
+    matches.sort();
+    assert_eq!(matches.len(), 1, "activation paths: {matches:?}");
+    matches.remove(0)
+}
+
+fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_activation_paths(&path, matches);
+        } else if path.ends_with("live/hooks/state/activation.json") {
+            matches.push(path);
+        }
+    }
 }

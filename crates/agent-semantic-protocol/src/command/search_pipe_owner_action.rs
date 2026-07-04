@@ -31,7 +31,9 @@ pub(super) fn owner_items_handle(
     candidates: &[Candidate],
 ) -> Option<String> {
     let owner = quality.best_owner.as_ref()?.owner.as_str();
-    let query_terms = owner_items_query_terms(quality, candidates, owner)?;
+    let query_terms = owner_items_query_terms(quality, candidates, owner).or_else(|| {
+        unique_terms_without_weak_natural(quality.best_owner.as_ref()?.matched.clone(), 6)
+    })?;
     if suppress_low_cohesion_weak_axis_owner(quality, &query_terms) {
         return None;
     }

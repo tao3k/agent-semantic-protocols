@@ -4,7 +4,7 @@ use crate::codex_trust::{
     TRUST_BLOCK_END, codex_project_trusted, codex_trust_block_begin,
     merge_codex_project_trust_config, merge_codex_trust_config, toml_basic_string,
 };
-use agent_semantic_runtime::{project_activation_path, project_local_activation_path};
+use agent_semantic_runtime::project_activation_path;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -16,28 +16,6 @@ pub const ROOT_BLOCK_BEGIN: &str = "# BEGIN agent-semantic-protocol agent hooks"
 /// End marker for the managed project-level Codex hook block.
 pub const ROOT_BLOCK_END: &str = "# END agent-semantic-protocol agent hooks";
 
-const RETIRED_MANAGED_BLOCKS: [(&str, &str); 5] = [
-    (
-        "# BEGIN semantic-agent-protocol agent hooks",
-        "# END semantic-agent-protocol agent hooks",
-    ),
-    (
-        "# BEGIN agent-semantic-hook agent hooks",
-        "# END agent-semantic-hook agent hooks",
-    ),
-    (
-        "# BEGIN ts-harness agent hooks",
-        "# END ts-harness agent hooks",
-    ),
-    (
-        "# BEGIN py-harness agent hooks",
-        "# END py-harness agent hooks",
-    ),
-    (
-        "# BEGIN rs-harness agent hooks",
-        "# END rs-harness agent hooks",
-    ),
-];
 const TOOL_SURFACE_MATCHER: &str = r"Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\.read|fs\.readFile|fs\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\read|fs\\readFile|fs\\readDirectory|functions\.read|functions\.read_file|functions\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\.exec_command|exec_command|command_execution|multi_tool_use\.parallel|Bash|Shell";
 const ASP_EXPLORER_ROLE_NAME: &str = "asp_explorer";
 const ASP_EXPLORER_CONFIG_FILE: &str = "agents/asp-explorer.toml";
@@ -236,7 +214,7 @@ pub fn validate_codex_config_toml(content: &str) -> Result<(), String> {
 
 /// Merge the managed hook block into existing Codex project config text.
 pub fn merge_codex_config(existing: &str, block: &str) -> String {
-    let mut content = remove_codex_managed_hook_blocks(existing);
+    let mut content = remove_managed_block(existing, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END);
     content = ensure_codex_required_features(&content);
     let prefix = content.trim();
     if prefix.is_empty() {
@@ -247,19 +225,6 @@ pub fn merge_codex_config(existing: &str, block: &str) -> String {
     } else {
         format!("{}\n\n{}\n", prefix, block.trim_end())
     }
-}
-
-/// Remove ASP-managed Codex hook blocks without adding replacement hooks.
-///
-/// Plugin-based installs use this to clean retired project hook config before
-/// delegating hook registration to Codex's plugin loader.
-#[must_use]
-pub fn remove_codex_managed_hook_blocks(existing: &str) -> String {
-    let mut content = existing.to_string();
-    for (begin, end) in RETIRED_MANAGED_BLOCKS {
-        content = remove_managed_block(&content, begin, end);
-    }
-    remove_managed_block(&content, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END)
 }
 
 fn codex_hook_events() -> [CodexHookEvent; 8] {
@@ -338,7 +303,7 @@ fn codex_hook_event_block(event: &CodexHookEvent, project_root: &Path) -> String
 
 fn codex_hook_command(hook_event: &str, project_root: &Path) -> String {
     let activation_path = project_activation_path(project_root)
-        .unwrap_or_else(|_| project_local_activation_path(project_root));
+        .expect("State Core activation path should resolve for Codex hook config");
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
     format!(
@@ -554,7 +519,7 @@ fn claude_hook_event_group(event: &ClaudeHookEvent, project_root: &Path) -> Valu
 
 fn claude_hook_command(hook_event: &str, project_root: &Path) -> String {
     let activation_path = project_activation_path(project_root)
-        .unwrap_or_else(|_| project_local_activation_path(project_root));
+        .expect("State Core activation path should resolve for Claude hook config");
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
     format!(

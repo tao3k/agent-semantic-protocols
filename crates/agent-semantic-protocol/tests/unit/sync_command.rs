@@ -1,5 +1,6 @@
 #[cfg(unix)]
 mod unix {
+    use agent_semantic_runtime::state_core::ResolvedState;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,17 +10,15 @@ mod unix {
         let source = temp_root("org-source");
         init_org_repo(&source, "v1");
         let project = temp_root("sync-project");
+        let state_home = temp_root("sync-state");
         std::fs::create_dir_all(project.join(".git")).expect("create project git marker");
 
-        let first = run_asp_sync(&project, &source);
+        let first = run_asp_sync(&project, &source, &state_home);
         assert!(
             first.contains("[asp-sync]"),
             "expected asp sync receipt, got {first}"
         );
-        let org_state = project
-            .join(".cache")
-            .join("agent-semantic-protocol")
-            .join("org");
+        let org_state = state_home.join("org");
         assert!(
             org_state.join(".git").is_dir(),
             "org state must be a git checkout"
@@ -29,10 +28,10 @@ mod unix {
                 .expect("read asp org skill"),
             "* ASP Org v1\n"
         );
-        let org_artifacts = project
-            .join(".cache")
-            .join("agent-semantic-protocol")
-            .join("artifacts")
+        let org_artifacts = ResolvedState::resolve_with_state_home(&project, &state_home)
+            .expect("resolved state")
+            .paths
+            .artifacts_dir
             .join("org");
         assert!(org_artifacts.join("flow").join("plans").is_dir());
         assert!(org_artifacts.join("flow").join("sdd").is_dir());
@@ -41,7 +40,7 @@ mod unix {
         std::fs::write(&local_plan, "* Local plan\n").expect("write local flow file");
 
         update_org_repo(&source, "v2");
-        let second = run_asp_sync(&project, &source);
+        let second = run_asp_sync(&project, &source, &state_home);
         assert!(
             second.contains("orgStatus=updated"),
             "expected fast-forward update receipt, got {second}"
@@ -60,9 +59,14 @@ mod unix {
             "",
             "local flow state should be excluded from the backing org repo status"
         );
+        assert!(
+            !project.join(".cache").exists(),
+            "sync must not materialize Org state under the project cache"
+        );
 
         let _ = std::fs::remove_dir_all(source);
         let _ = std::fs::remove_dir_all(project);
+        let _ = std::fs::remove_dir_all(state_home);
     }
 
     #[test]
@@ -80,9 +84,10 @@ mod unix {
         .expect("write git config");
 
         let project = temp_root("default-remote-project");
+        let state_home = temp_root("default-remote-state");
         std::fs::create_dir_all(project.join(".git")).expect("create project git marker");
 
-        let output = run_default_remote_asp_sync(&project, &git_config);
+        let output = run_default_remote_asp_sync(&project, &git_config, &state_home);
         assert!(
             output.contains("orgRepo=https://github.com/tao3k/org.git"),
             "expected default org remote receipt, got {output}"
@@ -95,9 +100,11 @@ mod unix {
             !output.contains("copiedFiles="),
             "asp sync receipt must not expose copy semantics, got {output}"
         );
-        let org_state = project
-            .join(".cache")
-            .join("agent-semantic-protocol")
+        let org_state = state_home.join("org");
+        let org_artifacts = ResolvedState::resolve_with_state_home(&project, &state_home)
+            .expect("resolved state")
+            .paths
+            .artifacts_dir
             .join("org");
         assert!(
             org_state.join(".git").is_dir(),
@@ -108,26 +115,86 @@ mod unix {
             "asp sync must materialize org resources through git clone"
         );
         assert!(
-            project
-                .join(".cache")
-                .join("agent-semantic-protocol")
-                .join("artifacts")
-                .join("org")
-                .join("flow")
-                .join("plans")
-                .is_dir(),
+            org_artifacts.join("flow").join("plans").is_dir(),
             "asp sync must keep creating org artifact flow dirs"
+        );
+        assert!(
+            !project.join(".cache").exists(),
+            "sync must not materialize Org state under the project cache"
         );
 
         let _ = std::fs::remove_file(git_config);
         let _ = std::fs::remove_dir_all(source);
         let _ = std::fs::remove_dir_all(project);
+        let _ = std::fs::remove_dir_all(state_home);
     }
 
-    fn run_asp_sync(project: &Path, source: &Path) -> String {
+    #[test]
+    fn sync_projects_global_agent_configs_to_host_agents() {
+        let source = temp_root("org-source-agent-configs");
+        init_org_repo(&source, "v1");
+        let project = temp_root("sync-agent-config-project");
+        let state_home = temp_root("sync-agent-config-state");
+        let codex_home = temp_root("sync-agent-config-codex");
+        let claude_home = temp_root("sync-agent-config-claude");
+        std::fs::create_dir_all(project.join(".git")).expect("create project git marker");
+        let agents_dir = state_home.join("agents");
+        std::fs::create_dir_all(&agents_dir).expect("create agents dir");
+        let codex_source = agents_dir.join("asp-explorer_codex.toml");
+        let claude_source = agents_dir.join("asp-explorer_claude.md");
+        std::fs::write(&codex_source, "name = \"asp_explorer\"\nmodel = \"gpt-5.3-codex-spark\"\nsandbox_mode = \"read-only\"\n")
+            .expect("write codex agent config");
+        std::fs::write(&claude_source, "---\nname: asp-explorer\n---\n")
+            .expect("write claude agent config");
+
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&project)
+            .env("ASP_ORG_REPO_URL", &source)
+            .env("ASP_STATE_HOME", &state_home)
+            .env("CODEX_HOME", &codex_home)
+            .env("CLAUDE_HOME", &claude_home)
+            .env("PRJ_CACHE_HOME", project.join(".cache"))
+            .args(["sync"])
+            .output()
+            .expect("run asp sync");
+        assert!(
+            output.status.success(),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+        assert!(
+            stdout.contains("agentConfigs=2"),
+            "expected two projected agent configs, got {stdout}"
+        );
+        assert_eq!(
+            std::fs::read_link(codex_home.join("agents").join("asp-explorer.toml"))
+                .expect("codex agent symlink")
+                .canonicalize()
+                .expect("codex agent symlink"),
+            codex_source.canonicalize().expect("codex source")
+        );
+        assert_eq!(
+            std::fs::read_link(claude_home.join("agents").join("asp-explorer.md"))
+                .expect("claude agent symlink")
+                .canonicalize()
+                .expect("claude agent symlink"),
+            claude_source.canonicalize().expect("claude source")
+        );
+
+        let _ = std::fs::remove_dir_all(source);
+        let _ = std::fs::remove_dir_all(project);
+        let _ = std::fs::remove_dir_all(state_home);
+        let _ = std::fs::remove_dir_all(codex_home);
+        let _ = std::fs::remove_dir_all(claude_home);
+    }
+
+    fn run_asp_sync(project: &Path, source: &Path, state_home: &Path) -> String {
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(project)
             .env("ASP_ORG_REPO_URL", source)
+            .env("ASP_STATE_HOME", state_home)
             .env("PRJ_CACHE_HOME", project.join(".cache"))
             .args(["sync"])
             .output()
@@ -141,11 +208,12 @@ mod unix {
         String::from_utf8(output.stdout).expect("utf8 stdout")
     }
 
-    fn run_default_remote_asp_sync(project: &Path, git_config: &Path) -> String {
+    fn run_default_remote_asp_sync(project: &Path, git_config: &Path, state_home: &Path) -> String {
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(project)
             .env_remove("ASP_ORG_REPO_URL")
             .env("GIT_CONFIG_GLOBAL", git_config)
+            .env("ASP_STATE_HOME", state_home)
             .env("PRJ_CACHE_HOME", project.join(".cache"))
             .args(["sync"])
             .output()

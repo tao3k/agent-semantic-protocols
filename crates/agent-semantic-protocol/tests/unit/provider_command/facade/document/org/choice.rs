@@ -1,9 +1,9 @@
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{asp_command, org_artifact_target, temp_project_root};
 
 #[test]
 fn asp_org_capture_plan_defers_until_specification_choice() {
     let root = temp_project_root("org-document-command-plan-choice");
-    let target = ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-choice.org";
+    let target = org_artifact_target(&root, "flow/plans/agent-plan-choice.org");
 
     let compact = asp_command(&root)
         .args([
@@ -14,7 +14,7 @@ fn asp_org_capture_plan_defers_until_specification_choice() {
             "--title",
             "Choose ASP org plan specification",
             "--target-file",
-            target,
+            target.as_str(),
         ])
         .output()
         .expect("run asp org capture plan compact choice");
@@ -66,7 +66,7 @@ fn asp_org_capture_plan_defers_until_specification_choice() {
             "--title",
             "Choose ASP org plan specification",
             "--target-file",
-            target,
+            target.as_str(),
             "--choice",
             "specification=?",
         ])
@@ -116,7 +116,7 @@ fn asp_org_capture_plan_defers_until_specification_choice() {
             "--title",
             "Choose ASP org plan specification",
             "--target-file",
-            target,
+            target.as_str(),
             "--choice",
             "specification=framework",
         ])
@@ -142,6 +142,8 @@ fn asp_org_capture_plan_records_selected_specification_contract() {
         ("3", "tdd", "agent.tdd.v1"),
         ("4", "bdr", "agent.bdr.v1"),
     ] {
+        let target =
+            org_artifact_target(&root, &format!("flow/plans/agent-plan-{suffix}-test.org"));
         let mut command = asp_command(&root);
         command
             .args([
@@ -153,9 +155,7 @@ fn asp_org_capture_plan_records_selected_specification_contract() {
                 "Design ASP org specification plan",
                 "--target-file",
             ])
-            .arg(format!(
-                ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-{suffix}-test.org"
-            ))
+            .arg(target)
             .arg("--choice")
             .arg(format!("specification={choice}"));
         let output = command
@@ -174,6 +174,7 @@ fn asp_org_capture_plan_records_selected_specification_contract() {
         assert!(!stdout.contains(":GOVERNING_REF:"), "{stdout}");
     }
 
+    let task_target = org_artifact_target(&root, "flow/plans/agent-plan-task-test.org");
     let task = asp_command(&root)
         .args([
             "org",
@@ -183,7 +184,7 @@ fn asp_org_capture_plan_records_selected_specification_contract() {
             "--title",
             "Track ASP org implementation task",
             "--target-file",
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-task-test.org",
+            task_target.as_str(),
             "--choice",
             "specification=5",
         ])

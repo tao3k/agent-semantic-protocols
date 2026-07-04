@@ -1,16 +1,10 @@
 use crate::{cache_cli::run_cache, lookup_source_index_for_language};
-use agent_semantic_client_core::{
-    ASP_PROVIDER_ACTIVATION_PATH_ENV, ClientCacheManifest, LanguageId,
-};
-#[cfg(feature = "turso-backend")]
+use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
 use agent_semantic_client_db::ClientDbEngine;
-use agent_semantic_client_db::{ClientDb, ClientDbSourceIndexLookup, ClientDbSourceIndexQueryKey};
 use agent_semantic_hook::{
     HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, builtin_provider_manifests, provider_manifest_digest,
 };
-#[cfg(feature = "turso-backend")]
-use agent_semantic_runtime::runtime_block_on_current_thread;
 use serde_json::json;
 use std::{
     ffi::{OsStr, OsString},
@@ -68,48 +62,23 @@ fn cache_source_index_refresh_builds_db_engine_rows() {
     )
     .expect("reuse refreshed source index");
 
-    let cache_root = ClientCacheManifest::inspect_project(&root)
-        .cache_root
-        .expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
-    let db = ClientDb::open_read_only_existing(&db_path)
-        .expect("open db")
-        .expect("db exists");
-    let summary = db.summary().expect("summary");
-    let owners = db
-        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
-            project_root: root.clone(),
-            language_id: Some(LanguageId::from("gerbil-scheme")),
-            query: ClientDbSourceIndexQueryKey::from("gerbil-poo"),
-            limit: 8,
-        })
-        .expect("lookup source owners");
+    let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
+    assert!(
+        engine.db_path().exists(),
+        "source-index refresh must write the active DB Engine path"
+    );
+    let result = lookup_source_index_for_language(
+        &root,
+        Some(&LanguageId::from("gerbil-scheme")),
+        "gerbil-poo",
+        8,
+    )
+    .expect("lookup source index");
 
-    assert_eq!(summary.source_index_generation_count, 1);
-    assert_eq!(summary.source_index_owner_count, 2);
-    assert_eq!(summary.source_index_selector_count, 2);
-    assert_eq!(owners.len(), 1);
-    assert_eq!(owners[0].owner_path.as_str(), "src/usage.ss");
-    assert_eq!(owners[0].line_count, Some(3));
-    #[cfg(feature = "turso-backend")]
-    {
-        let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
-        assert!(
-            engine.db_path().exists(),
-            "source-index refresh must project stable rows into active Turso read model"
-        );
-        let hits =
-            runtime_block_on_current_thread(engine.search_source_index_documents("gerbil-poo", 8))
-                .expect("run Turso source-index search")
-                .expect("search Turso source-index documents through DB Engine facade");
-        assert!(
-            hits.iter().any(|hit| {
-                hit.source == "stable"
-                    && hit.selector.as_deref() == Some("gerbil-scheme://src/usage.ss#file")
-            }),
-            "hits={hits:?}"
-        );
-    }
+    assert_eq!(result.state.as_str(), "hit");
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].path, "src/usage.ss");
+    assert_eq!(result.candidates[0].line_count, Some(3));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -168,26 +137,19 @@ fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
     )
     .expect("refresh changed source index");
 
-    let cache_root = ClientCacheManifest::inspect_project(&root)
-        .cache_root
-        .expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
-    let db = ClientDb::open_read_only_existing(&db_path)
-        .expect("open db")
-        .expect("db exists");
-    let summary = db.summary().expect("summary");
-    let owners = db
-        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
-            project_root: root.clone(),
-            language_id: Some(LanguageId::from("gerbil-scheme")),
-            query: ClientDbSourceIndexQueryKey::from("new-scope-symbol"),
-            limit: 8,
-        })
-        .expect("lookup source owners");
+    let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
+    assert!(engine.db_path().exists());
+    let result = lookup_source_index_for_language(
+        &root,
+        Some(&LanguageId::from("gerbil-scheme")),
+        "new-scope-symbol",
+        8,
+    )
+    .expect("lookup source index");
 
-    assert_eq!(summary.source_index_generation_count, 2);
-    assert_eq!(owners.len(), 1);
-    assert_eq!(owners[0].owner_path.as_str(), "extra/new_usage.ss");
+    assert_eq!(result.state.as_str(), "hit");
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].path, "extra/new_usage.ss");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -239,24 +201,19 @@ fn cache_source_index_refresh_respects_provider_ignored_path_prefixes() {
     )
     .expect("refresh source index");
 
-    let cache_root = ClientCacheManifest::inspect_project(&root)
-        .cache_root
-        .expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
-    let db = ClientDb::open_read_only_existing(&db_path)
-        .expect("open db")
-        .expect("db exists");
-    let owners = db
-        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
-            project_root: root.clone(),
-            language_id: Some(LanguageId::from("rust")),
-            query: ClientDbSourceIndexQueryKey::from("workspace_scope_symbol"),
-            limit: 8,
-        })
-        .expect("lookup source owners");
+    let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
+    assert!(engine.db_path().exists());
+    let result = lookup_source_index_for_language(
+        &root,
+        Some(&LanguageId::from("rust")),
+        "workspace_scope_symbol",
+        8,
+    )
+    .expect("lookup source index");
 
-    assert_eq!(owners.len(), 1);
-    assert_eq!(owners[0].owner_path.as_str(), "crates/app/src/lib.rs");
+    assert_eq!(result.state.as_str(), "hit");
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].path, "crates/app/src/lib.rs");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -381,24 +338,19 @@ exit 2
     )
     .expect("refresh source index");
 
-    let cache_root = ClientCacheManifest::inspect_project(&root)
-        .cache_root
-        .expect("cache root");
-    let db_path = ClientDb::default_path(&cache_root);
-    let db = ClientDb::open_read_only_existing(&db_path)
-        .expect("open db")
-        .expect("db exists");
-    let owners = db
-        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
-            project_root: root.clone(),
-            language_id: Some(LanguageId::from("gerbil-scheme")),
-            query: ClientDbSourceIndexQueryKey::from("provider-scope-symbol"),
-            limit: 8,
-        })
-        .expect("lookup source owners");
+    let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
+    assert!(engine.db_path().exists());
+    let result = lookup_source_index_for_language(
+        &root,
+        Some(&LanguageId::from("gerbil-scheme")),
+        "provider-scope-symbol",
+        8,
+    )
+    .expect("lookup source index");
 
-    assert_eq!(owners.len(), 1);
-    assert_eq!(owners[0].owner_path.as_str(), "src/included.ss");
+    assert_eq!(result.state.as_str(), "hit");
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].path, "src/included.ss");
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -1,0 +1,156 @@
+#+TITLE: RFC 10.31 - EvidenceGraph flow against codebase-memory-mcp
+#+STARTUP: overview
+
+* Purpose
+
+This RFC makes the comparison target explicit. "CodeBase" in this line of
+work means =codebase-memory-mcp=, not generic repository search. The goal is to
+prove that ASP's EvidenceGraph flow can reach authoritative selector evidence
+with fewer turns when possible, and with stronger receipts than the
+=codebase-memory-mcp= playbook when the task needs language-native precision,
+freshness, or recovery evidence.
+
+=codebase-memory-mcp= is the reference benchmark, not a mechanical pass/fail
+floor. ASP must record the reference baseline and the ASP result, then explain
+the delta:
+
+#+begin_src text
+roundDelta = aspSearchQueryRounds - codebaseMemoryMcpQueryRounds
+#+end_src
+
+Negative delta is the preferred result. Zero or positive delta is acceptable
+only when the EvidenceGraph packet proves an advantage that the reference
+playbook does not provide, such as native parser selector identity, dirty-tree
+overlay freshness, recovery receipts, or legal edit/action framing.
+
+The comparison is not won by raw latency or recall alone. It is won by reducing
+turns from intent to a legal next action:
+
+#+begin_src text
+repository question -> authoritative selector -> proven edit boundary
+#+end_src
+
+* Reference playbook
+
+=codebase-memory-mcp= demonstrates the product shape ASP must beat:
+
+#+begin_src text
+search_graph / semantic_query / query_graph / search_code
+-> trace_path when relationship evidence is needed
+-> get_code_snippet when bounded source evidence is needed
+#+end_src
+
+Its advantage is that callers are guided through a small graph-oriented tool
+surface instead of drifting through broad file search. ASP should keep that
+constraint while using stronger native parser identity, provider-owned schemas,
+dynamic overlay facts, and replayable action receipts.
+
+* EvidenceGraph flow
+
+The ASP flow is:
+
+#+begin_src text
+intent
+-> Search Frame seeds
+-> native selector expansion
+-> dependency / test / artifact topology expansion
+-> dynamic overlay reconciliation
+-> ranked EvidenceGraph bundle
+-> nextCommand / nextClasses / sourceTrace / avoid receipt
+-> WhereFrame
+-> HowFrame
+-> scenario and benchmark receipt
+#+end_src
+
+Each stage has a required artifact:
+
+| Stage | Required artifact | Failure if missing |
+| intent -> seeds | Search Frame query receipt with =sourceTrace= | broad tool use remains possible |
+| seeds -> selectors | parser-owned selector candidates | line ranges or file paths masquerade as identity |
+| selectors -> topology | ownership, dependency, test, and artifact edges | no proof of why this owner is the edit boundary |
+| topology -> overlay | source-index or dynamic-overlay receipt | stale durable facts can outrank current code |
+| overlay -> bundle | ranked EvidenceGraph evidence packet | the agent has facts but no decision surface |
+| bundle -> frame | replayable =nextCommand= and =avoid= list | fallback behavior remains model-invented |
+| frame -> action | =WhereFrame= and =HowFrame= receipts | the agent can locate code but not choose a legal edit |
+| action -> gate | scenario and benchmark receipt | the comparison remains qualitative |
+
+* Comparison criterion
+
+The comparison criterion is turns-to-authoritative-selector.
+
+| Criterion | =codebase-memory-mcp= baseline | ASP EvidenceGraph target |
+| turns | graph/search command, optional trace, snippet | Search Frame, selector/topology expansion, exact selector |
+| identity | graph node or snippet span | native parser selector plus owner and artifact identity |
+| next action | tool playbook guidance | replayable =nextCommand= plus =avoid= and frame receipts |
+| freshness | indexed graph plus snippet lookup | durable DB facts plus dynamic overlay reconciliation |
+| proof | MCP result shape | Search Frame, EvidenceGraph, WhereFrame, HowFrame, and gate receipts |
+
+ASP only beats =codebase-memory-mcp= when it reaches exact selector evidence
+without falling back to path-only, display-line-only, or raw-source search
+behavior. Owner candidates and package clusters are useful orientation
+evidence, but they are not a winning result unless the frame also emits exact
+selector candidates or a selector-bound next command.
+
+* Reference benchmark gate
+
+The benchmark counts ASP search/query commands and reference playbook rounds,
+not model messages. Every scenario that compares against =codebase-memory-mcp=
+must store both numbers:
+
+| Field | Meaning |
+| codebaseMemoryMcpQueryRounds | measured reference playbook rounds for the same question |
+| aspSearchQueryRounds | ASP search/query rounds needed to reach authoritative selector evidence |
+| selectorEvidence | parser-owned selector or selector-bound next command |
+| roundDelta | =aspSearchQueryRounds - codebaseMemoryMcpQueryRounds= |
+| evidenceAdvantage | native selector, overlay freshness, recovery, or action-frame advantage when roundDelta is not negative |
+
+Static ASP ceilings still apply:
+
+| Step | Budget | Passing evidence |
+| ambiguous intent -> owner cluster | <= 2 commands | owner candidates with =sourceTrace= and =avoid= |
+| owner cluster -> exact selector | <= 2 commands | parser-owned selector candidates or selector query |
+| exact selector -> edit boundary | <= 1 command | WhereFrame-ready evidence and validation route |
+
+A scenario fails if the preferred next action is raw source access, path-only
+inspection, display-line targeting, or generic =asp rg= / =asp fd= fallback.
+Those commands may exist for diagnostics, but they cannot be the Search Frame
+success path.
+
+The static ceilings are guardrails, not the comparison result. A negative
+roundDelta is the preferred compression win. A zero or positive roundDelta must
+carry an explicit evidenceAdvantage; otherwise the scenario is a search-design
+regression because ASP spent more turns without proving a stronger result.
+
+* Required scenarios
+
+| Scenario | Purpose |
+| search_frame_reaches_source_index_edit_boundary_with_bounded_rounds | proves the source-index warm path reaches selector-ready edit evidence |
+| search_frame_promotes_owner_cluster_to_exact_selector | prevents owner candidates from being the final answer |
+| search_frame_compares_codebase_memory_mcp_round_budget | compares turns-to-authoritative-selector and evidenceAdvantage against the reference playbook |
+| search_frame_no_generic_rg_fd_next_action | prevents broad fallback as the preferred next command |
+
+* Implementation sequence
+
+1. Extend Search Frame receipts so owner-oriented search can emit exact selector
+   candidates or a selector-bound =nextCommand=.
+2. Promote source-index owner-items evidence into the EvidenceGraph packet
+   before rendering the final action surface.
+3. Add the round-budget scenarios above under the search scenario suite.
+4. Treat a path-only or display-line-only answer as an incomplete frame even
+   when the owner cluster is correct.
+5. Use WhereFrame and HowFrame receipts to prove the final edit boundary and
+   legal action, not just the search hit.
+
+* Closure criteria
+
+This RFC is closed when:
+
+- Search Frame can turn the source-index owner-items path into exact selector
+  evidence within the round budget;
+- the preferred next action is never generic =asp rg= / =asp fd= for a passing
+  EvidenceGraph flow;
+- every passing scenario records Search Frame, EvidenceGraph, WhereFrame, and
+  HowFrame receipts or an explicit structured reason for stopping earlier;
+- the comparison with =codebase-memory-mcp= records reference rounds, ASP
+  rounds, roundDelta, and evidenceAdvantage instead of relying on a qualitative
+  RFC claim.

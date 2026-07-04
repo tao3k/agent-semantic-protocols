@@ -2,10 +2,22 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, default_hook_client_config_template,
-    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
-    load_hook_client_config_file,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientResidentAgentConfig,
+    default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
+    load_asp_project_config_file, load_hook_client_config_file,
 };
+
+fn resident_agent<'a>(
+    config: &'a HookClientConfigFile,
+    name: &str,
+) -> &'a HookClientResidentAgentConfig {
+    config
+        .agents
+        .resident_agents
+        .iter()
+        .find(|agent| agent.name == name)
+        .expect("resident agent")
+}
 
 #[test]
 fn default_template_round_trips_through_config_parser() {
@@ -26,17 +38,40 @@ fn default_template_round_trips_through_config_parser() {
     assert!(config.recovery_prompt.codex_agent_flow.is_none());
     assert!(config.recovery_prompt.claude_agent_flow.is_none());
     assert!(config.recovery_prompt.default_agent_flow.is_none());
-    assert!(config.agent_session_guide.register.is_none());
-    assert!(config.agent_session_guide.list.is_none());
-    assert!(config.agent_session_guide.show.is_none());
-    assert!(config.asp_session_policy.enabled);
-    assert_eq!(config.asp_session_policy.resident_child_name, "asp-explore");
-    assert_eq!(
-        config.asp_session_policy.resident_codex_agent_name,
-        "asp_explorer"
+    assert!(
+        config
+            .agent_session_guide
+            .register
+            .as_deref()
+            .is_some_and(|guide| guide.contains("asp agent session register guide"))
     );
+    assert!(
+        config
+            .agent_session_guide
+            .status
+            .as_deref()
+            .is_some_and(|guide| guide.contains("nextAction=start-resident-child-and-register"))
+    );
+    assert!(
+        config
+            .agent_session_messages
+            .missing_resident_explore
+            .as_deref()
+            .is_some_and(|message| message.contains("asp agent session register --guide"))
+    );
+    assert!(
+        config
+            .agent_session_messages
+            .main_restricted_without_child
+            .as_deref()
+            .is_some_and(|message| message.contains("Retry the blocked ASP command"))
+    );
+    let asp_explore = resident_agent(&config, "asp-explore");
+    assert!(asp_explore.enabled);
+    assert_eq!(asp_explore.name, "asp-explore");
+    assert_eq!(asp_explore.codex_agent_name, "asp_explorer");
     assert_eq!(
-        config.asp_session_policy.main_allowed_asp_command_prefixes,
+        asp_explore.main_allowed_asp_command_prefixes,
         [
             "help",
             "--help",
@@ -44,6 +79,21 @@ fn default_template_round_trips_through_config_parser() {
             "agent session",
             "org recall",
             "org capture"
+        ]
+    );
+    let asp_testing = resident_agent(&config, "asp-testing");
+    assert!(asp_testing.enabled);
+    assert_eq!(asp_testing.name, "asp-testing");
+    assert_eq!(asp_testing.codex_agent_name, "asp_testing");
+    assert_eq!(
+        asp_testing.command_prefixes,
+        [
+            "cargo test",
+            "cargo check",
+            "cargo build",
+            "pytest",
+            "uv run pytest",
+            "just test"
         ]
     );
     assert!(config.rules.is_empty());
@@ -74,9 +124,11 @@ list = "list guide"
 show = "show guide"
 reuse = "reuse guide"
 
-[aspSessionPolicy]
-residentChildName = "asp-explore"
-residentCodexAgentName = "asp_explorer"
+[[agents.residentAgents]]
+name = "asp-explore"
+role = "asp_explorer"
+codexAgentName = "asp_explorer"
+lifecycle = "asp-command"
 mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org capture"]
 "#,
     )
@@ -116,21 +168,19 @@ mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org cap
         config.agent_session_guide.reuse.as_deref(),
         Some("reuse guide")
     );
-    assert!(config.asp_session_policy.enabled);
-    assert_eq!(config.asp_session_policy.resident_child_name, "asp-explore");
+    let asp_explore = resident_agent(&config, "asp-explore");
+    assert!(asp_explore.enabled);
+    assert_eq!(asp_explore.name, "asp-explore");
+    assert_eq!(asp_explore.codex_agent_name, "asp_explorer");
     assert_eq!(
-        config.asp_session_policy.resident_codex_agent_name,
-        "asp_explorer"
-    );
-    assert_eq!(
-        config.asp_session_policy.main_allowed_asp_command_prefixes,
+        asp_explore.main_allowed_asp_command_prefixes,
         ["help", "agent session", "org recall", "org capture"]
     );
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn project_config_loads_hook_agent_org_artifacts() {
+fn project_config_rejects_hook_agent_org_artifacts() {
     let root = temp_root("asp-project-config-agent-org-artifacts");
     let config_path = root.join(".agents").join("asp.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
@@ -143,44 +193,15 @@ template = "SKILL.org"
 [hook.agentOrgArtifacts]
 enabled = false
 inactiveAfterMinutes = 45
-artifactsPath = ".cache/agent-semantic-protocol/artifacts/org"
-entrySkillPath = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
-
-[hook.agentOrgArtifacts.archiveWarning]
-enabled = true
-activeOrgFileThreshold = 12
-archivesDir = "archives"
-maxReportedFiles = 3
+artifactsPath = "/tmp/asp-state/projects/by-id/repo-test/workspaces/workspace-test/artifacts/org"
+entrySkillPath = "/tmp/asp-state/org/templates/ASP_ORG_SKILL.org"
 "#,
     )
     .expect("write asp config");
 
-    let config = load_asp_project_config_file(&config_path).expect("load asp config");
-    let agent_org_artifacts = config
-        .hook
-        .agent_org_artifacts
-        .as_ref()
-        .expect("agent org artifacts config");
-
-    assert!(!agent_org_artifacts.enabled);
-    assert_eq!(agent_org_artifacts.inactive_after_minutes, 45);
-    assert_eq!(
-        agent_org_artifacts.artifacts_path,
-        ".cache/agent-semantic-protocol/artifacts/org"
-    );
-    assert_eq!(
-        agent_org_artifacts.entry_skill_path,
-        ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
-    );
-    assert!(agent_org_artifacts.archive_warning.enabled);
-    assert_eq!(
-        agent_org_artifacts
-            .archive_warning
-            .active_org_file_threshold,
-        12
-    );
-    assert_eq!(agent_org_artifacts.archive_warning.archives_dir, "archives");
-    assert_eq!(agent_org_artifacts.archive_warning.max_reported_files, 3);
+    let err = load_asp_project_config_file(&config_path).expect_err("reject asp config");
+    assert!(err.contains("agentOrgArtifacts"), "{err}");
+    assert!(err.contains("unknown field"), "{err}");
     let _ = fs::remove_dir_all(root);
 }
 
@@ -247,7 +268,7 @@ decision = "deny"
 }
 
 #[test]
-fn agent_org_artifacts_config_defaults_partial_block() {
+fn agent_org_artifacts_config_requires_state_core_paths_when_block_present() {
     let root = temp_root("hook-client-agent-org-artifacts-defaults");
     let config_path = root.join("config.toml");
     fs::write(
@@ -259,26 +280,15 @@ protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
 
 [agentOrgArtifacts]
-entrySkillPath = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
+enabled = true
 "#,
     )
     .expect("write config");
 
-    let config = load_hook_client_config_file(&config_path).expect("load config");
-    let agent_org_artifacts = config
-        .agent_org_artifacts
-        .as_ref()
-        .expect("agent org artifacts config");
-
-    assert!(agent_org_artifacts.enabled);
-    assert_eq!(agent_org_artifacts.inactive_after_minutes, 30);
-    assert_eq!(
-        agent_org_artifacts.artifacts_path,
-        ".cache/agent-semantic-protocol/artifacts/org"
-    );
-    assert_eq!(
-        agent_org_artifacts.entry_skill_path,
-        ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
+    let error = load_hook_client_config_file(&config_path).expect_err("missing State Core paths");
+    assert!(
+        error.contains("artifactsPath"),
+        "expected artifactsPath error, got {error}"
     );
     let _ = fs::remove_dir_all(root);
 }

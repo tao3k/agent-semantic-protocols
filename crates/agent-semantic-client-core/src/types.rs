@@ -137,16 +137,12 @@ semantic_string_type!(
     ClientCachePath
 );
 semantic_string_type!(
-    /// Observed SQLite journal mode for the local client DB.
+    /// Observed journal mode for the local client DB.
     ClientDbJournalMode
 );
 semantic_string_type!(
     /// Active DB Engine backend identifier emitted in client receipts.
     ClientDbBackend
-);
-semantic_string_type!(
-    /// Future DB Engine backend identifier recorded for migration receipts.
-    ClientDbFutureBackend
 );
 semantic_string_type!(
     /// State layout version identifier carried by DB Engine receipts.
@@ -298,7 +294,7 @@ impl CacheStatus {
     }
 }
 
-/// SQLite client DB availability state.
+/// Client DB availability state.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ClientDbStatus {

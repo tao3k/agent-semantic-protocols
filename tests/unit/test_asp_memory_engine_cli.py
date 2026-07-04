@@ -22,7 +22,7 @@ WORKER_RANK_PLANS_MAX_MS = 100.0
 def test_cli_checkpoint_put_and_list_filters_by_session(
     tmp_path, capsys, monkeypatch
 ) -> None:
-    state_path = tmp_path / "state.sqlite"
+    state_path = tmp_path / "state.db"
     checkpoint_payload = {
         "sessionId": "session-a",
         "projectId": "repo",

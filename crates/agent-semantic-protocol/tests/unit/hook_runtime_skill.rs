@@ -31,6 +31,7 @@ fn activation_provider(
             ProviderExecution::ExternalProcess
         },
         provider_command_prefix: vec![binary.to_string()],
+        search_capabilities: serde_json::Value::Null,
         coverage: ActivationCoverage {
             package_roots: vec![".".to_string()],
             source_roots: Vec::new(),
@@ -87,7 +88,7 @@ fn renders_org_skill_from_languages_org_contract() {
     assert!(rendered.contains("** Use Boundary"));
     assert!(rendered.contains("** State Workflow"));
     assert!(rendered.contains("asp paths --get orgArtifacts"));
-    assert!(rendered.contains(".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"));
+    assert!(rendered.contains("asp paths --get orgStateSkill"));
     assert!(!rendered.contains("Contract Assertions"));
     assert!(!rendered.contains("asp-skill-has-root-heading"));
     assert!(!rendered.contains("SKILL.contract.org"));
@@ -211,19 +212,20 @@ fn install_plugin_skill_writes_only_codex_plugin_skill() {
     assert_eq!(plugin_skill_path, codex_plugin_cache_skill_path(&root));
 
     let plugin_skill = std::fs::read_to_string(&plugin_skill_path).expect("read plugin skill");
-    let expected_asp_org = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org";
-    let expected_org_artifacts = ".cache/agent-semantic-protocol/artifacts/org";
     assert!(plugin_skill.contains("* ASP Org"));
     assert!(plugin_skill.contains(":SKILL_ID: asp-org"));
-    assert!(plugin_skill.contains(expected_asp_org), "{plugin_skill}");
+    assert!(
+        plugin_skill.contains("asp paths --get orgStateSkill"),
+        "{plugin_skill}"
+    );
+    assert!(
+        plugin_skill.contains("asp paths --get orgArtifacts"),
+        "{plugin_skill}"
+    );
     assert!(!plugin_skill.contains("SKILL.contract.org"));
     assert!(!plugin_skill.contains("Contract Assertions"));
     assert!(!plugin_skill.contains("asp-skill-has-root-heading"));
     assert!(!plugin_skill.contains("#+CONTRACT_ORG:"));
-    assert!(
-        plugin_skill.contains(expected_org_artifacts),
-        "{plugin_skill}"
-    );
     assert!(!plugin_skill.contains(&root.display().to_string()));
     assert!(
         !project_skill_path.exists(),
@@ -251,7 +253,18 @@ fn install_agent_config_preserves_providers_and_adds_skill_config() {
         .expect("create agent config parent");
     std::fs::write(
         &config_path,
-        "[providers.rust]\nbin = \"tools/rs-harness\"\n",
+        "[providers.rust]\n\
+bin = \"tools/rs-harness\"\n\
+\n\
+[skills.agent-semantic-protocols]\n\
+aspOrg = \"/old/ASP_ORG_SKILL.org#asp-org\"\n\
+orgArtifacts = \"/old/artifacts/org\"\n\
+\n\
+[hook.agentOrgArtifacts]\n\
+enabled = true\n\
+inactiveAfterMinutes = 30\n\
+artifactsPath = \"/old/artifacts/org\"\n\
+entrySkillPath = \"/old/ASP_ORG_SKILL.org\"\n",
     )
     .expect("write provider config");
 
@@ -271,31 +284,13 @@ fn install_agent_config_preserves_providers_and_adds_skill_config() {
         ),
         "{config}"
     );
-    assert!(
-        config.contains(
-            "aspOrg = \".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org\""
-        ),
-        "{config}"
-    );
-    assert!(
-        config.contains("orgArtifacts = \".cache/agent-semantic-protocol/artifacts/org\""),
-        "{config}"
-    );
     assert!(!config.contains("template = \"SKILL.org\""), "{config}");
     assert!(!config.contains("projectSkill = "), "{config}");
-    assert!(config.contains("[hook.agentOrgArtifacts]"), "{config}");
-    assert!(config.contains("enabled = true"), "{config}");
-    assert!(config.contains("inactiveAfterMinutes = 30"), "{config}");
-    assert!(
-        config.contains("artifactsPath = \".cache/agent-semantic-protocol/artifacts/org\""),
-        "{config}"
-    );
-    assert!(
-        config.contains(
-            "entrySkillPath = \".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org\""
-        ),
-        "{config}"
-    );
+    assert!(!config.contains("aspOrg"), "{config}");
+    assert!(!config.contains("orgArtifacts"), "{config}");
+    assert!(!config.contains("[hook.agentOrgArtifacts]"), "{config}");
+    assert!(!config.contains("artifactsPath"), "{config}");
+    assert!(!config.contains("entrySkillPath"), "{config}");
     assert!(!config.contains("orgSkill"), "{config}");
 
     let _ = std::fs::remove_dir_all(root);

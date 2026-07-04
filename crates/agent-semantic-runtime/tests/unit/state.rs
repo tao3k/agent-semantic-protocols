@@ -7,9 +7,46 @@ use super::{
     project_runtime_state,
 };
 
+static ASP_STATE_HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct AspStateHomeGuard {
+    _guard: std::sync::MutexGuard<'static, ()>,
+    path: PathBuf,
+}
+
+impl AspStateHomeGuard {
+    fn new(label: &str) -> Self {
+        let guard = ASP_STATE_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let path = temp_root(label);
+        unsafe {
+            std::env::set_var("ASP_STATE_HOME", &path);
+        }
+        Self {
+            _guard: guard,
+            path,
+        }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for AspStateHomeGuard {
+    fn drop(&mut self) {
+        unsafe {
+            std::env::remove_var("ASP_STATE_HOME");
+        }
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
 #[test]
 fn runtime_state_materializes_config_layout_under_git_toplevel() {
     let root = temp_root("runtime-state-git");
+    let state_home = AspStateHomeGuard::new("runtime-state-home");
     let package_root = root.join("crates/example");
     fs::create_dir_all(&package_root).expect("create package root");
     fs::create_dir_all(root.join(".git")).expect("create git marker");
@@ -17,41 +54,44 @@ fn runtime_state_materializes_config_layout_under_git_toplevel() {
     let state = project_runtime_state(&package_root).expect("runtime state");
 
     assert_eq!(state.layout.git_toplevel.as_deref(), Some(root.as_path()));
-    assert_eq!(
-        state.hook_cache_dir,
-        root.join(".cache/agent-semantic-protocol/hooks")
+    assert_eq!(state.protocol_home, state_home.path());
+    assert!(
+        state
+            .hook_cache_dir
+            .starts_with(state_home.path().join("projects/by-id"))
     );
-    assert_eq!(
-        state.hook_state_dir,
-        root.join(".cache/agent-semantic-protocol/hooks/state")
+    assert!(state.hook_cache_dir.ends_with("live/hooks/cache"));
+    assert!(
+        state
+            .hook_state_dir
+            .starts_with(state_home.path().join("projects/by-id"))
     );
+    assert!(state.hook_state_dir.ends_with("live/hooks/state"));
     assert_eq!(
         state.activation_path,
-        root.join(".cache/agent-semantic-protocol/hooks/activation.json")
+        state.hook_state_dir.join("activation.json")
     );
-    assert_eq!(
-        state.client_cache_dir,
-        root.join(".cache/agent-semantic-protocol/client")
+    assert!(
+        state
+            .client_cache_dir
+            .starts_with(state_home.path().join("projects/by-id"))
     );
-    assert_eq!(
-        state.artifacts_dir,
-        root.join(".cache/agent-semantic-protocol/artifacts")
+    assert!(state.client_cache_dir.ends_with("live/client"));
+    assert!(
+        state
+            .artifacts_dir
+            .starts_with(state_home.path().join("projects/by-id"))
     );
-    assert_eq!(
-        state.runtime_home,
-        root.join(".cache/agent-semantic-protocol/runtime")
-    );
+    assert!(state.artifacts_dir.ends_with("artifacts"));
+    assert_eq!(state.runtime_home, state_home.path().join("runtime"));
     assert_eq!(
         state.provider_bin_dir,
-        root.join(".cache/agent-semantic-protocol/runtime/bin")
+        state_home.path().join("runtime/bin")
     );
-    assert_eq!(
-        state.runtime_bin_dir,
-        root.join(".cache/agent-semantic-protocol/runtime/bin")
-    );
+    assert_eq!(state.runtime_bin_dir, state_home.path().join("runtime/bin"));
     assert_eq!(
         state.provider_lock_dir,
-        root.join(".cache/agent-semantic-protocol/runtime/providers")
+        state_home.path().join("runtime/provider-locks")
     );
     assert!(state.hook_cache_dir.is_dir());
     assert!(state.hook_state_dir.is_dir());
@@ -60,12 +100,14 @@ fn runtime_state_materializes_config_layout_under_git_toplevel() {
     assert!(state.runtime_home.is_dir());
     assert!(state.provider_bin_dir.is_dir());
     assert!(state.provider_lock_dir.is_dir());
+    assert!(!root.join(".cache").exists());
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
 fn ensure_helpers_create_only_the_requested_runtime_dir() {
     let root = temp_root("runtime-state-single-dir");
+    let state_home = AspStateHomeGuard::new("runtime-state-single-dir-home");
     let package_root = root.join("crates/example");
     fs::create_dir_all(&package_root).expect("create package root");
     fs::create_dir_all(root.join(".git")).expect("create git marker");
@@ -73,12 +115,15 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
     let hook_dir = ensure_project_hook_cache_dir(&package_root).expect("hook cache dir");
 
     assert!(hook_dir.is_dir());
+    assert!(hook_dir.starts_with(state_home.path().join("projects/by-id")));
+    assert!(hook_dir.ends_with("live/hooks/cache"));
     assert!(
-        !root
-            .join(".cache/agent-semantic-protocol/hooks/state")
+        !hook_dir
+            .parent()
+            .expect("hook parent")
+            .join("state")
             .exists()
     );
-    assert!(!root.join(".cache/agent-semantic-protocol/client").exists());
 
     let hook_state_dir = ensure_project_hook_state_dir(&package_root).expect("hook state dir");
     let client_dir = ensure_project_client_cache_dir(&package_root).expect("client cache dir");
@@ -89,10 +134,17 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
         ensure_project_provider_lock_dir(&package_root).expect("provider lock dir");
 
     assert!(hook_state_dir.is_dir());
+    assert_eq!(
+        hook_state_dir,
+        hook_dir.parent().expect("hook parent").join("state")
+    );
     assert!(client_dir.is_dir());
+    assert!(client_dir.starts_with(state_home.path().join("projects/by-id")));
+    assert!(client_dir.ends_with("live/client"));
     assert!(runtime_home.is_dir());
     assert!(provider_bin_dir.is_dir());
     assert!(provider_lock_dir.is_dir());
+    assert!(!root.join(".cache").exists());
     let _ = fs::remove_dir_all(root);
 }
 

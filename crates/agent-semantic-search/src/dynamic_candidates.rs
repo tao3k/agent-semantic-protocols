@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 use agent_semantic_provider_transport::byte_text;
 use ignore::{DirEntry, WalkBuilder};
 
-use crate::{LexicalOverlayDocument, search_lexical_overlay_candidates};
+use crate::{
+    LexicalOverlayDocument, dynamic_overlay::SEARCH_OVERLAY_ROUTE_SOURCE,
+    search_lexical_overlay_candidates,
+};
 
 /// Candidate projected from a high-churn dynamic search overlay.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -236,7 +239,7 @@ pub fn collect_dynamic_lexical_overlay_candidates(
             end_line: 1,
             symbol: hit.symbol().to_string(),
             text: hit.text().to_string(),
-            source: "overlay".to_string(),
+            source: SEARCH_OVERLAY_ROUTE_SOURCE.to_string(),
             confidence: "lexical-overlay".to_string(),
         };
         push_candidate(candidate, &mut seen, &mut candidates);
@@ -422,7 +425,7 @@ fn append_overlay_path_candidates(
                 end_line: 1,
                 symbol: term.clone(),
                 text: display.clone(),
-                source: "overlay-path".to_string(),
+                source: SEARCH_OVERLAY_ROUTE_SOURCE.to_string(),
                 confidence: "path-lexical-overlay".to_string(),
             };
             if push_candidate(candidate, seen, candidates) {
@@ -452,8 +455,8 @@ fn push_candidate(
     candidates: &mut Vec<DynamicSearchCandidate>,
 ) -> bool {
     let key = format!(
-        "{}:{}:{}:{}",
-        candidate.path, candidate.line, candidate.symbol, candidate.source
+        "{}:{}:{}:{}:{}",
+        candidate.path, candidate.line, candidate.symbol, candidate.source, candidate.confidence
     );
     if !seen.insert(key) {
         return false;

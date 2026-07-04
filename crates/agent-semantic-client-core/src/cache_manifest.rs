@@ -19,7 +19,7 @@ pub const AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID: &str =
 pub const AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION: &str = "1";
 /// Protocol version for client cache manifests.
 pub const AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION: &str = "1";
-/// File name for the JSON cache manifest beside the SQLite client DB.
+/// File name for the JSON cache manifest beside the Turso client DB.
 pub const AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE: &str = "cache-manifest.json";
 
 /// Filesystem and schema status for a cache manifest inspection.
@@ -280,7 +280,7 @@ pub struct ClientCacheFileHash {
 /// Return the agent semantic client cache directory for an activated project.
 ///
 /// `agent-semantic-config` owns project identity and state storage layout so
-/// client, hook, and provider receipts resolve the same manifest and SQLite DB.
+/// client, hook, and provider receipts resolve the same manifest and Turso DB.
 pub fn project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     let resolved = crate::state_core::ResolvedState::resolve(project_root.as_ref())?;
     resolved.ensure_minimal_layout()?;

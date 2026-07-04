@@ -1,5 +1,6 @@
 //! Optional client-side hook rules loaded on each hook invocation.
 
+mod agent_org_config;
 mod asp_session_policy;
 mod core;
 

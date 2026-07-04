@@ -1,9 +1,162 @@
 //! Rendering helpers for the agent session registry CLI.
 
+use super::agent_session_registry_rollout_activity::RolloutActivityReport;
 use serde::Serialize;
 use std::path::Path;
 
 use agent_semantic_client_db::AgentSessionRecord;
+use agent_semantic_runtime::{AgentSessionValidationReport, CodexRolloutSessionIndex};
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SessionStatusReport {
+    pub(super) owner: &'static str,
+    #[serde(rename = "dbPath")]
+    pub(super) db_path: String,
+    #[serde(rename = "rootSessionId", skip_serializing_if = "Option::is_none")]
+    pub(super) root_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) name: Option<String>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_status_session_record"
+    )]
+    pub(super) session: Option<AgentSessionRecord>,
+    #[serde(rename = "registryStatus")]
+    pub(super) registry_status: String,
+    pub(super) routable: bool,
+    #[serde(rename = "validationStatus")]
+    pub(super) validation_status: String,
+    #[serde(rename = "validationReason")]
+    pub(super) validation_reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) validation: Option<AgentSessionValidationReport>,
+    #[serde(
+        rename = "rolloutSessionIndex",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) rollout_session_index: Option<CodexRolloutSessionIndex>,
+    #[serde(rename = "rolloutActivity", skip_serializing_if = "Option::is_none")]
+    pub(super) rollout_activity: Option<RolloutActivityReport>,
+    #[serde(
+        rename = "sessionLifecycleIndex",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) session_lifecycle_index: Option<SessionLifecycleIndex>,
+    #[serde(
+        rename = "activitySnapshotShort",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) activity_snapshot_short: Option<ActivitySnapshotShort>,
+    #[serde(rename = "hostClient", skip_serializing_if = "Option::is_none")]
+    pub(super) host_client: Option<String>,
+    #[serde(rename = "hostThreadId", skip_serializing_if = "Option::is_none")]
+    pub(super) host_thread_id: Option<String>,
+    #[serde(rename = "hostStatusSource")]
+    pub(super) host_status_source: String,
+    #[serde(rename = "hostStatus")]
+    pub(super) host_status: String,
+    #[serde(rename = "hostStatusReason")]
+    pub(super) host_status_reason: String,
+    #[serde(rename = "hostThreadExistence")]
+    pub(super) host_thread_existence: String,
+    #[serde(rename = "hostThreadExistenceReason")]
+    pub(super) host_thread_existence_reason: String,
+    #[serde(rename = "multiAgentChildState")]
+    pub(super) multi_agent_child_state: String,
+    #[serde(rename = "hostRawStatus", skip_serializing_if = "Option::is_none")]
+    pub(super) host_raw_status: Option<String>,
+    #[serde(rename = "healthStatus")]
+    pub(super) health_status: String,
+    #[serde(rename = "timeoutSemantics")]
+    pub(super) timeout_semantics: &'static str,
+    #[serde(rename = "duplicateWorkerAllowed")]
+    pub(super) duplicate_worker_allowed: bool,
+    #[serde(rename = "artifactsDir")]
+    pub(super) artifacts_dir: String,
+    #[serde(rename = "artifactStatus")]
+    pub(super) artifact_status: String,
+    #[serde(rename = "artifactStaleAfterSeconds")]
+    pub(super) artifact_stale_after_seconds: i64,
+    #[serde(
+        rename = "lastArtifactUpdatedAt",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) last_artifact_updated_at: Option<i64>,
+    #[serde(rename = "artifactAgeSeconds", skip_serializing_if = "Option::is_none")]
+    pub(super) artifact_age_seconds: Option<i64>,
+    #[serde(rename = "lastArtifactPath", skip_serializing_if = "Option::is_none")]
+    pub(super) last_artifact_path: Option<String>,
+    #[serde(rename = "nextAction")]
+    pub(super) next_action: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ActivitySnapshotShort {
+    pub(super) source: &'static str,
+    #[serde(rename = "rootSessionId", skip_serializing_if = "Option::is_none")]
+    pub(super) root_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) selected_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) selected_role: Option<String>,
+    pub(super) registry_status: String,
+    pub(super) host_status: String,
+    pub(super) health_status: String,
+    pub(super) next_action: String,
+    #[serde(
+        rename = "rolloutActivityStatus",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) rollout_activity_status: Option<String>,
+    #[serde(
+        rename = "rolloutLastHeartbeatKind",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) rollout_last_heartbeat_kind: Option<String>,
+    #[serde(
+        rename = "rolloutLastTerminalEvent",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) rollout_last_terminal_event: Option<String>,
+    #[serde(
+        rename = "rolloutRunningSessionClosed",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) rollout_running_session_closed: Option<bool>,
+    #[serde(
+        rename = "secondsSinceHeartbeat",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) seconds_since_heartbeat: Option<i64>,
+    #[serde(rename = "rolloutIndexError", skip_serializing_if = "Option::is_none")]
+    pub(super) rollout_index_error: Option<String>,
+    pub(super) missing_rollout_by_session: std::collections::BTreeMap<String, String>,
+    pub(super) rollout_status_by_session: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SessionLifecycleIndex {
+    #[serde(rename = "rootSessionId", skip_serializing_if = "Option::is_none")]
+    pub(super) root_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) selected_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) selected_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) selected_role: Option<String>,
+    pub(super) registry_status: String,
+    pub(super) routable: bool,
+    pub(super) rollout_session_count: usize,
+    pub(super) rollout_activity_count: usize,
+    pub(super) missing_rollout_count: usize,
+    #[serde(rename = "rolloutIndexError", skip_serializing_if = "Option::is_none")]
+    pub(super) rollout_index_error: Option<String>,
+    pub(super) missing_rollout_by_session: std::collections::BTreeMap<String, String>,
+    pub(super) rollout_status_by_session: std::collections::BTreeMap<String, String>,
+}
 
 #[derive(Serialize)]
 struct SessionReport<'a> {
@@ -12,6 +165,7 @@ struct SessionReport<'a> {
     db_path: &'a str,
     #[serde(rename = "rootSessionId", skip_serializing_if = "Option::is_none")]
     root_session_id: Option<&'a str>,
+    #[serde(serialize_with = "serialize_session_records")]
     sessions: Vec<AgentSessionRecord>,
 }
 
@@ -76,6 +230,106 @@ pub(super) fn print_json_report(
         serde_json::to_string_pretty(&report)
             .map_err(|error| format!("failed to render session json: {error}"))?
     );
+    Ok(())
+}
+
+fn serialize_status_session_record<S>(
+    session: &Option<AgentSessionRecord>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let Some(session) = session else {
+        return serializer.serialize_none();
+    };
+    let value = session_record_json_without_metadata(session).map_err(serde::ser::Error::custom)?;
+    serde::Serialize::serialize(&value, serializer)
+}
+
+fn serialize_session_records<S>(
+    sessions: &[AgentSessionRecord],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let values = sessions
+        .iter()
+        .map(session_record_json_with_validation_projection)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(serde::ser::Error::custom)?;
+    serde::Serialize::serialize(&values, serializer)
+}
+
+fn session_record_json_without_metadata(
+    session: &AgentSessionRecord,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let mut value = serde_json::to_value(session)?;
+    if let Some(object) = value.as_object_mut() {
+        object.remove("metadataJson");
+    }
+    Ok(value)
+}
+
+fn session_record_json_with_validation_projection(
+    session: &AgentSessionRecord,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let mut value = session_record_json_without_metadata(session)?;
+    if let Some(object) = value.as_object_mut() {
+        if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(&session.metadata_json) {
+            if let Some(validation) = metadata.get("validation") {
+                object.insert("validation".to_string(), validation.clone());
+            }
+        }
+    }
+    Ok(value)
+}
+
+pub(super) fn print_status_report(report: SessionStatusReport, json: bool) -> Result<(), String> {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .map_err(|error| format!("failed to render session status json: {error}"))?
+        );
+        return Ok(());
+    }
+    println!(
+        "[agent-session-status] owner=rust rootSession={} name={} registryStatus=\"{}\" routable={} validationStatus=\"{}\" validationReason=\"{}\" hostClient={} hostStatus=\"{}\" hostThreadExistence=\"{}\" multiAgentChildState=\"{}\" healthStatus=\"{}\" artifactStatus=\"{}\" artifactAgeSeconds={} nextAction=\"{}\" duplicateWorkerAllowed={} db=\"{}\" artifactsDir=\"{}\"",
+        report
+            .root_session_id
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"\"".to_string()),
+        report
+            .name
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"\"".to_string()),
+        escape_field(&report.registry_status),
+        report.routable,
+        escape_field(&report.validation_status),
+        escape_field(&report.validation_reason),
+        report
+            .host_client
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"\"".to_string()),
+        escape_field(&report.host_status),
+        escape_field(&report.host_thread_existence),
+        escape_field(&report.multi_agent_child_state),
+        escape_field(&report.health_status),
+        escape_field(&report.artifact_status),
+        optional_i64_field(report.artifact_age_seconds),
+        escape_field(&report.next_action),
+        report.duplicate_worker_allowed,
+        report.db_path,
+        report.artifacts_dir
+    );
+    if let Some(session) = report.session.as_ref() {
+        print_session_row(session);
+    }
     Ok(())
 }
 

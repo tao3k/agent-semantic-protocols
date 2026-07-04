@@ -1,4 +1,6 @@
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{
+    artifacts_root, asp_command, org_artifact_target, state_home, temp_project_root,
+};
 
 #[test]
 fn asp_org_exposes_ast_query_facts_and_capture_plan() {
@@ -156,6 +158,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "asp org capture must not create TASKS.org"
     );
 
+    let plan_target = org_artifact_target(&root, "flow/plans/agent-plan-session-test.org");
     let capture_plan = asp_command(&root)
         .args([
             "org",
@@ -165,7 +168,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
             "--title",
             "Record ASP org plan",
             "--target-file",
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-session-test.org",
+            plan_target.as_str(),
             "--choice",
             "specification=5",
         ])
@@ -254,29 +257,21 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "{capture_plan_stdout}"
     );
     assert!(
-        !root
-            .join(".cache")
-            .join("agent-semantic-protocol")
-            .join("artifacts")
-            .join("org")
-            .join("flow")
-            .join("plans")
-            .join("agent-plan-session-test.org")
-            .exists(),
+        !std::path::Path::new(&plan_target).exists(),
         "asp org capture must not create plan file"
     );
 
     for (target_file, message) in [
         (
-            ".cache/agent-semantic-protocol/artifacts/org/current-agent-task.org",
+            org_artifact_target(&root, "current-agent-task.org"),
             "agent.plan.v1 --target-file filename must match `agent-plan-*.org`",
         ),
         (
-            ".cache/agent-semantic-protocol/artifacts/org/agent-plan-session-test.org",
+            org_artifact_target(&root, "agent-plan-session-test.org"),
             "agent.plan.v1 --target-file must be stored under an `org/flow/plans/` path",
         ),
         (
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/archive/agent-plan-session-test.org",
+            org_artifact_target(&root, "flow/plans/archive/agent-plan-session-test.org"),
             "agent.plan.v1 --target-file must be stored under an `org/flow/plans/` path",
         ),
     ] {
@@ -289,7 +284,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
                 "--title",
                 "Invalid ASP org plan target",
                 "--target-file",
-                target_file,
+                target_file.as_str(),
             ])
             .output()
             .expect("run invalid asp org capture plan");
@@ -302,6 +297,8 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         assert!(stderr.contains(message), "{stderr}");
     }
 
+    let missing_title_target =
+        org_artifact_target(&root, "flow/plans/agent-plan-missing-title.org");
     let missing_title_plan = asp_command(&root)
         .args([
             "org",
@@ -309,7 +306,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
             "--contract",
             "agent.plan.v1",
             "--target-file",
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-missing-title.org",
+            missing_title_target.as_str(),
         ])
         .output()
         .expect("run missing title asp org capture plan");
@@ -324,6 +321,8 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "{missing_title_stderr}"
     );
 
+    let placeholder_title_target =
+        org_artifact_target(&root, "flow/plans/agent-plan-placeholder-title.org");
     let placeholder_title_plan = asp_command(&root)
         .args([
             "org",
@@ -333,7 +332,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
             "--title",
             "Agent session plan",
             "--target-file",
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-placeholder-title.org",
+            placeholder_title_target.as_str(),
         ])
         .output()
         .expect("run placeholder title asp org capture plan");
@@ -446,6 +445,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
 #[test]
 fn asp_org_capture_auto_initializes_state_resources_and_flow_dirs() {
     let root = temp_project_root("org-document-command-capture-auto-init");
+    let target = org_artifact_target(&root, "flow/plans/agent-plan-auto-init.org");
 
     let output = asp_command(&root)
         .args([
@@ -456,7 +456,7 @@ fn asp_org_capture_auto_initializes_state_resources_and_flow_dirs() {
             "--title",
             "Auto initialize ASP org resources",
             "--target-file",
-            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-auto-init.org",
+            target.as_str(),
             "--choice",
             "specification=TASK",
             "--no-confirm",
@@ -473,10 +473,7 @@ fn asp_org_capture_auto_initializes_state_resources_and_flow_dirs() {
     assert!(stdout.contains("- contract: agent.plan.v1"), "{stdout}");
     assert!(stdout.contains("- status: passed"), "{stdout}");
 
-    let state_root = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("org");
+    let state_root = state_home(&root).join("org");
     assert!(
         state_root
             .join("templates")
@@ -505,11 +502,7 @@ fn asp_org_capture_auto_initializes_state_resources_and_flow_dirs() {
             .is_file(),
         "plan contract should be materialized"
     );
-    let org_artifacts = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org");
+    let org_artifacts = artifacts_root(&root).join("org");
     assert!(org_artifacts.join("flow").join("plans").is_dir());
     assert!(org_artifacts.join("flow").join("sdd").is_dir());
     assert!(org_artifacts.join("flow").join("bdd").is_dir());

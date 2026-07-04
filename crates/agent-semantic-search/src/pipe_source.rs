@@ -42,12 +42,12 @@ const SOURCE_INDEX_GATE_GENERIC_TERMS: &[&str] = &[
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SearchPipeFinderAcquisition {
+pub struct SearchPipeSearchOverlayAcquisition {
     pub candidates: Vec<SearchPipeCandidate>,
     pub elapsed: Duration,
 }
 
-pub struct SearchPipeFinderAcquisitionRequest<'a> {
+pub struct SearchPipeSearchOverlayAcquisitionRequest<'a> {
     pub language_id: &'a str,
     pub project_root: &'a Path,
     pub locator_root: &'a Path,
@@ -58,9 +58,9 @@ pub struct SearchPipeFinderAcquisitionRequest<'a> {
     pub limit: usize,
 }
 
-pub fn collect_search_pipe_finder_acquisition(
-    request: SearchPipeFinderAcquisitionRequest<'_>,
-) -> Result<SearchPipeFinderAcquisition, String> {
+pub fn collect_search_pipe_search_overlay_acquisition(
+    request: SearchPipeSearchOverlayAcquisitionRequest<'_>,
+) -> Result<SearchPipeSearchOverlayAcquisition, String> {
     let started_at = Instant::now();
     let candidates = collect_search_pipe_candidates(SearchPipeCandidateRequest {
         language_id: request.language_id,
@@ -72,7 +72,7 @@ pub fn collect_search_pipe_finder_acquisition(
         include_hidden_dirs: request.include_hidden_dirs,
         limit: request.limit,
     })?;
-    Ok(SearchPipeFinderAcquisition {
+    Ok(SearchPipeSearchOverlayAcquisition {
         candidates,
         elapsed: started_at.elapsed(),
     })
@@ -90,9 +90,9 @@ pub struct SearchPipeFailureAcquisitionRequest<'a> {
 
 pub fn collect_search_pipe_failure_acquisition(
     request: SearchPipeFailureAcquisitionRequest<'_>,
-) -> Result<SearchPipeFinderAcquisition, String> {
+) -> Result<SearchPipeSearchOverlayAcquisition, String> {
     let query = failure_candidate_query(request.message);
-    collect_search_pipe_finder_acquisition(SearchPipeFinderAcquisitionRequest {
+    collect_search_pipe_search_overlay_acquisition(SearchPipeSearchOverlayAcquisitionRequest {
         language_id: request.language_id,
         project_root: request.project_root,
         locator_root: request.locator_root,
@@ -171,7 +171,7 @@ fn failure_token_character(character: char) -> bool {
 pub enum SearchPipeSourceMode {
     Auto,
     Provider,
-    Finder,
+    SearchOverlay,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -200,7 +200,7 @@ pub struct SearchPipeDocumentAcquisitionRequest<'a> {
     pub mode: SearchPipeSourceMode,
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
-    pub finder_limit: usize,
+    pub search_overlay_limit: usize,
 }
 
 pub fn collect_search_pipe_document_acquisition(
@@ -209,8 +209,8 @@ pub fn collect_search_pipe_document_acquisition(
     match request.mode {
         SearchPipeSourceMode::Auto => document_auto_acquisition(request),
         SearchPipeSourceMode::Provider => document_element_acquisition(request),
-        SearchPipeSourceMode::Finder => {
-            finder_source_acquisition(SearchPipeFinderAcquisitionRequest {
+        SearchPipeSourceMode::SearchOverlay => {
+            search_overlay_source_acquisition(SearchPipeSearchOverlayAcquisitionRequest {
                 language_id: request.language.id(),
                 project_root: request.project_root,
                 locator_root: request.locator_root,
@@ -218,7 +218,7 @@ pub fn collect_search_pipe_document_acquisition(
                 owners: request.scopes,
                 ignore_dirs: request.ignore_dirs,
                 include_hidden_dirs: request.include_hidden_dirs,
-                limit: request.finder_limit,
+                limit: request.search_overlay_limit,
             })
         }
     }
@@ -227,15 +227,7 @@ pub fn collect_search_pipe_document_acquisition(
 fn document_auto_acquisition(
     request: SearchPipeDocumentAcquisitionRequest<'_>,
 ) -> Result<SearchPipeSourceAcquisition, String> {
-    let document_acquisition =
-        document_element_acquisition(SearchPipeDocumentAcquisitionRequest {
-            mode: SearchPipeSourceMode::Provider,
-            ..request
-        })?;
-    if !document_acquisition.candidates.is_empty() {
-        return Ok(document_acquisition);
-    }
-    let finder_acquisition = finder_source_acquisition(SearchPipeFinderAcquisitionRequest {
+    search_overlay_source_acquisition(SearchPipeSearchOverlayAcquisitionRequest {
         language_id: request.language.id(),
         project_root: request.project_root,
         locator_root: request.locator_root,
@@ -243,14 +235,7 @@ fn document_auto_acquisition(
         owners: request.scopes,
         ignore_dirs: request.ignore_dirs,
         include_hidden_dirs: request.include_hidden_dirs,
-        limit: request.finder_limit,
-    })?;
-    let mut source_trace = document_acquisition.source_trace;
-    source_trace.extend(finder_acquisition.source_trace);
-    Ok(SearchPipeSourceAcquisition {
-        candidates: finder_acquisition.candidates,
-        candidate_sources: vec!["document-element".to_string(), "finder".to_string()],
-        source_trace,
+        limit: request.search_overlay_limit,
     })
 }
 
@@ -289,29 +274,25 @@ fn document_element_acquisition(
     })
 }
 
-fn finder_source_acquisition(
-    request: SearchPipeFinderAcquisitionRequest<'_>,
+fn search_overlay_source_acquisition(
+    request: SearchPipeSearchOverlayAcquisitionRequest<'_>,
 ) -> Result<SearchPipeSourceAcquisition, String> {
-    let acquisition = collect_search_pipe_finder_acquisition(SearchPipeFinderAcquisitionRequest {
-        language_id: request.language_id,
-        project_root: request.project_root,
-        locator_root: request.locator_root,
-        query: request.query,
-        owners: request.owners,
-        ignore_dirs: request.ignore_dirs,
-        include_hidden_dirs: request.include_hidden_dirs,
-        limit: request.limit,
-    })?;
+    let acquisition = collect_search_pipe_search_overlay_acquisition(request)?;
     let candidates = acquisition.candidates;
+    let source = search_pipe_candidate_route_source(&candidates);
     Ok(SearchPipeSourceAcquisition {
         source_trace: vec![candidate_trace(
-            "finder",
+            source,
             &candidates,
             Some(acquisition.elapsed),
         )],
-        candidate_sources: vec!["finder".to_string()],
+        candidate_sources: vec![source.to_string()],
         candidates,
     })
+}
+
+fn search_pipe_candidate_route_source(_candidates: &[SearchPipeCandidate]) -> &'static str {
+    "search-overlay"
 }
 
 fn document_candidate(candidate: DocumentSearchCandidate) -> SearchPipeCandidate {
@@ -371,7 +352,7 @@ pub struct SearchPipeSourceIndexGate {
 pub enum SearchPipeSourceIndexDecision {
     QueryGate,
     DeferBackend,
-    UseAndSkipFinder,
+    UseAndSkipSearchOverlay,
     Fallthrough,
 }
 
@@ -414,7 +395,7 @@ pub fn collect_search_pipe_source_index_acquisition(
     } else if candidates.is_empty() {
         SearchPipeSourceIndexDecision::Fallthrough
     } else {
-        SearchPipeSourceIndexDecision::UseAndSkipFinder
+        SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay
     };
     Some(SearchPipeSourceIndexAcquisition {
         decision,

@@ -1,5 +1,6 @@
 use super::{checkpoint, memory, render, scan};
 use crate::command::{agent_session, agent_session_registry};
+use agent_semantic_runtime::project_state_paths;
 use std::{
     env,
     path::{Path, PathBuf},
@@ -123,7 +124,7 @@ fn recall_plans(args: OrgRecallArgs) -> Result<(), String> {
     let artifacts_root = match args.artifacts_root {
         Some(path) if path.is_absolute() => path,
         Some(path) => project_root.join(path),
-        None => org_artifacts_root_for_project(&project_root),
+        None => org_artifacts_root_for_project(&project_root)?,
     };
     let project = args
         .project
@@ -205,11 +206,13 @@ fn resolve_current_recall_session(
     project_root: &Path,
     session: &agent_session::AgentSession,
 ) -> Result<String, String> {
-    if session.root_id.is_some() {
-        return Ok(session.recall_session_id().to_string());
+    if let Ok(root_session_id) = std::env::var("ASP_ROOT_SESSION_ID")
+        && !root_session_id.trim().is_empty()
+    {
+        return Ok(root_session_id);
     }
     agent_session_registry::registered_root_session_id(project_root, &session.id)
-        .map(|root_id| root_id.unwrap_or_else(|| session.id.clone()))
+        .map(|root_id| root_id.unwrap_or_else(|| session.recall_session_id().to_string()))
 }
 
 fn session_scoped_candidates(
@@ -232,13 +235,8 @@ fn session_scoped_candidates(
         .collect()
 }
 
-fn org_artifacts_root_for_project(project_root: &Path) -> PathBuf {
-    env::var_os("PRJ_CACHE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| project_root.join(".cache"))
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org")
+fn org_artifacts_root_for_project(project_root: &Path) -> Result<PathBuf, String> {
+    Ok(project_state_paths(project_root)?.artifacts_dir.join("org"))
 }
 
 fn default_org_query_bin() -> String {

@@ -34,7 +34,7 @@ The user-visible rule is:
 
 #+begin_example
 Codex / agent sees: asp <language> search, asp <language> query, asp <language> check, asp doctor
-Routing mode: local CLI, local SQLite client DB, Cloud Flight, or hybrid, selected by config
+Routing mode: local CLI, local Turso client DB, Cloud Flight, or hybrid, selected by config
 Fact authority: native language providers under languages/ or provider repos
 Prompt output: compact text by default
 Machine output: compact JSON artifacts and local SQL rows outside the prompt; Arrow/Flight is a server/cloud capability
@@ -157,7 +157,7 @@ asp CLI command surface
   v
 agent-semantic-client core
   |-- provider registry
-  |-- local SQLite client DB
+  |-- local Turso client DB
   |-- compact graph renderer adapter (agent-semantic-protocol)
   |-- artifact and receipt store
   `-- execution router
@@ -225,7 +225,7 @@ crates/
   agent-semantic-protocol/        shared command facade, schema/receipt validation, graph renderer
   agent-semantic-hook/            platform hook runtime and classifier
   agent-semantic-client-core/         request model, provider registry, execution router
-  agent-semantic-client-db/           SQLite client DB, cache generations, provenance, invalidation
+  agent-semantic-client-db/           Turso client DB, cache generations, provenance, invalidation
   agent-semantic-client-local-cli/    native provider CLI execution
   agent-semantic-client-flight/       Arrow Flight client and upload receipts
 
@@ -294,7 +294,7 @@ provider/guide
 provider/registry
 #+end_example
 
-Execution backends may return structured packets, SQLite cache references,
+Execution backends may return structured packets, DB Engine cache references,
 Cloud Arrow batches, or compact text plus receipt metadata.  Every response
 must carry native-provider provenance.  The client core normalizes the response
 into:
@@ -522,7 +522,7 @@ asp typescript search prime "ParserService cacheDir"
   -> on exact cache hit: render compact graph output through shared renderer
   -> on cache miss: call provider CLI
   -> validate provider packet
-  -> update SQLite client DB rows and artifacts
+  -> update Turso client DB rows and artifacts
   -> render compact graph output through shared renderer
 #+end_example
 
@@ -619,12 +619,12 @@ Flow:
 
 #+begin_example
 asp typescript search
-  -> local SQLite client DB hit?
+  -> local Turso client DB hit?
        yes: render local compact output
        no:
          -> cloud enabled and allowed?
-              yes: CloudFlight query, write local SQLite cache, render compact output
-              no: LocalNativeCliBackend, write local SQLite cache, render compact output
+              yes: CloudFlight query, write local DB Engine cache, render compact output
+              no: LocalNativeCliBackend, write local DB Engine cache, render compact output
 #+end_example
 
 This is availability routing.  It must be recorded as cache/cloud/local-native
@@ -645,7 +645,7 @@ and otherwise =<git-toplevel>/.cache=:
     activation.json
   client/
     cache-manifest.json
-    client.sqlite3
+    client.turso
   artifacts/
     search/<id>.json
     query/<id>.json
@@ -661,7 +661,7 @@ and otherwise =<git-toplevel>/.cache=:
 =git rev-parse --show-toplevel= is the first project identity fact.  In a
 monorepo or workspace, package roots and subdirectories do not own independent
 ASP =.cache= trees; their package/project roots are recorded as metadata in
-manifest rows, SQLite rows, and artifacts under the same state cache home.
+manifest rows, DB Engine rows, and artifacts under the same state cache home.
 =PRJ_CACHE_HOME= is an explicit state-storage override, not a second project
 identity.
 
@@ -675,7 +675,7 @@ formatter/parser helper binaries under the same project-local ASP runtime
 environment as activation, cache, and artifacts.
 
 Cache rows must be derived from provider-owned packets or provider-owned index
-exports.  The client DB uses SQLite by default so the local client can do
+exports.  The client DB uses Turso by default so the local client can do
 indexed SQL lookups without Arrow, Flight, DataFusion, or a server runtime.
 The client may denormalize SQL rows for speed, but each row should retain
 enough provenance to answer:
@@ -695,7 +695,7 @@ platform explicitly allows them.
 
 The local cache model is language-neutral.  Native providers export parser-owned
 facts and packet artifacts; =agent-semantic-client= validates those artifacts,
-normalizes them into SQLite rows, and serves repeated agent requests from the
+normalizes them into DB Engine rows, and serves repeated agent requests from the
 Rust client DB when the cache generation is fresh.
 
 The global execution shape is:
@@ -710,7 +710,7 @@ asp <language> search/query/check
   -> on cache miss or stale generation:
        call registry-advertised native provider export or packet command
        validate provider-owned facts against shared/provider schemas
-       write normalized SQLite rows and receipt artifacts
+       write normalized DB Engine rows and receipt artifacts
        render compact output from validated rows
 #+end_example
 
@@ -718,27 +718,27 @@ The explicit cache maintenance commands are:
 
 #+begin_example
 asp cache status
-  -> inspect cache-manifest.json and client.sqlite3
+  -> inspect cache-manifest.json and client.turso
   -> do not spawn native providers
   -> print status=missing|unimported|available|invalid|unavailable
-  -> report SQLite runtime profile when client.sqlite3 is present
+  -> report Turso runtime profile when client.turso is present
   -> emit method=cache-status receipt
 
 asp cache import
   -> validate provider-owned cache-manifest.json
-  -> write normalized generation rows into client.sqlite3
+  -> write normalized generation rows into client.turso
   -> preserve unrelated normalized row families when a manifest generation is refreshed
   -> do not spawn native providers or synthesize provider facts
   -> emit method=cache-import receipt
 
 asp cache invalidate
-  -> clear normalized generation rows from client.sqlite3
+  -> clear normalized generation rows from client.turso
   -> do not delete provider-owned cache-manifest.json or artifacts
   -> do not spawn native providers or synthesize provider facts
   -> emit method=cache-invalidate receipt with cacheStatus=invalidated
 #+end_example
 
-SQLite cache keys use normalized project roots so a workspace reached through
+DB Engine cache keys use normalized project roots so a workspace reached through
 equivalent paths, for example =/var= and =/private/var= on macOS, does not split
 the same provider generation.  During the first client DB phase, =asp
 search/query/check= probes these generation rows before invoking the native
@@ -782,7 +782,7 @@ is the fastest replay path and may be paired with
 satisfy the exact request, the generation remains =warm-provider= and the
 native provider still supplies the output.
 
-The local SQLite client DB is a concurrent cache boundary, not a single-process
+The local Turso client DB is a concurrent cache boundary, not a single-process
 scratch file.  Writable cache connections must enable =journal_mode=WAL=, set a
 non-zero =busy_timeout=, keep =foreign_keys= enabled, and use a stable
 =synchronous= profile appropriate for local cache durability.  =asp cache
@@ -846,7 +846,7 @@ The index must not store raw source, source windows, snippets, or provider
 stdout.  =rawSourceStored= is always =false=.  Exact code remains a last-mile
 =query --code= operation after an index row has selected a parser-owned locator.
 
-The SQLite implementation hangs structural rows off =cache_generations= via
+The Turso implementation hangs structural rows off =cache_generations= via
 =generation_id= so existing invalidation deletes stale index rows without a
 parallel cleanup path.  Warm =search= may use structural rows before spawning a
 provider only when all required file or lock hashes still match.  Receipts for
@@ -875,7 +875,7 @@ asp-managed Julia cache query
        call asp-julia-harness
        request provider-owned index export
        validate export against shared schema
-       write SQLite cache generation
+       write DB Engine cache generation
        render compact output from the validated rows
 #+end_example
 
@@ -905,7 +905,7 @@ The calibration ladder is:
 2. /Warm native baseline./  Repeat the same command after provider-native
    parser caches are warm.  This separates language parser cost from agent semantic client
    cache cost.
-3. /Client cache hit./  Replay the same request from local SQLite rows and
+3. /Client cache hit./  Replay the same request from local DB Engine rows and
    prove that the compact output is derived from schema-valid provider packets
    or provider index exports.
 4. /Cloud semantic lookup./  For enabled cloud modes, measure query latency,
@@ -926,7 +926,7 @@ Every measurement should record:
 - elapsed time split into client routing, provider command, cloud request,
   cache read/write, validation, and compact render where available;
 - provider command count and provider processes spawned;
-- stdout bytes, compact output bytes, packet bytes, SQLite read/write counts,
+- stdout bytes, compact output bytes, packet bytes, Turso read/write counts,
   syntax row generation/match/capture counts, and upload bytes;
 - syntax query AST/ABI fingerprint, grammar id, grammar profile version, and
   selector when a =semantic-tree-sitter-query.v1= packet participates in cache
@@ -935,9 +935,9 @@ Every measurement should record:
 - repeated-trigger grouping key so repeated agent searches can be merged or
   query-set optimized later.
 
-=sqliteReadCount= and =sqliteWriteCount= are logical client DB operation
+=dbReadCount= and =dbWriteCount= are logical client DB operation
 counters for cache observability.  They are not a SQL statement ABI and do not
-promise exact SQLite row counts; normalized AST/ABI rows remain the cache
+promise exact DB Engine row counts; normalized AST/ABI rows remain the cache
 boundary, while stdout is only a rendered product except for the documented
 prompt-output fallback.
 
@@ -998,7 +998,7 @@ packet-first-search-miss:
   providerProcessesSpawned = 1
   providerCommands[0].argv includes --json
   packetBytes > 0
-  sqliteWriteCount >= 1
+  dbWriteCount >= 1
   compactOutputParityWithCacheHit = true
 
 hybrid-cloud-unavailable:
@@ -1045,7 +1045,7 @@ credentials.  A project must be able to force =mode = "local"= or
 #+begin_example
 No cloud connection.
 No upload.
-Local provider CLIs plus local SQLite client DB only.
+Local provider CLIs plus local Turso client DB only.
 #+end_example
 
 This mode is the default for community, open-source, personal, and offline
@@ -1062,7 +1062,7 @@ Cloud handles ranking, search, cache, and cross-project retrieval.
 Allowed examples:
 
 #+begin_example
-SQLite owner/symbol/native_syntax_fact/semantic_handle/diagnostic rows
+Turso owner/symbol/native_syntax_fact/semantic_handle/diagnostic rows
 search/query/check receipts
 #+end_example
 
@@ -1254,7 +1254,7 @@ local-cache path:
   facade.  =ast-patch= and =evidence= are bounded provider-native surfaces
   exposed because provider guides already advertise them to agents.
 - =search=, =query=, and =check= enter the agent semantic client backend through
-  that language facade.  The facade probes the local SQLite client DB and then
+  that language facade.  The facade probes the local Turso client DB and then
   routes through =LocalNativeCliBackend= when cache replay cannot answer the
   request.
 - Top-level =asp search=, =asp query=, and =asp check= are not compatibility
@@ -1274,13 +1274,13 @@ local-cache path:
   fan out into one provider invocation per scope before stdout/stderr and
   receipt aggregation.  Cache routing must not collapse these language-native
   command shapes.
-- =asp cache status= inspects the provider-owned manifest and SQLite DB without
+- =asp cache status= inspects the provider-owned manifest and Turso DB without
   spawning providers.  It reports =missing=, =unimported=, =available=,
   =invalid=, or =unavailable= in the prompt line; receipts carry the machine
   state through =cacheStatus= plus =cacheManifestStatus= and =clientDbStatus=.
 - =asp cache import= validates =cache-manifest.json= and writes normalized
-  generation rows into =client.sqlite3= without storing raw source.
-- =asp cache invalidate= clears local SQLite generation rows and manifest
+  generation rows into =client.turso= without storing raw source.
+- =asp cache invalidate= clears local DB Engine generation rows and manifest
   =generations= while preserving artifact files.  The prompt output reports
   =manifestArtifactsDeleted=false= because artifact cleanup is a separate
   policy, and a following =asp cache status= reports =unimported= until another
@@ -1306,7 +1306,7 @@ local-cache path:
   client asks the native provider for the same request with =--json=, validates
   the returned =semantic-search-packet=, renders compact stdout once through the
   shared graph renderer, writes =search/*.json= and =search-output/*.txt=
-  artifacts for one generation, imports that generation into =client.sqlite3=,
+  artifacts for one generation, imports that generation into =client.turso=,
   and prints the rendered compact graph stdout.  The next identical request
   replays =search-output/*.txt= directly, with =search/*.json= retained as the
   schema-valid packet provenance.  The generation records =fileHashes= from
@@ -1326,7 +1326,7 @@ local-cache path:
   =semantic-tree-sitter-query/*.json= artifacts when the provider can export a
   schema-valid =semantic-tree-sitter-query.v1= packet through the same ASP-
   compiled request with =--json=.  The same write-back imports normalized syntax
-  query rows into =client.sqlite3= so repeated requests can replay without
+  query rows into =client.turso= so repeated requests can replay without
   respawning the provider even when the packet artifact is unavailable.  Replay
   is exact for the request fingerprint and is disabled for =--code= because
   syntax replay must not persist raw source.
@@ -1339,7 +1339,7 @@ The remaining local work is denormalized query indexes beyond artifact replay,
 cloud/hybrid routing, and broader sandtable coverage for repeated real-trigger
 groups.  Local packet-first miss, write-back, invalidation, and local-cache hit
 routes now have receipt coverage for =elapsedMs=, =packetBytes=,
-=sqliteReadCount= / =sqliteWriteCount=, provider command/process counts, and
+=dbReadCount= / =dbWriteCount=, provider command/process counts, and
 empty =providerCommands= arrays on cache hits.  =just
 perf-calibrate-julia-cache= is the focused local proof for compiled Julia
 search: it invalidates the Julia project cache, runs miss/hit =asp julia search
@@ -1389,7 +1389,7 @@ The RFC is implemented when:
 1. Whether the installed short command is always =asp= or an alias to
    =agent-semantic-protocol= during the first implementation, without folding
    client/cache/Flight/server behavior into that shared command facade crate.
-2. Which SQLite table/index family ships after rendered packet artifact replay:
+2. Which Turso table/index family ships after rendered packet artifact replay:
    owner/symbol rows, handle rows, or native syntax fact rows.
 3. Which Cloud Flight auth flow ships first: device auth, API token, or
    enterprise mTLS.

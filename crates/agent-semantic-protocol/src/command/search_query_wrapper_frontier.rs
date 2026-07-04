@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use agent_semantic_search::QUERY_OVERLAY_ROUTE_SOURCE;
+
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute};
 use super::search_pipe_model::Candidate;
 use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
@@ -117,7 +119,7 @@ fn query_wrapper_action_nodes(
             let fd_action = ActionNode {
                 id: "A1".to_string(),
                 kind: "fd-query".to_string(),
-                suffix: "finder-owner".to_string(),
+                suffix: "query-overlay-owner".to_string(),
                 route: ActionRoute::FdQuery {
                     query: fd_query,
                     scope: scope_label.clone(),
@@ -147,7 +149,7 @@ fn query_wrapper_action_nodes(
                     ActionNode {
                         id: "A1".to_string(),
                         kind: "owner-items".to_string(),
-                        suffix: "finder-exact-owner".to_string(),
+                        suffix: "query-overlay-exact-owner".to_string(),
                         route: ActionRoute::OwnerItems {
                             language_id: language_id.to_string(),
                             owner,
@@ -158,7 +160,7 @@ fn query_wrapper_action_nodes(
                     ActionNode {
                         id: "A2".to_string(),
                         kind: "scoped-rg-query".to_string(),
-                        suffix: "finder-content".to_string(),
+                        suffix: "query-overlay-content".to_string(),
                         route: ActionRoute::RgQuerySet {
                             queries: multi_clause_queries,
                             scope: command_scope.clone(),
@@ -172,7 +174,7 @@ fn query_wrapper_action_nodes(
                 ActionNode {
                     id: "A1".to_string(),
                     kind: "scoped-rg-query".to_string(),
-                    suffix: "finder-content".to_string(),
+                    suffix: "query-overlay-content".to_string(),
                     route: ActionRoute::RgQuerySet {
                         queries: multi_clause_queries,
                         scope: rg_scope.clone(),
@@ -328,7 +330,7 @@ fn owner_items_candidate_is_strong(candidate: &Candidate, terms: &[String]) -> b
     if matches!(candidate.confidence.as_str(), "path-exact" | "path") {
         return true;
     }
-    candidate.source == "fd-query"
+    candidate.source == QUERY_OVERLAY_ROUTE_SOURCE
         && candidate.confidence == "likely"
         && (!secondary_like_owner(&candidate.path)
             || has_strong_secondary_owner_intent(terms.iter().map(String::as_str)))

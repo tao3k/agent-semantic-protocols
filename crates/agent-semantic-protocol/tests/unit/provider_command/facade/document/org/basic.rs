@@ -44,6 +44,45 @@ fn org_facade_uses_native_orgize_dependency() {
 }
 
 #[test]
+fn org_facade_search_lexical_uses_asp_fast_search() {
+    let root = temp_project_root("org-document-lexical-fast-search");
+    std::fs::write(root.join("plan.org"), "* Document Prime\n").expect("write org fixture");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let orgize = bin_dir.join("orgize");
+    std::fs::write(&orgize, "#!/bin/sh\nexit 42\n").expect("write orgize");
+    make_executable(&orgize);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .args([
+            "org",
+            "search",
+            "lexical",
+            "Document",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp org lexical search");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("[graph-frontier]"), "stdout={stdout}");
+    assert!(
+        stdout.contains("provider-root:language-root(org:.)"),
+        "stdout={stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn org_facade_guide_explains_element_query_axes() {
     let root = temp_project_root("org-document-guide-query-axes");
 

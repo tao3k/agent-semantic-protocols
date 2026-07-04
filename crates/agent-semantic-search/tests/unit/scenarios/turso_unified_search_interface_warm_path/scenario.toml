@@ -1,0 +1,13 @@
+id = "turso-unified-search-interface-warm-path"
+title = "Turso DB search interface serves overlay and structural search without provider fallback"
+policy_ids = ["SEARCH-AGENT-ASP-PERF-TURSO-UNIFIED-SEARCH-001"]
+agent_goal = "Keep the search package's Turso-backed search interface responsible for overlay and structural-index candidate retrieval while the protocol CLI remains a thin renderer."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "agent_semantic_search::search_turso_overlay_documents",
+  "agent_semantic_search::search_turso_structural_index_documents",
+  "agent_semantic_search::collect_turso_structural_index_ranked_candidates_from_engine_async",
+]
+inputs = "inputs"
+expected = "expected"
+command = "cargo test -p agent-semantic-search --features turso-overlay --test turso_overlay_search turso_unified_search_interface_warm_path_stays_inside_scenario_gate"

@@ -225,6 +225,64 @@ fn codex_main_session_denies_non_recovery_asp_command_when_asp_explore_registere
 }
 
 #[test]
+fn codex_main_session_routes_test_command_to_asp_testing() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("cargo test -p agent-semantic-protocol"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000009")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["fields"]["agentSessionRoute"].as_str(),
+        Some("asp-testing")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionLane"].as_str(),
+        Some("asp-testing")
+    );
+    assert_eq!(
+        decision["fields"]["blockedCommandClass"].as_str(),
+        Some("test-build-command")
+    );
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("ASP denied main-session test/build command"));
+    assert!(message.contains("asp agent session register --name asp-testing"));
+}
+
+#[test]
+fn codex_main_session_routes_wrapped_test_command_to_asp_testing() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload(
+            "direnv exec . env CARGO_TARGET_DIR=target/session-validation-check cargo test -p agent-semantic-protocol asp_agent_session_rejects_mismatched_codex_agent_config_path --test unit_test -- --nocapture",
+        ),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000010")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["fields"]["agentSessionRoute"].as_str(),
+        Some("asp-testing")
+    );
+    assert_eq!(
+        decision["fields"]["blockedCommandClass"].as_str(),
+        Some("test-build-command")
+    );
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("ASP denied main-session test/build command"));
+    assert!(message.contains("direnv exec . env CARGO_TARGET_DIR"));
+}
+
+#[test]
 fn codex_main_session_allows_configured_main_asp_command_prefix() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -232,7 +290,7 @@ fn codex_main_session_allows_configured_main_asp_command_prefix() {
     write_hook_config(
         &root,
         r#"
-[aspSessionPolicy]
+[agents.asp_explore]
 mainAllowedAspCommandPrefixes = [
   "help",
   "agent session",
@@ -356,9 +414,28 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
         }),
     );
     let message = decision["message"].as_str().expect("decision message");
-    assert!(message.starts_with("ASP denied source access (`direct-source-read`)"));
+    assert!(
+        message.starts_with("ASP denied source access (`direct-source-read`)"),
+        "{message}"
+    );
     assert!(message.contains("Use asp-explore"), "{message}");
     assert!(message.contains("recoveryRef="), "{message}");
+    assert_eq!(
+        decision["fields"]["requiredAction"].as_str(),
+        Some("send-to-asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["nextAction"].as_str(),
+        Some("run-asp-command-in-registered-asp-explore-child")
+    );
+    assert_eq!(
+        decision["fields"]["targetAgentName"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["forbiddenUntilResolved"].as_str(),
+        Some("raw-source-fallback")
+    );
 }
 
 #[test]
@@ -458,13 +535,19 @@ fn claude_platform_response_compacts_repeated_denied_source_lane() {
     let reason = second["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission reason");
-    assert!(reason.starts_with("ASP denied source access again (`direct-source-read`)"));
+    assert!(
+        reason.starts_with("ASP denied source access again (`direct-source-read`)"),
+        "{reason}"
+    );
     assert!(reason.contains("Use the active recovery lane"));
     assert!(!reason.contains("## Agent Flow"));
     let context = second["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("decision context");
     assert!(context.contains("\"denyReplay\":\"repeated\""));
+    assert!(context.contains("\"requiredAction\":\"send-to-asp-explore\""));
+    assert!(context.contains("\"nextAction\":\"run-asp-command-in-registered-asp-explore-child\""));
+    assert!(context.contains("\"forbiddenUntilResolved\":\"raw-source-fallback\""));
 }
 
 #[test]
@@ -509,7 +592,10 @@ fn claude_platform_response_compacts_cross_action_source_access_lane() {
     let first_reason = first["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("first permission reason");
-    assert!(first_reason.starts_with("ASP denied source access (`raw-broad-search`)"));
+    assert!(
+        first_reason.starts_with("ASP denied source access (`raw-broad-search`)"),
+        "{first_reason}"
+    );
     assert!(first_reason.contains("Use asp-explore"), "{first_reason}");
     assert!(first_reason.contains("recoveryRef="), "{first_reason}");
     let first_context = first["hookSpecificOutput"]["additionalContext"]
@@ -527,6 +613,9 @@ fn claude_platform_response_compacts_cross_action_source_access_lane() {
         .as_str()
         .expect("decision context");
     assert!(context.contains("\"denyReplay\":\"repeated\""));
+    assert!(context.contains("\"requiredAction\":\"send-to-asp-explore\""));
+    assert!(context.contains("\"nextAction\":\"run-asp-command-in-registered-asp-explore-child\""));
+    assert!(context.contains("\"forbiddenUntilResolved\":\"raw-source-fallback\""));
 }
 
 fn claude_fixture() -> PathBuf {
@@ -642,6 +731,12 @@ fn install_claude_hooks(root: &Path) {
         .args(["install", "hook", "--client", "claude"])
         .arg(root)
         .env("PATH", prepend_path(&root.join(".bin")))
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_PARENT_THREAD_ID")
+        .env_remove("CLAUDE_CODE_SESSION_ID")
+        .env_remove("AGENT_SESSION_ID")
+        .env_remove("SESSION_ID")
         .env_remove("PRJ_CACHE_HOME")
         .output()
         .expect("run asp install hook");
@@ -693,8 +788,9 @@ fn run_codex_hook_decision_with_env(
     command
         .args(["hook", event, "--client", "codex", "--emit", "decision"])
         .arg("--activation")
-        .arg(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
+        .arg(codex_smoke_activation_path(root))
         .current_dir(root)
+        .env("CODEX_HOME", root.join(".codex-home"))
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME");
     for (key, value) in envs {
@@ -722,6 +818,29 @@ fn run_codex_hook_decision_with_env(
     serde_json::from_slice(&output.stdout).expect("parse hook stdout")
 }
 
+fn codex_smoke_activation_path(root: &Path) -> PathBuf {
+    let state_home = root.join(".agent-semantic-protocols");
+    let mut matches = Vec::new();
+    collect_activation_paths(&state_home, &mut matches);
+    matches.sort();
+    assert_eq!(matches.len(), 1, "activation paths: {matches:?}");
+    matches.remove(0)
+}
+
+fn collect_activation_paths(dir: &Path, matches: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_activation_paths(&path, matches);
+        } else if path.ends_with("live/hooks/state/activation.json") {
+            matches.push(path);
+        }
+    }
+}
+
 fn register_asp_explore_session(root: &Path, root_session_id: &str, child_session_id: &str) {
     register_asp_explore_session_with_extra_args(root, root_session_id, child_session_id, &[]);
 }
@@ -739,12 +858,26 @@ fn register_expired_asp_explore_session(
     );
 }
 
+fn force_activation_project_root_to_hook_state(root: &Path) {
+    let activation_path = codex_smoke_activation_path(root);
+    let hook_state_dir = activation_path.parent().expect("activation parent");
+    let content = std::fs::read_to_string(&activation_path).expect("read activation");
+    let mut value: Value = serde_json::from_str(&content).expect("parse activation");
+    value["projectRoot"] = json!(hook_state_dir.display().to_string());
+    std::fs::write(
+        &activation_path,
+        serde_json::to_string_pretty(&value).expect("serialize activation"),
+    )
+    .expect("write activation");
+}
+
 fn register_asp_explore_session_with_extra_args(
     root: &Path,
     root_session_id: &str,
     child_session_id: &str,
     extra_args: &[&str],
 ) {
+    write_codex_asp_explore_rollout(root, root_session_id, child_session_id, "gpt-5.4-mini");
     let mut args = vec![
         "agent",
         "session",
@@ -762,6 +895,7 @@ fn register_asp_explore_session_with_extra_args(
         .args(args)
         .current_dir(root)
         .env("PATH", prepend_path(&root.join(".bin")))
+        .env("CODEX_HOME", root.join(".codex-home"))
         .env("CODEX_THREAD_ID", root_session_id)
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")
@@ -773,6 +907,86 @@ fn register_asp_explore_session_with_extra_args(
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn write_codex_asp_explore_rollout(
+    root: &Path,
+    root_session_id: &str,
+    child_session_id: &str,
+    actual_model: &str,
+) {
+    let codex_home = root.join(".codex-home");
+    let agents_dir = codex_home.join("agents");
+    std::fs::create_dir_all(&agents_dir).expect("create test Codex agents dir");
+    let agent_path = agents_dir.join("asp-explorer.toml");
+    if !agent_path.is_file() {
+        std::fs::write(
+            &agent_path,
+            "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nsandbox_mode = \"read-only\"\n",
+        )
+        .expect("write test asp-explorer agent config");
+    }
+    let rollout_dir = codex_home.join("sessions/2026/07/02");
+    std::fs::create_dir_all(&rollout_dir).expect("create test Codex sessions dir");
+    let root_rollout_path = rollout_dir.join(format!("rollout-test-{root_session_id}.jsonl"));
+    let root_session_meta = json!({
+        "type": "session_meta",
+        "payload": {
+            "session_id": root_session_id,
+            "id": root_session_id,
+            "thread_source": "root"
+        }
+    });
+    let child_spawn = json!({
+        "type": "response_item",
+        "payload": {
+            "type": "thread_spawn",
+            "id": child_session_id,
+            "parent_thread_id": root_session_id,
+            "agent_role": "asp_explorer",
+            "agent_nickname": "ASP search",
+            "agent_path": agent_path
+        }
+    });
+    std::fs::write(
+        root_rollout_path,
+        format!("{root_session_meta}\n{child_spawn}\n"),
+    )
+    .expect("write test Codex root rollout");
+    let rollout_path = rollout_dir.join(format!("rollout-test-{child_session_id}.jsonl"));
+    let session_meta = json!({
+        "type": "session_meta",
+        "payload": {
+            "session_id": root_session_id,
+            "id": child_session_id,
+            "parent_thread_id": root_session_id,
+            "thread_source": "subagent",
+            "agent_role": "asp_explorer",
+            "agent_nickname": "ASP search",
+            "source": {
+                "subagent": {
+                    "thread_spawn": {
+                        "parent_thread_id": root_session_id,
+                        "depth": 1,
+                        "agent_role": "asp_explorer",
+                        "agent_nickname": "ASP search",
+                        "agent_path": agent_path
+                    }
+                }
+            }
+        }
+    });
+    let turn_context = json!({
+        "type": "turn_context",
+        "payload": {
+            "model": actual_model,
+            "sandbox_policy": {"type": "read-only"},
+            "approval_policy": "never",
+            "permission_profile": {"type": "disabled"}
+        }
+    });
+    std::fs::write(rollout_path, format!("{session_meta}\n{turn_context}\n"))
+        .expect("write test Codex rollout");
 }
 
 fn show_agent_session_json(root: &Path, child_session_id: &str) -> Value {
@@ -825,7 +1039,7 @@ fn run_claude_pre_tool_decision(root: &Path, payload: Value, extra_args: &[&str]
         .args(["hook", "pre-tool", "--client", "claude"])
         .args(extra_args)
         .arg("--activation")
-        .arg(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
+        .arg(codex_smoke_activation_path(root))
         .current_dir(root)
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")

@@ -6,9 +6,6 @@ mod document_provider {
 
 mod search_pipe_model {
     pub(super) struct Candidate {
-        pub(super) path: String,
-        pub(super) line: usize,
-        pub(super) end_line: usize,
         pub(super) selector: Option<String>,
     }
 }
@@ -19,17 +16,24 @@ mod search_pipe_projection;
 use search_pipe_model::Candidate;
 
 #[test]
-fn candidate_selector_prefers_provider_selector_over_line_range_hint() {
+fn candidate_executable_selector_prefers_provider_selector_over_line_range_hint() {
     let candidate = Candidate {
-        path: "src/lib.rs".to_string(),
-        line: 42,
-        end_line: 47,
         selector: Some("rust://src/lib.rs#item/fn/parse_config".to_string()),
     };
 
     assert_eq!(
-        search_pipe_projection::candidate_selector("rust", &candidate),
-        "rust://src/lib.rs#item/fn/parse_config"
+        search_pipe_projection::candidate_executable_selector(&candidate).as_deref(),
+        Some("rust://src/lib.rs#item/fn/parse_config")
+    );
+}
+
+#[test]
+fn candidate_executable_selector_does_not_synthesize_line_range_identity() {
+    let candidate = Candidate { selector: None };
+
+    assert_eq!(
+        search_pipe_projection::candidate_executable_selector(&candidate),
+        None
     );
 }
 

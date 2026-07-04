@@ -5,6 +5,45 @@ use serde_json::Value;
 
 use super::assert_graph_turbo_request_contract;
 
+#[test]
+fn lexical_rejects_owner_dependency_surface_combination_without_provider_spawn() {
+    let root = temp_project_root("search-lexical-owner-deps-rejected");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "lexical",
+            "gxpkg",
+            "owner",
+            "deps",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search lexical owner deps");
+
+    assert!(!output.status.success(), "search unexpectedly succeeded");
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stderr.contains("search lexical does not support combining deps with owner/items"),
+        "{stderr}"
+    );
+    assert!(
+        !marker.exists(),
+        "rejected lexical surface combination should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
 fn refresh_source_index(root: &std::path::Path) {
     let output = asp_command(root)
         .args(["cache", "source-index", "refresh"])
@@ -66,7 +105,7 @@ fn lexical_seeds_is_asp_owned_for_cheap_discovery() {
 }
 
 #[test]
-fn lexical_seeds_use_source_index_before_native_finder() {
+fn lexical_seeds_use_source_index_before_search_overlay() {
     let root = temp_project_root("search-lexical-source-index");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -114,9 +153,12 @@ fn lexical_seeds_use_source_index_before_native_finder() {
     assert!(stdout.starts_with("[search-lexical]"), "{stdout}");
     assert!(stdout.contains("source=source-index"), "{stdout}");
     assert!(stdout.contains("sourceTrace=sourceIndex:used"), "{stdout}");
-    assert!(stdout.contains("finder:skipped"), "{stdout}");
+    assert!(stdout.contains("search-overlay:skipped"), "{stdout}");
     assert!(stdout.contains("O=owner:path(src/lib.rs)"), "{stdout}");
-    assert!(!stdout.contains("sourceTrace=finder:used"), "{stdout}");
+    assert!(
+        !stdout.contains("sourceTrace=search-overlay:used"),
+        "{stdout}"
+    );
     assert!(
         !marker.exists(),
         "source-index lexical path should not spawn provider"

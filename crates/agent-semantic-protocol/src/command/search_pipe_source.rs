@@ -8,12 +8,12 @@ use agent_semantic_client::{
     SourceIndexLookupResult, SourceIndexLookupState, lookup_source_index_for_language,
 };
 use agent_semantic_search::{
-    SearchPipeDocumentAcquisitionRequest, SearchPipeFinderAcquisitionRequest,
+    SearchPipeDocumentAcquisitionRequest, SearchPipeSearchOverlayAcquisitionRequest,
     SearchPipeSourceAcquisition, SearchPipeSourceAcquisitionTrace,
     SearchPipeSourceIndexAcquisition, SearchPipeSourceIndexAcquisitionRequest,
     SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate,
     SearchPipeSourceIndexLookup, SearchPipeSourceMode, collect_search_pipe_document_acquisition,
-    collect_search_pipe_finder_acquisition, collect_search_pipe_source_index_acquisition,
+    collect_search_pipe_search_overlay_acquisition, collect_search_pipe_source_index_acquisition,
 };
 use orgize::document::DocumentLanguage;
 use serde_json::Value;
@@ -30,7 +30,7 @@ const DOCUMENT_PIPE_CANDIDATE_LIMIT: usize = 256;
 pub(super) enum SourceSpec {
     Auto,
     Provider,
-    Finder,
+    SearchOverlay,
     Ingest,
 }
 
@@ -39,7 +39,7 @@ impl SourceSpec {
         match self {
             Self::Auto => "auto",
             Self::Provider => "provider",
-            Self::Finder => "finder",
+            Self::SearchOverlay => "search-overlay",
             Self::Ingest => "ingest",
         }
     }
@@ -55,10 +55,10 @@ pub(super) fn parse_source_spec(value: &str) -> Result<SourceSpec, String> {
     match value {
         "auto" => Ok(SourceSpec::Auto),
         "provider" => Ok(SourceSpec::Provider),
-        "finder" => Ok(SourceSpec::Finder),
+        "search-overlay" => Ok(SourceSpec::SearchOverlay),
         "ingest" => Ok(SourceSpec::Ingest),
         _ => Err(format!(
-            "unknown search pipe source: {value} (expected auto, provider, finder, ingest)"
+            "unknown search pipe source: {value} (expected auto, provider, search-overlay, ingest)"
         )),
     }
 }
@@ -92,7 +92,7 @@ pub(super) fn collect_search_pipe_candidates(
             scopes,
             config,
         ),
-        SourceSpec::Finder => finder_candidates(
+        SourceSpec::SearchOverlay => search_overlay_candidates(
             language_id,
             project_root,
             locator_root,
@@ -115,7 +115,7 @@ fn collect_document_search_pipe_candidates(
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
     match source {
-        SourceSpec::Auto | SourceSpec::Provider | SourceSpec::Finder => {
+        SourceSpec::Auto | SourceSpec::Provider | SourceSpec::SearchOverlay => {
             let acquisition =
                 collect_search_pipe_document_acquisition(SearchPipeDocumentAcquisitionRequest {
                     language,
@@ -126,7 +126,7 @@ fn collect_document_search_pipe_candidates(
                     mode: document_source_mode(source),
                     ignore_dirs: &config.search.ignore_dirs,
                     include_hidden_dirs: &config.search.include_hidden_dirs,
-                    finder_limit: PIPE_CANDIDATE_LINE_LIMIT,
+                    search_overlay_limit: PIPE_CANDIDATE_LINE_LIMIT,
                 })?;
             Ok(candidate_acquisition_from_search(acquisition))
         }
@@ -138,7 +138,7 @@ fn document_source_mode(source: SourceSpec) -> SearchPipeSourceMode {
     match source {
         SourceSpec::Auto => SearchPipeSourceMode::Auto,
         SourceSpec::Provider => SearchPipeSourceMode::Provider,
-        SourceSpec::Finder => SearchPipeSourceMode::Finder,
+        SourceSpec::SearchOverlay => SearchPipeSourceMode::SearchOverlay,
         SourceSpec::Ingest => SearchPipeSourceMode::Auto,
     }
 }
@@ -187,12 +187,12 @@ fn auto_candidates(
     {
         return Ok(CandidateAcquisition {
             candidates: acquisition.candidates.clone(),
-            candidate_sources: vec!["source-index".to_string(), "finder".to_string()],
+            candidate_sources: vec!["source-index".to_string(), "search-overlay".to_string()],
             source_trace: acquisition.source_trace.clone(),
         });
     }
-    let finder_acquisition =
-        collect_search_pipe_finder_acquisition(SearchPipeFinderAcquisitionRequest {
+    let search_overlay_acquisition = collect_search_pipe_search_overlay_acquisition(
+        SearchPipeSearchOverlayAcquisitionRequest {
             language_id,
             project_root,
             locator_root,
@@ -201,15 +201,17 @@ fn auto_candidates(
             ignore_dirs: &config.search.ignore_dirs,
             include_hidden_dirs: &config.search.include_hidden_dirs,
             limit: PIPE_CANDIDATE_LINE_LIMIT,
-        })?;
-    let elapsed = finder_acquisition.elapsed;
-    let candidates = finder_acquisition
+        },
+    )?;
+    let elapsed = search_overlay_acquisition.elapsed;
+    let candidates = search_overlay_acquisition
         .candidates
         .into_iter()
         .map(Candidate::from)
         .collect::<Vec<_>>();
+    let fallback_source = candidate_route_source(&candidates);
     Ok(CandidateAcquisition {
-        candidate_sources: vec!["provider".to_string(), "finder".to_string()],
+        candidate_sources: vec!["provider".to_string(), fallback_source.to_string()],
         source_trace: source_index_trace_prefix(source_index_acquisition)
             .into_iter()
             .chain([
@@ -221,7 +223,7 @@ fn auto_candidates(
                     0,
                 )
                 .with_fields(elapsed_fields(elapsed)),
-                candidate_trace("finder", &candidates).with_fields(elapsed_fields(elapsed)),
+                candidate_trace(fallback_source, &candidates).with_fields(elapsed_fields(elapsed)),
             ])
             .collect(),
         candidates,
@@ -337,8 +339,14 @@ fn source_index_candidates(
                 .map(Candidate::from)
                 .collect::<Vec<_>>();
             let mut source_trace = vec![source_index_trace(&result, candidates.len(), started_at)];
-            if acquisition.decision == SearchPipeSourceIndexDecision::UseAndSkipFinder {
-                source_trace.push(SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0));
+            if acquisition.decision == SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay {
+                source_trace.push(SearchPipeSourceTrace::new(
+                    "search-overlay",
+                    "skipped",
+                    0,
+                    0,
+                    0,
+                ));
             }
             Some(CandidateAcquisition {
                 candidate_sources: vec!["source-index".to_string()],
@@ -472,6 +480,7 @@ fn source_index_trace_status(state: &SourceIndexLookupState) -> &'static str {
         SourceIndexLookupState::Hit => "used",
         SourceIndexLookupState::MissingDb => "missing-db",
         SourceIndexLookupState::EmptyIndex => "empty-index",
+        SourceIndexLookupState::Busy => "busy",
         SourceIndexLookupState::Miss => "miss",
     }
 }
@@ -480,7 +489,7 @@ fn compact_detail(detail: &str) -> String {
     detail.split_whitespace().collect::<Vec<_>>().join("_")
 }
 
-fn finder_candidates(
+fn search_overlay_candidates(
     language_id: &str,
     project_root: &Path,
     locator_root: &Path,
@@ -488,28 +497,35 @@ fn finder_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
-    let acquisition = collect_search_pipe_finder_acquisition(SearchPipeFinderAcquisitionRequest {
-        language_id,
-        project_root,
-        locator_root,
-        query: intent,
-        owners: scopes,
-        ignore_dirs: &config.search.ignore_dirs,
-        include_hidden_dirs: &config.search.include_hidden_dirs,
-        limit: PIPE_CANDIDATE_LINE_LIMIT,
-    })?;
+    let acquisition = collect_search_pipe_search_overlay_acquisition(
+        SearchPipeSearchOverlayAcquisitionRequest {
+            language_id,
+            project_root,
+            locator_root,
+            query: intent,
+            owners: scopes,
+            ignore_dirs: &config.search.ignore_dirs,
+            include_hidden_dirs: &config.search.include_hidden_dirs,
+            limit: PIPE_CANDIDATE_LINE_LIMIT,
+        },
+    )?;
     let candidates = acquisition
         .candidates
         .into_iter()
         .map(Candidate::from)
         .collect::<Vec<_>>();
+    let source = candidate_route_source(&candidates);
     Ok(CandidateAcquisition {
-        candidate_sources: vec!["finder".to_string()],
+        candidate_sources: vec![source.to_string()],
         source_trace: vec![
-            candidate_trace("finder", &candidates).with_fields(elapsed_fields(acquisition.elapsed)),
+            candidate_trace(source, &candidates).with_fields(elapsed_fields(acquisition.elapsed)),
         ],
         candidates,
     })
+}
+
+fn candidate_route_source(_candidates: &[Candidate]) -> &'static str {
+    "search-overlay"
 }
 
 fn provider_candidates() -> Result<CandidateAcquisition, String> {
@@ -518,7 +534,7 @@ fn provider_candidates() -> Result<CandidateAcquisition, String> {
         candidate_sources: vec!["provider".to_string()],
         source_trace: vec![
             SearchPipeSourceTrace::new("provider", "partial", 0, 1, 0),
-            SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0),
+            SearchPipeSourceTrace::new("search-overlay", "skipped", 0, 0, 0),
         ],
     })
 }

@@ -3,6 +3,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use agent_semantic_search::QUERY_OVERLAY_ROUTE_SOURCE;
+
 use super::provider_roots::client_backend_cache_home;
 use super::search_config::AspConfig;
 use super::search_pipe_graph_turbo::{GraphTurboSearchPipeRequest, render_graph_turbo_request};
@@ -425,7 +427,12 @@ fn query_wrapper_source_trace(
             .with_fields(trace_fields),
         ];
     }
-    if let Some(first) = source_trace.first_mut() {
+    if let Some(query_overlay) = source_trace
+        .iter_mut()
+        .find(|trace| trace.source == QUERY_OVERLAY_ROUTE_SOURCE)
+    {
+        query_overlay.fields.extend(trace_fields);
+    } else if let Some(first) = source_trace.first_mut() {
         first.fields.extend(trace_fields);
     }
     source_trace

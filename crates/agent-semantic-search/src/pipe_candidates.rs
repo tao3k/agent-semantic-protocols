@@ -2,10 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::dynamic_overlay::DynamicOverlayLane;
 use crate::{
-    DynamicSearchCandidate, DynamicSearchRootCandidateRequest, NativeFinderCollectionRequest,
-    NativeFinderConfig, NativeFinderSurface, collect_dynamic_lexical_overlay_candidates_from_roots,
-    collect_native_finder_candidates, language_file_spec,
+    DynamicSearchCandidate, DynamicSearchRootCandidateRequest, SearchOverlayCollectionRequest,
+    SearchOverlayConfig, SearchOverlaySurface,
+    collect_dynamic_lexical_overlay_candidates_from_roots, collect_search_overlay_candidates,
+    language_file_spec,
 };
 
 /// Candidate returned by the search pipe candidate service.
@@ -43,29 +45,31 @@ pub fn collect_search_pipe_candidates(
 
     if terms.iter().all(|term| search_term_looks_like_path(term)) {
         let roots = resolved_owner_roots(request.project_root, request.owners);
-        let native_candidates = collect_native_finder_candidates(NativeFinderCollectionRequest {
-            surface: native_surface_for_pipe_terms(&terms),
-            language_id: request.language_id,
-            file_spec_override: None,
-            accept_all_files: false,
-            project_root: request.project_root,
-            locator_root: request.locator_root,
-            roots: &roots,
-            terms: &terms,
-            config: NativeFinderConfig {
-                ignore_dirs: request.ignore_dirs,
-                include_hidden_dirs: request.include_hidden_dirs,
-            },
-            native_args: &[],
-        })?
-        .map(|collection| {
-            collection
-                .candidates
-                .into_iter()
-                .map(SearchPipeCandidate::from)
-                .collect()
-        })
-        .unwrap_or_default();
+        let native_candidates =
+            collect_search_overlay_candidates(SearchOverlayCollectionRequest {
+                lane: DynamicOverlayLane::Search,
+                surface: native_surface_for_pipe_terms(&terms),
+                language_id: request.language_id,
+                file_spec_override: None,
+                accept_all_files: false,
+                project_root: request.project_root,
+                locator_root: request.locator_root,
+                roots: &roots,
+                terms: &terms,
+                config: SearchOverlayConfig {
+                    ignore_dirs: request.ignore_dirs,
+                    include_hidden_dirs: request.include_hidden_dirs,
+                },
+                native_args: &[],
+            })?
+            .map(|collection| {
+                collection
+                    .candidates
+                    .into_iter()
+                    .map(SearchPipeCandidate::from)
+                    .collect()
+            })
+            .unwrap_or_default();
         return Ok(native_candidates);
     }
 
@@ -113,11 +117,11 @@ fn resolved_owner_roots(project_root: &Path, owners: &[PathBuf]) -> Vec<PathBuf>
         .collect()
 }
 
-fn native_surface_for_pipe_terms(terms: &[String]) -> NativeFinderSurface {
+fn native_surface_for_pipe_terms(terms: &[String]) -> SearchOverlaySurface {
     if matches!(terms, [term] if search_term_looks_like_path(term)) {
-        NativeFinderSurface::Path
+        SearchOverlaySurface::Path
     } else {
-        NativeFinderSurface::Both
+        SearchOverlaySurface::Both
     }
 }
 
@@ -125,8 +129,8 @@ fn search_term_looks_like_path(term: &str) -> bool {
     term.contains('/') || term.contains('\\') || term.contains('.')
 }
 
-impl From<crate::NativeFinderCandidate> for SearchPipeCandidate {
-    fn from(candidate: crate::NativeFinderCandidate) -> Self {
+impl From<crate::SearchOverlayCandidate> for SearchPipeCandidate {
+    fn from(candidate: crate::SearchOverlayCandidate) -> Self {
         Self {
             path: candidate.path,
             line: candidate.line,

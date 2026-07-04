@@ -1,0 +1,16 @@
+id = "asp-turso-agent-session-registry-shared-route-pressure"
+title = "Turso agent session registry converges shared route registrations"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-DB-ENGINE-TURSO-CONCURRENCY-002",
+  "RUST-AGENT-ASP-PERF-AGENT-SESSION-REGISTRY-PRESSURE-001",
+]
+agent_goal = "Keep one routable asp-explore child route stable when multiple agent-session writers register concurrently. The DB must converge the shared route without unique constraint failures while preserving branch/session identity."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "AgentSessionRegistry::register_session",
+  "project_id/root_session_id/name route key",
+  "session_id uniqueness",
+  "session-registry.turso",
+]
+inputs = "inputs"
+expected = "expected"

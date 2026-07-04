@@ -17,6 +17,8 @@ mod client_hook_config_runtime;
 mod client_hook_desktop_smoke;
 #[path = "unit/codex_plugin_install.rs"]
 mod codex_plugin_install;
+#[path = "unit/command/agent_session_registry_render.rs"]
+mod command_agent_session_registry_render;
 #[path = "unit/command/gerbil_check_cache.rs"]
 mod command_gerbil_check_cache;
 #[path = "unit/command/search_pipe_evidence_projection.rs"]
@@ -41,6 +43,8 @@ mod install_provider_cli;
 mod paths_command;
 #[path = "unit/provider_command/mod.rs"]
 mod provider_command;
+#[path = "unit/rfc_search_frame.rs"]
+mod rfc_search_frame;
 #[path = "unit/rs_harness_attribute.rs"]
 mod rs_harness_attribute;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]

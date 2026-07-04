@@ -12,6 +12,28 @@ from jsonschema import Draft202012Validator
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def artifact_hash(value: str = "a") -> dict:
+    return {
+        "algorithm": "blake3",
+        "value": value * 64,
+    }
+
+
+def artifact_root(root_kind: str = "sourceIndexBundle") -> dict:
+    return {
+        "repoId": "repo_123",
+        "workspaceId": "workspace_456",
+        "scopeId": "default",
+        "generation": "g1",
+        "rootKind": root_kind,
+        "rootHash": artifact_hash("b"),
+        "nodeHash": artifact_hash("c"),
+        "producerHash": artifact_hash("d"),
+        "schemaHash": artifact_hash("e"),
+        "contentHash": artifact_hash("f"),
+    }
+
+
 class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
         schema_path = (
@@ -54,6 +76,10 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                         }
                     ],
                     "artifactIds": ["search/rust-main-1.json"],
+                    "artifactRoots": [
+                        artifact_root("sourceSnapshot"),
+                        artifact_root("sourceIndexBundle"),
+                    ],
                 }
             ],
         }

@@ -60,7 +60,7 @@ def test_tree_sitter_query_rfc_defines_closure_gates() -> None:
         "pattern graph",
         "multi-capture",
         "field structural selector",
-        "Prompt-noise ban: without source windows, cache ids, SQLite paths, receipt JSON, or artifact ids",
+        "Prompt-noise ban: without source windows, cache ids, DB paths, receipt JSON, or artifact ids",
         "prints pure source code and rejects broad multi-match code extraction",
         "Cache replay key: query AST/ABI, selector identity, grammar/profile/catalog fingerprint, execution backend, and file freshness",
         "At least one real-project benchmark records command count",

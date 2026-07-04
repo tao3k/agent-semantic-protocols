@@ -3,6 +3,25 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
+pub const QUERY_OVERLAY_ROUTE_SOURCE: &str = "query-overlay";
+pub const SEARCH_OVERLAY_ROUTE_SOURCE: &str = "search-overlay";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DynamicOverlayLane {
+    Query,
+    Search,
+}
+
+impl DynamicOverlayLane {
+    #[must_use]
+    pub fn route_source(self) -> &'static str {
+        match self {
+            Self::Query => QUERY_OVERLAY_ROUTE_SOURCE,
+            Self::Search => SEARCH_OVERLAY_ROUTE_SOURCE,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct DynamicOverlayNamespace {
     pub(crate) project_id: String,
@@ -60,7 +79,7 @@ impl DynamicOverlayDocument {
         let kind = kind.into();
         let name = name.into();
         let selector = format!(
-            "overlay://{owner_path}#item/{}/{}",
+            "dynamic-overlay://{owner_path}#item/{}/{}",
             kind,
             name.replace(char::is_whitespace, "-")
         );
@@ -108,6 +127,23 @@ impl DynamicOverlayQuery {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{DynamicOverlayLane, QUERY_OVERLAY_ROUTE_SOURCE, SEARCH_OVERLAY_ROUTE_SOURCE};
+
+    #[test]
+    fn dynamic_overlay_lanes_expose_search_and_query_route_sources() {
+        assert_eq!(
+            DynamicOverlayLane::Search.route_source(),
+            SEARCH_OVERLAY_ROUTE_SOURCE
+        );
+        assert_eq!(
+            DynamicOverlayLane::Query.route_source(),
+            QUERY_OVERLAY_ROUTE_SOURCE
+        );
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct DynamicOverlaySearchHit {
     pub(crate) document: DynamicOverlayDocument,
@@ -130,14 +166,7 @@ pub(crate) trait DynamicOverlaySearchBackend {
 }
 
 pub(crate) fn default_dynamic_overlay_search_backend() -> Box<dyn DynamicOverlaySearchBackend> {
-    #[cfg(feature = "turso-overlay")]
-    {
-        Box::new(super::turso_adapter::TursoDynamicOverlaySearch::default())
-    }
-    #[cfg(not(feature = "turso-overlay"))]
-    {
-        Box::new(InMemoryDynamicOverlaySearch::default())
-    }
+    Box::new(InMemoryDynamicOverlaySearch::default())
 }
 
 #[derive(Default)]

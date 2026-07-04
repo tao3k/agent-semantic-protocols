@@ -4,8 +4,9 @@ mod agent_session;
 mod agent_session_registry;
 
 pub(crate) use agent_session_registry::{
-    RegisteredSession, asp_explore_session_for_current_root, current_registered_session,
-    current_root_session_id, has_current_agent_session, record_current_session_tool_event,
+    asp_explore_session_for_current_root, asp_explore_session_record_for_current_root,
+    current_registered_session, current_root_session_id, has_current_agent_session,
+    record_current_session_tool_event,
 };
 pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;
@@ -38,8 +39,6 @@ mod provider_process;
 mod provider_roots;
 mod query_direct_read;
 mod query_owner;
-mod query_owner_item;
-mod query_owner_structural_selector;
 mod root_language_facade;
 mod search_config;
 mod search_dependency_seed;

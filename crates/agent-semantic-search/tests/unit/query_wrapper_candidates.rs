@@ -18,7 +18,6 @@ use crate::{
     query_wrapper_search_stage_trace_projection, query_wrapper_source_index_trace_projection,
     query_wrapper_terms, query_wrapper_unique_clause_terms,
 };
-#[cfg(feature = "turso-overlay")]
 use crate::{TursoStructuralIndexSearchHit, structural_index_hit_to_search_candidate};
 
 #[test]
@@ -150,7 +149,7 @@ fn package_path_augmentation_adds_only_missing_package_axis() {
         symbol: "other".to_string(),
         selector: None,
         text: "other".to_string(),
-        source: "fd-query".to_string(),
+        source: "query-overlay".to_string(),
         confidence: "path".to_string(),
     }];
     let added = augment_package_path_candidates(
@@ -168,14 +167,13 @@ fn package_path_augmentation_adds_only_missing_package_axis() {
     assert_eq!(added, 1);
     assert!(candidates.iter().any(|candidate| {
         candidate.path == "src/query_wrapper_pkg/mod.rs"
-            && candidate.source == "package-path-query"
+            && candidate.source == "query-overlay"
             && candidate.confidence == "package-path"
     }));
 
     fs::remove_dir_all(root).expect("remove fixture");
 }
 
-#[cfg(feature = "turso-overlay")]
 #[test]
 fn query_wrapper_collects_structural_turso_fts_candidates_from_shared_search_contract() {
     let root = temp_root("asp-query-wrapper-structural-fts");
@@ -231,9 +229,8 @@ fn query_wrapper_collects_structural_turso_fts_candidates_from_shared_search_con
     fs::remove_dir_all(root).expect("remove fixture");
 }
 
-#[cfg(feature = "turso-overlay")]
 #[test]
-fn query_wrapper_candidate_collection_prefers_ranked_turso_fts_candidates_before_finder() {
+fn query_wrapper_candidate_collection_prefers_ranked_turso_fts_candidates_before_query_overlay() {
     let root = temp_root("asp-query-wrapper-ranked-fts");
     let src = root.join("src");
     fs::create_dir_all(&src).expect("create source directory");
@@ -308,7 +305,7 @@ fn query_wrapper_candidate_collection_prefers_ranked_turso_fts_candidates_before
         projection.fields["fallbackReason"],
         serde_json::json!("none")
     );
-    assert!(!collection.finder_skipped_after_source_index);
+    assert!(!collection.query_overlay_skipped_after_source_index);
     assert_eq!(collection.trace_fields["candidateCount"], 1);
 
     fs::remove_dir_all(root).expect("remove fixture");
@@ -538,7 +535,7 @@ fn source_index_query_collection_returns_none_for_missing_db_without_creating_ca
 
     let terms = vec!["query_wrapper_source_index".to_string()];
     let lookup = QueryWrapperSourceIndexLookup {
-        db_path: root.join("client.sqlite3"),
+        db_path: root.join("client.turso"),
         state: "missing-db".to_string(),
         candidates: Vec::new(),
     };
@@ -562,7 +559,7 @@ fn source_index_query_collection_returns_none_for_missing_db_without_creating_ca
 #[test]
 fn source_index_lookup_dto_construction_is_owned_by_search_crate() {
     let lookup = QueryWrapperSourceIndexLookup::new(
-        std::path::PathBuf::from("live/client/client.sqlite3"),
+        std::path::PathBuf::from("live/client/client.turso"),
         "hit",
         vec![QueryWrapperSourceIndexCandidate::new(
             "src/lib.rs",
@@ -593,7 +590,7 @@ fn source_index_lookup_dto_construction_is_owned_by_search_crate() {
 fn search_stage_trace_projection_is_owned_by_search_crate() {
     let receipt = SearchStageReceipt {
         stage: "search-candidate-merge".to_string(),
-        route_sources: vec!["dynamic-overlay".to_string(), "turso-fts".to_string()],
+        route_sources: vec!["search-overlay".to_string(), "turso-fts".to_string()],
         candidate_count: 4,
         returned_count: 3,
         filtered_line_identity_count: 1,
@@ -601,7 +598,7 @@ fn search_stage_trace_projection_is_owned_by_search_crate() {
     };
     let projection = query_wrapper_search_stage_trace_projection(&receipt);
 
-    assert_eq!(projection.source, "dynamic-overlay");
+    assert_eq!(projection.source, "search-overlay");
     assert_eq!(projection.status, "line-identity-filtered");
     assert_eq!(projection.candidate_count, 3);
     assert_eq!(projection.skipped_count, 1);
@@ -617,7 +614,7 @@ fn search_stage_trace_projection_is_owned_by_search_crate() {
     );
     assert_eq!(
         projection.fields["routeSources"],
-        serde_json::json!(["dynamic-overlay", "turso-fts"])
+        serde_json::json!(["search-overlay", "turso-fts"])
     );
     assert_eq!(projection.fields["candidateCount"], serde_json::json!(4));
     assert_eq!(projection.fields["returnedCount"], serde_json::json!(3));
@@ -635,7 +632,7 @@ fn search_stage_trace_projection_is_owned_by_search_crate() {
 fn source_index_trace_projection_is_owned_by_search_crate() {
     let hit = QueryWrapperSearchSourceIndexTrace {
         lookup: QueryWrapperSourceIndexLookup::new(
-            std::path::PathBuf::from("live/client/client.sqlite3"),
+            std::path::PathBuf::from("live/client/client.turso"),
             "hit",
             Vec::new(),
         ),
@@ -655,7 +652,7 @@ fn source_index_trace_projection_is_owned_by_search_crate() {
 
     let missing_db = QueryWrapperSearchSourceIndexTrace {
         lookup: QueryWrapperSourceIndexLookup::new(
-            std::path::PathBuf::from("live/client/client.sqlite3"),
+            std::path::PathBuf::from("live/client/client.turso"),
             "missing-db",
             Vec::new(),
         ),

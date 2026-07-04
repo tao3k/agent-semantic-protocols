@@ -1,0 +1,263 @@
+#+TITLE: 10.27 Project-Scoped Agent Session Registry
+#+PROPERTY: RFC_ID 10.27
+#+PROPERTY: STATUS draft
+
+* Intent
+
+Agent session routing is project-scoped registry state. ASP must not create a
+session artifact tree just to remember root and child session relationships.
+The durable key is the current project plus the agent session ids.
+
+* Contract
+
+ASP records resident child sessions in the agent session registry DB with this
+identity:
+
+- =project_id=
+- =root_session_id=
+- =session_id=
+- =parent_session_id=
+- =name=
+- =role=
+
+The normal command remains small:
+
+#+BEGIN_SRC sh
+asp agent session register --name asp-explore --child-session-id <child-session-id> --role asp-explore
+#+END_SRC
+
+The =project_id= is implicit from the current project. The root and parent may be
+filled from the platform adapter during register, but platform rollout data is
+validation evidence, not routing authority.
+
+* Gap Audit
+
+The original gap was that ASP could observe a platform child session id and then
+try to infer the root session from Codex rollout metadata. That is useful during
+registration, but unsafe as a routing rule:
+
+- an unregistered child could appear to belong to a root and accidentally reuse a
+  resident child route
+- a drifted child could keep running after its model, role, or agent config no
+  longer matched the ASP lane contract
+- global state could contain multiple projects, so root-only lookup could route
+  a child from the wrong repository
+- session artifacts would add another state owner even though the registry DB
+  already owns durable session relationships
+
+The fix is to make =project_id= part of the registry identity and to treat
+rollout metadata as validation evidence only.
+
+* Routing Rule
+
+Pre-tool and binary gates resolve route state from the current project registry
+first:
+
+#+BEGIN_SRC text
+project_id + current session id -> registered child/root relation
+project_id + root session id + lane name -> resident child id
+#+END_SRC
+
+If the child is unregistered, ASP denies search/query/test work and asks the
+agent to register the current child or create the configured child. If the child
+is registered but validation fails, ASP denies route reuse and asks the agent to
+close/delete the drifted child and create a fresh configured child.
+
+* Implemented Enhancements
+
+- =asp_agent_sessions= stores =project_id= and all route reads include that
+  project scope.
+- Register writes =project_id + root_session_id + child_session_id + name/role=
+  into the registry DB.
+- Reuse/status/pre-tool route checks no longer use rollout-only root inference
+  for unregistered children.
+- Register still uses the platform adapter to fill root/parent when a child id
+  is supplied without explicit root flags.
+- Model, role, root, parent, and explicit agent config path mismatches are hard
+  failures.
+- Missing rollout =agent_path= is warning-only when role/model/root/parent still
+  match the expected ASP agent configuration. ASP compares the effective
+  =asp.toml=/deployed agent configuration to rollout actual metadata; it does
+  not require humans to pass =agent_path=.
+- Sandbox mismatch is warning-only because Codex can inherit the parent sandbox.
+- Register failure text tells the agent to close/delete the invalid child and
+  recreate a fresh configured child.
+- Main-session wrapped test/build commands such as =direnv exec . env ... cargo
+  test= route to the testing lane instead of running in the root agent.
+
+The current =project_id= implementation is intentionally minimal: it uses the
+canonical project root as the DB scope key and does not create session artifacts.
+If a stable repo-id helper already exists, this can be swapped behind the
+project-id resolver without changing the registry contract.
+
+* Flow
+
+#+BEGIN_SRC mermaid
+flowchart TD
+  A["agent has platform session id"] --> B["resolve project_id from cwd"]
+  B --> C{"registry has project_id + current child?"}
+  C -- yes --> D["use stored root_session_id"]
+  C -- no --> E["register current child or create configured child"]
+  E --> F["register validates rollout role/model/agent config"]
+  F -- pass/warn --> G["write project-scoped DB relation"]
+  F -- fail --> H["close/delete drifted child and recreate"]
+  G --> I{"main wants search/query/test?"}
+  I -- search/query --> J["route to asp-explore child id"]
+  I -- test/build --> K["route to asp-testing child id"]
+#+END_SRC
+
+* Non-Goals
+
+- No =agent-sessions/roots/lanes/children= artifact tree.
+- No TOML state files for session routing.
+- No rollout-only route reuse for unregistered children.
+
+Checkpoints, evidence summaries, and heartbeats can reuse the same project DB
+with session ids as foreign keys. They do not require a separate session artifact
+layout.
+
+* Scenario Tests
+
+These scenarios must remain covered as behavior tests, not only as unit-level
+helper checks:
+
+| Scenario | Expected behavior | Current coverage |
+|---+---+---|
+| Register child with no explicit root | Register validates rollout and fills root/parent | =asp_agent_session_register_infers_root_from_codex_child_rollout= |
+| Unregistered child tries reuse | Reuse is a miss in the current project; rollout does not route | =asp_agent_session_reuse_in_unregistered_child_does_not_use_codex_rollout_root= |
+| Global DB with two project roots | Same DB path does not leak sessions across projects | =asp_agent_session_defaults_to_global_state_root= |
+| Drifted model | Register hard fails | =asp_agent_session_rejects_mismatched_codex_model_profile= |
+| Drifted agent config path | Register hard fails and remediation says recreate | =asp_agent_session_rejects_mismatched_codex_agent_config_path= |
+| Missing rollout agent path | Register warns but passes when role/model/root/parent match config | =asp_agent_session_warns_but_allows_missing_codex_agent_config_path= |
+| Drifted registered child in hook path | Main-session search is denied and does not reuse the stale child | =codex_main_session_does_not_reuse_drifted_asp_explore_registration= |
+| Wrapped test/build command | Root agent is denied and routed to =asp-testing= | =codex_main_session_routes_wrapped_test_command_to_asp_testing= |
+| Installed hook full lifecycle | session-start reuse, main deny route, child allow, post-tool evidence | =codex_installed_hook_full_resident_child_lifecycle_scenario= |
+
+The full lifecycle is covered by a behavior test that drives the complete flow
+through installed hooks:
+
+#+BEGIN_SRC text
+session-start -> create configured asp-explore -> register -> main ASP query denied
+and routed -> child query allowed -> post-tool heartbeat/checkpoint evidence
+#+END_SRC
+
+The remaining refinement is packaging this as a reusable declarative scenario
+harness case, rather than only as a Rust behavior test.
+
+* Open Gaps
+
+** Codex Agent Metadata
+
+Current Codex multi-agent startup can produce a subagent rollout without
+=source.subagent.thread_spawn.agent_path=. ASP treats that missing field as a
+warning when the rollout still matches the expected role/model/root/parent from
+the ASP configuration. If the field is present and points at the wrong config,
+ASP hard-fails the registration.
+
+Resolution options:
+
+- prefer a Codex/host fix that records the configured agent path in rollout
+  metadata
+- or add a Codex adapter proof that can validate the selected named agent without
+  relying on =agent_path=
+
+Until one of those exists, missing =agent_path= remains an auditable warning, not
+a routing bypass. Model or role drift still fails registration.
+
+** Stable Project Id Helper
+
+The registry currently scopes by canonical project root. This avoids artifacts
+and is deterministic, but it is not the same as the existing =repo-*= state
+layout id. The next refinement is to reuse the official project-id resolver, if
+one exists, behind the same project scope function.
+
+** Declarative Scenario Harness
+
+The command and hook behavior tests cover the failure modes and the full
+lifecycle. A declarative scenario-harness wrapper would make the same lifecycle
+easier to reuse for future lanes such as =asp-testing= and future host adapters.
+* Project Hook State And Agent Config Projection
+** Hook state belongs to the project workspace
+Global =state-root/hooks/state= is not a valid owner for activation,
+dispatcher TTL, replay, or hook event state. Those records are runtime state for
+a concrete project/workspace and must be under the project layout:
+
+#+BEGIN_SRC text
+~/.agent-semantic-protocols/
+  projects/by-id/<repo-id>/
+    workspaces/<workspace-id>/
+      live/hooks/cache/
+      live/hooks/state/
+        activation.json
+        events.jsonl
+#+END_SRC
+
+The global state root may still own cross-project registries, runtime binaries,
+provider locks, Org templates, and canonical agent config sources. It must not
+own per-project hook activation or event state.
+
+** Agent configs are ASP-owned, host configs are projections
+ASP-owned agent definitions live under:
+
+#+BEGIN_SRC text
+~/.agent-semantic-protocols/agents/
+  config.toml
+  asp-explorer_codex.toml
+  asp-testing_codex.toml
+  asp-explorer_claude.md
+#+END_SRC
+
+The suffix selects the host projection target:
+
+| Source suffix | Projection target |
+| =_codex.toml= | =$CODEX_HOME/agents/<name>.toml= |
+| =_claude.md= | =$CLAUDE_HOME/agents/<name>.md= |
+| =_claude.toml= | =$CLAUDE_HOME/agents/<name>.toml= |
+
+=asp sync= refreshes these projections. The host directories are not canonical
+state; they are symlinks or copies that let Codex and Claude discover the
+configured ASP agents. Registration validation reads the ASP canonical Codex
+config first and falls back to the host projection only when the canonical
+source is absent.
+
+The =*_codex.toml= files are Codex-native projection sources and must stay
+compatible with the Codex agent schema. ASP-only dynamic model metadata lives in
+=~/.agent-semantic-protocols/agents/config.toml=:
+
+#+BEGIN_SRC toml
+[platform.codex.models]
+primary = "gpt-5.3-codex-spark"
+fallback = ["gpt-5.4-mini"]
+capacityThreshold = 0.8
+#+END_SRC
+
+When a Codex capacity warning requires changing models, ASP should surface an
+executable command instead of leaving only a mismatch warning:
+
+#+BEGIN_SRC sh
+asp agent session switch-model --model gpt-5.4-mini --json
+#+END_SRC
+
+For Codex, =switch-model= updates the dynamic primary in =agents/config.toml=
+and rewrites the Codex-native agent projection model fields so later subagents
+start with the same model. After that switch, validation accepts the new primary
+or a configured fallback and must not keep emitting the previous model warning.
+
+** Scenario coverage
+The regression shape is:
+
+#+BEGIN_SRC text
+asp paths --json
+  => hookStateDir is under projects/by-id/.../workspaces/.../live/hooks/state
+  => activation is hookStateDir/activation.json
+
+asp sync
+  => scans ~/.agent-semantic-protocols/agents/*_{codex,claude}.*
+  => refreshes host agent projections
+  => reports agentConfigs=<n>
+
+asp agent session register
+  => validates model/role/root/parent against ASP canonical config
+  => hard-fails model drift
+  => warning-only for inherited sandbox mismatch
+#+END_SRC

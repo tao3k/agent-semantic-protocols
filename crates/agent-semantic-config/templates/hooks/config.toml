@@ -6,10 +6,12 @@ schemaVersion = "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@"
 protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 
-[aspSessionPolicy]
+[[agents.residentAgents]]
 enabled = true
-residentChildName = "asp-explore"
-residentCodexAgentName = "asp_explorer"
+name = "asp-explore"
+role = "asp_explorer"
+codexAgentName = "asp_explorer"
+lifecycle = "asp-command"
 mainAllowedAspCommandPrefixes = [
   "help",
   "--help",
@@ -18,3 +20,212 @@ mainAllowedAspCommandPrefixes = [
   "org recall",
   "org capture",
 ]
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-testing"
+role = "asp_testing"
+codexAgentName = "asp_testing"
+lifecycle = "testing-command"
+commandPrefixes = [
+  "cargo test",
+  "cargo check",
+  "cargo build",
+  "pytest",
+  "uv run pytest",
+  "just test",
+]
+
+[agentSessionGuide]
+register = """
+asp agent session register guide
+Action step flow when no asp-explore child is registered:
+Detected host: {{hostLabel}}
+Session env: {{sessionEnv}}
+1. {{createAction}}.
+   Config source: {{configSource}}
+   Host projection: {{hostProjection}}
+   Expected result: the host returns a child session id.
+2. Shell action: register that returned id.
+   asp agent session register --name asp-explore --child-session-id <child-session-id> --role asp-explore
+   The detected session env is the root session; do not pass --root-session-id unless registering across sessions.
+3. Shell action: verify routing.
+   asp agent session status --name asp-explore --json
+4. Retry the original ASP query/search command.
+Do not use `asp agent session fork` as bootstrap; fork only manages existing saved sessions.
+"""
+list = """
+asp agent session list guide
+List registered child sessions for the current root session.
+"""
+show = """
+asp agent session show guide
+Show one registered child session by --name or --child-session-id.
+"""
+reuse = """
+asp agent session reuse guide
+Action step flow:
+1. Shell action: try to reuse an existing routable child.
+   asp agent session reuse --name asp-explore --json
+2. If reuse fails with no registered child, {{createAction}}.
+3. Shell action: register the returned child session id.
+   asp agent session register --name asp-explore --child-session-id <child-session-id> --role asp-explore
+4. Shell action: verify.
+   asp agent session status --name asp-explore --json
+"""
+status = """
+asp agent session status guide
+Action step flow:
+1. Shell action: inspect the current resident child.
+   asp agent session status --name asp-explore --json
+2. If nextAction=start-resident-child-and-register, {{createAction}}.
+3. Shell action: register the returned child session id.
+   asp agent session register --name asp-explore --child-session-id <child-session-id> --role asp-explore
+4. Shell action: verify status again.
+   asp agent session status --name asp-explore --json
+Timeout is not a duplicate-worker trigger. Do not use fork as bootstrap.
+"""
+
+[agentSessionMessages]
+sessionStartReuse = """
+ASP session-start reuse: this root session already has active resident {{residentChildName}} child session `{{childSessionId}}`.
+Reuse or resume this exact child session for ASP search/query; do not spawn another {{residentChildName}} session and do not close it while the root session is active.
+Before treating a wait timeout as failure, run `asp agent session status --name {{residentChildName}} --json` and use registry plus artifact activity evidence.
+Timeout is not a duplicate-worker trigger.
+"""
+sessionStartBootstrap = """
+ASP session-start bootstrap: this root session has no registered and profile-valid {{residentChildName}} child session.
+If you are already inside the intended child, run:
+   asp agent session register --name {{residentChildName}} --role asp-explore
+ASP infers root/parent from the host session metadata.
+Otherwise {{createAction}} and register the returned child id:
+   asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --role asp-explore
+If registration fails validation, close/delete that child and create a fresh child from the configured agent; do not reuse an unregistered or drifted child.
+"""
+missingResidentExplore = """
+ASP session-start bootstrap required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
+Action step flow:
+0. Shell action: read the bootstrap guide.
+   asp agent session register --guide
+1. {{createAction}}.
+   Expected result: the host returns a child session id.
+2. Shell action: register the returned child session id.
+   asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --role asp-explore
+3. Shell action: verify routing.
+   asp agent session status --name {{residentChildName}} --json
+4. Retry the original tool command.
+If you are already inside the intended child, use this shell action instead:
+   asp agent session register --name {{residentChildName}} --role asp-explore
+Do not use `asp agent session fork` as bootstrap; fork only manages existing saved sessions.
+If registration fails validation, close/delete the drifted child and create a fresh configured child.{{originalCommandLine}}
+"""
+mainRestrictedWithChild = """
+ASP denied main-session ASP command (`{{commandLabel}}`).
+Main-session ASP usage is limited to session, recovery, and checkpoint commands: `asp agent session ...`, `asp org recall ...`, and `asp org capture ...`.
+Route ASP search/query/evidence work to resident {{residentChildName}} child session `{{childSessionId}}`.
+Command: {{command}}
+"""
+mainRestrictedWithoutChild = """
+ASP denied main-session ASP command (`{{commandLabel}}`).
+Main-session ASP usage is limited to session, recovery, and checkpoint commands: `asp agent session ...`, `asp org recall ...`, and `asp org capture ...`.
+Action step flow:
+0. Shell action: read the bootstrap guide.
+   asp agent session register --guide
+1. {{createAction}}.
+   Expected result: the host returns a child session id.
+2. Shell action: register the returned child session id.
+   asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --role asp-explore
+3. Shell action: verify routing.
+   asp agent session status --name {{residentChildName}} --json
+4. Retry the blocked ASP command.
+Do not use `asp agent session fork` as bootstrap.
+If validation fails, close/delete the drifted child and create a fresh configured child before ASP evidence work.
+Command: {{command}}
+"""
+testingWithChild = """
+ASP denied main-session test/build command.
+Route this test/build command to resident {{residentChildName}} child session `{{childSessionId}}`.
+Main agent should keep judgment, edits, and checkpoints; run large tests/builds in the testing child.
+Command: {{command}}
+"""
+testingWithoutChild = """
+ASP denied main-session test/build command.
+If you are already inside the intended testing child, run:
+   asp agent session register --name {{residentChildName}} --role asp-testing
+ASP infers root/parent from the host session metadata.
+Otherwise start the configured testing child `{{residentCodexAgentName}}` and register the returned child id:
+   asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --role asp-testing
+If registration fails validation, close/delete that child and create a fresh child from the configured agent.
+Main agent should keep judgment, edits, and checkpoints; run large tests/builds in the testing child.
+Command: {{command}}
+"""
+binaryGateWithChild = """
+ASP query/search command denied in main agent session.
+Route this command to resident {{residentChildName}} child session `{{childSessionId}}`; do not spawn another {{residentChildName}} session.
+rootSessionId={{rootSessionId}}
+childSessionId={{childSessionId}}
+lookupCommand=asp agent session reuse --name {{residentChildName}} --json
+command={{command}}
+"""
+binaryGateWithoutChild = """
+ASP query/search command denied in agent session because no active {{residentChildName}} child session is registered for this root session.
+Action step flow:
+0. Shell action: read the bootstrap guide.
+   asp agent session register --guide
+1. {{createAction}}.
+   Expected result: the host returns a child session id.
+2. Shell action: register the returned child session id.
+   asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --role asp-explore
+3. Shell action: verify routing.
+   asp agent session status --name {{residentChildName}} --json
+4. Retry the blocked ASP command.
+rootSessionId={{rootSessionId}}
+lookupCommand=asp agent session reuse --name {{residentChildName}} --json
+command={{command}}
+"""
+binaryGateInvalidChild = """
+ASP query/search command denied in agent session because the registered {{residentChildName}} child session is not routable.
+blockedState=validation-failed-or-non-routable-child
+rootSessionId={{rootSessionId}}
+childSessionId={{childSessionId}}
+childStatus={{childStatus}}
+nextAction=destroy-invalid-child-and-create-configured-child
+0. Shell action: inspect status.
+   asp agent session status --name {{residentChildName}} --json
+1. Close/delete the invalid child in the host agent UI or host CLI.
+2. {{createAction}}.
+3. Shell action: register the returned child session id.
+   asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --role asp-explore
+4. Retry the blocked ASP command.
+command={{command}}
+"""
+binaryGateRegistryBlocked = """
+ASP query/search command denied in agent session because the ASP session registry is currently unavailable.
+blockedState=registry-locked
+rootSessionId={{rootSessionId}}
+nextAction=retry-session-status-or-reuse-do-not-fallback
+0. Shell action: inspect status after the registry lock clears.
+   asp agent session status --name {{residentChildName}} --json
+1. Shell action: retry reuse/resume.
+   asp agent session reuse --name {{residentChildName}} --json
+2. Do not fall back to raw source tools while the registry is locked.
+registryError={{registryError}}
+command={{command}}
+"""
+sourceAccessCompact = """
+ASP denied source access (`{{reason}}`).
+Use {{residentChildName}} for ASP search/query. If no valid child is registered, run:
+   asp agent session register --guide
+Do not fall back to raw source tools.
+recoveryRef={{recoveryRef}}
+"""
+sourceAccessCompactRepeated = """
+ASP denied source access again (`{{reason}}`).
+Use the active recovery lane; do not retry raw source tools.
+recoveryRef={{recoveryRef}}
+"""
+sourceAccessCompactSubagent = """
+ASP denied source access (`{{reason}}`) inside {{residentChildName}}.
+Use ASP query/search routes and return compact `[asp-search-subagent]` evidence.
+recoveryRef={{recoveryRef}}
+"""

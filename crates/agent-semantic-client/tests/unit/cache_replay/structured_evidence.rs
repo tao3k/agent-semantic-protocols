@@ -28,7 +28,7 @@ fn structured_evidence_artifacts_use_schema_owned_json_families() {
 
 #[test]
 fn structured_evidence_artifacts_reject_prompt_output_and_unsafe_paths() {
-    let cache_file = Path::new("/tmp/project/.cache/agent-semantic-protocol/client.sqlite");
+    let cache_file = Path::new("/tmp/project/workspaces/workspace/live/client/client.turso");
 
     for artifact_id in [
         "prompt-output/relation-plan.txt",

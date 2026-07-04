@@ -3,6 +3,11 @@
 use std::path::Path;
 
 use super::turso::connect_turso_client_db;
+use super::turso_operation_lock::acquire_turso_operation_lock;
+use super::turso_statement::{
+    execute_turso_operation_with_lock_retry, execute_turso_prepared_statement_with_lock_retry,
+    execute_turso_statement_with_lock_retry,
+};
 
 /// Feature-gated stable search document row written through the Turso adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,11 +49,25 @@ pub async fn upsert_turso_search_documents(
     if documents.is_empty() {
         return Ok(0);
     }
+    let _operation_lock = acquire_turso_operation_lock(db_path, "search-document-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
-    connection
-        .execute("BEGIN TRANSACTION", ())
-        .await
-        .map_err(|error| format!("failed to begin Turso search document transaction: {error}"))?;
+    upsert_turso_search_documents_with_connection(&connection, documents).await
+}
+
+/// Insert or update stable search documents using an existing Turso connection.
+pub(super) async fn upsert_turso_search_documents_with_connection(
+    connection: &turso::Connection,
+    documents: &[TursoClientDbSearchDocument],
+) -> Result<usize, String> {
+    if documents.is_empty() {
+        return Ok(0);
+    }
+    execute_turso_statement_with_lock_retry(
+        connection,
+        "BEGIN TRANSACTION",
+        "failed to begin Turso search document transaction",
+    )
+    .await?;
     let mut statement = match connection
         .prepare_cached(
             "INSERT INTO asp_search_document (namespace, document_id, entity_id, selector, document)
@@ -62,32 +81,45 @@ pub async fn upsert_turso_search_documents(
     {
         Ok(statement) => statement,
         Err(error) => {
-            let _ = connection.execute("ROLLBACK", ()).await;
+            let _ = execute_turso_statement_with_lock_retry(
+                connection,
+                "ROLLBACK",
+                "failed to rollback Turso search document transaction after prepare",
+            )
+            .await;
             return Err(format!(
                 "failed to prepare Turso search document upsert: {error}"
             ));
         }
     };
     for document in documents {
-        if let Err(error) = statement
-            .execute((
+        if let Err(error) = execute_turso_prepared_statement_with_lock_retry!(
+            statement,
+            (
                 document.namespace.as_str(),
                 document.document_id.as_str(),
                 document.entity_id.as_str(),
                 document.selector.as_deref(),
                 document.document.as_str(),
-            ))
-            .await
-            .map_err(|error| format!("failed to upsert Turso search document: {error}"))
-        {
-            let _ = connection.execute("ROLLBACK", ()).await;
+            ),
+            "failed to upsert Turso search document",
+        ) {
+            let _ = execute_turso_statement_with_lock_retry(
+                connection,
+                "ROLLBACK",
+                "failed to rollback Turso search document transaction after upsert",
+            )
+            .await;
             return Err(error);
         }
     }
-    connection
-        .execute("COMMIT", ())
-        .await
-        .map_err(|error| format!("failed to commit Turso search document transaction: {error}"))?;
+    drop(statement);
+    execute_turso_statement_with_lock_retry(
+        connection,
+        "COMMIT",
+        "failed to commit Turso search document transaction",
+    )
+    .await?;
     Ok(documents.len())
 }
 
@@ -96,28 +128,35 @@ pub async fn upsert_turso_overlay_document(
     db_path: &Path,
     document: &TursoClientDbOverlayDocument,
 ) -> Result<(), String> {
+    let _operation_lock = acquire_turso_operation_lock(db_path, "overlay-document-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
-    connection
-        .execute(
-            "INSERT INTO asp_overlay_document
-             (repo_id, workspace_id, session_id, base_generation, document_id, selector, document)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(repo_id, workspace_id, session_id, base_generation, document_id)
-             DO UPDATE SET
-                selector = excluded.selector,
-                document = excluded.document",
-            (
-                document.repo_id.as_str(),
-                document.workspace_id.as_str(),
-                document.session_id.as_str(),
-                document.base_generation.as_str(),
-                document.document_id.as_str(),
-                document.selector.as_deref(),
-                document.document.as_str(),
-            ),
-        )
-        .await
-        .map_err(|error| format!("failed to upsert Turso overlay document: {error}"))?;
+    execute_turso_operation_with_lock_retry(
+        || async {
+            connection
+                .execute(
+                    "INSERT INTO asp_overlay_document
+                     (repo_id, workspace_id, session_id, base_generation, document_id, selector, document)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                     ON CONFLICT(repo_id, workspace_id, session_id, base_generation, document_id)
+                     DO UPDATE SET
+                        selector = excluded.selector,
+                        document = excluded.document",
+                    (
+                        document.repo_id.as_str(),
+                        document.workspace_id.as_str(),
+                        document.session_id.as_str(),
+                        document.base_generation.as_str(),
+                        document.document_id.as_str(),
+                        document.selector.as_deref(),
+                        document.document.as_str(),
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to upsert Turso overlay document",
+    )
+    .await?;
     Ok(())
 }
 

@@ -1,11 +1,12 @@
-use std::fs;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use crate::project_client_cache_dir;
+use crate::test_support::IsolatedAspStateHome;
 
 #[test]
 fn package_root_uses_git_toplevel_client_cache_root() {
     let root = temp_root("git-toplevel-cache-root");
+    let _state_home = IsolatedAspStateHome::activate(&root);
     let package_root = root.join("crates/example");
     fs::create_dir_all(&package_root).expect("create package root");
     fs::create_dir_all(root.join(".git")).expect("create git marker");

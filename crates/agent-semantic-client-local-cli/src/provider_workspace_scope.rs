@@ -151,7 +151,11 @@ pub fn provider_workspace_scope_files_from_packet(
         .files
         .into_iter()
         .filter_map(|file| {
-            let path = scoped_child_path(package_root_path, &file.path)?;
+            let path = scoped_child_path(package_root_path, &file.path)
+                .filter(|path| path.is_file())
+                .or_else(|| {
+                    scoped_child_path(project_root, &file.path).filter(|path| path.is_file())
+                })?;
             (path.is_file() && !provider_ignores_path(project_root, provider, &path)).then_some(
                 ProviderWorkspaceScopePathFile {
                     path,
@@ -176,11 +180,10 @@ pub fn provider_workspace_scope_from_stdout(
     else {
         return Ok(ProviderWorkspaceScope::Unsupported);
     };
-    if packet
-        .schema_id
-        .as_deref()
-        .is_some_and(|schema_id| schema_id != PROVIDER_WORKSPACE_SCOPE_SCHEMA_ID)
-    {
+    if packet.schema_id.as_deref().is_some_and(|schema_id| {
+        schema_id != PROVIDER_WORKSPACE_SCOPE_SCHEMA_ID
+            && schema_id != "agent.semantic-protocols.semantic-workspace-scope"
+    }) {
         return Ok(ProviderWorkspaceScope::Unsupported);
     }
     if packet.status.as_deref() == Some("missing-anchor") {

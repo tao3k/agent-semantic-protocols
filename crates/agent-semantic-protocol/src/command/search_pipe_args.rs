@@ -109,7 +109,11 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
                 if value.starts_with('-') {
                     return Err("--workspace requires a project root".to_string());
                 }
-                workspace = Some(PathBuf::from(value));
+                let workspace_path = PathBuf::from(value);
+                if workspace_path.is_file() {
+                    return Err("--workspace requires a directory project root; Keep the file path as the owner/selector".to_string());
+                }
+                workspace = Some(workspace_path);
                 index += 2;
             }
             "--view" => {
@@ -143,6 +147,11 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
             "search pipe requires a seed query".to_string()
         }
     })?;
+    if selector.is_none() && seed_query_looks_like_cli_command(&seed_query) {
+        return Err(
+            "search pipe is a refinement/combinator surface, not a CLI-command lexical search; use search lexical for command terms or search suggest --view commands".to_string(),
+        );
+    }
     Ok(SearchPipeArgs {
         seed_query,
         selector,
@@ -360,6 +369,15 @@ pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, S
             }
         }
     }
+    let has_dependency_surface = pipes
+        .iter()
+        .any(|pipe| matches!(pipe.as_str(), "deps" | "dependencies"));
+    let has_owner_surface = pipes.iter().any(|pipe| pipe == "items");
+    if has_dependency_surface && has_owner_surface {
+        return Err(
+            "search lexical does not support combining deps with owner/items; run deps and owner searches separately".to_string(),
+        );
+    }
     if pipes.is_empty() {
         pipes.extend(default_search_surfaces());
     }
@@ -435,4 +453,20 @@ fn split_csv(value: &str) -> Vec<String> {
         .filter(|item| !item.is_empty())
         .map(ToOwned::to_owned)
         .collect()
+}
+
+fn seed_query_looks_like_cli_command(query: &str) -> bool {
+    let tokens = query.split_whitespace().collect::<Vec<_>>();
+    if tokens.first().is_some_and(|token| *token == "asp") {
+        return true;
+    }
+    tokens.windows(2).any(|window| {
+        matches!(
+            window,
+            ["search", "pipe"]
+                | ["search", "lexical"]
+                | ["cache", "status"]
+                | ["source-index", "refresh"]
+        )
+    })
 }

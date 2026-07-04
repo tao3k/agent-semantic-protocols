@@ -1,9 +1,6 @@
 //! DB Engine-owned source index rows for workspace source discovery.
 
-mod api;
 mod import;
-mod lookup;
-mod storage;
 mod text;
 mod types;
 

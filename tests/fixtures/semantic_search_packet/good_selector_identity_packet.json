@@ -1,0 +1,74 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-search-packet",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "languageId": "rust",
+  "providerId": "rust-harness",
+  "binary": "asp-rust-harness",
+  "namespace": "asp.rust",
+  "method": "search/query",
+  "projectRoot": "/workspace/agent-semantic-protocols",
+  "view": "query",
+  "renderMode": "seeds",
+  "header": {
+    "kind": "search-packet-selector-identity-fixture",
+    "fields": {
+      "fixture": "good-selector-identity"
+    }
+  },
+  "nodes": [],
+  "edges": [],
+  "owners": [],
+  "items": [
+    {
+      "name": "selectorIdentityProviderOutput",
+      "kind": "function",
+      "ownerPath": "crates/agent-semantic-protocol/src/search/render.rs",
+      "structuralSelector": "rust://crates/agent-semantic-protocol/src/search/render.rs#fn:selectorIdentityProviderOutput",
+      "displayLineRange": "10:20",
+      "sourceLocatorHint": "crates/agent-semantic-protocol/src/search/render.rs:10:20",
+      "fields": {
+        "identitySource": "selector-owned"
+      }
+    }
+  ],
+  "actionFrontier": [
+    {
+      "id": "READ.selector-identity-good",
+      "kind": "read",
+      "routeId": "SELECTOR_IDENTITY",
+      "targetRole": "symbol",
+      "target": "selectorIdentityProviderOutput",
+      "ownerPath": "crates/agent-semantic-protocol/src/search/render.rs",
+      "selector": "rust://crates/agent-semantic-protocol/src/search/render.rs#fn:selectorIdentityProviderOutput",
+      "projection": "code",
+      "codePolicy": "requires-exact-code",
+      "displayLineRange": "10:20",
+      "sourceLocatorHint": "crates/agent-semantic-protocol/src/search/render.rs:10:20",
+      "fields": {
+        "identitySource": "selector-owned"
+      }
+    }
+  ],
+  "hits": [],
+  "findings": [],
+  "nextActions": [
+    {
+      "kind": "read",
+      "target": "rust://crates/agent-semantic-protocol/src/search/render.rs#fn:selectorIdentityProviderOutput",
+      "targetRole": "symbol",
+      "ownerPath": "crates/agent-semantic-protocol/src/search/render.rs",
+      "read": "crates/agent-semantic-protocol/src/search/render.rs:10:20",
+      "fields": {
+        "identitySource": "selector-owned"
+      }
+    }
+  ],
+  "notes": [
+    {
+      "kind": "contract-fixture",
+      "message": "Schema-valid packet that keeps display locators but makes executable identity selector-owned."
+    }
+  ]
+}

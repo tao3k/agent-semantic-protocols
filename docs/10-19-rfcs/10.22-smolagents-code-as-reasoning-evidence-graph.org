@@ -10,7 +10,7 @@ It owns:
 - the mapping from =smolagents= implementation concepts to ASP core theory.
 
 It does not own:
-- ASP =ReasoningTree= / =EvidenceGraph= / =GraphRoute= theory;
+- ASP =ReasoningTree= / =EvidenceGraph= / =DynamicTopology= / =GraphRoute= theory;
 - ASP DB Engine and Turso state architecture;
 - ASP compact render contract;
 - Python production graph-route algorithms;
@@ -60,7 +60,7 @@ In =smolagents=, one action step is not an opaque chat turn. It can contain:
 
 That is close to an ASP reasoning-event model. The difference is authority. =smolagents= uses Python AST/runtime structures to execute code actions. ASP should use the stronger theory in [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23]]: provider-owned native parsers, selector identity, dependency/test/Org topology, DB Engine receipts, dynamic overlays, Python production graph ranking, Julia offline replay, and compact render.
 * Relationship to core ASP reasoning theory
-This RFC uses =ReasoningTree=, =EvidenceGraph=, and =GraphRoute= only as mapping terms into [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]].
+This RFC uses =ReasoningTree=, =EvidenceGraph=, =DynamicTopology=, and =GraphRoute= only as mapping terms into [[file:10.23-asp-reasoning-evidence-graph-theory.org][10.23 ASP reasoning evidence graph theory]].
 
 The mapping from =smolagents= is:
 - =AgentMemory= and step serialization map to ASP run evidence.

@@ -6,8 +6,9 @@ use super::search_pipe_model::Candidate;
 use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_pipe_quality_model::{OwnerCoverage, SearchPipeQuality};
 use super::search_pipe_query_evidence::{
-    declaration_header_match, finder_handles, handle_paths, high_value_matches, high_value_missing,
-    is_high_value_term, parser_handles, path_exact_match, strong_match, weak_match, weak_reason,
+    declaration_header_match, handle_paths, high_value_matches, high_value_missing,
+    is_high_value_term, parser_handles, path_exact_match, search_overlay_handles, strong_match,
+    weak_match, weak_reason,
 };
 use super::search_pipe_query_model::{QueryTerm, TermRole};
 use super::search_pipe_query_pack::{
@@ -78,7 +79,7 @@ pub(super) fn analyze_search_pipe_quality(
             || candidate.confidence == "path"
     });
     let parser_handles = parser_handles(language_id, candidates, &terms);
-    let finder_handles = finder_handles(candidates, &terms);
+    let overlay_handles = search_overlay_handles(candidates, &terms);
     let next_query_pack_hint =
         next_query_pack_hint(&context_terms, &owner_seed_terms, &concept_terms);
     SearchPipeQuality {
@@ -105,7 +106,7 @@ pub(super) fn analyze_search_pipe_quality(
         concept_terms,
         page_index_handles,
         parser_handles,
-        finder_handles,
+        search_overlay_handles: overlay_handles,
         next_query_pack_hint,
         clause_coverages: clause_coverages(&clauses, candidates),
     }
@@ -190,14 +191,14 @@ impl SearchPipeQuality {
             .map(shell_quote)
             .unwrap_or_else(|| "-".to_string());
         format!(
-            "handles=inputTerms={} contextTerms={} ownerSeedTerms={} conceptTerms={} pageIndexHandles={} parserHandles={} finderHandles={} nextQueryPackHint={}",
+            "handles=inputTerms={} contextTerms={} ownerSeedTerms={} conceptTerms={} pageIndexHandles={} parserHandles={} searchOverlayHandles={} nextQueryPackHint={}",
             display_terms(&self.input_terms()),
             display_terms(&self.context_terms),
             display_terms(&self.owner_seed_terms),
             display_terms(&self.concept_terms),
             display_terms(&self.page_index_handles),
             display_terms(&self.parser_handles),
-            display_terms(&self.finder_handles),
+            display_terms(&self.search_overlay_handles),
             hint,
         )
     }

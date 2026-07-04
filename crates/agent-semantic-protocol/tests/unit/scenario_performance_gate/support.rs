@@ -11,9 +11,23 @@ use crate::provider_command::support::{
     asp_command, prepend_path, provider, provider_with_owner_items, temp_project_root,
     write_activation, write_marker_provider, write_provider_bin_config,
 };
+use agent_semantic_client_db::{
+    ClientDbSourceIndexCandidate, ClientDbSourceIndexLookupResult, ClientDbSourceIndexLookupState,
+    ClientDbSourceIndexSourceKind,
+};
 use agent_semantic_protocol::render_selector_seeded_search_pipe;
+use agent_semantic_search::render_owner_items_source_index_lookup_trace;
 use serde::Deserialize;
 use serde_json::Value;
+
+mod owner_items;
+
+pub(super) use owner_items::{
+    asp_org_owner_items_cold_functional_path_stays_inside_scenario_gate,
+    asp_python_owner_items_cache_hot_path_stays_inside_scenario_gate,
+    asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate,
+    asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_gate,
+};
 
 const AGENT_POLICY_ID_GRAMMAR: &str = "<LANGUAGE>-AGENT-<TAGS>-<NUMBER>";
 const LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 300;
@@ -29,6 +43,8 @@ const REQUIRED_PERFORMANCE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FZF-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FZF-SOURCE-INDEX-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
+    "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-SOURCE-INDEX-MISSING-DB-COLD-001",
+    "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-SOURCE-INDEX-HIT-COLD-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-DYNAMIC-OVERLAY-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-SELECTOR-SEED-001",
@@ -98,6 +114,9 @@ const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS: &[LanguageScenarioBenchmarkRequi
     },
 ];
 
+const COLD_FIRST_SEARCH_LANGUAGE_IDS: &[&str] =
+    &["rust", "typescript", "python", "julia", "orgize"];
+
 fn refresh_source_index(root: &Path) {
     let output = asp_command(root)
         .args(["cache", "source-index", "refresh"])
@@ -118,6 +137,44 @@ fn assert_source_index_query_benchmark_contract(benchmark: &SharedBenchmarkToml)
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
+fn assert_codebase_memory_mcp_reference_benchmark_contract(
+    benchmark: &SearchFrameReferenceBenchmarkToml,
+) {
+    let codebase_rounds = benchmark
+        .codebase_memory_mcp_query_rounds
+        .expect("benchmark must record codebase-memory-mcp reference rounds");
+    let asp_rounds = benchmark
+        .asp_search_query_rounds
+        .expect("benchmark must record ASP search/query rounds");
+    let round_delta = benchmark
+        .round_delta
+        .expect("benchmark must record roundDelta");
+    let selector_evidence = benchmark
+        .selector_evidence
+        .as_deref()
+        .expect("benchmark must record selectorEvidence");
+    let evidence_advantage = benchmark
+        .evidence_advantage
+        .as_deref()
+        .expect("benchmark must record evidenceAdvantage");
+
+    assert!(codebase_rounds > 0, "reference rounds must be non-zero");
+    assert!(asp_rounds > 0, "ASP rounds must be non-zero");
+    assert_eq!(
+        round_delta,
+        asp_rounds as i32 - codebase_rounds as i32,
+        "roundDelta must equal aspSearchQueryRounds - codebaseMemoryMcpQueryRounds"
+    );
+    assert!(
+        !selector_evidence.trim().is_empty(),
+        "selectorEvidence must name the parser-owned or selector-bound evidence"
+    );
+    assert!(
+        !evidence_advantage.trim().is_empty(),
+        "evidenceAdvantage must explain the comparison value"
+    );
+}
+
 fn assert_dynamic_overlay_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(benchmark.route_source.as_deref(), Some("dynamic-overlay"));
     assert_eq!(benchmark.max_provider_process_count, Some(0));
@@ -125,7 +182,6 @@ fn assert_dynamic_overlay_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
-#[cfg(feature = "turso-overlay")]
 fn assert_turso_overlay_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(benchmark.route_source.as_deref(), Some("turso-overlay"));
     assert_eq!(benchmark.max_provider_process_count, Some(0));
@@ -190,6 +246,108 @@ fn assert_query_wrapper_source_index_trace_projection_benchmark_contract(
     assert_eq!(benchmark.max_provider_process_count, Some(0));
     assert_eq!(benchmark.max_stdout_bytes, Some(4096));
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
+fn assert_search_owner_source_index_trace_benchmark_contract(
+    benchmark: &SharedBenchmarkToml,
+    expected_fallback_reason: &str,
+) {
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("search-owner-source-index-trace")
+    );
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(1024));
+    assert_eq!(
+        benchmark.fallback_reason.as_deref(),
+        Some(expected_fallback_reason)
+    );
+}
+
+mod turso_pressure;
+
+pub(super) fn asp_turso_db_engine_concurrent_process_pressure_stays_inside_scenario_gate() {
+    turso_pressure::asp_turso_db_engine_concurrent_process_pressure_stays_inside_scenario_gate();
+
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_turso_db_engine_concurrent_process_pressure");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert!(
+        duration_millis_from_manifest(&benchmark.max_total) <= 300,
+        "DB Engine concurrent pressure must stay below the 300ms search pressure budget: max_total={}",
+        benchmark.max_total
+    );
+    assert!(
+        duration_millis_from_manifest(&benchmark.observed_total) <= 300,
+        "DB Engine concurrent pressure observed_total must not sit at the generic hard ceiling: observed_total={}",
+        benchmark.observed_total
+    );
+    assert_observed_timing_inside_budget(
+        &benchmark,
+        "process_db_operation",
+        300,
+        "DB Engine concurrent pressure",
+    );
+}
+
+pub(super) fn asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_gate() {
+    turso_pressure::asp_turso_agent_session_registry_shared_route_pressure_stays_inside_scenario_gate();
+
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_turso_agent_session_registry_shared_route_pressure");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert!(
+        duration_millis_from_manifest(&benchmark.max_total) <= 300,
+        "agent-session registry pressure must stay below the 300ms search pressure budget: max_total={}",
+        benchmark.max_total
+    );
+    assert!(
+        duration_millis_from_manifest(&benchmark.observed_total) <= 300,
+        "agent-session registry pressure observed_total must not sit at the generic hard ceiling: observed_total={}",
+        benchmark.observed_total
+    );
+    assert_observed_timing_inside_budget(
+        &benchmark,
+        "registry_db_operation",
+        300,
+        "agent-session registry pressure",
+    );
+}
+
+pub(super) fn asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate() {
+    turso_pressure::asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate();
+
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_turso_source_index_refresh_lookup_pressure");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert!(
+        duration_millis_from_manifest(&benchmark.max_total) <= 250,
+        "source-index concurrent pressure must stay below the 250ms search budget: max_total={}",
+        benchmark.max_total
+    );
+    assert!(
+        duration_millis_from_manifest(&benchmark.observed_total) <= 250,
+        "source-index concurrent pressure observed_total must not sit at the generic hard ceiling: observed_total={}",
+        benchmark.observed_total
+    );
+    assert_observed_timing_inside_budget(
+        &benchmark,
+        "source_index_pressure",
+        250,
+        "source-index concurrent pressure",
+    );
 }
 
 fn assert_query_wrapper_clause_normalization_benchmark_contract(benchmark: &SharedBenchmarkToml) {
@@ -339,16 +497,6 @@ fn assert_search_pipe_evidence_classifier_benchmark_contract(benchmark: &SharedB
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
-fn assert_owner_items_cold_functional_benchmark_contract(benchmark: &SharedBenchmarkToml) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("owner-items-provider")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(1));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
 fn assert_runtime_owner_items_receipt_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(
         benchmark.route_source.as_deref(),
@@ -406,6 +554,8 @@ struct SharedBenchmarkToml {
     test: Option<String>,
     #[serde(default)]
     bench: Option<String>,
+    #[serde(default)]
+    phase: Option<String>,
     target_total: String,
     max_total: String,
     observed_total: String,
@@ -422,6 +572,20 @@ struct SharedBenchmarkToml {
     max_stdout_bytes: Option<u64>,
     #[serde(default)]
     fallback_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchFrameReferenceBenchmarkToml {
+    #[serde(default, rename = "codebaseMemoryMcpQueryRounds")]
+    codebase_memory_mcp_query_rounds: Option<u32>,
+    #[serde(default, rename = "aspSearchQueryRounds")]
+    asp_search_query_rounds: Option<u32>,
+    #[serde(default, rename = "roundDelta")]
+    round_delta: Option<i32>,
+    #[serde(default, rename = "selectorEvidence")]
+    selector_evidence: Option<String>,
+    #[serde(default, rename = "evidenceAdvantage")]
+    evidence_advantage: Option<String>,
 }
 
 pub(super) fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
@@ -461,6 +625,64 @@ pub(super) fn asp_unit_scenarios_cover_perf_sensitive_query_search_subcommands()
         missing.is_empty(),
         "ASP unit scenarios must cover performance-sensitive query/search subcommands; missing={missing:?}; observed={policy_ids:?}"
     );
+}
+
+pub(super) fn asp_language_scenarios_define_cold_first_performance_gates() {
+    let missing = COLD_FIRST_SEARCH_LANGUAGE_IDS
+        .iter()
+        .copied()
+        .filter(|language| !language_has_cold_first_benchmark(language))
+        .collect::<Vec<_>>();
+
+    assert!(
+        missing.is_empty(),
+        "language scenario benchmark matrix must define at least one cold functional gate per target language; missing={missing:?}"
+    );
+}
+
+fn language_has_cold_first_benchmark(language: &str) -> bool {
+    LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS
+        .iter()
+        .find(|requirement| requirement.language == language)
+        .is_some_and(|requirement| {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .and_then(Path::parent)
+                .expect("workspace root")
+                .join(requirement.root);
+            discover_benchmark_toml_paths(&root)
+                .into_iter()
+                .any(|path| {
+                    let benchmark: SharedBenchmarkToml = read_toml(&path);
+                    benchmark.phase.as_deref() == Some("cold")
+                        && benchmark.route_source.is_some()
+                        && benchmark.max_provider_process_count.is_some()
+                        && benchmark.max_stdout_bytes.is_some()
+                        && benchmark.fallback_reason.as_deref() == Some("none")
+                        && benchmark.target_total != "0ms"
+                        && benchmark.max_total != "0ms"
+                })
+        })
+}
+
+fn discover_benchmark_toml_paths(root: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    discover_benchmark_toml_paths_into(root, &mut paths);
+    paths
+}
+
+fn discover_benchmark_toml_paths_into(root: &Path, paths: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            discover_benchmark_toml_paths_into(&path, paths);
+        } else if path.file_name().and_then(|name| name.to_str()) == Some("benchmark.toml") {
+            paths.push(path);
+        }
+    }
 }
 
 pub(super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gate() {
@@ -542,7 +764,7 @@ pub(super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gat
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxRenderDuration": benchmark.max_total,
             "maxStdoutBytes": 4096,
             "allowedFirstRoutes": ["query-code"],
@@ -569,6 +791,37 @@ pub(super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gat
     assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+}
+
+pub(super) fn search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("search_frame_codebase_memory_mcp_reference_benchmark");
+    let scenario: SharedScenarioToml = read_toml(&scenario_root.join("scenario.toml"));
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let reference_benchmark: SearchFrameReferenceBenchmarkToml =
+        read_toml(&scenario_root.join("reference_benchmark.toml"));
+
+    assert_eq!(
+        scenario.id,
+        "search-frame-codebase-memory-mcp-reference-benchmark"
+    );
+    assert_eq!(benchmark.harness, "libtest");
+    assert_eq!(
+        benchmark.test.as_deref(),
+        Some("search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta")
+    );
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("search-frame-reference-benchmark")
+    );
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(8192));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+    assert_codebase_memory_mcp_reference_benchmark_contract(&reference_benchmark);
 }
 
 pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate() {
@@ -602,8 +855,23 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
     let _ = fs::remove_file(&marker);
 
     let language = agent_semantic_client::LanguageId::from("rust");
-    let lookup_started_at = Instant::now();
     let cache_root = crate::provider_command::support::cache_root(&root);
+    let warmup_lookup = agent_semantic_client::lookup_source_index_in_client_cache_dir(
+        agent_semantic_client::SourceIndexClientCacheLookupRequest {
+            cache_root: &cache_root,
+            indexed_project_root: &root,
+            language_id: Some(&language),
+            query: "source_index_fixture",
+            limit: 256,
+        },
+    )
+    .expect("warm source index lookup");
+    assert_eq!(
+        warmup_lookup.state,
+        agent_semantic_client::SourceIndexLookupState::Hit
+    );
+
+    let lookup_started_at = Instant::now();
     let lookup = agent_semantic_client::lookup_source_index_in_client_cache_dir(
         agent_semantic_client::SourceIndexClientCacheLookupRequest {
             cache_root: &cache_root,
@@ -660,9 +928,9 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
     for expected in [
         "[search-pipe]",
         "sourceTrace=sourceIndex:used",
-        "finder:skipped",
+        "search-overlay:skipped",
         "ownerCoverage=bestOwner=src/lib.rs",
-        "nextCommand=asp rust query --selector src/lib.rs:1:2 --workspace . --code",
+        "nextCommand=asp rust search owner src/lib.rs items --query source_index_fixture --workspace . --view seeds",
     ] {
         assert!(
             stdout.contains(expected),
@@ -697,7 +965,7 @@ pub(super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate(
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxRenderDuration": benchmark.max_total,
             "maxStdoutBytes": 8192,
             "requireSourceIndexHit": true,
@@ -824,7 +1092,7 @@ pub(super) fn asp_source_index_lookup_adapter_cold_functional_path_stays_inside_
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSourceIndexHit": true,
             "allowedFirstRoutes": ["source-index"],
@@ -854,6 +1122,221 @@ pub(super) fn asp_source_index_lookup_adapter_cold_functional_path_stays_inside_
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
     let _ = fs::remove_dir_all(root);
+}
+
+pub(super) fn asp_search_owner_source_index_trace_missing_db_cold_functional_path_stays_inside_scenario_gate()
+ {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_search_owner_source_index_trace_missing_db_cold_functional_path");
+    let scenario: SharedScenarioToml = read_toml(&scenario_root.join("scenario.toml"));
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_eq!(
+        scenario.id,
+        "asp-search-owner-source-index-trace-missing-db-cold-functional-path"
+    );
+    assert_search_owner_source_index_trace_benchmark_contract(&benchmark, "sourceIndex:missing-db");
+    let started_at = Instant::now();
+    let stdout = render_owner_items_source_index_lookup_trace(
+        "crates/agent-semantic-hook/build.rs",
+        &ClientDbSourceIndexLookupResult {
+            db_path: PathBuf::from("live/client/client.turso"),
+            state: ClientDbSourceIndexLookupState::MissingDb,
+            candidates: Vec::new(),
+        },
+    );
+    let elapsed = started_at.elapsed();
+    let elapsed_ms = elapsed.as_millis();
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    for expected in [
+        "|sourceIndex status=missing-db",
+        "source=source-index",
+        "reason=sourceIndex:missing-db",
+        "next=asp_cache_source-index_refresh",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "search-owner source-index missing-db scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        elapsed_ms <= max_total_ms,
+        "search-owner source-index trace scenario exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        elapsed_ms
+    );
+    assert!(
+        stdout.len() <= benchmark.max_stdout_bytes.unwrap_or(u64::MAX) as usize,
+        "stdout exceeded max_stdout_bytes; stdout={stdout}"
+    );
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": scenario.id,
+        "languageId": "rust",
+        "phase": "cold-functional",
+        "expected": {
+            "routeSource": "search-owner-source-index-trace",
+            "fallbackReason": "sourceIndex:missing-db",
+            "maxProviderProcessCount": 0,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "maxTotal": benchmark.max_total
+        },
+        "observed": {
+            "routeSource": "source-index",
+            "fallbackReason": "sourceIndex:missing-db",
+            "providerProcessCount": 0,
+            "stdoutBytes": stdout.len(),
+            "elapsed": duration_literal(elapsed)
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-search-owner-source-index-trace-missing-db-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+
+    let command_root = temp_project_root("scenario-search-owner-source-index-hit-command");
+    let source_dir = command_root.join("src");
+    fs::create_dir_all(&source_dir).expect("create source-index hit command src dir");
+    fs::write(
+        source_dir.join("lib.rs"),
+        "pub fn source_index_owner_command_fixture() {}\n",
+    )
+    .expect("write source-index hit command fixture");
+    refresh_source_index(&command_root);
+    let output = asp_command(&command_root)
+        .args([
+            "rust",
+            "search",
+            "owner",
+            "src/lib.rs",
+            "items",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search owner source-index hit command");
+    assert!(
+        output.status.success(),
+        "search owner source-index hit command failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let command_stdout = String::from_utf8_lossy(&output.stdout);
+    let command_stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        command_stdout.contains("|sourceIndex status=hit"),
+        "{command_stdout}"
+    );
+    assert!(
+        command_stdout.contains("source=source-index"),
+        "{command_stdout}"
+    );
+    assert!(
+        command_stdout.contains("path=src/lib.rs"),
+        "{command_stdout}"
+    );
+    assert!(
+        !command_stdout.contains("owner-not-found") && !command_stderr.contains("owner-not-found"),
+        "stdout={command_stdout}\nstderr={command_stderr}"
+    );
+    assert!(
+        !command_stdout.contains("path-only") && !command_stderr.contains("path-only"),
+        "stdout={command_stdout}\nstderr={command_stderr}"
+    );
+    let _ = fs::remove_dir_all(command_root);
+}
+
+pub(super) fn asp_search_owner_source_index_trace_hit_cold_functional_path_stays_inside_scenario_gate()
+ {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_search_owner_source_index_trace_hit_cold_functional_path");
+    let scenario: SharedScenarioToml = read_toml(&scenario_root.join("scenario.toml"));
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_eq!(
+        scenario.id,
+        "asp-search-owner-source-index-trace-hit-cold-functional-path"
+    );
+    assert_search_owner_source_index_trace_benchmark_contract(&benchmark, "none");
+    let started_at = Instant::now();
+    let stdout = render_owner_items_source_index_lookup_trace(
+        "crates/agent-semantic-hook/build.rs",
+        &ClientDbSourceIndexLookupResult {
+            db_path: PathBuf::from("live/client/client.turso"),
+            state: ClientDbSourceIndexLookupState::Hit,
+            candidates: vec![ClientDbSourceIndexCandidate {
+                path: "crates/agent-semantic-hook/build.rs".to_string(),
+                language_id: None,
+                provider_id: None,
+                source_kind: ClientDbSourceIndexSourceKind::Other("turso-source-index".to_string()),
+                line_count: Some(8),
+                query_keys: vec!["build".to_string(), "build.rs".to_string()],
+            }],
+        },
+    );
+    let elapsed = started_at.elapsed();
+    let elapsed_ms = elapsed.as_millis();
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    for expected in [
+        "|sourceIndex status=hit",
+        "source=source-index",
+        "path=crates/agent-semantic-hook/build.rs",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "search-owner source-index hit scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    for forbidden in ["owner-not-found", "path-only"] {
+        assert!(
+            !stdout.contains(forbidden),
+            "search-owner source-index hit scenario must not expose {forbidden:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        elapsed_ms <= max_total_ms,
+        "search-owner source-index trace hit scenario exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        elapsed_ms
+    );
+    assert!(
+        stdout.len() <= benchmark.max_stdout_bytes.unwrap_or(u64::MAX) as usize,
+        "stdout exceeded max_stdout_bytes; stdout={stdout}"
+    );
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": scenario.id,
+        "languageId": "rust",
+        "phase": "cold-functional",
+        "expected": {
+            "routeSource": "search-owner-source-index-trace",
+            "fallbackReason": "none",
+            "maxProviderProcessCount": 0,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "maxTotal": benchmark.max_total
+        },
+        "observed": {
+            "routeSource": "source-index",
+            "fallbackReason": "none",
+            "providerProcessCount": 0,
+            "stdoutBytes": stdout.len(),
+            "elapsed": duration_literal(elapsed)
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-search-owner-source-index-trace-hit-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
 }
 
 pub(super) fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate() {
@@ -942,7 +1425,7 @@ pub(super) fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSelectorFirst": true,
             "requireBoundedTopologyBonus": true,
@@ -1011,7 +1494,7 @@ pub(super) fn asp_search_candidate_contract_cold_functional_path_stays_inside_sc
     let elapsed_ms = elapsed.as_millis();
 
     assert_eq!(source_index_candidate.route_source, "source-index");
-    assert_eq!(overlay_candidate.route_source, "dynamic-overlay");
+    assert_eq!(overlay_candidate.route_source, "search-overlay");
     assert_eq!(overlay_candidate.identity_kind, "selector");
     assert_eq!(
         overlay_candidate.selector.as_deref(),
@@ -1028,7 +1511,7 @@ pub(super) fn asp_search_candidate_contract_cold_functional_path_stays_inside_sc
         overlay_candidate
             .rank_features
             .iter()
-            .any(|feature| feature.name == "lexical-overlay-score"),
+            .any(|feature| feature.name == "search-overlay-score"),
         "overlay candidate must carry rank features: {overlay_candidate:?}"
     );
     assert!(
@@ -1040,7 +1523,7 @@ pub(super) fn asp_search_candidate_contract_cold_functional_path_stays_inside_sc
         "shared search candidate contract must not use executable line-range identity"
     );
     assert_eq!(
-        ranked_candidates[0].candidate.route_source, "dynamic-overlay",
+        ranked_candidates[0].candidate.route_source, "search-overlay",
         "active overlay candidates must outrank stable source-index candidates before graph fusion: {ranked_candidates:?}"
     );
     assert_eq!(ranked_candidates[0].selector_bonus, 1);
@@ -1069,7 +1552,7 @@ pub(super) fn asp_search_candidate_contract_cold_functional_path_stays_inside_sc
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireFieldHits": true,
             "requireRankFeatures": true,
@@ -1107,7 +1590,7 @@ pub(super) fn asp_search_candidate_contract_cold_functional_path_stays_inside_sc
     );
     assert_eq!(
         performance_gate["observed"]["firstMergedRoute"],
-        "dynamic-overlay"
+        "search-overlay"
     );
 }
 
@@ -1134,7 +1617,7 @@ pub(super) fn asp_query_wrapper_source_index_bridge_cold_functional_path_stays_i
     let terms = vec!["query_wrapper_source_index_bridge".to_string()];
     let started_at = Instant::now();
     let lookup = agent_semantic_search::QueryWrapperSourceIndexLookup::new(
-        root.join("live/client/client.sqlite3"),
+        root.join("live/client/client.turso"),
         "hit",
         vec![
             agent_semantic_search::QueryWrapperSourceIndexCandidate::new(
@@ -1203,7 +1686,7 @@ pub(super) fn asp_query_wrapper_source_index_bridge_cold_functional_path_stays_i
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedBridge": true,
             "allowedFirstRoutes": ["query-wrapper-source-index-bridge"],
@@ -1311,7 +1794,7 @@ pub(super) fn asp_query_wrapper_render_hint_projection_cold_functional_path_stay
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedProjection": true,
             "allowedFirstRoutes": ["query-wrapper-render-hint-projection"],
@@ -1358,7 +1841,7 @@ pub(super) fn asp_query_wrapper_source_index_trace_projection_cold_functional_pa
     let started_at = Instant::now();
     let hit = agent_semantic_search::QueryWrapperSearchSourceIndexTrace {
         lookup: agent_semantic_search::QueryWrapperSourceIndexLookup::new(
-            PathBuf::from("live/client/client.sqlite3"),
+            PathBuf::from("live/client/client.turso"),
             "hit",
             Vec::new(),
         ),
@@ -1368,7 +1851,7 @@ pub(super) fn asp_query_wrapper_source_index_trace_projection_cold_functional_pa
     let hit_projection = agent_semantic_search::query_wrapper_source_index_trace_projection(&hit);
     let missing_db = agent_semantic_search::QueryWrapperSearchSourceIndexTrace {
         lookup: agent_semantic_search::QueryWrapperSourceIndexLookup::new(
-            PathBuf::from("live/client/client.sqlite3"),
+            PathBuf::from("live/client/client.turso"),
             "missing-db",
             Vec::new(),
         ),
@@ -1414,7 +1897,7 @@ pub(super) fn asp_query_wrapper_source_index_trace_projection_cold_functional_pa
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedProjection": true,
             "allowedFirstRoutes": ["query-wrapper-source-index-trace-projection"],
@@ -1509,7 +1992,7 @@ pub(super) fn asp_query_wrapper_clause_normalization_cold_functional_path_stays_
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedClauseNormalization": true,
             "allowedFirstRoutes": ["query-wrapper-clause-normalization"],
@@ -1616,7 +2099,7 @@ pub(super) fn asp_search_query_budget_cold_functional_path_stays_inside_scenario
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedBudget": true,
             "allowedFirstRoutes": ["search-query-budget"],
@@ -1878,7 +2361,7 @@ pub(super) fn asp_graph_node_projection_cold_functional_path_stays_inside_scenar
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedProjection": true,
             "allowedFirstRoutes": ["graph-node-projection"],
@@ -1981,7 +2464,7 @@ pub(super) fn asp_graph_candidate_projection_cold_functional_path_stays_inside_s
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedProjection": true,
             "allowedFirstRoutes": ["graph-candidate-projection"],
@@ -2104,7 +2587,7 @@ pub(super) fn asp_graph_topology_projection_cold_functional_path_stays_inside_sc
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedProjection": true,
             "allowedFirstRoutes": ["graph-topology-projection"],
@@ -2216,7 +2699,7 @@ pub(super) fn asp_graph_owner_rank_cold_functional_path_stays_inside_scenario_ga
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedRank": true,
             "allowedFirstRoutes": ["graph-owner-rank"],
@@ -2327,7 +2810,7 @@ pub(super) fn asp_graph_query_owner_seed_cold_functional_path_stays_inside_scena
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedSeed": true,
             "allowedFirstRoutes": ["graph-query-owner-seed"],
@@ -2413,7 +2896,7 @@ pub(super) fn asp_graph_evidence_projection_cold_functional_path_stays_inside_sc
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedProjectionPredicate": true,
             "allowedFirstRoutes": ["graph-evidence-projection"],
@@ -2522,7 +3005,7 @@ pub(super) fn asp_search_pipe_package_cohesion_cold_functional_path_stays_inside
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedPackageCohesion": true,
             "allowedFirstRoutes": ["search-pipe-package-cohesion"],
@@ -2617,7 +3100,7 @@ pub(super) fn asp_search_pipe_query_pack_cold_functional_path_stays_inside_scena
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedQueryPack": true,
             "allowedFirstRoutes": ["search-pipe-query-pack"],
@@ -2748,7 +3231,7 @@ pub(super) fn asp_graph_seed_decision_cold_functional_path_stays_inside_scenario
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedSeedDecision": true,
             "allowedFirstRoutes": ["graph-seed-decision"],
@@ -2875,7 +3358,7 @@ pub(super) fn asp_search_pipe_quality_decision_cold_functional_path_stays_inside
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedQualityDecision": true,
             "allowedFirstRoutes": ["search-pipe-quality-decision"],
@@ -2928,7 +3411,7 @@ pub(super) fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_ins
             line: 3,
             symbol: "CacheStatus".to_string(),
             text: "CacheStatus hit".to_string(),
-            source: "finder".to_string(),
+            source: "search-overlay".to_string(),
         },
     ];
     let terms = vec![
@@ -2959,7 +3442,8 @@ pub(super) fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_ins
         agent_semantic_search::search_pipe_strong_match("rust", &candidates[0], &terms[2]);
     let parser_handles =
         agent_semantic_search::search_pipe_parser_handles("rust", &candidates, &terms);
-    let finder_handles = agent_semantic_search::search_pipe_finder_handles(&candidates, &terms);
+    let search_overlay_handles =
+        agent_semantic_search::search_pipe_search_overlay_handles(&candidates, &terms);
     let weak_reason = agent_semantic_search::search_pipe_weak_reason(&terms[0], &candidates);
     let elapsed = started_at.elapsed();
     let elapsed_ms = elapsed.as_millis();
@@ -2970,11 +3454,11 @@ pub(super) fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_ins
         parser_handles,
         vec!["SearchRouter@src/router.rs:7".to_string()]
     );
-    assert_eq!(finder_handles, vec!["CacheStatus".to_string()]);
+    assert_eq!(search_overlay_handles, vec!["CacheStatus".to_string()]);
     assert_eq!(weak_reason, "lexical-match");
     assert!(
         elapsed_ms <= max_total_ms,
-        "search pipe evidence classifier cold functional path exceeded benchmark max_total={} observed={}ms parser_handles={parser_handles:?} finder_handles={finder_handles:?}",
+        "search pipe evidence classifier cold functional path exceeded benchmark max_total={} observed={}ms parser_handles={parser_handles:?} search_overlay_handles={search_overlay_handles:?}",
         benchmark.max_total,
         elapsed_ms
     );
@@ -2989,7 +3473,7 @@ pub(super) fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_ins
             "agent_semantic_search::search_pipe_declaration_header_match",
             "agent_semantic_search::search_pipe_strong_match",
             "agent_semantic_search::search_pipe_parser_handles",
-            "agent_semantic_search::search_pipe_finder_handles"
+            "agent_semantic_search::search_pipe_search_overlay_handles"
         ],
         "phase": "cold",
         "expected": {
@@ -2997,7 +3481,7 @@ pub(super) fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_ins
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireSearchOwnedEvidenceClassifier": true,
             "allowedFirstRoutes": ["search-pipe-evidence-classifier"],
@@ -3012,7 +3496,7 @@ pub(super) fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_ins
             "declarationMatch": declaration_match,
             "compoundMatch": compound_match,
             "parserHandleCount": parser_handles.len(),
-            "finderHandleCount": finder_handles.len(),
+            "searchOverlayHandleCount": search_overlay_handles.len(),
             "firstRoute": "search-pipe-evidence-classifier",
             "executedRoutes": ["search-pipe-evidence-classifier"],
             "stdoutBytes": 0,
@@ -3106,7 +3590,7 @@ pub(super) fn asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": benchmark.max_provider_process_count,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireRuntimeOwnedReceipt": true,
             "allowedFirstRoutes": ["owner-items-runtime"],
@@ -3186,7 +3670,7 @@ pub(super) fn asp_runtime_timeout_policy_cold_functional_path_stays_inside_scena
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxStdoutBytes": benchmark.max_stdout_bytes,
             "requireRuntimeOwnedTimeoutPolicy": true,
             "allowedFirstRoutes": ["runtime-timeout-policy"],
@@ -3242,127 +3726,6 @@ pub(super) fn scenario_benchmark_duration_contract_rejects_zero_budget() {
     );
 }
 
-#[cfg(feature = "turso-overlay")]
-pub(super) fn asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let scenario_root = crate_root
-        .join("tests")
-        .join("unit")
-        .join("scenarios")
-        .join("asp_turso_overlay_search_adapter_cold_functional_path");
-    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    assert_turso_overlay_benchmark_contract(&benchmark);
-    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
-
-    let root = temp_project_root("scenario-turso-overlay-search-adapter-cold");
-    let project_root = root.join("project");
-    let state_home = root.join("state-home");
-    fs::create_dir_all(&project_root).expect("create project root");
-    let state = agent_semantic_client_core::state_core::ResolvedState::resolve_with_state_home(
-        &project_root,
-        &state_home,
-    )
-    .expect("resolve scenario state root");
-    state.ensure_minimal_layout().expect("create state layout");
-    let engine = agent_semantic_client_db::ClientDbEngine::from_resolved_state(&state);
-
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .build()
-        .expect("build tokio runtime");
-    runtime
-        .block_on(agent_semantic_search::bootstrap_turso_overlay_search_store(
-            &engine,
-        ))
-        .expect("bootstrap turso overlay search store");
-    runtime
-        .block_on(agent_semantic_search::upsert_turso_overlay_search_document(
-            &engine,
-            &agent_semantic_search::TursoOverlaySearchDocument {
-                repo_id: "repo-1".to_string(),
-                workspace_id: "workspace-1".to_string(),
-                session_id: "session-1".to_string(),
-                base_generation: "dirty-1".to_string(),
-                document_id: "overlay-owner".to_string(),
-                selector: Some("rust://src/lib.rs#item/function/overlay_owner".to_string()),
-                document: "dynamic turso_overlay_fixture_token owner".to_string(),
-            },
-        ))
-        .expect("upsert turso overlay search document");
-
-    let search_started_at = Instant::now();
-    let hits = runtime
-        .block_on(agent_semantic_search::search_turso_overlay_documents(
-            &engine,
-            "turso_overlay_fixture_token",
-            8,
-        ))
-        .expect("search turso overlay documents");
-    let search_elapsed = search_started_at.elapsed();
-    let search_ms = search_elapsed.as_millis();
-
-    assert_eq!(hits.len(), 1, "{hits:?}");
-    assert_eq!(hits[0].document_id, "overlay-owner");
-    assert_eq!(
-        hits[0].selector.as_deref(),
-        Some("rust://src/lib.rs#item/function/overlay_owner")
-    );
-    assert!(
-        search_ms <= max_total_ms,
-        "turso overlay search adapter cold functional path exceeded benchmark max_total={} observed={}ms hits={:?}",
-        benchmark.max_total,
-        search_ms,
-        hits
-    );
-
-    let search_duration = duration_literal(search_elapsed);
-    let performance_gate = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
-        "schemaVersion": "1",
-        "scenarioId": "asp-turso-overlay-search-adapter-cold-functional-path",
-        "languageId": "rust",
-        "workspace": ".",
-        "command": [
-            "agent_semantic_search::search_turso_overlay_documents"
-        ],
-        "phase": "cold",
-        "expected": {
-            "targetTotal": benchmark.target_total,
-            "maxTotal": benchmark.max_total,
-            "regressionBudget": benchmark.regression_budget,
-            "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
-            "maxStdoutBytes": benchmark.max_stdout_bytes,
-            "requireOverlayHit": true,
-            "allowedFirstRoutes": ["turso-overlay"],
-            "forbiddenRoutes": ["client", "command", "native-finder", "provider-process"],
-            "requireExactCodeIdentity": true,
-            "requireNoExecutableLineRange": true
-        },
-        "observed": {
-            "observedTotal": search_duration,
-            "providerProcessCount": 0,
-            "providerElapsed": "0us",
-            "nativeFinderProcessCount": 0,
-            "nativeFinderElapsed": "0us",
-            "overlayHit": true,
-            "overlaySearchDuration": search_duration,
-            "firstRoute": "turso-overlay",
-            "executedRoutes": ["turso-overlay"],
-            "executableLineRangeSelectorCount": 0,
-            "packetOutMode": "not-applicable",
-            "renderDuration": search_duration,
-            "stdoutBytes": 0
-        },
-        "verdict": "pass",
-        "evidenceRefs": ["scenario:asp-turso-overlay-search-adapter-cold-functional-path"]
-    });
-    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["overlayHit"], true);
-    let _ = fs::remove_dir_all(root);
-}
-
 pub(super) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
@@ -3403,40 +3766,30 @@ pub(super) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
         "pipe",
         "dynamic_overlay_fixture",
         "--source",
-        "finder",
+        "search-overlay",
         "--workspace",
         ".",
         "--view",
         "seeds",
     ];
-    let mut best_stdout = String::new();
-    let mut best_collect_ms = u128::MAX;
-    for _ in 0..3 {
-        let output = asp_command(&root)
-            .env("PATH", prepend_path(&bin_dir))
-            .env("PRJ_CACHE_HOME", root.join(".cache"))
-            .args(command_args)
-            .output()
-            .expect("run asp rust search pipe dynamic overlay");
-        assert!(
-            output.status.success(),
-            "stderr: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let sample_stdout = String::from_utf8(output.stdout).expect("stdout");
-        let sample_collect_ms = source_trace_metric_ms(&sample_stdout, "elapsedMs");
-        if sample_collect_ms < best_collect_ms {
-            best_collect_ms = sample_collect_ms;
-            best_stdout = sample_stdout;
-        }
-    }
-    let stdout = best_stdout;
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(command_args)
+        .output()
+        .expect("run asp rust search pipe dynamic overlay");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
     for expected in [
         "[search-pipe]",
-        "source=finder",
-        "sourceTrace=finder:used",
+        "source=search-overlay",
+        "sourceTrace=search-overlay:used",
         "ownerCoverage=bestOwner=src/lib.rs",
-        "nextCommand=asp rust query --selector src/lib.rs:1:1 --workspace . --code",
+        "nextCommand=asp rust search owner src/lib.rs items --query dynamic_overlay_fixture --workspace . --view seeds",
     ] {
         assert!(
             stdout.contains(expected),
@@ -3452,14 +3805,14 @@ pub(super) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
         "explicit dynamic overlay scenario must not use source-index; stdout={stdout}"
     );
     assert!(
-        !stdout.contains("sourceTrace=finder:used[backend=rg"),
-        "dynamic overlay scenario must not route through native finder rg; stdout={stdout}"
+        !stdout.contains("sourceTrace=finder"),
+        "dynamic overlay search scenario must not expose finder as a route; stdout={stdout}"
     );
     assert!(
         !marker.exists(),
         "dynamic overlay search pipe should not spawn provider"
     );
-    let collect_ms = best_collect_ms;
+    let collect_ms = source_trace_metric_ms(&stdout, "elapsedMs");
     assert!(
         collect_ms <= max_total_ms,
         "dynamic overlay search pipe exceeded benchmark max_total={} observed={}ms stdout={stdout}",
@@ -3485,7 +3838,7 @@ pub(super) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
             "pipe",
             "dynamic_overlay_fixture",
             "--source",
-            "finder",
+            "search-overlay",
             "--workspace",
             ".",
             "--view",
@@ -3497,10 +3850,10 @@ pub(super) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxRenderDuration": benchmark.max_total,
             "maxStdoutBytes": benchmark.max_stdout_bytes.unwrap_or(8192),
-            "allowedFirstRoutes": ["dynamic-overlay"],
+            "allowedFirstRoutes": ["search-overlay"],
             "forbiddenRoutes": ["source-index", "native-finder", "provider-process"],
             "requireExactCodeIdentity": true,
             "requireNoExecutableLineRange": true
@@ -3511,8 +3864,8 @@ pub(super) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
             "providerElapsed": "0us",
             "nativeFinderProcessCount": 0,
             "nativeFinderElapsed": "0us",
-            "firstRoute": "dynamic-overlay",
-            "executedRoutes": ["dynamic-overlay", "query-code"],
+            "firstRoute": "search-overlay",
+            "executedRoutes": ["search-overlay", "query-code"],
             "executableLineRangeSelectorCount": 0,
             "packetOutMode": "not-applicable",
             "renderDuration": observed_total,
@@ -3523,10 +3876,7 @@ pub(super) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
     });
     assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
-    assert_eq!(
-        performance_gate["observed"]["firstRoute"],
-        "dynamic-overlay"
-    );
+    assert_eq!(performance_gate["observed"]["firstRoute"], "search-overlay");
     assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
     let _ = fs::remove_dir_all(root);
 }
@@ -3593,7 +3943,7 @@ pub(super) fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
         "[search-rg]",
         "source=source-index",
         "sourceTrace=sourceIndex:used",
-        "finder:skipped",
+        "query-overlay:skipped",
         "packages=src/lib.rs",
         "nextCommand=asp fd -query source_index_fixture --workspace .",
     ] {
@@ -3604,7 +3954,7 @@ pub(super) fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
     }
     assert!(
         !stdout.contains("sourceTrace=finder:used"),
-        "rg warm SourceIndex path must not collect through native finder; stdout={stdout}"
+        "rg warm SourceIndex path must not collect through query overlay; stdout={stdout}"
     );
     assert!(
         !marker.exists(),
@@ -3638,7 +3988,7 @@ pub(super) fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxRenderDuration": benchmark.max_total,
             "maxStdoutBytes": 8192,
             "requireSourceIndexHit": true,
@@ -3718,7 +4068,7 @@ pub(super) fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
         "[search-fd]",
         "source=source-index",
         "sourceTrace=sourceIndex:used",
-        "finder:skipped",
+        "query-overlay:skipped",
         "src/lib.rs",
     ] {
         assert!(
@@ -3728,7 +4078,7 @@ pub(super) fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
     }
     assert!(
         !stdout.contains("sourceTrace=finder:used"),
-        "fd warm SourceIndex path must not collect through native finder; stdout={stdout}"
+        "fd warm SourceIndex path must not collect through query overlay; stdout={stdout}"
     );
     assert!(
         !marker.exists(),
@@ -3762,7 +4112,7 @@ pub(super) fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxRenderDuration": benchmark.max_total,
             "maxStdoutBytes": 8192,
             "requireSourceIndexHit": true,
@@ -3796,7 +4146,7 @@ pub(super) fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
     let _ = fs::remove_dir_all(root);
 }
 
-pub(super) fn asp_rg_query_source_index_miss_skips_native_finder_gate() {
+pub(super) fn asp_rg_query_source_index_miss_skips_search_overlay_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
         .join("tests")
@@ -3841,7 +4191,7 @@ pub(super) fn asp_rg_query_source_index_miss_skips_native_finder_gate() {
     for expected in [
         "noOutput reason=source-index-miss",
         "sourceTrace=sourceIndex:miss",
-        "finder:skipped",
+        "query-overlay:skipped",
         "nextCommand=asp cache source-index refresh",
         "refineHint=SourceIndex miss",
     ] {
@@ -3852,7 +4202,7 @@ pub(super) fn asp_rg_query_source_index_miss_skips_native_finder_gate() {
     }
     assert!(
         !stdout.contains("sourceTrace=finder:used"),
-        "rg SourceIndex miss must not fall back to native finder in an indexed workspace; stdout={stdout}"
+        "rg SourceIndex miss must not fall back to query overlay in an indexed workspace; stdout={stdout}"
     );
     assert!(
         !marker.exists(),
@@ -3886,7 +4236,7 @@ pub(super) fn asp_rg_query_source_index_miss_skips_native_finder_gate() {
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxRenderDuration": benchmark.max_total,
             "maxStdoutBytes": 8192,
             "requireSourceIndexLookup": true,
@@ -3978,7 +4328,7 @@ pub(super) fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
         "[search-lexical]",
         "source=source-index",
         "sourceTrace=sourceIndex:used",
-        "finder:skipped",
+        "search-overlay:skipped",
         "O=owner:path(src/lib.rs)",
     ] {
         assert!(
@@ -3988,7 +4338,7 @@ pub(super) fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
     }
     assert!(
         !stdout.contains("sourceTrace=finder:used"),
-        "lexical warm SourceIndex path must not collect through native finder; stdout={stdout}"
+        "lexical warm SourceIndex path must not collect through search overlay; stdout={stdout}"
     );
     assert!(
         !marker.exists(),
@@ -4028,7 +4378,7 @@ pub(super) fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
             "maxTotal": benchmark.max_total,
             "regressionBudget": benchmark.regression_budget,
             "maxProviderProcessCount": 0,
-            "maxNativeFinderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
             "maxRenderDuration": benchmark.max_total,
             "maxStdoutBytes": 8192,
             "requireSourceIndexHit": true,
@@ -4058,177 +4408,6 @@ pub(super) fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
     assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
-    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
-    let _ = fs::remove_dir_all(root);
-}
-
-pub(super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let scenario_root = crate_root
-        .join("tests")
-        .join("unit")
-        .join("scenarios")
-        .join("asp_rust_owner_items_cache_hot_path");
-    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("owner-items-cache"),
-        "rust owner-items hot path benchmark must declare route_source"
-    );
-    assert_eq!(
-        benchmark.max_provider_process_count,
-        Some(0),
-        "hot cache benchmark must declare zero provider respawns"
-    );
-    let max_stdout_bytes = benchmark
-        .max_stdout_bytes
-        .expect("hot cache benchmark must declare max_stdout_bytes");
-    assert_eq!(
-        benchmark.fallback_reason.as_deref(),
-        Some("none"),
-        "hot cache benchmark must declare fallback_reason=none"
-    );
-
-    let root = temp_project_root("scenario-rust-owner-items-cache-hot");
-    let bin_dir = root.join(".bin");
-    let count_path = root.join("provider-count");
-    fs::create_dir_all(root.join("crate/src")).expect("create source root");
-    fs::write(
-        root.join("crate/src/lib.rs"),
-        "pub async fn dynamic_owner_item_index() {}\n",
-    )
-    .expect("write source");
-    fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join("rs-harness");
-    fs::write(
-        &provider_path,
-        format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=crate/src/lib.rs pkg=. selector=items alg=rust-harness-owner-items\\n'\nprintf 'O=owner:path(crate/src/lib.rs)!owner;I=item:symbol(dynamic_owner_item_index)@crate/src/lib.rs:1:1!syntax\\n'\n",
-            count = count_path.display()
-        ),
-    )
-    .expect("write provider");
-    let mut permissions = fs::metadata(&provider_path)
-        .expect("provider metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, "rust", &provider_path);
-    write_activation(&root, &[provider_with_owner_items("rust", Vec::new())]);
-
-    let command_args = [
-        "rust",
-        "search",
-        "owner",
-        "crate/src/lib.rs",
-        "items",
-        "--query",
-        "dynamic_owner_item_index",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds",
-    ];
-    let warmup = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(command_args)
-        .output()
-        .expect("warm asp rust search owner items");
-    assert!(
-        warmup.status.success(),
-        "warm stderr: {}",
-        String::from_utf8_lossy(&warmup.stderr)
-    );
-
-    let started_at = Instant::now();
-    let output = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(command_args)
-        .output()
-        .expect("run cached asp rust search owner items");
-    let elapsed = started_at.elapsed();
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("alg=rust-harness-owner-items"), "{stdout}");
-    assert!(
-        stdout.contains("item:symbol(dynamic_owner_item_index)"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("read=crate/src/lib.rs:1:1"),
-        "owner-items hot path must not expose executable line-range selectors: {stdout}"
-    );
-    assert_eq!(
-        fs::read_to_string(&count_path).expect("provider count"),
-        "1",
-        "cached hot path must not spawn rust harness provider again"
-    );
-    let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
-    assert!(
-        observed_ms <= max_total_ms,
-        "rust owner-items cache hot path exceeded benchmark max_total={} observed={}ms stdout={stdout}",
-        benchmark.max_total,
-        observed_ms
-    );
-    assert!(
-        stdout.len() <= max_stdout_bytes as usize,
-        "rust owner-items cache hot path exceeded max_stdout_bytes={} observed={} stdout={stdout}",
-        max_stdout_bytes,
-        stdout.len()
-    );
-    let observed_total = format!("{observed_ms}ms");
-    let performance_gate = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
-        "schemaVersion": "1",
-        "scenarioId": "asp-rust-owner-items-cache-hot-path",
-        "languageId": "rust",
-        "workspace": ".",
-        "command": [
-            "asp",
-            "rust",
-            "search",
-            "owner",
-            "crate/src/lib.rs",
-            "items",
-            "--query",
-            "dynamic_owner_item_index",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds"
-        ],
-        "phase": "hot",
-        "expected": {
-            "targetTotal": benchmark.target_total,
-            "maxTotal": benchmark.max_total,
-            "regressionBudget": benchmark.regression_budget,
-            "maxProviderProcessCount": benchmark.max_provider_process_count,
-            "maxNativeFinderProcessCount": 0,
-            "requireExactCodeIdentity": true,
-            "requireNoExecutableLineRange": true
-        },
-        "observed": {
-            "observedTotal": observed_total,
-            "providerProcessCount": 0,
-            "nativeFinderProcessCount": 0,
-            "firstRoute": benchmark.route_source,
-            "executedRoutes": [benchmark.route_source],
-            "executableLineRangeSelectorCount": 0,
-            "stdoutBytes": stdout.len(),
-            "fallbackReason": benchmark.fallback_reason
-        },
-        "verdict": "pass",
-        "evidenceRefs": ["scenario:asp-rust-owner-items-cache-hot-path"]
-    });
-    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
     let _ = fs::remove_dir_all(root);
 }
@@ -4313,100 +4492,6 @@ pub(super) fn asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_sc
     });
 }
 
-pub(super) fn asp_org_owner_items_cold_functional_path_stays_inside_scenario_gate() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let scenario_root = crate_root
-        .join("tests")
-        .join("unit")
-        .join("scenarios")
-        .join("asp_org_owner_items_cold_functional_path");
-    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    assert_owner_items_cold_functional_benchmark_contract(&benchmark);
-
-    let root = temp_project_root("scenario-org-owner-items-cold-functional");
-    fs::create_dir_all(root.join("docs")).expect("create docs root");
-    fs::write(
-        root.join("docs/plan.org"),
-        "* Heading\nBody\n** Child\nMore body\n",
-    )
-    .expect("write org owner");
-    let started_at = Instant::now();
-    let output = asp_command(&root)
-        .args([
-            "org",
-            "search",
-            "owner",
-            "docs/plan.org",
-            "items",
-            "--query",
-            "Heading",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds",
-        ])
-        .output()
-        .expect("run asp org search owner items");
-    let elapsed = started_at.elapsed();
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    for expected in [
-        "[search-owner] lang=org",
-        "|heading docs/plan.org:1-4",
-        "title=\"Heading\"",
-    ] {
-        assert!(
-            stdout.contains(expected),
-            "org cold owner-items scenario missing {expected:?}; stdout={stdout}"
-        );
-    }
-    assert!(
-        !stdout.contains("read=docs/plan.org:1:1"),
-        "org owner-items cold path must not expose executable line-range selectors: {stdout}"
-    );
-    assert!(
-        stdout.len() <= benchmark.max_stdout_bytes.unwrap_or(4096) as usize,
-        "org owner-items cold path exceeded max_stdout_bytes; stdout={stdout}"
-    );
-    let observed_total = format!("{}ms", elapsed.as_millis().min(u128::from(u64::MAX)));
-    let performance_gate = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
-        "schemaVersion": "1",
-        "scenarioId": "asp-org-owner-items-cold-functional-path",
-        "languageId": "org",
-        "workspace": ".",
-        "phase": "cold",
-        "expected": {
-            "targetTotal": benchmark.target_total,
-            "maxTotal": benchmark.max_total,
-            "regressionBudget": benchmark.regression_budget,
-            "maxProviderProcessCount": benchmark.max_provider_process_count,
-            "maxNativeFinderProcessCount": 0,
-            "requireNoExecutableLineRange": true
-        },
-        "observed": {
-            "observedTotal": observed_total,
-            "providerProcessCount": 1,
-            "nativeFinderProcessCount": 0,
-            "firstRoute": benchmark.route_source,
-            "executedRoutes": [benchmark.route_source],
-            "executableLineRangeSelectorCount": 0,
-            "stdoutBytes": stdout.len(),
-            "fallbackReason": benchmark.fallback_reason
-        },
-        "verdict": "pass",
-        "evidenceRefs": ["scenario:asp-org-owner-items-cold-functional-path"]
-    });
-    assert_eq!(performance_gate["observed"]["providerProcessCount"], 1);
-    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
-    let _ = fs::remove_dir_all(root);
-}
-
 struct OwnerItemsColdFunctionalScenario {
     scenario_dir: &'static str,
     scenario_id: &'static str,
@@ -4422,492 +4507,7 @@ struct OwnerItemsColdFunctionalScenario {
 }
 
 fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFunctionalScenario) {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let scenario_root = crate_root
-        .join("tests")
-        .join("unit")
-        .join("scenarios")
-        .join(spec.scenario_dir);
-    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    assert_owner_items_cold_functional_benchmark_contract(&benchmark);
-    let root = temp_project_root(spec.scenario_dir);
-    let bin_dir = root.join(".bin");
-    let count_path = root.join("provider-count");
-    let owner = root.join(spec.owner_path);
-    fs::create_dir_all(owner.parent().expect("owner parent")).expect("create source root");
-    fs::write(
-        root.join(spec.package_anchor_path),
-        spec.package_anchor_text,
-    )
-    .expect("write package anchor");
-    fs::write(&owner, spec.source_text).expect("write source");
-    fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join(spec.binary);
-    fs::write(
-        &provider_path,
-        format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q={owner_path} pkg=. selector=items alg={alg}\\n'\nprintf 'O=owner:path({owner_path})!owner;I=item:symbol({item_symbol})@{owner_path}:1:1!syntax\\n'\n",
-            count = count_path.display(),
-            owner_path = spec.owner_path,
-            alg = spec.alg,
-            item_symbol = spec.item_symbol,
-        ),
-    )
-    .expect("write provider");
-    let mut permissions = fs::metadata(&provider_path)
-        .expect("provider metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, spec.language_id, &provider_path);
-    write_activation(
-        &root,
-        &[provider_with_owner_items(spec.language_id, Vec::new())],
-    );
-
-    let command_args = [
-        spec.language_id,
-        "search",
-        "owner",
-        spec.owner_path,
-        "items",
-        "--query",
-        spec.query,
-        "--workspace",
-        ".",
-        "--view",
-        "seeds",
-    ];
-    let started_at = Instant::now();
-    let output = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(command_args)
-        .output()
-        .expect("run cold asp search owner items");
-    let elapsed = started_at.elapsed();
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains(&format!("alg={}", spec.alg)),
-        "stdout={stdout}"
-    );
-    assert!(
-        stdout.contains(&format!("item:symbol({})", spec.item_symbol)),
-        "stdout={stdout}"
-    );
-    assert!(
-        !stdout.contains(&format!("read={}:1:1", spec.owner_path)),
-        "owner-items cold path must not expose executable line-range selectors: {stdout}"
-    );
-    assert_eq!(
-        fs::read_to_string(&count_path).expect("provider count"),
-        "1",
-        "cold path must spawn exactly one language harness provider"
-    );
-    let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
-    let max_stdout_bytes = benchmark.max_stdout_bytes.unwrap_or(4096);
-    assert!(
-        stdout.len() <= max_stdout_bytes as usize,
-        "{} exceeded max_stdout_bytes={} observed={} stdout={stdout}",
-        spec.scenario_id,
-        max_stdout_bytes,
-        stdout.len()
-    );
-    let observed_total = format!("{observed_ms}ms");
-    let performance_gate = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
-        "schemaVersion": "1",
-        "scenarioId": spec.scenario_id,
-        "languageId": spec.language_id,
-        "workspace": ".",
-        "phase": "cold",
-        "expected": {
-            "targetTotal": benchmark.target_total,
-            "maxTotal": benchmark.max_total,
-            "regressionBudget": benchmark.regression_budget,
-            "maxProviderProcessCount": benchmark.max_provider_process_count,
-            "maxNativeFinderProcessCount": 0,
-            "requireExactCodeIdentity": true,
-            "requireNoExecutableLineRange": true
-        },
-        "observed": {
-            "observedTotal": observed_total,
-            "processStartupIncluded": true,
-            "providerProcessCount": 1,
-            "nativeFinderProcessCount": 0,
-            "firstRoute": benchmark.route_source,
-            "executedRoutes": [benchmark.route_source],
-            "executableLineRangeSelectorCount": 0,
-            "stdoutBytes": stdout.len(),
-            "fallbackReason": benchmark.fallback_reason
-        },
-        "verdict": "pass",
-        "evidenceRefs": [format!("scenario:{}", spec.scenario_id)]
-    });
-    assert_eq!(performance_gate["observed"]["providerProcessCount"], 1);
-    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
-    let _ = fs::remove_dir_all(root);
-}
-
-pub(super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_gate() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let scenario_root = crate_root
-        .join("tests")
-        .join("unit")
-        .join("scenarios")
-        .join("asp_typescript_owner_items_cache_hot_path");
-    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("owner-items-cache"),
-        "typescript owner-items hot path benchmark must declare route_source"
-    );
-    assert_eq!(
-        benchmark.max_provider_process_count,
-        Some(0),
-        "hot cache benchmark must declare zero provider respawns"
-    );
-    let max_stdout_bytes = benchmark
-        .max_stdout_bytes
-        .expect("hot cache benchmark must declare max_stdout_bytes");
-    assert_eq!(
-        benchmark.fallback_reason.as_deref(),
-        Some("none"),
-        "hot cache benchmark must declare fallback_reason=none"
-    );
-
-    let root = temp_project_root("scenario-typescript-owner-items-cache-hot");
-    let bin_dir = root.join(".bin");
-    let count_path = root.join("provider-count");
-    fs::create_dir_all(root.join("app/src")).expect("create source root");
-    fs::write(
-        root.join("package.json"),
-        "{\"name\":\"scenario-typescript-owner-items-cache-hot\",\"private\":true}\n",
-    )
-    .expect("write package anchor");
-    fs::write(
-        root.join("app/src/model.ts"),
-        "export function dynamicOwnerItemIndex(): boolean { return true; }\n",
-    )
-    .expect("write source");
-    fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join("ts-harness");
-    fs::write(
-        &provider_path,
-        format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=app/src/model.ts pkg=. selector=items alg=ts-harness-owner-items\\n'\nprintf 'O=owner:path(app/src/model.ts)!owner;I=item:symbol(dynamicOwnerItemIndex)@app/src/model.ts:1:1!syntax\\n'\n",
-            count = count_path.display()
-        ),
-    )
-    .expect("write provider");
-    let mut permissions = fs::metadata(&provider_path)
-        .expect("provider metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, "typescript", &provider_path);
-    write_activation(
-        &root,
-        &[provider_with_owner_items("typescript", Vec::new())],
-    );
-
-    let command_args = [
-        "typescript",
-        "search",
-        "owner",
-        "app/src/model.ts",
-        "items",
-        "--query",
-        "dynamicOwnerItemIndex",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds",
-    ];
-    let warmup = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(command_args)
-        .output()
-        .expect("warm asp typescript search owner items");
-    assert!(
-        warmup.status.success(),
-        "warm stderr: {}",
-        String::from_utf8_lossy(&warmup.stderr)
-    );
-
-    let started_at = Instant::now();
-    let output = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(command_args)
-        .output()
-        .expect("run cached asp typescript search owner items");
-    let elapsed = started_at.elapsed();
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("alg=ts-harness-owner-items"), "{stdout}");
-    assert!(
-        stdout.contains("item:symbol(dynamicOwnerItemIndex)"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("read=app/src/model.ts:1:1"),
-        "owner-items hot path must not expose executable line-range selectors: {stdout}"
-    );
-    assert_eq!(
-        fs::read_to_string(&count_path).expect("provider count"),
-        "1",
-        "cached hot path must not spawn typescript harness provider again"
-    );
-    let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
-    assert!(
-        observed_ms <= max_total_ms,
-        "typescript owner-items cache hot path exceeded benchmark max_total={} observed={}ms stdout={stdout}",
-        benchmark.max_total,
-        observed_ms
-    );
-    assert!(
-        stdout.len() <= max_stdout_bytes as usize,
-        "typescript owner-items cache hot path exceeded max_stdout_bytes={} observed={} stdout={stdout}",
-        max_stdout_bytes,
-        stdout.len()
-    );
-    let observed_total = format!("{observed_ms}ms");
-    let performance_gate = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
-        "schemaVersion": "1",
-        "scenarioId": "asp-typescript-owner-items-cache-hot-path",
-        "languageId": "typescript",
-        "workspace": ".",
-        "command": [
-            "asp",
-            "typescript",
-            "search",
-            "owner",
-            "app/src/model.ts",
-            "items",
-            "--query",
-            "dynamicOwnerItemIndex",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds"
-        ],
-        "phase": "hot",
-        "expected": {
-            "targetTotal": benchmark.target_total,
-            "maxTotal": benchmark.max_total,
-            "regressionBudget": benchmark.regression_budget,
-            "maxProviderProcessCount": benchmark.max_provider_process_count,
-            "maxNativeFinderProcessCount": 0,
-            "requireExactCodeIdentity": true,
-            "requireNoExecutableLineRange": true
-        },
-        "observed": {
-            "observedTotal": observed_total,
-            "providerProcessCount": 0,
-            "nativeFinderProcessCount": 0,
-            "firstRoute": benchmark.route_source,
-            "executedRoutes": [benchmark.route_source],
-            "executableLineRangeSelectorCount": 0,
-            "stdoutBytes": stdout.len(),
-            "fallbackReason": benchmark.fallback_reason
-        },
-        "verdict": "pass",
-        "evidenceRefs": ["scenario:asp-typescript-owner-items-cache-hot-path"]
-    });
-    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
-    let _ = fs::remove_dir_all(root);
-}
-
-pub(super) fn asp_python_owner_items_cache_hot_path_stays_inside_scenario_gate() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let scenario_root = crate_root
-        .join("tests")
-        .join("unit")
-        .join("scenarios")
-        .join("asp_python_owner_items_cache_hot_path");
-    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("owner-items-cache"),
-        "python owner-items hot path benchmark must declare route_source"
-    );
-    assert_eq!(
-        benchmark.max_provider_process_count,
-        Some(0),
-        "hot cache benchmark must declare zero provider respawns"
-    );
-    let max_stdout_bytes = benchmark
-        .max_stdout_bytes
-        .expect("hot cache benchmark must declare max_stdout_bytes");
-    assert_eq!(
-        benchmark.fallback_reason.as_deref(),
-        Some("none"),
-        "hot cache benchmark must declare fallback_reason=none"
-    );
-
-    let root = temp_project_root("scenario-python-owner-items-cache-hot");
-    let bin_dir = root.join(".bin");
-    let count_path = root.join("provider-count");
-    fs::create_dir_all(root.join("src")).expect("create source root");
-    fs::write(
-        root.join("pyproject.toml"),
-        "[project]\nname = \"scenario-python-owner-items-cache-hot\"\nversion = \"0.1.0\"\n",
-    )
-    .expect("write package anchor");
-    fs::write(
-        root.join("src/model.py"),
-        "def dynamic_owner_item_index() -> bool:\n    return True\n",
-    )
-    .expect("write source");
-    fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join("py-harness");
-    fs::write(
-        &provider_path,
-        format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=src/model.py pkg=. selector=items alg=py-harness-owner-items\\n'\nprintf 'O=owner:path(src/model.py)!owner;I=item:symbol(dynamic_owner_item_index)@src/model.py:1:1!syntax\\n'\n",
-            count = count_path.display()
-        ),
-    )
-    .expect("write provider");
-    let mut permissions = fs::metadata(&provider_path)
-        .expect("provider metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, "python", &provider_path);
-    write_activation(&root, &[provider_with_owner_items("python", Vec::new())]);
-
-    let command_args = [
-        "python",
-        "search",
-        "owner",
-        "src/model.py",
-        "items",
-        "--query",
-        "dynamic_owner_item_index",
-        "--workspace",
-        ".",
-        "--view",
-        "seeds",
-    ];
-    let warmup = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(command_args)
-        .output()
-        .expect("warm asp python search owner items");
-    assert!(
-        warmup.status.success(),
-        "warm stderr: {}",
-        String::from_utf8_lossy(&warmup.stderr)
-    );
-
-    let started_at = Instant::now();
-    let output = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(command_args)
-        .output()
-        .expect("run cached asp python search owner items");
-    let elapsed = started_at.elapsed();
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("alg=py-harness-owner-items"), "{stdout}");
-    assert!(
-        stdout.contains("item:symbol(dynamic_owner_item_index)"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("read=src/model.py:1:1"),
-        "owner-items hot path must not expose executable line-range selectors: {stdout}"
-    );
-    assert_eq!(
-        fs::read_to_string(&count_path).expect("provider count"),
-        "1",
-        "cached hot path must not spawn python harness provider again"
-    );
-    let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
-    assert!(
-        observed_ms <= max_total_ms,
-        "python owner-items cache hot path exceeded benchmark max_total={} observed={}ms stdout={stdout}",
-        benchmark.max_total,
-        observed_ms
-    );
-    assert!(
-        stdout.len() <= max_stdout_bytes as usize,
-        "python owner-items cache hot path exceeded max_stdout_bytes={} observed={} stdout={stdout}",
-        max_stdout_bytes,
-        stdout.len()
-    );
-    let observed_total = format!("{observed_ms}ms");
-    let performance_gate = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
-        "schemaVersion": "1",
-        "scenarioId": "asp-python-owner-items-cache-hot-path",
-        "languageId": "python",
-        "workspace": ".",
-        "command": [
-            "asp",
-            "python",
-            "search",
-            "owner",
-            "src/model.py",
-            "items",
-            "--query",
-            "dynamic_owner_item_index",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds"
-        ],
-        "phase": "hot",
-        "expected": {
-            "targetTotal": benchmark.target_total,
-            "maxTotal": benchmark.max_total,
-            "regressionBudget": benchmark.regression_budget,
-            "maxProviderProcessCount": benchmark.max_provider_process_count,
-            "maxNativeFinderProcessCount": 0,
-            "requireExactCodeIdentity": true,
-            "requireNoExecutableLineRange": true
-        },
-        "observed": {
-            "observedTotal": observed_total,
-            "providerProcessCount": 0,
-            "nativeFinderProcessCount": 0,
-            "firstRoute": benchmark.route_source,
-            "executedRoutes": [benchmark.route_source],
-            "executableLineRangeSelectorCount": 0,
-            "stdoutBytes": stdout.len(),
-            "fallbackReason": benchmark.fallback_reason
-        },
-        "verdict": "pass",
-        "evidenceRefs": ["scenario:asp-python-owner-items-cache-hot-path"]
-    });
-    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
-    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
-    let _ = fs::remove_dir_all(root);
+    owner_items::assert_owner_items_cold_functional_path(spec);
 }
 
 pub(super) fn asp_unit_scenarios_cover_workspace_argument_guards() {
@@ -5610,6 +5210,30 @@ fn duration_millis_from_manifest(value: &str) -> u128 {
     panic!("duration manifest value must use ns/us/ms/s suffix: {value:?}");
 }
 
+fn observed_timing_millis_from_manifest(benchmark: &SharedBenchmarkToml, key: &str) -> u128 {
+    let value = benchmark
+        .observed_timings
+        .get(key)
+        .unwrap_or_else(|| panic!("benchmark must record observed timing key {key:?}"));
+    let Some(text) = value.as_str() else {
+        panic!("observed timing key {key:?} must be a duration string, got {value:?}");
+    };
+    duration_millis_from_manifest(text)
+}
+
+fn assert_observed_timing_inside_budget(
+    benchmark: &SharedBenchmarkToml,
+    key: &str,
+    max_millis: u128,
+    label: &str,
+) {
+    let observed = observed_timing_millis_from_manifest(benchmark, key);
+    assert!(
+        observed <= max_millis,
+        "{label} observed timing {key}={observed}ms exceeds budget {max_millis}ms"
+    );
+}
+
 fn parse_u128(value: &str) -> Option<u128> {
     value.parse::<u128>().ok()
 }
@@ -6010,4 +5634,133 @@ fn render_gates(repo_root: &Path, gates: &[LargeLibraryElapsedGate]) -> String {
         }))
         .collect::<Vec<_>>()
         .join(", ")
+}
+pub(super) fn asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_turso_overlay_search_adapter_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_turso_overlay_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-turso-overlay-search-adapter-cold");
+    let project_root = root.join("project");
+    let state_home = root.join("state-home");
+    fs::create_dir_all(&project_root).expect("create temp project root");
+    let state = agent_semantic_runtime::state_core::ResolvedState::resolve_with_state_home(
+        &project_root,
+        &state_home,
+    )
+    .expect("resolve state with explicit state home");
+    state.ensure_minimal_layout().expect("create state layout");
+    let engine = agent_semantic_client_db::ClientDbEngine::from_resolved_state(&state);
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build tokio runtime");
+    let hits = runtime.block_on(async {
+        agent_semantic_search::bootstrap_turso_overlay_search_store(&engine)
+            .await
+            .expect("bootstrap turso overlay search store");
+        engine
+            .upsert_search_document(&agent_semantic_client_db::TursoClientDbSearchDocument {
+                namespace: "stable".to_string(),
+                document_id: "stable-owner".to_string(),
+                entity_id: "stable-owner".to_string(),
+                selector: Some("rust://src/lib.rs#item/function/stable_owner".to_string()),
+                document: "stable overlay_fixture_token".to_string(),
+            })
+            .await
+            .expect("upsert stable search document");
+        agent_semantic_search::upsert_turso_overlay_search_document(
+            &engine,
+            &agent_semantic_search::TursoOverlaySearchDocument {
+                repo_id: "repo-1".to_string(),
+                workspace_id: "workspace-1".to_string(),
+                session_id: "session-1".to_string(),
+                base_generation: "dirty-1".to_string(),
+                document_id: "overlay-owner".to_string(),
+                selector: Some("rust://src/lib.rs#item/function/overlay_owner".to_string()),
+                document: "dynamic overlay_fixture_token owner".to_string(),
+            },
+        )
+        .await
+        .expect("upsert turso overlay search document");
+        let started = Instant::now();
+        agent_semantic_search::search_turso_overlay_documents(&engine, "overlay_fixture_token", 8)
+            .await
+            .expect("search turso overlay documents")
+            .into_iter()
+            .map(|hit| (started.elapsed(), hit))
+            .collect::<Vec<_>>()
+    });
+    let elapsed = hits
+        .first()
+        .map(|(elapsed, _)| *elapsed)
+        .unwrap_or_default();
+    let hits = hits.into_iter().map(|(_, hit)| hit).collect::<Vec<_>>();
+
+    assert_eq!(hits.len(), 1, "{hits:#?}");
+    assert_eq!(hits[0].document_id, "overlay-owner");
+    assert_eq!(
+        hits[0].selector.as_deref(),
+        Some("rust://src/lib.rs#item/function/overlay_owner")
+    );
+    assert!(
+        elapsed.as_millis() <= max_total_ms,
+        "turso overlay search adapter cold functional path exceeded benchmark max_total={} observed={}ms hits={hits:#?}",
+        benchmark.max_total,
+        elapsed.as_millis()
+    );
+    assert!(
+        !root.join(".cache").join("agent-semantic-protocol").exists(),
+        "turso overlay search adapter must not create project-local cache"
+    );
+
+    let observed_total = duration_literal(elapsed);
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-turso-overlay-search-adapter-cold-functional-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "agent_semantic_search::bootstrap_turso_overlay_search_store",
+            "agent_semantic_search::upsert_turso_overlay_search_document",
+            "agent_semantic_search::search_turso_overlay_documents"
+        ],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "requireOverlayHit": true,
+            "allowedFirstRoutes": ["dynamic-overlay"],
+            "forbiddenRoutes": ["native-finder", "provider-process", "project-local-cache"],
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "nativeFinderProcessCount": 0,
+            "overlayHit": true,
+            "hitCount": hits.len(),
+            "firstRoute": "turso-overlay",
+            "executedRoutes": ["turso-overlay"],
+            "executableLineRangeSelectorCount": 0,
+            "fallbackReason": "none"
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-turso-overlay-search-adapter-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["overlayHit"], true);
+    let _ = fs::remove_dir_all(root);
 }

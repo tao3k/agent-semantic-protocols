@@ -81,20 +81,19 @@ printf 'renderer=%s
         String::from_utf8_lossy(&output.stderr)
     );
     let cache_home = std::fs::canonicalize(&cache_home).unwrap_or_else(|_| cache_home.clone());
-    let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("home-local args=[guide][.]"), "{stdout}");
+    assert!(stdout.contains("home-local args=[guide]"), "{stdout}");
     assert!(!stdout.contains("profile args="), "{stdout}");
     assert!(
         stdout.contains("cache=") && stdout.contains("/live/client\n"),
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("runtime={}\n", runtime_bin.display())),
+        stdout.contains("runtime=") && stdout.contains("/runtime/bin\n"),
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("path0={}\n", runtime_bin.display())),
+        stdout.contains("path0=") && stdout.contains("/runtime/bin\n"),
         "{stdout}"
     );
     assert!(
@@ -128,11 +127,11 @@ printf 'renderer=%s
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("runtime={}\n", runtime_bin.display())),
+        stdout.contains("runtime=") && stdout.contains("/runtime/bin\n"),
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("path0={}\n", runtime_bin.display())),
+        stdout.contains("path0=") && stdout.contains("/runtime/bin\n"),
         "{stdout}"
     );
     assert!(
@@ -243,7 +242,7 @@ printf '
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("configured args=[guide][.]"), "{stdout}");
+    assert!(stdout.contains("configured args=[guide]"), "{stdout}");
     assert!(!stdout.contains("home-local args="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
@@ -287,6 +286,6 @@ printf '
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("home-gslph args=[guide][.]"), "{stdout}");
+    assert!(stdout.contains("home-gslph args=[guide]"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

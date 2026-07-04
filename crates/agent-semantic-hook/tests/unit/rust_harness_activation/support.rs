@@ -80,6 +80,8 @@ fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
         "crates/agent-semantic-protocol/src/command/org_capture_contract_materialize.rs",
         "crates/agent-semantic-protocol/src/command/hook_enforcement.rs",
         "crates/agent-semantic-config/src/hook_client_config.rs",
+        "crates/agent-semantic-hook/src/event_state.rs",
+        "crates/agent-semantic-hook/src/hook_config/agent_org_config.rs",
         "SKILL.org",
         "SKILL.contract.org",
     ]

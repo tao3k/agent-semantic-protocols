@@ -22,18 +22,22 @@ fn search_pipe_help_does_not_require_activation_or_provider_spawn() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("usage: asp rust search pipe <question-or-feature-term>"),
+        stdout.contains("usage: asp rust search pipe <refinement-query>"),
         "stdout={stdout}"
     );
     assert!(
-        stdout.contains("LLM-compressed code search seed"),
+        stdout.contains("refinement frontier after lexical/dependency evidence is ambiguous"),
+        "stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("Do not use pipe for CLI-command lexical searches"),
         "stdout={stdout}"
     );
     assert!(!stdout.contains("natural-intent"), "stdout={stdout}");
     assert!(stdout.contains("--workspace PROJECT_ROOT"));
     assert!(stdout.contains("--selector SELECTOR"));
     assert!(stdout.contains("--query TERMS"));
-    assert!(stdout.contains("--source auto|provider|finder|ingest"));
+    assert!(stdout.contains("--source auto|provider|search-overlay|ingest"));
     assert!(output.stderr.is_empty());
     assert!(!marker.exists(), "help should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
@@ -246,7 +250,7 @@ fn search_pipe_rejects_unknown_surface_without_provider_spawn() {
 }
 
 #[test]
-fn search_pipe_package_option_scopes_finder_frontier_without_provider_spawn() {
+fn search_pipe_package_option_scopes_search_overlay_frontier_without_provider_spawn() {
     let root = temp_project_root("search-pipe-package-option");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -276,7 +280,7 @@ fn search_pipe_package_option_scopes_finder_frontier_without_provider_spawn() {
             "--package",
             "src/compiler",
             "--source",
-            "finder",
+            "search-overlay",
             "--workspace",
             ".",
             "--view",

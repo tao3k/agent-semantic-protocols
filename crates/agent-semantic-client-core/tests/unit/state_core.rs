@@ -1,7 +1,6 @@
 use crate::state_core::ResolvedState;
 use crate::state_core::{
-    DEFAULT_STATE_HOME_DIR, SQLITE_V1_BACKEND, STATE_LAYOUT_VERSION, TURSO_BACKEND,
-    resolve_state_home_from,
+    DEFAULT_STATE_HOME_DIR, STATE_LAYOUT_VERSION, TURSO_BACKEND, resolve_state_home_from,
 };
 use std::env;
 use std::fs;
@@ -84,9 +83,8 @@ fn minimal_layout_writes_manifest_without_project_cache() {
 
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(&state.paths.client_manifest_json).unwrap()).unwrap();
-    assert_eq!(manifest["layoutVersion"], STATE_LAYOUT_VERSION);
-    assert_eq!(manifest["backend"], SQLITE_V1_BACKEND);
-    assert_eq!(manifest["futureBackend"], TURSO_BACKEND);
+    assert_eq!(manifest["stateLayoutVersion"], STATE_LAYOUT_VERSION);
+    assert_eq!(manifest["backend"], TURSO_BACKEND);
     assert_eq!(
         manifest["repoId"].as_str(),
         Some(state.repo.repo_id.as_str())
@@ -105,9 +103,8 @@ fn minimal_layout_writes_manifest_without_project_cache() {
     );
 
     let report = state.locate_report();
-    assert_eq!(report.layout_version, STATE_LAYOUT_VERSION);
-    assert_eq!(report.backend, SQLITE_V1_BACKEND);
-    assert_eq!(report.future_backend, TURSO_BACKEND);
+    assert_eq!(report.state_layout_version, STATE_LAYOUT_VERSION);
+    assert_eq!(report.backend, TURSO_BACKEND);
     assert_eq!(report.db_path, state.paths.client_db_path);
     assert_eq!(report.artifact_path, state.paths.artifacts_dir);
     assert_eq!(report.manifest_path, state.paths.client_manifest_json);
@@ -118,13 +115,13 @@ fn state_locate_schema_declares_report_contract_fields() {
     let schema_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("schemas")
-        .join("semantic-state-locate-report.v1.schema.json");
+        .join("semantic-state-locate-report.v2.schema.json");
     let schema: serde_json::Value =
         serde_json::from_slice(&fs::read(schema_path).unwrap()).unwrap();
     let required = schema["required"].as_array().expect("required array");
 
     for field in [
-        "layoutVersion",
+        "stateLayoutVersion",
         "stateHome",
         "repoId",
         "workspaceId",
@@ -140,7 +137,6 @@ fn state_locate_schema_declares_report_contract_fields() {
         "manifestPath",
         "generationManifestPath",
         "backend",
-        "futureBackend",
         "projectLocalCache",
     ] {
         assert!(
@@ -182,6 +178,50 @@ fn git_worktree_shares_repo_identity_but_not_workspace_identity() {
     assert_ne!(
         main_state.workspace.workspace_id,
         worktree_state.workspace.workspace_id
+    );
+}
+
+#[test]
+fn git_remote_url_change_does_not_change_repo_identity() {
+    let root = temp_root("git-remote-url-change");
+    let state_home = root.join("state");
+    let repo = root.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+
+    git(&repo, &["init"]);
+    git(
+        &repo,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "ssh://git@github.com/tao3k/agent-semantic-protocols.git",
+        ],
+    );
+    let ssh_state = ResolvedState::resolve_with_state_home(&repo, &state_home).unwrap();
+
+    git(
+        &repo,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            "https://github.com/tao3k/agent-semantic-protocols.git",
+        ],
+    );
+    let https_state = ResolvedState::resolve_with_state_home(&repo, &state_home).unwrap();
+
+    assert_eq!(ssh_state.repo.repo_id, https_state.repo.repo_id);
+    assert_eq!(
+        ssh_state.workspace.workspace_id,
+        https_state.workspace.workspace_id
+    );
+    assert!(ssh_state.repo.identity_basis.starts_with("git-common-dir:"));
+    assert!(
+        https_state
+            .repo
+            .identity_basis
+            .starts_with("git-common-dir:")
     );
 }
 

@@ -1,0 +1,72 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-search-packet",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "languageId": "rust",
+  "providerId": "rust-harness",
+  "binary": "asp-rust-harness",
+  "namespace": "asp.rust",
+  "method": "search/query",
+  "projectRoot": "/workspace/agent-semantic-protocols",
+  "view": "query",
+  "renderMode": "seeds",
+  "header": {
+    "kind": "search-packet-selector-identity-fixture",
+    "fields": {
+      "fixture": "bad-path-line-identity"
+    }
+  },
+  "nodes": [],
+  "edges": [],
+  "owners": [],
+  "items": [
+    {
+      "name": "selectorIdentityProviderOutput",
+      "kind": "function",
+      "ownerPath": "crates/agent-semantic-protocol/src/search/render.rs",
+      "displayLineRange": "10:20",
+      "sourceLocatorHint": "crates/agent-semantic-protocol/src/search/render.rs:10:20",
+      "fields": {
+        "identitySource": "path-line-only"
+      }
+    }
+  ],
+  "actionFrontier": [
+    {
+      "id": "READ.selector-identity-bad",
+      "kind": "read",
+      "routeId": "SELECTOR_IDENTITY",
+      "targetRole": "path",
+      "target": "crates/agent-semantic-protocol/src/search/render.rs",
+      "ownerPath": "crates/agent-semantic-protocol/src/search/render.rs",
+      "projection": "code",
+      "codePolicy": "requires-exact-code",
+      "displayLineRange": "10:20",
+      "sourceLocatorHint": "crates/agent-semantic-protocol/src/search/render.rs:10:20",
+      "fields": {
+        "identitySource": "path-line-only"
+      }
+    }
+  ],
+  "hits": [],
+  "findings": [],
+  "nextActions": [
+    {
+      "kind": "read",
+      "target": "crates/agent-semantic-protocol/src/search/render.rs:10:20",
+      "targetRole": "path",
+      "ownerPath": "crates/agent-semantic-protocol/src/search/render.rs",
+      "read": "crates/agent-semantic-protocol/src/search/render.rs:10:20",
+      "fields": {
+        "identitySource": "path-line-only"
+      }
+    }
+  ],
+  "notes": [
+    {
+      "kind": "contract-fixture",
+      "message": "Schema-valid packet that exposes only display locators, not executable selector identity."
+    }
+  ]
+}

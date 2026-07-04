@@ -50,6 +50,8 @@ pub struct ActivatedProviderConfig {
     pub execution: ProviderExecution,
     #[serde(default)]
     pub provider_command_prefix: Vec<String>,
+    #[serde(default)]
+    pub search_capabilities: serde_json::Value,
     pub coverage: ActivationCoverage,
 }
 

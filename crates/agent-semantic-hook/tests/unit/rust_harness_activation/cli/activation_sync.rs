@@ -87,11 +87,13 @@ fn cli_hook_fails_closed_on_generated_activation_drift_for_source_read() {
 #[test]
 fn cli_doctor_syncs_generated_activation_drift() {
     let root = temp_project_root("doctor-activation-sync");
+    let state_home = root.join(".agent-semantic-protocols");
     let activation_path = write_invalid_generated_activation(&root);
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
 
     let output = asp_command()
         .env_remove("PRJ_CACHE_HOME")
+        .env("ASP_STATE_HOME", &state_home)
         .env("PATH", &provider_path)
         .args([
             "hook",
@@ -135,7 +137,7 @@ fn cli_doctor_syncs_generated_activation_drift() {
 }
 
 fn write_invalid_generated_activation(root: &std::path::Path) -> std::path::PathBuf {
-    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+    let activation_path = test_activation_path(root);
     std::fs::create_dir_all(activation_path.parent().expect("activation parent"))
         .expect("create activation dir");
     std::fs::write(
@@ -169,6 +171,30 @@ fn write_invalid_generated_activation(root: &std::path::Path) -> std::path::Path
     )
     .expect("write retired activation");
     activation_path
+}
+
+fn test_activation_path(root: &std::path::Path) -> std::path::PathBuf {
+    let resolved = agent_semantic_runtime::state_core::ResolvedState::resolve_with_state_home(
+        root,
+        root.join(".agent-semantic-protocols"),
+    )
+    .expect("resolve test state");
+    std::fs::create_dir_all(&resolved.paths.workspace_dir).expect("create workspace state dir");
+    std::fs::write(
+        &resolved.paths.workspace_json,
+        serde_json::to_string(&serde_json::json!({
+            "root": root.display().to_string()
+        }))
+        .expect("serialize workspace manifest"),
+    )
+    .expect("write workspace manifest");
+    resolved
+        .paths
+        .workspace_dir
+        .join("live")
+        .join("hooks")
+        .join("state")
+        .join("activation.json")
 }
 
 fn run_hook_with_activation(

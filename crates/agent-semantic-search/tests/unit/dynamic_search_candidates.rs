@@ -37,13 +37,15 @@ fn lexical_overlay_candidates_project_path_and_content_hits_without_executable_r
     assert!(
         candidates
             .iter()
-            .any(|candidate| candidate.source == "overlay-path"
+            .any(|candidate| candidate.source == "search-overlay"
+                && candidate.confidence == "path-lexical-overlay"
                 && candidate.path == "src/dynamic_overlay_owner.rs")
     );
     assert!(
         candidates
             .iter()
-            .any(|candidate| candidate.source == "overlay"
+            .any(|candidate| candidate.source == "search-overlay"
+                && candidate.confidence == "lexical-overlay"
                 && candidate.text.contains("dynamic_owner_item_index"))
     );
     assert!(candidates.iter().all(|candidate| {

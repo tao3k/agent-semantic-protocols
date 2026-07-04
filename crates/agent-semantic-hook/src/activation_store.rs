@@ -5,12 +5,9 @@ use crate::provider_manifest::{
     ProviderCommandSelection, build_default_activation, provider_command_selections,
     provider_manifests,
 };
-use agent_semantic_runtime::{
-    discover_project_activation_path, is_project_activation_path, project_activation_path,
-    project_local_activation_path,
-};
+use agent_semantic_runtime::project_activation_path;
 use std::{
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -27,7 +24,7 @@ pub fn load_or_sync_activation(
     activation_path: &Path,
     project_root: &Path,
 ) -> Result<HookRuntime, String> {
-    if is_generated_activation_path(activation_path) {
+    if is_generated_activation_path_for_project(activation_path, project_root) {
         return sync_activation(project_root, activation_path).or_else(|sync_error| {
             load_activation(activation_path).map_err(|load_error| {
                 format!(
@@ -166,16 +163,66 @@ pub fn write_activation(path: &Path, activation: &HookActivation) -> Result<(), 
 /// Return the managed cache path for a project's hook activation.
 pub fn default_activation_path(project_root: &Path) -> PathBuf {
     project_activation_path(project_root)
-        .unwrap_or_else(|_| project_local_activation_path(project_root))
+        .expect("State Core activation path should resolve for default activation")
 }
 
-/// Search ancestors for a managed hook activation cache file.
+/// Return the State Core managed activation path when it already exists.
 pub fn discover_activation_path(start: &Path) -> Option<PathBuf> {
-    discover_project_activation_path(start)
+    if let Some(path) = env::var_os("ASP_STATE_HOME")
+        .map(PathBuf::from)
+        .map(|state_home| {
+            state_home
+                .join("hooks")
+                .join("state")
+                .join("activation.json")
+        })
+        .filter(|path| path.is_file())
+    {
+        return Some(path);
+    }
+    if let Some(path) = env::var_os("PRJ_CACHE_HOME")
+        .map(PathBuf::from)
+        .map(|cache_home| {
+            cache_home
+                .join("agent-semantic-protocol")
+                .join("hooks")
+                .join("activation.json")
+        })
+        .filter(|path| path.is_file())
+    {
+        return Some(path);
+    }
+    start.ancestors().find_map(|candidate| {
+        project_activation_path(candidate)
+            .ok()
+            .filter(|path| path.is_file())
+            .or_else(|| {
+                let legacy_path = legacy_project_activation_path(candidate);
+                legacy_path.is_file().then_some(legacy_path)
+            })
+    })
 }
 
-pub(crate) fn is_generated_activation_path(path: &Path) -> bool {
-    is_project_activation_path(path)
+fn is_generated_activation_path_for_project(path: &Path, project_root: &Path) -> bool {
+    project_activation_path(project_root)
+        .map(|default_path| default_path == path)
+        .unwrap_or(false)
+        || legacy_project_activation_path(project_root) == path
+        || agent_semantic_runtime::state::project_root_for_activation_path(path)
+            .map(|root| canonicalize_if_possible(&root) == canonicalize_if_possible(project_root))
+            .unwrap_or(false)
+}
+
+fn legacy_project_activation_path(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("hooks")
+        .join("activation.json")
+}
+
+fn canonicalize_if_possible(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 /// Parses a project hook activation using the built-in provider manifests.
 pub fn parse_hook_activation(input: &str) -> Result<HookRuntime, crate::protocol::AgentHookError> {

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use agent_semantic_search::{
-    IngestSearchCandidate, NativeFinderCandidate, QueryWrapperCandidate, SearchPipeCandidate,
+    IngestSearchCandidate, QueryWrapperCandidate, SearchOverlayCandidate, SearchPipeCandidate,
 };
 use serde_json::Value;
 
@@ -19,8 +19,8 @@ pub(super) struct Candidate {
     pub(super) confidence: String,
 }
 
-impl From<NativeFinderCandidate> for Candidate {
-    fn from(candidate: NativeFinderCandidate) -> Self {
+impl From<SearchOverlayCandidate> for Candidate {
+    fn from(candidate: SearchOverlayCandidate) -> Self {
         Self {
             path: candidate.path,
             line: candidate.line,

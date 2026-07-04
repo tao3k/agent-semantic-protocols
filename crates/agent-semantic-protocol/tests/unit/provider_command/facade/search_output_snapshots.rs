@@ -14,7 +14,7 @@ fn asp_rg_query_wrapper_stdout_snapshot() {
     .expect("write package json");
     std::fs::write(
         root.join("src/effect.ts"),
-        "export const Fiber = {};\nexport const Queue = {};\nconst staleCache = 'refresh sqlite cache';\n",
+        "export const Fiber = {};\nexport const Queue = {};\nconst staleCache = 'refresh turso cache';\n",
     )
     .expect("write source");
 
@@ -24,7 +24,7 @@ fn asp_rg_query_wrapper_stdout_snapshot() {
             "-query",
             "Fiber|Queue",
             "-query",
-            "stale|refresh|sqlite|cache",
+            "stale|refresh|turso|cache",
             "--workspace",
             "src",
         ])

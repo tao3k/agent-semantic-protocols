@@ -2,11 +2,13 @@ use std::{fs, path::PathBuf};
 
 use agent_semantic_config::project_runtime_layout;
 
+use crate::test_support::IsolatedAspStateHome;
 use crate::{ProjectContext, ProjectEnvStatus, StateLayout};
 
 #[test]
 fn project_context_resolves_git_toplevel_from_subdir() {
     let root = temp_root("git-toplevel");
+    let _state_home = IsolatedAspStateHome::activate(&root);
     fs::create_dir_all(root.join(".git")).expect("create git marker");
     let package = root.join("crates/example/src");
     fs::create_dir_all(&package).expect("create package dir");
@@ -23,6 +25,7 @@ fn project_context_resolves_git_toplevel_from_subdir() {
 #[test]
 fn project_env_vars_require_envrc_at_git_toplevel() {
     let root = temp_root("envrc-at-root");
+    let _state_home = IsolatedAspStateHome::activate(&root);
     fs::create_dir_all(root.join(".git")).expect("create git marker");
     fs::write(root.join(".envrc"), "export PRJHOME=$PWD\n").expect("write envrc");
     let package = root.join("crates/example");
@@ -43,6 +46,7 @@ fn project_env_vars_require_envrc_at_git_toplevel() {
 #[test]
 fn nested_envrc_without_git_toplevel_envrc_does_not_enable_prj_vars() {
     let root = temp_root("nested-envrc");
+    let _state_home = IsolatedAspStateHome::activate(&root);
     fs::create_dir_all(root.join(".git")).expect("create git marker");
     let package = root.join("crates/example");
     fs::create_dir_all(&package).expect("create package dir");
@@ -59,6 +63,7 @@ fn nested_envrc_without_git_toplevel_envrc_does_not_enable_prj_vars() {
 #[test]
 fn state_layout_uses_single_client_cache_interface() {
     let root = temp_root("state-layout");
+    let _state_home = IsolatedAspStateHome::activate(&root);
     fs::create_dir_all(root.join(".git")).expect("create git marker");
     let package = root.join("crates/example");
     fs::create_dir_all(&package).expect("create package dir");
@@ -86,6 +91,7 @@ fn state_layout_uses_single_client_cache_interface() {
 #[test]
 fn state_layout_uses_state_core_instead_of_config_runtime_cache_layout() {
     let root = temp_root("config-runtime-layout");
+    let _state_home = IsolatedAspStateHome::activate(&root);
     fs::create_dir_all(root.join(".git")).expect("create git marker");
     let layout = project_runtime_layout(&root);
     let state_layout = StateLayout::resolve(&root).expect("state layout");
@@ -118,6 +124,7 @@ fn state_layout_uses_state_core_instead_of_config_runtime_cache_layout() {
 #[test]
 fn workspace_boundary_rejects_paths_outside_git_toplevel() {
     let root = temp_root("workspace-boundary");
+    let _state_home = IsolatedAspStateHome::activate(&root);
     fs::create_dir_all(root.join(".git")).expect("create git marker");
     let inside = root.join("src/lib.rs");
     fs::create_dir_all(inside.parent().expect("inside parent")).expect("create src");

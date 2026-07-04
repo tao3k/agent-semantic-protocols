@@ -21,7 +21,6 @@ use super::writeback_analysis_metadata::{
 use super::writeback_artifact_events::{
     ArtifactEventWriteback, ArtifactKind, artifact_events_for_writeback,
 };
-use super::writeback_db_reset::sync_client_db_for_manifest_writeback;
 #[cfg(test)]
 use super::writeback_generation::syntax_query_generation_identity;
 use super::writeback_generation::{
@@ -52,7 +51,7 @@ use crate::cache_replay::{MAX_CACHE_REPLAY_ARTIFACT_BYTES, replay_artifact_path}
 pub(crate) struct CacheWritebackProbe {
     pub(crate) cache_probe: Option<ProviderCacheProbe>,
     #[cfg(test)]
-    pub(crate) sqlite_write_count: u64,
+    pub(crate) db_write_count: u64,
     #[cfg(test)]
     pub(crate) replay: Option<ProviderCacheReplay>,
     pub(crate) provider_commands: Vec<ProviderCommandReceipt>,
@@ -167,7 +166,6 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     let cache_probe = (|| {
         let cache_root = cache_report.cache_root.as_ref()?;
         let manifest_path = cache_report.manifest_path.as_ref()?;
-        let manifest_status = cache_report.status.clone();
         let mut manifest =
             load_existing_or_empty_manifest(cache_root, manifest_path, &cache_report.status);
         let mut generation = match artifact_kind {
@@ -280,10 +278,8 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
         upsert_generation(&mut manifest, generation);
         write_cache_manifest(manifest_path, &manifest).ok()?;
-        let mut db_session = ClientDbEngine::open_write_session_client_dir(cache_root).ok()?;
-        sync_client_db_for_manifest_writeback(&mut db_session, &manifest, &manifest_status)?;
-        db_session.import_manifest(&manifest).ok()?;
-        let mut sqlite_write_count = 1;
+        ClientDbEngine::import_manifest_from_client_dir(cache_root, &manifest).ok()?;
+        let mut db_write_count = 1;
         let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
             artifact_kind,
             artifact_id: artifact_id.as_str(),
@@ -304,26 +300,30 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             provider_commands,
         });
         if !artifact_events.is_empty() {
-            db_session.upsert_artifact_events(&artifact_events).ok()?;
-            sqlite_write_count += 1;
+            ClientDbEngine::upsert_artifact_events_from_client_dir(cache_root, &artifact_events)
+                .ok()?;
+            db_write_count += 1;
         }
         if let Some(syntax_generation) = syntax_generation {
-            db_session
-                .import_semantic_tree_sitter_query_packet(&syntax_generation, &artifact_bytes)
-                .ok()?;
-            sqlite_write_count += 1;
+            ClientDbEngine::import_semantic_tree_sitter_query_packet_from_client_dir(
+                cache_root,
+                &syntax_generation,
+                &artifact_bytes,
+            )
+            .ok()?;
+            db_write_count += 1;
         }
         if let Some(structural_generation) = structural_generation {
-            db_session
-                .import_semantic_structural_index_refresh_packet(
-                    &structural_generation,
-                    &artifact_bytes,
-                )
-                .ok()?;
-            sqlite_write_count += 1;
+            ClientDbEngine::import_semantic_structural_index_refresh_packet_from_client_dir(
+                cache_root,
+                &structural_generation,
+                &artifact_bytes,
+            )
+            .ok()?;
+            db_write_count += 1;
         }
         let mut probe = provider_cache_probe(project_root, snapshot, request)?;
-        probe.sqlite_write_count = sqlite_write_count;
+        probe.db_write_count = db_write_count;
         Some(probe)
     })();
     if cache_probe.is_none() && writeback_provider_commands.is_empty() {
@@ -331,9 +331,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     }
     Some(CacheWritebackProbe {
         #[cfg(test)]
-        sqlite_write_count: cache_probe
-            .as_ref()
-            .map_or(0, |probe| probe.sqlite_write_count),
+        db_write_count: cache_probe.as_ref().map_or(0, |probe| probe.db_write_count),
         #[cfg(test)]
         replay: cache_probe.as_ref().and_then(|probe| probe.replay.clone()),
         cache_probe,
@@ -356,7 +354,6 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     let cache_report = ClientCacheManifest::inspect_project(project_root);
     let cache_root = cache_report.cache_root.as_ref()?;
     let manifest_path = cache_report.manifest_path.as_ref()?;
-    let manifest_status = cache_report.status.clone();
     let mut manifest =
         load_existing_or_empty_manifest(cache_root, manifest_path, &cache_report.status);
     let mut generation = search_packet_generation_from_packet(
@@ -390,9 +387,7 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
-    let mut db_session = ClientDbEngine::open_write_session_client_dir(cache_root).ok()?;
-    sync_client_db_for_manifest_writeback(&mut db_session, &manifest, &manifest_status)?;
-    db_session.import_manifest(&manifest).ok()?;
+    ClientDbEngine::import_manifest_from_client_dir(cache_root, &manifest).ok()?;
     let mut probe = provider_cache_probe(project_root, snapshot, request)?;
     let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
         artifact_kind: ArtifactKind::SearchPacket,
@@ -413,14 +408,14 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
         artifact_bytes_slice: packet_bytes,
         provider_commands: &[],
     });
-    let sqlite_write_count = if artifact_events.is_empty() {
-        1
-    } else {
-        db_session.upsert_artifact_events(&artifact_events).ok()?;
-        2
-    };
+    let mut db_write_count = 1;
+    if !artifact_events.is_empty() {
+        ClientDbEngine::upsert_artifact_events_from_client_dir(cache_root, &artifact_events)
+            .ok()?;
+        db_write_count += 1;
+    }
     maybe_write_turso_route_receipt_for_search_packet(project_root, packet_bytes, rendered_stdout);
-    probe.sqlite_write_count = sqlite_write_count;
+    probe.db_write_count = db_write_count;
     Some(probe)
 }
 
@@ -440,7 +435,6 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
     let cache_report = ClientCacheManifest::inspect_project(project_root);
     let cache_root = cache_report.cache_root.as_ref()?;
     let manifest_path = cache_report.manifest_path.as_ref()?;
-    let manifest_status = cache_report.status.clone();
     let mut manifest =
         load_existing_or_empty_manifest(cache_root, manifest_path, &cache_report.status);
     let mut generation = query_packet_generation_from_packet(
@@ -472,9 +466,7 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
     let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
-    let mut db_session = ClientDbEngine::open_write_session_client_dir(cache_root).ok()?;
-    sync_client_db_for_manifest_writeback(&mut db_session, &manifest, &manifest_status)?;
-    db_session.import_manifest(&manifest).ok()?;
+    ClientDbEngine::import_manifest_from_client_dir(cache_root, &manifest).ok()?;
     let mut probe = provider_cache_probe(project_root, snapshot, request)?;
     let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
         artifact_kind: ArtifactKind::QueryPacket,
@@ -495,13 +487,13 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
         artifact_bytes_slice: packet_bytes,
         provider_commands: &[],
     });
-    let sqlite_write_count = if artifact_events.is_empty() {
-        1
-    } else {
-        db_session.upsert_artifact_events(&artifact_events).ok()?;
-        2
-    };
-    probe.sqlite_write_count = sqlite_write_count;
+    let mut db_write_count = 1;
+    if !artifact_events.is_empty() {
+        ClientDbEngine::upsert_artifact_events_from_client_dir(cache_root, &artifact_events)
+            .ok()?;
+        db_write_count += 1;
+    }
+    probe.db_write_count = db_write_count;
     Some(probe)
 }
 

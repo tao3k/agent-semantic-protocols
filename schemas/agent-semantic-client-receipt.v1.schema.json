@@ -116,6 +116,13 @@
       ],
       "minLength": 1
     },
+    "artifactRoots": {
+      "description": "Merkle artifact roots referenced by this receipt. The receipt carries compact root references instead of embedding full artifact payloads.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRootRef"
+      }
+    },
     "syntaxQueryAstAbiFingerprint": {
       "description": "Stable fingerprint of the normalized tree-sitter-compatible query AST/ABI that participates in syntax-query cache identity.",
       "type": "string",
@@ -141,13 +148,13 @@
       "type": "integer",
       "minimum": 0
     },
-    "sqliteReadCount": {
-      "description": "Count of logical local SQLite read operations for this client request when the local cache backend was consulted. This is an observability counter, not a SQL statement or row-count ABI.",
+    "dbReadCount": {
+      "description": "Count of logical DB Engine read operations for this client request when the local cache backend was consulted. This is an observability counter, not a SQL statement or row-count ABI.",
       "type": "integer",
       "minimum": 0
     },
-    "sqliteWriteCount": {
-      "description": "Count of logical local SQLite write/import operations for this client request. This is an observability counter, not a SQL statement or row-count ABI.",
+    "dbWriteCount": {
+      "description": "Count of logical DB Engine write/import operations for this client request. This is an observability counter, not a SQL statement or row-count ABI.",
       "type": "integer",
       "minimum": 0
     },
@@ -193,12 +200,12 @@
       "type": "boolean"
     },
     "clientDbPath": {
-      "description": "Resolved SQLite client database path when this receipt inspected local cache DB state.",
+      "description": "Resolved DB Engine client database path when this receipt inspected local cache DB state.",
       "type": "string",
       "minLength": 1
     },
     "clientDbStatus": {
-      "description": "Filesystem and schema status for the local SQLite client database inspected by this receipt.",
+      "description": "Filesystem and schema status for the local DB Engine client database inspected by this receipt.",
       "enum": [
         "missing",
         "present",
@@ -206,86 +213,86 @@
       ]
     },
     "clientDbGenerationCount": {
-      "description": "Number of cache generations visible in the local SQLite client database.",
+      "description": "Number of cache generations visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSyntaxRowGenerationCount": {
-      "description": "Number of normalized semantic-tree-sitter-query generation rows visible in the local SQLite client database.",
+      "description": "Number of normalized semantic-tree-sitter-query generation rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSyntaxRowMatchCount": {
-      "description": "Number of normalized semantic-tree-sitter-query match rows visible in the local SQLite client database.",
+      "description": "Number of normalized semantic-tree-sitter-query match rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSyntaxRowCaptureCount": {
-      "description": "Number of normalized semantic-tree-sitter-query capture rows visible in the local SQLite client database.",
+      "description": "Number of normalized semantic-tree-sitter-query capture rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbStructuralIndexGenerationCount": {
-      "description": "Number of structural index generations visible in the local SQLite client database.",
+      "description": "Number of structural index generations visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbStructuralIndexOwnerCount": {
-      "description": "Number of structural index owner rows visible in the local SQLite client database.",
+      "description": "Number of structural index owner rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbStructuralIndexSymbolCount": {
-      "description": "Number of structural index symbol rows visible in the local SQLite client database.",
+      "description": "Number of structural index symbol rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbStructuralIndexDependencyUsageCount": {
-      "description": "Number of structural index dependency-usage rows visible in the local SQLite client database.",
+      "description": "Number of structural index dependency-usage rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSourceIndexGenerationCount": {
-      "description": "Number of source-index generations visible in the local SQLite client database.",
+      "description": "Number of source-index generations visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSourceIndexOwnerCount": {
-      "description": "Number of source-index owner rows visible in the local SQLite client database.",
+      "description": "Number of source-index owner rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbSourceIndexSelectorCount": {
-      "description": "Number of source-index selector rows visible in the local SQLite client database.",
+      "description": "Number of source-index selector rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbArtifactEventCount": {
-      "description": "Number of DB artifact event rows visible in the local SQLite client database.",
+      "description": "Number of DB artifact event rows visible in the local DB Engine client database.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbRawSourceStored": {
-      "description": "Diagnostic flag indicating whether the local SQLite client database contains cache rows marked as raw-source storage.",
+      "description": "Diagnostic flag indicating whether the local DB Engine client database contains cache rows marked as raw-source storage.",
       "type": "boolean"
     },
     "clientDbJournalMode": {
-      "description": "Observed SQLite journal_mode for the local client database when runtime pragmas were inspected. WAL-capable writable cache connections should report wal.",
+      "description": "Observed DB adapter journal_mode for the local client database when runtime pragmas were inspected. Writable cache connections may report adapter-specific journal state.",
       "type": "string",
       "minLength": 1
     },
     "clientDbSynchronous": {
-      "description": "Observed SQLite synchronous pragma value for the local client database when runtime pragmas were inspected.",
+      "description": "Observed DB adapter synchronous pragma value for the local client database when runtime pragmas were inspected.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbBusyTimeoutMs": {
-      "description": "Observed SQLite busy_timeout value in milliseconds for the local client database when runtime pragmas were inspected.",
+      "description": "Observed DB adapter busy_timeout value in milliseconds for the local client database when runtime pragmas were inspected.",
       "type": "integer",
       "minimum": 0
     },
     "clientDbForeignKeys": {
-      "description": "Observed SQLite foreign_keys pragma for the local client database when runtime pragmas were inspected.",
+      "description": "Observed DB adapter foreign_keys pragma for the local client database when runtime pragmas were inspected.",
       "type": "boolean"
     },
     "dbEngine": {
@@ -298,12 +305,11 @@
       "pattern": "^[a-z][a-z0-9_-]*$"
     },
     "dbEngine": {
-      "description": "Structured DB Engine state for analyzer-facing receipts. backend=turso is the default active backend; backend=sqlite-v1 remains valid only for no-default-features migration/control validation while futureBackend=turso records the cutover direction.",
+      "description": "Structured DB Engine state for analyzer-facing receipts. backend=turso is the active DB Engine backend.",
       "type": "object",
       "additionalProperties": false,
       "required": [
         "backend",
-        "futureBackend",
         "layoutVersion",
         "dbFileName",
         "schemaVersion",
@@ -315,26 +321,19 @@
         "artifactPath",
         "repoId",
         "workspaceId",
-        "scopeId",
-        "futureBackendReport",
-        "sqliteReport"
+        "scopeId"
       ],
       "properties": {
         "backend": {
           "enum": [
-            "sqlite-v1",
             "turso"
           ]
-        },
-        "futureBackend": {
-          "const": "turso"
         },
         "layoutVersion": {
           "const": "state-v2"
         },
         "dbFileName": {
           "enum": [
-            "client.sqlite3",
             "client.turso"
           ]
         },
@@ -343,7 +342,6 @@
         },
         "durability": {
           "enum": [
-            "sqlite-file",
             "turso-local-file"
           ]
         },
@@ -377,12 +375,6 @@
         "scopeId": {
           "type": "string",
           "minLength": 1
-        },
-        "sqliteReport": {
-          "$ref": "#/$defs/sqliteReport"
-        },
-        "futureBackendReport": {
-          "$ref": "#/$defs/tursoReport"
         }
       }
     },
@@ -429,135 +421,6 @@
         },
         "encryption": {
           "const": false
-        }
-      }
-    },
-    "sqliteReport": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "dbPath",
-        "status",
-        "generationCount",
-        "syntaxRowGenerationCount",
-        "syntaxRowMatchCount",
-        "syntaxRowCaptureCount",
-        "structuralIndexGenerationCount",
-        "structuralIndexOwnerCount",
-        "structuralIndexSymbolCount",
-        "structuralIndexDependencyUsageCount",
-        "sourceIndexGenerationCount",
-        "sourceIndexOwnerCount",
-        "sourceIndexSelectorCount",
-        "artifactEventCount",
-        "rawSourceStored",
-        "runtimePragmas",
-        "reason"
-      ],
-      "properties": {
-        "dbPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "status": {
-          "enum": [
-            "missing",
-            "present",
-            "invalid"
-          ]
-        },
-        "generationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "syntaxRowGenerationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "syntaxRowMatchCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "syntaxRowCaptureCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "structuralIndexGenerationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "structuralIndexOwnerCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "structuralIndexSymbolCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "structuralIndexDependencyUsageCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "sourceIndexGenerationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "sourceIndexOwnerCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "sourceIndexSelectorCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "artifactEventCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "rawSourceStored": {
-          "type": "boolean"
-        },
-        "runtimePragmas": {
-          "anyOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/sqliteRuntimePragmas"
-            }
-          ]
-        },
-        "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
-    },
-    "sqliteRuntimePragmas": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "journalMode",
-        "synchronous",
-        "busyTimeoutMs",
-        "foreignKeys"
-      ],
-      "properties": {
-        "journalMode": {
-          "type": "string",
-          "minLength": 1
-        },
-        "synchronous": {
-          "type": "integer"
-        },
-        "busyTimeoutMs": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "foreignKeys": {
-          "type": "boolean"
         }
       }
     },
@@ -648,6 +511,14 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },
+        "stdoutBlake3": {
+          "description": "BLAKE3 digest of full provider stdout bytes for artifact identity. This is additive provenance and does not replace stdoutSha256 compatibility.",
+          "$ref": "#/$defs/artifactHash"
+        },
+        "stderrBlake3": {
+          "description": "BLAKE3 digest of full provider stderr bytes for artifact identity. This is additive provenance and does not replace stderrSha256 compatibility.",
+          "$ref": "#/$defs/artifactHash"
+        },
         "stdoutTruncated": {
           "description": "Whether provider stdout was truncated in the retained buffer.",
           "type": "boolean"
@@ -678,6 +549,87 @@
           "description": "Optional provider command end timestamp as Unix epoch milliseconds.",
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "artifactHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "blake3"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "artifactRootRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoId",
+        "workspaceId",
+        "scopeId",
+        "generation",
+        "rootKind",
+        "rootHash",
+        "nodeHash"
+      ],
+      "properties": {
+        "repoId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootKind": {
+          "enum": [
+            "artifactExport",
+            "changeSet",
+            "compactGraph",
+            "dynamicOverlay",
+            "eventLogCheckpoint",
+            "evidenceGraph",
+            "graphDiff",
+            "howFixFrame",
+            "howFromFrame",
+            "proofReceipt",
+            "providerOutput",
+            "searchReceipt",
+            "sourceIndexBundle",
+            "sourceSnapshot"
+          ]
+        },
+        "rootHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "nodeHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "producerHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "schemaHash": {
+          "$ref": "#/$defs/artifactHash"
+        },
+        "contentHash": {
+          "$ref": "#/$defs/artifactHash"
         }
       }
     },
@@ -771,6 +723,32 @@
         },
         "encryption": {
           "const": false
+        }
+      }
+    },
+    "dbRuntimePragmas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "journalMode",
+        "synchronous",
+        "busyTimeoutMs",
+        "foreignKeys"
+      ],
+      "properties": {
+        "journalMode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synchronous": {
+          "type": "integer"
+        },
+        "busyTimeoutMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "foreignKeys": {
+          "type": "boolean"
         }
       }
     }
