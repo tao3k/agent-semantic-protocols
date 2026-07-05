@@ -17,7 +17,8 @@ fn root_search_facade_routes_explicit_language_to_provider() {
             "search",
             "--language",
             "rust",
-            "prime",
+            "lexical",
+            "source_index_fixture",
             "--workspace",
             ".",
             "--view",
@@ -32,11 +33,8 @@ fn root_search_facade_routes_explicit_language_to_provider() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[search-prime] root="), "{stdout}");
-    assert!(
-        stdout.contains("alg=native-fd-prime-frontier-v1"),
-        "{stdout}"
-    );
+    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
+    assert!(stdout.contains("profile=owner-query"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -60,6 +58,7 @@ fn root_search_facade_routes_compare_namespace_to_provider() {
             "stable",
             "nightly",
             "--json",
+            "--workspace",
             ".",
         ])
         .output()
@@ -93,7 +92,15 @@ fn root_search_facade_infers_language_from_single_project_marker() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", &cache_home)
-        .args(["search", "prime", "--view", "seeds", "."])
+        .args([
+            "search",
+            "lexical",
+            "source_index_fixture",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
         .output()
         .expect("run asp search inferred language");
 
@@ -103,11 +110,8 @@ fn root_search_facade_infers_language_from_single_project_marker() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[search-prime] root="), "{stdout}");
-    assert!(
-        stdout.contains("alg=native-fd-prime-frontier-v1"),
-        "{stdout}"
-    );
+    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
+    assert!(stdout.contains("profile=owner-query"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -153,7 +157,10 @@ fn root_search_facade_rejects_unsupported_explicit_language_with_finder_recovery
         stderr.contains("Do not switch to an unrelated active facade"),
         "{stderr}"
     );
-    assert!(!stderr.contains("asp typescript search prime"), "{stderr}");
+    assert!(
+        !stderr.contains("asp typescript search lexical"),
+        "{stderr}"
+    );
     assert!(!stderr.contains("Suggested matching facade"), "{stderr}");
     assert!(!stderr.contains("asp gerbil-scheme search"), "{stderr}");
     let _ = std::fs::remove_dir_all(root);

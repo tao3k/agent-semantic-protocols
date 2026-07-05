@@ -92,72 +92,47 @@ pub async fn upsert_turso_route_receipt(
     Ok(())
 }
 
-/// List bounded search route receipts for a workspace, newest first.
+/// List recent search route receipts, optionally scoped to one session id.
 pub async fn list_turso_route_receipts(
     db_path: &Path,
-    repo_id: &str,
-    workspace_id: &str,
     session_id: Option<&str>,
     limit: u32,
 ) -> Result<Vec<TursoClientDbRouteReceipt>, String> {
-    if limit == 0 {
-        return Ok(Vec::new());
-    }
     let connection = connect_turso_client_db(db_path).await?;
-    let sql_with_session = "SELECT
-            receipt_id,
-            repo_id,
-            workspace_id,
-            scope_id,
-            session_id,
-            query,
-            route_source,
-            selected_selector,
-            next_command,
-            hit_count,
-            evidence_ids_json,
-            created_at_ms
-         FROM asp_route_receipt
-         WHERE repo_id = ?1 AND workspace_id = ?2 AND session_id = ?3
-         ORDER BY created_at_ms DESC, receipt_id
-         LIMIT ?4";
-    let sql_without_session = "SELECT
-            receipt_id,
-            repo_id,
-            workspace_id,
-            scope_id,
-            session_id,
-            query,
-            route_source,
-            selected_selector,
-            next_command,
-            hit_count,
-            evidence_ids_json,
-            created_at_ms
-         FROM asp_route_receipt
-         WHERE repo_id = ?1 AND workspace_id = ?2
-         ORDER BY created_at_ms DESC, receipt_id
-         LIMIT ?3";
+    let capped_limit = i64::from(limit.max(1));
     let mut rows = if let Some(session_id) = session_id {
         run_turso_operation_with_lock_retry(
             || async {
                 connection
-                    .query(sql_with_session, (repo_id, workspace_id, session_id, limit))
+                    .query(
+                        "SELECT receipt_id, repo_id, workspace_id, scope_id, session_id, query, route_source, selected_selector, next_command, hit_count, evidence_ids_json, created_at_ms
+                         FROM asp_route_receipt
+                         WHERE session_id = ?1
+                         ORDER BY created_at_ms DESC, receipt_id
+                         LIMIT ?2",
+                        (session_id, capped_limit),
+                    )
                     .await
                     .map_err(|error| error.to_string())
             },
-            "failed to query Turso route receipts",
+            "failed to list Turso route receipts",
         )
         .await?
     } else {
         run_turso_operation_with_lock_retry(
             || async {
                 connection
-                    .query(sql_without_session, (repo_id, workspace_id, limit))
+                    .query(
+                        "SELECT receipt_id, repo_id, workspace_id, scope_id, session_id, query, route_source, selected_selector, next_command, hit_count, evidence_ids_json, created_at_ms
+                         FROM asp_route_receipt
+                         ORDER BY created_at_ms DESC, receipt_id
+                         LIMIT ?1",
+                        [capped_limit],
+                    )
                     .await
                     .map_err(|error| error.to_string())
             },
-            "failed to query Turso route receipts",
+            "failed to list Turso route receipts",
         )
         .await?
     };
@@ -167,50 +142,54 @@ pub async fn list_turso_route_receipts(
         .await
         .map_err(|error| format!("failed to read Turso route receipt row: {error}"))?
     {
-        let hit_count = row
-            .get::<i64>(9)
-            .map_err(|error| format!("failed to read Turso route receipt hit count: {error}"))?;
-        let evidence_ids_json = row
-            .get::<String>(10)
-            .map_err(|error| format!("failed to read Turso route receipt evidence ids: {error}"))?;
-        receipts.push(TursoClientDbRouteReceipt {
-            receipt_id: row
-                .get::<String>(0)
-                .map_err(|error| format!("failed to read Turso route receipt id: {error}"))?,
-            repo_id: row
-                .get::<String>(1)
-                .map_err(|error| format!("failed to read Turso route receipt repo id: {error}"))?,
-            workspace_id: row.get::<String>(2).map_err(|error| {
-                format!("failed to read Turso route receipt workspace id: {error}")
-            })?,
-            scope_id: row
-                .get::<String>(3)
-                .map_err(|error| format!("failed to read Turso route receipt scope id: {error}"))?,
-            session_id: row.get::<Option<String>>(4).map_err(|error| {
-                format!("failed to read Turso route receipt session id: {error}")
-            })?,
-            query: row
-                .get::<String>(5)
-                .map_err(|error| format!("failed to read Turso route receipt query: {error}"))?,
-            route_source: row.get::<String>(6).map_err(|error| {
-                format!("failed to read Turso route receipt route source: {error}")
-            })?,
-            selected_selector: row.get::<Option<String>>(7).map_err(|error| {
-                format!("failed to read Turso route receipt selected selector: {error}")
-            })?,
-            next_command: row.get::<Option<String>>(8).map_err(|error| {
-                format!("failed to read Turso route receipt next command: {error}")
-            })?,
-            hit_count: u32::try_from(hit_count).map_err(|error| {
-                format!("failed to decode Turso route receipt hit count: {error}")
-            })?,
-            evidence_ids: serde_json::from_str::<Vec<String>>(&evidence_ids_json).map_err(
-                |error| format!("failed to decode Turso route receipt evidence ids: {error}"),
-            )?,
-            created_at_ms: row.get::<i64>(11).map_err(|error| {
-                format!("failed to read Turso route receipt created timestamp: {error}")
-            })?,
-        });
+        receipts.push(turso_route_receipt_from_row(&row)?);
     }
     Ok(receipts)
+}
+
+fn turso_route_receipt_from_row(row: &turso::Row) -> Result<TursoClientDbRouteReceipt, String> {
+    let evidence_ids_json = row
+        .get::<String>(10)
+        .map_err(|error| format!("failed to read Turso route receipt evidence ids: {error}"))?;
+    let evidence_ids = serde_json::from_str(&evidence_ids_json)
+        .map_err(|error| format!("failed to decode Turso route receipt evidence ids: {error}"))?;
+    let hit_count = row
+        .get::<i64>(9)
+        .map_err(|error| format!("failed to read Turso route receipt hit count: {error}"))?
+        .max(0)
+        .min(i64::from(u32::MAX)) as u32;
+    Ok(TursoClientDbRouteReceipt {
+        receipt_id: row
+            .get::<String>(0)
+            .map_err(|error| format!("failed to read Turso route receipt id: {error}"))?,
+        repo_id: row
+            .get::<String>(1)
+            .map_err(|error| format!("failed to read Turso route receipt repo id: {error}"))?,
+        workspace_id: row
+            .get::<String>(2)
+            .map_err(|error| format!("failed to read Turso route receipt workspace id: {error}"))?,
+        scope_id: row
+            .get::<String>(3)
+            .map_err(|error| format!("failed to read Turso route receipt scope id: {error}"))?,
+        session_id: row
+            .get::<Option<String>>(4)
+            .map_err(|error| format!("failed to read Turso route receipt session id: {error}"))?,
+        query: row
+            .get::<String>(5)
+            .map_err(|error| format!("failed to read Turso route receipt query: {error}"))?,
+        route_source: row
+            .get::<String>(6)
+            .map_err(|error| format!("failed to read Turso route receipt route source: {error}"))?,
+        selected_selector: row.get::<Option<String>>(7).map_err(|error| {
+            format!("failed to read Turso route receipt selected selector: {error}")
+        })?,
+        next_command: row
+            .get::<Option<String>>(8)
+            .map_err(|error| format!("failed to read Turso route receipt next command: {error}"))?,
+        hit_count,
+        evidence_ids,
+        created_at_ms: row.get::<i64>(11).map_err(|error| {
+            format!("failed to read Turso route receipt created_at_ms: {error}")
+        })?,
+    })
 }

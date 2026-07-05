@@ -57,6 +57,8 @@ pub(super) async fn bootstrap_turso_source_index_schema(
             start_line INTEGER NOT NULL,
             end_line INTEGER NOT NULL,
             source TEXT NOT NULL,
+            payload_kind TEXT,
+            payload_bounded INTEGER NOT NULL DEFAULT 0,
             query_keys_json TEXT NOT NULL,
             PRIMARY KEY (generation_id, selector_id)
         )",
@@ -70,6 +72,7 @@ pub(super) async fn bootstrap_turso_source_index_schema(
     }
 
     ensure_turso_source_index_owner_columns(connection).await?;
+    ensure_turso_source_index_selector_columns(connection).await?;
 
     for statement in [
         "CREATE INDEX IF NOT EXISTS asp_source_index_generation_reuse_idx
@@ -106,6 +109,27 @@ async fn ensure_turso_source_index_owner_columns(
                 connection,
                 statement.as_str(),
                 "failed to migrate Turso source-index owner column",
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_turso_source_index_selector_columns(
+    connection: &turso::Connection,
+) -> Result<(), String> {
+    for (column, definition) in [
+        ("payload_kind", "TEXT"),
+        ("payload_bounded", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
+        if !turso_table_column_exists(connection, "asp_source_index_selector", column).await? {
+            let statement =
+                format!("ALTER TABLE asp_source_index_selector ADD COLUMN {column} {definition}");
+            execute_turso_statement_with_lock_retry(
+                connection,
+                statement.as_str(),
+                "failed to migrate Turso source-index selector column",
             )
             .await?;
         }
@@ -177,6 +201,7 @@ fn source_index_search_documents(
         .map(|owner| {
             let mut terms = Vec::new();
             push_source_index_search_term(&mut terms, owner.owner_path.as_str());
+            push_source_index_path_terms(&mut terms, owner.owner_path.as_str());
             if let Some(language_id) = &owner.language_id {
                 push_source_index_search_term(&mut terms, language_id.to_string());
             }
@@ -227,6 +252,28 @@ fn push_source_index_search_term(terms: &mut Vec<String>, value: impl AsRef<str>
     let value = value.as_ref().trim();
     if !value.is_empty() {
         terms.push(value.to_string());
+    }
+}
+
+fn push_source_index_path_terms(terms: &mut Vec<String>, path: impl AsRef<str>) {
+    let normalized = path.as_ref().trim().replace('\\', "/").to_ascii_lowercase();
+    let segments = normalized
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    for start in 0..segments.len() {
+        push_source_index_search_term(terms, segments[start..].join("/"));
+    }
+    for segment in &segments {
+        push_source_index_search_term(terms, segment);
+    }
+    if let Some(basename) = segments.last() {
+        if let Some(stem_index) = basename.rfind('.').filter(|index| *index > 0) {
+            push_source_index_search_term(terms, &basename[..stem_index]);
+            if let Some(extension) = basename.get(stem_index + 1..) {
+                push_source_index_search_term(terms, extension);
+            }
+        }
     }
 }
 
@@ -301,6 +348,7 @@ pub async fn latest_turso_source_index_scope_files(
             })?),
             language_id: LanguageId::from(language_id),
             provider_id: ProviderId::from(provider_id),
+            selector_receipts: Vec::new(),
         });
     }
     Ok(Some(files))
@@ -665,6 +713,14 @@ async fn write_turso_source_index_rows(
         .await?;
     }
     for selector in &import.selectors {
+        if let Some(proof) = &selector.payload_proof
+            && proof.structural_selector != selector.selector_id
+        {
+            return Err(format!(
+                "source-index selector payload proof selector mismatch: selector_id={} proof={}",
+                selector.selector_id, proof.structural_selector
+            ));
+        }
         let query_keys_json = serde_json::to_string(
             &selector
                 .query_keys
@@ -686,8 +742,10 @@ async fn write_turso_source_index_rows(
                             start_line,
                             end_line,
                             source,
+                            payload_kind,
+                            payload_bounded,
                             query_keys_json
-                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                         (
                             generation_id,
                             selector.owner_path.as_str(),
@@ -697,6 +755,14 @@ async fn write_turso_source_index_rows(
                             i64::from(selector.start_line),
                             i64::from(selector.end_line),
                             selector.source.as_str(),
+                            selector
+                                .payload_proof
+                                .as_ref()
+                                .map(|proof| proof.payload_kind.as_str()),
+                            selector
+                                .payload_proof
+                                .as_ref()
+                                .is_some_and(|proof| proof.bounded),
                             query_keys_json.as_str(),
                         ),
                     )

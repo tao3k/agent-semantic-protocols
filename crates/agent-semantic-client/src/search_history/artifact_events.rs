@@ -50,10 +50,10 @@ pub(super) fn scan_artifact_events_for_db(
         )?);
     }
     events.sort_by(|left, right| {
-        left.timestamp_ms
-            .cmp(&right.timestamp_ms)
-            .then_with(|| left.artifact_path.cmp(&right.artifact_path))
-            .then_with(|| left.event_ordinal.cmp(&right.event_ordinal))
+        left.timestamp_ms()
+            .cmp(&right.timestamp_ms())
+            .then_with(|| left.artifact_path().cmp(right.artifact_path()))
+            .then_with(|| left.event_ordinal().cmp(&right.event_ordinal()))
     });
     Ok(events)
 }

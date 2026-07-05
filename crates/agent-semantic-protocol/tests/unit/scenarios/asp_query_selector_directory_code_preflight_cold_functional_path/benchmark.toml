@@ -1,0 +1,20 @@
+harness = "libtest"
+test = "asp_query_selector_directory_code_preflight_cold_functional_path_stays_inside_scenario_gate"
+phase = "cold"
+target_total = "25ms"
+max_total = "250ms"
+observed_total = "25ms"
+regression_budget = "50ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 65536
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+snapshot = "asp_query_selector_directory_code_preflight_cold_functional_path_stays_inside_scenario_gate"
+fallback_reason = "none"
+route_source = "query-preflight"
+target_rationale = "Directory selector code requests should fail in client preflight before provider startup, search overlay, graph rendering, or empty code projection. The gate runs four adjacent command shapes and keeps the total sub-second with no provider process."
+
+[observed_timings]
+query_selector_directory_preflight = "25ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

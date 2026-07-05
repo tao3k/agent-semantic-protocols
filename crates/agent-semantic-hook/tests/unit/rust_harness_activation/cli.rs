@@ -261,7 +261,7 @@ fn cli_hook_can_emit_raw_decision_for_schema_tests() {
 }
 
 #[test]
-fn cli_hook_blocks_subagent_stop_without_search_receipt() {
+fn cli_hook_allows_unmanaged_subagent_stop_without_search_receipt() {
     let root = temp_project_root("subagent-stop-activation");
     let activation_path = write_root_owned_rust_activation(&root);
     let mut child = asp_command()
@@ -291,13 +291,7 @@ fn cli_hook_blocks_subagent_stop_without_search_receipt() {
 
     assert!(output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
-    assert_eq!(value["decision"], "block");
-    assert_eq!(value["reasonKind"], "subagent-receipt-required");
-    assert!(
-        value["message"]
-            .as_str()
-            .expect("message")
-            .contains("asp-search-subagent")
-    );
+    assert_eq!(value["decision"], "allow");
+    assert_eq!(value["reasonKind"], "none");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }

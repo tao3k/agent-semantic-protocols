@@ -37,6 +37,7 @@ pub(super) fn print_selector_seeded_search_pipe(
     Ok(())
 }
 
+/// Render a selector-seeded `search pipe` frontier without running providers.
 pub fn render_selector_seeded_search_pipe(
     language_id: &str,
     selector: &str,

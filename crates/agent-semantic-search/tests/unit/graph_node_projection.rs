@@ -1,4 +1,4 @@
-use crate::{owner_path_graph_nodes, stable_graph_node_id};
+use crate::graph_node_projection::{owner_path_graph_nodes, stable_graph_node_id};
 
 #[test]
 fn stable_graph_node_id_normalizes_owner_paths() {

@@ -802,7 +802,7 @@ fn append_resident_agent_fields(
 fn resident_child_create_action(platform: &str, asp_session_policy: &AspSessionPolicy) -> String {
     match platform {
         "codex" => format!(
-            "Codex action: start the configured subagent `{}`",
+            "Codex action: start the configured ASP managed subagent `{}` only if the host exposes that managed type; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
             asp_session_policy.resident_codex_agent_name()
         ),
         "claude" => "Claude action: start the configured subagent `asp-explorer`".to_string(),

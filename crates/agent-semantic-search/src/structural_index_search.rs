@@ -82,12 +82,12 @@ pub async fn search_turso_structural_index_documents(
 fn turso_hit_to_structural_index_hit(
     hit: TursoClientDbSearchHit,
 ) -> Option<TursoStructuralIndexSearchHit> {
-    if hit.source != "stable" || !hit.document_id.starts_with("structural-index:") {
+    if hit.source() != "stable" || !hit.document_id().starts_with("structural-index:") {
         return None;
     }
     Some(TursoStructuralIndexSearchHit {
-        document_id: hit.document_id,
-        selector: hit.selector,
-        document: hit.document,
+        document_id: hit.document_id().to_string(),
+        selector: hit.selector().map(ToString::to_string),
+        document: hit.document().to_string(),
     })
 }

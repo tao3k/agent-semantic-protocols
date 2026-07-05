@@ -17,6 +17,7 @@ fn client_search_receipt_records_local_native_provider_command() {
         .current_dir(&root)
         .env("PATH", &bin_dir)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env_remove("CODEX_THREAD_ID")
         .args([
             "rust",
             "search",

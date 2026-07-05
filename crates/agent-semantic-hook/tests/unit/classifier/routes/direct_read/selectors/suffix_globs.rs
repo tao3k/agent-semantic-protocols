@@ -116,7 +116,16 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
             .starts_with("ASP denied `direct-source-read`")
     );
     assert!(decision.message.contains("asp-explore"));
-    assert!(decision.message.contains("Return compact evidence only."));
+    assert!(
+        decision
+            .message
+            .contains("Return selector-only `[asp-search-subagent]` evidence")
+    );
+    assert!(
+        decision
+            .message
+            .contains("Do not return source bodies, snippets, or line-range selectors")
+    );
     assert!(decision.message.contains(
         "asp rust query --selector '*.{rs,py}' --surface 'owners,tests' --workspace . --view seeds"
     ));

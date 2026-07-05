@@ -7,13 +7,67 @@ const HOT_CONTEXT_AFTER_LINES: usize = 12;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GraphProjectionCandidate {
-    pub path: String,
-    pub line: usize,
-    pub end_line: usize,
-    pub symbol: String,
-    pub text: String,
-    pub source: String,
-    pub confidence: String,
+    pub(crate) path: String,
+    pub(crate) line: usize,
+    pub(crate) end_line: usize,
+    pub(crate) symbol: String,
+    pub(crate) text: String,
+    pub(crate) source: String,
+    pub(crate) confidence: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CandidateReadiness {
+    SelectorReady,
+    InventoryOnly,
+    StaleIndex,
+    InvalidSelector,
+    EmptyPayload,
+    Quarantined,
+}
+
+impl CandidateReadiness {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SelectorReady => "selector-ready",
+            Self::InventoryOnly => "inventory-only",
+            Self::StaleIndex => "stale-index",
+            Self::InvalidSelector => "invalid-selector",
+            Self::EmptyPayload => "empty-payload",
+            Self::Quarantined => "quarantined",
+        }
+    }
+
+    pub fn rank_eligible(self) -> bool {
+        matches!(self, Self::SelectorReady)
+    }
+}
+
+pub fn graph_projection_candidate_readiness(
+    candidate: &GraphProjectionCandidate,
+) -> CandidateReadiness {
+    if candidate.path.trim().is_empty()
+        || candidate.symbol.trim().is_empty()
+        || candidate.confidence == "invalid-selector"
+    {
+        return CandidateReadiness::InvalidSelector;
+    }
+    if candidate.source.contains("stale-index") || candidate.confidence == "stale-index" {
+        return CandidateReadiness::StaleIndex;
+    }
+    if candidate.source.contains("empty-payload") || candidate.confidence == "empty-payload" {
+        return CandidateReadiness::EmptyPayload;
+    }
+    if candidate.source.contains("quarantined") || candidate.confidence == "quarantined" {
+        return CandidateReadiness::Quarantined;
+    }
+    if candidate.source.contains("finder")
+        || candidate.confidence == "path"
+        || candidate.confidence == "inventory-only"
+    {
+        return CandidateReadiness::InventoryOnly;
+    }
+    CandidateReadiness::SelectorReady
 }
 
 impl GraphProjectionCandidate {
@@ -42,18 +96,108 @@ impl GraphProjectionCandidate {
     }
 }
 
-pub fn graph_candidate_item_nodes(
-    language_id: &str,
-    candidates: &[GraphProjectionCandidate],
+pub struct GraphCandidateItemNodesRequest<'a> {
+    language_id: &'a str,
+    candidates: &'a [GraphProjectionCandidate],
     limit: usize,
-) -> Vec<Value> {
-    candidates
+}
+
+impl<'a> GraphCandidateItemNodesRequest<'a> {
+    pub fn new(
+        language_id: &'a str,
+        candidates: &'a [GraphProjectionCandidate],
+        limit: usize,
+    ) -> Self {
+        Self {
+            language_id,
+            candidates,
+            limit,
+        }
+    }
+}
+
+pub struct GraphCandidateHotNodesRequest<'a> {
+    language_id: &'a str,
+    candidates: &'a [GraphProjectionCandidate],
+    limit: usize,
+}
+
+impl<'a> GraphCandidateHotNodesRequest<'a> {
+    pub fn new(
+        language_id: &'a str,
+        candidates: &'a [GraphProjectionCandidate],
+        limit: usize,
+    ) -> Self {
+        Self {
+            language_id,
+            candidates,
+            limit,
+        }
+    }
+}
+
+pub(crate) struct GraphCandidateSelectorRequest<'a> {
+    language_id: &'a str,
+    candidate: &'a GraphProjectionCandidate,
+}
+
+pub(crate) struct GraphProjectionActionRequest<'a> {
+    language_id: &'a str,
+}
+
+impl<'a> From<(&'a str, &'a [GraphProjectionCandidate], usize)>
+    for GraphCandidateHotNodesRequest<'a>
+{
+    fn from(
+        (language_id, candidates, limit): (&'a str, &'a [GraphProjectionCandidate], usize),
+    ) -> Self {
+        Self {
+            language_id,
+            candidates,
+            limit,
+        }
+    }
+}
+
+impl<'a> From<(&'a str, &'a [GraphProjectionCandidate], usize)>
+    for GraphCandidateItemNodesRequest<'a>
+{
+    fn from(
+        (language_id, candidates, limit): (&'a str, &'a [GraphProjectionCandidate], usize),
+    ) -> Self {
+        Self {
+            language_id,
+            candidates,
+            limit,
+        }
+    }
+}
+
+pub fn graph_candidate_item_nodes(request: GraphCandidateItemNodesRequest<'_>) -> Vec<Value> {
+    let language_id = request.language_id;
+    request
+        .candidates
         .iter()
-        .take(limit)
+        .take(request.limit)
         .map(|candidate| {
-            let source_locator_hint = graph_candidate_selector(language_id, candidate);
-            let structural_selector =
-                graph_candidate_structural_selector(language_id, candidate, "item", "symbol");
+            let candidate_readiness = graph_projection_candidate_readiness(candidate);
+            let candidate_state = candidate_readiness.as_str();
+            let rank_eligible = candidate_readiness.rank_eligible();
+            let code_policy = if rank_eligible {
+                "code-after-exact-selector"
+            } else {
+                "inventory-only-refine-before-code"
+            };
+            let source_locator_hint = graph_candidate_selector(GraphCandidateSelectorRequest {
+                language_id: request.language_id,
+                candidate,
+            });
+            let structural_selector = graph_candidate_structural_selector(
+                request.language_id,
+                candidate,
+                "item",
+                "symbol",
+            );
             let display_line_range = display_line_range(candidate.line, candidate.end_line());
             json!({
                 "id": graph_candidate_item_node_id(candidate),
@@ -73,13 +217,17 @@ pub fn graph_candidate_item_nodes(
                 "matchText": candidate.text,
                 "syntaxQuery": graph_candidate_tree_sitter_pattern(language_id, &candidate.symbol),
                 "projection": "outline",
-                "codePolicy": "code-after-exact-selector",
+                "candidateState": candidate_state,
+                "rankEligible": rank_eligible,
+                "codePolicy": code_policy,
                 "fields": {
                     "structuralSelector": structural_selector,
                     "displayLineRange": display_line_range,
                     "sourceLocatorHint": source_locator_hint,
                     "projection": "outline",
-                    "codePolicy": "code-after-exact-selector",
+                    "candidateState": candidate_state,
+                    "rankEligible": rank_eligible,
+                    "codePolicy": code_policy,
                 },
                 "source": candidate.source,
                 "confidence": candidate.confidence,
@@ -88,30 +236,32 @@ pub fn graph_candidate_item_nodes(
         .collect()
 }
 
-pub fn graph_candidate_hot_nodes(
-    language_id: &str,
-    candidates: &[GraphProjectionCandidate],
-    limit: usize,
-) -> Vec<Value> {
-    candidates
+pub fn graph_candidate_hot_nodes(request: GraphCandidateHotNodesRequest<'_>) -> Vec<Value> {
+    request
+        .candidates
         .iter()
-        .take(limit)
+        .take(request.limit)
         .map(|candidate| {
-            let document = graph_projection_document_language(language_id);
+            let document = graph_projection_document_language(request.language_id);
             let (start_line, end_line) = if document {
                 (candidate.line, candidate.end_line())
             } else {
                 hot_context_range(candidate.line)
             };
             let source_locator_hint = if document {
-                graph_candidate_selector(language_id, candidate)
+                graph_candidate_selector(GraphCandidateSelectorRequest {
+                    language_id: request.language_id,
+                    candidate,
+                })
             } else {
                 format!("{}:{}:{end_line}", candidate.path, start_line)
             };
             let structural_selector =
-                graph_candidate_structural_selector(language_id, candidate, "range", "hot");
+                graph_candidate_structural_selector(request.language_id, candidate, "range", "hot");
             let display_line_range = display_line_range(start_line, end_line);
-            let action = graph_projection_action(language_id);
+            let action = graph_projection_action(GraphProjectionActionRequest {
+                language_id: request.language_id,
+            });
             let (projection, code_policy) = if action == "code" {
                 ("code", "requires-exact-code")
             } else {
@@ -175,17 +325,23 @@ pub fn graph_candidate_hot_node_id(candidate: &GraphProjectionCandidate) -> Stri
     )
 }
 
-pub fn graph_candidate_selector(language_id: &str, candidate: &GraphProjectionCandidate) -> String {
-    let end_line = candidate.end_line();
-    if graph_projection_document_language(language_id) {
-        format!("{}:{}-{end_line}", candidate.path, candidate.line)
+pub(crate) fn graph_candidate_selector(request: GraphCandidateSelectorRequest<'_>) -> String {
+    let end_line = request.candidate.end_line();
+    if graph_projection_document_language(request.language_id) {
+        format!(
+            "{}:{}-{end_line}",
+            request.candidate.path, request.candidate.line
+        )
     } else {
-        format!("{}:{}:{end_line}", candidate.path, candidate.line)
+        format!(
+            "{}:{}:{end_line}",
+            request.candidate.path, request.candidate.line
+        )
     }
 }
 
-pub fn graph_projection_action(language_id: &str) -> &'static str {
-    if graph_projection_document_language(language_id) {
+pub(crate) fn graph_projection_action(request: GraphProjectionActionRequest<'_>) -> &'static str {
+    if graph_projection_document_language(request.language_id) {
         "content"
     } else {
         "code"

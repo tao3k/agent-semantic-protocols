@@ -9,9 +9,11 @@ use agent_semantic_config::render_hook_client_message_template;
 use agent_semantic_hook::{
     ClientHookConfig, default_client_config_path, load_client_config_for_project,
 };
+use agent_semantic_runtime::{codex_rollout_session_metadata, current_agent_runtime_session};
 
 use super::agent_session_registry::run_agent_command;
 use super::ast_patch::run_ast_patch_command;
+use super::dispatch_agent_session_policy::is_agent_session_direct_inventory_or_fetch_command;
 use super::graph::run_graph_command;
 use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
@@ -114,11 +116,13 @@ fn normalize_agent_session_command_args(args: &mut Vec<String>) -> Result<(), St
     }
     let project_root = std::env::current_dir()
         .map_err(|error| format!("failed to resolve current project directory: {error}"))?;
+    let hook_config = load_dispatch_hook_config(&project_root)?;
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
     let now = agent_semantic_client_db::agent_session_unix_timestamp()?;
     let Some(session) = super::current_registered_session(&project_root)? else {
         return Ok(());
     };
-    if session.role == "asp-explore" && session.is_routable_at(now) {
+    if session.name == resident_child_name && session.is_routable_at(now) {
         args.push("--session".to_string());
         args.push(session.root_session_id);
     }
@@ -127,6 +131,9 @@ fn normalize_agent_session_command_args(args: &mut Vec<String>) -> Result<(), St
 
 fn enforce_agent_session_asp_query_gate(args: &[String]) -> Result<(), String> {
     if !has_agent_session_env() || !is_agent_session_restricted_asp_command(args) {
+        return Ok(());
+    }
+    if is_agent_session_direct_inventory_or_fetch_command(args) {
         return Ok(());
     }
     if is_org_search_memory_command(args) && option_is_present(args, "--session") {
@@ -144,6 +151,9 @@ fn enforce_agent_session_asp_query_gate(args: &[String]) -> Result<(), String> {
     };
     let hook_config = load_dispatch_hook_config(&project_root)?;
     let resident_child_name = hook_config.resident_asp_explore_child_name();
+    if current_rollout_direct_resident_child(&hook_config)? {
+        return Ok(());
+    }
     let now = match agent_semantic_client_db::agent_session_unix_timestamp() {
         Ok(now) => now,
         Err(error) => {
@@ -166,11 +176,10 @@ fn enforce_agent_session_asp_query_gate(args: &[String]) -> Result<(), String> {
             ));
         }
     };
-    if let Some(session) = current_session
-        && session.role == "asp-explore"
-        && session.is_routable_at(now)
-    {
-        return Ok(());
+    if let Some(session) = current_session {
+        if session.name == resident_child_name && session.is_routable_at(now) {
+            return Ok(());
+        }
     }
     let resident_child =
         match super::asp_explore_session_for_current_root(&project_root, resident_child_name) {
@@ -202,7 +211,7 @@ fn enforce_agent_session_asp_query_gate(args: &[String]) -> Result<(), String> {
         },
     };
     if let Some(child) = resident_child {
-        if child.role == "asp-explore" && child.is_routable_at(now) {
+        if child.name == resident_child_name && child.is_routable_at(now) {
             return Err(resident_child_with_child_message(
                 &hook_config,
                 &child.root_session_id,
@@ -229,6 +238,58 @@ fn load_dispatch_hook_config(project_root: &Path) -> Result<ClientHookConfig, St
     let config_path = default_client_config_path(&project_root.to_string_lossy());
     load_client_config_for_project(&config_path, project_root)
         .map_err(|error| format!("failed to load ASP hook config for agent session gate: {error}"))
+}
+
+fn current_rollout_direct_resident_child(hook_config: &ClientHookConfig) -> Result<bool, String> {
+    let Some(session) = current_agent_runtime_session() else {
+        return Ok(false);
+    };
+    let Some(metadata) = codex_rollout_session_metadata(session.recall_session_id())? else {
+        return Ok(false);
+    };
+    if metadata.thread_source.as_deref() != Some("subagent") {
+        return Ok(false);
+    }
+    if metadata.spawn_depth != Some(1) {
+        return Ok(false);
+    }
+    if metadata.parent_thread_id.as_deref() != metadata.root_session_id.as_deref() {
+        return Ok(false);
+    }
+    Ok(metadata.agent_role.as_deref().is_some_and(|agent_role| {
+        configured_rollout_resident_identity_matches(agent_role, hook_config)
+    }))
+}
+
+fn configured_rollout_resident_identity_matches(
+    agent_role: &str,
+    hook_config: &ClientHookConfig,
+) -> bool {
+    let normalized_role = normalize_rollout_agent_identity(agent_role);
+    [
+        hook_config.resident_asp_explore_child_name(),
+        hook_config.resident_asp_explore_codex_agent_name(),
+    ]
+    .iter()
+    .any(|candidate| normalize_rollout_agent_identity(candidate) == normalized_role)
+}
+
+fn normalize_rollout_agent_identity(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 fn resident_child_registry_blocked_message(
@@ -338,7 +399,7 @@ fn resident_child_missing_message(
 fn resident_child_create_action(hook_config: &ClientHookConfig) -> String {
     if env::var_os("CODEX_THREAD_ID").is_some() {
         return format!(
-            "Codex action: start the configured subagent `{}`",
+            "Codex action: start the configured ASP managed subagent `{}` only if the host exposes that managed type; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
             hook_config.resident_asp_explore_codex_agent_name()
         );
     }

@@ -20,6 +20,7 @@ pub(super) struct SearchLexicalArgs {
     pub(super) query: String,
     pub(super) pipes: Vec<String>,
     pub(super) owners: Vec<PathBuf>,
+    pub(super) workspace: Option<PathBuf>,
     pub(super) view: String,
 }
 
@@ -326,6 +327,7 @@ pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, S
         .clone();
     let mut pipes = Vec::new();
     let mut owners = Vec::new();
+    let mut workspace = None;
     let mut view = "seeds".to_string();
     let mut index = 3;
     while index < args.len() {
@@ -345,8 +347,13 @@ pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, S
                 index += 2;
             }
             "--workspace" => {
-                args.get(index + 1)
+                let value = args
+                    .get(index + 1)
                     .ok_or_else(|| "--workspace requires a value".to_string())?;
+                if workspace.is_some() {
+                    return Err("expected at most one --workspace argument".to_string());
+                }
+                workspace = Some(PathBuf::from(value));
                 index += 2;
             }
             "--query-set" | "--owner" | "--dependency" => {
@@ -385,6 +392,7 @@ pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, S
         query,
         pipes,
         owners,
+        workspace,
         view,
     })
 }

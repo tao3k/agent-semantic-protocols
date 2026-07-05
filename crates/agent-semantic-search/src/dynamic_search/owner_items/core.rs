@@ -86,13 +86,24 @@ pub struct DynamicOwnerItemsRequest<'a> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DynamicOwnerItem {
     /// Display and selector term, normally the parser-owned declaration name.
-    pub term: String,
+    pub(crate) term: String,
     /// Provider-owned item kind.
-    pub kind: String,
+    pub(crate) kind: String,
     /// Display start line supplied by the provider.
-    pub start: usize,
+    pub(crate) start: usize,
     /// Display end line supplied by the provider.
-    pub end: usize,
+    pub(crate) end: usize,
+}
+
+impl DynamicOwnerItem {
+    pub fn new(term: impl Into<String>, kind: impl Into<String>, start: usize, end: usize) -> Self {
+        Self {
+            term: term.into(),
+            kind: kind.into(),
+            start,
+            end,
+        }
+    }
 }
 
 /// Render an agent-facing owner-items frontier from the current worktree.

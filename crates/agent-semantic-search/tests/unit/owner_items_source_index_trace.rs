@@ -5,7 +5,7 @@ use agent_semantic_client_db::{
     ClientDbSourceIndexSourceKind,
 };
 
-use crate::{
+use crate::owner_items_source_index_trace::{
     OwnerItemsSourceIndexTrace, OwnerItemsSourceIndexTraceStream,
     render_owner_items_source_index_lookup_trace, source_index_owner_query,
 };
@@ -19,7 +19,6 @@ fn owner_items_source_index_hit_renders_to_stdout_and_handles() {
     .render();
 
     assert_eq!(render.stream, OwnerItemsSourceIndexTraceStream::Stdout);
-    assert!(render.handled);
     assert_eq!(render.line, "|sourceIndex status=hit");
 }
 
@@ -32,7 +31,6 @@ fn owner_items_source_index_miss_renders_to_stderr_without_handling() {
     .render();
 
     assert_eq!(render.stream, OwnerItemsSourceIndexTraceStream::Stderr);
-    assert!(!render.handled);
     assert_eq!(render.line, "|sourceIndex status=miss");
 }
 
@@ -45,7 +43,6 @@ fn owner_items_source_index_busy_renders_to_stdout_and_handles() {
     .render();
 
     assert_eq!(render.stream, OwnerItemsSourceIndexTraceStream::Stdout);
-    assert!(render.handled);
     assert_eq!(render.line, "|sourceIndex status=busy");
 }
 
@@ -58,7 +55,6 @@ fn owner_items_source_index_missing_db_renders_to_stdout_and_handles() {
     .render();
 
     assert_eq!(render.stream, OwnerItemsSourceIndexTraceStream::Stdout);
-    assert!(render.handled);
     assert_eq!(render.line, "|sourceIndex status=missing-db");
 }
 
@@ -71,7 +67,6 @@ fn owner_items_source_index_empty_index_renders_to_stdout_and_handles() {
     .render();
 
     assert_eq!(render.stream, OwnerItemsSourceIndexTraceStream::Stdout);
-    assert!(render.handled);
     assert_eq!(render.line, "|sourceIndex status=empty-index");
 }
 
@@ -101,6 +96,7 @@ fn owner_items_source_index_lookup_trace_projects_hit_path() {
             source_kind: ClientDbSourceIndexSourceKind::File,
             line_count: Some(12),
             query_keys: vec!["lib".to_string()],
+            selector_proof: None,
         }],
     };
     let line = render_owner_items_source_index_lookup_trace("src/lib.rs", &lookup);

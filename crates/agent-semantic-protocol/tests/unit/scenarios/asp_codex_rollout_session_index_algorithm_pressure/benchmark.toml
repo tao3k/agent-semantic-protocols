@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_codex_rollout_session_index_algorithm_pressure_stays_inside_scenario_gate"
+snapshot = "asp_codex_rollout_session_index_algorithm_pressure_stays_inside_scenario_gate"
+target_total = "5ms"
+max_total = "10ms"
+observed_total = "5ms"
+regression_budget = "5ms"
+memory_budget_bytes = 16777216
+observed_memory_bytes = 4194304
+route_source = "codex-rollout"
+max_provider_process_count = 0
+max_stdout_bytes = 16384
+fallback_reason = "none"
+target_rationale = "This gate measures the runtime rollout-index algorithm directly, not ASP CLI process startup. Given a root session id and known child session id, the index must locate rollout JSONL files by UUIDv7 date and filename suffix, parse only the necessary JSON lines, and return root/child activity without broad sibling scans or external finder subprocesses."
+
+[observed_timings]
+codex_rollout_session_index = "5ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

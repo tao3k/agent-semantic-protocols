@@ -18,7 +18,7 @@ pub(in crate::command) fn run_asp_fast_owner_query_command(
     project_root: &Path,
     locator_root: &Path,
 ) -> Result<bool, String> {
-    let Some(request) = OwnerQueryRequest::parse(language_id, args) else {
+    let Some(request) = OwnerQueryRequest::parse(language_id, args)? else {
         return Ok(false);
     };
     let Some(path) = resolve_owner_path(project_root, locator_root, &request.owner_path) else {
@@ -30,27 +30,44 @@ pub(in crate::command) fn run_asp_fast_owner_query_command(
     };
     let source = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let Some(item_query) = request.item_query() else {
+        return Err("owner query internal error: missing item query projection".to_string());
+    };
     let items = if language_id == "rust" {
         if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
-            render_non_source_owner_query(&request, &path, project_root, locator_root, &source)?;
+            render_non_source_owner_query(
+                &request,
+                item_query,
+                &path,
+                project_root,
+                locator_root,
+                &source,
+            )?;
             return Ok(true);
         }
         collect_syn_rust_owner_items(&source, &path)?
     } else {
         let Some(items) = collect_tree_sitter_owner_items(language_id, &source, &path)? else {
-            if language_id == "python" && request.code {
+            if language_id == "python" && item_query.is_code_projection() {
                 if let Some(imported) = python_imported_owner_items(
                     project_root,
                     locator_root,
                     &path,
                     &source,
-                    &request.term,
+                    item_query.term(),
                 )? {
                     render_full_source(&imported.source)?;
                     return Ok(true);
                 }
             }
-            render_non_source_owner_query(&request, &path, project_root, locator_root, &source)?;
+            render_non_source_owner_query(
+                &request,
+                item_query,
+                &path,
+                project_root,
+                locator_root,
+                &source,
+            )?;
             return Ok(true);
         };
         items
@@ -61,20 +78,28 @@ pub(in crate::command) fn run_asp_fast_owner_query_command(
             owner_item_matches_request(
                 item,
                 &request.language_id,
-                &request.term,
-                request.kind.as_deref(),
+                item_query.term(),
+                item_query.kind(),
             )
         })
         .collect::<Vec<_>>();
     if language_id == "python" && matches.is_empty() {
-        return run_python_import_fallback(&request, project_root, locator_root, &path, &source);
+        return run_python_import_fallback(
+            &request,
+            item_query,
+            project_root,
+            locator_root,
+            &path,
+            &source,
+        );
     }
 
-    if request.code {
+    if item_query.is_code_projection() {
         render_code_matches(&source, &matches)?;
     } else {
         render_locator_matches(
             &request,
+            item_query,
             &path,
             project_root,
             locator_root,
@@ -87,13 +112,14 @@ pub(in crate::command) fn run_asp_fast_owner_query_command(
 
 fn run_python_import_fallback(
     request: &OwnerQueryRequest,
+    item_query: &super::request::OwnerItemQuery,
     project_root: &Path,
     locator_root: &Path,
     path: &Path,
     source: &str,
 ) -> Result<bool, String> {
     if let Some(imported) =
-        python_imported_owner_items(project_root, locator_root, path, source, &request.term)?
+        python_imported_owner_items(project_root, locator_root, path, source, item_query.term())?
     {
         let imported_matches = imported
             .items
@@ -102,12 +128,12 @@ fn run_python_import_fallback(
                 owner_item_matches_request(
                     item,
                     &request.language_id,
-                    &request.term,
-                    request.kind.as_deref(),
+                    item_query.term(),
+                    item_query.kind(),
                 )
             })
             .collect::<Vec<_>>();
-        if request.code {
+        if item_query.is_code_projection() {
             if imported_matches.is_empty() {
                 render_full_source(&imported.source)?;
             } else {
@@ -118,6 +144,7 @@ fn run_python_import_fallback(
         if !imported_matches.is_empty() {
             render_locator_matches(
                 request,
+                item_query,
                 &imported.path,
                 project_root,
                 locator_root,
@@ -127,7 +154,7 @@ fn run_python_import_fallback(
             return Ok(true);
         }
     }
-    if request.code {
+    if item_query.is_code_projection() {
         render_code_matches(source, &[])?;
         return Ok(true);
     }

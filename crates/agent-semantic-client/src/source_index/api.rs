@@ -66,23 +66,30 @@ pub fn refresh_runtime_source_index(
     let mut context = SourceIndexRefreshContext::resolve(project_root)?;
     let client_cache_dir = context.client_cache_dir();
     let runtime_context = runtime_source_index_context(
-        checkout_root,
-        client_cache_dir,
-        language_id.as_str(),
-        provider_id.as_str(),
+        (
+            checkout_root,
+            client_cache_dir,
+            language_id.as_str(),
+            provider_id.as_str(),
+        )
+            .into(),
     )?;
 
     let files = collect_runtime_source_index_files(
-        &runtime_context.checkout_root,
-        language_id.as_str(),
-        provider_id.as_str(),
-        SOURCE_INDEX_FILE_LIMIT,
+        (
+            runtime_context.checkout_root.as_path(),
+            language_id.as_str(),
+            provider_id.as_str(),
+            SOURCE_INDEX_FILE_LIMIT,
+        )
+            .into(),
     )?
     .into_iter()
     .map(|file| SourceIndexScopeFile {
         path: file.path,
         language_id: LanguageId::from(file.language_id),
         provider_id: ProviderId::from(file.provider_id),
+        selector_receipts: Vec::new(),
     })
     .collect::<Vec<_>>();
     if files.is_empty() {

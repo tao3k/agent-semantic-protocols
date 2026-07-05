@@ -1,4 +1,4 @@
-use crate::{
+use crate::prompt_output_replay::{
     PromptOutputFingerprintRequest, PromptOutputReplayRequest, is_prime_seed_search_request,
     prompt_output_artifact_replay_safe, prompt_output_request_fingerprint,
 };

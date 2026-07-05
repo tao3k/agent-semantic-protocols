@@ -17,26 +17,29 @@ pub mod state_core;
 mod timeout_policy;
 
 pub use agent_session_identity::{
-    AgentSessionRegistrationIdentity, agent_session_registration_identity,
-    codex_rollout_root_session_id, current_agent_runtime_root_session_id,
+    AgentSessionRegistrationIdentity, AgentSessionRegistrationIdentityRequest,
+    agent_session_registration_identity, current_agent_runtime_root_session_id,
     has_current_agent_runtime_session,
 };
 pub use agent_session_status::{
     AgentRuntimeSession, AgentSessionArtifactActivity, AgentSessionArtifactStatus,
-    AgentSessionHealthStatus, AgentSessionHostProbe, AgentSessionHostStatus,
-    AgentSessionHostStatusSource, AgentSessionNextAction, CodexRolloutSessionMetadata,
-    agent_session_artifact_activity, agent_session_duplicate_worker_allowed,
-    agent_session_health_status, agent_session_host_probe, agent_session_host_status,
-    agent_session_host_status_reason, agent_session_host_status_source, agent_session_next_action,
-    agent_session_timeout_semantics, codex_rollout_session_metadata,
+    AgentSessionHealthStatus, AgentSessionHostProbe, AgentSessionHostProbeRequest,
+    AgentSessionHostStatus, AgentSessionHostStatusSource, AgentSessionNextAction,
+    CodexRolloutSessionMetadata, agent_session_artifact_activity,
+    agent_session_duplicate_worker_allowed, agent_session_health_status, agent_session_host_probe,
+    agent_session_host_status, agent_session_host_status_reason, agent_session_host_status_source,
+    agent_session_next_action, agent_session_timeout_semantics, codex_rollout_session_metadata,
     codex_rollout_session_metadata_recent, current_agent_runtime_session,
 };
 pub use agent_session_status_snapshot::{
-    AgentSessionRuntimeStatusSnapshot, agent_session_runtime_status_snapshot,
+    AgentSessionRuntimeStatusSnapshot, AgentSessionRuntimeStatusSnapshotRequest,
+    agent_session_runtime_status_snapshot,
 };
 pub use agent_session_validation_report::AgentSessionValidationReport;
 pub use async_bridge::runtime_block_on_current_thread;
-pub use codex_rollout_sessions::{CodexRolloutSessionIndex, codex_rollout_session_index};
+pub use codex_rollout_sessions::{
+    CodexRolloutSessionIndex, codex_rollout_session_index, codex_rollout_session_index_for_sessions,
+};
 pub use graph_render::{
     GraphRenderReceiptRequest, run_graph_render_packet, run_graph_render_packet_bytes,
     run_graph_render_packet_bytes_with_receipt,
@@ -51,11 +54,12 @@ pub use language_owner_items::{
     run_language_owner_items_dispatch_plan, write_language_owner_items_cache,
 };
 pub use runtime_source::{
-    RuntimeSourceCheckout, RuntimeSourceIndexContext, RuntimeSourceIndexFile, RuntimeSourceSpec,
-    collect_runtime_source_index_files, ensure_runtime_source_checkout,
-    ensure_runtime_source_checkout_in_client_cache, runtime_source_checkout_dir,
-    runtime_source_checkout_dir_in_client_cache, runtime_source_index_context,
-    runtime_source_registry_fingerprint,
+    RuntimeSourceCheckout, RuntimeSourceIndexContext, RuntimeSourceIndexContextRequest,
+    RuntimeSourceIndexFile, RuntimeSourceIndexFilesRequest,
+    RuntimeSourceRegistryFingerprintRequest, RuntimeSourceSpec, collect_runtime_source_index_files,
+    ensure_runtime_source_checkout, ensure_runtime_source_checkout_in_client_cache,
+    runtime_source_checkout_dir, runtime_source_checkout_dir_in_client_cache,
+    runtime_source_index_context, runtime_source_registry_fingerprint,
 };
 pub use state::{
     ProjectRuntimeState, ProjectStatePaths, ensure_project_artifacts_dir,
@@ -80,6 +84,5 @@ mod language_owner_items_tests;
 #[path = "../tests/unit/timeout_policy.rs"]
 mod timeout_policy_tests;
 pub use state::{
-    discover_project_activation_path, is_project_activation_path, project_local_activation_path,
-    project_root_for_activation_path,
+    discover_project_activation_path, is_project_activation_path, project_root_for_activation_path,
 };

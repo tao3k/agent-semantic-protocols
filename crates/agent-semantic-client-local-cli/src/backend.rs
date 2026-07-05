@@ -146,21 +146,64 @@ impl LocalNativeCliBackend {
         provider: &ResolvedProvider,
         project_root: &std::path::Path,
     ) -> Result<Vec<String>, String> {
-        if let Some(binary) = Self::provider_binary_on_path(&provider.binary, project_root) {
-            return Ok(vec![binary]);
+        let prefix =
+            if let Some(binary) = Self::provider_binary_on_path(&provider.binary, project_root) {
+                vec![binary]
+            } else if let Ok(binary) = Self::home_local_provider_binary(provider) {
+                vec![binary]
+            } else if let Some(argv) = provider.runtime_command_argv.as_ref()
+                && !argv.is_empty()
+            {
+                argv.clone()
+            } else if !provider.provider_command_prefix.is_empty() {
+                provider.provider_command_prefix.clone()
+            } else {
+                vec![Self::home_local_provider_binary(provider)?]
+            };
+        Ok(Self::provider_command_prefix_with_facade_language(
+            provider, prefix,
+        ))
+    }
+
+    fn provider_command_prefix_with_facade_language(
+        provider: &ResolvedProvider,
+        mut prefix: Vec<String>,
+    ) -> Vec<String> {
+        if Self::provider_command_prefix_needs_facade_language(provider, &prefix) {
+            prefix.insert(1, provider.language_id.to_string());
         }
-        if let Ok(binary) = Self::home_local_provider_binary(provider) {
-            return Ok(vec![binary]);
+        prefix
+    }
+
+    fn provider_command_prefix_needs_facade_language(
+        provider: &ResolvedProvider,
+        prefix: &[String],
+    ) -> bool {
+        let Some(program) = prefix.first() else {
+            return false;
+        };
+        let language_id = provider.language_id.to_string();
+        if prefix.get(1).is_some_and(|arg| arg == &language_id) {
+            return false;
         }
-        if let Some(argv) = provider.runtime_command_argv.as_ref()
-            && !argv.is_empty()
-        {
-            return Ok(argv.clone());
+        if provider.binary == "asp" && Self::program_name_is_asp(program) {
+            return true;
         }
-        if !provider.provider_command_prefix.is_empty() {
-            return Ok(provider.provider_command_prefix.clone());
-        }
-        Self::home_local_provider_binary(provider).map(|binary| vec![binary])
+        env::var_os(SEMANTIC_AGENT_PROTOCOL_BIN_ENV)
+            .is_some_and(|protocol_bin| Self::same_binary_path(program, Path::new(&protocol_bin)))
+    }
+
+    fn program_name_is_asp(program: &str) -> bool {
+        Path::new(program)
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy() == "asp")
+    }
+
+    fn same_binary_path(left: &str, right: &Path) -> bool {
+        let left = Path::new(left);
+        let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
+        let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
+        left == right
     }
 
     fn provider_binary_on_path(binary: &str, project_root: &std::path::Path) -> Option<String> {

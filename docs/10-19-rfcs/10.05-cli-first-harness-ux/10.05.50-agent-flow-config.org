@@ -74,13 +74,65 @@ uses parser-owned import/reexport edges, and can later be upgraded with
 language-service identifier references without changing the packet schema.
 
 * Custom subagent execution
+The ASP search subagent owns cheap exploration work: =search pipe=,
+=search owner=, owner/frontier ranking, dependency/test reachability, and
+selector discovery. It must not return source bodies, snippets, or line-range
+selectors to the parent. The parent does not need a flat list of every owner or
+item the subagent touched; it needs the graph route that survived ranking.
+
+The subagent stop receipt is therefore one compact graph-route receipt per
+independent branch, not a pile of standalone selector receipts. The receipt
+projects the local =EvidenceGraph= into the smallest route that preserves the
+next parent decision:
+
+- =intent= is the parent-supplied task slice, not a new analysis paragraph.
+- =route= names the graph route selected from parser/finder/test/dependency
+  evidence.
+- =state= is =selector-ready=, =needs-refine=, or =no-output=.
+- =evidence= rows are ranked graph nodes with parser-owned identities and typed
+  roles.
+- =next= is the single primary executable action for the parent.
+- =alt= may carry at most two secondary exact reads or refinements.
+- =avoid= and =omit= are compact anti-action facts, not explanations.
+
+Example:
+#+begin_src text
+[asp-search-subagent]
+schema=asp-search-subagent.graph.v1
+intent=query-code-file-selector-boundary
+route=query-owner/request -> query-owner/runner -> facade-tests
+state=selector-ready
+evidence=E1 kind=item role=primary owner=crates/agent-semantic-protocol/src/command/query_owner/request.rs selector=rust://crates/agent-semantic-protocol/src/command/query_owner/request.rs#item/method/parse_structural_selector relation=admits-query-selector
+evidence=E2 kind=test role=guard owner=crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs selector=rust://crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs#item/function/asp_rust_query_file_selector_code_without_item_is_rejected relation=covers-deny
+next=E1 asp rust query --selector 'rust://crates/agent-semantic-protocol/src/command/query_owner/request.rs#item/method/parse_structural_selector' --workspace . --code
+alt=E2 asp rust query --selector 'rust://crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs#item/function/asp_rust_query_file_selector_code_without_item_is_rejected' --workspace . --code
+avoid=raw-read,file-level-query-code,repeat-same-search
+omit=source,line-range,confidence,long-explanation
+#+end_src
+The receipt shape is a hook-verifiable contract, not only a prompt convention.
+When a managed read-only =asp-explore= child emits a =subagent-stop= event, the
+hook runtime SHOULD validate that the final message contains at least one
+selector-only =[asp-search-subagent]= graph receipt with =schema=, =intent=,
+=route=, =state=, at least one =evidence= row, and exactly one primary =next=
+action. The hook MUST reject receipts that include source bodies, snippets,
+line-range selectors, confidence labels, long explanations, or "not found"
+inventories. The recovery action is to ask the same child session to re-emit
+compact graph-route receipts; the parent should not replace the child or read
+source directly just because the receipt was malformed.
+The parent owns intent synthesis, final exact reads, edits, and validation. Once
+a subagent returns a primary =next= action, the parent runs one exact =asp
+<language> query --selector <parser-owned-selector> --workspace . --code= or
+document =--content= command and reasons over the returned code/content itself.
+Display line ranges and =sourceLocatorHint= remain metadata; they are not
+subagent return identities.
+
 
 When the client runtime exposes a project custom agent role such as
 =asp_explorer=, the parent agent may spawn one read-only worker per independent
 =actionFrontier= or =targetActions= branch.  The branch prompt carries the safe
 ASP command group, parent-known evidence, missing facts, and risk; the worker
-returns one =[search-subagent]= receipt for parent fan-in and main-model
-verification.
+returns one =[asp-search-subagent]= graph-route receipt for parent fan-in and
+main-model verification.
 
 The custom role name is not a shared protocol requirement.  If the runtime only
 exposes built-in subagent roles, the parent should use the built-in explorer role

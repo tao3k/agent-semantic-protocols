@@ -10,10 +10,12 @@ fn hook_paths_reports_runtime_layout_without_materializing_state() {
     let resolved =
         ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolved state");
     let expected_hook_state_dir = resolved
-        .paths
-        .workspace_dir
-        .join("live")
+        .state_home
         .join("hooks")
+        .join("projects")
+        .join(resolved.repo.repo_id.as_str())
+        .join("workspaces")
+        .join(resolved.workspace.workspace_id.as_str())
         .join("state");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)

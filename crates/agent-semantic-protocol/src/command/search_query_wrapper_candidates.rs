@@ -10,9 +10,8 @@ use agent_semantic_search::{
     QueryWrapperSearchSurface,
     collect_query_wrapper_candidate_collection as collect_search_query_wrapper_candidate_collection,
     query_wrapper_clauses as search_query_wrapper_clauses, query_wrapper_owner_candidates,
-    query_wrapper_package_clusters_from_paths,
-    query_wrapper_ranked_search_candidates as search_query_wrapper_ranked_search_candidates,
-    query_wrapper_rg_scope_next, query_wrapper_source_index_trace_projection,
+    query_wrapper_package_clusters_from_paths, query_wrapper_rg_scope_next,
+    query_wrapper_source_index_trace_projection,
     query_wrapper_unique_clause_terms as search_query_wrapper_unique_clause_terms,
 };
 use serde_json::Value;
@@ -80,24 +79,13 @@ pub(super) fn collect_query_candidate_collection(
             axis_terms: clause.axis_terms.clone(),
         })
         .collect::<Vec<_>>();
-    let source_index_lookup = lookup_query_wrapper_source_index(
-        query_wrapper_search_surface(surface),
-        project_root,
-        terms,
-    )?;
-    let ranked_search_candidates =
-        if query_wrapper_source_index_lookup_defers_to_ranked(&source_index_lookup) {
-            search_query_wrapper_ranked_search_candidates(
-                query_wrapper_search_surface(surface),
-                project_root,
-                terms,
-            )?
-        } else {
-            Vec::new()
-        };
+    let search_surface = query_wrapper_search_surface(surface);
+    let source_index_lookup =
+        lookup_query_wrapper_source_index(search_surface, project_root, terms)?;
+    let ranked_search_candidates = Vec::new();
     let collection =
         collect_search_query_wrapper_candidate_collection(QueryWrapperSearchRequest {
-            surface: query_wrapper_search_surface(surface),
+            surface: search_surface,
             project_root,
             locator_root,
             scopes,
@@ -143,14 +131,6 @@ pub(super) fn collect_query_candidate_collection(
         source_trace,
         candidate_sources: collection.candidate_sources,
     })
-}
-
-fn query_wrapper_source_index_lookup_defers_to_ranked(
-    lookup: &Option<agent_semantic_search::QueryWrapperSourceIndexLookup>,
-) -> bool {
-    lookup
-        .as_ref()
-        .is_none_or(|lookup| matches!(lookup.state.as_str(), "missing-db" | "empty-index" | "busy"))
 }
 
 fn query_wrapper_source_index_trace(

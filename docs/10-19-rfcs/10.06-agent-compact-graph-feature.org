@@ -45,6 +45,15 @@ whole =search= interface, not a special =owner= view.
 
 * LLM reasoning model
 
+ASP search subagents return the same graph slice that normal compact search
+renders. They must not fan in by dumping every selected owner/item selector as
+an independent receipt. A valid subagent receipt is one graph-route projection
+per independent branch: ranked =evidence= nodes, typed relations, a single
+primary =next= action, optional bounded alternatives, and compact =avoid=/=omit=
+facts. This keeps the parent model on the =EvidenceGraph -> GraphRoute ->
+compact ranked evidence -> recommended next action= path instead of forcing it
+to rebuild the graph from flat lines.
+
 For code work, the useful prompt-facing unit is not a line of source text.  It
 is a decision node connected to other nodes by typed relations:
 

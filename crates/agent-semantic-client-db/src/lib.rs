@@ -12,7 +12,8 @@ mod types;
 
 pub use agent_semantic_client_core::ClientDbStatus;
 pub use agent_session_registry::{
-    AGENT_SESSION_REGISTRY_DB_NAME, AGENT_SESSION_STATUS_INVALID, AgentSessionLookupRequest,
+    AGENT_SESSION_REGISTRY_DB_NAME, AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED,
+    AGENT_SESSION_STATUS_IDLE, AGENT_SESSION_STATUS_INVALID, AgentSessionLookupRequest,
     AgentSessionRecord, AgentSessionRegisterRequest, AgentSessionRegistry,
     AgentSessionToolEventRequest, agent_session_normalized_metadata_json,
     agent_session_status_is_routable, agent_session_unix_timestamp,
@@ -28,8 +29,8 @@ pub use engine::{
     TursoClientDbEvidenceGraphPersistReport, TursoClientDbGraphEdge, TursoClientDbGraphEntity,
     TursoClientDbOverlayDocument, TursoClientDbRouteReceipt, TursoClientDbSearchDocument,
     TursoClientDbSearchHit, list_turso_graph_edges, list_turso_graph_entities,
-    list_turso_route_receipts, persist_turso_evidence_graph, upsert_turso_graph_edge,
-    upsert_turso_graph_entity, upsert_turso_route_receipt,
+    persist_turso_evidence_graph, upsert_turso_graph_edge, upsert_turso_graph_entity,
+    upsert_turso_route_receipt,
 };
 pub use evidence_graph::{
     CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_ID, CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_VERSION,
@@ -49,12 +50,12 @@ pub use source_index::{
     ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexQueryKey,
     ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
     ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource, ClientDbSourceIndexSourceKind,
-    ClientDbSourceIndexStats, assemble_source_index_import, build_source_index_import,
-    client_db_source_index_file_count, client_db_source_index_generation_id,
-    client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
-    source_index_file_hashes, source_index_import_with_file_hashes, source_index_relative_path,
-    source_index_scope_dirs,
+    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSelectorPayloadProof,
+    ClientDbSourceIndexSource, ClientDbSourceIndexSourceKind, ClientDbSourceIndexStats,
+    assemble_source_index_import, build_source_index_import, client_db_source_index_file_count,
+    client_db_source_index_generation_id, client_db_source_index_registry_evidence_hash,
+    client_db_source_index_scope_dir_evidence_hash, source_index_file_hashes,
+    source_index_import_with_file_hashes, source_index_relative_path, source_index_scope_dirs,
 };
 pub use structural_index::{
     ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,

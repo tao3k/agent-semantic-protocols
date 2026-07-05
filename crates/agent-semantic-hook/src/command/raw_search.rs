@@ -40,6 +40,7 @@ pub(crate) fn raw_search_plan<'a>(
     registry: &'a HookRuntime,
     tokens: &[String],
 ) -> Option<RawSearchPlan<'a>> {
+    let tokens = command_stage_without_env_prefix(tokens);
     if filters_provider_command_output(registry, tokens) {
         return None;
     }
@@ -70,7 +71,7 @@ fn filters_provider_command_output(registry: &HookRuntime, tokens: &[String]) ->
             .position(|token| is_separator(token))
             .map(|relative_index| start + relative_index)
             .unwrap_or(tokens.len());
-        let stage = &tokens[start..end];
+        let stage = command_stage_without_env_prefix(&tokens[start..end]);
         if separator_before_stage == Some("|")
             && raw_search_kind(stage).is_some()
             && previous_stage.is_some_and(|stage| is_provider_command_stage(registry, stage))
@@ -81,6 +82,52 @@ fn filters_provider_command_output(registry: &HookRuntime, tokens: &[String]) ->
         start = end;
     }
     false
+}
+
+fn command_stage_without_env_prefix(stage: &[String]) -> &[String] {
+    let Some(first) = stage.first() else {
+        return stage;
+    };
+    if shell_command_basename(first) != "env" {
+        return stage;
+    }
+
+    let mut command_index = 1;
+    while let Some(token) = stage.get(command_index) {
+        if token == "--" {
+            command_index += 1;
+            break;
+        }
+        if token.starts_with('-') {
+            return stage;
+        }
+        if !is_shell_env_assignment(token) {
+            break;
+        }
+        command_index += 1;
+    }
+
+    if command_index < stage.len() {
+        &stage[command_index..]
+    } else {
+        stage
+    }
+}
+
+fn shell_command_basename(token: &str) -> &str {
+    token.rsplit('/').next().unwrap_or(token)
+}
+
+fn is_shell_env_assignment(token: &str) -> bool {
+    let Some((name, _)) = token.split_once('=') else {
+        return false;
+    };
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn is_provider_command_stage(registry: &HookRuntime, stage: &[String]) -> bool {

@@ -101,6 +101,15 @@ stronger native-parser-backed language syntax search system.
    syntax query ABI, because that can silently redirect a query to the wrong
    owner.
 
+=query --selector <selector> --code= is a narrower transport boundary than
+syntax frontier matching.  It requires an exact source file, source range, or
+parser-owned structural selector.  A directory selector may bound capture
+frontiers or cache containment checks, but it must not be treated as an exact
+code selector, and =--query <terms>= must not reinterpret it as recursive
+directory search.  Agents should use =search lexical=, =search owner=, or
+=search pipe= for directory-scoped discovery, then follow the returned exact
+=query --selector ... --code= action.
+
 9. /Normalized row replay is keyed by query AST/ABI./  Turso syntax rows may be
    replayed only when the request query compiles to the same tree-sitter ABI
    fingerprint as the stored provider packet, the selector identity matches, and

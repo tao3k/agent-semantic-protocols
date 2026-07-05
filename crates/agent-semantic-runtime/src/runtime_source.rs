@@ -96,23 +96,84 @@ pub fn ensure_runtime_source_checkout_in_client_cache(
     ensure_runtime_source_checkout_at(checkout_dir, spec)
 }
 
+/// Request for resolving runtime-source index identity.
+pub struct RuntimeSourceIndexContextRequest<'a> {
+    checkout_root: &'a Path,
+    client_cache_dir: &'a Path,
+    language_id: &'a str,
+    provider_id: &'a str,
+}
+
+/// Request for building a runtime-source registry fingerprint.
+pub struct RuntimeSourceRegistryFingerprintRequest<'a> {
+    checkout_root: &'a Path,
+    language_id: &'a str,
+    provider_id: &'a str,
+}
+
+/// Request for collecting runtime-source files for indexing.
+pub struct RuntimeSourceIndexFilesRequest<'a> {
+    checkout_root: &'a Path,
+    language_id: &'a str,
+    provider_id: &'a str,
+    limit: usize,
+}
+
+impl<'a> From<(&'a Path, &'a str, &'a str, usize)> for RuntimeSourceIndexFilesRequest<'a> {
+    fn from(
+        (checkout_root, language_id, provider_id, limit): (&'a Path, &'a str, &'a str, usize),
+    ) -> Self {
+        Self {
+            checkout_root,
+            language_id,
+            provider_id,
+            limit,
+        }
+    }
+}
+
+impl<'a> From<(&'a Path, &'a str, &'a str)> for RuntimeSourceRegistryFingerprintRequest<'a> {
+    fn from((checkout_root, language_id, provider_id): (&'a Path, &'a str, &'a str)) -> Self {
+        Self {
+            checkout_root,
+            language_id,
+            provider_id,
+        }
+    }
+}
+
+impl<'a> From<(&'a Path, &'a Path, &'a str, &'a str)> for RuntimeSourceIndexContextRequest<'a> {
+    fn from(
+        (checkout_root, client_cache_dir, language_id, provider_id): (
+            &'a Path,
+            &'a Path,
+            &'a str,
+            &'a str,
+        ),
+    ) -> Self {
+        Self {
+            checkout_root,
+            client_cache_dir,
+            language_id,
+            provider_id,
+        }
+    }
+}
+
 /// Resolve runtime-source index identity under an ASP-managed client cache.
 pub fn runtime_source_index_context(
-    checkout_root: impl AsRef<Path>,
-    client_cache_dir: impl AsRef<Path>,
-    language_id: &str,
-    provider_id: &str,
+    request: RuntimeSourceIndexContextRequest<'_>,
 ) -> Result<RuntimeSourceIndexContext, String> {
-    let checkout_root = fs::canonicalize(checkout_root.as_ref()).map_err(|error| {
+    let checkout_root = fs::canonicalize(request.checkout_root).map_err(|error| {
         format!(
             "failed to resolve runtime source checkout {}: {error}",
-            checkout_root.as_ref().display()
+            request.checkout_root.display()
         )
     })?;
-    let canonical_cache_dir = fs::canonicalize(client_cache_dir.as_ref()).map_err(|error| {
+    let canonical_cache_dir = fs::canonicalize(request.client_cache_dir).map_err(|error| {
         format!(
             "failed to resolve ASP client cache dir {}: {error}",
-            client_cache_dir.as_ref().display()
+            request.client_cache_dir.display()
         )
     })?;
     if !checkout_root.starts_with(&canonical_cache_dir) {
@@ -125,9 +186,12 @@ pub fn runtime_source_index_context(
 
     Ok(RuntimeSourceIndexContext {
         registry_fingerprint: runtime_source_registry_fingerprint(
-            &checkout_root,
-            language_id,
-            provider_id,
+            (
+                checkout_root.as_path(),
+                request.language_id,
+                request.provider_id,
+            )
+                .into(),
         ),
         checkout_root,
     })
@@ -135,35 +199,30 @@ pub fn runtime_source_index_context(
 
 /// Build the stable registry fingerprint for ASP-managed runtime source facts.
 pub fn runtime_source_registry_fingerprint(
-    checkout_root: &Path,
-    language_id: &str,
-    provider_id: &str,
+    request: RuntimeSourceRegistryFingerprintRequest<'_>,
 ) -> String {
     format!(
         "runtimeSource\ngenerationRoot={}\nlanguage={}\nprovider={}",
-        checkout_root.display(),
-        language_id,
-        provider_id
+        request.checkout_root.display(),
+        request.language_id,
+        request.provider_id
     )
 }
 
 /// Collect source files from an ASP-managed runtime source checkout.
 pub fn collect_runtime_source_index_files(
-    checkout_root: impl AsRef<Path>,
-    language_id: &str,
-    provider_id: &str,
-    limit: usize,
+    request: RuntimeSourceIndexFilesRequest<'_>,
 ) -> Result<Vec<RuntimeSourceIndexFile>, String> {
     let mut files = Vec::new();
     collect_runtime_source_index_files_from_dir(
-        checkout_root.as_ref(),
-        language_id,
-        provider_id,
-        limit,
+        request.checkout_root,
+        request.language_id,
+        request.provider_id,
+        request.limit,
         &mut files,
     )?;
     files.sort_by(|left, right| left.path.cmp(&right.path));
-    files.truncate(limit);
+    files.truncate(request.limit);
     Ok(files)
 }
 

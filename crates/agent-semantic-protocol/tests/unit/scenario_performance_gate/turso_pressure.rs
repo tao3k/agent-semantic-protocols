@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use super::{SharedBenchmarkToml, duration_millis_from_manifest, read_toml};
+use super::runtime_gates::{duration_millis_from_manifest, read_toml};
+use super::shared::SharedBenchmarkToml;
 
 pub(super) fn asp_turso_db_engine_concurrent_process_pressure_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));

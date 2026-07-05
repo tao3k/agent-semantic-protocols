@@ -15,9 +15,12 @@ pub(super) fn append_project_topology_nodes(
 ) {
     let projection_candidates = graph_projection_candidates(candidates);
     let projection = agent_semantic_search::graph_project_topology_projection(
-        language_id,
-        workspace_root,
-        &projection_candidates,
+        (
+            language_id,
+            workspace_root,
+            projection_candidates.as_slice(),
+        )
+            .into(),
     );
     nodes.extend(projection.nodes);
     edges.extend(projection.edges);
@@ -42,9 +45,7 @@ pub(super) fn append_candidate_nodes(
 ) {
     let projection_candidates = graph_projection_candidates(candidates);
     nodes.extend(agent_semantic_search::graph_candidate_item_nodes(
-        language_id,
-        &projection_candidates,
-        limit,
+        (language_id, projection_candidates.as_slice(), limit).into(),
     ));
 }
 
@@ -56,9 +57,7 @@ pub(super) fn append_hot_nodes(
 ) {
     let projection_candidates = graph_projection_candidates(candidates);
     nodes.extend(agent_semantic_search::graph_candidate_hot_nodes(
-        language_id,
-        &projection_candidates,
-        limit,
+        (language_id, projection_candidates.as_slice(), limit).into(),
     ));
 }
 

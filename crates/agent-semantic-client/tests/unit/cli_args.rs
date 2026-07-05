@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf, process};
 use crate::cli_args::parse_client_args;
 
 #[test]
-fn rejects_adjacent_positional_project_roots() {
+fn positional_paths_are_forwarded_without_project_root_inference() {
     let cwd = temp_dir("double-root");
     let provider_root = cwd.join("rust-provider");
     fs::create_dir_all(&provider_root).expect("create provider root");
@@ -13,7 +13,7 @@ fn rejects_adjacent_positional_project_roots() {
     )
     .expect("write manifest");
 
-    let err = parse_client_args(
+    let parsed = parse_client_args(
         vec![
             "search".to_string(),
             "ingest".to_string(),
@@ -27,9 +27,21 @@ fn rejects_adjacent_positional_project_roots() {
         cwd.clone(),
         Some("rust"),
     )
-    .expect_err("double root should fail");
+    .expect("positional paths are provider args");
 
-    assert_eq!(err, "expected at most one PROJECT_ROOT argument");
+    assert_eq!(parsed.project_root, cwd);
+    assert_eq!(
+        parsed.forwarded_args,
+        vec![
+            "ingest",
+            "items",
+            "tests",
+            "--view",
+            "seeds",
+            provider_root.to_str().expect("utf8 provider root"),
+            ".",
+        ]
+    );
     let _ = fs::remove_dir_all(cwd);
 }
 
@@ -40,10 +52,11 @@ fn selector_dot_does_not_count_as_extra_project_root() {
     let parsed = parse_client_args(
         vec![
             "query".to_string(),
+            "--workspace".to_string(),
+            ".".to_string(),
             "--selector".to_string(),
             ".".to_string(),
             "--code".to_string(),
-            ".".to_string(),
         ],
         cwd.clone(),
         Some("rust"),
@@ -94,6 +107,40 @@ fn workspace_flag_selects_project_root_without_provider_forwarding() {
             "--code",
         ]
     );
+    let _ = fs::remove_dir_all(cwd);
+}
+
+#[test]
+fn search_view_option_value_stays_provider_arg_without_project_root_inference() {
+    let cwd = temp_dir("search-view-option-value");
+    let seeds_root = cwd.join("seeds");
+    fs::create_dir_all(&seeds_root).expect("create seeds root");
+    fs::write(
+        seeds_root.join("Cargo.toml"),
+        "[package]\nname = \"seeds\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write seeds manifest");
+
+    let parsed = parse_client_args(
+        vec![
+            "search".to_string(),
+            "lexical".to_string(),
+            "source_index_fixture".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+            "--receipt-json".to_string(),
+        ],
+        cwd.clone(),
+        Some("rust"),
+    )
+    .expect("view option value is not a project root");
+
+    assert_eq!(parsed.project_root, cwd);
+    assert_eq!(
+        parsed.forwarded_args,
+        vec!["lexical", "source_index_fixture", "--view", "seeds"]
+    );
+    assert!(parsed.receipt_json);
     let _ = fs::remove_dir_all(cwd);
 }
 
@@ -174,6 +221,7 @@ fn frontier_receipt_out_is_owned_by_client_runtime() {
             "seeds".to_string(),
             "--frontier-receipt-out".to_string(),
             receipt_path.display().to_string(),
+            "--workspace".to_string(),
             ".".to_string(),
         ],
         cwd.clone(),
@@ -197,7 +245,7 @@ fn frontier_receipt_out_is_owned_by_client_runtime() {
 }
 
 #[test]
-fn positional_project_root_preserves_activation_root() {
+fn positional_marker_path_stays_provider_arg_without_workspace_flag() {
     let cwd = temp_dir("positional-root-activation");
     let provider_root = cwd.join("languages/rust-lang-project-harness");
     fs::create_dir_all(&provider_root).expect("create provider root");
@@ -218,19 +266,24 @@ fn positional_project_root_preserves_activation_root() {
         cwd.clone(),
         Some("rust"),
     )
-    .expect("positional project root");
+    .expect("positional marker path is a provider arg");
 
     assert_eq!(parsed.activation_root, cwd);
+    assert_eq!(parsed.project_root, parsed.activation_root);
     assert_eq!(
-        parsed.project_root,
-        std::fs::canonicalize(&provider_root).expect("canonical provider root")
+        parsed.forwarded_args,
+        vec![
+            "workspace",
+            "--view",
+            "seeds",
+            provider_root.to_str().expect("utf8 provider root")
+        ]
     );
-    assert_eq!(parsed.forwarded_args, vec!["workspace", "--view", "seeds"]);
     let _ = fs::remove_dir_all(parsed.activation_root);
 }
 
 #[test]
-fn positional_project_root_rejects_provider_root_outside_activation_root() {
+fn external_positional_path_stays_provider_arg_without_workspace_flag() {
     let cwd = temp_dir("positional-root-outside");
     let outside = temp_dir("positional-root-outside-target");
     fs::write(
@@ -239,7 +292,7 @@ fn positional_project_root_rejects_provider_root_outside_activation_root() {
     )
     .expect("write manifest");
 
-    let err = parse_client_args(
+    let parsed = parse_client_args(
         vec![
             "search".to_string(),
             "workspace".to_string(),
@@ -250,11 +303,17 @@ fn positional_project_root_rejects_provider_root_outside_activation_root() {
         cwd.clone(),
         Some("rust"),
     )
-    .expect_err("positional project root outside activation root should fail");
+    .expect("external positional path is a provider arg");
 
-    assert!(
-        err.contains("is outside workspace"),
-        "unexpected error: {err}"
+    assert_eq!(parsed.project_root, cwd);
+    assert_eq!(
+        parsed.forwarded_args,
+        vec![
+            "workspace",
+            "--view",
+            "seeds",
+            outside.to_str().expect("utf8 outside root")
+        ]
     );
     let _ = fs::remove_dir_all(cwd);
     let _ = fs::remove_dir_all(outside);

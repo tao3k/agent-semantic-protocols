@@ -124,6 +124,7 @@ pub struct ClientDbSourceIndexImportFile {
     pub language_id: LanguageId,
     pub provider_id: ProviderId,
     pub text: String,
+    pub selectors: Vec<ClientDbSourceIndexSelector>,
 }
 
 /// Request for building one Rust-owned source-index import packet.
@@ -171,6 +172,7 @@ pub struct ClientDbSourceIndexScopeFile {
     pub path: PathBuf,
     pub language_id: LanguageId,
     pub provider_id: ProviderId,
+    pub selector_receipts: Vec<ClientDbSourceIndexSelector>,
 }
 
 /// Source-index lookup state for agent-facing search fallbacks.
@@ -205,6 +207,15 @@ pub struct ClientDbSourceIndexCandidate {
     pub source_kind: ClientDbSourceIndexSourceKind,
     pub line_count: Option<u32>,
     pub query_keys: Vec<String>,
+    pub selector_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
+}
+
+/// Provider/parser proof that a source-index candidate has a bounded payload.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbSourceIndexSelectorPayloadProof {
+    pub structural_selector: String,
+    pub payload_kind: String,
+    pub bounded: bool,
 }
 
 /// Typed source category for source-index candidate rows.
@@ -236,6 +247,7 @@ impl From<ClientDbSourceIndexSource> for ClientDbSourceIndexSourceKind {
 impl From<ClientDbSourceIndexOwner> for ClientDbSourceIndexCandidate {
     fn from(owner: ClientDbSourceIndexOwner) -> Self {
         Self {
+            selector_proof: None,
             path: owner.owner_path.as_str().to_string(),
             language_id: owner.language_id,
             provider_id: owner.provider_id,
@@ -298,6 +310,7 @@ pub struct ClientDbSourceIndexSelector {
     pub end_line: u32,
     pub source: ClientDbSourceIndexSource,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
+    pub payload_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
 }
 
 /// Aggregate row counts for one source index generation.
@@ -367,6 +380,38 @@ impl ClientDbSourceIndexRefreshResult {
             owner_count: report.owner_count,
             selector_count: report.selector_count,
         }
+    }
+}
+
+impl ClientDbSourceIndexRefreshResult {
+    #[must_use]
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
+    #[must_use]
+    pub fn generation_id(&self) -> &CacheGenerationId {
+        &self.generation_id
+    }
+
+    #[must_use]
+    pub fn reused_generation(&self) -> bool {
+        self.reused_generation
+    }
+
+    #[must_use]
+    pub fn file_count(&self) -> u32 {
+        self.file_count
+    }
+
+    #[must_use]
+    pub fn owner_count(&self) -> u32 {
+        self.owner_count
+    }
+
+    #[must_use]
+    pub fn selector_count(&self) -> u32 {
+        self.selector_count
     }
 }
 

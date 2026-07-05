@@ -25,6 +25,11 @@ pub(super) struct SessionStatusReport {
     #[serde(rename = "registryStatus")]
     pub(super) registry_status: String,
     pub(super) routable: bool,
+    #[serde(rename = "sessionLifetime")]
+    pub(super) session_lifetime: String,
+    pub(super) resident: bool,
+    #[serde(rename = "sessionLifetimeSource")]
+    pub(super) session_lifetime_source: String,
     #[serde(rename = "validationStatus")]
     pub(super) validation_status: String,
     #[serde(rename = "validationReason")]
@@ -295,8 +300,33 @@ pub(super) fn print_status_report(report: SessionStatusReport, json: bool) -> Re
         );
         return Ok(());
     }
+    let rollout_activity_status = report
+        .rollout_activity
+        .as_ref()
+        .map(|activity| activity.status.as_str())
+        .unwrap_or("not-reported");
+    let rollout_last_heartbeat_at = report
+        .rollout_activity
+        .as_ref()
+        .and_then(|activity| activity.last_heartbeat_at.as_deref())
+        .unwrap_or("none");
+    let rollout_last_heartbeat_kind = report
+        .rollout_activity
+        .as_ref()
+        .and_then(|activity| activity.last_heartbeat_kind.as_deref())
+        .unwrap_or("none");
+    let rollout_last_terminal_event = report
+        .rollout_activity
+        .as_ref()
+        .and_then(|activity| activity.last_terminal_event.as_deref())
+        .unwrap_or("none");
+    let rollout_running_session_closed = report
+        .rollout_activity
+        .as_ref()
+        .map(|activity| activity.running_session_closed)
+        .unwrap_or(false);
     println!(
-        "[agent-session-status] owner=rust rootSession={} name={} registryStatus=\"{}\" routable={} validationStatus=\"{}\" validationReason=\"{}\" hostClient={} hostStatus=\"{}\" hostThreadExistence=\"{}\" multiAgentChildState=\"{}\" healthStatus=\"{}\" artifactStatus=\"{}\" artifactAgeSeconds={} nextAction=\"{}\" duplicateWorkerAllowed={} db=\"{}\" artifactsDir=\"{}\"",
+        "[agent-session-status] owner=rust rootSession={} name={} registryStatus=\"{}\" routable={} validationStatus=\"{}\" validationReason=\"{}\" hostClient={} hostStatus=\"{}\" hostThreadExistence=\"{}\" multiAgentChildState=\"{}\" rolloutActivityStatus=\"{}\" rolloutLastHeartbeatAt=\"{}\" rolloutLastHeartbeatKind=\"{}\" rolloutLastTerminalEvent=\"{}\" rolloutRunningSessionClosed={} healthStatus=\"{}\" artifactStatus=\"{}\" artifactAgeSeconds={} nextAction=\"{}\" duplicateWorkerAllowed={} db=\"{}\" artifactsDir=\"{}\"",
         report
             .root_session_id
             .as_deref()
@@ -319,6 +349,11 @@ pub(super) fn print_status_report(report: SessionStatusReport, json: bool) -> Re
         escape_field(&report.host_status),
         escape_field(&report.host_thread_existence),
         escape_field(&report.multi_agent_child_state),
+        escape_field(rollout_activity_status),
+        escape_field(rollout_last_heartbeat_at),
+        escape_field(rollout_last_heartbeat_kind),
+        escape_field(rollout_last_terminal_event),
+        rollout_running_session_closed,
         escape_field(&report.health_status),
         escape_field(&report.artifact_status),
         optional_i64_field(report.artifact_age_seconds),
@@ -330,6 +365,81 @@ pub(super) fn print_status_report(report: SessionStatusReport, json: bool) -> Re
     if let Some(session) = report.session.as_ref() {
         print_session_row(session);
     }
+    Ok(())
+}
+
+pub(super) fn print_status_activity_report(
+    rollout_activity: Option<&RolloutActivityReport>,
+    next_action: &str,
+    json: bool,
+) -> Result<(), String> {
+    if json {
+        let rollout_activity = rollout_activity.map(|activity| {
+            serde_json::json!({
+                "status": &activity.status,
+                "sessionMeta": &activity.session_meta,
+                "sessionActivity": &activity.session_activity,
+                "lastHeartbeatAt": &activity.last_heartbeat_at,
+                "lastHeartbeatKind": &activity.last_heartbeat_kind,
+                "recentHeartbeats": &activity.recent_heartbeats,
+                "runningSessionClosed": activity.running_session_closed,
+                "agentInstruction": &activity.agent_instruction,
+            })
+        });
+        let report = serde_json::json!({
+            "rolloutActivity": rollout_activity,
+            "nextAction": next_action,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .map_err(|error| format!("failed to render session activity json: {error}"))?
+        );
+        return Ok(());
+    }
+
+    let status = rollout_activity
+        .map(|activity| activity.status.as_str())
+        .unwrap_or("unknown");
+    let last_heartbeat_at = rollout_activity
+        .and_then(|activity| activity.last_heartbeat_at.as_deref())
+        .unwrap_or("none");
+    let last_heartbeat_kind = rollout_activity
+        .and_then(|activity| activity.last_heartbeat_kind.as_deref())
+        .unwrap_or("none");
+    let running_session_closed = rollout_activity
+        .map(|activity| activity.running_session_closed)
+        .unwrap_or(false);
+    let agent_instruction = rollout_activity
+        .map(|activity| activity.agent_instruction.as_str())
+        .unwrap_or("rollout activity unavailable");
+    let session_meta = rollout_activity.and_then(|activity| activity.session_meta.as_ref());
+    let child_session_id = session_meta
+        .and_then(|meta| meta.child_session_id.as_deref())
+        .unwrap_or("none");
+    let source_session_id = session_meta
+        .and_then(|meta| meta.source_session_id.as_deref())
+        .unwrap_or("none");
+    let parent_thread_id = session_meta
+        .and_then(|meta| meta.parent_thread_id.as_deref())
+        .unwrap_or("none");
+    let agent_role = session_meta
+        .and_then(|meta| meta.agent_role.as_deref())
+        .unwrap_or("none");
+
+    println!(
+        "[agent-session-activity] status=\"{}\" childSessionId={} sourceSessionId={} parentThreadId={} agentRole={} lastHeartbeatAt={} lastHeartbeatKind={} runningSessionClosed={} nextAction=\"{}\" agentInstruction=\"{}\"",
+        status,
+        child_session_id,
+        source_session_id,
+        parent_thread_id,
+        agent_role,
+        last_heartbeat_at,
+        last_heartbeat_kind,
+        running_session_closed,
+        next_action,
+        agent_instruction,
+    );
     Ok(())
 }
 

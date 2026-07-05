@@ -7,8 +7,8 @@ This RFC makes the comparison target explicit. "CodeBase" in this line of
 work means =codebase-memory-mcp=, not generic repository search. The goal is to
 prove that ASP's EvidenceGraph flow can reach authoritative selector evidence
 with fewer turns when possible, and with stronger receipts than the
-=codebase-memory-mcp= playbook when the task needs language-native precision,
-freshness, or recovery evidence.
+=codebase-memory-mcp= reference baseline when the task needs language-native
+precision, freshness, or recovery evidence.
 
 =codebase-memory-mcp= is the reference benchmark, not a mechanical pass/fail
 floor. ASP must record the reference baseline and the ASP result, then explain
@@ -20,7 +20,7 @@ roundDelta = aspSearchQueryRounds - codebaseMemoryMcpQueryRounds
 
 Negative delta is the preferred result. Zero or positive delta is acceptable
 only when the EvidenceGraph packet proves an advantage that the reference
-playbook does not provide, such as native parser selector identity, dirty-tree
+baseline does not provide, such as native parser selector identity, dirty-tree
 overlay freshness, recovery receipts, or legal edit/action framing.
 
 The comparison is not won by raw latency or recall alone. It is won by reducing
@@ -30,9 +30,10 @@ turns from intent to a legal next action:
 repository question -> authoritative selector -> proven edit boundary
 #+end_src
 
-* Reference playbook
+* Reference baseline
 
-=codebase-memory-mcp= demonstrates the product shape ASP must beat:
+=codebase-memory-mcp= demonstrates a product lesson ASP should absorb, not a
+playbook ASP should copy:
 
 #+begin_src text
 search_graph / semantic_query / query_graph / search_code
@@ -41,9 +42,11 @@ search_graph / semantic_query / query_graph / search_code
 #+end_src
 
 Its advantage is that callers are guided through a small graph-oriented tool
-surface instead of drifting through broad file search. ASP should keep that
-constraint while using stronger native parser identity, provider-owned schemas,
-dynamic overlay facts, and replayable action receipts.
+surface instead of drifting through broad file search. ASP keeps that
+constraint but follows its own route: ReasoningTree for the run trace,
+EvidenceGraph for shared proof structure, GraphRoute for navigation, and
+NextAction for the exact parent command. The reference baseline is a comparison
+lens, while the ASP playbook is EvidenceGraph-native and parser-owned.
 
 * EvidenceGraph flow
 
@@ -121,6 +124,58 @@ roundDelta is the preferred compression win. A zero or positive roundDelta must
 carry an explicit evidenceAdvantage; otherwise the scenario is a search-design
 regression because ASP spent more turns without proving a stronger result.
 
+* Observed intent-quality calibration
+The 2026-07-04 PDT / 2026-07-05 UTC real =asp-explore= run exposed search-quality and control-plane facts that must be treated as benchmark evidence, not anecdotes.
+The run used the existing Codex child session =019f2f7c-8c09-7010-af05-f589e9e88755= and tested complex intents against the live workspace.
+
+| Intent | Command surface | Observed result | Quality signal |
+| A: resident child routing / validation / model mismatch / binary gate deny template | =asp rust search pipe 'resident child routing validation model mismatch binary gate deny template'= | after registry repair, =searchPipe= passed but =bestOwner= drifted to =crates/agent-semantic-config/src/hook_client_config/model.rs=; =elapsedMs=2292= | routing/gate intent has domain terms, but ranking over-weighted model/config evidence and under-weighted session-routing owners |
+| B: Search Frame / EvidenceGraph / codebase-memory-mcp / subagent receipt / query-set | =asp org search pipe 'Search Frame EvidenceGraph codebase-memory-mcp subagent receipt query-set packet rounds comparison'= | after registry repair, =orgSearch= passed and =bestOwner= was =docs/10-19-rfcs/10.20-codebase-memory-mcp-code-search-research.org= | RFC/document search recovered, but the more specific =10.31= flow RFC was not the first owner for the combined comparison query |
+| C: search scenario benchmark / latency / query rounds / provider evidence pipe | =asp rust search pipe 'search scenario benchmark latency query rounds provider evidence pipe'= | after registry repair, =searchPipe= passed and =bestOwner= was =crates/agent-semantic-search/src/lib.rs=; source trace recorded =provider:partial= and search overlay elapsed around =1247ms= in one run | implementation owner surfaced, but scenario benchmark tests should be preferred over the library facade when the intent explicitly says scenario / benchmark / rounds |
+| B2: EvidenceGraph / codebase-memory-mcp / Search Frame Rust implementation / rounds delta | =asp rust search pipe 'EvidenceGraph codebase memory mcp search frame rounds delta scenario benchmark'= | =searchPipe= reached scenario benchmark owners such as =scenario_benchmark.rs= and =search_frame.rs= | implementation-side comparison data is available and should become a stable scenario gate |
+
+The same run also exposed control-plane drift that can invalidate any search benchmark:
+| Drift | Evidence | Required correction |
+| main vs child registry root | main-side =asp= initially wrote =~/.agent-semantic-protocols/session-registry.turso= while the child / direnv path read project-local =live/client/agent/session-registry.turso= | session registry state root must be State Core workspace-local =live/client/agent= across installed and project-local binaries |
+| binary drift | =~/.local/bin/asp= and =.bin/asp= had different hashes and different agent-session registry behavior | install / sync gates must verify both command surfaces before live search benchmarking |
+| facade gate drift | Rust search recovered before Org/MD search; Org/MD initially still reported "no active asp-explore child session" | search facades must share the same resident-child gate and registry lookup path |
+| preflight workaround | same-turn =register= was required before the registry-root repair | benchmark runs must fail if same-turn preflight registration is required for an existing active child |
+
+These facts refine the comparison rule:
+- An ASP search result is not valid benchmark evidence unless the active child can run =status= and =search pipe= without same-turn re-registration.
+- =sourceTrace= and elapsed timing are part of the intent-quality record; a correct owner with multi-second elapsed time is still a performance follow-up.
+- Ranking success is owner-specific: broad implementation facades, config files, and model-mapping files can be evidence, but they are drift when a more precise routing, scenario, or RFC owner exists.
+- Ranking correction belongs to Graph Turbo query scoring and receipt projection. Rust source-index code may emit neutral candidates, exact selectors, source traces, and parser-owned evidence fields, but it must not encode intent-domain ranking heuristics that Graph Turbo cannot explain or reproduce for other providers.
+- Exact-selector metadata belongs to the main-agent Direct Inventory Lane, not the final evidence lane. When the main agent already has a concrete selector and asks for =--view metadata=, the ASP receipt proves structure, headings, item candidates, and next selectors. It does not prove the bounded content or code. Delegating that command to a subagent is redundant unless the metadata receipt itself asks for fan-out, compression, or cross-document synthesis; if the task needs proof, the next step is a direct =--content= or =--code= fetch by the main agent.
+- The main-session binary gate must allow exact-selector direct inventory/fetch commands and continue to deny broad search. Allowed shapes are selector-bound =query= commands with =--code=, =--content=, or document-provider =--view metadata=. Denied shapes include =search=, =--term= query discovery, and hook-owned =--from-hook direct-source-read=. This keeps final proof cheap for the main agent without moving search calibration out of =asp-explore=.
+- Language direct fetch requires an item or bounded range selector, such as =path:start:end --code=. A bare file selector can legally return an owner/item frontier and should be classified as Direct Inventory, not final proof, even when =--code= is present.
+- Provider surfaces are not interchangeable. Document providers expose selector metadata through =--view metadata=, while Rust source discovery is owned by the dynamic lexical overlay, for example =asp rust search lexical TERM --workspace .=.
+- Subagent output should return one compact =GraphRoute= receipt per independent parent intent branch: ranked selector evidence, typed route relations, route state, and one safe parent =next= action. It must not return snippets, source bodies, line ranges, confidence labels, missing-coverage claims, not-found inventories, or cheap-model recommendations.
+The main-agent lanes split bounded work by evidence strength:
+| Lane | Command shape | Main-agent action | Delegation rule |
+| Direct Fetch | exact language selector + =--code= | Run directly and consume bounded code evidence | Do not delegate |
+| Direct Fetch | exact document selector + =--content= | Run directly and consume bounded document evidence | Do not delegate |
+| Direct Inventory | exact document selector + =--view metadata= | Run directly to identify headings, item candidates, and next selectors | Do not treat as final proof |
+| Direct Inventory | exact owner + =items= / =tests= | Run directly and consume selectors or coverage receipts | Do not delegate |
+| Direct Receipt | selector-bound =nextCommand= | Run directly unless it fans out across independent axes | Delegate only for fan-out |
+| Direct Receipt | session/status/rollout receipt | Run directly to decide lifecycle state | Do not delegate |
+
+The SubAgent lane is reserved for work that changes the evidence shape:
+| Search shape | SubAgent responsibility | Return contract |
+| ambiguous intent | refine clauses, owners, and next commands | Evidence Bundle |
+| independent fan-out axes | search each axis without editing | nodes, edges, selectors |
+| large content compression | extract bounded snippets and metadata summaries | snippets plus selectors |
+| cross-provider topology | connect deps, tests, artifacts, or overlays | graph edges and receipts |
+| long-running search | report heartbeat/progress receipts | sourceTrace and elapsed |
+The intended interactive loop is:
+#+begin_src text
+main intent understanding
+-> direct inventory when selectors are already known
+-> subagent reasoning only when the next selectors require search calibration
+-> main direct fetch of final =--code= / =--content= evidence
+-> main edit or answer
+#+end_src
+The subagent should normally finish the search-calibration pass within a bounded 30-50 second window. After that pass, the main agent should know which exact files, owners, or selectors to fetch directly.
 * Required scenarios
 
 | Scenario | Purpose |
@@ -129,16 +184,27 @@ regression because ASP spent more turns without proving a stronger result.
 | search_frame_compares_codebase_memory_mcp_round_budget | compares turns-to-authoritative-selector and evidenceAdvantage against the reference playbook |
 | search_frame_no_generic_rg_fd_next_action | prevents broad fallback as the preferred next command |
 
+Additional calibrated scenarios from the live run:
+| Scenario | Purpose |
+| existing_child_search_pipe_without_preflight_register | proves an already registered =asp-explore= child can run =status= and =search pipe= across turns without same-turn register |
+| all_facades_share_resident_child_gate | proves Rust, Org, and MD search/query facades use the same workspace-local session registry and resident-child gate |
+| routing_gate_intent_prefers_session_owner_over_model_config | prevents routing / validation / deny-template intents from drifting to model/config owners when session-routing owners exist |
+| scenario_benchmark_intent_prefers_scenario_gate_owner | prevents scenario / benchmark / rounds intents from stopping at the search crate facade when scenario gate tests are available |
+| rfc_comparison_intent_records_specific_flow_owner | records whether =10.31= or =10.20= is the best RFC owner for combined EvidenceGraph / codebase-memory-mcp comparison queries |
 * Implementation sequence
 
 1. Extend Search Frame receipts so owner-oriented search can emit exact selector
    candidates or a selector-bound =nextCommand=.
-2. Promote source-index owner-items evidence into the EvidenceGraph packet
+2. Promote source-index owner-items evidence into the EvidenceGraph packet and
+   let Graph Turbo own query-clause, topology, local-evidence, and drift ranking
    before rendering the final action surface.
-3. Add the round-budget scenarios above under the search scenario suite.
-4. Treat a path-only or display-line-only answer as an incomplete frame even
+3. Keep provider-local rankers neutral. Any scenario-driven ranking correction
+   must appear as a Graph Turbo score adjustment, trace metric, or receipt
+   reason.
+4. Add the round-budget scenarios above under the search scenario suite.
+5. Treat a path-only or display-line-only answer as an incomplete frame even
    when the owner cluster is correct.
-5. Use WhereFrame and HowFrame receipts to prove the final edit boundary and
+6. Use WhereFrame and HowFrame receipts to prove the final edit boundary and
    legal action, not just the search hit.
 
 * Closure criteria

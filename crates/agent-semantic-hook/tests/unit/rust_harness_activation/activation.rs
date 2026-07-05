@@ -76,7 +76,7 @@ fn rust_harness_activation_routes_direct_reads_to_provider_query() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "rs-harness");
     assert_eq!(decision.routes[0].binary, "asp");
     assert_eq!(
@@ -84,12 +84,14 @@ fn rust_harness_activation_routes_direct_reads_to_provider_query() {
         [
             "asp",
             "rust",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/lib.rs",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ]
     );
 }

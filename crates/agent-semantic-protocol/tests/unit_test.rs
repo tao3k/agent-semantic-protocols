@@ -15,16 +15,22 @@ mod client_hook_config_doctor;
 mod client_hook_config_runtime;
 #[path = "unit/client_hook_desktop_smoke/mod.rs"]
 mod client_hook_desktop_smoke;
+#[path = "unit/codex/mod.rs"]
+mod codex;
 #[path = "unit/codex_plugin_install.rs"]
 mod codex_plugin_install;
 #[path = "unit/command/agent_session_registry_render.rs"]
 mod command_agent_session_registry_render;
+#[path = "unit/command/dispatch_agent_session_policy.rs"]
+mod command_dispatch_agent_session_policy;
 #[path = "unit/command/gerbil_check_cache.rs"]
 mod command_gerbil_check_cache;
 #[path = "unit/command/search_pipe_evidence_projection.rs"]
 mod command_search_pipe_evidence_projection;
 #[path = "unit/command/search_pipe_projection.rs"]
 mod command_search_pipe_projection;
+#[path = "unit/document_owner_items_hot_path.rs"]
+mod document_owner_items_hot_path;
 #[path = "unit/document_provider.rs"]
 mod document_provider;
 #[path = "unit/graph_render.rs"]

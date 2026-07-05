@@ -161,13 +161,13 @@ fn runtime_matches_provider_commands(
     runtime.providers.len() == current.len()
         && runtime.providers.iter().all(|provider| {
             current.iter().any(|selection| {
-                selection.manifest_id == provider.manifest_id
-                    && selection.manifest_digest == provider.manifest_digest
-                    && selection.language_id == provider.language_id
-                    && selection.provider_id == provider.provider_id
-                    && selection.binary == provider.binary
-                    && selection.execution == provider.execution
-                    && selection.provider_command_prefix == provider.provider_command_prefix
+                selection.manifest_id() == provider.manifest_id
+                    && selection.manifest_digest() == provider.manifest_digest
+                    && selection.language_id() == provider.language_id
+                    && selection.provider_id() == provider.provider_id
+                    && selection.binary() == provider.binary
+                    && *selection.execution() == provider.execution
+                    && selection.provider_command_prefix() == provider.provider_command_prefix
             })
         })
 }
@@ -176,17 +176,17 @@ fn provider_command_selection_row(
     selection: &ProviderCommandSelection,
 ) -> ClientDbProviderCommandSelection {
     let executable = selection
-        .provider_command_prefix
+        .provider_command_prefix()
         .first()
         .and_then(|path| executable_metadata(path));
     ClientDbProviderCommandSelection::new(
-        selection.manifest_id.clone(),
-        selection.manifest_digest.clone(),
-        selection.language_id.clone(),
-        selection.provider_id.clone(),
-        selection.binary.clone(),
-        selection.execution.as_str().to_string(),
-        selection.provider_command_prefix.clone(),
+        selection.manifest_id().to_string(),
+        selection.manifest_digest().to_string(),
+        selection.language_id().to_string(),
+        selection.provider_id().to_string(),
+        selection.binary().to_string(),
+        selection.execution().as_str().to_string(),
+        selection.provider_command_prefix().to_vec(),
         executable.as_ref().map(|metadata| metadata.path.clone()),
         executable.as_ref().map(|metadata| metadata.len),
         executable.as_ref().and_then(|metadata| metadata.mtime_ms),

@@ -10,12 +10,51 @@ pub struct GraphTopologyProjection {
     pub edges: Vec<Value>,
 }
 
+pub struct GraphTopologyProjectionRequest<'a> {
+    language_id: &'a str,
+    workspace_root: &'a Path,
+    candidates: &'a [GraphProjectionCandidate],
+}
+
+impl<'a> GraphTopologyProjectionRequest<'a> {
+    pub fn new(
+        language_id: &'a str,
+        workspace_root: &'a Path,
+        candidates: &'a [GraphProjectionCandidate],
+    ) -> Self {
+        Self {
+            language_id,
+            workspace_root,
+            candidates,
+        }
+    }
+}
+
+impl<'a> From<(&'a str, &'a Path, &'a [GraphProjectionCandidate])>
+    for GraphTopologyProjectionRequest<'a>
+{
+    fn from(
+        (language_id, workspace_root, candidates): (
+            &'a str,
+            &'a Path,
+            &'a [GraphProjectionCandidate],
+        ),
+    ) -> Self {
+        Self {
+            language_id,
+            workspace_root,
+            candidates,
+        }
+    }
+}
+
 pub fn graph_project_topology_projection(
-    language_id: &str,
-    workspace_root: &Path,
-    candidates: &[GraphProjectionCandidate],
+    request: GraphTopologyProjectionRequest<'_>,
 ) -> GraphTopologyProjection {
     let mut projection = GraphTopologyProjection::default();
+    let language_id = request.language_id;
+    let workspace_root = request.workspace_root;
+    let candidates = request.candidates;
     let workspace_id = stable_graph_node_id("workspace", ".");
     projection.nodes.push(json!({
         "id": workspace_id.clone(),

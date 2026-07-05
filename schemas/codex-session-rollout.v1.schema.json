@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/codex-session-rollout.v1.schema.json",
+  "title": "Codex Session Rollout JSONL Record",
+  "description": "Schema for Codex rollout JSONL records used by ASP session lifecycle validation and topology indexing. The rollout ledger is the source of truth for session identity, parent thread topology, and activity state.",
+  "oneOf": [
+    { "$ref": "#/$defs/sessionMetaRecord" },
+    { "$ref": "#/$defs/eventMsgRecord" },
+    { "$ref": "#/$defs/responseItemRecord" },
+    { "$ref": "#/$defs/turnContextRecord" },
+    { "$ref": "#/$defs/compactedRecord" }
+  ],
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "uuidLike": {
+      "type": "string",
+      "minLength": 8
+    },
+    "recordBase": {
+      "type": "object",
+      "required": ["timestamp", "type", "payload"],
+      "properties": {
+        "timestamp": { "$ref": "#/$defs/timestamp" },
+        "type": { "type": "string" },
+        "payload": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "sessionMetaRecord": {
+      "allOf": [
+        { "$ref": "#/$defs/recordBase" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "session_meta" },
+            "payload": { "$ref": "#/$defs/sessionMetaPayload" }
+          }
+        }
+      ]
+    },
+    "sessionMetaPayload": {
+      "type": "object",
+      "required": ["id", "timestamp", "cwd", "originator", "cli_version"],
+      "properties": {
+        "session_id": {
+          "description": "Source/root session id when present. Some legacy Codex records omit this field; ASP must not invent one.",
+          "$ref": "#/$defs/uuidLike"
+        },
+        "id": {
+          "description": "Codex conversation/thread id. For subagent rollouts this is the child session id and also appears in the rollout filename.",
+          "$ref": "#/$defs/uuidLike"
+        },
+        "parent_thread_id": {
+          "description": "Immediate parent thread id. ASP topology should model childSessionId -> parentThreadId edges and derive root by walking parents.",
+          "$ref": "#/$defs/uuidLike"
+        },
+        "forked_from_id": {
+          "description": "Source thread id for forked sessions when Codex records it.",
+          "$ref": "#/$defs/uuidLike"
+        },
+        "timestamp": { "$ref": "#/$defs/timestamp" },
+        "cwd": { "type": "string" },
+        "originator": { "type": "string" },
+        "cli_version": { "type": "string" },
+        "source": { "$ref": "#/$defs/sessionSource" },
+        "thread_source": {
+          "description": "Codex thread source metadata when present.",
+          "type": ["object", "string", "null"],
+          "additionalProperties": true
+        },
+        "model_provider": {
+          "description": "Codex model provider snapshot when present.",
+          "type": ["object", "string", "null"],
+          "additionalProperties": true
+        },
+        "memory_mode": {
+          "type": ["string", "null"]
+        },
+        "history_mode": {
+          "type": ["string", "null"]
+        },
+        "multi_agent_version": {
+          "type": ["integer", "string", "null"]
+        },
+        "context_window": {
+          "description": "Codex context-window snapshot when present.",
+          "type": ["object", "integer", "null"],
+          "additionalProperties": true
+        },
+        "git": {
+          "description": "Codex git/worktree snapshot when present.",
+          "type": ["object", "null"],
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "sessionSource": {
+      "type": ["object", "string", "null"],
+      "properties": {
+        "subagent": { "$ref": "#/$defs/subagentSource" }
+      },
+      "additionalProperties": true
+    },
+    "subagentSource": {
+      "type": "object",
+      "properties": {
+        "thread_spawn": { "$ref": "#/$defs/threadSpawn" }
+      },
+      "additionalProperties": true
+    },
+    "threadSpawn": {
+      "type": "object",
+      "required": ["parent_thread_id", "depth"],
+      "properties": {
+        "parent_thread_id": { "$ref": "#/$defs/uuidLike" },
+        "depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "agent_path": {
+          "type": ["string", "null"]
+        },
+        "agent_nickname": {
+          "type": ["string", "null"]
+        },
+        "agent_role": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "eventMsgRecord": {
+      "allOf": [
+        { "$ref": "#/$defs/recordBase" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "event_msg" },
+            "payload": { "$ref": "#/$defs/eventMsgPayload" }
+          }
+        }
+      ]
+    },
+    "eventMsgPayload": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "description": "Codex event kind. Lifecycle-critical examples include task_started, task_complete, user_message, agent_message, token_count, guardian_assessment.",
+          "type": "string"
+        },
+        "turn_id": {
+          "type": ["string", "null"]
+        },
+        "started_at": { "$ref": "#/$defs/timestamp" },
+        "completed_at": { "$ref": "#/$defs/timestamp" },
+        "duration_ms": {
+          "type": ["integer", "number", "null"]
+        },
+        "time_to_first_token_ms": {
+          "type": ["integer", "number", "null"]
+        },
+        "last_agent_message": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "type": ["string", "null"]
+        },
+        "action": {
+          "type": ["object", "string", "null"],
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "responseItemRecord": {
+      "allOf": [
+        { "$ref": "#/$defs/recordBase" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "response_item" },
+            "payload": { "$ref": "#/$defs/responseItemPayload" }
+          }
+        }
+      ]
+    },
+    "responseItemPayload": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "description": "OpenAI response item kind. ASP uses function_call/function_call_output balance to identify tool-running activity.",
+          "type": "string"
+        },
+        "call_id": {
+          "type": ["string", "null"]
+        },
+        "id": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "type": ["string", "null"]
+        },
+        "role": {
+          "type": ["string", "null"]
+        },
+        "content": {
+          "type": ["array", "object", "string", "null"]
+        },
+        "name": {
+          "type": ["string", "null"]
+        },
+        "arguments": {
+          "type": ["string", "object", "null"],
+          "additionalProperties": true
+        },
+        "output": {
+          "type": ["string", "object", "array", "null"],
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "turnContextRecord": {
+      "allOf": [
+        { "$ref": "#/$defs/recordBase" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "turn_context" }
+          }
+        }
+      ]
+    },
+    "compactedRecord": {
+      "allOf": [
+        { "$ref": "#/$defs/recordBase" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "compacted" }
+          }
+        }
+      ]
+    }
+  }
+}

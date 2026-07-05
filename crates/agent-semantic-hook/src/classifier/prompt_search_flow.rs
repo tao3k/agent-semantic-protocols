@@ -4,8 +4,9 @@ use serde_json::Value;
 
 use crate::event_state::{
     AspDirectSourceReadShape, AspSearchCommandStage, asp_command_tokens,
-    asp_query_code_or_direct_read_tokens, asp_query_direct_source_read_shape_tokens,
-    asp_search_stage_tokens, prompt_asp_command_count, prompt_search_flow_after_prime,
+    asp_query_code_or_direct_read_tokens, asp_query_direct_inventory_or_fetch_tokens,
+    asp_query_direct_source_read_shape_tokens, asp_search_stage_tokens, prompt_asp_command_count,
+    prompt_search_flow_after_prime,
 };
 use crate::{
     DecisionKind, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
@@ -31,7 +32,23 @@ pub(super) fn classify_prompt_search_flow_feedback(
     let command_tokens = action.command_tokens()?;
     let search_stage = asp_search_stage_tokens(&command_tokens);
     let query_code_or_direct_read = asp_query_code_or_direct_read_tokens(&command_tokens);
+    let direct_inventory_or_fetch = asp_query_direct_inventory_or_fetch_tokens(&command_tokens);
     let direct_source_read_shape = asp_query_direct_source_read_shape_tokens(&command_tokens);
+    if let Some((language_id, selector)) = file_level_query_code_selector(registry, &command_tokens)
+    {
+        return Some(file_level_query_code_decision(
+            platform,
+            event,
+            action,
+            &language_id,
+            &selector,
+        ));
+    }
+    let agent_session_lifecycle_command =
+        search_stage.is_none() && asp_agent_session_command_tokens(&command_tokens);
+    if agent_session_lifecycle_command {
+        return None;
+    }
     let asp_budget_enabled = prompt_asp_command_budget().is_some();
     if search_stage.is_none()
         && !query_code_or_direct_read
@@ -67,7 +84,7 @@ pub(super) fn classify_prompt_search_flow_feedback(
             }
             _ => {}
         }
-        if query_code_or_direct_read {
+        if query_code_or_direct_read && !direct_inventory_or_fetch {
             return Some(search_flow_feedback_decision(
                 platform,
                 event,
@@ -127,6 +144,109 @@ fn action_supports_prompt_search_flow_feedback(action: &ToolAction) -> bool {
         action.operation,
         OperationIntent::ShellCommand | OperationIntent::StdinContinuation
     )
+}
+
+fn asp_agent_session_command_tokens(command_tokens: &[String]) -> bool {
+    command_tokens.windows(3).any(|tokens| {
+        is_asp_command_token(&tokens[0]) && tokens[1] == "agent" && tokens[2] == "session"
+    })
+}
+
+fn file_level_query_code_selector(
+    registry: &HookRuntime,
+    tokens: &[String],
+) -> Option<(String, String)> {
+    let asp_index = tokens
+        .iter()
+        .position(|token| is_asp_command_token(token))?;
+    let after_asp = &tokens[asp_index + 1..];
+    let (language_id, query_tokens) = if after_asp.first().map(String::as_str) == Some("query") {
+        (language_from_flags(after_asp)?, after_asp)
+    } else if after_asp.get(1).map(String::as_str) == Some("query") {
+        (after_asp.first()?.clone(), &after_asp[1..])
+    } else {
+        return None;
+    };
+    if !query_tokens.iter().any(|token| token == "--code") {
+        return None;
+    }
+    if matches!(
+        option_value(query_tokens, "--from-hook"),
+        Some("direct-source-read")
+    ) {
+        return None;
+    }
+    let selector = option_value(query_tokens, "--selector")?;
+    if selector_is_parser_owned(selector)
+        || !selector_is_source_file_or_line_range(registry, selector)
+    {
+        return None;
+    }
+    Some((language_id, selector.to_string()))
+}
+
+fn language_from_flags(tokens: &[String]) -> Option<String> {
+    option_value(tokens, "--language").map(str::to_string)
+}
+
+fn option_value<'a>(tokens: &'a [String], option: &str) -> Option<&'a str> {
+    tokens.windows(2).find_map(|pair| {
+        if pair[0] == option {
+            Some(pair[1].as_str())
+        } else {
+            None
+        }
+    })
+}
+
+fn selector_is_parser_owned(selector: &str) -> bool {
+    selector.contains("://") && selector.contains("#item/")
+}
+
+fn selector_is_source_file_or_line_range(registry: &HookRuntime, selector: &str) -> bool {
+    let path = selector_before_line_range(selector);
+    let Some(extension) = std::path::Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+    else {
+        return false;
+    };
+    registry.providers.iter().any(|provider| {
+        provider
+            .source_extensions
+            .iter()
+            .any(|source| source.trim_start_matches('.') == extension)
+    })
+}
+
+fn selector_before_line_range(selector: &str) -> &str {
+    let mut path = selector;
+    for _ in 0..2 {
+        let Some((candidate, suffix)) = path.rsplit_once(':') else {
+            break;
+        };
+        if !is_line_range(suffix) {
+            break;
+        }
+        path = candidate;
+    }
+    path
+}
+
+fn is_line_range(value: &str) -> bool {
+    if let Some((start, end)) = value.split_once('-') {
+        is_decimal(start) && is_decimal(end)
+    } else {
+        is_decimal(value)
+    }
+}
+
+fn is_decimal(value: &str) -> bool {
+    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn is_asp_command_token(token: &str) -> bool {
+    token == "asp" || token.ends_with("/asp") || token.ends_with("\\asp.exe")
 }
 
 fn classify_prompt_asp_command_budget(
@@ -234,6 +354,59 @@ fn search_flow_feedback_decision(
         message: search_flow_feedback_message(language_id, feedback_kind, heading),
         fields,
     }
+}
+
+fn file_level_query_code_decision(
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    language_id: &str,
+    selector: &str,
+) -> HookDecision {
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert(
+        "hookFeedback".to_string(),
+        Value::String("file-level-query-code-denied".to_string()),
+    );
+    fields.insert(
+        "languageId".to_string(),
+        Value::String(language_id.to_string()),
+    );
+    fields.insert("selector".to_string(), Value::String(selector.to_string()));
+    HookDecision {
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+        platform: platform.to_string(),
+        event: event.to_string(),
+        decision: DecisionKind::Deny,
+        reason_kind: ReasonKind::DirectSourceRead,
+        language_ids: vec![language_id.to_string()],
+        subject: subject_for_action(action),
+        routes: Vec::new(),
+        message: file_level_query_code_message(language_id, selector),
+        fields,
+    }
+}
+
+fn file_level_query_code_message(language_id: &str, selector: &str) -> String {
+    [
+        format!("ASP hook denied file-level `query --code` for `{selector}`."),
+        "A source file path is not a parser-owned exact read selector.".to_string(),
+        String::new(),
+        "## Run Next".to_string(),
+        format!(
+            "Ask `asp-explore` to run `asp {language_id} search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace . --view seeds` and return selector-only `[asp-search-subagent]` receipts."
+        ),
+        String::new(),
+        "## Rules".to_string(),
+        "The parent exact read must use a parser-owned item selector such as `rust://...#item/function/name`."
+            .to_string(),
+        "Do not use file-level `--code`, line-range selectors, or raw source reads as search evidence."
+            .to_string(),
+    ]
+    .join("\n")
 }
 
 fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading: &str) -> String {

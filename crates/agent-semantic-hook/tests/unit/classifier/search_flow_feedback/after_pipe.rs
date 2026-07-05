@@ -7,6 +7,50 @@ use super::{
 };
 
 #[test]
+fn pre_tool_allows_exact_selector_code_query_before_pipe_as_direct_fetch() {
+    let project_root = temp_project_root("asp-hook-query-selector-before-pipe");
+    append_hook_event_state(
+        &project_root,
+        &allowed_command_decision(
+            "claude",
+            "post-tool",
+            "session-effect",
+            "transcript-effect.jsonl",
+            "asp typescript search prime --workspace . --view seeds",
+        ),
+    )
+    .expect("write prime event");
+    let mut runtime = runtime_for_project(&project_root);
+    let provider = runtime
+        .providers
+        .iter_mut()
+        .find(|provider| provider.language_id == "typescript")
+        .expect("typescript fixture provider");
+    provider.language_id = "gerbil-scheme".to_string();
+    provider.provider_id = "gerbil-scheme-harness".to_string();
+    provider.source_extensions = vec![".ss".to_string()];
+
+    let decision = classify_hook(
+        &runtime,
+        "claude",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-effect",
+            "transcript_path": "transcript-effect.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp typescript query --selector typescript://packages/effect/src/Fiber.ts#item/function/runFiber --workspace . --code"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(!decision.fields.contains_key("hookFeedback"));
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
 fn pre_tool_denies_repeated_search_pipe_after_pipe() {
     let project_root = temp_project_root("asp-hook-repeat-pipe");
     append_hook_event_state(
@@ -31,7 +75,15 @@ fn pre_tool_denies_repeated_search_pipe_after_pipe() {
         ),
     )
     .expect("write pipe event");
-    let runtime = runtime_for_project(&project_root);
+    let mut runtime = runtime_for_project(&project_root);
+    let provider = runtime
+        .providers
+        .iter_mut()
+        .find(|provider| provider.language_id == "typescript")
+        .expect("typescript fixture provider");
+    provider.language_id = "gerbil-scheme".to_string();
+    provider.provider_id = "gerbil-scheme-harness".to_string();
+    provider.source_extensions = vec![".ss".to_string()];
 
     let decision = classify_hook(
         &runtime,
@@ -264,13 +316,153 @@ fn pre_tool_allows_selector_code_query_after_pipe() {
             "transcript_path": "transcript-effect.jsonl",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp typescript query --selector packages/effect/src/Fiber.ts:110:112 --workspace . --code"
+                "command": "asp typescript query --selector typescript://packages/effect/src/Fiber.ts#item/function/runFiber --workspace . --code"
             }
         }),
     );
 
     assert_eq!(decision.decision, DecisionKind::Allow);
     assert!(!decision.fields.contains_key("hookFeedback"));
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_denies_file_selector_code_query_after_pipe_without_direct_read() {
+    let project_root = temp_project_root("asp-hook-file-selector-code-after-pipe");
+    append_hook_event_state(
+        &project_root,
+        &allowed_command_decision(
+            "claude",
+            "post-tool",
+            "session-effect",
+            "transcript-effect.jsonl",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
+        ),
+    )
+    .expect("write pipe event");
+    let runtime = runtime_for_project(&project_root);
+
+    let decision = classify_hook(
+        &runtime,
+        "claude",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-effect",
+            "transcript_path": "transcript-effect.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp typescript query --selector packages/effect/src/Fiber.ts:110:112 --workspace . --code"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.reason_kind,
+        agent_semantic_hook::ReasonKind::DirectSourceRead
+    );
+    assert_eq!(
+        decision.fields["hookFeedback"],
+        "file-level-query-code-denied"
+    );
+    assert!(
+        decision
+            .message
+            .contains("not a parser-owned exact read selector"),
+        "{}",
+        decision.message
+    );
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_denies_registered_language_file_selector_code_query() {
+    let project_root = temp_project_root("asp-hook-registered-language-file-selector-code");
+    fs::create_dir_all(project_root.join("src")).expect("create src");
+    fs::write(project_root.join("src/core.registered"), "module core").expect("write source");
+    let mut runtime = runtime_for_project(&project_root);
+    let language_id = {
+        let provider = runtime
+            .providers
+            .iter_mut()
+            .next()
+            .expect("registered fixture provider");
+        provider.source_extensions = vec![".registered".to_string()];
+        provider.language_id.clone()
+    };
+
+    let decision = classify_hook(
+        &runtime,
+        "claude",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-gerbil",
+            "transcript_path": "transcript-gerbil.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": format!("asp {language_id} query --selector src/core.registered --workspace . --code")
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.reason_kind,
+        agent_semantic_hook::ReasonKind::DirectSourceRead
+    );
+    assert_eq!(
+        decision.fields["hookFeedback"],
+        "file-level-query-code-denied"
+    );
+    assert_eq!(decision.fields["languageId"], language_id);
+    assert_eq!(decision.fields["selector"], "src/core.registered");
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_denies_registered_extension_file_selector_code_query() {
+    let project_root = temp_project_root("asp-hook-registered-extension-file-selector-code");
+    fs::create_dir_all(project_root.join("src")).expect("create src");
+    fs::write(project_root.join("src/core.widget"), "module core").expect("write source");
+    let mut runtime = runtime_for_project(&project_root);
+    let language_id = {
+        let provider = runtime
+            .providers
+            .iter_mut()
+            .next()
+            .expect("registered fixture provider");
+        provider.source_extensions = vec![".widget".to_string()];
+        provider.language_id.clone()
+    };
+
+    let decision = classify_hook(
+        &runtime,
+        "claude",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-registered-extension",
+            "transcript_path": "transcript-registered-extension.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": format!("asp {language_id} query --selector src/core.widget --workspace . --code")
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.reason_kind,
+        agent_semantic_hook::ReasonKind::DirectSourceRead
+    );
+    assert_eq!(
+        decision.fields["hookFeedback"],
+        "file-level-query-code-denied"
+    );
+    assert_eq!(decision.fields["languageId"], language_id);
+    assert_eq!(decision.fields["selector"], "src/core.widget");
     let _ = fs::remove_dir_all(project_root);
 }
 

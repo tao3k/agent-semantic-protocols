@@ -2,6 +2,9 @@
 
 mod contract;
 mod facade;
+mod search_facade;
+mod session_facade;
+mod source_index_facade;
 mod turso;
 mod turso_artifact;
 mod turso_artifact_graph;

@@ -8,6 +8,22 @@ use std::path::{Path, PathBuf};
 
 #[path = "client_hook_claude_smoke/codex_session.rs"]
 mod codex_session;
+#[path = "client_hook_claude_smoke/rollout_fixture.rs"]
+mod rollout_fixture;
+
+fn write_codex_asp_explore_rollout(
+    root: &Path,
+    root_session_id: &str,
+    child_session_id: &str,
+    actual_model: &str,
+) {
+    rollout_fixture::write_codex_asp_explore_rollout(
+        root,
+        root_session_id,
+        child_session_id,
+        actual_model,
+    );
+}
 
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -135,6 +151,62 @@ fn codex_asp_explore_session_can_run_asp_query() {
     );
 
     assert_eq!(decision["decision"].as_str(), Some("allow"));
+}
+
+#[test]
+fn codex_asp_explore_session_denies_write_tools() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000040",
+        "019f126d-0000-7000-8000-000000000140",
+    );
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        json!({
+            "session_id": "019f126d-0000-7000-8000-000000000140",
+            "tool_name": "Write",
+            "tool_input": {
+                "path": "src/lib.rs",
+                "content": "not allowed from asp-explore"
+            }
+        }),
+        &[
+            ("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000140"),
+            (
+                "ASP_ROOT_SESSION_ID",
+                "019f126d-0000-7000-8000-000000000040",
+            ),
+        ],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["reasonKind"].as_str(),
+        Some("read-only-subagent-write")
+    );
+    assert_eq!(
+        decision["fields"]["residentChildName"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["readOnlySessionId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000140")
+    );
+    assert_eq!(
+        decision["fields"]["requiredAction"].as_str(),
+        Some("return-read-only-search-evidence")
+    );
+    assert!(
+        decision["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("may only run ASP search/query"),
+        "{decision}"
+    );
 }
 
 #[test]
@@ -290,13 +362,10 @@ fn codex_main_session_allows_configured_main_asp_command_prefix() {
     write_hook_config(
         &root,
         r#"
-[agents.asp_explore]
-mainAllowedAspCommandPrefixes = [
-  "help",
-  "agent session",
-  "org recall",
-  "org capture",
-  "install plugin",
+[agents]
+residentAgents = [
+  { name = "asp-explore", role = "asp_explorer", lifecycle = "resident", mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org capture", "install plugin"] },
+  { name = "asp-testing", role = "asp_testing", lifecycle = "ephemeral" },
 ]
 "#,
     );
@@ -835,7 +904,10 @@ fn collect_activation_paths(dir: &Path, matches: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             collect_activation_paths(&path, matches);
-        } else if path.ends_with("live/hooks/state/activation.json") {
+        } else if path.file_name().and_then(|name| name.to_str()) == Some("activation.json")
+            && path.parent().and_then(|parent| parent.file_name())
+                == Some(std::ffi::OsStr::new("state"))
+        {
             matches.push(path);
         }
     }
@@ -877,7 +949,12 @@ fn register_asp_explore_session_with_extra_args(
     child_session_id: &str,
     extra_args: &[&str],
 ) {
-    write_codex_asp_explore_rollout(root, root_session_id, child_session_id, "gpt-5.4-mini");
+    rollout_fixture::write_codex_asp_explore_rollout(
+        root,
+        root_session_id,
+        child_session_id,
+        "gpt-5.4-mini",
+    );
     let mut args = vec![
         "agent",
         "session",
@@ -886,8 +963,8 @@ fn register_asp_explore_session_with_extra_args(
         "asp-explore",
         "--child-session-id",
         child_session_id,
-        "--role",
-        "asp-explore",
+        "--roles",
+        "subagent,search",
     ];
     args.extend_from_slice(extra_args);
 
@@ -907,86 +984,6 @@ fn register_asp_explore_session_with_extra_args(
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-fn write_codex_asp_explore_rollout(
-    root: &Path,
-    root_session_id: &str,
-    child_session_id: &str,
-    actual_model: &str,
-) {
-    let codex_home = root.join(".codex-home");
-    let agents_dir = codex_home.join("agents");
-    std::fs::create_dir_all(&agents_dir).expect("create test Codex agents dir");
-    let agent_path = agents_dir.join("asp-explorer.toml");
-    if !agent_path.is_file() {
-        std::fs::write(
-            &agent_path,
-            "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nsandbox_mode = \"read-only\"\n",
-        )
-        .expect("write test asp-explorer agent config");
-    }
-    let rollout_dir = codex_home.join("sessions/2026/07/02");
-    std::fs::create_dir_all(&rollout_dir).expect("create test Codex sessions dir");
-    let root_rollout_path = rollout_dir.join(format!("rollout-test-{root_session_id}.jsonl"));
-    let root_session_meta = json!({
-        "type": "session_meta",
-        "payload": {
-            "session_id": root_session_id,
-            "id": root_session_id,
-            "thread_source": "root"
-        }
-    });
-    let child_spawn = json!({
-        "type": "response_item",
-        "payload": {
-            "type": "thread_spawn",
-            "id": child_session_id,
-            "parent_thread_id": root_session_id,
-            "agent_role": "asp_explorer",
-            "agent_nickname": "ASP search",
-            "agent_path": agent_path
-        }
-    });
-    std::fs::write(
-        root_rollout_path,
-        format!("{root_session_meta}\n{child_spawn}\n"),
-    )
-    .expect("write test Codex root rollout");
-    let rollout_path = rollout_dir.join(format!("rollout-test-{child_session_id}.jsonl"));
-    let session_meta = json!({
-        "type": "session_meta",
-        "payload": {
-            "session_id": root_session_id,
-            "id": child_session_id,
-            "parent_thread_id": root_session_id,
-            "thread_source": "subagent",
-            "agent_role": "asp_explorer",
-            "agent_nickname": "ASP search",
-            "source": {
-                "subagent": {
-                    "thread_spawn": {
-                        "parent_thread_id": root_session_id,
-                        "depth": 1,
-                        "agent_role": "asp_explorer",
-                        "agent_nickname": "ASP search",
-                        "agent_path": agent_path
-                    }
-                }
-            }
-        }
-    });
-    let turn_context = json!({
-        "type": "turn_context",
-        "payload": {
-            "model": actual_model,
-            "sandbox_policy": {"type": "read-only"},
-            "approval_policy": "never",
-            "permission_profile": {"type": "disabled"}
-        }
-    });
-    std::fs::write(rollout_path, format!("{session_meta}\n{turn_context}\n"))
-        .expect("write test Codex rollout");
 }
 
 fn show_agent_session_json(root: &Path, child_session_id: &str) -> Value {

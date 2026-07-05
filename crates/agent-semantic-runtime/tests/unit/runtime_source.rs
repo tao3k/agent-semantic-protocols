@@ -50,14 +50,28 @@ fn runtime_source_index_context_is_owned_by_runtime() {
     let checkout_root = cache_dir.join("runtime-source/python/v1");
     fs::create_dir_all(&checkout_root).expect("create checkout root");
 
-    let context =
-        runtime_source_index_context(&checkout_root, &cache_dir, "python", "python-harness")
-            .expect("runtime source index context");
+    let context = runtime_source_index_context(
+        (
+            checkout_root.as_path(),
+            cache_dir.as_path(),
+            "python",
+            "python-harness",
+        )
+            .into(),
+    )
+    .expect("runtime source index context");
 
     assert_eq!(context.checkout_root, canonical(&checkout_root));
     assert_eq!(
         context.registry_fingerprint,
-        runtime_source_registry_fingerprint(&canonical(&checkout_root), "python", "python-harness")
+        runtime_source_registry_fingerprint(
+            (
+                canonical(&checkout_root).as_path(),
+                "python",
+                "python-harness"
+            )
+                .into()
+        )
     );
     assert!(context.registry_fingerprint.contains("runtimeSource\n"));
     assert!(context.registry_fingerprint.contains("language=python"));
@@ -77,9 +91,16 @@ fn runtime_source_index_context_rejects_checkouts_outside_client_cache() {
     fs::create_dir_all(&cache_dir).expect("create cache dir");
     fs::create_dir_all(&checkout_root).expect("create checkout root");
 
-    let error =
-        runtime_source_index_context(&checkout_root, &cache_dir, "python", "python-harness")
-            .expect_err("checkout outside cache must fail");
+    let error = runtime_source_index_context(
+        (
+            checkout_root.as_path(),
+            cache_dir.as_path(),
+            "python",
+            "python-harness",
+        )
+            .into(),
+    )
+    .expect_err("checkout outside cache must fail");
 
     assert!(error.contains("outside ASP client cache"));
     let _ = fs::remove_dir_all(root);
@@ -95,8 +116,9 @@ fn runtime_source_index_files_are_collected_by_runtime() {
     fs::write(root.join("src/readme.md"), "# ignored\n").expect("write ignored extension");
     fs::write(root.join(".git/ignored.rs"), "pub fn ignored() {}\n").expect("write vcs file");
 
-    let files = collect_runtime_source_index_files(&root, "rust", "rs-harness", 8)
-        .expect("collect runtime source index files");
+    let files =
+        collect_runtime_source_index_files((root.as_path(), "rust", "rs-harness", 8).into())
+            .expect("collect runtime source index files");
 
     assert_eq!(files.len(), 2);
     assert_eq!(files[0].path, root.join("src/lib.rs"));
@@ -104,12 +126,15 @@ fn runtime_source_index_files_are_collected_by_runtime() {
     assert_eq!(files[0].provider_id, "rs-harness");
     assert_eq!(files[1].path, root.join("src/nested/mod.rs"));
 
-    let limited = collect_runtime_source_index_files(&root, "rust", "rs-harness", 1)
-        .expect("collect limited runtime source index files");
+    let limited =
+        collect_runtime_source_index_files((root.as_path(), "rust", "rs-harness", 1).into())
+            .expect("collect limited runtime source index files");
     assert_eq!(limited.len(), 1);
 
-    let unknown = collect_runtime_source_index_files(&root, "unknown", "unknown-harness", 8)
-        .expect("collect unknown language runtime source index files");
+    let unknown = collect_runtime_source_index_files(
+        (root.as_path(), "unknown", "unknown-harness", 8).into(),
+    )
+    .expect("collect unknown language runtime source index files");
     assert!(unknown.is_empty());
     let _ = fs::remove_dir_all(root);
 }

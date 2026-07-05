@@ -18,6 +18,33 @@ This surface does not record hidden model reasoning.  It records only visible
 assistant text, tool requests, tool results, command I/O, hook responses,
 provider logs, explicit decision summaries, and final answers.
 
+** ASP-managed subagent permission enforcement
+Codex rollout metadata is an observation surface, not an authorization surface. The Codex =session_meta= event may expose structured subagent fields such as =session_meta.payload.source.subagent.thread_spawn.agent_nickname= and =session_meta.payload.source.subagent.thread_spawn.agent_role=. These fields are valid rollout metadata for diagnostics and registry validation, but they MUST NOT independently decide whether a session is ASP-managed or whether a tool action is allowed.
+
+Read-only enforcement for ASP-managed search children uses two control-plane facts together:
+- the live ASP session registry MUST identify the current hook =session_id= as the registered child session for the ASP-managed resident, such as =asp-explore=;
+- the resident agent configuration under =~/.agent-semantic-protocols/agents= MUST set the effective permission through =sandbox_mode = "read-only"=.
+
+Codex currently runs subagents with the parent agent's effective sandbox in some host flows. When the configured ASP resident is =read-only= but the host rollout reports a write-capable sandbox, the pre-tool hook performs compensating enforcement: write/edit tools are denied in the child, and the child is instructed to return compact ASP search/query evidence instead of editing. This deny path is scoped to ASP registry/config confirmed children; user-created subagents with similar names, nicknames, or roles are outside ASP management unless the registry and agent config both match.
+
+** Model mismatch recovery
+Model mismatch is a recoverable warning, not a child identity failure. If a
+registered Codex child still matches the root session, parent thread, agent role,
+and expected ASP-managed agent config, validation keeps the child addressable and
+sets =validationStatus=warning= with
+=requiredAction=parent-follow-up-existing-child-with-model=.
+
+The executable recovery action belongs to the parent-side Codex control plane:
+the parent sends a follow-up to the existing child thread with a model override
+equal to =requiredModel=, then reruns =asp agent session status --name
+asp-explore --json=. The child should not self-switch by shelling out, and the
+parent must not create a replacement child for this condition.
+
+=asp agent session switch-model --model <model> --json= is a configuration-layer
+operation. It updates the global ASP/Codex model mapping and projects
+ASP-managed Codex agent config symlinks. Use it for capacity fallback or durable
+mapping changes, not as the live-thread recovery action for a one-off mismatch.
+
 ** Session event stream
 
 The canonical local event stream is

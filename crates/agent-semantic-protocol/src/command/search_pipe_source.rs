@@ -2,18 +2,15 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use agent_semantic_client::{
-    SourceIndexLookupResult, SourceIndexLookupState, lookup_source_index_for_language,
-};
+use agent_semantic_client::lookup_search_pipe_source_index_for_language;
+use agent_semantic_client_db::{ClientDbEngine, TursoClientDbSearchHit};
 use agent_semantic_search::{
-    SearchPipeDocumentAcquisitionRequest, SearchPipeSearchOverlayAcquisitionRequest,
-    SearchPipeSourceAcquisition, SearchPipeSourceAcquisitionTrace,
-    SearchPipeSourceIndexAcquisition, SearchPipeSourceIndexAcquisitionRequest,
-    SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate,
-    SearchPipeSourceIndexLookup, SearchPipeSourceMode, collect_search_pipe_document_acquisition,
-    collect_search_pipe_search_overlay_acquisition, collect_search_pipe_source_index_acquisition,
+    SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
+    SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
+    SearchPipeSourceAcquisitionTrace, SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
+    collect_search_pipe_document_acquisition, collect_search_pipe_search_overlay_acquisition,
 };
 use orgize::document::DocumentLanguage;
 use serde_json::Value;
@@ -23,8 +20,6 @@ use super::search_pipe_candidates::{
     PIPE_CANDIDATE_LINE_LIMIT, parse_ingest_candidates, read_piped_stdin,
 };
 use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
-
-const DOCUMENT_PIPE_CANDIDATE_LIMIT: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SourceSpec {
@@ -159,75 +154,42 @@ fn auto_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
-    let source_index_acquisition =
-        source_index_candidates(language_id, project_root, intent, scopes);
-    if let Some(acquisition) = source_index_acquisition
-        .as_ref()
-        .filter(|acquisition| source_index_acquisition_blocks_backend(acquisition))
-    {
-        return Ok(CandidateAcquisition {
-            candidates: acquisition.candidates.clone(),
-            candidate_sources: vec!["source-index".to_string()],
-            source_trace: acquisition.source_trace.clone(),
-        });
-    }
-    if let Some(acquisition) = source_index_acquisition
-        .as_ref()
-        .filter(|acquisition| source_index_path_query_defers_backend(acquisition, intent))
-    {
-        return Ok(CandidateAcquisition {
-            candidates: acquisition.candidates.clone(),
-            candidate_sources: vec!["source-index".to_string()],
-            source_trace: acquisition.source_trace.clone(),
-        });
-    }
-    if let Some(acquisition) = source_index_acquisition
-        .as_ref()
-        .filter(|acquisition| !acquisition.candidates.is_empty())
-    {
-        return Ok(CandidateAcquisition {
-            candidates: acquisition.candidates.clone(),
-            candidate_sources: vec!["source-index".to_string(), "search-overlay".to_string()],
-            source_trace: acquisition.source_trace.clone(),
-        });
-    }
-    let search_overlay_acquisition = collect_search_pipe_search_overlay_acquisition(
-        SearchPipeSearchOverlayAcquisitionRequest {
-            language_id,
+    let language = agent_semantic_client::LanguageId::from(language_id);
+    let source_index_query = source_index_lookup_query(language_id, intent);
+    let source_index_lookup = if scopes.is_empty() {
+        Some(lookup_search_pipe_source_index_for_language(
             project_root,
-            locator_root,
-            query: intent,
-            owners: scopes,
-            ignore_dirs: &config.search.ignore_dirs,
-            include_hidden_dirs: &config.search.include_hidden_dirs,
-            limit: PIPE_CANDIDATE_LINE_LIMIT,
-        },
-    )?;
-    let elapsed = search_overlay_acquisition.elapsed;
-    let candidates = search_overlay_acquisition
-        .candidates
+            Some(&language),
+            &source_index_query,
+            PIPE_CANDIDATE_LINE_LIMIT as u32,
+        )?)
+    } else {
+        None
+    };
+    let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
+        language_id,
+        project_root,
+        locator_root,
+        query: intent,
+        owners: scopes,
+        ignore_dirs: &config.search.ignore_dirs,
+        include_hidden_dirs: &config.search.include_hidden_dirs,
+        limit: PIPE_CANDIDATE_LINE_LIMIT,
+        source_index_lookup: source_index_lookup.as_ref(),
+    })?;
+    Ok(candidate_acquisition_from_search(acquisition))
+}
+
+fn source_index_lookup_query(language_id: &str, intent: &str) -> String {
+    let clauses = super::search_pipe_query_pack::query_clauses(language_id, intent);
+    if clauses.len() < 2 {
+        return intent.to_string();
+    }
+    super::search_pipe_query_pack::unique_query_terms(&clauses)
         .into_iter()
-        .map(Candidate::from)
-        .collect::<Vec<_>>();
-    let fallback_source = candidate_route_source(&candidates);
-    Ok(CandidateAcquisition {
-        candidate_sources: vec!["provider".to_string(), fallback_source.to_string()],
-        source_trace: source_index_trace_prefix(source_index_acquisition)
-            .into_iter()
-            .chain([
-                SearchPipeSourceTrace::new(
-                    "provider",
-                    "partial",
-                    0,
-                    usize::from(!candidates.is_empty()),
-                    0,
-                )
-                .with_fields(elapsed_fields(elapsed)),
-                candidate_trace(fallback_source, &candidates).with_fields(elapsed_fields(elapsed)),
-            ])
-            .collect(),
-        candidates,
-    })
+        .map(|term| term.raw)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn candidate_acquisition_from_search(
@@ -262,233 +224,6 @@ fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSou
     source_trace
 }
 
-fn source_index_acquisition_blocks_backend(acquisition: &CandidateAcquisition) -> bool {
-    acquisition.source_trace.iter().any(|trace| {
-        trace.source == "sourceIndex"
-            && trace.status == "skipped"
-            && trace
-                .fields
-                .get("reason")
-                .and_then(Value::as_str)
-                .is_some_and(|reason| reason == "query-gate")
-    })
-}
-
-fn source_index_path_query_defers_backend(
-    acquisition: &CandidateAcquisition,
-    intent: &str,
-) -> bool {
-    intent_terms_all_path_like(intent)
-        && acquisition.source_trace.iter().any(|trace| {
-            trace.source == "sourceIndex"
-                && matches!(trace.status.as_str(), "missing-db" | "empty-index" | "miss")
-        })
-}
-
-fn intent_terms_all_path_like(intent: &str) -> bool {
-    let terms = intent
-        .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .collect::<Vec<_>>();
-    !terms.is_empty()
-        && terms
-            .iter()
-            .all(|term| term.contains('/') || term.contains('\\') || term.contains('.'))
-}
-
-fn source_index_candidates(
-    language_id: &str,
-    project_root: &Path,
-    intent: &str,
-    scopes: &[PathBuf],
-) -> Option<CandidateAcquisition> {
-    if !scopes.is_empty() {
-        return None;
-    }
-    if let Some(acquisition) =
-        collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
-            intent,
-            scopes,
-            lookup: None,
-        })
-    {
-        return Some(source_index_acquisition_from_search(acquisition, None));
-    }
-    let started_at = Instant::now();
-    let language_scope = agent_semantic_client::LanguageId::from(language_id);
-    match lookup_source_index_for_language(
-        project_root,
-        Some(&language_scope),
-        intent,
-        DOCUMENT_PIPE_CANDIDATE_LIMIT as u32,
-    ) {
-        Ok(result) => {
-            let lookup = search_source_index_lookup_from_client(&result);
-            let acquisition = collect_search_pipe_source_index_acquisition(
-                SearchPipeSourceIndexAcquisitionRequest {
-                    intent,
-                    scopes,
-                    lookup: Some(&lookup),
-                },
-            )?;
-            let candidates = acquisition
-                .candidates
-                .iter()
-                .cloned()
-                .map(Candidate::from)
-                .collect::<Vec<_>>();
-            let mut source_trace = vec![source_index_trace(&result, candidates.len(), started_at)];
-            if acquisition.decision == SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay {
-                source_trace.push(SearchPipeSourceTrace::new(
-                    "search-overlay",
-                    "skipped",
-                    0,
-                    0,
-                    0,
-                ));
-            }
-            Some(CandidateAcquisition {
-                candidate_sources: vec!["source-index".to_string()],
-                source_trace,
-                candidates,
-            })
-        }
-        Err(error) => {
-            let mut fields = elapsed_fields(started_at.elapsed());
-            fields.insert("state".to_string(), Value::from("error"));
-            fields.insert("detail".to_string(), Value::from(compact_detail(&error)));
-            fields.insert(
-                "nextCommand".to_string(),
-                Value::from("asp cache source-index refresh"),
-            );
-            Some(CandidateAcquisition {
-                candidates: Vec::new(),
-                candidate_sources: vec!["source-index".to_string()],
-                source_trace: vec![
-                    SearchPipeSourceTrace::new("sourceIndex", "error", 0, 1, 0).with_fields(fields),
-                ],
-            })
-        }
-    }
-}
-
-fn source_index_acquisition_from_search(
-    acquisition: SearchPipeSourceIndexAcquisition,
-    source_trace: Option<SearchPipeSourceTrace>,
-) -> CandidateAcquisition {
-    let candidates = acquisition
-        .candidates
-        .into_iter()
-        .map(Candidate::from)
-        .collect::<Vec<_>>();
-    let source_trace = source_trace
-        .map(|trace| vec![trace])
-        .unwrap_or_else(|| source_index_gate_trace(acquisition.gate));
-    CandidateAcquisition {
-        candidate_sources: vec!["source-index".to_string()],
-        source_trace,
-        candidates,
-    }
-}
-
-fn source_index_gate_trace(gate: Option<SearchPipeSourceIndexGate>) -> Vec<SearchPipeSourceTrace> {
-    let Some(gate) = gate else {
-        return Vec::new();
-    };
-    let mut fields = std::collections::BTreeMap::new();
-    fields.insert("reason".to_string(), Value::from("query-gate"));
-    fields.insert("termCount".to_string(), Value::from(gate.term_count));
-    fields.insert(
-        "genericTermCount".to_string(),
-        Value::from(gate.generic_term_count),
-    );
-    vec![SearchPipeSourceTrace::new("sourceIndex", "skipped", 0, 0, 0).with_fields(fields)]
-}
-
-fn search_source_index_lookup_from_client(
-    result: &SourceIndexLookupResult,
-) -> SearchPipeSourceIndexLookup {
-    SearchPipeSourceIndexLookup {
-        state: result.state.as_str().to_string(),
-        candidates: result
-            .candidates
-            .iter()
-            .map(|candidate| SearchPipeSourceIndexCandidate {
-                path: candidate.path.clone(),
-                language_id: candidate
-                    .language_id
-                    .as_ref()
-                    .map(|value| value.as_str().to_string()),
-                provider_id: candidate
-                    .provider_id
-                    .as_ref()
-                    .map(|value| value.as_str().to_string()),
-                source_kind: candidate.source_kind.as_str().to_string(),
-                line_count: candidate.line_count,
-                query_keys: candidate.query_keys.clone(),
-            })
-            .collect(),
-    }
-}
-
-fn source_index_trace_prefix(
-    acquisition: Option<CandidateAcquisition>,
-) -> Vec<SearchPipeSourceTrace> {
-    acquisition
-        .map(|acquisition| acquisition.source_trace)
-        .unwrap_or_default()
-}
-
-pub(super) fn source_index_trace(
-    result: &SourceIndexLookupResult,
-    candidate_count: usize,
-    started_at: Instant,
-) -> SearchPipeSourceTrace {
-    source_index_trace_with_elapsed(result, candidate_count, started_at.elapsed())
-}
-
-pub(super) fn source_index_trace_with_elapsed(
-    result: &SourceIndexLookupResult,
-    candidate_count: usize,
-    elapsed: std::time::Duration,
-) -> SearchPipeSourceTrace {
-    let mut fields = elapsed_fields(elapsed);
-    fields.insert(
-        "collectMs".to_string(),
-        Value::from(elapsed_millis(elapsed)),
-    );
-    fields.insert("state".to_string(), Value::from(result.state.as_str()));
-    if result.state != SourceIndexLookupState::Hit {
-        fields.insert(
-            "nextCommand".to_string(),
-            Value::from("asp cache source-index refresh"),
-        );
-    }
-    SearchPipeSourceTrace::new(
-        "sourceIndex",
-        source_index_trace_status(&result.state),
-        candidate_count,
-        usize::from(candidate_count == 0),
-        candidate_count,
-    )
-    .with_fields(fields)
-}
-
-fn source_index_trace_status(state: &SourceIndexLookupState) -> &'static str {
-    match state {
-        SourceIndexLookupState::Hit => "used",
-        SourceIndexLookupState::MissingDb => "missing-db",
-        SourceIndexLookupState::EmptyIndex => "empty-index",
-        SourceIndexLookupState::Busy => "busy",
-        SourceIndexLookupState::Miss => "miss",
-    }
-}
-
-fn compact_detail(detail: &str) -> String {
-    detail.split_whitespace().collect::<Vec<_>>().join("_")
-}
-
 fn search_overlay_candidates(
     language_id: &str,
     project_root: &Path,
@@ -497,6 +232,11 @@ fn search_overlay_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
+    if scopes.is_empty() {
+        if let Some(acquisition) = turso_overlay_candidates(project_root, locator_root, intent)? {
+            return Ok(acquisition);
+        }
+    }
     let acquisition = collect_search_pipe_search_overlay_acquisition(
         SearchPipeSearchOverlayAcquisitionRequest {
             language_id,
@@ -522,6 +262,91 @@ fn search_overlay_candidates(
         ],
         candidates,
     })
+}
+
+fn turso_overlay_candidates(
+    project_root: &Path,
+    locator_root: &Path,
+    intent: &str,
+) -> Result<Option<CandidateAcquisition>, String> {
+    let engine = match ClientDbEngine::resolve(project_root) {
+        Ok(engine) => engine,
+        Err(_) => return Ok(None),
+    };
+    let hits = match engine.search_documents_blocking(intent, PIPE_CANDIDATE_LINE_LIMIT as u32) {
+        Ok(hits) => hits,
+        Err(_) => return Ok(None),
+    };
+    if hits.is_empty() {
+        return Ok(None);
+    }
+    let candidates = hits
+        .into_iter()
+        .map(|hit| turso_search_hit_candidate(locator_root, hit))
+        .collect::<Vec<_>>();
+    Ok(Some(CandidateAcquisition {
+        candidate_sources: vec!["search-overlay".to_string()],
+        source_trace: vec![candidate_trace("search-overlay", &candidates)],
+        candidates,
+    }))
+}
+
+fn turso_search_hit_candidate(locator_root: &Path, hit: TursoClientDbSearchHit) -> Candidate {
+    let selector = hit.selector.clone();
+    let path = selector
+        .as_deref()
+        .and_then(selector_path)
+        .unwrap_or_else(|| hit.document_id.as_str())
+        .to_string();
+    let path = display_locator_path(locator_root, &path);
+    Candidate {
+        path: path.clone(),
+        line: selector.as_deref().and_then(selector_line).unwrap_or(1),
+        end_line: selector.as_deref().and_then(selector_line).unwrap_or(1),
+        symbol: selector
+            .as_deref()
+            .and_then(selector_symbol)
+            .unwrap_or_else(|| symbol_from_path(&path))
+            .to_string(),
+        selector,
+        text: hit.document,
+        source: "search-overlay".to_string(),
+        confidence: format!("turso-{}", hit.source),
+    }
+}
+
+fn selector_path(selector: &str) -> Option<&str> {
+    selector
+        .split_once('#')
+        .map(|(path, _)| path)
+        .or_else(|| selector.split_once(':').map(|(path, _)| path))
+        .filter(|path| !path.is_empty())
+}
+
+fn selector_line(selector: &str) -> Option<usize> {
+    selector
+        .split(':')
+        .nth(1)
+        .and_then(|line| line.parse::<usize>().ok())
+}
+
+fn selector_symbol(selector: &str) -> Option<&str> {
+    selector
+        .rsplit('/')
+        .next()
+        .filter(|symbol| !symbol.is_empty())
+}
+
+fn symbol_from_path(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+fn display_locator_path(locator_root: &Path, path: &str) -> String {
+    let path = Path::new(path);
+    path.strip_prefix(locator_root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn candidate_route_source(_candidates: &[Candidate]) -> &'static str {

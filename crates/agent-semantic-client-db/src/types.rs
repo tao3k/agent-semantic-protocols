@@ -96,16 +96,16 @@ pub struct ClientDbGenerationHit {
 /// Cached provider command selection for one activation context.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbProviderCommandSelection {
-    manifest_id: String,
-    manifest_digest: String,
-    language_id: String,
-    provider_id: String,
-    binary: String,
-    execution: String,
-    provider_command_prefix: Vec<String>,
-    executable_path: Option<String>,
-    executable_len: Option<i64>,
-    executable_mtime_ms: Option<i64>,
+    pub manifest_id: String,
+    pub manifest_digest: String,
+    pub language_id: String,
+    pub provider_id: String,
+    pub binary: String,
+    pub execution: String,
+    pub provider_command_prefix: Vec<String>,
+    pub executable_path: Option<String>,
+    pub executable_len: Option<i64>,
+    pub executable_mtime_ms: Option<i64>,
 }
 
 impl ClientDbProviderCommandSelection {
@@ -184,6 +184,63 @@ impl ClientDbProviderCommandSelection {
     #[must_use]
     pub fn executable_mtime_ms(&self) -> Option<i64> {
         self.executable_mtime_ms
+    }
+}
+
+impl ClientDbArtifactEvent {
+    #[must_use]
+    pub fn artifact_path(&self) -> &str {
+        &self.artifact_path
+    }
+
+    #[must_use]
+    pub fn event_ordinal(&self) -> u32 {
+        self.event_ordinal
+    }
+
+    #[must_use]
+    pub fn timestamp_ms(&self) -> i64 {
+        self.timestamp_ms
+    }
+
+    #[must_use]
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    #[must_use]
+    pub fn language(&self) -> &str {
+        &self.language
+    }
+
+    #[must_use]
+    pub fn method(&self) -> &str {
+        &self.method
+    }
+
+    #[must_use]
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    #[must_use]
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    #[must_use]
+    pub fn project_root(&self) -> &str {
+        &self.project_root
+    }
+
+    #[must_use]
+    pub fn project_root_arg(&self) -> &str {
+        &self.project_root_arg
+    }
+
+    #[must_use]
+    pub fn bytes(&self) -> u64 {
+        self.bytes
     }
 }
 

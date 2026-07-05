@@ -24,7 +24,7 @@ fn exact_direct_read_source_suffixes_route_by_language() {
         assert_eq!(decision.decision, DecisionKind::Deny, "{selector}");
         assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
         assert_eq!(decision.language_ids, [language_id.to_string()]);
-        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
         assert_eq!(decision.routes[0].binary, "asp", "{selector}");
         assert_eq!(decision.routes[0].provider_id, provider_id, "{selector}");
     }
@@ -59,12 +59,14 @@ fn rust_basename_reads_route_through_asp_facade() {
             [
                 "asp",
                 "rust",
-                "query",
-                "--selector",
+                "search",
+                "owner",
                 selector,
+                "items",
                 "--workspace",
                 ".",
-                "--code",
+                "--view",
+                "seeds",
             ],
             "{selector}"
         );
@@ -153,12 +155,14 @@ fn direct_read_path_field_variants_route_source_paths() {
             [
                 "asp",
                 "rust",
-                "query",
-                "--selector",
+                "search",
+                "owner",
                 selector,
+                "items",
                 "--workspace",
                 ".",
-                "--code",
+                "--view",
+                "seeds",
             ],
             "{selector}"
         );

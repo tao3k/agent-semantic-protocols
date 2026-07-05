@@ -113,6 +113,55 @@ pub(super) fn write_codex_asp_explorer_fixture_with_agent_path_presence(
     actual_agent_path: Option<&Path>,
     include_agent_path: bool,
 ) {
+    write_codex_asp_explorer_fixture_with_agent_role(
+        home,
+        root_session_id,
+        child_session_id,
+        expected_model,
+        actual_model,
+        expected_sandbox,
+        actual_sandbox,
+        actual_agent_path,
+        include_agent_path,
+        "asp_explorer",
+    );
+}
+
+pub(super) fn write_codex_asp_explorer_fixture_with_default_agent_role(
+    home: &Path,
+    root_session_id: &str,
+    child_session_id: &str,
+    expected_model: &str,
+    actual_model: &str,
+    expected_sandbox: &str,
+    actual_sandbox: &str,
+) {
+    write_codex_asp_explorer_fixture_with_agent_role(
+        home,
+        root_session_id,
+        child_session_id,
+        expected_model,
+        actual_model,
+        expected_sandbox,
+        actual_sandbox,
+        None,
+        false,
+        "default",
+    );
+}
+
+fn write_codex_asp_explorer_fixture_with_agent_role(
+    home: &Path,
+    root_session_id: &str,
+    child_session_id: &str,
+    expected_model: &str,
+    actual_model: &str,
+    expected_sandbox: &str,
+    actual_sandbox: &str,
+    actual_agent_path: Option<&Path>,
+    include_agent_path: bool,
+    actual_agent_role: &str,
+) {
     let agents_dir = home.join(".codex").join("agents");
     std::fs::create_dir_all(&agents_dir).expect("create codex agents dir");
     let expected_agent_path = agents_dir.join("asp-explorer.toml");
@@ -165,14 +214,14 @@ pub(super) fn write_codex_asp_explorer_fixture_with_agent_path_presence(
             "id": child_session_id,
             "parent_thread_id": root_session_id,
             "thread_source": "subagent",
-            "agent_role": "asp_explorer",
+            "agent_role": actual_agent_role,
             "agent_nickname": "ASP search",
             "source": {
                 "subagent": {
                     "thread_spawn": {
                         "parent_thread_id": root_session_id,
                         "depth": 1,
-                        "agent_role": "asp_explorer",
+                        "agent_role": actual_agent_role,
                         "agent_nickname": "ASP search"
                     }
                 }

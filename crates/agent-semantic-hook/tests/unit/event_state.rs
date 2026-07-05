@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashSet};
+use std::ffi::OsString;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -12,9 +14,13 @@ use agent_semantic_hook::{
 };
 use serde_json::Value;
 
+static ASP_STATE_HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+
 #[test]
 fn concurrent_hook_event_appends_write_valid_json_lines() {
     let project_root = unique_project_root();
+    let state_home = unique_state_home(&project_root);
+    let _state_home_guard = AspStateHomeGuard::activate(state_home);
     let run_id = project_root
         .file_name()
         .and_then(|name| name.to_str())
@@ -65,6 +71,8 @@ fn concurrent_hook_event_appends_write_valid_json_lines() {
 #[test]
 fn recorded_subagent_context_tracks_latest_lifecycle_event() {
     let project_root = unique_project_root();
+    let state_home = unique_state_home(&project_root);
+    let _state_home_guard = AspStateHomeGuard::activate(state_home);
     let session_id = "subagent-session-123";
     let transcript_path = "/tmp/subagent-session-123.jsonl";
 
@@ -100,6 +108,8 @@ fn recorded_subagent_context_tracks_latest_lifecycle_event() {
 #[test]
 fn oversized_hook_event_state_is_truncated_before_append() {
     let project_root = unique_project_root();
+    let state_home = unique_state_home(&project_root);
+    let _state_home_guard = AspStateHomeGuard::activate(state_home);
     let mut state_path =
         append_hook_event_state(&project_root, &decision("seed", 0)).expect("seed event");
 
@@ -142,6 +152,43 @@ fn unique_project_root() -> PathBuf {
     fs::create_dir_all(&project_root).expect("temp project root should be created");
     fs::create_dir_all(project_root.join(".git")).expect("temp git marker should be created");
     project_root
+}
+
+fn unique_state_home(project_root: &std::path::Path) -> PathBuf {
+    project_root.join(".agent-semantic-protocols-test-state")
+}
+
+struct AspStateHomeGuard {
+    _guard: MutexGuard<'static, ()>,
+    previous: Option<OsString>,
+}
+
+impl AspStateHomeGuard {
+    fn activate(path: PathBuf) -> Self {
+        let guard = ASP_STATE_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = std::env::var_os("ASP_STATE_HOME");
+        unsafe {
+            std::env::set_var("ASP_STATE_HOME", path);
+        }
+        Self {
+            _guard: guard,
+            previous,
+        }
+    }
+}
+
+impl Drop for AspStateHomeGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(previous) = &self.previous {
+                std::env::set_var("ASP_STATE_HOME", previous);
+            } else {
+                std::env::remove_var("ASP_STATE_HOME");
+            }
+        }
+    }
 }
 
 fn decision(run_id: &str, index: usize) -> HookDecision {

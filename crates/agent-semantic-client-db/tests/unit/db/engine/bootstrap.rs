@@ -120,6 +120,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_turso_fixture() {}\n".to_string(),
+            selectors: Vec::new(),
         }],
     })
     .expect("build source-index Turso read-model import");

@@ -174,9 +174,11 @@ The registration gate is:
    continue the lifecycle validation loop.
 
 This gate makes registration the handoff between Codex child creation and ASP
-lifecycle ownership. =projectId= is used here to locate the project-scoped
-registry record and configuration. It is still not the resident ownership key;
-the routable resident key remains the root/parent/child/role relationship.
+lifecycle ownership. The lifecycle registry is the top-level ASP control-plane
+database at =$ASP_STATE_HOME/session-registry.turso=; =projectId= is a row
+context and configuration lookup dimension, not a registry placement rule. It
+is still not the resident ownership key; the routable resident key remains the
+root/parent/child/role relationship.
 
 The topology MUST NOT use project id as its primary key. A subagent may be
 opened in a host thread that is not represented under the same project folder
@@ -221,6 +223,14 @@ the parent relation from the host (=source_thread_id= / delegation metadata) or
 write it during SessionStart into =activitySnapshotShort=. That snapshot is the
 fallback source of truth when =list_threads= only exposes user-visible thread
 summaries.
+
+** Registry Placement Invariant
+The session registry is the ASP lifecycle control-plane database at
+=$ASP_STATE_HOME/session-registry.turso=. =projectId= is a context field inside
+registry rows and configuration lookup; it MUST NOT imply a
+project-directory registry database. =projects/by-id/<repo_id>/...= remains
+the project/workspace artifact, dynamic-history, command-history, and analysis
+surface for downstream Python, Julia, and provider tooling.
 
 ** Codex Source Owners For Lifecycle Control
 

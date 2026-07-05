@@ -139,12 +139,14 @@ fn codex_fs_read_file_policy_denies_activated_source_path() {
         json!([
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ])
     );
 }

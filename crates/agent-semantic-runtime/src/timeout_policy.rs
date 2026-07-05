@@ -3,9 +3,21 @@
 /// Timeout policy for one runtime operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeOperationTimeoutPolicy {
-    pub operation: String,
-    pub max_elapsed_ms: u128,
-    pub cancel_after_ms: u128,
+    pub(crate) operation: String,
+    pub(crate) max_elapsed_ms: u128,
+    pub(crate) cancel_after_ms: u128,
+}
+
+impl RuntimeOperationTimeoutPolicy {
+    /// Create a timeout policy for one named runtime operation.
+    #[must_use]
+    pub fn new(operation: impl Into<String>, max_elapsed_ms: u128, cancel_after_ms: u128) -> Self {
+        Self {
+            operation: operation.into(),
+            max_elapsed_ms,
+            cancel_after_ms,
+        }
+    }
 }
 
 /// Runtime-owned receipt for timeout and cancellation accounting.

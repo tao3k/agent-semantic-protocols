@@ -370,6 +370,7 @@ fn state_projects_gc_dry_run_and_apply_delete_only_orphans() {
     let research_dir = projects_dir.join("repo-research");
     let no_remote_dir = projects_dir.join("repo-no-remote");
     let missing_project_json_dir = projects_dir.join("repo-missing-project-json");
+    let blocked_registry_dir = projects_dir.join("repo-blocked-registry");
     write_project(
         "repo-active",
         &active_checkout,
@@ -383,6 +384,26 @@ fn state_projects_gc_dry_run_and_apply_delete_only_orphans() {
     write_project("repo-no-remote", &no_remote_checkout, None);
     std::fs::create_dir_all(&missing_project_json_dir)
         .expect("create missing project json fixture");
+    std::fs::create_dir_all(
+        blocked_registry_dir
+            .join("workspaces")
+            .join("workspace-test")
+            .join("live")
+            .join("client")
+            .join("agent"),
+    )
+    .expect("create blocked registry fixture dir");
+    std::fs::write(
+        blocked_registry_dir
+            .join("workspaces")
+            .join("workspace-test")
+            .join("live")
+            .join("client")
+            .join("agent")
+            .join("session-registry.turso"),
+        "registry placeholder",
+    )
+    .expect("write blocked registry placeholder");
 
     let dry_run_output = asp_command(&root)
         .env("ASP_STATE_HOME", &state_home)
@@ -397,8 +418,9 @@ fn state_projects_gc_dry_run_and_apply_delete_only_orphans() {
     let dry_run_report: serde_json::Value =
         serde_json::from_slice(&dry_run_output.stdout).expect("parse gc dry run json");
     assert_eq!(dry_run_report["mode"], "dry-run");
-    assert_eq!(dry_run_report["summary"]["deleteCandidates"], 2);
-    assert_eq!(dry_run_report["summary"]["wouldDelete"], 2);
+    assert_eq!(dry_run_report["summary"]["deleteCandidates"], 4);
+    assert_eq!(dry_run_report["summary"]["deleteBlocked"], 0);
+    assert_eq!(dry_run_report["summary"]["wouldDelete"], 4);
     assert_eq!(dry_run_report["summary"]["deleted"], 0);
     assert!(active_dir.is_dir(), "active project must survive dry-run");
     assert!(
@@ -412,6 +434,10 @@ fn state_projects_gc_dry_run_and_apply_delete_only_orphans() {
     assert!(
         missing_project_json_dir.is_dir(),
         "missing-project-json orphan must survive dry-run"
+    );
+    assert!(
+        blocked_registry_dir.is_dir(),
+        "registry-blocked orphan must survive dry-run"
     );
 
     let apply_output = asp_command(&root)
@@ -427,11 +453,15 @@ fn state_projects_gc_dry_run_and_apply_delete_only_orphans() {
     let apply_report: serde_json::Value =
         serde_json::from_slice(&apply_output.stdout).expect("parse gc apply json");
     assert_eq!(apply_report["mode"], "apply");
-    assert_eq!(apply_report["summary"]["deleteCandidates"], 2);
-    assert_eq!(apply_report["summary"]["deleted"], 2);
+    assert_eq!(apply_report["summary"]["deleteCandidates"], 4);
+    assert_eq!(apply_report["summary"]["deleteBlocked"], 0);
+    assert_eq!(apply_report["summary"]["deleted"], 4);
     assert_eq!(apply_report["summary"]["errors"], 0);
     assert!(active_dir.is_dir(), "active project must survive apply");
-    assert!(research_dir.is_dir(), "present project must survive apply");
+    assert!(
+        !research_dir.exists(),
+        "present but non-active project should be deleted"
+    );
     assert!(
         !no_remote_dir.exists(),
         "orphan no-remote project should be deleted"
@@ -439,6 +469,10 @@ fn state_projects_gc_dry_run_and_apply_delete_only_orphans() {
     assert!(
         !missing_project_json_dir.exists(),
         "orphan missing-project-json project should be deleted"
+    );
+    assert!(
+        !blocked_registry_dir.exists(),
+        "orphan with session registry should be deleted when session_registry_present is no longer a delete blocker"
     );
 
     let audit_after_apply = asp_command(&root)
@@ -453,10 +487,11 @@ fn state_projects_gc_dry_run_and_apply_delete_only_orphans() {
     );
     let audit_report: serde_json::Value =
         serde_json::from_slice(&audit_after_apply.stdout).expect("parse audit after gc json");
-    assert_eq!(audit_report["summary"]["total"], 2);
+    assert_eq!(audit_report["summary"]["total"], 1);
     assert_eq!(audit_report["summary"]["activeCandidate"], 1);
-    assert_eq!(audit_report["summary"]["presentCandidate"], 1);
+    assert_eq!(audit_report["summary"]["presentCandidate"], 0);
     assert_eq!(audit_report["summary"]["orphanCandidate"], 0);
+    assert_eq!(audit_report["summary"]["deleteBlocked"], 0);
 
     let _ = std::fs::remove_dir_all(checkout_base);
     let _ = std::fs::remove_dir_all(root);

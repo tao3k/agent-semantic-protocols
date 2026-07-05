@@ -202,12 +202,13 @@ fn run_state_projects_gc_command(options: StateProjectsCommandOptions) -> Result
         println!("{body}");
     } else {
         println!(
-            "[state-projects-gc] owner=rust stateHome=\"{}\" mode={} deleteCandidates={} deleted={} errors={} activeCandidates={} presentCandidates={}",
+            "[state-projects-gc] owner=rust stateHome=\"{}\" mode={} deleteCandidates={} deleteBlocked={} deleted={} errors={} activeCandidates={} presentCandidates={}",
             state_home.display(),
             gc_report["mode"].as_str().unwrap_or("dry-run"),
             gc_report["summary"]["deleteCandidates"]
                 .as_u64()
                 .unwrap_or(0),
+            gc_report["summary"]["deleteBlocked"].as_u64().unwrap_or(0),
             gc_report["summary"]["deleted"].as_u64().unwrap_or(0),
             gc_report["summary"]["errors"].as_u64().unwrap_or(0),
             gc_report["summary"]["activeCandidate"]
@@ -355,13 +356,9 @@ fn audit_state_project_dir(
                 .count()
         })
         .unwrap_or(0);
-    let session_registry_paths = state_project_session_registry_paths(project_dir);
-    let mut delete_blockers = Vec::<String>::new();
-    if !session_registry_paths.is_empty() {
-        classification.push("session_registry_present".to_string());
-        delete_blockers.push("session_registry_present".to_string());
-    }
+    let delete_blockers = Vec::<String>::new();
     let remote_key = remote_url.as_deref().map(normalize_remote_url);
+    let stale_runtime_dirs = stale_state_project_runtime_dirs(project_dir);
     let status = if reasons.is_empty() {
         "present_candidate"
     } else {
@@ -385,29 +382,10 @@ fn audit_state_project_dir(
         "remoteUrl": remote_url,
         "remoteKey": remote_key,
         "identityBasis": identity_basis,
-        "workspaceCount": workspace_count,
-        "sessionRegistryCount": session_registry_paths.len(),
-        "sessionRegistries": session_registry_paths,
+    "workspaceCount": workspace_count,
+        "staleRuntimeDirCount": stale_runtime_dirs.len(),
+        "staleRuntimeDirs": stale_runtime_dirs,
     })
-}
-
-fn state_project_session_registry_paths(project_dir: &Path) -> Vec<PathBuf> {
-    let workspaces_dir = project_dir.join("workspaces");
-    let Ok(workspaces) = workspaces_dir.read_dir() else {
-        return Vec::new();
-    };
-    workspaces
-        .filter_map(Result::ok)
-        .map(|entry| {
-            entry
-                .path()
-                .join("live")
-                .join("client")
-                .join("agent")
-                .join("session-registry.turso")
-        })
-        .filter(|path| path.is_file())
-        .collect()
 }
 
 fn state_projects_gc_report(
@@ -423,11 +401,10 @@ fn state_projects_gc_report(
     let mut deleted = 0_u64;
     let mut errors = 0_u64;
     let mut would_delete = 0_u64;
+    let mut stale_runtime_dirs_removed = 0_u64;
+    let mut stale_runtime_dirs_would_remove = 0_u64;
 
     for project in projects {
-        if project["dryRunDeleteCandidate"].as_bool() != Some(true) {
-            continue;
-        }
         let Some(repo_id) = project["repoId"].as_str() else {
             errors += 1;
             actions.push(serde_json::json!({
@@ -437,6 +414,7 @@ fn state_projects_gc_report(
             }));
             continue;
         };
+        let project_delete_candidate = project["dryRunDeleteCandidate"].as_bool() == Some(true);
         let Some(project_dir) = state_project_gc_target_dir(state_home, repo_id) else {
             errors += 1;
             actions.push(serde_json::json!({
@@ -447,8 +425,7 @@ fn state_projects_gc_report(
             }));
             continue;
         };
-
-        if apply {
+        if project_delete_candidate && apply {
             match fs::remove_dir_all(&project_dir) {
                 Ok(()) => {
                     deleted += 1;
@@ -470,7 +447,9 @@ fn state_projects_gc_report(
                     }));
                 }
             }
-        } else {
+            continue;
+        }
+        if project_delete_candidate {
             would_delete += 1;
             actions.push(serde_json::json!({
                 "repoId": repo_id,
@@ -478,6 +457,41 @@ fn state_projects_gc_report(
                 "projectDir": project_dir,
                 "reasons": project["reasons"].clone(),
             }));
+            continue;
+        }
+
+        for stale_dir in stale_state_project_runtime_dirs(&project_dir) {
+            if apply {
+                match fs::remove_dir_all(&stale_dir) {
+                    Ok(()) => {
+                        stale_runtime_dirs_removed += 1;
+                        actions.push(serde_json::json!({
+                            "repoId": repo_id,
+                            "status": "removed_stale_runtime_dir",
+                            "projectDir": project_dir,
+                            "staleRuntimeDir": stale_dir,
+                        }));
+                    }
+                    Err(error) => {
+                        errors += 1;
+                        actions.push(serde_json::json!({
+                            "repoId": repo_id,
+                            "status": "error",
+                            "projectDir": project_dir,
+                            "staleRuntimeDir": stale_dir,
+                            "error": error.to_string(),
+                        }));
+                    }
+                }
+            } else {
+                stale_runtime_dirs_would_remove += 1;
+                actions.push(serde_json::json!({
+                    "repoId": repo_id,
+                    "status": "would_remove_stale_runtime_dir",
+                    "projectDir": project_dir,
+                    "staleRuntimeDir": stale_dir,
+                }));
+            }
         }
     }
 
@@ -488,16 +502,20 @@ fn state_projects_gc_report(
         "stateHome": state_home,
         "mode": if apply { "apply" } else { "dry-run" },
         "apply": apply,
-        "deleteMode": if apply { "apply-orphan-project-state" } else { "dry-run-only" },
+        "deleteMode": if apply { "apply-project-and-stale-runtime-state" } else { "dry-run-only" },
         "summary": {
             "deleteCandidates": actions.len(),
             "wouldDelete": would_delete,
             "deleted": deleted,
+            "staleRuntimeDirs": audit_summary["staleRuntimeDirs"].clone(),
+            "staleRuntimeDirsWouldRemove": stale_runtime_dirs_would_remove,
+            "staleRuntimeDirsRemoved": stale_runtime_dirs_removed,
             "errors": errors,
             "activeCandidate": audit_summary["activeCandidate"].clone(),
             "activeUniqueRemote": audit_summary["activeUniqueRemote"].clone(),
             "presentCandidate": audit_summary["presentCandidate"].clone(),
             "orphanCandidate": audit_summary["orphanCandidate"].clone(),
+            "deleteBlocked": audit_summary["deleteBlocked"].clone(),
             "total": audit_summary["total"].clone(),
         },
         "projects": actions,
@@ -520,6 +538,22 @@ fn classify_state_project_entries(entries: &mut [serde_json::Value]) {
     mark_duplicate_checkout_roots(entries, &checkout_groups);
     mark_duplicate_remotes(entries, &remote_groups);
     promote_active_state_project_candidates(entries);
+    recompute_state_project_delete_candidates(entries);
+}
+
+fn recompute_state_project_delete_candidates(entries: &mut [serde_json::Value]) {
+    for entry in entries {
+        let active = entry["activeCandidate"].as_bool() == Some(true);
+        let blocked = entry["deleteBlockers"]
+            .as_array()
+            .is_some_and(|values| !values.is_empty());
+        let status_is_gc_candidate = matches!(
+            entry["status"].as_str(),
+            Some("present_candidate") | Some("orphan_candidate")
+        );
+        entry["dryRunDeleteCandidate"] =
+            serde_json::json!(!active && !blocked && status_is_gc_candidate);
+    }
 }
 
 fn state_project_remote_groups(entries: &[serde_json::Value]) -> BTreeMap<String, Vec<usize>> {
@@ -624,6 +658,35 @@ fn promote_active_state_project_candidates(entries: &mut [serde_json::Value]) {
     }
 }
 
+fn stale_state_project_runtime_dirs(project_dir: &Path) -> Vec<PathBuf> {
+    let mut runtime_dirs = Vec::new();
+    let project_agent_dir = project_dir.join("live").join("client").join("agent");
+    if project_agent_dir.is_dir() {
+        runtime_dirs.push(project_agent_dir);
+    }
+
+    let workspaces_dir = project_dir.join("workspaces");
+    if let Ok(workspaces) = fs::read_dir(&workspaces_dir) {
+        for workspace in workspaces.filter_map(Result::ok) {
+            let workspace_dir = workspace.path();
+            if !workspace_dir.is_dir() {
+                continue;
+            }
+            for relative_runtime_dir in
+                ["runtime", "live/runtime", "live/hooks", "live/client/agent"]
+            {
+                let runtime_dir = workspace_dir.join(relative_runtime_dir);
+                if runtime_dir.is_dir() {
+                    runtime_dirs.push(runtime_dir);
+                }
+            }
+        }
+    }
+
+    runtime_dirs.sort();
+    runtime_dirs
+}
+
 fn state_project_audit_summary(entries: &[serde_json::Value]) -> serde_json::Value {
     let mut missing_project_json = 0_u64;
     let mut invalid_project_json = 0_u64;
@@ -639,6 +702,8 @@ fn state_project_audit_summary(entries: &[serde_json::Value]) -> serde_json::Val
     let mut dependency_checkout = 0_u64;
     let mut duplicate_remote = 0_u64;
     let mut duplicate_checkout_root = 0_u64;
+    let mut delete_blocked = 0_u64;
+    let mut stale_runtime_dirs = 0_u64;
     let mut active_unique_remote = BTreeSet::<String>::new();
 
     for entry in entries {
@@ -695,6 +760,13 @@ fn state_project_audit_summary(entries: &[serde_json::Value]) -> serde_json::Val
         if json_array_contains(classification, "duplicate_checkout_root") {
             duplicate_checkout_root += 1;
         }
+        if entry["deleteBlockers"]
+            .as_array()
+            .is_some_and(|values| !values.is_empty())
+        {
+            delete_blocked += 1;
+        }
+        stale_runtime_dirs += entry["staleRuntimeDirCount"].as_u64().unwrap_or(0);
     }
 
     serde_json::json!({
@@ -714,6 +786,8 @@ fn state_project_audit_summary(entries: &[serde_json::Value]) -> serde_json::Val
         "dependencyCheckout": dependency_checkout,
         "duplicateRemote": duplicate_remote,
         "duplicateCheckoutRoot": duplicate_checkout_root,
+        "deleteBlocked": delete_blocked,
+        "staleRuntimeDirs": stale_runtime_dirs,
     })
 }
 

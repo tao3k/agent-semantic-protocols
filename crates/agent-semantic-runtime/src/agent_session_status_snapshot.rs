@@ -45,23 +45,60 @@ pub struct AgentSessionRuntimeStatusSnapshot {
     pub next_action: String,
 }
 
-/// Build the runtime status snapshot for one status command render.
-pub fn agent_session_runtime_status_snapshot(
-    project_root: &Path,
+/// Request for building one runtime status snapshot.
+pub struct AgentSessionRuntimeStatusSnapshotRequest<'a> {
+    project_root: &'a Path,
     now: i64,
     artifact_stale_after_seconds: i64,
-    host_thread_id: Option<&str>,
+    host_thread_id: Option<&'a str>,
     has_registry_record: bool,
     routable: bool,
+}
+
+impl<'a> From<(&'a Path, i64, i64, Option<&'a str>, bool, bool)>
+    for AgentSessionRuntimeStatusSnapshotRequest<'a>
+{
+    fn from(
+        (
+            project_root,
+            now,
+            artifact_stale_after_seconds,
+            host_thread_id,
+            has_registry_record,
+            routable,
+        ): (&'a Path, i64, i64, Option<&'a str>, bool, bool),
+    ) -> Self {
+        Self {
+            project_root,
+            now,
+            artifact_stale_after_seconds,
+            host_thread_id,
+            has_registry_record,
+            routable,
+        }
+    }
+}
+
+/// Build the runtime status snapshot for one status command render.
+pub fn agent_session_runtime_status_snapshot(
+    request: AgentSessionRuntimeStatusSnapshotRequest<'_>,
 ) -> Result<AgentSessionRuntimeStatusSnapshot, String> {
-    let artifacts =
-        agent_session_artifact_activity(project_root, now, artifact_stale_after_seconds)?;
+    let artifacts = agent_session_artifact_activity(
+        request.project_root,
+        request.now,
+        request.artifact_stale_after_seconds,
+    )?;
     let runtime_session = current_agent_runtime_session();
-    let host_probe = agent_session_host_probe(runtime_session.as_ref(), host_thread_id);
-    let next_action = agent_session_next_action(has_registry_record, routable, artifacts.status);
+    let host_probe =
+        agent_session_host_probe((runtime_session.as_ref(), request.host_thread_id).into());
+    let next_action = agent_session_next_action(
+        request.has_registry_record,
+        request.routable,
+        artifacts.status,
+    );
     let health_status = agent_session_health_status(
-        has_registry_record,
-        routable,
+        request.has_registry_record,
+        request.routable,
         host_probe.status,
         artifacts.status,
     );
@@ -77,7 +114,7 @@ pub fn agent_session_runtime_status_snapshot(
         duplicate_worker_allowed: agent_session_duplicate_worker_allowed(),
         artifacts_dir: artifacts.artifacts_dir.display().to_string(),
         artifact_status: artifacts.status.as_str().to_string(),
-        artifact_stale_after_seconds,
+        artifact_stale_after_seconds: request.artifact_stale_after_seconds,
         last_artifact_updated_at: artifacts.latest_updated_at,
         artifact_age_seconds: artifacts.age_seconds,
         last_artifact_path: artifacts.latest_path.map(|path| path.display().to_string()),

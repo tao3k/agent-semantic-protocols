@@ -29,6 +29,18 @@ impl CurrentRolloutTopology {
             })
     }
 
+    pub(super) fn is_direct_resident_subagent(
+        &self,
+        asp_session_policy: &AspSessionPolicy,
+    ) -> bool {
+        self.is_resident_subagent(asp_session_policy)
+            && !self.is_nested_resident_subagent(asp_session_policy)
+    }
+
+    pub(super) fn root_session_id(&self) -> Option<&str> {
+        self.root_session_id.as_deref()
+    }
+
     pub(super) fn is_nested_resident_subagent(
         &self,
         asp_session_policy: &AspSessionPolicy,

@@ -287,3 +287,30 @@ async fn collect_turso_search_hits(
     }
     Ok(())
 }
+
+impl TursoClientDbSearchHit {
+    #[must_use]
+    pub fn source(&self) -> &str {
+        self.source
+    }
+
+    #[must_use]
+    pub fn document_id(&self) -> &str {
+        &self.document_id
+    }
+
+    #[must_use]
+    pub fn entity_id(&self) -> Option<&str> {
+        self.entity_id.as_deref()
+    }
+
+    #[must_use]
+    pub fn selector(&self) -> Option<&str> {
+        self.selector.as_deref()
+    }
+
+    #[must_use]
+    pub fn document(&self) -> &str {
+        &self.document
+    }
+}

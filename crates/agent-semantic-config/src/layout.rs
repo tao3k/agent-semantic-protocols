@@ -11,7 +11,6 @@ pub const PRJ_CACHE_HOME_ENV: &str = "PRJ_CACHE_HOME";
 
 const SEMANTIC_AGENT_PROTOCOL_DIR: &str = "agent-semantic-protocol";
 const SEMANTIC_AGENT_PROTOCOL_HOOK_DIR: &str = "agent-semantic-protocol/hooks";
-const SEMANTIC_AGENT_PROTOCOL_HOOK_STATE_DIR: &str = "agent-semantic-protocol/hooks/state";
 const SEMANTIC_AGENT_PROTOCOL_CLIENT_DIR: &str = "agent-semantic-protocol/client";
 const SEMANTIC_AGENT_PROTOCOL_RUNTIME_DIR: &str = "agent-semantic-protocol/runtime";
 const SEMANTIC_AGENT_PROTOCOL_RUNTIME_BIN_DIR: &str = "agent-semantic-protocol/runtime/bin";
@@ -137,9 +136,7 @@ pub fn project_runtime_layout_with_env(
     let hook_cache_dir = cache_home
         .as_ref()
         .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_HOOK_DIR));
-    let hook_state_dir = cache_home
-        .as_ref()
-        .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_HOOK_STATE_DIR));
+    let hook_state_dir: Option<PathBuf> = None;
     let activation_path = hook_cache_dir
         .as_ref()
         .map(|hook_cache_dir| hook_cache_dir.join("activation.json"));
@@ -200,11 +197,6 @@ fn project_env_status(git_toplevel: Option<&Path>) -> ProjectEnvStatus {
 /// Resolve the project cache directory for hook activation and profiles.
 pub fn project_hook_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_HOOK_DIR))
-}
-
-/// Resolve the project cache directory used for hook event state.
-pub fn project_hook_state_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_HOOK_STATE_DIR))
 }
 
 /// Resolve the project-local ASP protocol home under the cache root.

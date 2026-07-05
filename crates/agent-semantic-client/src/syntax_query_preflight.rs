@@ -8,11 +8,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) fn validate_syntax_query_request(request: &ClientRequest) -> Result<(), String> {
+/// Validate client-side syntax query boundaries before provider execution.
+pub fn validate_syntax_query_request(request: &ClientRequest) -> Result<(), String> {
     validate_code_flag_boundary(request)?;
     if request.method != ClientMethod::Query {
         return Ok(());
     }
+    validate_code_selector_target(request)?;
     validate_query_owner_path(request)?;
     let Some(source) = tree_sitter_query_source(request)? else {
         return Ok(());
@@ -31,6 +33,93 @@ pub(crate) fn validate_syntax_query_request(request: &ClientRequest) -> Result<(
         )
     })?;
     Ok(())
+}
+
+fn validate_code_selector_target(request: &ClientRequest) -> Result<(), String> {
+    if !requests_code_output(&request.forwarded_args) {
+        return Ok(());
+    }
+    let Some(selector) = option_value(&request.forwarded_args, "--selector") else {
+        return Ok(());
+    };
+    let workspace = query_workspace(request);
+    let selector_owner = selector_owner_path(selector);
+    let selector_path = resolve_under_workspace(&workspace, selector_owner.unwrap_or(selector));
+    if selector_path.is_dir() {
+        return Err(format!(
+            "query --selector with --code requires an exact file, range, or structural selector; `{selector}` is a directory. Use search lexical or search owner with --workspace for directory-scoped discovery"
+        ));
+    }
+    if let Some(language_id) = registered_source_selector_language(request, selector) {
+        return Err(format!(
+            "invalid query --code selector `{selector}`: file selectors are not executable code selectors; use search owner <path> items --workspace <root> --view seeds, then query an exact parser-owned selector such as {language_id}://path#item/function/name"
+        ));
+    }
+    if let Some(owner) = selector_owner {
+        if !selector_path.exists() {
+            return Err(format!(
+                "stale-index selector path does not exist under --workspace: {owner} selector={selector} workspace={}",
+                workspace.display()
+            ));
+        }
+        let workspace = canonical_or_original(workspace);
+        let selector_path = canonical_or_original(selector_path);
+        if !selector_path.starts_with(&workspace) {
+            return Err(format!(
+                "selector path is outside --workspace: {owner} selector={selector} workspace={}",
+                workspace.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn selector_owner_path(selector: &str) -> Option<&str> {
+    let (_, rest) = selector.split_once("://")?;
+    let owner = rest
+        .split_once('#')
+        .map(|(owner, _)| owner)
+        .unwrap_or(rest)
+        .trim();
+    (!owner.is_empty()).then_some(owner)
+}
+
+fn selector_path_before_range(selector: &str) -> &str {
+    selector
+        .split_once(':')
+        .map_or(selector, |(path, _range)| path)
+}
+
+fn registered_source_selector_language<'a>(
+    request: &'a ClientRequest,
+    selector: &str,
+) -> Option<&'a str> {
+    if selector.contains("://") {
+        return None;
+    }
+    if selector_path_before_range(selector) != selector {
+        return None;
+    }
+    let language_id = request.language_id.as_ref()?.as_str();
+    let selector_path = selector_path_before_range(selector);
+    let extension = Path::new(selector_path)
+        .extension()
+        .and_then(|extension| extension.to_str())?;
+    agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == language_id)
+        .and_then(|manifest| {
+            manifest
+                .source
+                .default_extensions
+                .iter()
+                .any(|source| {
+                    source
+                        .trim_start_matches('.')
+                        .eq_ignore_ascii_case(extension)
+                })
+                .then_some(language_id)
+        })
 }
 
 fn validate_code_flag_boundary(request: &ClientRequest) -> Result<(), String> {

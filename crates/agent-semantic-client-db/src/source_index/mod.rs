@@ -21,8 +21,8 @@ pub use types::{
     ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexQueryKey,
     ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
     ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource, ClientDbSourceIndexSourceKind,
-    ClientDbSourceIndexStats, client_db_source_index_file_count,
-    client_db_source_index_generation_id, client_db_source_index_registry_evidence_hash,
-    client_db_source_index_scope_dir_evidence_hash,
+    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSelectorPayloadProof,
+    ClientDbSourceIndexSource, ClientDbSourceIndexSourceKind, ClientDbSourceIndexStats,
+    client_db_source_index_file_count, client_db_source_index_generation_id,
+    client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
 };

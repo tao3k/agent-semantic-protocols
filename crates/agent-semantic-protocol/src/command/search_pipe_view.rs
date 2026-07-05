@@ -81,7 +81,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
                 surface,
                 language_id,
-                dependency_root: locator_root,
+                dependency_root: project_root,
                 cache_home,
                 query,
                 query_clauses: &graph_query_clauses,
@@ -216,7 +216,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     let request_packet = graph_turbo_request(&GraphTurboSearchPipeRequest {
         surface,
         language_id,
-        dependency_root: locator_root,
+        dependency_root: project_root,
         cache_home,
         query,
         query_clauses: graph_query_clauses,
@@ -280,37 +280,8 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         None
     };
     let plan_elapsed = plan_started_at.elapsed();
-    if include_pipe_plan && let Some(query) = query {
-        let quality = quality.as_ref().expect("quality is computed with query");
-        let render_trace = render_phase_source_trace(
-            source_trace,
-            RenderPhaseTimings {
-                total: render_started_at.elapsed(),
-                quality: quality_elapsed,
-                graph: graph_elapsed,
-                receipt: receipt_elapsed,
-                seed: seed_elapsed,
-                compact: compact_elapsed,
-                projection: projection_elapsed,
-                plan: plan_elapsed,
-            },
-        );
-        print_search_pipe_header(SearchPipeHeader {
-            surface,
-            language_id,
-            project_root,
-            locator_root,
-            view: "seeds",
-            source,
-            query,
-            quality,
-            source_trace: &render_trace,
-        });
-    }
-    if !include_pipe_plan
-        && source == "source-index"
-        && let Some(query) = query
-    {
+    let should_print_header = include_pipe_plan || surface == "search-pipe";
+    if should_print_header && let Some(query) = query {
         let quality = quality.as_ref().expect("quality is computed with query");
         let render_trace = render_phase_source_trace(
             source_trace,
@@ -368,10 +339,9 @@ fn render_phase_source_trace(
 ) -> Vec<SearchPipeSourceTrace> {
     let mut trace = source_trace.to_vec();
     let mut fields = BTreeMap::new();
-    fields.insert(
-        "totalMs".to_string(),
-        Value::from(elapsed_millis(timings.total)),
-    );
+    let total_ms = elapsed_millis(timings.total);
+    fields.insert("totalMs".to_string(), Value::from(total_ms));
+    fields.insert("collectMs".to_string(), Value::from(total_ms));
     fields.insert(
         "qualityMs".to_string(),
         Value::from(elapsed_millis(timings.quality)),

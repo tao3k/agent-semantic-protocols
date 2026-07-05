@@ -4,7 +4,7 @@ use syn::spanned::Spanned;
 
 use super::item::OwnerItem;
 
-pub(super) fn collect_syn_rust_owner_items(
+pub(in crate::command) fn collect_syn_rust_owner_items(
     source: &str,
     path: &Path,
 ) -> Result<Vec<OwnerItem>, String> {

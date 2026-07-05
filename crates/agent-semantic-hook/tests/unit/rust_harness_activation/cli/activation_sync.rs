@@ -189,10 +189,12 @@ fn test_activation_path(root: &std::path::Path) -> std::path::PathBuf {
     )
     .expect("write workspace manifest");
     resolved
-        .paths
-        .workspace_dir
-        .join("live")
+        .state_home
         .join("hooks")
+        .join("projects")
+        .join(resolved.repo.repo_id.as_str())
+        .join("workspaces")
+        .join(resolved.workspace.workspace_id.as_str())
         .join("state")
         .join("activation.json")
 }

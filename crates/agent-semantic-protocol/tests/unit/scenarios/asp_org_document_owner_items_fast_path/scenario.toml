@@ -1,0 +1,18 @@
+id = "asp-org-document-owner-items-fast-path"
+title = "ASP org owner-items search stays on the document fast path"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-DOCUMENT-OWNER-ITEMS-FAST-PATH-001",
+]
+agent_goal = "Keep asp org search owner <file> items routed through the document language facade. The command may return a fast capability error when the org owner-items harness is missing, but it must not enter client backend provider self-recursion or spawn nested asp search owner processes."
+reference_repositories = [
+  "agent-semantic-protocols",
+]
+reference_patterns = [
+  "document-language-facade",
+  "owner-items-fast-path",
+  "provider-self-recursion-guard",
+]
+inputs = "inputs"
+expected = "expected"
+harness = "libtest"
+test = "document_owner_items_hot_path::org_owner_items_stays_on_document_fast_path"

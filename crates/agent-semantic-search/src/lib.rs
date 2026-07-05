@@ -12,6 +12,10 @@ mod graph_candidate_sparsity;
 mod graph_evidence_projection;
 mod graph_node_projection;
 mod graph_owner_rank;
+pub use graph_owner_rank::{
+    GraphOwnerRankCandidate, GraphOwnerRankReport, GraphOwnerRankRequest, GraphOwnerRankScore,
+    GraphOwnerRankedOwner, rank_graph_owner_report,
+};
 mod graph_query_owner_seed;
 mod graph_seed_decision;
 mod graph_topology_projection;
@@ -19,11 +23,14 @@ mod lexical_overlay;
 mod owner_items_source_index_trace;
 mod pipe_candidates;
 mod pipe_source;
+pub use pipe_source::SearchPipeSelectorPayloadProof;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
 mod query_packet_replay;
 mod query_wrapper_candidates;
+mod query_wrapper_quality;
 mod query_wrapper_scan;
+mod query_wrapper_scan_source;
 mod search_candidate;
 mod search_language_files;
 mod search_lexical_replay;
@@ -35,6 +42,10 @@ mod search_pipe_query_pack;
 mod search_query_budget;
 mod source_index_lookup;
 mod source_index_rank;
+pub use source_index_rank::{
+    SourceIndexRankReport, SourceIndexRankRequest, SourceIndexRankScore,
+    SourceIndexRankedCandidate, rank_source_index_report,
+};
 mod structural_index_search;
 mod syntax_query_replay;
 mod turso_overlay_search;
@@ -61,9 +72,9 @@ pub use evidence_graph_rank::{
     evidence_graph_rank_terms, rank_evidence_graph_nodes,
 };
 pub use graph_candidate_projection::{
-    GraphProjectionCandidate, graph_candidate_hot_node_id, graph_candidate_hot_nodes,
-    graph_candidate_item_node_id, graph_candidate_item_nodes, graph_candidate_selector,
-    graph_projection_action,
+    GraphCandidateHotNodesRequest, GraphCandidateItemNodesRequest, GraphProjectionCandidate,
+    graph_candidate_hot_node_id, graph_candidate_hot_nodes, graph_candidate_item_node_id,
+    graph_candidate_item_nodes,
 };
 pub use graph_candidate_sparsity::{
     GraphCandidateSparsityInput, select_sparse_graph_candidate_indices,
@@ -79,9 +90,9 @@ pub use graph_seed_decision::{
     SeedPhaseDecision, graph_turbo_seed_plan, recommended_action_for_seed_risk,
 };
 pub use graph_topology_projection::{
-    GraphTopologyProjection, graph_path_is_under, graph_project_submodule_paths,
-    graph_project_submodule_paths_from_content, graph_project_topology_projection,
-    graph_submodule_owner_edges,
+    GraphTopologyProjection, GraphTopologyProjectionRequest, graph_path_is_under,
+    graph_project_submodule_paths, graph_project_submodule_paths_from_content,
+    graph_project_topology_projection, graph_submodule_owner_edges,
 };
 pub use lexical_overlay::{
     LexicalOverlayCandidateHit, LexicalOverlayDocument, LexicalOverlaySearchHit,
@@ -96,14 +107,16 @@ pub use pipe_candidates::{
     SearchPipeCandidate, SearchPipeCandidateRequest, collect_search_pipe_candidates,
 };
 pub use pipe_source::{
-    SearchPipeDocumentAcquisitionRequest, SearchPipeFailureAcquisitionRequest,
-    SearchPipeSearchOverlayAcquisition, SearchPipeSearchOverlayAcquisitionRequest,
-    SearchPipeSourceAcquisition, SearchPipeSourceAcquisitionTrace,
-    SearchPipeSourceIndexAcquisition, SearchPipeSourceIndexAcquisitionRequest,
-    SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate,
-    SearchPipeSourceIndexLookup, SearchPipeSourceMode, collect_search_pipe_document_acquisition,
-    collect_search_pipe_failure_acquisition, collect_search_pipe_search_overlay_acquisition,
-    collect_search_pipe_source_index_acquisition, failure_candidate_query,
+    SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
+    SearchPipeFailureAcquisitionRequest, SearchPipeSearchOverlayAcquisition,
+    SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
+    SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
+    SearchPipeSourceIndexAcquisitionRequest, SearchPipeSourceIndexCandidate,
+    SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate, SearchPipeSourceIndexLookup,
+    SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
+    collect_search_pipe_document_acquisition, collect_search_pipe_failure_acquisition,
+    collect_search_pipe_search_overlay_acquisition, collect_search_pipe_source_index_acquisition,
+    failure_candidate_query,
 };
 pub use prompt_output_replay::{
     PromptOutputFingerprintRequest, PromptOutputReplayRequest, is_prime_seed_search_request,
@@ -118,26 +131,30 @@ pub use query_packet_replay::{
     QueryPacketReplayRequest, query_packet_matches_request, render_query_packet_stdout,
 };
 pub use query_wrapper_candidates::{
-    QueryWrapperCandidateCollection, QueryWrapperClauseCoverage, QueryWrapperQuality,
-    QueryWrapperQualityCandidate, QueryWrapperSearchClause, QueryWrapperSearchRequest,
-    QueryWrapperSearchSourceIndexTrace, QueryWrapperSearchStageTraceProjection,
-    QueryWrapperSearchSurface, QueryWrapperSourceIndexTraceProjection,
-    analyze_query_wrapper_quality, collect_query_wrapper_candidate_collection,
-    query_wrapper_axis_terms, query_wrapper_candidate_matches_term, query_wrapper_clauses,
-    query_wrapper_owner_candidates, query_wrapper_package_clusters,
-    query_wrapper_package_clusters_from_paths, query_wrapper_package_key,
-    query_wrapper_ranked_search_candidates, query_wrapper_rg_scope_next,
-    query_wrapper_search_stage_trace_projection, query_wrapper_source_index_trace_projection,
-    query_wrapper_terms, query_wrapper_unique_clause_terms,
+    QueryWrapperCandidateCollection, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
+    QueryWrapperSearchStageTraceProjection, QueryWrapperSearchSurface,
+    QueryWrapperSourceIndexTraceProjection, collect_query_wrapper_candidate_collection,
+    query_wrapper_ranked_search_candidates, query_wrapper_search_stage_trace_projection,
+    query_wrapper_source_index_trace_projection,
+};
+pub use query_wrapper_quality::{
+    QueryWrapperClauseCoverage, QueryWrapperQuality, QueryWrapperQualityCandidate,
+    QueryWrapperSearchClause, analyze_query_wrapper_quality, query_wrapper_axis_terms,
+    query_wrapper_candidate_matches_term, query_wrapper_clauses, query_wrapper_owner_candidates,
+    query_wrapper_package_clusters, query_wrapper_package_clusters_from_paths,
+    query_wrapper_package_key, query_wrapper_rg_scope_next, query_wrapper_terms,
+    query_wrapper_unique_clause_terms,
 };
 pub use query_wrapper_scan::{
     QUERY_WRAPPER_CANDIDATE_LIMIT, QueryCandidateAppend, QueryWrapperCandidate,
     QueryWrapperCandidateSurface, QueryWrapperScanConfig, QueryWrapperSearchCandidateCollection,
     QueryWrapperSearchCandidateRequest, QueryWrapperSourceIndexCandidate,
-    QueryWrapperSourceIndexCollection, QueryWrapperSourceIndexLookup,
-    QueryWrapperSourceIndexRequest, append_query_candidates, augment_package_path_candidates,
+    QueryWrapperSourceIndexCandidateRequest, QueryWrapperSourceIndexCollection,
+    QueryWrapperSourceIndexLookup, QueryWrapperSourceIndexRequest, append_query_candidates,
+    augment_package_path_candidates,
+};
+pub use query_wrapper_scan_source::{
     collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
-    query_candidate_priority,
 };
 pub use search_candidate::structural_index_hit_to_search_candidate;
 pub use search_candidate::{
@@ -173,8 +190,9 @@ pub use search_pipe_quality::{
     search_pipe_quality_risks, search_pipe_query_pack_quality,
 };
 pub use search_pipe_query_pack::{
-    SearchPipeClauseCoverage, SearchPipeQueryClause, SearchPipeQueryPackCandidate,
-    SearchPipeQueryTerm, SearchPipeTermRole, search_pipe_clause_coverages,
+    SearchPipeClauseCoverage, SearchPipeLanguageId, SearchPipeQueryClause,
+    SearchPipeQueryClausesRequest, SearchPipeQueryPackCandidate, SearchPipeQueryTerm,
+    SearchPipeQueryText, SearchPipeTermRole, search_pipe_clause_coverages,
     search_pipe_is_path_like_token, search_pipe_next_query_pack_hint,
     search_pipe_query_candidate_matches_term, search_pipe_query_clause_texts,
     search_pipe_query_clauses, search_pipe_role_terms, search_pipe_unique_query_terms,
@@ -184,9 +202,10 @@ pub use search_query_budget::{
     search_rg_terms_budget_block, search_terms_budget_block, specific_search_term,
 };
 pub use source_index_lookup::{
-    SourceIndexClientCacheLookupRequest, SourceIndexLookupRequest, lookup_source_index,
-    lookup_source_index_for_language, lookup_source_index_in_cache,
-    lookup_source_index_in_client_cache_dir,
+    SourceIndexClientCacheLookupRequest, SourceIndexClientCachePlannerLookupRequest,
+    SourceIndexLookupRequest, lookup_source_index, lookup_source_index_for_language,
+    lookup_source_index_in_cache, lookup_source_index_in_client_cache_dir,
+    lookup_source_index_in_client_cache_dir_with_planner,
 };
 pub use source_index_rank::{
     SourceIndexRankCandidate, rank_source_index_candidates, reorder_source_index_candidates,
@@ -214,6 +233,7 @@ mod document_auto_lexical_overlay_scenario_tests;
 #[cfg(test)]
 #[path = "../tests/unit/dynamic_search_candidates.rs"]
 mod dynamic_search_candidates_tests;
+pub mod file_locator;
 #[cfg(test)]
 #[path = "../tests/unit/graph_candidate_projection.rs"]
 mod graph_candidate_projection_tests;
@@ -280,6 +300,7 @@ mod search_pipe_quality_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_pipe_query_pack.rs"]
 mod search_pipe_query_pack_tests;
+pub mod search_planner;
 #[cfg(test)]
 #[path = "../tests/unit/search_query_budget.rs"]
 mod search_query_budget_tests;

@@ -1,0 +1,207 @@
+#+TITLE: 10.05.87 Unified File Locator Search Planner
+#+DATE: 2026-07-05
+
+* Status
+Draft for implementation.
+
+* Problem
+ASP search commands currently mix several different questions:
+
+- locate a file by exact path, basename, suffix, or glob
+- search source text
+- ask a language provider for semantic facts or owner-items
+- project graph or research memory evidence
+
+When a filename/path lookup is routed into provider search, semantic overlay,
+Turso graph search, or recursive CLI execution, the command becomes much slower
+than the problem requires. A filename lookup should be bounded by a file index
+and should not require a full content search or a provider process.
+
+* Decision
+Introduce a shared search planning layer with a first-class file locator
+algorithm. The planner owns the choice of backend before command-specific
+projection:
+
+#+begin_src text
+SearchRequest
+  -> SearchPlanner
+  -> FileLocator | SourceIndex | Provider | ResearchIndex
+  -> Projection (org | md | language-core | graph | research)
+#+end_src
+
+The file locator is the first stage for file/path questions. Org, Markdown,
+language-core, graph, and research search surfaces consume the same locator
+candidate set instead of each implementing their own scan.
+
+* File Locator Interface
+The shared locator supports these query classes:
+
+- exact path
+- normalized workspace-relative path
+- basename
+- filename stem
+- path suffix
+- directory segment
+- extension
+- glob
+- fuzzy filename token
+
+The locator returns stable candidates:
+
+#+begin_src text
+FileLocatorCandidate
+  file_id
+  workspace_relative_path
+  match_kind
+  score
+  freshness
+  backend
+#+end_src
+
+* Backend Policy
+Hot path:
+
+- in-memory or DB-backed path index
+- no provider process
+- no semantic overlay
+- no full content scan
+
+Cold refresh:
+
+- use ignore/gitignore-aware enumeration
+- optionally use =fd= as a refresh/enumeration backend when available
+- write/update the shared file index
+
+Miss validation:
+
+- a miss may use a bounded cold refresh
+- the command receipt must say the route was a cold refresh, not a semantic
+  search fallback
+
+* Worker Policy
+A resident worker such as workerd can keep the file index warm and avoid process
+startup, but it is not the search algorithm. Worker usage is an optimization
+behind the same =SearchPlanner= and =FileLocator= interfaces.
+
+* Routing Rules
+Filename/path-shaped requests must be planned before provider execution:
+
+- exact path and suffix path route to =FileLocator=
+- basename/stem route to =FileLocator=
+- glob route to =FileLocator= with globset matching
+- only content-shaped queries route to content/source search
+- only provider-owned semantic questions route to language providers
+- research memory search consumes locator candidates when a query names files
+
+* Scenarios
+Add hard gates for:
+
+- exact filename lookup stays under the file locator and spawns zero providers
+- basename lookup uses the file index and does not scan source content
+- suffix path lookup uses a reversed/suffix path index or bounded candidate set
+- glob lookup uses globset over the file universe
+- source/content search may use source-index or provider routes only after the
+  planner classifies the query as content-shaped
+
+* Performance Gate Scenarios
+The search crate must keep executable scenario gates for planner, locator, and
+rank hot paths:
+- =file_locator::hot_path_lookup_stays_under_two_milliseconds= gates
+  =FileLocatorIndex= path lookup over a large in-memory path universe.
+- =search_planner::planner_file_locator_hot_path_stays_under_two_milliseconds=
+  gates planner routing before source-index/provider fallback.
+- =source_index_rank_performance::rank_report_interactive_page_stays_under_twenty_milliseconds=
+  gates Rust rank report construction for a 1,024-candidate interactive page.
+- =source_index_rank_performance::rank_report_large_release_batch_stays_under_twenty_milliseconds=
+  gates the 20,000-candidate optimized Rust batch path.
+
+Graph Turbo must follow the same pattern before Python/SciPy analysis becomes a
+workflow dependency: Rust first exposes a typed graph/rank report and a runnable
+scenario gate; Python then consumes that report for offline experiments,
+visualization, and algorithm-quality comparisons.
+
+The current graph-rank blocker is API shape, not algorithm intent:
+=ranked_graph_owner_paths_for_submodule_paths= is the likely Rust entrypoint, but
+the candidate model is not constructible from an independent integration target.
+Before Graph Turbo is delegated to Python/SciPy analysis, add a Rust-owned graph
+rank request/report or fixture builder and gate it independently from the legacy
+=unit_test= aggregate target.
+* Rank Layer Contract
+The rank layer is a Rust hot-path interface, not a Python algorithm surface.
+Rust owns normalization, query-term expansion, path/basename/stem/suffix
+matching, query-key coverage, stable sorting, tie breaking, and score
+breakdown construction.
+
+Python and notebook consumers may analyze, visualize, or compare rank reports,
+but they must consume a Rust-computed report instead of recomputing search rank.
+This keeps agent-facing search latency and semantics controlled by the shared
+search crate while still allowing Python workflows to inspect performance and
+quality offline.
+
+The public shape is:
+#+begin_src text
+SourceIndexRankRequest
+  query
+  candidates
+
+SourceIndexRankReport
+  query_terms
+  ranked_candidates
+    candidate
+    score
+      total
+      exact_path
+      basename
+      stem
+      suffix
+      term_coverage
+      query_key_coverage
+#+end_src
+* Non-Goals
+This RFC does not require every command to use =fd= directly. =fd= is one
+possible cold enumeration backend. The durable contract is the planner and
+locator interface, not a specific executable.
+* Current Performance Gates
+This section supersedes any earlier wording in this RFC that describes graph owner rank as ungated.
+- =file_locator::hot_path_lookup_stays_under_two_milliseconds= gates indexed path lookup.
+- =search_planner::planner_file_locator_hot_path_stays_under_two_milliseconds= gates planner routing before source-index/provider fallback.
+- =source_index_rank_performance::rank_report_interactive_page_stays_under_twenty_milliseconds= gates Rust rank report construction for a 1,024-candidate interactive page.
+- =source_index_rank_performance::rank_report_large_release_batch_stays_under_twenty_milliseconds= gates the 20,000-candidate optimized Rust batch path.
+- =graph_owner_rank::graph_owner_rank_hot_path_stays_under_twenty_milliseconds= gates graph owner ranking for a 1,024-candidate debug interactive page and an 8,192-candidate optimized batch path.
+
+The remaining graph-rank gap is API shape, not algorithm intent: =ranked_graph_owner_paths_for_submodule_paths= is gated through the crate-mounted unit surface because the candidate model is not yet constructible from an independent integration target. Before Graph Turbo is delegated to Python/SciPy analysis, add a Rust-owned graph rank request/report or fixture builder and gate it independently from the legacy =unit_test= aggregate target.
+* Graph Owner Rank Report Contract
+Graph owner ranking is a Rust hot-path interface. Python and notebook consumers may analyze graph-owner rank quality, but they must consume the Rust-computed report instead of recomputing interactive rank.
+
+The public shape is:
+#+begin_src text
+GraphOwnerRankRequest
+  candidates
+    path
+    symbol
+    text
+    source
+    confidence
+  query_terms
+  submodule_paths
+GraphOwnerRankReport
+  query_axes
+  ranked_owners
+    path
+    package_root
+    topology_submodule_path
+    score
+      total
+      package_query_axis_count
+      topology_query_axis_count
+      query_axis_count
+      topology_local_hits
+      parser_finder_local_hits
+      path_hits
+      symbol_count
+      local_hits
+    matched_query_axes
+    symbols
+#+end_src
+
+This report is the handoff boundary for Graph Turbo analysis. Rust owns query-axis derivation, topology/package cluster scoring, local evidence counting, sorting, tie breaking, and score projection. Python consumes the report for ablation, SciPy/PPR experiments, visualization, and report generation.

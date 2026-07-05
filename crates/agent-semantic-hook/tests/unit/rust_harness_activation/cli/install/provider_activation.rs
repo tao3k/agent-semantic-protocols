@@ -274,7 +274,7 @@ fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::
         let path = entry.path();
         if path.is_dir() {
             collect_activation_paths(&path, matches);
-        } else if path.ends_with("live/hooks/state/activation.json") {
+        } else if path.ends_with("state/activation.json") {
             matches.push(path);
         }
     }

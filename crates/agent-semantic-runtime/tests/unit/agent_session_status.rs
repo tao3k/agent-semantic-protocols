@@ -1,9 +1,10 @@
 use std::{fs, path::Path};
 
-use crate::{
-    codex_rollout_session_index, codex_rollout_session_metadata,
-    codex_rollout_session_metadata_recent, current_agent_runtime_session,
+use crate::agent_session_status::{
+    codex_rollout_session_metadata, codex_rollout_session_metadata_recent,
+    current_agent_runtime_session,
 };
+use crate::codex_rollout_sessions::codex_rollout_session_index;
 
 static CODEX_HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 static AGENT_SESSION_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

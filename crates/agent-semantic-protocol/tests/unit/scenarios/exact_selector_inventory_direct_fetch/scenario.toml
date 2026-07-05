@@ -1,0 +1,14 @@
+id = "exact-selector-inventory-direct-fetch"
+title = "Exact-selector metadata is inventory that routes to main-agent direct fetch"
+policy_ids = ["RUST-AGENT-ASP-SEARCH-FRAME-DIRECT-INVENTORY-FETCH-001"]
+agent_goal = "When the main agent already has an exact selector and requests metadata, the receipt is a direct inventory map rather than final evidence. If proof is needed, the next route is a main-agent direct --content or --code fetch, not subagent delegation or a second model read."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp md query --selector <exact-path> --view metadata",
+  "asp org query --selector <exact-path> --content",
+  "asp <language> query --selector <exact-selector> --code",
+  "Direct Inventory Lane",
+  "Direct Fetch Lane",
+]
+inputs = "inputs"
+expected = "expected"

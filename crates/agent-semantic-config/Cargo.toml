@@ -9,3 +9,6 @@ license = "MIT"
 figment = { version = "0.10.19", features = ["toml"] }
 serde = { workspace = true }
 toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

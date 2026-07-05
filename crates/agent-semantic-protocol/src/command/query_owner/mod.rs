@@ -14,4 +14,6 @@ mod rust_items;
 mod structural_selector;
 mod tree_sitter_items;
 
+pub(super) use item::OwnerItem;
 pub(super) use runner::run_asp_fast_owner_query_command;
+pub(super) use rust_items::collect_syn_rust_owner_items;

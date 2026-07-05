@@ -126,16 +126,16 @@ fn artifact_events_packet(
         },
         "events": events.iter().map(|event| {
             serde_json::json!({
-                "timestamp": event.timestamp_ms as f64 / 1000.0,
-                "kind": event.kind,
-                "language": event.language,
-                "method": event.method,
-                "target": event.target,
-                "query": event.query,
-                "projectRoot": event.project_root,
-                "projectRootArg": event.project_root_arg,
-                "path": event.artifact_path,
-                "bytes": event.bytes
+                "timestamp": event.timestamp_ms() as f64 / 1000.0,
+                "kind": event.kind(),
+                "language": event.language(),
+                "method": event.method(),
+                "target": event.target(),
+                "query": event.query(),
+                "projectRoot": event.project_root(),
+                "projectRootArg": event.project_root_arg(),
+                "path": event.artifact_path(),
+                "bytes": event.bytes()
             })
         }).collect::<Vec<_>>()
     });
@@ -148,7 +148,7 @@ fn artifact_events_packet(
 fn indexed_artifact_count(events: &[ClientDbArtifactEvent]) -> usize {
     events
         .iter()
-        .map(|event| event.artifact_path.as_str())
+        .map(|event| event.artifact_path())
         .collect::<HashSet<_>>()
         .len()
 }

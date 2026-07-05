@@ -115,7 +115,7 @@ pub(crate) fn compact_source_access_deny_message(
             return message;
         }
         return format!(
-            "ASP denied source access (`{reason}`) inside asp-explore. Use ASP query/search routes and return compact `[asp-search-subagent]` evidence.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access (`{reason}`) inside asp-explore. Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next; do not return source bodies, snippets, or line-range selectors.\nrecoveryRef={recovery_ref}"
         );
     }
 
@@ -128,7 +128,7 @@ pub(crate) fn compact_source_access_deny_message(
         return message;
     }
     format!(
-        "ASP denied source access (`{reason}`). Use asp-explore for ASP search/query; start and register it once if no asp-explore session is registered.\nrecoveryRef={recovery_ref}"
+        "ASP denied source access (`{reason}`). Run `asp agent session lifecycle audit --json` to inspect rollout-only and registered child sessions; register or resume an existing child before retrying ASP search/query. If no recoverable child exists, run `asp agent session register --guide`.\nrecoveryRef={recovery_ref}"
     )
 }
 

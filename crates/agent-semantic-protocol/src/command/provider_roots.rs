@@ -152,7 +152,7 @@ fn explicit_workspace_project_root(
             return Err("--workspace requires a project root".to_string());
         }
         if selected.is_some() {
-            return Err("expected at most one --workspace PROJECT_ROOT argument".to_string());
+            return Err("expected at most one --workspace argument".to_string());
         }
         let path = PathBuf::from(value);
         let absolute = if path.is_absolute() {

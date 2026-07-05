@@ -11,10 +11,9 @@ use crate::{
     append_query_candidates, augment_package_path_candidates,
     collect_query_wrapper_candidate_collection, collect_query_wrapper_search_candidates,
     collect_query_wrapper_source_index_candidates, merge_search_candidates,
-    query_candidate_priority, query_wrapper_axis_terms, query_wrapper_candidate_matches_term,
-    query_wrapper_clauses, query_wrapper_owner_candidates,
-    query_wrapper_package_clusters_from_paths, query_wrapper_package_key,
-    query_wrapper_ranked_search_candidates, query_wrapper_rg_scope_next,
+    query_wrapper_axis_terms, query_wrapper_candidate_matches_term, query_wrapper_clauses,
+    query_wrapper_owner_candidates, query_wrapper_package_clusters_from_paths,
+    query_wrapper_package_key, query_wrapper_ranked_search_candidates, query_wrapper_rg_scope_next,
     query_wrapper_search_stage_trace_projection, query_wrapper_source_index_trace_projection,
     query_wrapper_terms, query_wrapper_unique_clause_terms,
 };
@@ -562,12 +561,14 @@ fn source_index_lookup_dto_construction_is_owned_by_search_crate() {
         std::path::PathBuf::from("live/client/client.turso"),
         "hit",
         vec![QueryWrapperSourceIndexCandidate::new(
-            "src/lib.rs",
-            Some("rust".to_string()),
-            Some("rs-harness".to_string()),
-            "source",
-            Some(12),
-            vec!["query_wrapper_source_index".to_string()],
+            crate::query_wrapper_scan::QueryWrapperSourceIndexCandidateRequest::new(
+                "src/lib.rs",
+                Some("rust".to_string()),
+                Some("rs-harness".to_string()),
+                "source",
+                Some(12),
+                vec!["query_wrapper_source_index".to_string()],
+            ),
         )],
     );
 
@@ -679,3 +680,4 @@ fn temp_root(prefix: &str) -> std::path::PathBuf {
             .as_nanos()
     ))
 }
+use crate::query_wrapper_scan::query_candidate_priority;

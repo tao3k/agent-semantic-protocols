@@ -58,6 +58,85 @@ pub struct SearchPipeSearchOverlayAcquisitionRequest<'a> {
     pub limit: usize,
 }
 
+pub struct SearchPipeAutoAcquisitionRequest<'a> {
+    pub language_id: &'a str,
+    pub project_root: &'a Path,
+    pub locator_root: &'a Path,
+    pub query: &'a str,
+    pub owners: &'a [PathBuf],
+    pub ignore_dirs: &'a [String],
+    pub include_hidden_dirs: &'a [String],
+    pub limit: usize,
+    pub source_index_lookup: Option<&'a SearchPipeSourceIndexLookup>,
+}
+
+pub fn collect_search_pipe_auto_acquisition(
+    request: SearchPipeAutoAcquisitionRequest<'_>,
+) -> Result<SearchPipeSourceAcquisition, String> {
+    let source_index =
+        collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
+            intent: request.query,
+            project_root: request.project_root,
+            scopes: request.owners,
+            lookup: request.source_index_lookup,
+        });
+    if let Some(source_index) = source_index.as_ref()
+        && source_index.decision == SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay
+    {
+        let candidates = source_index.candidates.clone();
+        return Ok(SearchPipeSourceAcquisition {
+            source_trace: vec![
+                source_index_trace(source_index),
+                SearchPipeSourceAcquisitionTrace {
+                    source: "search-overlay".to_string(),
+                    status: "skipped".to_string(),
+                    matched: 0,
+                    missing: 0,
+                    normalized: 0,
+                    elapsed: None,
+                },
+            ],
+            candidate_sources: vec!["source-index".to_string()],
+            candidates,
+        });
+    }
+
+    let acquisition = collect_search_pipe_search_overlay_acquisition(
+        SearchPipeSearchOverlayAcquisitionRequest {
+            language_id: request.language_id,
+            project_root: request.project_root,
+            locator_root: request.locator_root,
+            query: request.query,
+            owners: request.owners,
+            ignore_dirs: request.ignore_dirs,
+            include_hidden_dirs: request.include_hidden_dirs,
+            limit: request.limit,
+        },
+    )?;
+    let candidates = acquisition.candidates;
+    let fallback_source = search_pipe_candidate_route_source(&candidates);
+    let mut source_trace = Vec::new();
+    if let Some(source_index) = source_index.as_ref() {
+        source_trace.push(source_index_trace(source_index));
+    }
+    source_trace.extend([
+        SearchPipeSourceAcquisitionTrace {
+            source: "provider".to_string(),
+            status: "partial".to_string(),
+            matched: 0,
+            missing: usize::from(!candidates.is_empty()),
+            normalized: 0,
+            elapsed: Some(acquisition.elapsed),
+        },
+        candidate_trace(fallback_source, &candidates, Some(acquisition.elapsed)),
+    ]);
+    Ok(SearchPipeSourceAcquisition {
+        source_trace,
+        candidate_sources: vec!["provider".to_string(), fallback_source.to_string()],
+        candidates,
+    })
+}
+
 pub fn collect_search_pipe_search_overlay_acquisition(
     request: SearchPipeSearchOverlayAcquisitionRequest<'_>,
 ) -> Result<SearchPipeSearchOverlayAcquisition, String> {
@@ -334,6 +413,14 @@ pub struct SearchPipeSourceIndexCandidate {
     pub source_kind: String,
     pub line_count: Option<u32>,
     pub query_keys: Vec<String>,
+    pub selector_proof: Option<SearchPipeSelectorPayloadProof>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchPipeSelectorPayloadProof {
+    pub structural_selector: String,
+    pub payload_kind: String,
+    pub bounded: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -365,6 +452,7 @@ pub struct SearchPipeSourceIndexAcquisition {
 
 pub struct SearchPipeSourceIndexAcquisitionRequest<'a> {
     pub intent: &'a str,
+    pub project_root: &'a Path,
     pub scopes: &'a [PathBuf],
     pub lookup: Option<&'a SearchPipeSourceIndexLookup>,
 }
@@ -386,7 +474,7 @@ pub fn collect_search_pipe_source_index_acquisition(
     let candidates = lookup
         .candidates
         .iter()
-        .map(source_index_candidate)
+        .map(|candidate| source_index_candidate(request.project_root, candidate))
         .collect::<Vec<_>>();
     let decision = if intent_terms_all_path_like(request.intent)
         && matches!(lookup.state.as_str(), "missing-db" | "empty-index" | "miss")
@@ -394,8 +482,13 @@ pub fn collect_search_pipe_source_index_acquisition(
         SearchPipeSourceIndexDecision::DeferBackend
     } else if candidates.is_empty() {
         SearchPipeSourceIndexDecision::Fallthrough
-    } else {
+    } else if candidates
+        .iter()
+        .all(|candidate| source_index_candidate_ready(candidate))
+    {
         SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay
+    } else {
+        SearchPipeSourceIndexDecision::DeferBackend
     };
     Some(SearchPipeSourceIndexAcquisition {
         decision,
@@ -450,8 +543,12 @@ fn intent_terms_all_path_like(intent: &str) -> bool {
             .all(|term| term.contains('/') || term.contains('\\') || term.contains('.'))
 }
 
-fn source_index_candidate(candidate: &SearchPipeSourceIndexCandidate) -> SearchPipeCandidate {
+fn source_index_candidate(
+    project_root: &Path,
+    candidate: &SearchPipeSourceIndexCandidate,
+) -> SearchPipeCandidate {
     let line_count = candidate.line_count.unwrap_or(1).max(1) as usize;
+    let confidence = source_index_candidate_confidence(project_root, candidate);
     SearchPipeCandidate {
         path: candidate.path.clone(),
         line: 1,
@@ -459,7 +556,72 @@ fn source_index_candidate(candidate: &SearchPipeSourceIndexCandidate) -> SearchP
         symbol: source_index_symbol(candidate),
         text: source_index_candidate_text(candidate),
         source: "source-index".to_string(),
-        confidence: "db-engine".to_string(),
+        confidence: confidence.to_string(),
+    }
+}
+
+fn source_index_candidate_ready(candidate: &SearchPipeCandidate) -> bool {
+    candidate.confidence == "selector-ready"
+}
+
+fn source_index_candidate_confidence(
+    project_root: &Path,
+    candidate: &SearchPipeSourceIndexCandidate,
+) -> &'static str {
+    if candidate.path.trim().is_empty() {
+        return "invalid-selector";
+    }
+    if !project_root.join(&candidate.path).is_file() {
+        return "stale-index";
+    }
+    if source_index_candidate_has_payload_proof(candidate) {
+        return "selector-ready";
+    }
+    "inventory-only"
+}
+
+fn source_index_candidate_has_payload_proof(candidate: &SearchPipeSourceIndexCandidate) -> bool {
+    let Some(proof) = candidate.selector_proof.as_ref() else {
+        return false;
+    };
+    if !proof.bounded || proof.payload_kind != "code" || proof.structural_selector.trim().is_empty()
+    {
+        return false;
+    }
+    structural_selector_owner_path(&proof.structural_selector) == Some(candidate.path.as_str())
+}
+
+fn structural_selector_owner_path(selector: &str) -> Option<&str> {
+    let (_, rest) = selector.split_once("://")?;
+    let (owner, _) = rest.split_once('#')?;
+    let owner = owner.trim();
+    (!owner.is_empty()).then_some(owner)
+}
+
+fn source_index_trace(
+    acquisition: &SearchPipeSourceIndexAcquisition,
+) -> SearchPipeSourceAcquisitionTrace {
+    let status = match acquisition.decision {
+        SearchPipeSourceIndexDecision::QueryGate => "query-gate",
+        SearchPipeSourceIndexDecision::DeferBackend => "deferred",
+        SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay => "used",
+        SearchPipeSourceIndexDecision::Fallthrough => "fallthrough",
+    };
+    SearchPipeSourceAcquisitionTrace {
+        source: "sourceIndex".to_string(),
+        status: status.to_string(),
+        matched: acquisition.candidates.len(),
+        missing: acquisition
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.confidence == "stale-index")
+            .count(),
+        normalized: acquisition
+            .candidates
+            .iter()
+            .filter(|candidate| source_index_candidate_ready(candidate))
+            .count(),
+        elapsed: None,
     }
 }
 
@@ -474,6 +636,17 @@ fn source_index_symbol(candidate: &SearchPipeSourceIndexCandidate) -> String {
 fn source_index_candidate_text(candidate: &SearchPipeSourceIndexCandidate) -> String {
     let language = candidate.language_id.as_deref().unwrap_or("unknown");
     let provider = candidate.provider_id.as_deref().unwrap_or("unknown");
+    let proof = candidate
+        .selector_proof
+        .as_ref()
+        .map(|proof| {
+            if proof.bounded {
+                proof.payload_kind.as_str()
+            } else {
+                "unbounded"
+            }
+        })
+        .unwrap_or("none");
     let keys = candidate
         .query_keys
         .iter()
@@ -482,8 +655,8 @@ fn source_index_candidate_text(candidate: &SearchPipeSourceIndexCandidate) -> St
         .collect::<Vec<_>>()
         .join("|");
     format!(
-        "source-index path={} language={} provider={} kind={} queryKeys={}",
-        candidate.path, language, provider, candidate.source_kind, keys
+        "source-index path={} language={} provider={} kind={} payloadProof={} queryKeys={}",
+        candidate.path, language, provider, candidate.source_kind, proof, keys
     )
 }
 

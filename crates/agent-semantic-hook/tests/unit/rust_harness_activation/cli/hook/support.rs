@@ -68,7 +68,7 @@ fn collect_hook_event_state_paths(dir: &Path, matches: &mut Vec<std::path::PathB
         let path = entry.path();
         if path.is_dir() {
             collect_hook_event_state_paths(&path, matches);
-        } else if path.ends_with("live/hooks/state/events.jsonl") {
+        } else if path.ends_with("state/events.jsonl") {
             matches.push(path);
         }
     }

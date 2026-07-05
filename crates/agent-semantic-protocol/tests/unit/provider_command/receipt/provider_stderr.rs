@@ -20,6 +20,7 @@ fn receipt_json_suppresses_provider_stderr_from_receipt_stream() {
         .current_dir(&root)
         .env("PATH", &bin_dir)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env_remove("CODEX_THREAD_ID")
         .args([
             "rust",
             "search",
@@ -70,6 +71,7 @@ fn receipt_json_is_emitted_for_nonzero_provider_exit() {
         .current_dir(&root)
         .env("PATH", &bin_dir)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env_remove("CODEX_THREAD_ID")
         .args([
             "rust",
             "search",

@@ -582,8 +582,8 @@ Clients with tool parallelism can run independent search commands in parallel
 inside the parent turn.  Clients without either capability must run the same
 command groups sequentially.  The protocol does not depend on the client
 feature flag.  The portable contract is the prime packet, the bounded search
-packets, advisory delegation hints, the =[search-subagent]= receipts, and the
-parent =[search-synthesis]= line.
+packets, advisory delegation hints, the selector-only =[asp-search-subagent]=
+receipts, and the parent =[search-synthesis]= line.
 
 Delegation hints are not a scheduler.  Providers may attach them to a search
 packet, graph-turbo request, or seed rendering when the current frontier is
@@ -611,7 +611,8 @@ independent axes, the parent may run multiple instances of the same
 =asp-explorer= profile, one instance per reasoning-tree branch.  Each branch
 prompt carries the action id, parent-known evidence, missing facts, risk, and
 allowed ASP command group.  Worker instances do not share context windows with
-each other.  They share state only by returning compact =[search-subagent]=
+each other.  They share state only by returning selector-only
+=[asp-search-subagent]=
 receipts to the parent.  After fan-in, the main model may update the reasoning
 tree and issue another round of branch prompts before accepting an edit
 boundary.
@@ -623,8 +624,9 @@ the generated model field for the installed profile, but the feature is
 installed by default and does not require an opt-in flag.  The custom subagent
 instructions must keep work read-only and ASP-first: build query packs, run
 bounded =asp fd= / =asp rg= / =search owner= / exact =query --selector=
-commands, and return compact frontier evidence to the parent.  Client runtimes
-without subagents follow the same =recommendedNext= or =nextCommand=
+commands, then return only owner/read/next parser identities to the parent.  It
+must not return source bodies, snippets, or line-range selectors.  Client
+runtimes without subagents follow the same =recommendedNext= or =nextCommand=
 sequentially.
 
 This differs from query-set composition.  A query-set merges repeated queries
@@ -854,8 +856,9 @@ Parent gets graph; subagents get slices; hits only within slices:
 Each subagent should:
 1. run only the command group assigned by the parent agent;
 2. avoid editing files;
-3. return compact evidence as =[search-subagent]= line + =|= fact lines;
-4. every =|= line must carry a =next= action if evidence is missing.
+3. return selector-only evidence as an =[asp-search-subagent]= receipt with
+   =owner=, =read=, and =next= fields;
+4. do not return source bodies, snippets, or line-range selectors.
 
 The parent agent merges subagent evidence into =[search-synthesis]= and
 decides the next search phase.
@@ -863,9 +866,8 @@ decides the next search phase.
 ## Output contract for subagents (line protocol)
 
 ```text
-[search-subagent] role=deps dep=reqwest evidence=key:reqwest import:reqwest kind:normal feat:json,rustls-tls missing=- next=dependency:reqwest
-[search-subagent] role=src dep=reqwest evidence=owner:src/http/client.rs hit_kind=use locations=3:5,8:1 pub=false missing=error-boundary next=pattern:public-error-boundary
-[search-subagent] role=test dep=reqwest evidence=test:tests/unit/http/client.rs bench:benches/http_client.rs missing=timeout-test next=text:timeout(scope=tests)
+[asp-search-subagent] owner=src/http/client.rs read=rust://src/http/client.rs#item/function/send_request next=asp rust query --selector rust://src/http/client.rs#item/function/send_request --workspace . --code
+[asp-search-subagent] owner=tests/unit/http/client.rs read=rust://tests/unit/http/client.rs#item/function/times_out_request next=asp rust query --selector rust://tests/unit/http/client.rs#item/function/times_out_request --workspace . --code
 ```
 
 Parent merges into:

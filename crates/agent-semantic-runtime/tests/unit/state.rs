@@ -58,15 +58,16 @@ fn runtime_state_materializes_config_layout_under_git_toplevel() {
     assert!(
         state
             .hook_cache_dir
-            .starts_with(state_home.path().join("projects/by-id"))
+            .starts_with(state_home.path().join("hooks/projects"))
     );
-    assert!(state.hook_cache_dir.ends_with("live/hooks/cache"));
+    assert!(state.hook_cache_dir.ends_with("cache"));
     assert!(
         state
             .hook_state_dir
-            .starts_with(state_home.path().join("projects/by-id"))
+            .starts_with(state_home.path().join("hooks/projects"))
     );
-    assert!(state.hook_state_dir.ends_with("live/hooks/state"));
+    assert!(state.hook_state_dir.ends_with("state"));
+    assert!(state_home.path().join("projects/by-id").exists());
     assert_eq!(
         state.activation_path,
         state.hook_state_dir.join("activation.json")
@@ -115,8 +116,8 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
     let hook_dir = ensure_project_hook_cache_dir(&package_root).expect("hook cache dir");
 
     assert!(hook_dir.is_dir());
-    assert!(hook_dir.starts_with(state_home.path().join("projects/by-id")));
-    assert!(hook_dir.ends_with("live/hooks/cache"));
+    assert!(hook_dir.starts_with(state_home.path().join("hooks/projects")));
+    assert!(hook_dir.ends_with("cache"));
     assert!(
         !hook_dir
             .parent()
@@ -124,6 +125,7 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
             .join("state")
             .exists()
     );
+    assert!(!state_home.path().join("projects/by-id").exists());
 
     let hook_state_dir = ensure_project_hook_state_dir(&package_root).expect("hook state dir");
     let client_dir = ensure_project_client_cache_dir(&package_root).expect("client cache dir");
@@ -141,6 +143,16 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
     assert!(client_dir.is_dir());
     assert!(client_dir.starts_with(state_home.path().join("projects/by-id")));
     assert!(client_dir.ends_with("live/client"));
+    let workspace_dir = client_dir
+        .parent()
+        .and_then(|live_dir| live_dir.parent())
+        .expect("workspace dir");
+    let project_dir = workspace_dir
+        .parent()
+        .and_then(|workspaces_dir| workspaces_dir.parent())
+        .expect("project dir");
+    assert!(project_dir.join("project.json").is_file());
+    assert!(workspace_dir.join("workspace.json").is_file());
     assert!(runtime_home.is_dir());
     assert!(provider_bin_dir.is_dir());
     assert!(provider_lock_dir.is_dir());

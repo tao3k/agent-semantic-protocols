@@ -473,6 +473,20 @@ example, a query for a protocol should rank a =defprotocol= owner because the
 parser emitted =kind=interface=, =languageKind=defprotocol=, and =role=protocol=
 facts, not because a provider string-searched the source body.
 
+=search pipe= in automatic source mode must try the DB Engine source-index before
+search overlay or provider collection when the query has no owner scope. A
+source-index hit is the stable-generation fast path: compact output must report
+=sourceTrace=sourceIndex:used=, skip search overlay/provider collection, and
+render the next owner-local action from the indexed owner path. A miss, busy DB,
+or missing DB may continue to the existing overlay/provider route, but that
+continuation is a bounded recovery path, not a reason to synchronously refresh
+the index or write dirty overlay facts into Turso.
+The source-index owns stable owner/file recall only. Dynamic owner items,
+selector overlays, dirty subagent edits, and owner-local parser facts remain
+overlay/provider surfaces and must not be inserted into the durable source-index
+on every agent edit. If a dynamic overlay later uses Turso internals, it must do
+so as a session-scoped overlay with explicit provenance, not by mutating the
+stable generation index.
 ** Dynamic owner-items use the shared owner-items interface
 =search owner <path> items --workspace . --view seeds= is valid without =--query=. Empty query means "enumerate bounded owner-local structural anchors" for the selected owner. This surface is dynamic dirty-code search, not a durable DB indexing request. The command facade should use a =languages/*-harness= owner-items interface, then let Rust orchestrate caching, overlay merge, ranking, timeout control, and compact rendering around that interface.
 
@@ -496,13 +510,15 @@ The performance acceptance target is the first evaluated query on an already-bui
 
 The packet contract is shared across languages. The default owner-items schema should be reused for any language that can express owner path, item kind, item name, selector, display range, and source/generation identity. Provider-specific language details may be carried as extension fields, but the Rust wrapper cache, DB ingestion, graph bridge, and compact render should stay shared. A new language should not create a new owner-items route just because its syntax differs.
 
-=query <path> items --workspace . --code= is the code projection over the same dynamic service. It exists for compatibility with agent read flows that already know an owner path and need bounded item snippets. It must emit selector-first code evidence such as =source=dynamic-owner-items= and must not treat line ranges as executable identity.
+=search owner <path> items --workspace . --view seeds= is the owner-local discovery surface. Code projection is a separate exact-item step: the agent selects one parser-owned item locator from that frontier, then runs =query --selector <language://path#item/kind/name> --workspace . --code=. The owner path itself is never the executable code selector and line ranges are never semantic identity.
+
+=search pipe <seed>= is a refinement/combinator surface, not a single-token lexical lookup. Without an exact =--selector= seed, the facade must reject a single seed atom such as =Connected= before provider/backend collection and point the agent to lexical, fd-query, owner-items, or exact selector routes. Pipe succeeds only when it has at least two independent seed atoms/candidates to compose into a query pack or reasoning frontier.
 
 Durable Turso FTS/BM25 belongs to stable generations and accepted checkpoints. Dirty overlays may later reuse Turso-owned search internals through the DB Engine/search adapter, but the hot path must not synchronously insert every subagent edit into the durable DB.
 ** Line selectors are display and transport hints
 Agent-facing =search= and default =query= frontiers must distinguish semantic identity from source transport. Parser-owned identities are =structuralSelector=, semantic handle ids, native fact ids, owner/item names, tree-sitter query recipes, or another schema-owned structural selector. Line ranges remain useful, but only as =displayLineRange= for humans and =sourceLocatorHint= for the final exact source transport path.
 
-Prompt-visible =syntax=, =owner-items=, =treeSitterHandles=, compact graph aliases, and action-frontier entries must not put =path:start:end= or =path:start-end= in the executable selector position. If the only known fact is a line range, the next action is an outline, names, owner-items, or query-set repair action. A =query --selector <path:line-range> --code= command is valid only after the agent has selected an exact source transport action, and the action must carry =codePolicy=requires-exact-code= or an equivalent schema field.
+Prompt-visible =syntax=, =owner-items=, =treeSitterHandles=, compact graph aliases, and action-frontier entries must not put =path:start:end= or =path:start-end= in the executable selector position. If the only known fact is a line range, the next action is an outline, names, owner-items, or query-set repair action. Exact source transport is an internal audited fallback after parser-owned evidence has selected a bounded window; it must not appear as the guide or recovery default.
 
 This rule does not delete line fields from packets. It moves them out of the decision selector. Renderers should prefer:
 
@@ -516,14 +532,41 @@ codePolicy=no-code|code-after-exact-selector|requires-exact-code
 
 The regression gate is observable at the ARI layer: =syntax= aliases, =syntax ... selector= rows, default =owner-items= rows, and graph-turbo action-frontier JSON must have zero prompt-visible line selectors in executable selector fields. Exact =--code= routes may still carry line selectors as source transport.
 ** =query= — first-class parser-native extraction and reroutes
+The =query= facade must classify projection intent before provider fallback.
+Default =query --selector <selector> --code= is parser-owned item-code
+projection, not a file-read API. A bare file selector with =--code= and no
+=--term=/=--query= is ambiguous and must fail before provider execution; it
+must not render whole source and must not fall through to provider fallback. A
+structural item selector with =--code= is an item-code projection and must write
+only the matched item code. A file selector with =--term= or =--query= remains
+an owner-local item query and may render =[search-owner]= locator evidence when
+=--code= is absent. A file selector with =--code= is invalid on the normal
+facade and must fail before provider execution. These cases are mutually
+exclusive parser-owned request types; the facade must not let an exact code
+projection fall through to owner inventory, graph frontier rendering, provider
+fallback, or internal direct-read recovery.
 
+=query --selector <selector> --code= is exact parser-owned code extraction, not
+directory search and not whole-file source transport. The default selector must
+name a parser-owned structural identity such as
+=rust://...#item/function/name=. A file path, line range, or directory path such
+as =crates/foo/src= is not a default exact-code selector, and =--query <terms>=
+does not reinterpret that directory selector as a recursive search scope.
+Facades must fail before provider execution with a bounded diagnostic instead
+of returning an empty or whole-file code projection. The file-selector check is
+driven by the activated provider registry =source_extensions=, not by a
+Rust-only or hard-coded language list, so registered languages such as Gerbil
+Scheme =.ss= files receive the same preflight behavior. Agents that need
+directory-scoped discovery must first use =search lexical=, =search owner=, or
+=search pipe= with explicit =--workspace=, then follow the returned exact
+parser-owned =query --selector ... --code= action.
 Provider-native item query is the default code extraction path for agents:
 
 #+begin_src shell
 <lang-harness> query <project-path> --query <symbol-or-a|b|c>
 <lang-harness> query <project-path> --term <symbol-a> --term <symbol-b> --names-only
-<lang-harness> query --from-hook direct-source-read --selector <exact-source-path[:line-range]> --code
-<lang-harness> query --from-hook direct-source-read --selector <glob> --term <intent-term>
+asp <language> search owner <project-path> items --query <symbol-or-term> --workspace <workspace-root> --view seeds
+asp <language> query --selector <parser-owned-uri-or-handle> --workspace <workspace-root> --code
 #+end_src
 
 The language provider owns parser/AST lookup, exact item matching, multi-term
@@ -637,11 +680,11 @@ If the selector is too wide for bounded code transport, the provider returns a
 =manual-window-scan=, and =raw-read=.  A range-only plan must use =windows= and
 =frontier= entries; it must not synthesize a fake =symbol= such as
 =local-window=.  Parser-owned symbols are preferred when available, and
-mechanical range splits are only the fallback.  Every frontier =code= action
-must map back to:
+mechanical range splits are only the fallback.  Every prompt-facing frontier
+=code= action must map back to a parser-owned exact item selector:
 
 #+begin_src shell
-<lang-harness> query --from-hook direct-source-read [--workspace] --selector <path[:line-range]> --code .
+asp <language> query --selector <language://path#item/kind/name> --workspace <workspace-root> --code
 #+end_src
 
 ASP owns the compact output-mode boundary across every language facade:
@@ -668,29 +711,34 @@ provider should keep the normal item query/code projection path.  Wildcard or
 broad selectors still require concrete terms and should remain bounded
 candidate/seed searches.
 
-Hook route construction must preserve exact line-range selectors when the agent
-already supplied one.  The hook may strip =:line[-end]= for language profile
-matching, but the provider-facing route must keep the bounded selector:
+Hook route construction must not put line-range selectors into prompt-facing
+routes.  The hook may keep the original range as a diagnostic source locator
+hint and strip =:line[-end]= for language profile matching, but the executable
+route should return to parser-owned owner/item discovery:
 
 #+begin_example
 rtk read src/lib.rs:10:20
-=> <lang-harness> query --from-hook direct-source-read --selector src/lib.rs:10:20 --code .
+=> asp <language> search owner src/lib.rs items --workspace . --view seeds
 #+end_example
 
-Dropping the range turns a precise local-read intent into a larger owner query
-and encourages follow-up raw reads.  That is a protocol bug, not a user
-preference.
+This keeps the recovery route selector-first without letting a line range become
+semantic identity.  The final source read happens only after owner/item
+frontier evidence selects an exact parser-owned item or a bounded audited
+fallback.
 
-The language provider must make that bounded selector useful.  A query such as
-=asp <language> query --selector src/lib.rs:10:20 --workspace <workspace-root> --code=
-should return the exact bounded source window for that range, not whole-owner
-item names and not a lossy ancestor projection.  Ranges inside an inline module,
-impl, function, or other containing item must preserve the selected source
-lines instead of collapsing to only the ancestor declaration.  This is required for
+For the internal audited fallback path, the language provider must make explicit
+direct-read selectors useful.  A query
+such as =asp <language> query --from-hook direct-source-read --selector
+src/lib.rs:10:20 --workspace <workspace-root> --code= should return the exact
+bounded source window for that range, not whole-owner item names and not a
+lossy ancestor projection.  Ranges inside an inline module, impl, function, or
+other containing item must preserve the selected source lines instead of
+collapsing to only the ancestor declaration.  This is required for
 test/assertion edits, import/header inspection, enum/impl variant inspection,
 and hook recovery after a denied =sed= / =rtk read= / tool-native read.  The
-root hook only preserves the selector; native parser providers own safe
-selector validation, read-plan repair, and exact source-window rendering.
+root hook only preserves the selector and explicit direct-read reason; native
+parser providers own safe selector validation, read-plan repair, and exact
+source-window rendering.
 
 Providers should exact-match item names first; if no exact item exists, they may
 fall back to contains matching.  A default hit emits parser-owned item metadata,
@@ -1423,19 +1471,20 @@ asp <language> query --from-hook direct-source-read \
 It is a compact route into the provider's parser-owned query layer.  It should
 emit bounded query evidence: query coverage, owner candidates, item candidates,
 test seeds when requested, and any visible runtime prefilter cost.  It must not
-expand the matched files into source text.  =query --from-hook= is the only
-agent-facing wildcard direct-read recovery route.  Providers must not advertise
-or accept the retired search-query hook form as a compatibility alias; keeping both
-forms creates route drift and breaks guide-quality replay.
+expand the matched files into source text.  Internal direct-read recovery is not
+an agent-facing wildcard query route and must not appear in guide, recovery, or
+next-action output. Providers must not advertise or accept the retired
+search-query hook form as a compatibility alias; keeping both forms creates
+route drift and breaks guide-quality replay.
 
-When the selector is one exact project-relative source path and the agent has no
-reliable item query yet, top-level =query --selector <path> --workspace
-<workspace-root>= without =--code= may return owner =items= context directly.
-This is still parser-owned compact context, not source rendering: it lists item
-names, line ranges, read locators, and owner/test frontiers so the next step can
-be a precise item query or focused edit.  The =--from-hook direct-source-read=
-form remains available only as a low-priority bounded fallback after parser-owned
-frontier evidence has selected the exact small window.
+When the only known selector is one exact project-relative source path and the
+agent has no reliable item query yet, the next action is =search owner <path>
+items --workspace <workspace-root> --view seeds=.  This is parser-owned compact
+context, not source rendering: it lists item names, line ranges, read locators,
+and owner/test frontiers so the next step can be a precise item query or focused
+edit.  The =--from-hook direct-source-read= form remains available only as a
+low-priority bounded fallback after parser-owned frontier evidence has selected
+the exact small window.
 
 Rust adds Cargo-native views under the same search namespace:
 
@@ -1687,11 +1736,15 @@ not require a positional =.= workspace argument.  Providers may accept
 =--workspace <workspace-root>= when project-local capabilities or examples need
 context, but the base guide surface is a provider capability interface rather
 than a repository scan command.
-The concrete recovery route is the normal selector/code surface:
-=asp rust query --selector <path-or-range> --workspace <workspace-root> --code=.
-=--from-hook direct-source-read= is reserved for low-priority exact-window
-fallbacks after parser-owned frontier evidence has already selected a bounded
-small range.
+The concrete recovery route should return to parser-owned discovery rather than
+asking the agent to execute a path/range source transport.  If the owner is
+known, recovery should route to =asp rust search owner <owner> items --query
+<symbol-or-term> --workspace <workspace-root> --view seeds=.  If the frontier
+already contains a parser-owned item identity, the next action is =asp rust
+query --selector <rust://...#item/...> --workspace <workspace-root> --code=.
+=--from-hook direct-source-read= remains an internal low-priority fallback for
+bounded exact-window recovery after parser-owned frontier evidence has already
+failed; it must not be the prompt-facing guide or recovery default.
 
 =guide --code= extends =guide.v1= instead of introducing another search or query
 subcommand.  Its job is to teach the agent one high-quality, source-backed code
@@ -1738,19 +1791,19 @@ Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands on the matched 
 
 ## Run Next
 ```sh
-asp <language> query --from-hook direct-source-read ...
+asp <language> search owner <owner> items --query '<symbol-or-term>' --workspace . --view seeds
 ```
 
 ## Agent Flow
-Follow this flow after the hook recovery command gives you a frontier or exact locator.
+Follow this flow after the hook recovery command gives you a frontier or exact parser-owned locator.
 
 1. Start from the language guide when you need the agent tool map: `asp <language> guide --workspace .`.
 2. Map the project with `asp <language> search prime --workspace . --view seeds`.
 3. Choose an owner, query, dependency, test, or syntax profile from the user intent and seed frontier.
 4. When syntax location is needed, read `asp <language> query guide treesitter .`.
 5. Execute `asp <language> query --treesitter-query '<pattern>' .` for a capture/frontier result.
-6. Select one exact locator from the frontier.
-7. Extract pure code with `asp <language> query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --workspace . --code`.
+6. Select one exact parser-owned item locator from the frontier.
+7. Extract pure code with `asp <language> query --selector <language://path#item/kind/name> --workspace . --code`.
 8. Treat stdout from `query --code` as pure source code only.
 9. Patch with `apply_patch` by default, or use provider `ast-patch` only when hook config enables semantic AST patching and a provider dry-run receipt validates the structural/mechanical edit.
 
@@ -1865,7 +1918,7 @@ guide-help        command="asp <language> guide --help ." output=help code=false
 search-prime      output=handles/profiles/frontier code=false json=false
 syntax-locate     command="query --treesitter-query <pattern>" output=locator/frontier code=false
 syntax-code       command="query --selector <exact> --treesitter-query <pattern> --code" output=pure-code
-hook-recovery     output=markdown-prompt runNext=query-from-hook detectedBinaries=runtime-profile
+hook-recovery     output=markdown-prompt runNext=owner-items detectedBinaries=runtime-profile
 debug-surfaces    json,receipts,cachePaths,artifactIds hiddenFromDefault=true
 retired-routes    agent-prefixed-guide,search-wrapper-hook-query,ts-query,syntax-query rejectedFromGuides=true
 #+end_src

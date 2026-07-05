@@ -220,8 +220,19 @@ pub fn append_hook_event_state(
     Ok(state_path)
 }
 
-/// Return whether the latest matching subagent lifecycle event marks this hook
-/// payload as running inside a subagent.
+/// Return feedback when a prompt/session has run `search prime` but no pipe.
+pub(crate) fn missing_search_pipe_after_prime(
+    project_root: &Path,
+    session_id: Option<&str>,
+    transcript_path: Option<&str>,
+) -> Result<Option<SearchPipeFeedback>, String> {
+    Ok(
+        prompt_search_flow_after_prime(project_root, session_id, transcript_path)?
+            .filter(|feedback| !feedback.saw_pipe),
+    )
+}
+
+/// Return whether the current prompt/session already recorded subagent context.
 pub fn has_recorded_subagent_context(
     project_root: &Path,
     session_id: Option<&str>,
@@ -234,29 +245,35 @@ pub fn has_recorded_subagent_context(
     if !state_path.is_file() {
         return Ok(false);
     }
+    let now = unix_time_ms();
     let lines = read_hook_event_state_tail(&state_path)?;
     for line in lines.iter().rev() {
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        if !matches_subagent_identity(&event, session_id, transcript_path) {
+        if !is_recent_for_window(&event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS) {
+            break;
+        }
+        if !event_matches_prompt_scope(&event, session_id, transcript_path) {
             continue;
         }
-        return Ok(event.get("event").and_then(Value::as_str) == Some("subagent-start"));
+        if is_prompt_scope_boundary(&event) {
+            break;
+        }
+        match event.get("event").and_then(Value::as_str) {
+            Some("subagent-start") => return Ok(true),
+            Some("subagent-stop") => return Ok(false),
+            _ => {}
+        }
+        if event
+            .pointer("/fields/subagentContext")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            return Ok(true);
+        }
     }
     Ok(false)
-}
-
-/// Return feedback when a prompt/session has run `search prime` but no pipe.
-pub(crate) fn missing_search_pipe_after_prime(
-    project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<Option<SearchPipeFeedback>, String> {
-    Ok(
-        prompt_search_flow_after_prime(project_root, session_id, transcript_path)?
-            .filter(|feedback| !feedback.saw_pipe),
-    )
 }
 
 /// Return recent prompt/session search-flow state after prime or pipe has run.
@@ -408,30 +425,6 @@ fn is_current_hook_event_state_line(line: &str) -> bool {
         && value.get("protocolId").and_then(serde_json::Value::as_str) == Some(HOOK_PROTOCOL_ID)
 }
 
-fn matches_subagent_identity(
-    event: &Value,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> bool {
-    let event_name = event.get("event").and_then(Value::as_str);
-    if !matches!(event_name, Some("subagent-start" | "subagent-stop")) {
-        return false;
-    }
-    let fields = event.get("fields").unwrap_or(event);
-    session_id.is_some_and(|session_id| {
-        field_string(fields, &["sessionId", "session_id"]).is_some_and(|value| value == session_id)
-    }) || transcript_path.is_some_and(|transcript_path| {
-        field_string(fields, &["transcriptPath", "transcript_path"])
-            .is_some_and(|value| value == transcript_path)
-    })
-}
-
-fn field_string<'a>(value: &'a Value, fields: &[&str]) -> Option<&'a str> {
-    fields
-        .iter()
-        .find_map(|field| value.get(*field).and_then(Value::as_str))
-}
-
 fn unix_time_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -575,6 +568,35 @@ pub(crate) fn asp_query_code_or_direct_read_tokens(tokens: &[String]) -> bool {
         || query_tokens
             .windows(2)
             .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
+}
+
+pub(crate) fn asp_query_direct_inventory_or_fetch_tokens(tokens: &[String]) -> bool {
+    let Some(asp_index) = asp_token_index(tokens) else {
+        return false;
+    };
+    let after_asp = &tokens[asp_index + 1..];
+    let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
+        after_asp
+    } else if after_asp.get(1).map(String::as_str) == Some("query") {
+        &after_asp[1..]
+    } else {
+        return false;
+    };
+    if option_value(query_tokens, "--selector").is_none() {
+        return false;
+    }
+    if query_tokens
+        .windows(2)
+        .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
+    {
+        return false;
+    }
+    query_tokens
+        .iter()
+        .any(|token| token == "--code" || token == "--content")
+        || query_tokens
+            .windows(2)
+            .any(|pair| pair[0] == "--view" && pair[1] == "metadata")
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

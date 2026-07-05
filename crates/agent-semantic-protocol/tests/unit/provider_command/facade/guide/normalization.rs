@@ -10,7 +10,7 @@ fn language_facade_guide_normalizes_provider_specific_header() {
     let provider_path = profile_bin_dir.join("ts-harness");
     std::fs::write(
         &provider_path,
-        "#!/bin/sh\nprintf '[ts-harness-guide] project=/tmp/project\\n'\nprintf '|cmd prime=ts-harness search prime .\\n'\n",
+        "#!/bin/sh\nprintf '[ts-harness-guide] project=/tmp/project\\n'\nprintf '|cmd lexical=ts-harness search lexical <query> owner tests --workspace . --view seeds\\n'\n",
     )
     .expect("write provider");
     make_executable(&provider_path);
@@ -42,7 +42,9 @@ fn language_facade_guide_normalizes_provider_specific_header() {
     );
     assert!(!stdout.contains("[ts-harness-guide]"), "{stdout}");
     assert!(
-        stdout.contains("|cmd prime=asp typescript search prime ."),
+        stdout.contains(
+            "|cmd lexical=asp typescript search lexical <query> owner tests --workspace . --view seeds"
+        ),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

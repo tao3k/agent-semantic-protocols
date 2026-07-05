@@ -37,6 +37,24 @@ struct QueryTokenFragment {
     force_symbol: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SearchPipeLanguageId<'a>(&'a str);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SearchPipeQueryText<'a>(&'a str);
+
+impl<'a> SearchPipeLanguageId<'a> {
+    pub const fn from_language_id(language_id: &'a str) -> Self {
+        Self(language_id)
+    }
+}
+
+impl<'a> SearchPipeQueryText<'a> {
+    pub const fn from_query(query: &'a str) -> Self {
+        Self(query)
+    }
+}
+
 impl SearchPipeTermRole {
     #[must_use]
     pub fn label(self) -> &'static str {
@@ -49,7 +67,11 @@ impl SearchPipeTermRole {
 }
 
 #[must_use]
-pub fn search_pipe_query_clauses(language_id: &str, query: &str) -> Vec<SearchPipeQueryClause> {
+pub fn search_pipe_query_clauses(
+    request: SearchPipeQueryClausesRequest<'_>,
+) -> Vec<SearchPipeQueryClause> {
+    let language_id = request.language_id.as_str();
+    let query = request.query.as_str();
     let explicit = query
         .split('|')
         .map(str::trim)
@@ -65,9 +87,48 @@ pub fn search_pipe_query_clauses(language_id: &str, query: &str) -> Vec<SearchPi
     auto_query_clauses(explicit)
 }
 
+pub struct SearchPipeQueryClausesRequest<'a> {
+    language_id: SearchPipeLanguageId<'a>,
+    query: SearchPipeQueryText<'a>,
+}
+
+impl<'a> SearchPipeLanguageId<'a> {
+    #[must_use]
+    pub const fn new(raw: &'a str) -> Self {
+        Self(raw)
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'a str {
+        self.0
+    }
+}
+
+impl<'a> SearchPipeQueryText<'a> {
+    #[must_use]
+    pub const fn new(raw: &'a str) -> Self {
+        Self(raw)
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'a str {
+        self.0
+    }
+}
+
+impl<'a> SearchPipeQueryClausesRequest<'a> {
+    #[must_use]
+    pub const fn new(
+        language_id: SearchPipeLanguageId<'a>,
+        query: SearchPipeQueryText<'a>,
+    ) -> Self {
+        Self { language_id, query }
+    }
+}
+
 #[must_use]
-pub fn search_pipe_query_clause_texts(language_id: &str, query: &str) -> Vec<String> {
-    search_pipe_query_clauses(language_id, query)
+pub fn search_pipe_query_clause_texts(request: SearchPipeQueryClausesRequest<'_>) -> Vec<String> {
+    search_pipe_query_clauses(request)
         .into_iter()
         .map(|clause| {
             clause

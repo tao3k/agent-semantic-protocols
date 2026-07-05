@@ -1,20 +1,22 @@
 use agent_semantic_client_db::{
     AGENT_SESSION_STATUS_INVALID, AgentSessionLookupRequest, AgentSessionRecord,
-    AgentSessionRegisterRequest, AgentSessionRegistry, agent_session_normalized_metadata_json,
-    agent_session_unix_timestamp,
+    AgentSessionRegisterRequest, AgentSessionRegistry, agent_session_unix_timestamp,
 };
 use agent_semantic_runtime::{
-    CodexRolloutSessionIndex, agent_session_registration_identity,
-    agent_session_runtime_status_snapshot, codex_rollout_session_index,
+    agent_session_registration_identity, agent_session_runtime_status_snapshot,
+    current_agent_runtime_session,
 };
 
 use super::agent_session_registry_args::SessionArgs;
+use super::agent_session_registry_lifetime::resolve_session_lifetime;
 use super::agent_session_registry_render::{
-    ActivitySnapshotShort, SessionLifecycleIndex, SessionStatusReport, escape_field,
-    print_json_report, print_reuse_miss, print_reuse_session, print_session_row,
-    print_status_report,
+    SessionStatusReport, escape_field, print_json_report, print_reuse_miss, print_reuse_session,
+    print_session_row, print_status_report,
 };
 use super::agent_session_registry_rollout_activity::rollout_activity_report;
+use super::agent_session_registry_rollout_adopt::{
+    RolloutAdoptRequest, adopt_reusable_rollout_session,
+};
 use super::agent_session_registry_state::{
     current_project_session_scope_id, current_recall_session_id, project_session_scope_id,
     required_non_empty, resolved_root_session_id, session_record_validation_allows_routing,
@@ -22,30 +24,61 @@ use super::agent_session_registry_state::{
 use super::agent_session_registry_validation::{
     validate_recent_session_profile, validate_session_profile,
 };
+use super::{
+    normalize_session_permissions, normalize_session_roles, normalized_metadata_with_roles,
+    session_permissions_for_roles, session_role_defaults_for_session_name,
+};
 use std::path::Path;
 
 pub(super) fn register_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     let identity = agent_session_registration_identity(
-        args.child_session_id.as_deref(),
-        args.root_session_id.as_deref(),
+        (
+            args.child_session_id.as_deref(),
+            args.root_session_id.as_deref(),
+        )
+            .into(),
     )?;
     let session_id = identity.session_id;
     let now = agent_session_unix_timestamp()?;
     let root_session_id = identity.root_session_id;
     let name = required_non_empty(args.name.as_deref(), "--name")?.to_string();
-    let role = args.role.as_deref().unwrap_or("agent").to_string();
+    let role_defaults = session_role_defaults_for_session_name(&name)?;
+    let has_explicit_roles = args.role.is_some();
+    let requested_roles = args
+        .role
+        .as_deref()
+        .map(|roles| {
+            roles
+                .split(',')
+                .map(str::trim)
+                .filter(|role| !role.is_empty())
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| role_defaults.roles.clone());
+    let roles = normalize_session_roles(&requested_roles)?;
+    let role = roles.join(",");
+    let permissions = if has_explicit_roles || role_defaults.permissions.is_empty() {
+        session_permissions_for_roles(&roles)
+    } else {
+        normalize_session_permissions(&role_defaults.permissions)?
+    };
     let status = args.status.as_deref().unwrap_or("active").to_string();
     let validation = if args.replace {
         validate_session_profile(&session_id, &root_session_id, &name, &role, now)?
     } else {
         validate_recent_session_profile(&session_id, &root_session_id, &name, &role, now)?
     };
-    let metadata_json =
-        agent_session_normalized_metadata_json(args.metadata_json.as_deref(), &validation)?;
+    let metadata_json = normalized_metadata_with_roles(
+        args.metadata_json.as_deref(),
+        &validation,
+        &roles,
+        &permissions,
+    )?;
     if validation.status == "failed" {
         let _ = registry.mark_session_invalid(&project_id, &session_id, now);
         let _ = registry.register_session(AgentSessionRegisterRequest {
@@ -62,7 +95,7 @@ pub(super) fn register_session(
             now,
         });
         return Err(format!(
-            "agent session validation failed: {}.\nblockedState=validation-failed-or-non-routable-child\nnextAction=destroy-invalid-child-and-create-configured-child\nstatusCommand=asp agent session status --name {name} --json\nClose/delete this child session and create a fresh child from the configured Codex agent before registering again.",
+            "agent session validation failed: {}.\nblockedState=validation-failed-or-non-routable-child\nnextAction=ask-existing-child-to-switch-model-and-revalidate\nstatusCommand=asp agent session status --name {name} --json\nagentInstruction=Use the existing `{name}` child session. If this is a model mismatch, switch that same Codex child to the requiredModel shown in the validation reason, then rerun status. Do not create or replace the child.\nconfigSwitchCommandTemplate=asp agent session switch-model --name {name} --model <requiredModel> --json\nconfigSwitchPurpose=Use the config switch command only when the underlying ASP/Codex model mapping or capacity fallback configuration must be updated.",
             validation.reason
         ));
     }
@@ -74,8 +107,31 @@ pub(super) fn register_session(
             name: Some(&name),
         })?
         && existing.session_id != session_id
-        && existing.is_routable_at(now)
-        && session_record_validation_allows_routing(registry, &existing, now)?
+        && registered_session_is_reusable(registry, &existing, now)?
+    {
+        return print_reuse_session(
+            registry.db_path(),
+            Some(&root_session_id),
+            existing,
+            args.json,
+        );
+    }
+    if !args.replace
+        && let Some(existing) = adopt_reusable_rollout_session(
+            registry,
+            RolloutAdoptRequest {
+                project_id: &project_id,
+                root_session_id: &root_session_id,
+                name: &name,
+                role: &role,
+                roles: &roles,
+                permissions: &permissions,
+                model: args.model.as_deref(),
+                expires_at: args.expires_at,
+                now,
+                excluded_session_id: Some(&session_id),
+            },
+        )?
     {
         return print_reuse_session(
             registry.db_path(),
@@ -118,194 +174,50 @@ pub(super) fn lifecycle_audit_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
-    let project_id = current_project_session_scope_id()?;
-    let root_filter = if args.all {
-        None
-    } else {
-        match args.root_session_id.clone() {
-            Some(root_session_id) => Some(root_session_id),
-            None => current_recall_session_id(registry)?,
-        }
-    };
-    registry.refresh_expired_sessions()?;
-    let sessions =
-        registry.query_sessions(&project_id, root_filter.as_deref(), args.name.as_deref())?;
-    let (rollout_session_index, rollout_index_error) =
-        match root_filter.as_deref().map(codex_rollout_session_index) {
-            Some(Ok(index)) => (index, None),
-            Some(Err(error)) => (None, Some(error)),
-            None => (None, None),
-        };
-    let report = lifecycle_audit_report(
-        registry,
-        project_id,
-        root_filter,
-        sessions,
-        rollout_session_index,
-        rollout_index_error,
+    super::agent_session_registry_lifecycle_audit::lifecycle_audit_session(registry, args)
+}
+
+fn stale_invalid_session_should_be_idle(
+    record: &AgentSessionRecord,
+    now: i64,
+) -> Result<bool, String> {
+    if record.status != "invalid" {
+        return Ok(false);
+    }
+    let validation = validate_session_profile(
+        &record.session_id,
+        &record.root_session_id,
+        &record.name,
+        &record.role,
+        now,
     )?;
-    if args.json {
-        let body = serde_json::to_string_pretty(&report)
-            .map_err(|error| format!("serialize lifecycle audit report: {error}"))?;
-        println!("{body}");
-    } else {
-        println!(
-            "[agent-session-lifecycle-audit] owner=rust rootSession={} registrySessions={} rolloutSessions={} rolloutOnlySessions={} missingRegisteredRollouts={} missingRollouts={} db=\"{}\"",
-            report["rootSessionId"]
-                .as_str()
-                .map(|value| format!("\"{}\"", escape_field(value)))
-                .unwrap_or_else(|| "\"*\"".to_string()),
-            report["summary"]["registrySessionCount"]
-                .as_u64()
-                .unwrap_or(0),
-            report["summary"]["rolloutSessionCount"]
-                .as_u64()
-                .unwrap_or(0),
-            report["summary"]["rolloutOnlySessionCount"]
-                .as_u64()
-                .unwrap_or(0),
-            report["summary"]["missingRegisteredRolloutCount"]
-                .as_u64()
-                .unwrap_or(0),
-            report["summary"]["missingRolloutCount"]
-                .as_u64()
-                .unwrap_or(0),
-            registry.db_path().display(),
-        );
-        println!(
-            "hint: rerun with `asp agent session lifecycle audit --json` for per-session evidence"
-        );
+    if !matches!(validation.status.as_str(), "passed" | "warning" | "skipped") {
+        return Ok(false);
     }
-    Ok(())
-}
-
-fn lifecycle_audit_report(
-    registry: &AgentSessionRegistry,
-    project_id: String,
-    root_filter: Option<String>,
-    sessions: Vec<AgentSessionRecord>,
-    rollout_session_index: Option<CodexRolloutSessionIndex>,
-    rollout_index_error: Option<String>,
-) -> Result<serde_json::Value, String> {
-    let registered_session_ids: std::collections::BTreeSet<String> = sessions
-        .iter()
-        .map(|session| session.session_id.clone())
-        .collect();
-    let registry_sessions: Vec<serde_json::Value> = sessions
-        .iter()
-        .map(lifecycle_registry_session_entry)
-        .collect();
-    let mut rollout_session_ids = std::collections::BTreeSet::<String>::new();
-    let mut registered_rollout_sessions = Vec::<serde_json::Value>::new();
-    let mut rollout_only_sessions = Vec::<serde_json::Value>::new();
-    let mut rollout_activity_count = 0_usize;
-    let mut missing_rollout_count = 0_usize;
-    let mut scanned_rollout_count = 0_usize;
-    let mut skipped_rollout_count = 0_usize;
-    let mut missing_rollout_by_session = serde_json::json!({});
-
-    if let Some(index) = rollout_session_index.as_ref() {
-        rollout_activity_count = index.activity_by_session.len();
-        missing_rollout_count = index.missing_rollout_by_session.len();
-        scanned_rollout_count = index.scanned_rollout_count;
-        skipped_rollout_count = index.skipped_rollout_count;
-        missing_rollout_by_session = serde_json::to_value(&index.missing_rollout_by_session)
-            .map_err(|error| format!("serialize missing rollout map: {error}"))?;
-        for record in &index.records {
-            let Some((session_id, entry)) = lifecycle_rollout_session_entry(index, record)? else {
-                continue;
-            };
-            rollout_session_ids.insert(session_id.clone());
-            if registered_session_ids.contains(&session_id) {
-                registered_rollout_sessions.push(entry);
-            } else {
-                rollout_only_sessions.push(entry);
-            }
-        }
-    }
-
-    let missing_registered_rollout_sessions: Vec<serde_json::Value> = sessions
-        .iter()
-        .filter(|session| !rollout_session_ids.contains(&session.session_id))
-        .map(lifecycle_registry_session_entry)
-        .collect();
-
-    Ok(serde_json::json!({
-        "owner": "rust",
-        "action": "agent-session-lifecycle-audit",
-        "dbPath": registry.db_path(),
-        "projectId": project_id,
-        "rootSessionId": root_filter,
-        "summary": {
-            "registrySessionCount": registry_sessions.len(),
-            "rolloutSessionCount": rollout_session_ids.len(),
-            "rolloutActivityCount": rollout_activity_count,
-            "registeredRolloutSessionCount": registered_rollout_sessions.len(),
-            "rolloutOnlySessionCount": rollout_only_sessions.len(),
-            "missingRegisteredRolloutCount": missing_registered_rollout_sessions.len(),
-            "missingRolloutCount": missing_rollout_count,
-            "scannedRolloutCount": scanned_rollout_count,
-            "skippedRolloutCount": skipped_rollout_count,
-        },
-        "rolloutIndexError": rollout_index_error,
-        "registrySessions": registry_sessions,
-        "registeredRolloutSessions": registered_rollout_sessions,
-        "rolloutOnlySessions": rollout_only_sessions,
-        "missingRegisteredRolloutSessions": missing_registered_rollout_sessions,
-        "missingRolloutBySession": missing_rollout_by_session,
-    }))
-}
-
-fn lifecycle_registry_session_entry(session: &AgentSessionRecord) -> serde_json::Value {
-    serde_json::json!({
-        "projectId": session.project_id,
-        "rootSessionId": session.root_session_id,
-        "sessionId": session.session_id,
-        "parentSessionId": session.parent_session_id,
-        "name": session.name,
-        "role": session.role,
-        "model": session.model,
-        "status": session.status,
-    })
-}
-
-fn lifecycle_rollout_session_entry(
-    index: &CodexRolloutSessionIndex,
-    record: &impl serde::Serialize,
-) -> Result<Option<(String, serde_json::Value)>, String> {
-    let mut entry = serde_json::to_value(record)
-        .map_err(|error| format!("serialize rollout session record: {error}"))?;
-    let Some(session_id) = entry
-        .get("sessionId")
-        .and_then(serde_json::Value::as_str)
-        .map(ToOwned::to_owned)
-    else {
-        return Ok(None);
+    let Some(rollout_path) = validation.rollout_path.as_deref() else {
+        return Ok(false);
     };
-    if let Some(object) = entry.as_object_mut() {
-        if let Some(activity) = index.activity_by_session.get(&session_id) {
-            object.insert(
-                "rolloutStatus".to_string(),
-                serde_json::json!(activity.status),
-            );
-            object.insert(
-                "lastHeartbeatAt".to_string(),
-                serde_json::json!(activity.last_heartbeat_at),
-            );
-            object.insert(
-                "lastTerminalEvent".to_string(),
-                serde_json::json!(activity.last_terminal_event),
-            );
-        }
+    let activity = rollout_activity_report(Path::new(rollout_path), now);
+    if activity.running_session_closed {
+        return Ok(false);
     }
-    Ok(Some((session_id, entry)))
+    Ok(activity
+        .session_activity
+        .as_ref()
+        .map(|session_activity| {
+            matches!(
+                session_activity.status.as_str(),
+                "tool-running" | "agent-active" | "idle-resumable"
+            )
+        })
+        .unwrap_or(false))
 }
 
 pub(super) fn list_sessions(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     let root_filter = if args.all {
         None
     } else {
@@ -343,13 +255,34 @@ pub(super) fn reuse_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     registry.refresh_expired_sessions()?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?
         .ok_or_else(|| {
             "asp agent session reuse requires --root-session-id or agent session env".to_string()
         })?;
     let name = required_non_empty(args.name.as_deref(), "--name")?;
+    let current_session_id = std::env::var("CODEX_THREAD_ID")
+        .ok()
+        .or_else(|| current_agent_runtime_session().map(|session| session.id));
+    let current_session_registered = current_session_id
+        .as_deref()
+        .map(|session_id| registry.session_by_id(&project_id, session_id))
+        .transpose()?
+        .is_some();
+    let root_lookup_allowed = args.root_session_id.is_some()
+        || current_session_id.as_deref() == Some(root_session_id.as_str())
+        || current_session_registered;
+    if !root_lookup_allowed {
+        let miss_root_session_id = current_session_id.as_deref().unwrap_or(root_session_id.as_str());
+        return print_reuse_miss(
+            registry.db_path(),
+            Some(miss_root_session_id),
+            name,
+            "unregistered-current-child",
+            args.json,
+        );
+    }
     let Some(record) = registry.lookup_session(AgentSessionLookupRequest {
         project_id: &project_id,
         session_id: None,
@@ -357,6 +290,40 @@ pub(super) fn reuse_session(
         name: Some(name),
     })?
     else {
+        let role_defaults = session_role_defaults_for_session_name(name)?;
+        let roles = normalize_session_roles(&role_defaults.roles)?;
+        let role = roles.join(",");
+        let permissions = if role_defaults.permissions.is_empty() {
+            session_permissions_for_roles(&roles)
+        } else {
+            normalize_session_permissions(&role_defaults.permissions)?
+        };
+        let rollout_adopt_allowed = args.root_session_id.is_some()
+            || current_session_id.as_deref() == Some(root_session_id.as_str());
+        if rollout_adopt_allowed
+            && let Some(record) = adopt_reusable_rollout_session(
+                registry,
+                RolloutAdoptRequest {
+                    project_id: &project_id,
+                    root_session_id: &root_session_id,
+                    name,
+                    role: &role,
+                    roles: &roles,
+                    permissions: &permissions,
+                    model: None,
+                    expires_at: None,
+                    now: agent_session_unix_timestamp()?,
+                    excluded_session_id: current_session_id.as_deref(),
+                },
+            )?
+        {
+            return print_reuse_session(
+                registry.db_path(),
+                Some(&root_session_id),
+                record,
+                args.json,
+            );
+        }
         return print_reuse_miss(
             registry.db_path(),
             Some(&root_session_id),
@@ -406,7 +373,7 @@ pub(super) fn show_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     registry.refresh_expired_sessions()?;
     let name = if args.child_session_id.is_some() {
         None
@@ -456,20 +423,43 @@ pub(super) fn status_session(
     args: &SessionArgs,
     project_root: &Path,
 ) -> Result<(), String> {
-    let project_id = project_session_scope_id(project_root);
+    if args.activity {
+        if let Some(child_session_id) = args.child_session_id.as_deref() {
+            let now = agent_session_unix_timestamp()?;
+            if let Some(rollout_path) =
+                super::agent_session_registry_rollout_lookup::fast_rollout_path_for_session_id(
+                    child_session_id,
+                )
+            {
+                let report = rollout_activity_report(&rollout_path, now);
+                return super::agent_session_registry_render::print_status_activity_report(
+                    Some(&report),
+                    report.agent_instruction.as_str(),
+                    args.json,
+                );
+            }
+        }
+    }
+
+    let project_id = project_session_scope_id(registry, project_root)?;
     registry.refresh_expired_sessions()?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let name = args.name.clone();
-    let record = registry.lookup_session(AgentSessionLookupRequest {
+    let mut record = registry.lookup_session(AgentSessionLookupRequest {
         project_id: &project_id,
         session_id: args.child_session_id.as_deref(),
         root_session_id: root_session_id.as_deref(),
         name: name.as_deref(),
     })?;
     let now = agent_session_unix_timestamp()?;
-    let routable = record
-        .as_ref()
-        .is_some_and(|session| session.is_routable_at(now));
+    if let Some(session) = record.as_mut()
+        && stale_invalid_session_should_be_idle(session, now)?
+    {
+        registry.update_session_status(&project_id, &session.session_id, "idle", now)?;
+        session.status = "idle".to_string();
+        session.updated_at = now;
+        session.last_seen_at = Some(now);
+    }
     let validation = record
         .as_ref()
         .map(|session| {
@@ -482,10 +472,42 @@ pub(super) fn status_session(
             )
         })
         .transpose()?;
+    if let (Some(session), Some(validation)) = (record.as_ref(), validation.as_ref())
+        && validation.status == "failed"
+    {
+        let _ = registry.mark_session_invalid(&project_id, &session.session_id, now);
+    }
+    let registry_allows_routing = record
+        .as_ref()
+        .map(|session| {
+            !matches!(session.status.as_str(), "archived" | "closed") && session.is_routable_at(now)
+        })
+        .unwrap_or(false);
     let validation_allows_routing = validation.as_ref().is_none_or(|validation| {
         matches!(validation.status.as_str(), "passed" | "warning" | "skipped")
     });
-    let routable = routable && validation_allows_routing;
+    let validation_next_action = validation.as_ref().and_then(session_validation_next_action);
+    let rollout_activity = validation
+        .as_ref()
+        .and_then(|validation| validation.rollout_path.as_deref())
+        .map(|rollout_path| rollout_activity_report(Path::new(rollout_path), now));
+    if args.activity {
+        let next_action = rollout_activity
+            .as_ref()
+            .map(|activity| activity.agent_instruction.as_str())
+            .unwrap_or("register-existing-child-or-replace-only-after-host-confirms-unrecoverable");
+        return super::agent_session_registry_render::print_status_activity_report(
+            rollout_activity.as_ref(),
+            next_action,
+            args.json,
+        );
+    }
+    let lifecycle_allows_routing = rollout_activity
+        .as_ref()
+        .map(|activity| !activity.running_session_closed)
+        .unwrap_or(true);
+    let mut routable =
+        registry_allows_routing && validation_allows_routing && lifecycle_allows_routing;
     let registry_status = record
         .as_ref()
         .map(|session| session.status.clone())
@@ -495,90 +517,151 @@ pub(super) fn status_session(
         .map(|session| session.session_id.as_str())
         .or_else(|| root_session_id.as_deref());
     let runtime_status = agent_session_runtime_status_snapshot(
-        project_root,
-        now,
-        args.artifact_stale_after_seconds,
-        host_thread_id,
-        record.is_some(),
-        routable,
+        (
+            project_root,
+            now,
+            args.artifact_stale_after_seconds,
+            host_thread_id,
+            record.is_some(),
+            registry_allows_routing,
+        )
+            .into(),
     )?;
-    let (rollout_session_index, rollout_session_index_error) =
-        match root_session_id.as_deref().map(codex_rollout_session_index) {
-            Some(Ok(index)) => (index, None),
-            Some(Err(error)) => (None, Some(error)),
-            None => (None, None),
-        };
-    let rollout_activity = validation
-        .as_ref()
-        .and_then(|validation| validation.rollout_path.as_deref())
-        .map(|rollout_path| rollout_activity_report(Path::new(rollout_path), now));
-    let session_lifecycle_index = Some(session_lifecycle_index(
-        root_session_id.as_deref(),
-        name.as_deref(),
-        record.as_ref(),
-        &registry_status,
-        routable,
-        rollout_session_index.as_ref(),
-        rollout_session_index_error.as_deref(),
-    ));
-    let activity_snapshot_short = Some(activity_snapshot_short(
-        root_session_id.as_deref(),
-        record.as_ref(),
-        &registry_status,
-        &runtime_status.host_status,
-        &runtime_status.health_status,
-        &runtime_status.next_action,
-        rollout_activity.as_ref(),
-        rollout_session_index.as_ref(),
-        rollout_session_index_error.as_deref(),
-    ));
+    let rollout_session_index = None;
+    if routable
+        && rollout_activity
+            .as_ref()
+            .and_then(|activity| activity.session_activity.as_ref())
+            .is_some_and(|activity| {
+                matches!(
+                    activity.status.as_str(),
+                    "tool-running" | "agent-active" | "idle-resumable"
+                )
+            })
+    {
+        routable = true;
+    }
+    let session_lifecycle_index = None;
+    let activity_snapshot_short = None;
     let (host_thread_existence, host_thread_existence_reason) =
         host_thread_existence_snapshot(runtime_status.host_thread_id.as_deref());
     let multi_agent_child_state = multi_agent_child_state_snapshot(rollout_activity.as_ref());
-    print_status_report(
-        SessionStatusReport {
-            owner: "rust",
-            db_path: registry.db_path().display().to_string(),
-            root_session_id,
-            name,
-            session: record,
-            registry_status,
-            routable,
-            validation_status: validation
+    let session_lifetime = resolve_session_lifetime(
+        project_root,
+        name.as_deref(),
+        runtime_status.host_client.as_deref(),
+    );
+    let mut report = SessionStatusReport {
+        owner: "rust",
+        db_path: registry.db_path().display().to_string(),
+        root_session_id,
+        name,
+        session: record,
+        registry_status,
+        routable,
+        session_lifetime: session_lifetime.value,
+        resident: session_lifetime.resident,
+        session_lifetime_source: session_lifetime.source,
+        validation_status: validation
+            .as_ref()
+            .map(|validation| validation.status.clone())
+            .unwrap_or_else(|| "missing-registry".to_string()),
+        validation_reason: validation
+            .as_ref()
+            .map(|validation| validation.reason.clone())
+            .unwrap_or_else(|| "session registry entry not found".to_string()),
+        validation,
+        rollout_session_index,
+        rollout_activity,
+        session_lifecycle_index,
+        activity_snapshot_short,
+        host_client: runtime_status.host_client,
+        host_thread_id: runtime_status.host_thread_id,
+        host_status_source: runtime_status.host_status_source,
+        host_status: runtime_status.host_status,
+        host_status_reason: runtime_status.host_status_reason,
+        host_thread_existence,
+        host_thread_existence_reason,
+        multi_agent_child_state,
+        host_raw_status: runtime_status.host_raw_status,
+        health_status: runtime_status.health_status,
+        timeout_semantics: runtime_status.timeout_semantics,
+        duplicate_worker_allowed: runtime_status.duplicate_worker_allowed,
+        artifacts_dir: runtime_status.artifacts_dir,
+        artifact_status: runtime_status.artifact_status,
+        artifact_stale_after_seconds: runtime_status.artifact_stale_after_seconds,
+        last_artifact_updated_at: runtime_status.last_artifact_updated_at,
+        artifact_age_seconds: runtime_status.artifact_age_seconds,
+        last_artifact_path: runtime_status.last_artifact_path,
+        next_action: runtime_status.next_action,
+    };
+    if let Some(activity) = report.rollout_activity.as_ref() {
+        report.next_action = activity.agent_instruction.clone();
+    }
+    if let Some(next_action) = validation_next_action {
+        report.next_action = next_action.to_string();
+    }
+    if report.routable && report.health_status == "registry-not-routable" {
+        report.health_status = "unknown".to_string();
+        if report.rollout_activity.is_none() {
+            report.next_action =
+                "resume-or-send-follow-up-to-same-child-before-considering-replacement".to_string();
+        }
+    }
+    print_status_report(report, args.json)
+}
+
+fn session_validation_next_action(
+    validation: &agent_semantic_runtime::AgentSessionValidationReport,
+) -> Option<&'static str> {
+    if validation.status == "warning"
+        && validation
+            .reason
+            .contains("requiredAction=parent-send-follow-up-same-child-with-required-model")
+    {
+        return Some("resume-or-send-follow-up-to-same-child-before-considering-replacement");
+    }
+    None
+}
+
+fn registered_session_is_reusable(
+    registry: &AgentSessionRegistry,
+    record: &AgentSessionRecord,
+    now: i64,
+) -> Result<bool, String> {
+    if matches!(record.status.as_str(), "archived" | "closed") {
+        return Ok(false);
+    }
+    if !record.is_routable_at(now) {
+        return Ok(false);
+    }
+    if !session_record_validation_allows_routing(registry, record, now)? {
+        return Ok(false);
+    }
+    let validation = validate_session_profile(
+        &record.session_id,
+        &record.root_session_id,
+        &record.name,
+        &record.role,
+        now,
+    )?;
+    Ok(validation
+        .rollout_path
+        .as_deref()
+        .map(|rollout_path| {
+            let activity = rollout_activity_report(Path::new(rollout_path), now);
+            activity
+                .session_activity
                 .as_ref()
-                .map(|validation| validation.status.clone())
-                .unwrap_or_else(|| "missing-registry".to_string()),
-            validation_reason: validation
-                .as_ref()
-                .map(|validation| validation.reason.clone())
-                .unwrap_or_else(|| "session registry entry not found".to_string()),
-            validation,
-            rollout_session_index,
-            rollout_activity,
-            session_lifecycle_index,
-            activity_snapshot_short,
-            host_client: runtime_status.host_client,
-            host_thread_id: runtime_status.host_thread_id,
-            host_status_source: runtime_status.host_status_source,
-            host_status: runtime_status.host_status,
-            host_status_reason: runtime_status.host_status_reason,
-            host_thread_existence,
-            host_thread_existence_reason,
-            multi_agent_child_state,
-            host_raw_status: runtime_status.host_raw_status,
-            health_status: runtime_status.health_status,
-            timeout_semantics: runtime_status.timeout_semantics,
-            duplicate_worker_allowed: runtime_status.duplicate_worker_allowed,
-            artifacts_dir: runtime_status.artifacts_dir,
-            artifact_status: runtime_status.artifact_status,
-            artifact_stale_after_seconds: runtime_status.artifact_stale_after_seconds,
-            last_artifact_updated_at: runtime_status.last_artifact_updated_at,
-            artifact_age_seconds: runtime_status.artifact_age_seconds,
-            last_artifact_path: runtime_status.last_artifact_path,
-            next_action: runtime_status.next_action,
-        },
-        args.json,
-    )
+                .map(|session_activity| {
+                    matches!(
+                        session_activity.status.as_str(),
+                        "tool-running" | "agent-active" | "idle-resumable"
+                    )
+                })
+                .unwrap_or(!activity.running_session_closed)
+        })
+        .unwrap_or(true))
 }
 
 fn host_thread_existence_snapshot(host_thread_id: Option<&str>) -> (String, String) {
@@ -607,6 +690,27 @@ fn multi_agent_child_state_snapshot(
     >,
 ) -> String {
     match rollout_activity {
+        Some(activity)
+            if activity
+                .session_activity
+                .as_ref()
+                .is_some_and(|session_activity| session_activity.status == "idle-resumable") =>
+        {
+            "control-plane-idle-resumable".to_string()
+        }
+        Some(activity)
+            if activity
+                .session_activity
+                .as_ref()
+                .is_some_and(|session_activity| {
+                    matches!(
+                        session_activity.status.as_str(),
+                        "tool-running" | "agent-active"
+                    )
+                }) =>
+        {
+            "control-plane-running-session-open-or-unknown".to_string()
+        }
         Some(activity) if activity.running_session_closed => {
             "control-plane-running-session-closed".to_string()
         }
@@ -615,52 +719,11 @@ fn multi_agent_child_state_snapshot(
     }
 }
 
-fn session_lifecycle_index(
-    root_session_id: Option<&str>,
-    selected_name: Option<&str>,
-    record: Option<&AgentSessionRecord>,
-    registry_status: &str,
-    routable: bool,
-    rollout_session_index: Option<&CodexRolloutSessionIndex>,
-    rollout_index_error: Option<&str>,
-) -> SessionLifecycleIndex {
-    let rollout_status_by_session = rollout_session_index
-        .map(|index| {
-            index
-                .activity_by_session
-                .iter()
-                .map(|(session_id, activity)| (session_id.clone(), activity.status.clone()))
-                .collect()
-        })
-        .unwrap_or_default();
-    let missing_rollout_by_session = rollout_session_index
-        .map(|index| index.missing_rollout_by_session.clone())
-        .unwrap_or_default();
-    SessionLifecycleIndex {
-        root_session_id: root_session_id.map(str::to_string),
-        selected_name: selected_name.map(str::to_string),
-        selected_session_id: record.map(|record| record.session_id.clone()),
-        selected_role: record.map(|record| record.role.clone()),
-        registry_status: registry_status.to_string(),
-        routable,
-        rollout_session_count: rollout_session_index
-            .map(|index| index.records.len())
-            .unwrap_or_default(),
-        rollout_activity_count: rollout_session_index
-            .map(|index| index.activity_by_session.len())
-            .unwrap_or_default(),
-        missing_rollout_count: missing_rollout_by_session.len(),
-        rollout_index_error: rollout_index_error.map(str::to_string),
-        missing_rollout_by_session,
-        rollout_status_by_session,
-    }
-}
-
 pub(super) fn close_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     registry.refresh_expired_sessions()?;
     let record = lifecycle_target_session(registry, args, &project_id)?;
     let now = agent_session_unix_timestamp()?;
@@ -686,7 +749,7 @@ pub(super) fn gc_sessions(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     registry.refresh_expired_sessions()?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let candidates = if args.child_session_id.is_some() {
@@ -727,14 +790,23 @@ pub(super) fn reconcile_sessions(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     registry.refresh_expired_sessions()?;
+    let now = agent_session_unix_timestamp()?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let sessions = registry.query_sessions(
         &project_id,
         root_session_id.as_deref(),
         args.name.as_deref(),
     )?;
+    let mut reconciled_session_ids = Vec::new();
+    for record in &sessions {
+        if stale_invalid_session_should_be_idle(record, now)?
+            && registry.update_session_status(&project_id, &record.session_id, "idle", now)?
+        {
+            reconciled_session_ids.push(record.session_id.clone());
+        }
+    }
     let gc_candidates = sessions
         .iter()
         .filter(|record| is_gc_candidate_status(&record.status))
@@ -742,14 +814,15 @@ pub(super) fn reconcile_sessions(
     if args.json {
         print_lifecycle_json(
             "reconcile",
-            &[],
+            &reconciled_session_ids,
             sessions.len(),
             gc_candidates,
-            Some("refreshed-expired-sessions"),
+            Some("refreshed-expired-and-reconciled-rollout-sessions"),
         )
     } else {
         println!(
-            "[agent-session-reconcile] refreshed=true sessions={} gcCandidates={}",
+            "[agent-session-reconcile] refreshed=true reconciled={} sessions={} gcCandidates={}",
+            reconciled_session_ids.len(),
             sessions.len(),
             gc_candidates
         );
@@ -804,53 +877,4 @@ fn print_lifecycle_json(
             .map_err(|error| format!("failed to render lifecycle json: {error}"))?
     );
     Ok(())
-}
-
-fn activity_snapshot_short(
-    root_session_id: Option<&str>,
-    record: Option<&AgentSessionRecord>,
-    registry_status: &str,
-    host_status: &str,
-    health_status: &str,
-    next_action: &str,
-    rollout_activity: Option<
-        &super::agent_session_registry_rollout_activity::RolloutActivityReport,
-    >,
-    rollout_session_index: Option<&CodexRolloutSessionIndex>,
-    rollout_index_error: Option<&str>,
-) -> ActivitySnapshotShort {
-    let rollout_status_by_session = rollout_session_index
-        .map(|index| {
-            index
-                .activity_by_session
-                .iter()
-                .map(|(session_id, activity)| (session_id.clone(), activity.status.clone()))
-                .collect()
-        })
-        .unwrap_or_default();
-    let missing_rollout_by_session = rollout_session_index
-        .map(|index| index.missing_rollout_by_session.clone())
-        .unwrap_or_default();
-    ActivitySnapshotShort {
-        source: "codex-rollout-session-index",
-        root_session_id: root_session_id.map(str::to_string),
-        selected_session_id: record.map(|record| record.session_id.clone()),
-        selected_role: record.map(|record| record.role.clone()),
-        registry_status: registry_status.to_string(),
-        host_status: host_status.to_string(),
-        health_status: health_status.to_string(),
-        next_action: next_action.to_string(),
-        rollout_activity_status: rollout_activity.map(|activity| activity.status.clone()),
-        rollout_last_heartbeat_kind: rollout_activity
-            .and_then(|activity| activity.last_heartbeat_kind.clone()),
-        rollout_last_terminal_event: rollout_activity
-            .and_then(|activity| activity.last_terminal_event.clone()),
-        rollout_running_session_closed: rollout_activity
-            .map(|activity| activity.running_session_closed),
-        seconds_since_heartbeat: rollout_activity
-            .and_then(|activity| activity.seconds_since_heartbeat),
-        rollout_index_error: rollout_index_error.map(str::to_string),
-        missing_rollout_by_session,
-        rollout_status_by_session,
-    }
 }

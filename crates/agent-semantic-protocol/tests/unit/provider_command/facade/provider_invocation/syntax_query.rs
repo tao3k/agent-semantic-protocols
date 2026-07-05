@@ -155,16 +155,57 @@ printf 'pub fn provider_owned() -> usize {
 }
 
 #[test]
-fn language_facade_query_owner_selector_renders_single_owner_frontier() {
-    let root = temp_project_root("provider-query-owner-selector-single-frontier");
+fn language_facade_treesitter_file_selector_code_stays_provider_owned() {
+    let root = temp_project_root("provider-syntax-query-file-selector-code");
+    let home_bin = home_local_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let provider_path = home_bin.join("rs-harness");
+    std::fs::write(
+        &provider_path,
+        r#"#!/bin/sh
+printf 'provider syntax query output
+'
+"#,
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    std::fs::create_dir_all(root.join("src")).expect("create src dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn local_source() {}\n").expect("write source");
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "query",
+            "--treesitter-query",
+            "(function_item name: (identifier) @function.name)",
+            "--selector",
+            "src/lib.rs",
+            "--code",
+        ])
+        .output()
+        .expect("run asp rust syntax query code");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert_eq!(stdout, "provider syntax query output\n");
+    assert!(!stdout.contains("local_source"), "{stdout}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn language_facade_query_file_selector_code_is_rejected() {
+    let root = temp_project_root("provider-query-file-selector-code-source");
     write_rust_owner_frontier_provider(&root);
     write_activation(&root, &[provider("rust", Vec::new())]);
     std::fs::create_dir_all(root.join("src")).expect("create src dir");
-    std::fs::write(
-        root.join("src/core.rs"),
-        "pub struct QueryExpr;\n\npub fn parse_query_expr() {}\n",
-    )
-    .expect("write fixture");
+    let source = "pub struct QueryExpr;\n\npub fn parse_query_expr() {}\n";
+    std::fs::write(root.join("src/core.rs"), source).expect("write fixture");
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -180,41 +221,134 @@ fn language_facade_query_owner_selector_renders_single_owner_frontier() {
         .output()
         .expect("run asp rust owner selector query");
 
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
+        stderr.contains("invalid query --code selector `src/core.rs`"),
+        "{stderr}"
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert_eq!(
-        stdout
-            .lines()
-            .filter(|line| line.starts_with("[search-owner]"))
-            .count(),
-        1,
-        "{stdout}"
-    );
-    assert_eq!(
-        stdout
-            .lines()
-            .filter(|line| line.starts_with("rank="))
-            .count(),
-        1,
-        "{stdout}"
-    );
-    assert_eq!(
-        stdout
-            .lines()
-            .filter(|line| line.starts_with("avoid="))
-            .count(),
-        1,
-        "{stdout}"
-    );
-    assert!(stdout.contains("I=item:symbol(QueryExpr)"), "{stdout}");
     assert!(
-        stdout.contains("I2=item:symbol(parse_query_expr)"),
-        "{stdout}"
+        stderr.contains("exact parser-owned item selector"),
+        "{stderr}"
     );
+    assert!(!stderr.contains("direct-source-read"), "{stderr}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn registered_language_facade_query_source_selector_code_is_rejected() {
+    let source_language_cases = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .filter(|manifest| {
+            manifest.execution == agent_semantic_hook::ProviderExecution::ExternalProcess
+        })
+        .filter_map(|manifest| {
+            let extension = manifest.source.default_extensions.first()?.clone();
+            let selector = format!("src/core{}", extension);
+            Some((manifest.language_id, selector))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !source_language_cases.is_empty(),
+        "registered provider manifests must include source-language facades"
+    );
+
+    for (language_id, selector) in source_language_cases {
+        let root = temp_project_root(&format!(
+            "provider-query-registered-file-selector-code-source-{language_id}"
+        ));
+        write_activation(&root, &[provider(language_id.clone(), Vec::new())]);
+        std::fs::create_dir_all(root.join("src")).expect("create src dir");
+        std::fs::write(root.join(&selector), "fixture source\n").expect("write fixture");
+
+        let output = asp_command(&root)
+            .env("PRJ_CACHE_HOME", root.join(".cache"))
+            .args([
+                language_id.as_str(),
+                "query",
+                "--selector",
+                selector.as_str(),
+                "--workspace",
+                ".",
+                "--code",
+            ])
+            .output()
+            .expect("run asp registered language selector query");
+
+        assert!(
+            !output.status.success(),
+            "{language_id} unexpectedly succeeded"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr");
+        assert!(
+            stderr.contains(&format!("invalid query --code selector `{selector}`")),
+            "{language_id}: {stderr}"
+        );
+        assert!(
+            stderr.contains(&format!("{language_id}://path#item/function/name")),
+            "{language_id}: {stderr}"
+        );
+        assert!(
+            !stderr.contains("direct-source-read"),
+            "{language_id}: {stderr}"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[test]
+fn registered_language_source_extensions_drive_file_selector_code_rejection() {
+    let root = temp_project_root("provider-query-registered-extension-selector-code-source");
+    let manifest = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| {
+            manifest.execution == agent_semantic_hook::ProviderExecution::ExternalProcess
+        })
+        .expect("registered source-language provider manifest");
+    let language_id = manifest.language_id;
+    write_activation(&root, &[provider(language_id.clone(), Vec::new())]);
+    let activation_path = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("hooks")
+        .join("activation.json");
+    let mut activation: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&activation_path).expect("read activation"))
+            .expect("parse activation");
+    activation["providers"][0]["coverage"]["sourceExtensions"] = serde_json::json!([".widget"]);
+    std::fs::write(
+        &activation_path,
+        serde_json::to_string_pretty(&activation).expect("serialize activation"),
+    )
+    .expect("write activation");
+    std::fs::create_dir_all(root.join("src")).expect("create src dir");
+    std::fs::write(root.join("src/core.widget"), "fixture source\n").expect("write fixture");
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            language_id.as_str(),
+            "query",
+            "--selector",
+            "src/core.widget",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run asp registered extension selector query");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stderr.contains("invalid query --code selector `src/core.widget`"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!("{language_id}://path#item/function/name")),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("direct-source-read"), "{stderr}");
     let _ = std::fs::remove_dir_all(root);
 }
 

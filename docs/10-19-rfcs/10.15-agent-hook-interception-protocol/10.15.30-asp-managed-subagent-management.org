@@ -1,0 +1,131 @@
+* Problem
+ASP hooks must protect ASP-owned read-only search subagents without capturing user-owned subagents. A nickname such as =ASP search=, or a role that merely contains =search=, is not a sufficient ownership proof.
+The current failure mode is expensive:
+1. A main session runs an ASP search/query command.
+2. The hook denies it and asks the agent to use =asp-explore=.
+3. The registered child session can be stale from the host tool surface.
+4. The agent may create a generic subagent.
+5. ASP registry validation rejects that generic child.
+6. The agent loops through more recovery attempts.
+The recovery message must make the next action deterministic enough that the agent does not create the wrong kind of subagent.
+* Managed Agent Scope
+ASP manages a collection of Codex agent configs, not one hard-coded resident agent.
+The managed set is:
+#+begin_src text
+~/.agent-semantic-protocols/agents/*_codex.toml
+#+end_src
+Each matching file is a managed agent spec. Examples:
+#+begin_src text
+asp-explorer_codex.toml
+asp-testing_codex.toml
+asp-selector_codex.toml
+asp-owner_codex.toml
+#+end_src
+The projected host file may be under =~/.codex/agents=, but ASP ownership is derived from the ASP-managed source file and registry record, not from the host file alone.
+* Ownership Proof
+The hook must treat a thread as ASP-managed only when all available ownership proofs agree:
+#+begin_src text
+currentSessionId == registry.childSessionId
+registry.manager == "asp"
+registry.rootSessionId == currentRootSessionId
+codex.thread.parentThreadId == registry.rootSessionId
+codex.thread.agentRole == managedSpec.agentRole
+codex.thread.agentNickname == managedSpec.nickname
+codex.thread.agentPath resolves to a managed *_codex.toml spec when present
+managedSpec.pathHash == registry.managedAgentPathHash
+sandboxMode == managedSpec.permission
+#+end_src
+Missing or mismatched ownership proof must not deny user-owned subagents. The safe result is:
+#+begin_src text
+notAspManagedSubagent=true
+reason=missing-asp-ownership-proof
+action=ignore-asp-read-only-policy
+#+end_src
+* Hook Decisions
+The hook policy is:
+#+begin_src text
+if !isAspManagedSubagent:
+  allow normal host policy
+if isAspManagedSubagent && managedSpec.permission == "read-only" && tool is edit/write:
+  deny read-only
+if main session runs ASP search/query and a valid managed child is available:
+  deny in parent with requiredAction=send-to-existing-managed-child
+if main session runs ASP search/query and registry child is stale or host-missing:
+  deny with requiredAction=bootstrap-supported-managed-child
+#+end_src
+* Bootstrap Recovery
+Recovery must be one-step for the model when the host supports a matching managed agent type:
+#+begin_src text
+requiredAction=spawn-managed-agent
+agentConfig=~/.agent-semantic-protocols/agents/<name>_codex.toml
+agentType=<host-supported-agent-type>
+afterSpawn=asp agent session register --name <resident-name> --child-session-id <id> --roles <roles>
+#+end_src
+When the host tool surface cannot create the required managed agent type, the hook must say so explicitly:
+#+begin_src text
+bootstrapBlocked=host-agent-type-unavailable
+requiredAction=do-not-create-generic-subagent
+allowedAgentTypes=<reported host types>
+managedAgentConfig=<path>
+#+end_src
+This prevents the agent from trying =default=, =explorer=, or =worker= when the registry requires an ASP-managed role.
+* Stale Registry Recovery
+When ASP registry says a child is active but the host tool cannot send to it, the hook/runtime must mark the resident as stale or host-missing:
+#+begin_src text
+staleResidentChild=true
+registeredChildSessionId=<id>
+hostLookupStatus=missing
+requiredAction=clear-stale-registration-or-bootstrap-supported-managed-child
+doNotSpawnGenericSubagent=true
+#+end_src
+The registry should keep enough evidence to explain why the resident was not usable: rollout status, last heartbeat, host tool lookup result, model mismatch, sandbox mismatch, and managed spec mismatch.
+* Subagent Message Receipt
+The main control plane must use the subagent message channel to receive child results. The parent sends a message to the existing managed child agent, and the child returns a message receipt after it completes:
+#+begin_src text
+requiredAction=send-message-to-existing-managed-child
+resultSource=subagent-message-receipt
+childSessionId=<registeredChildSessionId>
+agentMessageTargetId=<host-message-agent-target-id>
+doNotReadRolloutForResult=true
+doNotExposeThreadReadAsProtocol=true
+#+end_src
+The =childSessionId= or Codex =threadId= proves identity and parentage. It is not automatically a sendable subagent target. The hook/runtime must only instruct the agent to send a subagent message when it has a host message-agent target id accepted by the subagent API.
+
+If ASP only knows the Codex thread/session id, but not the message-agent target id, the recovery is blocked:
+#+begin_src text
+messageAgentTargetMissing=true
+requiredAction=do-not-use-normal-thread-or-read-thread
+bootstrapBlocked=host-message-agent-target-unavailable
+doNotCreateGenericSubagent=true
+#+end_src
+Codex thread read/send APIs are host-native normal-thread surfaces. They may be used by the ASP runtime, tests, or a human/operator to verify state, but they are not the ASP Explorer subagent interaction protocol and must not be emitted as the normal agent-facing next action.
+
+Rollout events are an internal audit and recovery ledger. They are valid for heartbeat checks, bounded silence detection, orphan-risk analysis, and stale-registration diagnosis, but they are not the primary result transport.
+
+If the host exposes a send primitive but no message-agent receive primitive, ASP must report that as a host capability gap instead of asking the model to read the thread or parse rollout files:
+#+begin_src text
+hostMessageReceiveUnavailable=true
+requiredAction=wait-for-subagent-message-or-use-asp-session-receive
+fallbackScope=runtime-internal-rollout-audit-only
+#+end_src
+The desired ASP abstraction is a single receive command that hides the fallback:
+#+begin_src text
+asp agent session receive --name <resident-name> --last --json
+#+end_src
+That command may use host-native thread inspection or rollout internally only when the message-agent receive surface is unavailable. The agent-facing receipt must still be a child message receipt, not a raw thread read or rollout log scan.
+* Testing Plan
+The automated tests must cover:
+1. ASP-managed child with matching =*_codex.toml=, registry ownership, role, nickname, and read-only permission is denied on write.
+2. User-created subagent with similar nickname but no ASP registry ownership is not denied by ASP read-only policy.
+3. Registry-active child that is missing from host tool lookup returns =staleResidentChild=true= and does not recommend generic subagent creation.
+4. Host without a supported managed agent type returns =bootstrapBlocked=host-agent-type-unavailable=.
+5. Parent-to-child result receipt uses subagent message receipts, while host thread reads and rollout remain runtime-internal or test-only evidence.
+6. The guide renders a single next command/action sequence for the supported path.
+The manual normal-thread test should measure model steps:
+1. Start a normal Codex thread.
+2. Trigger a protected ASP search/query command in the parent.
+3. Confirm the hook response provides one deterministic next action.
+4. If supported, send a follow-up to the existing managed child thread or spawn the configured managed agent and register it.
+5. Receive the child result through the subagent message channel.
+6. Retry the original ASP command through the managed child.
+Success means the agent does not create a generic subagent, does not read host threads or rollout as the normal result channel, and does not loop through multiple invalid registration attempts.

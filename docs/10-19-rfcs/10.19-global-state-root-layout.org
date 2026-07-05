@@ -85,6 +85,13 @@ repo_id -> workspace_id -> scope_id -> generation_id -> provider_id ->
 search_receipt_id -> selector/snippet/artifact
 #+end_src
 
+=session-registry.turso= is the top-level ASP lifecycle control-plane
+database. It is not a project artifact and MUST NOT be placed under
+=projects/by-id/<repo_id>/=, =workspaces/<workspace_id>/=, or
+=live/client/agent/=. Project and workspace directories carry project
+identity, dynamic search/history data, command artifacts, provider output, and
+analysis material consumed by Python, Julia, or other downstream tooling.
+
 * Manifest contract
 =live/client/manifest.json= is written by the owning State Core/DB Engine
 service, not by command code. It records:

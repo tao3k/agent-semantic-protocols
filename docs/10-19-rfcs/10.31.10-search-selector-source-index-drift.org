@@ -1,0 +1,296 @@
+* Purpose
+This note records a Search Frame / EvidenceGraph failure mode: search can
+advertise an exact parser-owned selector that the provider later cannot resolve
+to code or document content.
+
+This is not primarily an evidence-format problem. The selector should not have
+entered the search result or GraphRoute as a usable candidate.
+
+* Observed failure
+A search lane returned a Rust function selector for a repo-owned implementation
+path. The parent then ran the recommended exact
+=asp rust query --selector ... --workspace . --code= command. The command
+completed successfully but returned no code payload.
+
+The empty read is only the symptom. The upstream bug is that Search Frame or
+source index treated a stale, invalid, or non-materialized selector as
+=selector-ready=.
+
+* Likely root causes
+Candidate selectors must be checked against the current provider/source-index
+state before ranking and route projection. Plausible root causes include:
+
+- stale source-index rows that survived file moves, parser changes, or dirty-tree
+  overlay updates;
+- selector schema drift between the search index and the provider query
+  resolver;
+- owner-items output that exposes structural identities without proving they can
+  be fetched as bounded code/content;
+- GraphRoute ranking that promotes a candidate without a provider-backed
+  payload check or sourceTrace edge;
+- provider behavior that returns exit 0 and empty stdout instead of a structured
+  invalid-selector or stale-index error.
+
+* Contract
+Search Frame must not emit a candidate as final exact evidence unless it is
+resolvable by the same provider contract that will serve the parent read.
+
+An exact selector can appear in search output only in one of these states:
+
+| State | Meaning |
+| =selector-ready= | Provider confirms the selector resolves to a bounded payload or a guaranteed direct read command. |
+| =inventory-only= | The selector is structural inventory and may guide refinement, but is not final read evidence. |
+| =stale-index= | Source index advertised a selector that no longer resolves. |
+| =invalid-selector= | Selector shape is not accepted by the provider query resolver. |
+| =empty-payload= | Resolver ran successfully but produced zero bounded evidence. |
+
+Only =selector-ready= can be used as the parent agent's exact final read route.
+
+* Required receipt fields
+When a stale or empty selector is detected, the receipt must record:
+
+| Field | Meaning |
+| =selector= | Parser-owned selector that was advertised or requested. |
+| =owner= | Owner path or package owner that produced the selector. |
+| =command= | ASP command that exposed or failed the selector. |
+| =provider= | Language/document provider surface. |
+| =indexGeneration= | Source-index generation or cache identity when available. |
+| =overlayState= | Dirty-tree or dynamic overlay state when available. |
+| =exitStatus= | Process exit status for the failed direct query. |
+| =stdoutBytes= | Size of stdout; zero is the payload failure trigger. |
+| =stderrBytes= | Size of stderr. |
+| =sourceTrace= | Provider/source-index trace when available. |
+| =recommendedNext= | Rebuild/refresh source index, owner-items inventory, alternate selector, or provider bug route. |
+
+* Recovery rule
+The parent must not count a stale or empty exact-selector response as completed
+evidence. It must also not fall back to raw source reads.
+
+The recovery action is one of:
+
+1. Refresh or invalidate the relevant source-index segment.
+2. Ask the same ASP search lane for owner-items inventory for the same owner.
+3. Ask the provider for an alternate parser-owned selector that resolves to a
+   payload.
+4. Record a provider/index bug when the same provider advertised and then failed
+   the selector.
+
+* Scenario gates
+Add scenarios that fail before this reaches the main agent as final proof:
+
+| Scenario | Purpose |
+| =search_selector_must_resolve_to_payload= | Search must not emit =selector-ready= for a selector that cannot be fetched as bounded code/content. |
+| =stale_source_index_selector_is_not_ranked= | Stale source-index rows are reported as =stale-index= and excluded from final GraphRoute ranking. |
+| =exact_selector_empty_payload_is_recovery_state= | Exit 0 plus empty stdout from a selector-bound direct query is classified as =empty-payload= with =recommendedNext=, not completed evidence. |
+
+* Implementation target
+The fix belongs upstream of parent-agent recovery:
+
+#+begin_src text
+source index candidate
+-> provider/overlay validity check
+-> selector state classification
+-> GraphRoute ranking excludes stale/empty/invalid candidates
+-> parent receives only selector-ready routes for final exact reads
+#+end_src
+
+Provider behavior should be:
+
+#+begin_src text
+exact selector resolves to payload
+-> return bounded code/content evidence
+
+source index selector no longer resolves
+-> return stale-index with sourceTrace and recommendedNext
+
+selector shape is invalid for provider
+-> return invalid-selector with recommendedNext
+
+selector resolves structurally but has no payload
+-> return empty-payload with sourceTrace and recommendedNext
+#+end_src
+
+The hook and parent-agent guidance should treat successful empty stdout as a
+failed proof state until the search/source-index contract prevents that selector
+from being advertised as final evidence.
+
+* Pollution filter
+The core issue is that Search Frame needs a strong anti-contamination filter
+before it writes into EvidenceGraph or hands candidates to GraphRoute.
+
+Without this ingress filter, stale source-index rows, inventory-only selectors,
+display-line hints, and non-materialized parser identities can pollute the
+graph. Once polluted, GraphRoute may rank a false edge as the next action, and
+the parent agent spends expensive rounds reading evidence that does not exist.
+
+The filter is an entry gate, not a later cleanup pass:
+
+#+begin_src text
+raw candidate
+-> selector shape gate
+-> provider resolvability gate
+-> source-index freshness gate
+-> overlay/sourceTrace coherence gate
+-> payload capability gate
+-> EvidenceGraph node
+-> GraphRoute ranking
+#+end_src
+
+Candidates that fail a gate go to a quarantine lane with a typed state. They may
+support diagnostics or refinement, but they must not become rankable evidence
+nodes.
+
+| Gate | Rejects | Output state |
+| selector shape | malformed selector, display line masquerading as selector, path-only final proof | =invalid-selector= or =inventory-only= |
+| provider resolvability | selector cannot be resolved by the current provider query resolver | =invalid-selector= |
+| source-index freshness | row generation does not match current index or owner version | =stale-index= |
+| overlay/sourceTrace coherence | dirty-tree overlay and sourceTrace disagree about owner or item identity | =quarantined= |
+| payload capability | candidate cannot produce bounded =--code= or =--content= payload | =inventory-only= or =empty-payload= |
+
+EvidenceGraph should only receive nodes that pass these gates, plus explicitly
+typed diagnostic/quarantine nodes. GraphRoute must not rank diagnostic or
+quarantine nodes as preferred next actions.
+
+The invariant is:
+
+#+begin_src text
+selector-ready implies provider-resolvable bounded payload
+#+end_src
+
+If that invariant cannot be proven cheaply, the candidate remains
+=inventory-only= and the subagent should return an owner-items or refinement
+route instead of a final exact read.
+
+* Code plan audit
+Current implementation audit shows the pollution boundary is still too late.
+
+The protocol CLI can render search output, but it is not the right owner for the
+filter. The filter belongs in the search engine before graph projection:
+
+| Layer | Current role | Required change |
+| =agent-semantic-search::graph_candidate_projection= | Projects =GraphProjectionCandidate= into item graph nodes with structural selectors, display ranges, source hints, source, and confidence. | Add candidate state classification before node emission. Only =selector-ready= candidates become rankable item evidence. =inventory-only=, =stale-index=, =invalid-selector=, =empty-payload=, and =quarantined= candidates must be represented as diagnostic/refinement facts or excluded from preferred routes. |
+| =agent-semantic-search::graph_owner_rank= | Ranks owner paths from candidates and query axes. | Rank only candidates that pass the pollution filter for final evidence routes. Non-ready candidates may still contribute weak owner orientation but cannot produce final exact-read next actions. |
+| =agent-semantic-search::graph_query_owner_seed= | Emits owner seed evidence and source-index candidate counts. | Split candidate counts by state, so stale/quarantined rows are visible and do not silently inflate evidence quality. |
+| =agent-semantic-protocol::command::search_query_wrapper= | Renders query-wrapper/search-frame output and next commands. | Display candidate state, avoid actions, and recovery commands. Do not decide candidate truth here. |
+| scenario gates | Existing graph-rank/search/source-index scenarios cover latency and selector shape. | Add pollution scenarios that fail if stale or non-resolvable selectors enter =selector-ready= output or GraphRoute preferred next action. |
+
+The first implementation slice should be narrow:
+
+1. Add a shared =CandidateState= / =SelectorReadiness= type in
+   =agent-semantic-search= with values =selector-ready=, =inventory-only=,
+   =stale-index=, =invalid-selector=, =empty-payload=, and =quarantined=.
+2. Add a pure classifier that takes the current candidate fields plus optional
+   provider/sourceTrace metadata and returns the state plus a compact reason.
+3. Make =graph_candidate_item_nodes= attach =candidateState= and
+   =rankEligible= fields, and prevent non-ready candidates from being emitted as
+   preferred exact-read evidence.
+4. Update owner rank so non-ready candidates can orient search but cannot win as
+   final exact selector evidence.
+5. Add scenario/unit coverage before optimizing provider-side freshness checks.
+
+Required first tests:
+
+| Test | Expected behavior |
+| =graph_candidate_item_nodes_marks_inventory_only_candidates_not_rank_eligible= | A path/finder candidate with no provider payload proof is not rankable item evidence. |
+| =graph_candidate_item_nodes_keeps_selector_ready_source_index_candidates= | A provider-backed candidate with structural identity and payload capability remains rankable. |
+| =graph_owner_rank_does_not_prefer_quarantined_candidate= | A quarantined/stale candidate cannot win over a weaker valid candidate. |
+| =exact_selector_query_empty_payload_is_recorded_as_pollution= | A direct query returning exit 0 and empty payload is recorded as =empty-payload=, not final proof. |
+
+Implementation must not encode domain-specific ranking heuristics in Rust. Rust
+should expose candidate state, sourceTrace, and neutral graph facts. Graph Turbo
+owns intent-domain ranking after the pollution filter has removed invalid
+evidence.
+* P0 implementation slice
+The first fixed slice makes two failure modes non-silent:
+1. Source-index rows are no longer treated as final evidence merely because the DB returned a hit. A missing owner path is classified as =stale-index=. A current owner path that only has DB row/query-key evidence is classified as =inventory-only=. Neither state may short-circuit search overlay as =selector-ready=.
+2. Exact structural selector code reads that resolve to no owner now fail with a typed stale-index message instead of returning exit 0 with empty stdout.
+
+This keeps the invariant:
+#+begin_src text
+selector-ready implies provider-resolvable bounded payload
+#+end_src
+
+Current recovery surface:
+#+begin_src text
+stale-index exact selector resolved no code payload
+-> state=stale-index
+-> recommendedNext=asp <language> search owner <owner-path> items --workspace . --view seeds
+#+end_src
+
+* P1 implementation slice
+The second fixed slice adds an explicit positive proof field for source-index readiness.
+
+Source-index candidates now carry optional =selector_proof= data. A candidate can be promoted from =inventory-only= to =selector-ready= only when the proof shows:
+1. a non-empty structural selector;
+2. =payload_kind= is =code=;
+3. the payload is bounded;
+4. the structural selector owner path matches the candidate owner path.
+
+Path existence remains only a freshness signal. It is not a payload proof. A current file with DB row/query-key evidence and no bounded provider/parser proof stays =inventory-only= and cannot short-circuit search overlay as final exact evidence.
+
+The DB-facing candidate contract now also carries =selector_proof=. Current Turso read-model rows and FileLocator fallback candidates intentionally emit =selector_proof=None=. This preserves the anti-contamination invariant for historical rows until the provider refresh path can attach real bounded payload receipts.
+
+The client source-pipe mapper preserves a DB proof when one is present. This makes the data path explicit:
+#+begin_src text
+ClientDbSourceIndexCandidate.selector_proof
+-> SearchPipeSourceIndexCandidate.selector_proof
+-> selector-ready classifier
+#+end_src
+
+The query-wrapper source-index projection remains proof-agnostic; it is not a final exact-read route.
+
+Updated invariant:
+#+begin_src text
+selector-ready implies provider-resolvable bounded code payload proof
+#+end_src
+
+Validation receipt:
+#+begin_src text
+agent-semantic-client-db cargo check -> passed
+agent-semantic-client cargo check -> passed
+agent-semantic-client source_index_lookup -> 4 passed
+agent-semantic-search source_index -> 29 passed
+agent-semantic-client syntax_query_preflight_tests:: -> 16 passed
+agent-semantic-protocol provider_command::facade::pipe::options:: -> 9 passed
+#+end_src
+
+* P2 implementation slice
+The third fixed slice moves proof from an in-memory candidate field into the Turso source-index selector read model.
+
+Selector rows now carry proof capability columns:
+#+begin_src text
+asp_source_index_selector.payload_kind
+asp_source_index_selector.payload_bounded
+#+end_src
+
+The structural selector is still stored once as =selector_id=. Lookup reconstructs =ClientDbSourceIndexSelectorPayloadProof.structural_selector= from =selector_id= rather than storing another selector string. This prevents selector/proof drift inside the DB row.
+
+The source-index import writer rejects a selector payload proof when:
+#+begin_src text
+payload_proof.structural_selector != selector_id
+#+end_src
+
+The owner lookup path now joins selector proof capability back into the owner candidate:
+#+begin_src text
+ClientDbSourceIndexSelector.payload_proof
+-> asp_source_index_selector payload columns
+-> ClientDbSourceIndexCandidate.selector_proof
+-> SearchPipeSourceIndexCandidate.selector_proof
+-> selector-ready classifier
+#+end_src
+
+The default file-level import path still emits =payload_proof=None=. It creates =#file= inventory selectors only, so it cannot turn a current file path into final exact code evidence.
+
+Validation receipt:
+#+begin_src text
+agent-semantic-client-db source_index -> 10 passed
+agent-semantic-client source_index_lookup -> 4 passed
+agent-semantic-search source_index -> 29 passed
+agent-semantic-client syntax_query_preflight_tests:: -> 16 passed
+agent-semantic-protocol provider_command::facade::pipe::options:: -> 9 passed
+#+end_src
+
+Remaining follow-up:
+1. Teach the real provider/parser source-index refresh producer to emit selector-level =payload_proof= only after the exact bounded payload is known to resolve.
+2. Add scenario gates that prove legacy DB rows, moved files, and selector schema drift cannot enter GraphRoute as rank-eligible final reads.
+3. Keep Graph Turbo responsible for intent-domain ranking after Search Frame has removed stale, invalid, and inventory-only evidence.

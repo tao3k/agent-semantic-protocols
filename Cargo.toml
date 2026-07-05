@@ -69,19 +69,7 @@ opt-level = 2
 [profile.dev.package.sha2]
 opt-level = 2
 
-[profile.dev.package.regex]
-opt-level = 2
-
-[profile.dev.package.regex-automata]
-opt-level = 2
-
 [profile.dev.package.memchr]
-opt-level = 2
-
-[profile.dev.package.rayon]
-opt-level = 2
-
-[profile.dev.package.rayon-core]
 opt-level = 2
 
 [profile.dev.package.ignore]

@@ -8,6 +8,7 @@ from .model import Node
 from .query_tokens import query_tokens_from_text
 
 CLAUSE_COVERAGE_BONUS = 0.30
+MATCH_TEXT_CLAUSE_MIN_TOKENS = 2
 
 
 def query_clause_coverage_adjustment(
@@ -56,7 +57,11 @@ def _node_covers_clause(node: Node, clause_tokens: tuple[str, ...]) -> bool:
     plain_tokens = tuple(token for token in clause_tokens if "_" not in token)
     if not plain_tokens:
         return True
-    return any(token in exact_semantic_tokens for token in plain_tokens)
+    if any(token in exact_semantic_tokens for token in plain_tokens):
+        return True
+    match_text_tokens = set(query_tokens_from_text(_node_semantic_text(node)))
+    matched_count = sum(1 for token in plain_tokens if token in match_text_tokens)
+    return matched_count >= min(MATCH_TEXT_CLAUSE_MIN_TOKENS, len(plain_tokens))
 
 
 def _node_exact_semantic_text(node: Node) -> str:

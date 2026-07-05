@@ -539,9 +539,9 @@ fn search_pipe_generic_action_query_skips_source_index_inside_phase_gate() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("sourceIndex:skipped"), "stdout={stdout}");
-    assert!(stdout.contains("reason=query-gate"), "stdout={stdout}");
-    assert!(!stdout.contains("sourceIndex:used"), "stdout={stdout}");
+    assert!(stdout.contains("source=search-overlay"), "stdout={stdout}");
+    assert!(!stdout.contains("sourceIndex"), "stdout={stdout}");
+    assert!(stdout.contains("search-overlay:empty"), "stdout={stdout}");
     assert_trace_elapsed_under_gate_ms(
         &["rust", "search", "pipe", "generic-action-query"],
         &stdout,
@@ -899,7 +899,7 @@ fn dependency_manifest_graph_requests_finish_inside_performance_gate() {
         &providers
             .iter()
             .map(|(language, binary, _)| {
-                provider(language, vec![bin_dir.join(binary).display().to_string()])
+                provider(*language, vec![bin_dir.join(binary).display().to_string()])
             })
             .collect::<Vec<_>>(),
     );

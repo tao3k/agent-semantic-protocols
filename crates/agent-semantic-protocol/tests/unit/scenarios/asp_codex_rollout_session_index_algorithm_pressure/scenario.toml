@@ -1,0 +1,16 @@
+id = "asp-codex-rollout-session-index-algorithm-pressure"
+title = "Codex rollout session index uses direct session-id topology lookup"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-CODEX-ROLLOUT-INDEX-001",
+  "RUST-AGENT-ASP-LIFECYCLE-ROLLOUT-TOPOLOGY-001",
+]
+agent_goal = "Keep Codex rollout topology indexing on a pure Rust, session-id-directed hot path. The scenario must validate root rollout lookup, thread_spawn child discovery, child rollout lookup, and activity projection without sibling directory scans, external finder processes, or broad JSONL parsing."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "codex_rollout_session_index_for_sessions",
+  "codex_rollout_paths_for_session_id",
+  "thread_spawn_child_session_ids_for_rollout",
+  "parse_rollout_file_at_path",
+]
+inputs = "inputs"
+expected = "expected"

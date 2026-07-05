@@ -89,7 +89,7 @@ fn language_facade_query_uses_home_local_binary_before_activation_prefix() {
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env_remove("PATH")
-        .args(["rust", "query", "src/lib.rs", "."])
+        .args(["rust", "query", "src/lib.rs", "--workspace", "."])
         .output()
         .expect("run asp rust query");
 

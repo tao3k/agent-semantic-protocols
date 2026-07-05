@@ -4,14 +4,15 @@ use agent_semantic_config::HookClientRecoveryPromptConfig;
 
 const DEFAULT_RECOVERY_TEMPLATE: &str = r#"ASP denied `{reason}`. Do not retry raw source tools.
 Use the ASP route below, or delegate the lookup to the configured resident ASP session when available.
-Return compact evidence only.
+Return one compact `[asp-search-subagent]` graph-route receipt with `schema`, `intent`, `route`, `state`, ranked selector `evidence`, and exactly one safe parent `next` action.
+Do not return source bodies, snippets, or line-range selectors from the search child; the parent agent performs the final exact read.
 {routes}
 {agent_flow}
 "#;
 
-const CODEX_AGENT_FLOW: &str = r#"Codex: start the configured resident ASP subagent for ASP search/query work. Use the configured agent role and resident child name from hooks/config.toml.
+const CODEX_AGENT_FLOW: &str = r#"Codex: start the configured resident ASP subagent for ASP search/query work. Use the configured agent role and resident child name from hooks/config.toml; the default resident child is `asp-explore`.
 When the subagent returns its child session id, register it from this root session: `asp agent session register --name <resident-name> --child-session-id <child-session-id> --role <resident-role>`. ASP resolves the root and parent session from the active agent environment.
-Forward ASP search/query work to that resident child; keep the root agent on session, checkpoint, and recovery commands.
+Forward ASP search/query, owner/frontier ranking, dependency, and test reachability work to that resident child; keep the root agent on session, checkpoint, exact reads, edits, and recovery commands.
 "#;
 
 const CLAUDE_AGENT_FLOW: &str = r#"Claude: run the selected safe route directly in this thread. Use Claude-native helper agents only when that client exposes them for this session.

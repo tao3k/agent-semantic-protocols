@@ -19,6 +19,7 @@ pub(super) fn collect_source_index_files(
                 path: file.path,
                 language_id: file.language_id,
                 provider_id: file.provider_id,
+                selector_receipts: Vec::new(),
             })
             .collect(),
     )

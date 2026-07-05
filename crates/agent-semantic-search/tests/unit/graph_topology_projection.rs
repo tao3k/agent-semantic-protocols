@@ -1,8 +1,10 @@
 use std::fs;
 
-use crate::{
-    GraphProjectionCandidate, graph_path_is_under, graph_project_submodule_paths_from_content,
-    graph_project_topology_projection, graph_submodule_owner_edges,
+use crate::graph_candidate_projection::GraphProjectionCandidate;
+use crate::graph_topology_projection::{
+    GraphTopologyProjectionRequest, graph_path_is_under,
+    graph_project_submodule_paths_from_content, graph_project_topology_projection,
+    graph_submodule_owner_edges,
 };
 
 #[test]
@@ -33,7 +35,11 @@ fn graph_topology_projection_discovers_project_and_dependency_markers() {
         "source-index",
         "high",
     )];
-    let projection = graph_project_topology_projection("rust", root.path(), &candidates);
+    let projection = graph_project_topology_projection(GraphTopologyProjectionRequest::new(
+        "rust",
+        root.path(),
+        &candidates,
+    ));
 
     assert!(
         projection

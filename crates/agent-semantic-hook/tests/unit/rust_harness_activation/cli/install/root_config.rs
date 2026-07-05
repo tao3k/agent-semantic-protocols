@@ -310,7 +310,7 @@ fn assert_claude_asp_explorer(root: &std::path::Path, model: &str) {
     assert_asp_explorer_instructions(&agent);
 }
 
-fn assert_codex_asp_explorer(codex_home: &std::path::Path, model: &str) {
+fn assert_codex_asp_explorer(codex_home: &std::path::Path, _model: &str) {
     let path = codex_home
         .parent()
         .expect("Codex home parent")
@@ -332,8 +332,8 @@ fn assert_codex_asp_explorer(codex_home: &std::path::Path, model: &str) {
     );
     assert!(agent.contains("name = \"asp_explorer\""));
     assert!(table.contains_key("description"));
-    assert!(agent.contains(&format!("model = \"{model}\"")));
     assert!(agent.contains("nickname_candidates = ["));
+    assert!(agent.contains("session_lifetime = \"resident\""));
     assert!(agent.contains("model_reasoning_effort = \"medium\""));
     assert!(agent.contains("sandbox_mode = \"read-only\""));
     assert!(agent.contains("developer_instructions = \"\"\""));
@@ -347,6 +347,19 @@ fn assert_asp_explorer_instructions(instructions: &str) {
     assert!(lower.contains("search"));
     assert!(lower.contains("query"));
     assert!(lower.contains("source"));
+    assert!(instructions.contains("Own cheap but turn-expensive search work"));
+    assert!(instructions.contains("search pipe, search owner, frontier ranking"));
+    assert!(instructions.contains("owner/item discovery"));
+    assert!(instructions.contains("[asp-search-subagent]"));
+    assert!(instructions.contains("owner=<owner path>"));
+    assert!(instructions.contains("read=<parser-owned selector>"));
+    assert!(instructions.contains("item=<symbol or item identity, or ->"));
+    assert!(instructions.contains("next=<exact asp query command for the parent to run>"));
+    assert!(instructions.contains("must not run that final exact read yourself"));
+    assert!(instructions.contains("Do not return source bodies, snippets, line-range selectors"));
+    assert!(!instructions.contains("confidence is high"));
+    assert!(!instructions.contains("missing=<missing facts"));
+    assert!(!instructions.contains("risk=<risk"));
 }
 
 fn assert_agent_config(root: &std::path::Path) {
@@ -401,7 +414,7 @@ fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::
         let path = entry.path();
         if path.is_dir() {
             collect_activation_paths(&path, matches);
-        } else if path.ends_with("live/hooks/state/activation.json") {
+        } else if path.ends_with("state/activation.json") {
             matches.push(path);
         }
     }

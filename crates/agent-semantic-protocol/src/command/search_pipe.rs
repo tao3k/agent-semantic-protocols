@@ -245,6 +245,12 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         );
         return Ok(());
     }
+    let query_clause_count =
+        super::search_pipe_query_pack::query_clauses(context.language_id, &pipe_args.seed_query)
+            .len();
+    if query_clause_count < 2 {
+        return Err("search pipe requires at least two query clauses; use search lexical for plain text search or search owner <path> items --query <terms> when the owner is known".to_string());
+    }
     let acquisition =
         dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
             language_id: context.language_id,
@@ -295,7 +301,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         source_trace: &source_trace,
         scopes: &pipe_args.scopes,
         view: &pipe_args.view,
-        include_pipe_plan: true,
+        include_pipe_plan: acquisition.candidates.len() > 1,
         provider_facts: &provider_facts,
         provider_context: context.provider_context,
         config: context.config,
@@ -512,7 +518,7 @@ fn is_single_dependency_query(query: &str) -> bool {
         == 1
 }
 
-fn search_workspace_root(
+pub(super) fn search_workspace_root(
     project_root: &Path,
     locator_root: &Path,
     explicit_workspace: Option<&Path>,
@@ -659,9 +665,14 @@ fn run_search_lexical_command(
         );
         return Ok(());
     }
+    let project_root = search_workspace_root(
+        context.project_root,
+        context.locator_root,
+        pipe_args.workspace.as_deref(),
+    );
     let acquisition = collect_search_pipe_candidates(
         context.language_id,
-        context.project_root,
+        &project_root,
         context.locator_root,
         &pipe_args.query,
         &pipe_args.owners,
@@ -670,7 +681,7 @@ fn run_search_lexical_command(
     )?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
-        context.project_root,
+        &project_root,
         Some(&pipe_args.query),
         &acquisition.candidates,
         context.config,
@@ -683,7 +694,7 @@ fn run_search_lexical_command(
         .unwrap_or("auto");
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
-        project_root: context.project_root,
+        project_root: &project_root,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-lexical",

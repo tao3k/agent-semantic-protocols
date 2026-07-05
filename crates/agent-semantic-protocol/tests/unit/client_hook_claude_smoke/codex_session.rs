@@ -248,6 +248,50 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
 }
 
 #[test]
+fn codex_main_session_denies_env_prefixed_asp_query_when_asp_explore_registered() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000002",
+        "019f126d-0000-7000-8000-000000000102",
+    );
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload(
+            "env CODEX_THREAD_ID=019f126d-0000-7000-8000-000000000102 \
+             ASP_ROOT_SESSION_ID=019f126d-0000-7000-8000-000000000002 \
+             ./target/debug/asp rust query src/lib.rs --workspace . --code",
+        ),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000002")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(decision["reasonKind"].as_str(), Some("raw-broad-search"));
+    assert_eq!(
+        decision["fields"]["agentSessionRoute"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionAction"].as_str(),
+        Some("reuse-resident-child")
+    );
+    assert_eq!(
+        decision["fields"]["requiredAction"].as_str(),
+        Some("send-to-asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["childSessionId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000102")
+    );
+    let message = decision["message"].as_str().unwrap_or_default();
+    assert!(message.contains("ASP denied main-session ASP exploration"));
+    assert!(message.contains("019f126d-0000-7000-8000-000000000102"));
+}
+
+#[test]
 fn codex_installed_hook_full_resident_child_lifecycle_scenario() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -327,7 +371,7 @@ fn codex_installed_hook_full_resident_child_lifecycle_scenario() {
 }
 
 #[test]
-fn codex_main_session_does_not_reuse_drifted_asp_explore_registration() {
+fn codex_main_session_reuses_model_drifted_asp_explore_registration() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
@@ -352,15 +396,14 @@ fn codex_main_session_does_not_reuse_drifted_asp_explore_registration() {
     assert_eq!(decision["decision"].as_str(), Some("deny"));
     assert_eq!(
         decision["fields"]["agentSessionAction"].as_str(),
-        Some("start-resident-child")
+        Some("reuse-resident-child")
     );
     assert_eq!(
-        decision["fields"]["agentSessionInvalidChildAction"].as_str(),
-        Some("close-delete-and-create-configured-child")
+        decision["fields"]["childSessionId"].as_str(),
+        Some("019f126d-0000-7000-8000-000000000111")
     );
-    assert!(decision["fields"].get("childSessionId").is_none());
     let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("asp-explore"));
+    assert!(message.contains("do not spawn another asp-explore session"));
 }
 
 #[test]

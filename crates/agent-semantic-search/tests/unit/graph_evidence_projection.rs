@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::graph_frontier_has_only_owner_or_topology_nodes;
+use crate::graph_evidence_projection::graph_frontier_has_only_owner_or_topology_nodes;
 
 #[test]
 fn graph_frontier_owner_topology_predicate_accepts_only_route_nodes() {

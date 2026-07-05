@@ -12,6 +12,7 @@ pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;
 mod client_backend_worker;
 mod dispatch;
+mod dispatch_agent_session_policy;
 mod document_language_facade;
 mod document_provider;
 mod gerbil_check_cache;

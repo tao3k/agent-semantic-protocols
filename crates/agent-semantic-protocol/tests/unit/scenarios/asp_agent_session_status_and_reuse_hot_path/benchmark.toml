@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_agent_session_status_and_reuse_hot_paths_stay_inside_scenario_gate_test"
+phase = "warm"
+target_total = "100ms"
+max_total = "500ms"
+observed_total = "100ms"
+regression_budget = "400ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 1048576
+route_source = "session-registry-rollout"
+max_provider_process_count = 0
+max_stdout_bytes = 32768
+fallback_reason = "none"
+target_rationale = "The lifecycle hot path already has the child session id, the shared session-registry database, and a direct rollout JSONL file; status/reuse must stay bounded to registry lookup plus targeted rollout parse rather than broad search, nested subagent creation, jq post-processing, or provider work."
+
+[observed_timings]
+status_command = "50ms"
+reuse_command = "50ms"
+total = "100ms"

@@ -1,5 +1,6 @@
-use crate::{
-    GraphProjectionCandidate, graph_has_package_path_candidate, graph_query_owner_seed_paths,
+use crate::graph_candidate_projection::GraphProjectionCandidate;
+use crate::graph_query_owner_seed::{
+    graph_has_package_path_candidate, graph_query_owner_seed_paths,
 };
 
 #[test]

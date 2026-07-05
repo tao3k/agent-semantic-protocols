@@ -56,7 +56,7 @@ fn resolved_codex_target_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<Option<String>, String> {
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     if let Some(child_session_id) = args.child_session_id.as_deref() {
         return Ok(Some(child_session_id.to_string()));
     }
@@ -83,7 +83,7 @@ fn sync_codex_lifecycle_to_registry(
     let Some(session_id) = target_session_id else {
         return Ok(());
     };
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     match command_name {
         "archive" => {
             let now = codex_lifecycle_unix_timestamp()?;

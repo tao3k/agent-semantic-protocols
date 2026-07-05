@@ -91,7 +91,7 @@ fn language_facade_search_help_lists_dependency_topology_command() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         stdout.contains(
-            "usage: asp rust search <pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime>"
+            "usage: asp rust search <pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide>"
         ),
         "{stdout}"
     );

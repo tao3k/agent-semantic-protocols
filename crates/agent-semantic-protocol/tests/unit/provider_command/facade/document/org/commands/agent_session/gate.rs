@@ -31,8 +31,8 @@ fn asp_query_gate_reports_registered_invalid_child_instead_of_missing_child() {
             child_session_id,
             "--root-session-id",
             root_session_id,
-            "--role",
-            "asp-explore",
+            "--roles",
+            "subagent,search",
             "--status",
             "invalid",
         ])
@@ -95,8 +95,8 @@ fn asp_agent_session_rejects_removed_session_id_flag() {
             "asp-explore",
             "--session-id",
             "retired-child-id",
-            "--role",
-            "asp-explore",
+            "--roles",
+            "subagent,search",
         ])
         .output()
         .expect("run removed session id command");

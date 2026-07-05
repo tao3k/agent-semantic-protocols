@@ -17,24 +17,26 @@ fn direct_read_routes_to_provider_query() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ]
     );
     assert!(
         decision.message.contains(
-            "asp typescript query --selector src/cli/agent-hooks.ts --workspace . --code"
+            "asp typescript search owner src/cli/agent-hooks.ts items --workspace . --view seeds"
         ),
         "{}",
         decision.message
@@ -60,19 +62,21 @@ fn direct_read_line_range_routes_to_provider_query_with_range() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
-            "src/cli/agent-hooks.ts:10-20",
+            "search",
+            "owner",
+            "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ]
     );
 }
@@ -96,19 +100,21 @@ fn namespaced_direct_read_routes_to_provider_query() {
         Some("functions.read_file")
     );
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ]
     );
 }
@@ -126,19 +132,21 @@ fn typescript_direct_read_infers_pascal_case_query_from_component_path() {
     );
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/components/WorkflowExecution.tsx",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ]
     );
 }
@@ -158,19 +166,21 @@ fn command_transcript_with_source_path_routes_to_provider_query() {
     );
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "rs-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "rust",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "packages/rust/crates/xiuxian-security/src/public_plane.rs",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ]
     );
 }

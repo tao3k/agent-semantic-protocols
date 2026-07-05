@@ -10,7 +10,7 @@ fn julia_language_facade_rewrites_compiled_provider_guide_commands() {
     let provider_path = profile_bin_dir.join("asp-julia-harness");
     std::fs::write(
         &provider_path,
-        "#!/bin/sh\nprintf '[julia-harness-guide]\\n'\nprintf '|cmd asp-julia-harness guide --workspace .\\n'\nprintf '|cmd prime=asp-julia-harness search prime --workspace . --view seeds\\n'\nprintf '|pipe <candidate-lines> | asp-julia-harness search ingest owner tests --workspace . --view seeds\\n'\nprintf '|cmd doctor=asp-julia-harness agent doctor --workspace . --json\\n'\n",
+        "#!/bin/sh\nprintf '[julia-harness-guide]\\n'\nprintf '|cmd asp-julia-harness guide --workspace .\\n'\nprintf '|cmd lexical=asp-julia-harness search lexical <query> owner tests --workspace . --view seeds\\n'\nprintf '|pipe <candidate-lines> | asp-julia-harness search ingest owner tests --workspace . --view seeds\\n'\nprintf '|cmd doctor=asp-julia-harness agent doctor --workspace . --json\\n'\n",
     )
     .expect("write julia guide provider");
     make_executable(&provider_path);
@@ -44,7 +44,9 @@ fn julia_language_facade_rewrites_compiled_provider_guide_commands() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("|cmd prime=asp julia search prime --workspace . --view seeds"),
+        stdout.contains(
+            "|cmd lexical=asp julia search lexical <query> owner tests --workspace . --view seeds"
+        ),
         "{stdout}"
     );
     assert!(

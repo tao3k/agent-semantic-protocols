@@ -92,6 +92,7 @@ pub fn source_index_import_with_file_hashes(
             language_id: file.language_id.clone(),
             provider_id: file.provider_id.clone(),
             text,
+            selectors: file.selector_receipts.clone(),
         });
     }
     build_source_index_import(ClientDbSourceIndexImportRequest {
@@ -151,7 +152,19 @@ pub fn build_source_index_import(
                 .into_iter()
                 .map(ClientDbSourceIndexQueryKey::from)
                 .collect(),
+            payload_proof: None,
         });
+        for selector in &file.selectors {
+            if selector.owner_path.as_str() != relative_path {
+                return Err(format!(
+                    "source index selector owner mismatch: file={} selectorOwner={} selector={}",
+                    relative_path,
+                    selector.owner_path.as_str(),
+                    selector.selector_id
+                ));
+            }
+            selectors.push(selector.clone());
+        }
     }
     Ok(ClientDbSourceIndexImport {
         generation_id: request.generation_id,

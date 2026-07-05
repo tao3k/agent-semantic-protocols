@@ -226,10 +226,16 @@ pub fn resolve_language_owner_items_runtime_outcome(
         ));
     }
     let stdout = compact_language_owner_items_stdout(output.stdout);
-    write_language_owner_items_cache(request, stdout.as_ref())?;
+    let mut stderr = output.stderr.to_vec();
+    if let Err(error) = write_language_owner_items_cache(request, stdout.as_ref()) {
+        if !stderr.is_empty() && !stderr.ends_with(b"\n") {
+            stderr.push(b'\n');
+        }
+        stderr.extend_from_slice(format!("owner-items cache write skipped: {error}\n").as_bytes());
+    }
     Ok(LanguageOwnerItemsRuntimeOutcome::Handled {
         stdout,
-        stderr: output.stderr.to_vec(),
+        stderr,
         cache_hit: false,
     })
 }

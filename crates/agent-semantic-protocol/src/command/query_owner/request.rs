@@ -5,22 +5,53 @@ use super::structural_selector::parse_structural_owner_query;
 pub(super) struct OwnerQueryRequest {
     pub(super) language_id: String,
     pub(super) owner_path: PathBuf,
-    pub(super) kind: Option<String>,
-    pub(super) term: String,
     pub(super) names_only: bool,
-    pub(super) code: bool,
-    pub(super) projection: &'static str,
+    projection: OwnerQueryProjection,
+}
+
+pub(super) struct OwnerItemQuery {
+    kind: Option<String>,
+    term: String,
+    code: bool,
+    projection: &'static str,
+}
+
+pub(super) enum OwnerQueryProjection {
+    Item(OwnerItemQuery),
 }
 
 impl OwnerQueryRequest {
-    pub(super) fn parse(language_id: &str, args: &[String]) -> Option<Self> {
+    pub(super) fn item_query(&self) -> Option<&OwnerItemQuery> {
+        match &self.projection {
+            OwnerQueryProjection::Item(query) => Some(query),
+        }
+    }
+}
+
+impl OwnerItemQuery {
+    pub(super) fn kind(&self) -> Option<&str> {
+        self.kind.as_deref()
+    }
+
+    pub(super) fn term(&self) -> &str {
+        &self.term
+    }
+
+    pub(super) fn projection(&self) -> &'static str {
+        self.projection
+    }
+
+    pub(super) fn is_code_projection(&self) -> bool {
+        self.code
+    }
+}
+
+impl OwnerQueryRequest {
+    pub(super) fn parse(language_id: &str, args: &[String]) -> Result<Option<Self>, String> {
         if !matches!(language_id, "rust" | "typescript" | "python" | "julia")
             || !matches!(args.first().map(String::as_str), Some("query"))
         {
-            return None;
-        }
-        if let Some(request) = Self::parse_structural_selector(language_id, args) {
-            return Some(request);
+            return Ok(None);
         }
         if has_any_arg(
             args,
@@ -29,32 +60,48 @@ impl OwnerQueryRequest {
                 "--receipt-json",
                 "--treesitter-query",
                 "--catalog",
-                "--from-hook",
-                "--selector",
             ],
         ) {
-            return None;
+            return Ok(None);
         }
-        let term = arg_value(args, "--term")
+        if let Some(request) = Self::parse_structural_selector(language_id, args)? {
+            return Ok(Some(request));
+        }
+        if has_any_arg(args, &["--from-hook", "--selector"]) {
+            return Ok(None);
+        }
+        let Some(term) = arg_value(args, "--term")
             .or_else(|| arg_value(args, "--query"))
-            .map(ToString::to_string)?;
-        let owner_path = first_positional_owner_arg(args)?;
+            .map(ToString::to_string)
+        else {
+            return Ok(None);
+        };
+        let Some(owner_path) = first_positional_owner_arg(args) else {
+            return Ok(None);
+        };
         if owner_path == "." || owner_path.contains(':') {
-            return None;
+            return Ok(None);
         }
-        Some(Self {
+        Ok(Some(Self {
             language_id: language_id.to_string(),
             owner_path: PathBuf::from(owner_path),
-            kind: None,
-            term,
             names_only: args.iter().any(|arg| arg == "--names-only"),
-            code: args.iter().any(|arg| arg == "--code"),
-            projection: "outline",
-        })
+            projection: OwnerQueryProjection::Item(OwnerItemQuery {
+                kind: None,
+                term,
+                code: args.iter().any(|arg| arg == "--code"),
+                projection: "outline",
+            }),
+        }))
     }
 
-    fn parse_structural_selector(language_id: &str, args: &[String]) -> Option<Self> {
-        let selector = arg_value(args, "--selector")?;
+    fn parse_structural_selector(
+        language_id: &str,
+        args: &[String],
+    ) -> Result<Option<Self>, String> {
+        let Some(selector) = arg_value(args, "--selector") else {
+            return Ok(None);
+        };
         let from_hook = arg_value(args, "--from-hook").unwrap_or_else(|| {
             if args.iter().any(|arg| arg == "--code") {
                 "query-code"
@@ -62,17 +109,56 @@ impl OwnerQueryRequest {
                 "syntax-outline"
             }
         });
-        let structural = parse_structural_owner_query(language_id, from_hook, selector)?;
-        Some(Self {
+        let code = args.iter().any(|arg| arg == "--code");
+        if from_hook == "direct-source-read" {
+            return Ok(None);
+        }
+        if let Some(owner_path) = bare_file_selector(selector) {
+            let term = arg_value(args, "--term")
+                .or_else(|| arg_value(args, "--query"))
+                .map(ToString::to_string);
+            return match term {
+                Some(term) => Ok(Some(Self {
+                    language_id: language_id.to_string(),
+                    owner_path,
+                    names_only: args.iter().any(|arg| arg == "--names-only"),
+                    projection: OwnerQueryProjection::Item(OwnerItemQuery {
+                        kind: None,
+                        term,
+                        code,
+                        projection: "outline",
+                    }),
+                })),
+                None if code => Err(format!(
+                    "ambiguous query --code selector `{selector}` would read an entire source file; use an exact parser-owned item selector such as rust://path#item/function/name, or use --from-hook direct-source-read for an explicit direct read"
+                )),
+                None => Ok(None),
+            };
+        }
+        let Some(structural) = parse_structural_owner_query(language_id, from_hook, selector)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(Self {
             language_id: language_id.to_string(),
             owner_path: structural.owner_path,
-            kind: structural.kind,
-            term: structural.term,
             names_only: args.iter().any(|arg| arg == "--names-only"),
-            code: args.iter().any(|arg| arg == "--code"),
-            projection: structural.projection,
-        })
+            projection: OwnerQueryProjection::Item(OwnerItemQuery {
+                kind: structural.kind,
+                term: structural.term,
+                code,
+                projection: structural.projection,
+            }),
+        }))
     }
+}
+
+fn bare_file_selector(selector: &str) -> Option<PathBuf> {
+    if selector.contains("://") || selector.contains('#') || selector.contains(':') {
+        return None;
+    }
+    let path = PathBuf::from(selector);
+    (path.extension().is_some() || path.components().count() > 1).then_some(path)
 }
 
 fn first_positional_owner_arg(args: &[String]) -> Option<&str> {

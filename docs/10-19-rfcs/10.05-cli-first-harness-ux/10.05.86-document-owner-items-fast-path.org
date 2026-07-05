@@ -1,0 +1,53 @@
+#+TITLE: 10.05.86 Document Owner Items Fast Path
+#+DATE: 2026-07-05
+
+* Status
+Accepted.
+
+* Context
+Document language commands such as =asp org search owner <file> items= are
+agent-facing search surfaces. They must not leave the document facade and
+re-enter the generic provider backend when the activated provider is the ASP
+facade binary itself.
+
+The failure mode is a self-recursive command chain:
+
+#+begin_src text
+asp org search owner ... items
+  -> client backend provider invocation
+  -> asp search owner ... items
+  -> provider invocation loop
+#+end_src
+
+This presents as a slow search even when CPU usage is near zero, because each
+process waits on the next provider child.
+
+* Decision
+Document language owner-items search is a provider-context fast search when a
+real language-harness owner-items provider is activated. The harness provider
+owns the parser-specific item projection and must run at most once for a single
+owner path.
+
+When the activated provider resolves to the ASP facade binary itself, ASP must
+not pass that provider as the owner-items provider context. That self-facade
+route is a recursion hazard and must return or fail on the document fast path
+without spawning nested =asp search owner= processes.
+
+Provider backend execution remains valid for external language providers. When
+a provider command prefix resolves to the ASP facade binary, the backend must
+preserve the language facade argument before appending the client method so
+that accidental generic =asp search ...= invocations are impossible.
+
+* Performance Gate
+The hot-path gate for =asp org search owner ... items= must prove:
+
+- the command returns or fails fast instead of spawning a recursive provider
+  chain
+- stderr does not contain a provider execution recursion failure
+- the test process has a bounded timeout so regressions cannot leave a process
+  storm behind
+
+This is a routing gate, not a semantic fallback. ASP must not synthesize
+language items from raw source text when a provider/harness capability is
+missing, and it must not replace a real language-harness owner-items provider
+with document-text heuristics.

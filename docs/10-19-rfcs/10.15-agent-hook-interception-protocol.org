@@ -96,6 +96,13 @@ The runtime is intentionally language-neutral:
 - maintain only shared hook state: prime/search evidence, dirty activation paths,
   changed-check evidence, and subagent receipt evidence.
 
+The root runtime also owns the managed =asp-explore= =subagent-stop= receipt
+gate. For read-only ASP-managed child sessions, the final subagent message is
+valid only when it contains selector-only =[asp-search-subagent]= receipts with
+=owner=, =read=, and =next= fields. Receipts that contain source bodies,
+snippets, line-range selectors, confidence labels, long explanations, or
+"not found" inventories are malformed and must be denied with a recovery action
+that asks the same child session to re-emit compact selector receipts.
 The runtime must not call compiler parsers or inspect language syntax.  It
 constructs safe next commands from provider manifests and lets the provider
 binary own search/check semantics.
@@ -142,10 +149,10 @@ frontmatter, model =haiku=, =permissionMode: plan=, and bounded turn budgets.
 The parent or main agent, not the hook, owns the shared reasoning tree and
 receipt ledger.  It may spawn several instances of the same =asp-explorer=
 profile, one per =actionFrontier= or =targetActions= reasoning branch, then fan
-in compact =[search-subagent]= receipts, update the tree, and optionally issue
-another round before final main-model verification.  Worker instances do not
-share context windows; their only shared state is the parent-owned branch
-prompt plus receipt ledger.  The installer SHOULD remove stale generated
+in selector-only =[asp-search-subagent]= receipts, update the tree, and
+optionally issue another round before final main-model verification.  Worker
+instances do not share context windows; their only shared state is the
+parent-owned branch prompt plus receipt ledger.  The installer SHOULD remove stale generated
 role-specific profiles from earlier revisions, such as =asp-explorer-owner=,
 =asp-explorer-rg=, and =asp-explorer-selector=.  The optional
 =--subagent-model <model>= install flag pins the generated model field for the
@@ -748,11 +755,11 @@ their own; only selectors whose basename or glob extension pattern matches
 provider-declared =sourceExtensions= are raw-search source evidence.
 
 | Action family | Source evidence | Term evidence | Decision |
-| Direct read/edit wrapper | exact source file | exact selector | deny with provider =query --from-hook direct-source-read --selector <path> .= route |
+| Direct read/edit wrapper | exact source file | exact selector | deny with provider =search owner <path> items --workspace <root> --view seeds= route |
 | Direct read/edit wrapper | broad source suffix selector | none | deny with provider prime route |
-| Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | exact source file | exact selector | deny bulk-source-dump with provider =query --from-hook direct-source-read --selector <path> .= route |
+| Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | exact source file | exact selector | deny bulk-source-dump with provider =search owner <path> items --workspace <root> --view seeds= route |
 | Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | source glob | not required | deny bulk-source-dump with provider prime route |
-| Content diff (=git diff=, =git diff --no-index /dev/null <path>=) | exact source file | exact selector | deny bulk-source-dump with provider =query --from-hook direct-source-read --selector <path> .= route |
+| Content diff (=git diff=, =git diff --no-index /dev/null <path>=) | exact source file | exact selector | deny bulk-source-dump with provider =search owner <path> items --workspace <root> --view seeds= route |
 | Metadata diff (=git diff --stat=, =git diff --name-only=, =git diff --name-status=) | source or non-source scope | metadata only | allow |
 | Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | parser-owned selector extension matches activated =sourceExtensions= | concrete query term | deny with provider query route when declared |
 | Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | parser-owned selector extension matches activated =sourceExtensions= | no concrete term | deny with provider ingest route |
@@ -771,15 +778,15 @@ this stage is metadata discovery such as =git status --short= or
 
 Blocking decisions must include the next safe route, not only a denial.  The
 =routes= array is the machine-readable next-action source of truth.  For one
-exact project-relative source path, the hook should surface the owning
-provider's exact =query --selector ... --workspace ... --code= route instead of
-falling back to a generic guide pointer, source rendering, or
-=--from-hook direct-source-read=.  For TypeScript, source-read recovery
-therefore routes through the public =asp= language facade while preserving
+project-relative source path, the hook should surface the owning provider's
+owner-item frontier route, =search owner <path> items --workspace ... --view
+seeds=, instead of asking the agent to run a file-level code query or explicit
+direct-source-read command.  For TypeScript, source-read recovery therefore
+routes through the public =asp= language facade while preserving
 =providerId=ts-harness=:
 
 #+begin_example
-direct-source-read denied; route: asp typescript query --from-hook direct-source-read --selector src/components/WorkflowExecution.tsx --code .
+direct-source-read denied; route: asp typescript search owner src/components/WorkflowExecution.tsx items --workspace . --view seeds
 #+end_example
 
 The hook only materializes the exact selector route; the language provider
@@ -811,7 +818,7 @@ Do not retry raw source reads, shell source dumps, or broad raw search on the
 matched source path.
 
 ## Run Next
-asp <language> query --from-hook direct-source-read ...
+asp <language> search owner <path> items --workspace . --view seeds
 
 ## Detected Binaries
 - language=<language> provider=<providerId> command=<runtime-profile argv> facade=asp <language>
@@ -820,7 +827,7 @@ asp <language> query --from-hook direct-source-read ...
 1. Start from asp <language> guide --workspace . when the tool map is needed.
 2. Use search prime for project mapping.
 3. Use query guide treesitter only for syntax pattern work.
-4. Use query --code only after exact selector or unique match.
+4. Use query --code only after a parser-owned exact item selector or unique match.
 5. Patch with apply_patch unless the loaded hook config enables semantic ast-patch.
 #+end_example
 
@@ -832,15 +839,15 @@ as identity.  If =experimental.semanticAstPatch.enabled = false= in the loaded
 client hook config, the rendered flow must explicitly tell agents to use
 =apply_patch= and not route ordinary edits through provider =ast-patch=.
 
-The root hook must not maintain a parser/query engine.  Exact selected source
-paths route back to the owning provider's normal =query --selector
-<path-or-range> --workspace <workspace-root> --code= surface through =asp
-<language>=, while =providerId= records the native provider identity such as
-=rs-harness=, =ts-harness=, or =py-harness=.  Hook routes must not expose
-provider implementation binaries as the executable command surface.
-=--from-hook direct-source-read= is reserved for audited low-priority exact
-windows after parser-owned search/frontier evidence, and must not be advertised
-as the normal direct-read recovery route for broad or unbounded source access.
+The root hook must not maintain a parser/query engine.  Selected source paths
+route back to the owning provider's =search owner <path> items --workspace
+<workspace-root> --view seeds= surface through =asp <language>=, while
+=providerId= records the native provider identity such as =rs-harness=,
+=ts-harness=, or =py-harness=.  Hook routes must not expose provider
+implementation binaries as the executable command surface.  =--from-hook
+direct-source-read= is reserved for audited low-priority exact windows after
+parser-owned search/frontier evidence has failed, and must not be advertised as
+the normal direct-read recovery route for broad or unbounded source access.
 
 If a provider wants to return bounded source windows after that route, it may
 emit =semantic-read-packet.v1= from its =query/*= method with
@@ -888,11 +895,11 @@ the platform's expected output:
       "languageId": "typescript",
       "providerId": "ts-harness",
       "binary": "asp",
-      "kind": "query",
-      "argv": ["asp", "typescript", "query", "--from-hook", "direct-source-read", "--selector", "src/cli/agent-hooks.ts", "--code", "."]
+      "kind": "owner",
+      "argv": ["asp", "typescript", "search", "owner", "src/cli/agent-hooks.ts", "items", "--workspace", ".", "--view", "seeds"]
     }
   ],
-  "message": "direct-source-read denied; route: asp typescript query --from-hook direct-source-read --selector src/cli/agent-hooks.ts --code ."
+  "message": "direct-source-read denied; route: asp typescript search owner src/cli/agent-hooks.ts items --workspace . --view seeds"
 }
 #+end_src
 
@@ -965,11 +972,12 @@ when the following implementation gates pass:
    - =rs-harness check --changed crates/agent-semantic-hook=
    - =rs-harness check --changed crates/agent-semantic-protocol=
 9. Direct-read payload field-family coverage is tested through the classifier
-   and through the real =asp hook pre-tool= runtime for at least these Codex
-   shapes: =path=, =file=, =absolutePath=, nested =resource.path=,
-   =resources[].filePath=, and =file://= URI lists.  Each source match denies
-   with =reasonKind=direct-source-read= and a route shaped as
-   =asp <language> query --selector <path> --workspace <workspace-root> --code=.
+    and through the real =asp hook pre-tool= runtime for at least these Codex
+    shapes: =path=, =file=, =absolutePath=, nested =resource.path=,
+    =resources[].filePath=, and =file://= URI lists.  Each source match denies
+    with =reasonKind=direct-source-read= and a route shaped as
+    =asp <language> search owner <path> items --workspace <workspace-root>
+    --view seeds=.
 10. Concurrent hook invocations cannot corrupt =events.jsonl=.  Unit tests must
     exercise overlapping appends, and a real-runtime smoke must prove that
     every event log line parses as JSON with
@@ -990,7 +998,8 @@ when the following implementation gates pass:
     agent-prefixed guide spelling or the old search-wrapper hook query
     spelling.  The accepted guide entrypoint is =asp <language> guide --workspace .=, its
     help surface is =asp <language> guide --help .=, and the accepted hook
-    recovery route is top-level =query --selector <path-or-range> --workspace <workspace-root> --code=.
+    recovery route is top-level =search owner <path> items --workspace
+    <workspace-root> --view seeds=.
 
 * Downstream Plan
 
@@ -1015,13 +1024,12 @@ when the following implementation gates pass:
    - keep TypeScript-specific source/config ownership local.
 
 4. Python provider:
-   - export a Python provider manifest;
-   - replace any transitional provider-owned hook wrapper with =asp hook=, or
-     keep only a thin compatibility wrapper that invokes =asp hook=;
-   - deny direct Python source reads with =reasonKind=direct-source-read= and a
-     concrete =asp python query --selector <path> --workspace <workspace-root>
-  --code=
-     route when the root runtime is installed;
+    - export a Python provider manifest;
+    - replace any transitional provider-owned hook wrapper with =asp hook=, or
+      keep only a thin compatibility wrapper that invokes =asp hook=;
+    - deny direct Python source reads with =reasonKind=direct-source-read= and a
+      concrete =asp python search owner <path> items --workspace
+      <workspace-root> --view seeds= route when the root runtime is installed;
    - continue moving shared classification into the root hook runtime behind
      =asp hook= for raw-search-to-ingest, edit-before-prime,
      changed-check, subagent, and stop gates.

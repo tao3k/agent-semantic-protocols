@@ -1,0 +1,18 @@
+harness = "libtest"
+test = "org_owner_items_stays_on_document_fast_path"
+target_total = "50ms"
+max_total = "500ms"
+observed_total = "10ms"
+regression_budget = "450ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 1048576
+route_source = "document-language-facade"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "The owner path and document language facade are already known, so asp org search owner <file> items must stay inside document fast search and fail fast for missing harness capability instead of entering provider execution or search overlay recursion."
+
+[observed_timings]
+installed_binary_command = "10ms"
+resident_child_command = "10ms"
+provider_process_accounting = "0us"

@@ -34,15 +34,6 @@ use super::search_pipe::{FastSearchContext, is_asp_fast_search, run_asp_fast_sea
 use super::search_pipe_meta::run_asp_fast_search_meta_command;
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, query_requests_semantic_facts};
 
-const SUPPORTED_LANGUAGES: &[&str] = &[
-    "rust",
-    "typescript",
-    "python",
-    "julia",
-    "gerbil-scheme",
-    "org",
-    "md",
-];
 const SUPPORTED_COMMANDS: &[&str] = &[
     "search",
     "query",
@@ -68,8 +59,24 @@ macro_rules! restore_env_var {
     };
 }
 
+fn registered_language_facades() -> Vec<String> {
+    let mut facades = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .map(|manifest| manifest.language_id.to_string())
+        .collect::<Vec<_>>();
+    facades.sort();
+    facades.dedup();
+    facades
+}
+
+fn registered_language_facades_line() -> String {
+    registered_language_facades().join("|")
+}
+
 pub(crate) fn is_language_facade(language_id: &str) -> bool {
-    SUPPORTED_LANGUAGES.contains(&language_id)
+    registered_language_facades()
+        .iter()
+        .any(|facade| facade == language_id)
 }
 
 pub(crate) fn unsupported_language_facade_message(
@@ -77,7 +84,7 @@ pub(crate) fn unsupported_language_facade_message(
     command: Option<&str>,
     runtime: Option<&HookRuntime>,
 ) -> String {
-    let known_facades = SUPPORTED_LANGUAGES.join("|");
+    let known_facades = registered_language_facades_line();
     let active_facades = runtime
         .map(active_language_facades)
         .filter(|facades| !facades.is_empty());
@@ -178,6 +185,99 @@ fn reject_search_file_workspace(args: &[String], invocation_root: &Path) -> Resu
     Ok(())
 }
 
+fn invalid_source_selector_code_message(language_id: &str, selector: &str) -> String {
+    format!(
+        "invalid query --code selector `{selector}`: file selectors are not executable code selectors; use search owner <path> items --workspace <root> --view seeds, then query an exact parser-owned selector such as {language_id}://path#item/function/name"
+    )
+}
+
+fn is_plain_file_selector_code_query(args: &[String]) -> bool {
+    if !matches!(args.first().map(String::as_str), Some("query"))
+        || !args.iter().any(|arg| arg == "--code")
+        || args.iter().any(|arg| {
+            matches!(
+                arg.as_str(),
+                "--json" | "--term" | "--treesitter-query" | "--names-only"
+            )
+        })
+        || args
+            .iter()
+            .any(|arg| arg == "--from-hook" || arg.starts_with("--from-hook="))
+    {
+        return false;
+    }
+    let Some(selector) = option_value(args, "--selector") else {
+        return false;
+    };
+    !selector.contains("://") && selector.split_once(':').is_none()
+}
+
+fn reject_registered_source_selector_query_code(
+    language_id: &str,
+    args: &[String],
+    provider: &agent_semantic_hook::ActivatedProvider,
+) -> Result<(), String> {
+    if !is_plain_file_selector_code_query(args) {
+        return Ok(());
+    }
+    let Some(selector) = option_value(args, "--selector") else {
+        return Ok(());
+    };
+    let selector_path = selector
+        .split_once(':')
+        .map_or(selector, |(path, _range)| path);
+    let Some(extension) = Path::new(selector_path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+    else {
+        return Ok(());
+    };
+    let registered_source = provider.source_extensions.iter().any(|source| {
+        source
+            .trim_start_matches('.')
+            .eq_ignore_ascii_case(extension)
+    });
+    if !registered_source {
+        return Ok(());
+    }
+    Err(invalid_source_selector_code_message(language_id, selector))
+}
+
+fn reject_manifest_source_selector_query_code(
+    language_id: &str,
+    args: &[String],
+) -> Result<(), String> {
+    if !is_plain_file_selector_code_query(args) {
+        return Ok(());
+    }
+    let Some(selector) = option_value(args, "--selector") else {
+        return Ok(());
+    };
+    let selector_path = selector
+        .split_once(':')
+        .map_or(selector, |(path, _range)| path);
+    let Some(extension) = Path::new(selector_path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+    else {
+        return Ok(());
+    };
+    let registered_source = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == language_id)
+        .is_some_and(|manifest| {
+            manifest.source.default_extensions.iter().any(|source| {
+                source
+                    .trim_start_matches('.')
+                    .eq_ignore_ascii_case(extension)
+            })
+        });
+    if !registered_source {
+        return Ok(());
+    }
+    Err(invalid_source_selector_code_message(language_id, selector))
+}
+
 fn option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     let prefix = format!("{flag}=");
     args.iter()
@@ -197,6 +297,25 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             || (language_id != "gerbil-scheme"
                 && args.first().is_some_and(|command| command == "query")
                 && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
+    }
+
+    fn is_document_owner_items_search(language_id: &str, args: &[String]) -> bool {
+        document_language_facade::is_document_language(language_id)
+            && is_asp_fast_search(args)
+            && search_owner_items_owner_path(args).is_some()
+    }
+
+    fn provider_invokes_asp_facade(
+        language_id: &str,
+        provider: &agent_semantic_hook::ActivatedProvider,
+        config: &AspConfig,
+    ) -> bool {
+        let binary = config
+            .provider_bin(language_id)
+            .unwrap_or(provider.binary.as_str());
+        Path::new(binary)
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy() == "asp")
     }
 
     fn run_client_backend_command(
@@ -289,10 +408,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    if document_language_facade::is_document_language(language_id)
-        && !(is_asp_fast_search(&command_args)
-            && search_owner_items_owner_path(&command_args).is_some())
-    {
+    let document_owner_items_search = is_document_owner_items_search(language_id, &command_args);
+    if document_language_facade::is_document_language(language_id) && !document_owner_items_search {
         return document_language_facade::run_document_language_command(
             language_id,
             &command_args,
@@ -310,8 +427,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     reject_search_file_workspace(&command_args, &invocation_root)?;
     validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
-    if let Some(result) =
-        run_pre_activation_fast_owner_query(language_id, &command_args, &invocation_root)?
+    reject_manifest_source_selector_query_code(language_id, &command_args)?;
+    if !is_plain_file_selector_code_query(&command_args)
+        && let Some(result) =
+            run_pre_activation_fast_owner_query(language_id, &command_args, &invocation_root)?
     {
         return result;
     }
@@ -339,16 +458,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         );
     }
 
-    if run_asp_fast_owner_query_command(
-        language_id,
-        &provider_args,
-        &project_root,
-        &invocation_root,
-    )? {
-        return Ok(());
-    }
-
-    let cache_home = client_backend_cache_home(&activation_root, &project_root)?;
     let provider = runtime
         .providers
         .iter()
@@ -370,6 +479,18 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 }
             )
         })?;
+    reject_registered_source_selector_query_code(language_id, &provider_args, provider)?;
+
+    if run_asp_fast_owner_query_command(
+        language_id,
+        &provider_args,
+        &project_root,
+        &invocation_root,
+    )? {
+        return Ok(());
+    }
+
+    let cache_home = client_backend_cache_home(&activation_root, &project_root)?;
     if is_search_dependency_seed(&provider_args) {
         if !provider.search_capabilities.dependency_topology {
             return run_search_dependency_seed_command(
@@ -397,7 +518,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         );
     }
     if is_asp_fast_search(&provider_args) {
-        if fast_search_needs_provider_context(&provider_args, provider) {
+        let provider_context_allowed = !document_owner_items_search
+            || !provider_invokes_asp_facade(language_id, provider, &config);
+        if provider_context_allowed && fast_search_needs_provider_context(&provider_args, provider)
+        {
             let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
             let provider_context = ProviderGraphFactsContext {
                 provider,
@@ -495,7 +619,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     for invocation in provider_invocations(
         provider,
-        &provider_process_args(language_id, &provider_args),
+        &provider_process_args(&provider_args),
         &project_root,
         &runtime_profiles,
         &config,
@@ -511,22 +635,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     Ok(())
 }
 
-fn provider_process_args(language_id: &str, args: &[String]) -> Vec<String> {
-    if language_id == "gerbil-scheme" && gerbil_query_needs_provider_hook(args) {
-        let mut process_args = Vec::with_capacity(args.len() + 2);
-        process_args.push(args[0].clone());
-        process_args.extend(["--from-hook".to_string(), "direct-source-read".to_string()]);
-        process_args.extend(args[1..].iter().cloned());
-        return process_args;
-    }
+fn provider_process_args(args: &[String]) -> Vec<String> {
     args.to_vec()
-}
-
-fn gerbil_query_needs_provider_hook(args: &[String]) -> bool {
-    args.first().map(String::as_str) == Some("query")
-        && !args
-            .iter()
-            .any(|arg| arg == "--from-hook" || arg.starts_with("--from-hook="))
 }
 
 fn search_owner_items_owner_path(args: &[String]) -> Option<&str> {
@@ -817,7 +927,7 @@ fn is_guide_help(args: &[String]) -> bool {
 fn provider_usage() -> String {
     format!(
         "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ...\nsearch: pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime\nsearch deps: current manifest dependency topology and dependency-owned next actions",
-        SUPPORTED_LANGUAGES.join("|")
+        registered_language_facades_line()
     )
 }
 

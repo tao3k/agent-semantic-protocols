@@ -1,0 +1,6 @@
+route_source = "read-only-subagent-receipt"
+max_total_ms = 25
+max_receipt_lines = 10
+max_evidence_rows = 3
+max_alt_actions = 2
+target_rationale = "Receipt validation is a hook-local contract check and must stay millisecond-scale. It should not run providers, native finder, Graph Turbo, or source reads."

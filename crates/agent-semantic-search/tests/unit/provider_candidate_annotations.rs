@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use crate::{
+use crate::provider_candidate_annotations::{
     compact_provider_fact_nodes, compact_provider_fact_value, provider_candidate_annotation_nodes,
     provider_facts_envelope_from_stdout, provider_facts_envelope_from_value,
 };

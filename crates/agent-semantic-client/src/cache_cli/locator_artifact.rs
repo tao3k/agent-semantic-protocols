@@ -7,7 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use agent_semantic_client_core::{
     CacheArtifactId, ClientCacheFileHash, ClientCacheGeneration, ClientRequest, ResolvedProvider,
 };
-use agent_semantic_runtime::project_local_activation_path;
+use agent_semantic_runtime::project_activation_path;
 use sha2::{Digest, Sha256};
 
 use crate::cache_replay::{
@@ -131,11 +131,16 @@ fn manifest_file_hashes(
     project_root: &Path,
     package_roots: &[String],
 ) -> Option<Vec<ClientCacheFileHash>> {
-    let activation_hash = project_local_activation_path(project_root)
-        .strip_prefix(project_root)
+    let activation_hash = project_activation_path(project_root)
         .ok()
-        .and_then(Path::to_str)
-        .and_then(|path| hash_project_file(project_root, path));
+        .and_then(|activation_path| {
+            activation_path
+                .strip_prefix(project_root)
+                .ok()
+                .and_then(Path::to_str)
+                .map(str::to_owned)
+        })
+        .and_then(|path| hash_project_file(project_root, &path));
     let manifests = [
         "Cargo.toml",
         "package.json",

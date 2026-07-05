@@ -2,88 +2,9 @@ use std::env;
 use std::path::PathBuf;
 
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
+    asp_command, prepend_path, provider, temp_project_root, write_activation,
     write_cache_source_fixture, write_echo_provider, write_pwd_provider,
 };
-
-#[test]
-fn search_prime_facade_uses_native_frontier_without_provider_spawn() {
-    let root = temp_project_root("language-search-facade-cache");
-    let bin_dir = root.join(".bin");
-    let cache_home = root.join(".cache");
-    let providers = [
-        ("rust", "rs-harness", "rs"),
-        ("typescript", "ts-harness", "ts"),
-        ("python", "py-harness", "py"),
-        ("julia", "asp-julia-harness", "jl"),
-    ];
-    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
-    for (_, binary, label) in providers.iter().copied() {
-        let call_count_path = root.join(format!("{label}-provider-count"));
-        let provider_path = bin_dir.join(binary);
-        let script = format!(
-            "#!/bin/sh\ncount=\"{}\"\ncurrent=0\nif [ -f \"$count\" ]; then current=$(cat \"$count\"); fi\ncurrent=$((current + 1))\nprintf '%s' \"$current\" > \"$count\"\nprintf '{} %s\\n' \"$*\"\n",
-            call_count_path.display(),
-            label
-        );
-        std::fs::write(&provider_path, script).expect("write provider");
-        make_executable(&provider_path);
-    }
-    write_activation(
-        &root,
-        &[
-            provider("rust", Vec::new()),
-            provider("typescript", Vec::new()),
-            provider("python", Vec::new()),
-            provider("julia", Vec::new()),
-        ],
-    );
-    for (language, _, label) in providers.iter().copied() {
-        let call_count_path = root.join(format!("{label}-provider-count"));
-        let first_output = asp_command(&root)
-            .env("PATH", &bin_dir)
-            .env("PRJ_CACHE_HOME", &cache_home)
-            .args([language, "search", "prime", "--view", "seeds", "."])
-            .output()
-            .expect("run facade first");
-        assert!(
-            first_output.status.success(),
-            "stderr: {}",
-            String::from_utf8_lossy(&first_output.stderr)
-        );
-        let first_stdout = String::from_utf8(first_output.stdout).expect("stdout");
-        let first_header = first_stdout.lines().next().unwrap_or_default();
-        assert!(first_header.starts_with("[search-prime] root="), "{first_stdout}");
-        assert!(
-            first_header.contains("alg=native-fd-prime-frontier-v1"),
-            "{first_stdout}"
-        );
-        assert!(!call_count_path.exists(), "{first_stdout}");
-        let second_output = asp_command(&root)
-            .env("PATH", &bin_dir)
-            .env("PRJ_CACHE_HOME", &cache_home)
-            .args([language, "search", "prime", "--view", "seeds", "."])
-            .output()
-            .expect("run facade second");
-        assert!(
-            second_output.status.success(),
-            "stderr: {}",
-            String::from_utf8_lossy(&second_output.stderr)
-        );
-        let second_stdout = String::from_utf8(second_output.stdout).expect("stdout");
-        let second_header = second_stdout.lines().next().unwrap_or_default();
-        assert!(
-            second_header.starts_with("[search-prime] root="),
-            "{second_stdout}"
-        );
-        assert!(
-            second_header.contains("alg=native-fd-prime-frontier-v1"),
-            "{second_stdout}"
-        );
-        assert!(!call_count_path.exists(), "{second_stdout}");
-    }
-    let _ = std::fs::remove_dir_all(root);
-}
 
 #[test]
 fn language_facade_discovers_activation_from_child_directory() {
@@ -94,14 +15,22 @@ fn language_facade_discovers_activation_from_child_directory() {
     std::fs::create_dir_all(&child_dir).expect("create child directory");
     write_pwd_provider(&bin_dir, "rs-harness");
     write_activation(&root, &[provider("rust", Vec::new())]);
+    let root_arg = root.to_str().expect("utf8 root").to_string();
 
     let output = asp_command(&root)
         .current_dir(&child_dir)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", &cache_home)
-        .args(["rust", "search", "prime", "."])
+        .args([
+            "rust",
+            "agent",
+            "doctor",
+            "--workspace",
+            root_arg.as_str(),
+            "--json",
+        ])
         .output()
-        .expect("run asp rust search");
+        .expect("run asp rust agent doctor");
 
     assert!(
         output.status.success(),
@@ -153,7 +82,18 @@ fn language_facade_rejects_unsupported_language_without_unrelated_provider_recov
     );
 
     let output = asp_command(&root)
-        .args(["scheme", "search", "prime", "--view", "seeds", "."])
+        .args([
+            "scheme",
+            "search",
+            "lexical",
+            "demo",
+            "owner",
+            "tests",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
         .output()
         .expect("run unsupported language facade");
 
@@ -176,7 +116,7 @@ fn language_facade_rejects_unsupported_language_without_unrelated_provider_recov
         "{stderr}"
     );
     assert!(
-        !stderr.contains("asp typescript search prime"),
+        !stderr.contains("asp typescript search lexical"),
         "{stderr}"
     );
     assert!(!stderr.contains("Suggested matching facade"), "{stderr}");
@@ -271,6 +211,7 @@ fn language_facade_normalizes_relative_nested_project_root_arg() {
             "query",
             "--treesitter-query",
             "(function_item name: (identifier) @function.name)",
+            "--workspace",
             "languages/rust-lang-project-harness",
             "--receipt-json",
         ])

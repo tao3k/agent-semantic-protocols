@@ -259,36 +259,36 @@ impl TryFrom<HookClientAgentOrgArtifactsConfig> for CompiledAgentOrgArtifactsCon
     type Error = String;
 
     fn try_from(config: HookClientAgentOrgArtifactsConfig) -> Result<Self, Self::Error> {
-        if config.inactive_after_minutes == 0 {
+        if config.inactive_after_minutes() == 0 {
             return Err(
                 "agentOrgArtifacts.inactiveAfterMinutes must be greater than 0".to_string(),
             );
         }
-        if config.artifacts_path.is_empty() {
+        if config.artifacts_path().is_empty() {
             return Err("agentOrgArtifacts.artifactsPath must not be empty".to_string());
         }
-        if config.entry_skill_path.is_empty() {
+        if config.entry_skill_path().is_empty() {
             return Err("agentOrgArtifacts.entrySkillPath must not be empty".to_string());
         }
         Ok(Self {
-            enabled: config.enabled,
-            inactive_after_minutes: config.inactive_after_minutes,
-            artifacts_path: PathBuf::from(config.artifacts_path),
-            entry_skill_path: config.entry_skill_path,
+            enabled: config.enabled(),
+            inactive_after_minutes: config.inactive_after_minutes(),
+            artifacts_path: PathBuf::from(config.artifacts_path()),
+            entry_skill_path: config.entry_skill_path().to_owned(),
             archive_warning: CompiledAgentOrgArtifactsArchiveWarningConfig::try_from(
-                config.archive_warning,
+                config.archive_warning(),
             )?,
         })
     }
 }
 
-impl TryFrom<HookClientAgentOrgArtifactsArchiveWarningConfig>
+impl TryFrom<&HookClientAgentOrgArtifactsArchiveWarningConfig>
     for CompiledAgentOrgArtifactsArchiveWarningConfig
 {
     type Error = String;
 
     fn try_from(
-        config: HookClientAgentOrgArtifactsArchiveWarningConfig,
+        config: &HookClientAgentOrgArtifactsArchiveWarningConfig,
     ) -> Result<Self, Self::Error> {
         if config.active_org_file_threshold == 0 {
             return Err(
@@ -310,7 +310,7 @@ impl TryFrom<HookClientAgentOrgArtifactsArchiveWarningConfig>
         Ok(Self {
             enabled: config.enabled,
             active_org_file_threshold: config.active_org_file_threshold,
-            archives_dir: config.archives_dir,
+            archives_dir: config.archives_dir.clone(),
             max_reported_files: config.max_reported_files,
         })
     }

@@ -1,5 +1,6 @@
 use agent_semantic_runtime::{
-    AgentSessionValidationReport as SessionValidationReport, codex_rollout_session_metadata,
+    AgentSessionValidationReport as SessionValidationReport, CodexRolloutSessionMetadata,
+    codex_rollout_session_metadata,
 };
 
 use std::{
@@ -161,7 +162,7 @@ fn validate_session_profile_with_rollout_lookup(
         .as_deref()
         .map(|path| normalized_path_string(Path::new(path)));
     let mut failures = Vec::new();
-    let warnings: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
     let mut pass_reason = None;
     if metadata.thread_source.as_deref() != Some("subagent") {
         failures.push(format!(
@@ -190,12 +191,30 @@ fn validate_session_profile_with_rollout_lookup(
                 .unwrap_or_else(|| "<missing>".to_string())
         ));
     }
-    if metadata.agent_role.as_deref() != Some(expected.role.as_str()) {
-        failures.push(format!(
-            "agentRole expected {} got {}",
-            expected.role,
-            metadata.agent_role.as_deref().unwrap_or("<missing>")
-        ));
+    match metadata.agent_role.as_deref() {
+        Some(actual_role) if actual_role == expected.role => {}
+        Some("default") => {
+            let role_fallback_reason = format!(
+                "agentRole default accepted as Codex host role fallback for expected {}",
+                expected.role
+            );
+            pass_reason = Some(match pass_reason.take() {
+                Some(existing) => format!("{existing}; {role_fallback_reason}"),
+                None => role_fallback_reason,
+            });
+        }
+        Some(actual_role) => {
+            failures.push(format!(
+                "agentRole expected {} got {}",
+                expected.role, actual_role
+            ));
+        }
+        None => {
+            failures.push(format!(
+                "agentRole expected {} got <missing>",
+                expected.role
+            ));
+        }
     }
     match actual_agent_path.as_deref() {
         Some(actual_agent_path) if actual_agent_path == expected_agent_path => {}
@@ -245,22 +264,27 @@ fn validate_session_profile_with_rollout_lookup(
                 .first()
                 .map(|model| format!("asp agent session switch-model --model {model} --json"))
                 .unwrap_or_else(|| "unavailable".to_string());
-            failures.push(format!(
-            "model expected {} got {}; switchOptions={switch_options}; switchCommand={switch_command}",
-            expected.model, actual_model
-        ));
+            warnings.push(format!(
+                "model mismatch: this same Codex child is running {} but the configured model is {}. Agent instruction: main/parent agent must send an agent message to the same managed child with required model {} only when agentMessageTargetId is available, receive the child response through the subagent message receipt, then re-register and revalidate the same child; do not create or replace the child. If only childSessionId/threadId is available, report bootstrapBlocked=host-message-agent-target-unavailable and do not use normal/read thread as the ASP Explorer protocol. requiredAction=parent-send-message-same-child-with-required-model; requiredModel={}; targetChildSessionIdFromRegistry=true; requiresAgentMessageTargetId=true; configSwitchPurpose=parent-message-same-child-revalidate; resultSource=subagent-message-receipt; switchOptions={switch_options}; configSwitchCommand={switch_command}",
+                actual_model, expected.model, expected.model, expected.model
+            ));
         }
         None => {
-            failures.push(format!("model expected {} got <missing>", expected.model));
+            warnings.push(format!(
+                "model mismatch: this same Codex child did not report a model but the configured model is {}. Agent instruction: main/parent agent must send an agent message to the same managed child with required model {} only when agentMessageTargetId is available, receive the child response through the subagent message receipt, then re-register and revalidate the same child; do not create or replace the child. If only childSessionId/threadId is available, report bootstrapBlocked=host-message-agent-target-unavailable and do not use normal/read thread as the ASP Explorer protocol. requiredAction=parent-send-message-same-child-with-required-model; requiredModel={}; targetChildSessionIdFromRegistry=true; requiresAgentMessageTargetId=true; configSwitchPurpose=parent-message-same-child-revalidate; resultSource=subagent-message-receipt",
+                expected.model, expected.model, expected.model
+            ));
         }
     }
-    if metadata.sandbox_policy.as_deref() != Some(expected.sandbox.as_str()) {
-        pass_reason.get_or_insert_with(|| {
-            format!(
-                "sandbox expected {} got {}",
-                expected.sandbox,
-                metadata.sandbox_policy.as_deref().unwrap_or("<missing>")
-            )
+    if let Some(reason) =
+        sandbox_policy_mismatch_reason(&expected.sandbox, metadata.sandbox_policy.as_deref())
+    {
+        let sandbox_drift_reason = format!(
+            "{reason}; sandbox mismatch is warning-only because Codex can inherit the parent sandbox"
+        );
+        pass_reason = Some(match pass_reason.take() {
+            Some(existing) => format!("{existing}; {sandbox_drift_reason}"),
+            None => sandbox_drift_reason,
         });
     }
     Ok(SessionValidationReport {
@@ -339,8 +363,59 @@ fn validated_agent_kind(name: &str, role: &str) -> Option<ValidatedAgentKind> {
     )
 }
 
+pub(crate) fn rollout_metadata_matches_managed_agent_profile(
+    name: &str,
+    role: &str,
+    metadata: &CodexRolloutSessionMetadata,
+) -> bool {
+    let Some(kind) = validated_agent_kind(name, role) else {
+        return false;
+    };
+    let expected = load_expected_agent_profile(kind).ok();
+    let expected_role = expected
+        .as_ref()
+        .map(|profile| profile.role.as_str())
+        .unwrap_or_else(|| kind.default_role());
+    let expected_sandbox = expected
+        .as_ref()
+        .map(|profile| profile.sandbox.as_str())
+        .unwrap_or("read-only");
+    let Some(agent_role) = metadata.agent_role.as_deref() else {
+        return false;
+    };
+    let role_matches = normalize_agent_session_label(agent_role)
+        == normalize_agent_session_label(expected_role)
+        || normalize_agent_session_label(agent_role)
+            == normalize_agent_session_label(kind.default_role());
+    let nickname_matches = metadata
+        .agent_nickname
+        .as_deref()
+        .map(|nickname| nickname.trim().to_ascii_lowercase().starts_with("asp "))
+        .unwrap_or(false);
+    let sandbox_matches = metadata
+        .sandbox_policy
+        .as_deref()
+        .map(|sandbox| {
+            normalize_agent_session_label(sandbox)
+                == normalize_agent_session_label(expected_sandbox)
+        })
+        .unwrap_or(false);
+    role_matches && nickname_matches && sandbox_matches
+}
+
 fn normalize_agent_session_label(value: &str) -> String {
     value.trim().replace('-', "_")
+}
+
+fn sandbox_policy_mismatch_reason(expected: &str, actual: Option<&str>) -> Option<String> {
+    if actual == Some(expected) {
+        return None;
+    }
+    Some(format!(
+        "sandbox expected {} got {}",
+        expected,
+        actual.unwrap_or("<missing>")
+    ))
 }
 
 fn load_expected_agent_profile(kind: ValidatedAgentKind) -> Result<ExpectedAgentProfile, String> {

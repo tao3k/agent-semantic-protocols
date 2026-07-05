@@ -16,6 +16,34 @@ use agent_semantic_client_db::{
     source_index_scope_dirs,
 };
 
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct EnvVarGuard {
+    key: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvVarGuard {
+    fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+        let previous = std::env::var_os(key);
+        unsafe {
+            std::env::set_var(key, value);
+        }
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        unsafe {
+            match self.previous.as_ref() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+}
+
 #[test]
 fn schema_version_stays_on_first_turso_release_contract() {
     assert_eq!(
@@ -91,6 +119,55 @@ fn agent_session_registry_storage_is_turso_owned() {
         Some("asp rust search owner")
     );
     assert_eq!(updated.last_evidence_ref.as_deref(), Some("receipt:1"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn agent_session_registry_project_open_uses_asp_home_db() {
+    let root = temp_root("agent-session-registry-state-home");
+    let state_home = root.join("state");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&project_root).expect("create project root");
+
+    let state =
+        ResolvedState::resolve_with_state_home(&project_root, &state_home).expect("resolve state");
+    state.ensure_minimal_layout().expect("ensure state layout");
+
+    let _env_lock = ENV_LOCK.lock().expect("lock env");
+    let _state_home_guard = EnvVarGuard::set_path("ASP_STATE_HOME", &state_home);
+    let state_root =
+        AgentSessionRegistry::state_root_for_project(&project_root).expect("resolve project root");
+    assert_eq!(state_root, state.state_home);
+    let registry =
+        AgentSessionRegistry::open_or_create_project(&project_root).expect("create registry");
+
+    assert_eq!(
+        registry.db_path(),
+        &state_root.join(AGENT_SESSION_REGISTRY_DB_NAME)
+    );
+    assert!(registry.db_path().is_file());
+    assert_eq!(
+        registry.db_path(),
+        &state.state_home.join(AGENT_SESSION_REGISTRY_DB_NAME)
+    );
+    assert!(
+        !state
+            .paths
+            .project_dir
+            .join(AGENT_SESSION_REGISTRY_DB_NAME)
+            .exists(),
+        "agent session registry must not create a project-id DB"
+    );
+    assert!(
+        !state
+            .paths
+            .client_dir
+            .join("agent")
+            .join(AGENT_SESSION_REGISTRY_DB_NAME)
+            .exists(),
+        "agent session registry must not create a project-local DB"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -310,33 +387,6 @@ fn agent_session_registry_concurrent_process_register_shared_route_does_not_uniq
 }
 
 #[test]
-fn agent_session_registry_state_root_is_state_core_owned() {
-    let project_root = temp_root("agent-session-project");
-    let state_home = temp_root("agent-session-state-home");
-    let state =
-        ResolvedState::resolve_with_state_home(&project_root, &state_home).expect("resolve state");
-    let state_root = AgentSessionRegistry::state_root_for_resolved_state(&state);
-
-    assert_eq!(state_root, state.paths.client_dir.join("agent"));
-    assert!(state_root.starts_with(&state.state_home));
-    assert!(!state_root.starts_with(project_root.join(".cache")));
-
-    let registry = AgentSessionRegistry::open_or_create_state_root(&state_root)
-        .expect("create state-core session registry");
-    assert_eq!(
-        registry.db_path(),
-        state
-            .paths
-            .client_dir
-            .join("agent")
-            .join(AGENT_SESSION_REGISTRY_DB_NAME)
-    );
-
-    let _ = std::fs::remove_dir_all(project_root);
-    let _ = std::fs::remove_dir_all(state_home);
-}
-
-#[test]
 fn source_index_import_assembly_uses_turso_ready_contract_rows() {
     let root = temp_root("source-index-import");
     let src = root.join("src");
@@ -347,6 +397,7 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
         path: lib.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
+        selector_receipts: Vec::new(),
     };
 
     let import = agent_semantic_client_db::assemble_source_index_import(
@@ -421,6 +472,7 @@ fn source_index_refresh_request_remains_db_engine_owned() {
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_refresh_fixture() {}\n".to_string(),
+            selectors: Vec::new(),
         }],
     })
     .expect("build source-index import");

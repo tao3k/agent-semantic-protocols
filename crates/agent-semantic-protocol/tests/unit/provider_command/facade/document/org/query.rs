@@ -334,8 +334,8 @@ fn org_facade_search_memory_defaults_to_codex_thread_id() {
             "asp-explore",
             "--child-session-id",
             "codex-child-a",
-            "--role",
-            "asp-explore",
+            "--roles",
+            "subagent,search",
         ])
         .output()
         .expect("register asp-explore child");

@@ -1,0 +1,16 @@
+id = "asp-agent-session-status-and-reuse-hot-path"
+title = "ASP agent session status and reuse stay on the rollout-backed resident hot path"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-AGENT-SESSION-STATUS-REUSE-001",
+]
+agent_goal = "Keep asp agent session status and reuse fixed as a lifecycle scenario: with a registered resident child and rollout evidence, status must report an idle-resumable child and reuse must select that child without spawning a duplicate subagent or running provider/search-overlay work."
+reference_repositories = [
+  "agent-semantic-protocols",
+]
+reference_patterns = [
+  "session-registry-rollout",
+  "codex-rollout-session-meta",
+  "resident-subagent-reuse",
+]
+inputs = "inputs"
+expected = "expected"

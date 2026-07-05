@@ -10,6 +10,8 @@ use std::{
     time::UNIX_EPOCH,
 };
 
+const CODEX_ROLLOUT_METADATA_HEADER_LINE_LIMIT: usize = 32;
+
 /// Runtime-visible agent session discovered from host environment variables.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,30 +72,24 @@ pub fn codex_rollout_session_metadata(
     Ok(None)
 }
 
-/// Resolve Codex rollout metadata for a recently-created session id.
-///
-/// Registration validation uses this stricter lookup so a long-lived root
-/// session cannot accidentally validate against stale rollout metadata from an
-/// older child lifecycle. The normal metadata lookup remains available for
-/// status and diagnostics.
+/// Resolve Codex rollout metadata only when it is inside a registration window.
 pub fn codex_rollout_session_metadata_recent(
     session_id: &str,
     reference_unix: i64,
     max_age_seconds: i64,
 ) -> Result<Option<CodexRolloutSessionMetadata>, String> {
-    let sessions_dir = codex_sessions_dir()?;
-    if !sessions_dir.is_dir() {
+    let Some(metadata) = codex_rollout_session_metadata(session_id)? else {
         return Ok(None);
+    };
+    let Some(created_at) = metadata.rollout_created_at_unix else {
+        return Ok(None);
+    };
+    let age_seconds = reference_unix - created_at;
+    if (0..=max_age_seconds).contains(&age_seconds) {
+        Ok(Some(metadata))
+    } else {
+        Ok(None)
     }
-    for path in codex_rollout_paths_for_session_id(&sessions_dir, session_id)? {
-        let Some(metadata) = read_codex_rollout_metadata(&path, session_id)? else {
-            continue;
-        };
-        if codex_rollout_metadata_is_recent(&metadata, reference_unix, max_age_seconds) {
-            return Ok(Some(metadata));
-        }
-    }
-    Ok(None)
 }
 
 /// Discover the current host agent session from well-known environment ids.
@@ -152,7 +148,11 @@ fn read_codex_rollout_metadata(
         permission_profile: None,
     };
     let mut saw_matching_session_meta = false;
-    for line in reader.lines() {
+    let mut saw_turn_context = false;
+    for (line_index, line) in reader.lines().enumerate() {
+        if line_index >= CODEX_ROLLOUT_METADATA_HEADER_LINE_LIMIT {
+            break;
+        }
         let line = line.map_err(|error| {
             format!(
                 "failed to read Codex rollout line from {}: {error}",
@@ -190,7 +190,7 @@ fn read_codex_rollout_metadata(
                 metadata.cli_version = string_at(payload, "/cli_version");
                 metadata.cwd = string_at(payload, "/cwd");
             }
-            Some("turn_context") => {
+            Some("turn_context") if saw_matching_session_meta => {
                 let payload = value.get("payload").unwrap_or(&serde_json::Value::Null);
                 if let Some(model) = string_at(payload, "/model") {
                     metadata.model = Some(model);
@@ -207,21 +207,15 @@ fn read_codex_rollout_metadata(
                 if let Some(permission_profile) = string_at(payload, "/permission_profile/type") {
                     metadata.permission_profile = Some(permission_profile);
                 }
+                saw_turn_context = true;
             }
             _ => {}
         }
+        if saw_matching_session_meta && saw_turn_context {
+            break;
+        }
     }
     Ok(saw_matching_session_meta.then_some(metadata))
-}
-
-fn codex_rollout_metadata_is_recent(
-    metadata: &CodexRolloutSessionMetadata,
-    reference_unix: i64,
-    max_age_seconds: i64,
-) -> bool {
-    metadata.rollout_created_at_unix.is_some_and(|created_at| {
-        created_at <= reference_unix && reference_unix - created_at <= max_age_seconds
-    })
 }
 
 fn path_unix_timestamp(path: &Path) -> Result<Option<i64>, String> {
@@ -342,12 +336,12 @@ impl AgentSessionHostStatus {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSessionHostProbe {
-    pub client: Option<String>,
-    pub thread_id: Option<String>,
-    pub source: AgentSessionHostStatusSource,
-    pub status: AgentSessionHostStatus,
-    pub reason: String,
-    pub raw_status: Option<String>,
+    pub(crate) client: Option<String>,
+    pub(crate) thread_id: Option<String>,
+    pub(crate) source: AgentSessionHostStatusSource,
+    pub(crate) status: AgentSessionHostStatus,
+    pub(crate) reason: String,
+    pub(crate) raw_status: Option<String>,
 }
 
 /// Combined health summary from registry, host, and artifact evidence.
@@ -424,12 +418,27 @@ pub fn agent_session_host_status_reason() -> &'static str {
     "no-stable-public-host-session-status-command"
 }
 
+/// Request for probing host status for one runtime session.
+pub struct AgentSessionHostProbeRequest<'a> {
+    session: Option<&'a AgentRuntimeSession>,
+    thread_id: Option<&'a str>,
+}
+
+impl<'a> From<(Option<&'a AgentRuntimeSession>, Option<&'a str>)>
+    for AgentSessionHostProbeRequest<'a>
+{
+    fn from((session, thread_id): (Option<&'a AgentRuntimeSession>, Option<&'a str>)) -> Self {
+        Self { session, thread_id }
+    }
+}
+
 /// Probe the host runtime for a session id when a provider adapter is available.
 #[must_use]
 pub fn agent_session_host_probe(
-    session: Option<&AgentRuntimeSession>,
-    thread_id: Option<&str>,
+    request: AgentSessionHostProbeRequest<'_>,
 ) -> AgentSessionHostProbe {
+    let session = request.session;
+    let thread_id = request.thread_id;
     let Some(session) = session else {
         return AgentSessionHostProbe {
             client: None,

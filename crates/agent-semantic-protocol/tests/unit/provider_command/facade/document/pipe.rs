@@ -77,10 +77,12 @@ fn assert_document_pipe_packet(packet: &serde_json::Value, language_id: &str, ma
     let nodes = packet["graph"]["nodes"].as_array().expect("graph nodes");
     assert!(
         nodes.iter().any(|node| {
-            matches!(node["source"].as_str(), Some("overlay" | "overlay-path"))
-                && node["locator"]
-                    .as_str()
-                    .is_some_and(|locator| locator.starts_with(&format!("{language_id}://")))
+            matches!(
+                node["source"].as_str(),
+                Some("overlay" | "overlay-path" | "search-overlay")
+            ) && node["locator"]
+                .as_str()
+                .is_some_and(|locator| locator.starts_with(&format!("{language_id}://")))
                 && node["sourceLocatorHint"]
                     .as_str()
                     .is_some_and(|locator| locator.contains(':'))

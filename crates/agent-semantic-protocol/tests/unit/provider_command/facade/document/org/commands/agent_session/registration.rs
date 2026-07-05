@@ -23,8 +23,8 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
             state_root.to_str().unwrap(),
             "--name",
             "asp-main-explore",
-            "--role",
-            "main",
+            "--roles",
+            "subagent",
         ])
         .output()
         .expect("register main session");
@@ -36,7 +36,7 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
     let main_stdout = String::from_utf8(main_register.stdout).expect("main session stdout");
     assert!(
         main_stdout.contains(
-            "[agent-session-register] owner=rust rootSession=\"codex-root-thread\" session=\"codex-root-thread\" name=\"asp-main-explore\" role=\"main\" status=\"active\""
+            "[agent-session-register] owner=rust rootSession=\"codex-root-thread\" session=\"codex-root-thread\" name=\"asp-main-explore\" role=\"subagent\" status=\"active\""
         ),
         "{main_stdout}"
     );
@@ -59,8 +59,8 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
             "codex-root-thread",
             "--parent-session-id",
             "codex-root-thread",
-            "--role",
-            "code",
+            "--roles",
+            "subagent,search",
             "--model",
             "cheap-code-model",
         ])
@@ -99,7 +99,7 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
     );
     assert!(
         list_stdout.contains(
-            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"code\" model=\"cheap-code-model\" status=\"active\""
+            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"cheap-code-model\" status=\"active\""
         ),
         "{list_stdout}"
     );
@@ -125,7 +125,7 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
     let show_stdout = String::from_utf8(show.stdout).expect("session show stdout");
     assert!(
         show_stdout.contains(
-            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"code\" model=\"cheap-code-model\" status=\"active\""
+            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"cheap-code-model\" status=\"active\""
         ),
         "{show_stdout}"
     );
@@ -172,8 +172,8 @@ fn asp_agent_session_defaults_to_global_state_root() {
             child_session_id,
             "--root-session-id",
             root_session_id,
-            "--role",
-            "asp-explore",
+            "--roles",
+            "subagent,search",
         ])
         .output()
         .expect("register global child session");
@@ -199,12 +199,12 @@ fn asp_agent_session_defaults_to_global_state_root() {
     let stdout = String::from_utf8(list.stdout).expect("global list stdout");
     assert!(
         stdout.contains(&format!(
-            "[agent-session-list] owner=rust rootSession=\"{root_session_id}\" sessions=0"
+            "[agent-session-list] owner=rust rootSession=\"{root_session_id}\" sessions=1"
         )),
         "{stdout}"
     );
     assert!(
-        !stdout.contains(&format!("session=\"{child_session_id}\"")),
+        stdout.contains(&format!("session=\"{child_session_id}\"")),
         "{stdout}"
     );
 
@@ -240,8 +240,8 @@ fn asp_agent_session_register_infers_root_from_codex_child_rollout() {
             "asp-explore",
             "--child-session-id",
             child_session_id,
-            "--role",
-            "asp-explore",
+            "--roles",
+            "subagent,search",
         ])
         .output()
         .expect("register child session with inferred root");
@@ -276,13 +276,6 @@ fn asp_agent_session_reuse_in_unregistered_child_does_not_use_codex_rollout_root
         "gpt-5.3-codex-spark",
         "read-only",
     );
-    write_codex_asp_explorer_fixture(
-        &home,
-        root_session_id,
-        unregistered_child_session_id,
-        "gpt-5.3-codex-spark",
-        "read-only",
-    );
 
     let register = asp_command(&root)
         .env("HOME", &home)
@@ -297,8 +290,8 @@ fn asp_agent_session_reuse_in_unregistered_child_does_not_use_codex_rollout_root
             "asp-explore",
             "--child-session-id",
             registered_child_session_id,
-            "--role",
-            "asp-explore",
+            "--roles",
+            "subagent,search",
         ])
         .output()
         .expect("register resident child session");
@@ -306,6 +299,13 @@ fn asp_agent_session_reuse_in_unregistered_child_does_not_use_codex_rollout_root
         register.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&register.stderr)
+    );
+    write_codex_asp_explorer_fixture(
+        &home,
+        root_session_id,
+        unregistered_child_session_id,
+        "gpt-5.3-codex-spark",
+        "read-only",
     );
 
     let reuse = asp_command(&root)
@@ -326,6 +326,78 @@ fn asp_agent_session_reuse_in_unregistered_child_does_not_use_codex_rollout_root
     assert!(
         stdout.contains(&format!("rootSession=\"{unregistered_child_session_id}\"")),
         "{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_agent_session_reuse_adopts_existing_codex_asp_child_from_root_rollout() {
+    let root = temp_project_root("agent-command-session-reuse-adopts-root-rollout-child");
+    let home = root.join("home");
+    std::fs::create_dir_all(&home).expect("create temp home");
+    let root_session_id = "reuse-adopt-root-thread";
+    let child_session_id = "reuse-adopt-child-thread";
+    write_codex_asp_explorer_fixture(
+        &home,
+        root_session_id,
+        child_session_id,
+        "gpt-5.3-codex-spark",
+        "read-only",
+    );
+
+    let reuse = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env_remove("ASP_STATE_HOME")
+        .env("CODEX_THREAD_ID", root_session_id)
+        .args([
+            "agent",
+            "session",
+            "reuse",
+            "--name",
+            "asp-explore",
+            "--json",
+        ])
+        .output()
+        .expect("reuse existing rollout child");
+    assert!(
+        reuse.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&reuse.stderr)
+    );
+    let stdout = String::from_utf8(reuse.stdout).expect("reuse stdout");
+    assert!(
+        stdout.contains(&format!("\"sessionId\": \"{child_session_id}\"")),
+        "{stdout}"
+    );
+    assert!(stdout.contains("\"name\": \"asp-explore\""), "{stdout}");
+    assert!(stdout.contains("\"status\": \"active\""), "{stdout}");
+
+    let second_reuse = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env_remove("ASP_STATE_HOME")
+        .env("CODEX_THREAD_ID", root_session_id)
+        .args([
+            "agent",
+            "session",
+            "reuse",
+            "--name",
+            "asp-explore",
+            "--json",
+        ])
+        .output()
+        .expect("reuse adopted registry child");
+    assert!(
+        second_reuse.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&second_reuse.stderr)
+    );
+    let second_stdout = String::from_utf8(second_reuse.stdout).expect("second reuse stdout");
+    assert!(
+        second_stdout.contains(&format!("\"sessionId\": \"{child_session_id}\"")),
+        "{second_stdout}"
     );
 
     let _ = std::fs::remove_dir_all(root);

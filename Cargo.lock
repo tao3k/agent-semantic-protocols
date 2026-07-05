@@ -129,6 +129,7 @@ version = "0.1.0"
 dependencies = [
  "figment",
  "serde",
+ "tempfile",
  "toml 0.9.12+spec-1.1.0",
 ]
 
@@ -164,6 +165,7 @@ dependencies = [
  "agent-semantic-search",
  "agent-semantic-tree-sitter",
  "aho-corasick",
+ "globset",
  "ignore",
  "insta",
  "libc",
@@ -222,6 +224,7 @@ dependencies = [
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
  "bytes",
+ "globset",
  "ignore",
  "orgize",
  "rust-lang-project-harness 0.1.2",

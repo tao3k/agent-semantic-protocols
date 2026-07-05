@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use super::item::OwnerItem;
-use super::request::OwnerQueryRequest;
+use super::request::{OwnerItemQuery, OwnerQueryRequest};
 
 pub(super) fn render_code_matches(source: &str, matches: &[&OwnerItem]) -> Result<(), String> {
     let mut stdout = io::stdout();
@@ -27,6 +27,7 @@ pub(super) fn render_full_source(source: &str) -> Result<(), String> {
 
 pub(super) fn render_locator_matches(
     request: &OwnerQueryRequest,
+    item_query: &OwnerItemQuery,
     path: &Path,
     project_root: &Path,
     locator_root: &Path,
@@ -44,7 +45,7 @@ pub(super) fn render_locator_matches(
         "[search-owner] q={} pkg=. own=1 item={} itemQuery={} output={output}\n",
         display_path.display(),
         matches.len(),
-        request.term
+        item_query.term()
     ));
     rendered.push_str(&format!(
         "|owner {} role=source source=asp-syn-owner lines={line_count}\n",
@@ -64,19 +65,20 @@ pub(super) fn render_locator_matches(
             item.start_line,
             item.end_line,
             item.syntax_node,
-                request.projection
+                item_query.projection()
             ));
     }
-    let search_frame = search_frame_owner_items_receipt(request, &display_path, matches);
+    let search_frame =
+        search_frame_owner_items_receipt(request, item_query, &display_path, matches);
     if matches.is_empty() {
         rendered.push_str(&format!(
                 "|query itemQuery={} status=miss match=none item=0 reason=asp-syn-owner-query output={output} next=revise-query{search_frame}\n",
-                request.term,
+                item_query.term(),
             ));
     } else {
         rendered.push_str(&format!(
                 "|query itemQuery={} status=hit match=exact item={} reason=asp-syn-owner-query output={output} next=query --code codePolicy=requires-exact-code{search_frame}\n",
-                request.term,
+                item_query.term(),
                 matches.len()
             ));
     }
@@ -87,13 +89,14 @@ pub(super) fn render_locator_matches(
 
 pub(super) fn render_non_source_owner_query(
     request: &OwnerQueryRequest,
+    item_query: &OwnerItemQuery,
     path: &Path,
     project_root: &Path,
     locator_root: &Path,
     source: &str,
 ) -> Result<(), String> {
-    if request.code {
-        if source_contains_owner_term(source, &request.term) {
+    if item_query.is_code_projection() {
+        if source_contains_owner_term(source, item_query.term()) {
             render_full_source(source)
         } else {
             render_code_matches(source, &[])
@@ -101,6 +104,7 @@ pub(super) fn render_non_source_owner_query(
     } else {
         render_locator_matches(
             request,
+            item_query,
             path,
             project_root,
             locator_root,
@@ -136,6 +140,7 @@ fn owner_item_structural_selector(
 
 fn search_frame_owner_items_receipt(
     request: &OwnerQueryRequest,
+    item_query: &OwnerItemQuery,
     display_path: &Path,
     matches: &[&OwnerItem],
 ) -> String {
@@ -146,7 +151,7 @@ fn search_frame_owner_items_receipt(
     );
     if let Some(item) = matches.first() {
         let selector = owner_item_structural_selector(request, display_path, item);
-        let projection_flag = if request.projection == "content" {
+        let projection_flag = if item_query.projection() == "content" {
             "--content"
         } else {
             "--code"
@@ -168,7 +173,7 @@ fn search_frame_owner_items_receipt(
         "asp {} search owner {} items --query {} --workspace . --view seeds",
         request.language_id,
         display_path.display(),
-        request.term
+        item_query.term()
     );
     let where_frame = format!("owner:{}", display_path.display());
     format!(
@@ -181,11 +186,14 @@ fn search_frame_owner_items_receipt(
 
 fn unresolved_owner_search_frame_receipt(
     request: &OwnerQueryRequest,
+    item_query: &OwnerItemQuery,
     display_path: &str,
 ) -> String {
     let next_command = format!(
         "asp {} search owner {} items --query {} --workspace . --view seeds",
-        request.language_id, display_path, request.term
+        request.language_id,
+        display_path,
+        item_query.term()
     );
     let source_trace = format!("owner-not-found:{display_path}");
     let where_frame = format!("owner:{display_path}");
@@ -202,8 +210,16 @@ fn quote_search_frame_value(value: &str) -> String {
 }
 
 pub(super) fn render_unresolved_owner_query(request: &OwnerQueryRequest) -> Result<(), String> {
-    if request.code {
+    let Some(item_query) = request.item_query() else {
         return Ok(());
+    };
+    if item_query.is_code_projection() {
+        let display_path = request.owner_path.to_string_lossy().replace('\\', "/");
+        return Err(format!(
+            "stale-index exact selector resolved no code payload: ownerPath={display_path} itemQuery={} state=stale-index recommendedNext=asp {} search owner {display_path} items --workspace . --view seeds",
+            item_query.term(),
+            request.language_id
+        ));
     }
     let output = if request.names_only {
         "names"
@@ -211,10 +227,11 @@ pub(super) fn render_unresolved_owner_query(request: &OwnerQueryRequest) -> Resu
         "locator"
     };
     let display_path = request.owner_path.to_string_lossy().replace('\\', "/");
-    let search_frame = unresolved_owner_search_frame_receipt(request, &display_path);
+    let search_frame = unresolved_owner_search_frame_receipt(request, item_query, &display_path);
     let rendered = format!(
         "[search-owner] q={display_path} pkg=. own=0 item=0 itemQuery={} output={output}\n|query itemQuery={} status=miss match=none item=0 reason=owner-not-found output={output} next=search-owner{search_frame}\n",
-        request.term, request.term
+        item_query.term(),
+        item_query.term()
     );
     io::stdout()
         .write_all(rendered.as_bytes())

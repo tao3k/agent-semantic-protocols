@@ -81,13 +81,50 @@ pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, S
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderCommandSelection {
-    pub manifest_id: String,
-    pub manifest_digest: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub binary: String,
-    pub execution: ProviderExecution,
-    pub provider_command_prefix: Vec<String>,
+    pub(crate) manifest_id: String,
+    pub(crate) manifest_digest: String,
+    pub(crate) language_id: String,
+    pub(crate) provider_id: String,
+    pub(crate) binary: String,
+    pub(crate) execution: ProviderExecution,
+    pub(crate) provider_command_prefix: Vec<String>,
+}
+
+impl ProviderCommandSelection {
+    #[must_use]
+    pub fn manifest_id(&self) -> &str {
+        &self.manifest_id
+    }
+
+    #[must_use]
+    pub fn manifest_digest(&self) -> &str {
+        &self.manifest_digest
+    }
+
+    #[must_use]
+    pub fn language_id(&self) -> &str {
+        &self.language_id
+    }
+
+    #[must_use]
+    pub fn provider_id(&self) -> &str {
+        &self.provider_id
+    }
+
+    #[must_use]
+    pub fn binary(&self) -> &str {
+        &self.binary
+    }
+
+    #[must_use]
+    pub fn execution(&self) -> &ProviderExecution {
+        &self.execution
+    }
+
+    #[must_use]
+    pub fn provider_command_prefix(&self) -> &[String] {
+        &self.provider_command_prefix
+    }
 }
 
 pub fn provider_command_selections(

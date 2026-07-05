@@ -42,7 +42,12 @@ pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStat
     let layout = project_runtime_layout(project_root);
     let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
     let protocol_home = resolved.state_home.clone();
-    let hook_dir = resolved.paths.workspace_dir.join("live").join("hooks");
+    let hook_dir = protocol_home
+        .join("hooks")
+        .join("projects")
+        .join(resolved.repo.repo_id.as_str())
+        .join("workspaces")
+        .join(resolved.workspace.workspace_id.as_str());
     let hook_cache_dir = hook_dir.join("cache");
     let hook_state_dir = hook_dir.join("state");
     let activation_path = hook_state_dir.join("activation.json");
@@ -72,6 +77,8 @@ pub fn project_runtime_state(
     project_root: impl AsRef<Path>,
 ) -> Result<ProjectRuntimeState, String> {
     let paths = project_state_paths(project_root)?;
+    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
+        .ensure_minimal_layout()?;
     let protocol_home = ensure_dir(paths.protocol_home)?;
     let hook_cache_dir = ensure_dir(paths.hook_cache_dir)?;
     let hook_state_dir = ensure_dir(paths.hook_state_dir)?;
@@ -171,23 +178,6 @@ fn project_root_for_legacy_activation_path(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Legacy-named hook API retained as a global-state activation path resolver.
-pub fn project_local_activation_path(project_root: impl AsRef<Path>) -> PathBuf {
-    project_activation_path(project_root.as_ref()).unwrap_or_else(|_| {
-        std::env::var_os("ASP_STATE_HOME")
-            .map(PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("HOME")
-                    .map(PathBuf::from)
-                    .map(|home| home.join(".agent-semantic-protocols"))
-            })
-            .unwrap_or_else(|| PathBuf::from(".agent-semantic-protocols"))
-            .join("hooks")
-            .join("state")
-            .join("activation.json")
-    })
-}
-
 /// Return the runtime bin directory below an already-resolved cache home.
 #[must_use]
 pub fn runtime_bin_dir_for_cache_home(cache_home: impl AsRef<Path>) -> PathBuf {
@@ -230,12 +220,18 @@ pub fn ensure_project_hook_state_dir(project_root: impl AsRef<Path>) -> Result<P
 
 /// Resolve and create the client cache directory.
 pub fn ensure_project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    ensure_dir(project_state_paths(project_root)?.client_cache_dir)
+    let paths = project_state_paths(project_root)?;
+    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
+        .ensure_minimal_layout()?;
+    ensure_dir(paths.client_cache_dir)
 }
 
 /// Resolve and create the artifacts directory.
 pub fn ensure_project_artifacts_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    ensure_dir(project_state_paths(project_root)?.artifacts_dir)
+    let paths = project_state_paths(project_root)?;
+    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
+        .ensure_minimal_layout()?;
+    ensure_dir(paths.artifacts_dir)
 }
 
 /// Resolve and create the runtime command-shim directory.

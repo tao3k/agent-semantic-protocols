@@ -1,4 +1,6 @@
-use crate::{GraphCandidateSparsityInput, select_sparse_graph_candidate_indices};
+use crate::graph_candidate_sparsity::{
+    GraphCandidateSparsityInput, select_sparse_graph_candidate_indices,
+};
 
 #[test]
 fn sparse_graph_candidate_selection_retains_generated_paths_without_path_policy() {

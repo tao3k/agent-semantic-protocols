@@ -17,6 +17,7 @@ use super::{
     codex_enforcement_report, ensure_protocol_binary_installed_for_path,
     payload_indicates_subagent_context, protocol_binary_on_path, run_org_state_sync,
 };
+use agent_semantic_client_db::{AgentSessionLookupRequest, AgentSessionRegistry};
 use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
@@ -170,7 +171,15 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
-    let mut decision = if let Some(agent_session_decision) = classify_main_session_asp_exploration(
+    let mut decision = if let Some(read_only_decision) =
+        classify_read_only_resident_receipt(&project_root, client, event, &hook_config, &payload)
+    {
+        read_only_decision
+    } else if let Some(read_only_decision) =
+        classify_read_only_resident_write(&project_root, client, event, &hook_config, &payload)
+    {
+        read_only_decision
+    } else if let Some(agent_session_decision) = classify_main_session_asp_exploration(
         &project_root,
         client,
         event,
@@ -220,6 +229,95 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("failed to serialize hook response: {error}"))?;
     println!("{output}");
     Ok(())
+}
+
+fn classify_read_only_resident_write(
+    project_root: &Path,
+    client: &str,
+    event: &str,
+    hook_config: &agent_semantic_hook::ClientHookConfig,
+    payload: &serde_json::Value,
+) -> Option<HookDecision> {
+    let session_id = string_field(payload, &["session_id", "sessionId"])?;
+    let session = lookup_hook_session(project_root, &session_id)?;
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
+    if session.name != resident_child_name {
+        return None;
+    }
+
+    let sandbox_mode = resident_asp_explore_sandbox_mode();
+    let context = agent_semantic_hook::HookSubagentPermissionContext {
+        is_asp_managed: sandbox_mode.is_some(),
+        managed_child_name: resident_child_name,
+        registered_name: &session.name,
+        registry_status: &session.status,
+        sandbox_mode: sandbox_mode.as_deref(),
+        session_id: &session.session_id,
+    };
+    agent_semantic_hook::classify_read_only_subagent_write(client, event, payload, &context)
+}
+
+fn classify_read_only_resident_receipt(
+    project_root: &Path,
+    client: &str,
+    event: &str,
+    hook_config: &agent_semantic_hook::ClientHookConfig,
+    payload: &serde_json::Value,
+) -> Option<HookDecision> {
+    let session_id = string_field(payload, &["session_id", "sessionId"])?;
+    let session = lookup_hook_session(project_root, &session_id)?;
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
+    if session.name != resident_child_name {
+        return None;
+    }
+
+    let sandbox_mode = resident_asp_explore_sandbox_mode();
+    let context = agent_semantic_hook::HookSubagentPermissionContext {
+        is_asp_managed: sandbox_mode.is_some(),
+        managed_child_name: resident_child_name,
+        registered_name: &session.name,
+        registry_status: &session.status,
+        sandbox_mode: sandbox_mode.as_deref(),
+        session_id: &session.session_id,
+    };
+    agent_semantic_hook::classify_read_only_subagent_receipt(client, event, payload, &context)
+}
+
+fn lookup_hook_session(
+    project_root: &Path,
+    session_id: &str,
+) -> Option<agent_semantic_client_db::AgentSessionRecord> {
+    let registry = AgentSessionRegistry::open_existing_project(project_root)
+        .ok()
+        .flatten()?;
+    let project_id = AgentSessionRegistry::project_scope_id(project_root);
+    registry
+        .lookup_session(AgentSessionLookupRequest {
+            project_id: &project_id,
+            session_id: Some(session_id),
+            root_session_id: None,
+            name: None,
+        })
+        .ok()
+        .flatten()
+}
+
+fn resident_asp_explore_sandbox_mode() -> Option<String> {
+    let path = std::env::var_os("ASP_AGENTS_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| {
+                std::path::PathBuf::from(home)
+                    .join(".agent-semantic-protocols")
+                    .join("agents")
+            })
+        })?
+        .join("asp-explorer_codex.toml");
+    let config: toml::Value = toml::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    config
+        .get("sandbox_mode")
+        .and_then(toml::Value::as_str)
+        .map(str::to_string)
 }
 
 fn default_or_discovered_activation_path() -> PathBuf {
@@ -791,11 +889,12 @@ fn activation_root_is_global_hook_state(activation_path: &Path, activation_root:
         return false;
     }
     activation_dir.file_name().and_then(|name| name.to_str()) == Some("state")
-        && activation_dir
-            .parent()
-            .and_then(Path::file_name)
-            .and_then(|name| name.to_str())
-            == Some("hooks")
+        && activation_dir.ancestors().any(|ancestor| {
+            ancestor
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == "hooks")
+        })
 }
 
 fn install_claude_project_hooks(

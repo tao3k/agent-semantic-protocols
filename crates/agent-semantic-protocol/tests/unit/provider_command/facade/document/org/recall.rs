@@ -235,8 +235,8 @@ fn asp_org_recall_plans_uses_root_session_for_codex_subagent() {
             "codex-parent-thread",
             "--parent-session-id",
             "codex-parent-thread",
-            "--role",
-            "code",
+            "--roles",
+            "subagent,search",
         ])
         .output()
         .expect("register child session in agent registry");

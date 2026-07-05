@@ -99,6 +99,73 @@ fn accepts_query_code_with_workspace_before_cache_replay() {
 }
 
 #[test]
+fn rejects_query_code_directory_selector_before_provider_execution() {
+    let request = query_request(vec![
+        "--selector".to_string(),
+        "src".to_string(),
+        "--query".to_string(),
+        "owner items".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ]);
+
+    let error =
+        validate_syntax_query_request(&request).expect_err("directory selector should fail");
+
+    assert!(
+        error.contains("query --selector with --code requires an exact file"),
+        "{error}"
+    );
+    assert!(error.contains("`src` is a directory"), "{error}");
+}
+
+#[test]
+fn rejects_query_code_file_selector_before_provider_execution() {
+    let request = query_request(vec![
+        "--selector".to_string(),
+        "src/lib.rs".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ]);
+
+    let error = validate_syntax_query_request(&request).expect_err("file selector should fail");
+
+    assert!(
+        error.contains("invalid query --code selector `src/lib.rs`"),
+        "{error}"
+    );
+    assert!(error.contains("search owner <path> items"), "{error}");
+    assert!(error.contains("rust://path#item/function/name"), "{error}");
+    assert!(!error.contains("direct-source-read"), "{error}");
+}
+
+#[test]
+fn rejects_stale_exact_selector_path_before_provider_execution() {
+    let request = query_request(vec![
+        "--selector".to_string(),
+        "rust://crates/agent-semantic-client/src/search_pipe_source.rs#item/function/collect_search_pipe_auto_acquisition".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ]);
+
+    let error =
+        validate_syntax_query_request(&request).expect_err("stale exact selector should fail");
+
+    assert!(
+        error.contains("stale-index")
+            || error.contains("selector path does not exist under --workspace"),
+        "{error}"
+    );
+    assert!(
+        error.contains("crates/agent-semantic-client/src/search_pipe_source.rs"),
+        "{error}"
+    );
+}
+
+#[test]
 fn rejects_missing_query_owner_path_under_workspace_before_provider_execution() {
     let request = query_request(vec![
         "src/types/facade.ss".to_string(),

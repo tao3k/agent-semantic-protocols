@@ -54,22 +54,27 @@ fn guide_rewrites_command_lines_to_language_facade() {
 
     assert!(stdout.contains("provider=rs-harness"), "{stdout}");
     assert!(
-        stdout.contains("|cmd prime=asp rust search prime ."),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("|cmd ingest=rg -n '<query>' src tests | asp rust search ingest ."),
-        "{stdout}"
-    );
-    assert!(
         stdout.contains(
-            "|cmd ast-patch=asp rust ast-patch dry-run --packet <semantic-ast-patch.json|-> ."
+            "|cmd lexical=asp rust search lexical <query> owner tests --workspace . --view seeds"
         ),
         "{stdout}"
     );
     assert!(
-        stdout
-            .contains("|cmd evidence=asp rust evidence graph --review-packet-json <path> --json ."),
+        stdout.contains(
+            "|cmd ingest=rg -n '<query>' src tests | asp rust search ingest --workspace ."
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "|cmd ast-patch=asp rust ast-patch dry-run --packet <semantic-ast-patch.json|-> --workspace ."
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "|cmd evidence=asp rust evidence graph --review-packet-json <path> --json --workspace ."
+        ),
         "{stdout}"
     );
     assert!(

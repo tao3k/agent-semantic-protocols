@@ -6,10 +6,18 @@ mod agent_session_registry_args;
 mod agent_session_registry_codex;
 #[path = "agent_session_registry_commands.rs"]
 mod agent_session_registry_commands;
+#[path = "agent_session_registry_lifecycle_audit.rs"]
+mod agent_session_registry_lifecycle_audit;
+#[path = "agent_session_registry_lifetime.rs"]
+mod agent_session_registry_lifetime;
 #[path = "agent_session_registry_render.rs"]
 mod agent_session_registry_render;
 #[path = "agent_session_registry_rollout_activity.rs"]
 mod agent_session_registry_rollout_activity;
+#[path = "agent_session_registry_rollout_adopt.rs"]
+mod agent_session_registry_rollout_adopt;
+#[path = "agent_session_registry_rollout_lookup.rs"]
+mod agent_session_registry_rollout_lookup;
 #[path = "agent_session_registry_state.rs"]
 mod agent_session_registry_state;
 #[path = "agent_session_registry_tool_event.rs"]
@@ -18,6 +26,10 @@ mod agent_session_registry_tool_event;
 mod agent_session_registry_validation;
 
 use agent_semantic_client_db::AgentSessionRegistry;
+use agent_semantic_config::codex_agent_projection::{
+    update_asp_codex_agent_sources_and_symlink_projections, write_codex_dynamic_model,
+};
+use agent_semantic_runtime::AgentSessionValidationReport as SessionValidationReport;
 use agent_session_registry_args::{
     SessionArgs, SessionCommand, agent_usage, session_guide, session_usage,
 };
@@ -27,10 +39,7 @@ use agent_session_registry_commands::{
     register_session, reuse_session, show_session, status_session,
 };
 use agent_session_registry_state::open_or_create_default_registry;
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
+use std::{env, path::PathBuf};
 
 pub(crate) use agent_session_registry_state::{
     asp_explore_session_for_current_root, asp_explore_session_record_for_current_root,
@@ -131,7 +140,7 @@ fn switch_codex_model(model: &str, args: &SessionArgs) -> Result<(), String> {
     let asp_agents_dir = agents_config_path
         .parent()
         .ok_or_else(|| format!("{} has no parent directory", agents_config_path.display()))?;
-    update_asp_codex_agent_sources_and_projections(
+    update_asp_codex_agent_sources_and_symlink_projections(
         asp_agents_dir,
         &codex_home().join("agents"),
         model,
@@ -172,116 +181,165 @@ fn codex_home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".codex"))
 }
 
-fn write_codex_dynamic_model(config_path: &Path, model: &str) -> Result<(), String> {
-    if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    let mut value = if config_path.exists() {
-        let text = fs::read_to_string(config_path)
-            .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
-        toml::from_str::<toml::Value>(&text)
-            .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?
-    } else {
-        toml::Value::Table(Default::default())
+pub(crate) struct SessionRoleDefaults {
+    pub(crate) roles: Vec<String>,
+    pub(crate) permissions: Vec<String>,
+}
+
+pub(crate) fn session_role_defaults_for_session_name(
+    name: &str,
+) -> Result<SessionRoleDefaults, String> {
+    let config = agent_semantic_config::default_hook_client_config_file()?;
+    let Some(agent) = config
+        .agents
+        .resident_agents
+        .iter()
+        .find(|agent| agent.name == name)
+    else {
+        return Ok(SessionRoleDefaults {
+            roles: Vec::new(),
+            permissions: Vec::new(),
+        });
     };
-    let root = value
-        .as_table_mut()
-        .ok_or_else(|| format!("{} must contain a TOML table", config_path.display()))?;
-    let platform = root
-        .entry("platform".to_string())
-        .or_insert_with(|| toml::Value::Table(Default::default()))
-        .as_table_mut()
-        .ok_or_else(|| format!("{}.platform must be a TOML table", config_path.display()))?;
-    let codex = platform
-        .entry("codex".to_string())
-        .or_insert_with(|| toml::Value::Table(Default::default()))
-        .as_table_mut()
-        .ok_or_else(|| {
-            format!(
-                "{}.platform.codex must be a TOML table",
-                config_path.display()
-            )
-        })?;
-    let models = codex
-        .entry("models".to_string())
-        .or_insert_with(|| toml::Value::Table(Default::default()))
-        .as_table_mut()
-        .ok_or_else(|| {
-            format!(
-                "{}.platform.codex.models must be a TOML table",
-                config_path.display()
-            )
-        })?;
-    models.insert(
-        "primary".to_string(),
-        toml::Value::String(model.to_string()),
-    );
-    write_toml_value(config_path, &value)
+    Ok(SessionRoleDefaults {
+        roles: agent.roles.clone(),
+        permissions: agent.permissions.clone(),
+    })
 }
 
-fn update_agent_model_file(path: &Path, model: &str) -> Result<(), String> {
-    let text = fs::read_to_string(path)
-        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-    let mut value = toml::from_str::<toml::Value>(&text)
-        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
-    let table = value
-        .as_table_mut()
-        .ok_or_else(|| format!("{} must contain a TOML table", path.display()))?;
-    table.insert("model".to_string(), toml::Value::String(model.to_string()));
-    write_toml_value(path, &value)
-}
-
-fn write_toml_value(path: &Path, value: &toml::Value) -> Result<(), String> {
-    let mut text = toml::to_string_pretty(value)
-        .map_err(|error| format!("failed to serialize {}: {error}", path.display()))?;
-    if !text.ends_with('\n') {
-        text.push('\n');
-    }
-    fs::write(path, text).map_err(|error| format!("failed to write {}: {error}", path.display()))
-}
-
-fn update_asp_codex_agent_sources_and_projections(
-    asp_agents_dir: &Path,
-    codex_agents_dir: &Path,
-    model: &str,
-    updated_agent_configs: &mut Vec<PathBuf>,
-) -> Result<(), String> {
-    if !asp_agents_dir.exists() {
-        return Ok(());
-    }
-    fs::create_dir_all(codex_agents_dir)
-        .map_err(|error| format!("failed to create {}: {error}", codex_agents_dir.display()))?;
-    for entry in fs::read_dir(asp_agents_dir)
-        .map_err(|error| format!("failed to read {}: {error}", asp_agents_dir.display()))?
-    {
-        let entry = entry
-            .map_err(|error| format!("failed to read {}: {error}", asp_agents_dir.display()))?;
-        let source_path = entry.path();
-        if !source_path.is_file() {
-            continue;
+pub(crate) fn normalize_session_roles(roles: &[String]) -> Result<Vec<String>, String> {
+    let mut normalized = roles.to_vec();
+    normalized.sort();
+    normalized.dedup();
+    for role in &normalized {
+        if !matches!(
+            role.as_str(),
+            "subagent" | "search" | "testing" | "build" | "checkpoint"
+        ) {
+            return Err(format!(
+                "unknown session role `{role}`; expected one of subagent, search, testing, build, checkpoint"
+            ));
         }
-        let Some(file_name) = source_path
-            .file_name()
-            .and_then(|file_name| file_name.to_str())
-        else {
-            continue;
-        };
-        let Some(projection_stem) = file_name.strip_suffix("_codex.toml") else {
-            continue;
-        };
-        update_agent_model_file(&source_path, model)?;
-        updated_agent_configs.push(source_path.clone());
-
-        let projection_path = codex_agents_dir.join(format!("{projection_stem}.toml"));
-        fs::copy(&source_path, &projection_path).map_err(|error| {
-            format!(
-                "failed to copy {} to {}: {error}",
-                source_path.display(),
-                projection_path.display()
-            )
-        })?;
-        updated_agent_configs.push(projection_path);
     }
-    Ok(())
+    if normalized.is_empty() {
+        return Err(
+            "agent session register requires --roles or configured agents.residentAgents[].roles"
+                .to_string(),
+        );
+    }
+    Ok(normalized)
+}
+
+pub(crate) fn session_permissions_for_roles(roles: &[String]) -> Vec<String> {
+    let mut permissions = Vec::new();
+    if roles.iter().any(|role| role == "search") {
+        permissions.push("read-only".to_string());
+    }
+    if roles
+        .iter()
+        .any(|role| matches!(role.as_str(), "testing" | "build"))
+    {
+        permissions.push("workspace-write".to_string());
+    }
+    permissions.sort();
+    permissions.dedup();
+    permissions
+}
+
+pub(crate) fn normalize_session_permissions(permissions: &[String]) -> Result<Vec<String>, String> {
+    let mut normalized = permissions.to_vec();
+    normalized.sort();
+    normalized.dedup();
+    for permission in &normalized {
+        if !matches!(
+            permission.as_str(),
+            "read-only" | "workspace-write" | "danger-full-access"
+        ) {
+            return Err(format!(
+                "unknown session permission `{permission}`; expected one of read-only, workspace-write, danger-full-access"
+            ));
+        }
+    }
+    Ok(normalized)
+}
+
+pub(crate) fn normalized_metadata(
+    metadata_json: Option<&str>,
+    validation: &SessionValidationReport,
+) -> Result<String, String> {
+    let mut value = match metadata_json {
+        Some(metadata_json) if !metadata_json.trim().is_empty() => {
+            serde_json::from_str::<serde_json::Value>(metadata_json)
+                .map_err(|error| format!("failed to parse session metadata JSON: {error}"))?
+        }
+        _ => serde_json::json!({}),
+    };
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| "session metadata must be a JSON object".to_string())?;
+    object.insert(
+        "validationStatus".to_string(),
+        serde_json::Value::String(validation.status.clone()),
+    );
+    object.insert(
+        "validationReason".to_string(),
+        serde_json::Value::String(validation.reason.clone()),
+    );
+    object.insert(
+        "validation".to_string(),
+        serde_json::json!({
+            "status": validation.status,
+            "reason": validation.reason,
+            "configPath": validation.config_path,
+            "rolloutPath": validation.rollout_path,
+            "expectedRootSessionId": validation.expected_root_session_id,
+            "actualRootSessionId": validation.actual_root_session_id,
+            "expectedParentThreadId": validation.expected_parent_thread_id,
+            "actualParentThreadId": validation.actual_parent_thread_id,
+            "expectedAgentPath": validation.expected_agent_path,
+            "actualAgentPath": validation.actual_agent_path,
+            "expectedRole": validation.expected_role,
+            "actualRole": validation.actual_role,
+            "expectedModel": validation.expected_model,
+            "actualModel": validation.actual_model,
+            "expectedSandbox": validation.expected_sandbox,
+            "actualSandbox": validation.actual_sandbox,
+        }),
+    );
+    serde_json::to_string(&value)
+        .map_err(|error| format!("failed to serialize normalized session metadata: {error}"))
+}
+
+pub(crate) fn normalized_metadata_with_roles(
+    metadata_json: Option<&str>,
+    validation: &SessionValidationReport,
+    roles: &[String],
+    permissions: &[String],
+) -> Result<String, String> {
+    let metadata = normalized_metadata(metadata_json, validation)?;
+    let mut value = serde_json::from_str::<serde_json::Value>(&metadata)
+        .map_err(|error| format!("failed to parse normalized session metadata: {error}"))?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| "normalized session metadata must be a JSON object".to_string())?;
+    object.insert(
+        "roles".to_string(),
+        serde_json::Value::Array(
+            roles
+                .iter()
+                .map(|role| serde_json::Value::String(role.clone()))
+                .collect(),
+        ),
+    );
+    object.insert(
+        "permissions".to_string(),
+        serde_json::Value::Array(
+            permissions
+                .iter()
+                .map(|permission| serde_json::Value::String(permission.clone()))
+                .collect(),
+        ),
+    );
+    serde_json::to_string(&value)
+        .map_err(|error| format!("failed to encode session metadata: {error}"))
 }

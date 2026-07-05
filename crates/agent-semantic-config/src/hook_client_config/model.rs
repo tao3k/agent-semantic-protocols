@@ -10,13 +10,15 @@ use std::{
     path::Path,
 };
 
+use super::validation::validate_config;
+
 /// Schema id for hook client config.
 pub const CLIENT_HOOK_CONFIG_SCHEMA_ID: &str = "agent.semantic-protocols.hook.client-config";
 /// Schema version for hook client config.
 pub const CLIENT_HOOK_CONFIG_SCHEMA_VERSION: &str = "1";
 
-const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.hook";
-const HOOK_PROTOCOL_VERSION: &str = "1";
+pub(super) const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.hook";
+pub(super) const HOOK_PROTOCOL_VERSION: &str = "1";
 
 const DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS: &[&str] = &[
     ".rs",
@@ -40,7 +42,7 @@ const DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS: &[&str] = &[
     ".markdown",
 ];
 
-const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../templates/hooks/config.toml");
+const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../../templates/hooks/config.toml");
 
 /// Parsed and validated project-local hook client config.
 #[derive(Debug, Default, Deserialize)]
@@ -89,15 +91,95 @@ pub struct HookClientRecoveryPromptConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientAgentSessionGuideConfig {
     #[serde(default)]
-    pub register: Option<String>,
+    pub(crate) register: Option<String>,
     #[serde(default)]
-    pub list: Option<String>,
+    pub(crate) list: Option<String>,
     #[serde(default)]
-    pub show: Option<String>,
+    pub(crate) show: Option<String>,
     #[serde(default)]
-    pub reuse: Option<String>,
+    pub(crate) reuse: Option<String>,
     #[serde(default)]
-    pub status: Option<String>,
+    pub(crate) status: Option<String>,
+}
+
+impl HookClientAgentSessionGuideConfig {
+    /// Construct a guide config from explicit optional sections.
+    #[must_use]
+    pub fn new(
+        register: Option<String>,
+        list: Option<String>,
+        show: Option<String>,
+        reuse: Option<String>,
+        status: Option<String>,
+    ) -> Self {
+        Self {
+            register,
+            list,
+            show,
+            reuse,
+            status,
+        }
+    }
+
+    /// Guide command for registering a child session.
+    #[must_use]
+    pub fn register(&self) -> Option<&str> {
+        self.register.as_deref()
+    }
+
+    /// Guide command for listing registered child sessions.
+    #[must_use]
+    pub fn list(&self) -> Option<&str> {
+        self.list.as_deref()
+    }
+
+    /// Guide command for showing one child session.
+    #[must_use]
+    pub fn show(&self) -> Option<&str> {
+        self.show.as_deref()
+    }
+
+    /// Guide command for reusing a registered child session.
+    #[must_use]
+    pub fn reuse(&self) -> Option<&str> {
+        self.reuse.as_deref()
+    }
+
+    /// Guide command for checking child session status.
+    #[must_use]
+    pub fn status(&self) -> Option<&str> {
+        self.status.as_deref()
+    }
+
+    /// Mutable guide command for registering a child session.
+    #[must_use]
+    pub fn register_mut(&mut self) -> Option<&mut String> {
+        self.register.as_mut()
+    }
+
+    /// Mutable guide command for listing registered child sessions.
+    #[must_use]
+    pub fn list_mut(&mut self) -> Option<&mut String> {
+        self.list.as_mut()
+    }
+
+    /// Mutable guide command for showing one child session.
+    #[must_use]
+    pub fn show_mut(&mut self) -> Option<&mut String> {
+        self.show.as_mut()
+    }
+
+    /// Mutable guide command for reusing a registered child session.
+    #[must_use]
+    pub fn reuse_mut(&mut self) -> Option<&mut String> {
+        self.reuse.as_mut()
+    }
+
+    /// Mutable guide command for checking child session status.
+    #[must_use]
+    pub fn status_mut(&mut self) -> Option<&mut String> {
+        self.status.as_mut()
+    }
 }
 
 /// Optional agent-facing hook decision text for session routing.
@@ -142,6 +224,7 @@ pub struct HookClientAgentsConfig {
     pub resident_agents: Vec<HookClientResidentAgentConfig>,
 }
 
+/// One configured resident agent lane for hook routing.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientResidentAgentConfig {
@@ -150,8 +233,14 @@ pub struct HookClientResidentAgentConfig {
     pub name: String,
     pub role: String,
     #[serde(default)]
+    pub roles: Vec<String>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    #[serde(default)]
     pub codex_agent_name: String,
     pub lifecycle: String,
+    #[serde(default = "default_session_lifetime")]
+    pub session_lifetime: String,
     #[serde(default)]
     pub main_allowed_asp_command_prefixes: Vec<String>,
     #[serde(default)]
@@ -172,8 +261,11 @@ fn default_resident_agent_configs() -> Vec<HookClientResidentAgentConfig> {
             enabled: true,
             name: default_explore_resident_agent_name(),
             role: default_explore_resident_agent_role(),
+            roles: default_explore_resident_agent_roles(),
+            permissions: default_explore_resident_agent_permissions(),
             codex_agent_name: default_explore_resident_codex_agent_name(),
             lifecycle: "asp-command".to_string(),
+            session_lifetime: "resident".to_string(),
             main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
             command_prefixes: Vec::new(),
         },
@@ -181,8 +273,11 @@ fn default_resident_agent_configs() -> Vec<HookClientResidentAgentConfig> {
             enabled: true,
             name: default_testing_resident_agent_name(),
             role: default_testing_resident_agent_role(),
+            roles: default_testing_resident_agent_roles(),
+            permissions: default_testing_resident_agent_permissions(),
             codex_agent_name: default_testing_resident_codex_agent_name(),
             lifecycle: "testing-command".to_string(),
+            session_lifetime: "resident".to_string(),
             main_allowed_asp_command_prefixes: Vec::new(),
             command_prefixes: default_asp_testing_command_prefixes(),
         },
@@ -216,13 +311,45 @@ struct HookClientConfigMetadataDefaults {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientAgentOrgArtifactsConfig {
     #[serde(default = "default_enabled")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
     #[serde(default = "default_agent_org_artifacts_inactive_after_minutes")]
-    pub inactive_after_minutes: u64,
-    pub artifacts_path: String,
-    pub entry_skill_path: String,
+    pub(crate) inactive_after_minutes: u64,
+    pub(crate) artifacts_path: String,
+    pub(crate) entry_skill_path: String,
     #[serde(default)]
-    pub archive_warning: HookClientAgentOrgArtifactsArchiveWarningConfig,
+    pub(crate) archive_warning: HookClientAgentOrgArtifactsArchiveWarningConfig,
+}
+
+impl HookClientAgentOrgArtifactsConfig {
+    /// Return whether Org artifact workflow checks are enabled.
+    #[must_use]
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Inactivity window in minutes before artifact warnings apply.
+    #[must_use]
+    pub fn inactive_after_minutes(&self) -> u64 {
+        self.inactive_after_minutes
+    }
+
+    /// Configured artifact root path.
+    #[must_use]
+    pub fn artifacts_path(&self) -> &str {
+        &self.artifacts_path
+    }
+
+    /// Configured entry skill path.
+    #[must_use]
+    pub fn entry_skill_path(&self) -> &str {
+        &self.entry_skill_path
+    }
+
+    /// Archive warning policy for active Org artifacts.
+    #[must_use]
+    pub fn archive_warning(&self) -> &HookClientAgentOrgArtifactsArchiveWarningConfig {
+        &self.archive_warning
+    }
 }
 
 /// Warning policy for active Org artifacts that should be archived.
@@ -438,6 +565,17 @@ fn default_explore_resident_agent_role() -> String {
     "asp_explorer".to_string()
 }
 
+fn default_explore_resident_agent_roles() -> Vec<String> {
+    ["subagent", "search"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn default_explore_resident_agent_permissions() -> Vec<String> {
+    ["read-only"].into_iter().map(str::to_string).collect()
+}
+
 fn default_explore_resident_codex_agent_name() -> String {
     "asp_explorer".to_string()
 }
@@ -462,6 +600,20 @@ fn default_testing_resident_agent_name() -> String {
 
 fn default_testing_resident_agent_role() -> String {
     "asp_testing".to_string()
+}
+
+fn default_testing_resident_agent_roles() -> Vec<String> {
+    ["subagent", "testing", "build"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn default_testing_resident_agent_permissions() -> Vec<String> {
+    ["workspace-write"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
 }
 
 fn default_testing_resident_codex_agent_name() -> String {
@@ -515,295 +667,12 @@ fn hook_client_config_metadata_defaults() -> HookClientConfigMetadataDefaults {
     }
 }
 
-fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
-    validate_protocol(config)?;
-    validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
-    validate_recovery_prompt(&config.recovery_prompt)?;
-    validate_agent_session_guide(&config.agent_session_guide)?;
-    validate_resident_agents(&config.agents.resident_agents)?;
-    validate_unique_rule_ids(&config.rules)?;
-    validate_rule_schema_shape(&config.rules)
-}
-
-fn validate_recovery_prompt(config: &HookClientRecoveryPromptConfig) -> Result<(), String> {
-    validate_optional_non_empty("recoveryPrompt.template", config.template.as_deref())?;
-    validate_optional_non_empty(
-        "recoveryPrompt.codexAgentFlow",
-        config.codex_agent_flow.as_deref(),
-    )?;
-    validate_optional_non_empty(
-        "recoveryPrompt.claudeAgentFlow",
-        config.claude_agent_flow.as_deref(),
-    )?;
-    validate_optional_non_empty(
-        "recoveryPrompt.defaultAgentFlow",
-        config.default_agent_flow.as_deref(),
-    )
-}
-
-fn validate_agent_session_guide(config: &HookClientAgentSessionGuideConfig) -> Result<(), String> {
-    validate_optional_non_empty("agentSessionGuide.register", config.register.as_deref())?;
-    validate_optional_non_empty("agentSessionGuide.list", config.list.as_deref())?;
-    validate_optional_non_empty("agentSessionGuide.show", config.show.as_deref())?;
-    validate_optional_non_empty("agentSessionGuide.reuse", config.reuse.as_deref())
-}
-
-fn validate_resident_agents(configs: &[HookClientResidentAgentConfig]) -> Result<(), String> {
-    for config in configs {
-        validate_resident_agent(config)?;
-    }
-    Ok(())
-}
-
-fn validate_resident_agent(config: &HookClientResidentAgentConfig) -> Result<(), String> {
-    validate_optional_non_empty("agents.residentAgents[].name", Some(config.name.as_str()))?;
-    validate_optional_non_empty("agents.residentAgents[].role", Some(config.role.as_str()))?;
-    if !config.codex_agent_name.is_empty() {
-        validate_optional_non_empty(
-            "agents.residentAgents[].codexAgentName",
-            Some(config.codex_agent_name.as_str()),
-        )?;
-    }
-    validate_optional_non_empty(
-        "agents.residentAgents[].lifecycle",
-        Some(config.lifecycle.as_str()),
-    )?;
-    for prefix in &config.main_allowed_asp_command_prefixes {
-        validate_optional_non_empty(
-            "agents.residentAgents[].mainAllowedAspCommandPrefixes[]",
-            Some(prefix.as_str()),
-        )?;
-    }
-    for prefix in &config.command_prefixes {
-        validate_optional_non_empty(
-            "agents.residentAgents[].commandPrefixes[]",
-            Some(prefix.as_str()),
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_protocol(config: &HookClientConfigFile) -> Result<(), String> {
-    expect_optional_field(
-        "schemaId",
-        config.schema_id.as_deref(),
-        CLIENT_HOOK_CONFIG_SCHEMA_ID,
-    )?;
-    expect_optional_field(
-        "schemaVersion",
-        config.schema_version.as_deref(),
-        CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
-    )?;
-    expect_optional_field(
-        "protocolId",
-        config.protocol_id.as_deref(),
-        HOOK_PROTOCOL_ID,
-    )?;
-    expect_optional_field(
-        "protocolVersion",
-        config.protocol_version.as_deref(),
-        HOOK_PROTOCOL_VERSION,
-    )?;
-    Ok(())
-}
-
-fn validate_unique_rule_ids(rules: &[HookClientRuleConfig]) -> Result<(), String> {
-    let mut seen = HashSet::new();
-    for rule in rules {
-        if !seen.insert(rule.id.as_str()) {
-            return Err(format!("duplicate client hook rule id `{}`", rule.id));
-        }
-    }
-    Ok(())
-}
-
-fn validate_rule_schema_shape(rules: &[HookClientRuleConfig]) -> Result<(), String> {
-    for rule in rules {
-        validate_identifier("rules[].id", &rule.id)?;
-        validate_optional_non_empty("rules[].message", rule.message.as_deref())?;
-        validate_optional_event(rule.event.as_deref())?;
-        validate_optional_platform(rule.platform.as_deref())?;
-        validate_unique_values("rules[].languageIds", &rule.language_ids)?;
-        validate_identifiers("rules[].languageIds[]", &rule.language_ids)?;
-        validate_match_schema_shape(&rule.match_config)?;
-        for route in &rule.routes {
-            validate_route_schema_shape(route)?;
-        }
-    }
-    Ok(())
-}
-
-fn validate_match_schema_shape(match_config: &HookClientRuleMatchConfig) -> Result<(), String> {
-    validate_optional_non_empty("rules[].match.tool", match_config.tool.as_deref())?;
-    validate_non_empty_values("rules[].match.toolAny[]", &match_config.tool_any)?;
-    validate_non_empty_values("rules[].match.commandAny[]", &match_config.command_any)?;
-    validate_non_empty_values(
-        "rules[].match.commandContainsAny[]",
-        &match_config.command_contains_any,
-    )?;
-    validate_non_empty_values("rules[].match.pathAny[]", &match_config.path_any)?;
-    validate_non_empty_values("rules[].match.pathGlobAny[]", &match_config.path_glob_any)?;
-    validate_non_empty_values(
-        "rules[].match.argvSourceAny[]",
-        &match_config.argv_source_any,
-    )?;
-    validate_non_empty_values(
-        "rules[].match.argvSourceGlobAny[]",
-        &match_config.argv_source_glob_any,
-    )?;
-    validate_non_empty_values(
-        "rules[].match.argvSourceExcludeFlagAny[]",
-        &match_config.argv_source_exclude_flag_any,
-    )?;
-    Ok(())
-}
-
-fn validate_route_schema_shape(route: &HookClientRuleRouteConfig) -> Result<(), String> {
-    validate_identifier("rules[].routes[].providerId", &route.provider_id)?;
-    if let Some(language_id) = &route.language_id {
-        validate_identifier("rules[].routes[].languageId", language_id)?;
-    }
-    if let Some(binary) = &route.binary {
-        validate_binary_name("rules[].routes[].binary", binary)?;
-    }
-    if route.argv.is_empty() {
-        return Err("rules[].routes[].argv must contain at least one item".to_string());
-    }
-    Ok(())
-}
-
-fn validate_agent_org_artifacts(
-    config: Option<&HookClientAgentOrgArtifactsConfig>,
-) -> Result<(), String> {
-    let Some(config) = config else {
-        return Ok(());
-    };
-    if config.inactive_after_minutes == 0 {
-        return Err("agentOrgArtifacts.inactiveAfterMinutes must be greater than 0".to_string());
-    }
-    validate_non_empty("agentOrgArtifacts.artifactsPath", &config.artifacts_path)?;
-    validate_non_empty("agentOrgArtifacts.entrySkillPath", &config.entry_skill_path)?;
-    validate_agent_org_artifacts_archive_warning(&config.archive_warning)?;
-    Ok(())
-}
-
-fn validate_agent_org_artifacts_archive_warning(
-    config: &HookClientAgentOrgArtifactsArchiveWarningConfig,
-) -> Result<(), String> {
-    if config.active_org_file_threshold == 0 {
-        return Err(
-            "agentOrgArtifacts.archiveWarning.activeOrgFileThreshold must be greater than 0"
-                .to_string(),
-        );
-    }
-    if config.max_reported_files == 0 {
-        return Err(
-            "agentOrgArtifacts.archiveWarning.maxReportedFiles must be greater than 0".to_string(),
-        );
-    }
-    validate_non_empty(
-        "agentOrgArtifacts.archiveWarning.archivesDir",
-        &config.archives_dir,
-    )?;
-    Ok(())
-}
-
-fn validate_identifiers(field: &str, values: &[String]) -> Result<(), String> {
-    for value in values {
-        validate_identifier(field, value)?;
-    }
-    Ok(())
-}
-
-fn validate_identifier(field: &str, value: &str) -> Result<(), String> {
-    let mut bytes = value.bytes();
-    if !matches!(bytes.next(), Some(b'a'..=b'z')) {
-        return Err(format!("invalid {field} `{value}`"));
-    }
-    if bytes.all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-')) {
-        Ok(())
-    } else {
-        Err(format!("invalid {field} `{value}`"))
-    }
-}
-
-fn validate_optional_non_empty(field: &str, value: Option<&str>) -> Result<(), String> {
-    if matches!(value, Some("")) {
-        Err(format!("{field} must not be empty"))
-    } else {
-        Ok(())
-    }
-}
-
-fn validate_non_empty_values(field: &str, values: &[String]) -> Result<(), String> {
-    for value in values {
-        if value.is_empty() {
-            return Err(format!("{field} must not be empty"));
-        }
-    }
-    Ok(())
-}
-
-fn validate_non_empty(field: &str, value: &str) -> Result<(), String> {
-    if value.is_empty() {
-        Err(format!("{field} must not be empty"))
-    } else {
-        Ok(())
-    }
-}
-
-fn validate_unique_values(field: &str, values: &[String]) -> Result<(), String> {
-    let mut seen = HashSet::new();
-    for value in values {
-        if !seen.insert(value.as_str()) {
-            return Err(format!("duplicate {field} `{value}`"));
-        }
-    }
-    Ok(())
-}
-
-fn validate_optional_event(value: Option<&str>) -> Result<(), String> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    match value {
-        "pre-tool" | "permission-request" | "post-tool" | "user-prompt" | "session-start"
-        | "subagent-start" | "subagent-stop" | "stop" => Ok(()),
-        _ => Err(format!("unsupported event `{value}`")),
-    }
-}
-
-fn validate_optional_platform(value: Option<&str>) -> Result<(), String> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    match value {
-        "codex" | "claude" | "unknown" => Ok(()),
-        _ => Err(format!("unsupported platform `{value}`")),
-    }
-}
-
-fn validate_binary_name(field: &str, value: &str) -> Result<(), String> {
-    if !value.is_empty()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
-    {
-        Ok(())
-    } else {
-        Err(format!("invalid {field} `{value}`"))
-    }
-}
-
-fn expect_optional_field(field: &str, actual: Option<&str>, expected: &str) -> Result<(), String> {
-    if actual.is_some_and(|actual| actual != expected) {
-        return Err(format!("expected {field}={expected}"));
-    }
-    Ok(())
-}
-
 fn default_enabled() -> bool {
     true
+}
+
+fn default_session_lifetime() -> String {
+    "temporary".to_string()
 }
 
 fn default_agent_org_artifacts_inactive_after_minutes() -> u64 {
@@ -834,5 +703,5 @@ impl Default for HookClientAgentOrgArtifactsArchiveWarningConfig {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/hook_client_config.rs"]
+#[path = "../../tests/unit/hook_client_config.rs"]
 mod hook_client_config_tests;

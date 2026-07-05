@@ -3,7 +3,7 @@ use agent_semantic_client_db::{
 };
 use agent_semantic_runtime::{
     current_agent_runtime_root_session_id, current_agent_runtime_session,
-    has_current_agent_runtime_session,
+    has_current_agent_runtime_session, state_core::resolve_state_home,
 };
 
 use super::agent_session_registry_validation::validate_session_profile;
@@ -16,7 +16,7 @@ pub(crate) fn registered_root_session_id(
     let Some(registry) = open_existing_registry(project_root)? else {
         return Ok(None);
     };
-    let project_id = project_session_scope_id(project_root);
+    let project_id = project_session_scope_id(&registry, project_root)?;
     Ok(registry
         .session_by_id(&project_id, session_id)?
         .map(|record| record.root_session_id))
@@ -31,7 +31,7 @@ pub(crate) fn current_registered_session(
     let Some(registry) = open_existing_registry(project_root)? else {
         return Ok(None);
     };
-    let project_id = project_session_scope_id(project_root);
+    let project_id = project_session_scope_id(&registry, project_root)?;
     let Some(record) = registry.session_by_id(&project_id, &session.id)? else {
         return Ok(None);
     };
@@ -61,7 +61,7 @@ pub(crate) fn asp_explore_session_for_current_root(
         return Ok(None);
     };
     registry.refresh_expired_sessions()?;
-    let project_id = project_session_scope_id(project_root);
+    let project_id = project_session_scope_id(&registry, project_root)?;
     let Some(root_session_id) = current_recall_session_id(&registry)? else {
         return Ok(None);
     };
@@ -86,7 +86,7 @@ pub(crate) fn asp_explore_session_record_for_current_root(
         return Ok(None);
     };
     registry.refresh_expired_sessions()?;
-    let project_id = project_session_scope_id(project_root);
+    let project_id = project_session_scope_id(&registry, project_root)?;
     let Some(root_session_id) = current_recall_session_id(&registry)? else {
         return Ok(None);
     };
@@ -98,25 +98,34 @@ pub(crate) fn asp_explore_session_record_for_current_root(
 }
 
 pub(super) fn open_existing_registry(
-    project_root: &Path,
+    _project_root: &Path,
 ) -> Result<Option<AgentSessionRegistry>, String> {
-    Ok(Some(AgentSessionRegistry::open_or_create_project(
-        project_root,
-    )?))
+    AgentSessionRegistry::open_existing_state_root(resolve_state_home()?)
 }
 
 pub(super) fn open_or_create_default_registry(
-    project_root: &Path,
+    _project_root: &Path,
 ) -> Result<AgentSessionRegistry, String> {
-    AgentSessionRegistry::open_or_create_project(project_root)
+    AgentSessionRegistry::open_or_create_state_root(resolve_state_home()?)
 }
 
-pub(super) fn current_project_session_scope_id() -> Result<String, String> {
+pub(super) fn current_project_session_scope_id(
+    registry: &AgentSessionRegistry,
+) -> Result<String, String> {
+    if let Some(project_id) = current_agent_project_scope_id(registry)? {
+        return Ok(project_id);
+    }
     AgentSessionRegistry::current_project_scope_id()
 }
 
-pub(super) fn project_session_scope_id(project_root: &Path) -> String {
-    AgentSessionRegistry::project_scope_id(project_root)
+pub(super) fn project_session_scope_id(
+    registry: &AgentSessionRegistry,
+    project_root: &Path,
+) -> Result<String, String> {
+    if let Some(project_id) = current_agent_project_scope_id(registry)? {
+        return Ok(project_id);
+    }
+    Ok(AgentSessionRegistry::project_scope_id(project_root))
 }
 
 pub(super) fn current_recall_session_id(
@@ -125,11 +134,28 @@ pub(super) fn current_recall_session_id(
     let Some(session) = current_agent_runtime_session() else {
         return Ok(None);
     };
-    let project_id = current_project_session_scope_id()?;
+    let project_id = current_project_session_scope_id(registry)?;
     if let Some(record) = registry.session_by_id(&project_id, &session.id)? {
         return Ok(Some(record.root_session_id));
     }
+    if let Some(root_session_id) = current_agent_runtime_root_session_id() {
+        return Ok(Some(root_session_id));
+    }
     Ok(Some(session.recall_session_id().to_string()))
+}
+
+fn current_agent_project_scope_id(
+    registry: &AgentSessionRegistry,
+) -> Result<Option<String>, String> {
+    if let Some(session) = current_agent_runtime_session() {
+        if let Some(record) = registry.session_by_id_any_project(&session.id)? {
+            return Ok(Some(record.project_id));
+        }
+    }
+    if let Some(root_session_id) = current_agent_runtime_root_session_id() {
+        return registry.project_id_for_root_session_id(&root_session_id);
+    }
+    Ok(None)
 }
 
 pub(super) fn resolved_root_session_id(
@@ -196,13 +222,10 @@ fn stored_session_validation_allows_routing(record: &AgentSessionRecord) -> bool
     {
         return false;
     }
-    let expected_role = validation
-        .get("expectedRole")
-        .and_then(serde_json::Value::as_str);
-    let actual_role = validation
+    validation
         .get("actualRole")
-        .and_then(serde_json::Value::as_str);
-    expected_role == actual_role && actual_role.is_some()
+        .and_then(serde_json::Value::as_str)
+        .is_some()
 }
 
 pub(super) fn required_non_empty<'a>(

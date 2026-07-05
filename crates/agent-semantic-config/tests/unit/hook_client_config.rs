@@ -48,6 +48,13 @@ fn default_template_round_trips_through_config_parser() {
     assert!(
         config
             .agent_session_guide
+            .register
+            .as_deref()
+            .is_some_and(|guide| guide.contains("asp agent session lifecycle audit --json"))
+    );
+    assert!(
+        config
+            .agent_session_guide
             .status
             .as_deref()
             .is_some_and(|guide| guide.contains("nextAction=start-resident-child-and-register"))
@@ -66,6 +73,32 @@ fn default_template_round_trips_through_config_parser() {
             .as_deref()
             .is_some_and(|message| message.contains("Retry the blocked ASP command"))
     );
+    let source_access_compact_subagent = config
+        .agent_session_messages
+        .source_access_compact_subagent
+        .as_deref()
+        .expect("source access compact subagent message");
+    assert!(
+        source_access_compact_subagent
+            .contains("compact `[asp-search-subagent]` graph-route receipt")
+    );
+    assert!(source_access_compact_subagent.contains("schema/intent/route/state/evidence/next"));
+    assert!(source_access_compact_subagent.contains("Do not return source bodies"));
+    let invalid_child_message = config
+        .agent_session_messages
+        .binary_gate_invalid_child
+        .as_deref()
+        .expect("binary gate invalid child message");
+    assert!(invalid_child_message.contains("validation-warning-or-non-routable-child"));
+    assert!(
+        invalid_child_message.contains("requiredAction=parent-follow-up-existing-child-with-model")
+    );
+    assert!(invalid_child_message.contains("parent agent sends a Codex thread follow-up"));
+    assert!(invalid_child_message.contains("<requiredModel-from-validationReason>"));
+    assert!(
+        invalid_child_message.contains("configSwitchPurpose=Use the config switch command only")
+    );
+    assert!(!invalid_child_message.contains("destroy-invalid-child-and-create-configured-child"));
     let asp_explore = resident_agent(&config, "asp-explore");
     assert!(asp_explore.enabled);
     assert_eq!(asp_explore.name, "asp-explore");
@@ -175,6 +208,37 @@ mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org cap
     assert_eq!(
         asp_explore.main_allowed_asp_command_prefixes,
         ["help", "agent session", "org recall", "org capture"]
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn client_config_rejects_legacy_flat_subagent_receipt_message() {
+    let root = temp_root("hook-client-legacy-subagent-message");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[agentSessionMessages]
+sourceAccessCompactSubagent = "Use ASP query/search routes and return selector-only `[asp-search-subagent]` evidence with owner/read/next."
+"#,
+    )
+    .expect("write config");
+
+    let error = load_hook_client_config_file(&config_path).expect_err("legacy message rejected");
+
+    assert!(
+        error.contains("legacy flat subagent receipt contract"),
+        "{error}"
+    );
+    assert!(
+        error.contains("schema/intent/route/state/evidence/next"),
+        "{error}"
     );
     let _ = fs::remove_dir_all(root);
 }

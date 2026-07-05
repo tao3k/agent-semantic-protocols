@@ -80,6 +80,17 @@ fn language_provider_manifests() -> Vec<ProviderManifest> {
         .collect()
 }
 
+/// Return registered ASP language ids from the embedded provider manifests.
+pub fn registered_language_ids() -> Vec<String> {
+    let mut language_ids = language_provider_manifests()
+        .into_iter()
+        .map(|manifest| manifest.language_id)
+        .collect::<Vec<_>>();
+    language_ids.sort();
+    language_ids.dedup();
+    language_ids
+}
+
 fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {
     manifest.schema_id = PROVIDER_MANIFEST_SCHEMA_ID.to_string();
     manifest.schema_version = PROVIDER_MANIFEST_SCHEMA_VERSION.to_string();

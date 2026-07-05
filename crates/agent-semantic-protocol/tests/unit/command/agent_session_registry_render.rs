@@ -48,8 +48,8 @@ fn rollout_activity_active_running_when_recent_heartbeat_exists() {
     let report =
         agent_session_registry_rollout_activity::rollout_activity_report(&path, now_unix());
 
-    assert_eq!(report.status, "active-running");
-    assert_eq!(report.agent_instruction, "child-has-heartbeat-wait");
+    assert_eq!(report.status, "agent-active");
+    assert_eq!(report.agent_instruction, "child-activity-running-wait");
     assert_eq!(report.current_turn_id.as_deref(), Some("turn-active"));
     assert_eq!(report.last_running_session_id.as_deref(), Some("12345"));
     assert_eq!(report.recent_heartbeats.len(), 3);
@@ -85,8 +85,8 @@ fn rollout_activity_active_running_without_running_session_id_stays_open() {
     let report =
         agent_session_registry_rollout_activity::rollout_activity_report(&path, now_unix());
 
-    assert_eq!(report.status, "active-running");
-    assert_eq!(report.agent_instruction, "child-has-heartbeat-wait");
+    assert_eq!(report.status, "agent-active");
+    assert_eq!(report.agent_instruction, "child-activity-running-wait");
     assert!(report.last_running_session_id.is_none());
     assert!(!report.running_session_closed);
     remove_fixture(path);
@@ -105,10 +105,13 @@ fn rollout_activity_completed_when_last_event_is_terminal() {
     let report =
         agent_session_registry_rollout_activity::rollout_activity_report(&path, now_unix() + 300);
 
-    assert_eq!(report.status, "completed");
-    assert_eq!(report.agent_instruction, "child-turn-complete-read-result");
+    assert_eq!(report.status, "idle-resumable");
+    assert_eq!(
+        report.agent_instruction,
+        "child-idle-resumable-reuse-existing-child"
+    );
     assert_eq!(report.last_terminal_event.as_deref(), Some("task_complete"));
-    assert!(report.running_session_closed);
+    assert!(!report.running_session_closed);
     remove_fixture(path);
 }
 
@@ -124,11 +127,8 @@ fn rollout_activity_orphan_risk_when_running_session_is_stale_without_close() {
     let report =
         agent_session_registry_rollout_activity::rollout_activity_report(&path, now_unix() + 300);
 
-    assert_eq!(report.status, "orphan-risk");
-    assert_eq!(
-        report.agent_instruction,
-        "child-silent-with-open-process-check-orphan-before-retry"
-    );
+    assert_eq!(report.status, "agent-active");
+    assert_eq!(report.agent_instruction, "child-activity-running-wait");
     assert_eq!(report.last_running_session_id.as_deref(), Some("67890"));
     assert!(!report.running_session_closed);
     remove_fixture(path);
@@ -149,7 +149,7 @@ fn rollout_activity_silent_without_heartbeat_requires_bounded_interrupt_receipt(
     assert_eq!(report.status, "silent");
     assert_eq!(
         report.agent_instruction,
-        "child-silent-send-bounded-status-request-before-retry"
+        "child-activity-state-authoritative"
     );
     assert_eq!(report.current_turn_id.as_deref(), Some("turn-silent"));
     assert!(!report.running_session_closed);

@@ -14,9 +14,12 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
-    ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexImportFile,
-    ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexQueryKey,
-    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource, build_source_index_import,
+    ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexImportAssemblyRequest,
+    ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
+    ClientDbSourceIndexLookupState, ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey,
+    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
+    ClientDbSourceIndexSelectorPayloadProof, ClientDbSourceIndexSource, build_source_index_import,
+    source_index_import_with_file_hashes,
 };
 
 #[tokio::test(flavor = "current_thread")]
@@ -40,6 +43,7 @@ async fn db_engine_source_index_import_uses_active_turso_path_without_retired_db
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_active_turso_fixture() {}\n".to_string(),
+            selectors: Vec::new(),
         }],
     })
     .expect("build first Turso source-index import");
@@ -78,6 +82,7 @@ async fn db_engine_source_index_import_uses_active_turso_path_without_retired_db
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_active_turso_fixture() {}\n".to_string(),
+            selectors: Vec::new(),
         }],
     })
     .expect("build second Turso source-index import");
@@ -119,6 +124,168 @@ async fn db_engine_source_index_import_uses_active_turso_path_without_retired_db
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_candidate() {
+    let client_dir = temp_root("db-engine-source-index-proof-client");
+    let project_root = temp_root("db-engine-source-index-proof-project");
+    let selector =
+        "rust://src/source_index_payload_proof.rs#item/function/source_index_payload_proof_fixture";
+    let mut source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+        generation_id: CacheGenerationId::from("source-index-payload-proof-turso"),
+        project_root: project_root.clone(),
+        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        file_hashes: vec![ClientCacheFileHash {
+            path: "src/source_index_payload_proof.rs".to_string(),
+            sha256: "abcdef0123456789".repeat(4),
+            byte_len: 49,
+            mtime_ms: 17,
+        }],
+        files: vec![ClientDbSourceIndexImportFile {
+            relative_path: "src/source_index_payload_proof.rs".to_string(),
+            language_id: LanguageId::from("rust"),
+            provider_id: ProviderId::from("rs-harness"),
+            text: "pub fn source_index_payload_proof_fixture() {}\n".to_string(),
+            selectors: Vec::new(),
+        }],
+    })
+    .expect("build Turso source-index payload proof import");
+    source_index_import.selectors[0].selector_id = selector.to_string();
+    source_index_import.selectors[0].symbol =
+        Some("source_index_payload_proof_fixture".to_string());
+    source_index_import.selectors[0].kind = Some("function".to_string());
+    source_index_import.selectors[0].payload_proof =
+        Some(ClientDbSourceIndexSelectorPayloadProof {
+            structural_selector: selector.to_string(),
+            payload_kind: "code".to_string(),
+            bounded: true,
+        });
+
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        ClientDbSourceIndexRefreshRequest {
+            import: source_index_import,
+            file_count: 1,
+        },
+    )
+    .expect("refresh source-index payload proof import");
+
+    let rust_language_id = LanguageId::from("rust");
+    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        "source_index_payload_proof_fixture",
+        Some(&rust_language_id),
+        8,
+    )
+    .await
+    .expect("lookup source-index payload proof read model");
+    let candidate = lookup
+        .candidates
+        .iter()
+        .find(|candidate| candidate.path == "src/source_index_payload_proof.rs")
+        .expect("source-index payload proof candidate");
+    let proof = candidate
+        .selector_proof
+        .as_ref()
+        .expect("candidate payload proof");
+    assert_eq!(proof.structural_selector, selector);
+    assert_eq!(proof.payload_kind, "code");
+    assert!(proof.bounded);
+
+    let _ = fs::remove_dir_all(client_dir);
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_candidate() {
+    let client_dir = temp_root("db-engine-source-index-scope-proof-client");
+    let project_root = temp_root("db-engine-source-index-scope-proof-project");
+    let source_path = project_root.join("src/source_index_scope_payload_proof.rs");
+    fs::create_dir_all(source_path.parent().expect("source parent")).expect("create source dir");
+    fs::write(
+        &source_path,
+        "pub fn source_index_scope_payload_proof_fixture() {}\n",
+    )
+    .expect("write source fixture");
+    let selector = "rust://src/source_index_scope_payload_proof.rs#item/function/source_index_scope_payload_proof_fixture";
+    let import = source_index_import_with_file_hashes(
+        ClientDbSourceIndexImportAssemblyRequest {
+            generation_id: CacheGenerationId::from("source-index-scope-payload-proof-turso"),
+            project_root: project_root.clone(),
+            schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+            schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+            selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+            file_text_bytes_limit: 4096,
+            previous_file_hashes: None,
+            registry_fingerprint: "scope-payload-proof-registry".to_string(),
+            extra_scope_dirs: Vec::new(),
+            files: vec![ClientDbSourceIndexScopeFile {
+                path: source_path,
+                language_id: LanguageId::from("rust"),
+                provider_id: ProviderId::from("rs-harness"),
+                selector_receipts: vec![ClientDbSourceIndexSelector {
+                    owner_path: ClientDbSourceIndexPath::from(
+                        "src/source_index_scope_payload_proof.rs",
+                    ),
+                    selector_id: selector.to_string(),
+                    symbol: Some("source_index_scope_payload_proof_fixture".to_string()),
+                    kind: Some("function".to_string()),
+                    start_line: 1,
+                    end_line: 1,
+                    source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+                    query_keys: vec![ClientDbSourceIndexQueryKey::from(
+                        "source_index_scope_payload_proof_fixture",
+                    )],
+                    payload_proof: Some(ClientDbSourceIndexSelectorPayloadProof {
+                        structural_selector: selector.to_string(),
+                        payload_kind: "code".to_string(),
+                        bounded: true,
+                    }),
+                }],
+            }],
+        },
+        vec![ClientCacheFileHash {
+            path: "src/source_index_scope_payload_proof.rs".to_string(),
+            sha256: "fedcba9876543210".repeat(4),
+            byte_len: 53,
+            mtime_ms: 19,
+        }],
+    )
+    .expect("assemble source-index scope payload proof import");
+
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        ClientDbSourceIndexRefreshRequest {
+            import,
+            file_count: 1,
+        },
+    )
+    .expect("refresh source-index scope payload proof import");
+
+    let rust_language_id = LanguageId::from("rust");
+    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        "source_index_scope_payload_proof_fixture",
+        Some(&rust_language_id),
+        8,
+    )
+    .await
+    .expect("lookup source-index scope payload proof read model");
+    let proof = lookup
+        .candidates
+        .iter()
+        .find(|candidate| candidate.path == "src/source_index_scope_payload_proof.rs")
+        .and_then(|candidate| candidate.selector_proof.as_ref())
+        .expect("scope payload proof candidate");
+    assert_eq!(proof.structural_selector, selector);
+    assert_eq!(proof.payload_kind, "code");
+    assert!(proof.bounded);
+
+    let _ = fs::remove_dir_all(client_dir);
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generations() {
     let client_dir = temp_root("db-engine-source-index-dedup-client");
     let project_root = temp_root("db-engine-source-index-dedup-project");
@@ -155,6 +322,7 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
                 language_id: rust_language_id.clone(),
                 provider_id: ProviderId::from("rs-harness"),
                 text: text.to_string(),
+                selectors: Vec::new(),
             }],
         })
         .expect("build Turso source-index import");
@@ -225,6 +393,7 @@ async fn db_engine_source_index_import_populates_turso_fts_search_documents() {
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_fts_fixture() { let camel_case_identifier = true; }\n"
                 .to_string(),
+            selectors: Vec::new(),
         }],
     })
     .expect("build Turso source-index FTS import");
@@ -305,6 +474,7 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
             language_id: rust_language_id.clone(),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_concurrent_fixture() {}\n".to_string(),
+            selectors: Vec::new(),
         }],
     })
     .expect("build concurrent Turso source-index import");
@@ -382,6 +552,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
             language_id: rust_language_id.clone(),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_pressure_fixture() { let initial = true; }\n".to_string(),
+            selectors: Vec::new(),
         }],
     })
     .expect("build initial pressure source-index import");
@@ -428,6 +599,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
                     language_id: writer_language_id.clone(),
                     provider_id: ProviderId::from("rs-harness"),
                     text,
+                    selectors: Vec::new(),
                 }],
             })?;
             ClientDbEngine::refresh_source_index_import_from_client_dir(
@@ -638,6 +810,7 @@ async fn db_engine_source_index_bootstrap_converges_historical_owner_schema_colu
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_migrated_turso_fixture() {}\n".to_string(),
+            selectors: Vec::new(),
         }],
     })
     .expect("build migrated Turso source-index import");

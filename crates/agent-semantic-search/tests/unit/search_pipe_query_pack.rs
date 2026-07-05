@@ -7,13 +7,19 @@ use crate::{
 
 #[test]
 fn search_pipe_query_pack_splits_broad_queries_into_stable_clauses() {
+    let query =
+        "src/runtime.rs packages/runtime-search SearchRouter CacheStatus concurrency through owner";
     let clauses = search_pipe_query_clauses(
-        "rust",
-        "src/runtime.rs packages/runtime-search SearchRouter CacheStatus concurrency through owner",
+        crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
+            crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
+            crate::search_pipe_query_pack::SearchPipeQueryText::new(query),
+        ),
     );
     let clause_texts = search_pipe_query_clause_texts(
-        "rust",
-        "src/runtime.rs packages/runtime-search SearchRouter CacheStatus concurrency through owner",
+        crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
+            crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
+            crate::search_pipe_query_pack::SearchPipeQueryText::new(query),
+        ),
     );
 
     assert_eq!(
@@ -29,7 +35,14 @@ fn search_pipe_query_pack_splits_broad_queries_into_stable_clauses() {
 
 #[test]
 fn search_pipe_query_pack_keeps_explicit_clauses_and_roles() {
-    let clauses = search_pipe_query_clauses("typescript", "Effect Stream|Queue backpressure");
+    let clauses = search_pipe_query_clauses(
+        crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
+            crate::search_pipe_query_pack::SearchPipeLanguageId::new("typescript"),
+            crate::search_pipe_query_pack::SearchPipeQueryText::new(
+                "Effect Stream|Queue backpressure",
+            ),
+        ),
+    );
     let terms = search_pipe_unique_query_terms(&clauses);
 
     assert_eq!(clauses.len(), 2);
@@ -53,7 +66,12 @@ fn search_pipe_query_pack_keeps_explicit_clauses_and_roles() {
 
 #[test]
 fn search_pipe_clause_coverage_matches_candidate_evidence() {
-    let clauses = search_pipe_query_clauses("rust", "SearchRouter CacheStatus");
+    let clauses = search_pipe_query_clauses(
+        crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
+            crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
+            crate::search_pipe_query_pack::SearchPipeQueryText::new("SearchRouter CacheStatus"),
+        ),
+    );
     let candidates = vec![SearchPipeQueryPackCandidate {
         path: "src/router.rs".to_string(),
         symbol: "SearchRouter".to_string(),

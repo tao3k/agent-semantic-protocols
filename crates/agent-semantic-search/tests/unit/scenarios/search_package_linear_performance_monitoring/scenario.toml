@@ -7,8 +7,10 @@ agent_goal = "Keep every agent-semantic-search unit and integration surface repr
 reference_repositories = ["tao3k/agent-semantic-protocols"]
 reference_patterns = [
   "document_auto_lexical_overlay_scenario",
+  "dynamic_overlay",
   "dynamic_search_candidates",
   "evidence_graph_rank",
+  "file_locator",
   "graph_candidate_projection",
   "graph_candidate_sparsity",
   "graph_evidence_projection",
@@ -27,13 +29,18 @@ reference_patterns = [
   "search_language_files",
   "search_lexical_replay",
   "search_packet_replay",
+  "search_planner",
   "search_pipe_evidence",
   "search_pipe_quality",
   "search_pipe_query_pack",
   "search_query_budget",
+  "source_index_lookup_terms",
   "source_index_rank",
+  "source_index_rank_performance",
   "syntax_query_replay",
   "turso_overlay_search",
+  "unit_test",
+  "unit_test_smoke",
 ]
 inputs = "inputs"
 expected = "expected"

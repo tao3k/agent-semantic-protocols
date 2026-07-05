@@ -299,6 +299,7 @@ fn reason_kind_label(kind: ReasonKind) -> &'static str {
         ReasonKind::SourceDirectoryEnumeration => "source-directory-enumeration",
         ReasonKind::AgentSearchJson => "agent-search-json",
         ReasonKind::SemanticAstPatchRequired => "semantic-ast-patch-required",
+        ReasonKind::ReadOnlySubagentWrite => "read-only-subagent-write",
         ReasonKind::SubagentReceiptRequired => "subagent-receipt-required",
     }
 }

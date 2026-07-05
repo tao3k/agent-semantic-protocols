@@ -1,0 +1,24 @@
+id = "asp-search-subagent-graphroute-receipt-contract-cold-functional-path"
+title = "ASP search subagent returns GraphRoute receipts instead of flat selector receipts"
+package = "agent-semantic-hook"
+route_source = "read-only-subagent-receipt"
+agent_goal = "When a managed read-only ASP search child stops, the hook must accept compact graph-route receipts and reject flat owner/read/next receipts so the parent receives EvidenceGraph route evidence instead of a noisy selector transcript."
+
+must_include = [
+  "schema=asp-search-subagent.graph.v1",
+  "intent=",
+  "route=",
+  "state=",
+  "evidence=",
+  "next=",
+]
+
+must_reject = [
+  "owner=src/lib.rs\nread=src/lib.rs:1-80",
+  "confidence=high",
+  "not found",
+  "```",
+]
+
+inputs = "A managed read-only asp-explore subagent-stop payload with one valid compact GraphRoute receipt and malformed legacy flat receipts."
+expected = "The hook allows the compact graph-route receipt, blocks flat selector/prose receipts, and asks the same child to re-emit schema/intent/route/state/evidence/next instead of letting the parent read source directly."

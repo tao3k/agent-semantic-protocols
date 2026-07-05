@@ -1,0 +1,152 @@
+#+title: 10.31.20 Subagent GraphRoute Receipt Reflection
+#+date: 2026-07-05
+
+* Purpose
+
+This note audits the ASP search-chain gap exposed by live =asp-explore=
+receipts: the underlying search data is often useful, but the subagent return
+shape is still too flat for the parent model. A cheap search child should not
+return a pile of independent =owner/read/next= records, source snippets, line
+ranges, confidence labels, or not-found inventories. It should return one
+compact =GraphRoute= projection per independent parent intent branch.
+
+The parent model is expensive and owns intent synthesis, final exact reads,
+editing, and validation. The child owns cheap search work: =search pipe=,
+=search owner=, owner/item discovery, frontier ranking, dependency/test
+reachability, and selector localization. The child stop artifact must therefore
+answer one question:
+
+#+begin_src text
+Given this parent intent branch and the evidence found so far,
+which graph route should the parent jump to next?
+#+end_src
+
+* Current drift
+
+The RFC line is mostly correct, but the implementation and generated prompts
+still disagree in several places.
+
+| Surface | Current state | Gap |
+|---------+---------------+-----|
+| 10.23 theory | =ReasoningTree -> EvidenceGraph -> DynamicTopology -> GraphRoute= is the root model | Subagent stop receipts are not yet treated as a typed =GraphRoute= artifact |
+| 10.06 compact graph | says subagents should return the same compact graph slice as normal search | runtime messages can still ask for flat selector receipts |
+| 10.05.50 agent flow | already defines graph-route receipt fields | field names and budgets are not schema-owned yet |
+| hook stop validator | accepts =schema/intent/route/state/evidence/next= and rejects snippets, line ranges, confidence, and not-found prose | no shared schema file exists for this receipt; states are narrower than candidate readiness states |
+| hook recovery/config prompts | some strings still say =owner/read/next= | these strings train the child back into the old flat receipt shape |
+| 10.31 comparison RFC | one sentence still allows =snippets= in subagent output | this conflicts with selector-first EvidenceGraph routing |
+
+* Correct stop artifact
+
+The stop artifact is a search route receipt, not a transcript. It is a compact
+projection from one local child =ReasoningTree= branch into the shared
+=EvidenceGraph=, then through =GraphRoute= into the single parent action.
+
+#+begin_src text
+parent intent slice
+-> child search actions
+-> parser/finder/test/dependency evidence nodes
+-> typed route edges
+-> GraphRoute state
+-> one parent next action
+#+end_src
+
+The receipt should preserve only the facts needed by the parent to decide its
+next exact read or refinement. It should not explain everything the child tried.
+
+* Receipt contract
+
+The current hook-verifiable minimum should remain line-oriented until the shared
+schema is installed, but the meaning must be graph-route, not flat selector
+records:
+
+#+begin_src text
+[asp-search-subagent]
+schema=asp-search-subagent.graph.v1
+intent=<parent-supplied branch id or short intent slice>
+route=<route id: search axis -> owner -> item/test/dependency>
+state=<selector-ready|needs-refine|no-output>
+evidence=E1 kind=<item|owner|test|dependency|doc> role=<primary|guard|context> owner=<owner-path> selector=<parser-owned-selector> relation=<route role>
+evidence=E2 kind=<...> role=<...> owner=<...> selector=<...> relation=<...>
+next=E1 asp <language> query --selector <parser-owned-selector> --workspace . --code
+alt=E2 asp <language> query --selector <parser-owned-selector> --workspace . --code
+avoid=raw-read,flat-selector-list,repeat-same-search
+omit=source,line-range,confidence,long-explanation,not-found-inventory
+#+end_src
+
+Budgets:
+
+| Field | Budget |
+|-------+--------|
+| receipt blocks | one per independent parent branch |
+| =evidence= rows | one to three, rank ordered |
+| =next= | exactly one |
+| =alt= | zero to two |
+| prose | none inside the receipt |
+| source/code body | never |
+| display line ranges | never as identity |
+
+The parent can still perform exact reads after this receipt. The child does not
+need to carry code text back across the model boundary.
+
+* State model gap
+
+The hook receipt validator accepts the route states below. Search projection has
+already started emitting the same candidate readiness states for pollution
+filtering:
+
+#+begin_src text
+selector-ready
+inventory-only
+stale-index
+invalid-selector
+empty-payload
+quarantined
+#+end_src
+
+Those states must stay converged. The graph-route receipt accepts candidate
+readiness states directly because they are the pollution filter the parent
+needs:
+
+| State | Parent action |
+|-------+---------------|
+| =selector-ready= | run the exact selector read |
+| =inventory-only= | ask child for owner-local item refinement |
+| =stale-index= | refresh or rebuild source-index before trusting route |
+| =invalid-selector= | reject route and ask for parser-owned selector |
+| =empty-payload= | treat as source-index/provider drift, not no-result proof |
+| =quarantined= | do not rank; keep as analyzer receipt only |
+| =no-output= | no child artifact; parent decides whether to refine intent |
+
+* Search-chain gaps
+
+1. Continue wiring [[file:../../schemas/semantic-asp-search-subagent-graph-route-receipt.v1.schema.json][semantic-asp-search-subagent-graph-route-receipt.v1]]
+   into Graph Turbo receipt rendering. Hook validation and schema fixture tests
+   now cover the compact receipt shape.
+2. Keep hook recovery strings, generated client config, and protocol prompts
+   aligned so every path asks for =schema/intent/route/state/evidence/next=
+   instead of =owner/read/next=.
+3. Keep schema-backed fixture validation for compact =rankedEvidence= and
+   =edges= receipt data aligned with hook line-protocol validation.
+4. Keep Graph Turbo ranking ownership outside command-local Rust heuristics.
+   Rust can expose parser-owned evidence, source traces, readiness state, and
+   safe actions; graph-route ranking and drift scoring remain Graph Turbo work.
+5. Wire the new =asp-search-subagent-graphroute-receipt-contract-cold-functional-path=
+   fixture into the scenario runner so malformed flat =owner/read/next= child
+   receipts remain a tracked gate, not only a unit test.
+6. Add a scenario for =inventory-only= and =stale-index= receipts so the parent
+   does not mistake polluted source-index evidence for final selector proof.
+
+* Reflection
+
+The current flat return style costs the parent twice: it repeats fields that are
+already encoded in selectors, and it forces the parent to reconstruct graph
+relations that the child already discovered. The improved receipt is smaller
+not because it drops evidence, but because it returns the evidence in the same
+shape the parent needs for the next jump:
+
+#+begin_src text
+ReasoningTree branch -> EvidenceGraph nodes/edges -> GraphRoute state -> exact parent action
+#+end_src
+
+The search child should be judged by route usefulness and selector authority,
+not by how many commands or owners it reports.

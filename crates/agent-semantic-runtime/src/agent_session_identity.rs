@@ -11,6 +11,21 @@ pub struct AgentSessionRegistrationIdentity {
     pub root_session_id: String,
 }
 
+/// Request for resolving register-time child/root session identity.
+pub struct AgentSessionRegistrationIdentityRequest<'a> {
+    child_session_id: Option<&'a str>,
+    root_session_id: Option<&'a str>,
+}
+
+impl<'a> From<(Option<&'a str>, Option<&'a str>)> for AgentSessionRegistrationIdentityRequest<'a> {
+    fn from((child_session_id, root_session_id): (Option<&'a str>, Option<&'a str>)) -> Self {
+        Self {
+            child_session_id,
+            root_session_id,
+        }
+    }
+}
+
 /// Return whether the host process exposes one supported agent session id.
 #[must_use]
 pub fn has_current_agent_runtime_session() -> bool {
@@ -27,7 +42,7 @@ pub fn current_agent_runtime_root_session_id() -> Option<String> {
 
 /// Resolve the root id recorded in Codex rollout metadata for `session_id`.
 #[must_use]
-pub fn codex_rollout_root_session_id(session_id: &str) -> Option<String> {
+pub(crate) fn codex_rollout_root_session_id(session_id: &str) -> Option<String> {
     codex_rollout_session_metadata(session_id)
         .ok()
         .flatten()
@@ -36,18 +51,19 @@ pub fn codex_rollout_root_session_id(session_id: &str) -> Option<String> {
 
 /// Resolve register-time child/root identity from explicit args and host state.
 pub fn agent_session_registration_identity(
-    child_session_id: Option<&str>,
-    root_session_id: Option<&str>,
+    request: AgentSessionRegistrationIdentityRequest<'_>,
 ) -> Result<AgentSessionRegistrationIdentity, String> {
     let runtime_session = current_agent_runtime_session();
-    let session_id = child_session_id
+    let session_id = request
+        .child_session_id
         .map(str::to_string)
         .or_else(|| runtime_session.as_ref().map(|session| session.id.clone()))
         .ok_or_else(|| {
             "asp agent session register requires --child-session-id or an agent session env"
                 .to_string()
         })?;
-    let root_session_id = root_session_id
+    let root_session_id = request
+        .root_session_id
         .map(str::to_string)
         .or_else(|| codex_rollout_root_session_id(&session_id))
         .or_else(|| {

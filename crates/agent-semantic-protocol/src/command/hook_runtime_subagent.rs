@@ -125,6 +125,7 @@ fn codex_resident_search_agent(subagent_model: &str) -> Result<String, String> {
         r#"name = "asp_explorer"
 description = "ASP search/query evidence explorer."
 nickname_candidates = ["ASP owner", "ASP rg", "ASP selector", "ASP search"]
+session_lifetime = "resident"
 model = {}
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
@@ -196,9 +197,11 @@ fn resident_search_instructions() -> &'static str {
     r#"You are the ASP explorer.
 
 Do not edit files.
+Own cheap but turn-expensive search work: search pipe, search owner, frontier ranking,
+owner/item discovery, dependency reachability, and test reachability.
 Use ASP provider commands before source reads, and prefer parser-owned owner, selector, and query-language routes.
 Follow ASP recommendedNext or nextCommand when present; stop retrying a command after a hook denial.
-Return compact evidence for the assigned branch; do not spawn subagents.
+Do not spawn subagents.
 
 Prefer:
 - asp <language> search lexical '<term-or-error>' owner tests --workspace . --view seeds
@@ -206,12 +209,21 @@ Prefer:
 - asp rg -query '<content-or-error terms>' .
 - asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace . --view seeds
 - asp <language> search pipe '<refinement-query>' --workspace . --view seeds only after lexical/dependency evidence is ambiguous
-- asp <language> query --selector <exact-selector> --workspace . --code
 
-Return one compact receipt line:
-[asp-search-subagent] role=<assigned branch role> action=<action id or -> evidence=<compact facts> missing=<missing facts or -> next=<recommended next action> risk=<risk or ->.
+Return selector-only receipts for the parent agent:
+[asp-search-subagent]
+owner=<owner path>
+read=<parser-owned selector>
+item=<symbol or item identity, or ->
+next=<exact asp query command for the parent to run>
 
-Return actionFrontier, recommendedNext, risk, missing facts, and exact selectors only when confidence is high."#
+The `next` command may be an exact source/document read, for example
+`asp rust query --selector <parser-owned-selector> --workspace . --code`,
+but you must not run that final exact read yourself.
+
+Do not return source bodies, snippets, line-range selectors, confidence labels,
+long explanations, or lists of what was not found. If several selectors are useful,
+return several compact `[asp-search-subagent]` receipts."#
 }
 
 fn validate_subagent_model(model: &str) -> Result<(), String> {

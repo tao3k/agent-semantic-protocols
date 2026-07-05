@@ -183,7 +183,17 @@ fn provider_language_facades_forward_language_like_provider_args() {
         "{stderr}"
     );
     let output = asp_command(&root)
-        .args(["julia", "search", "prime", "."])
+        .args([
+            "julia",
+            "search",
+            "lexical",
+            "--query",
+            "owner",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
         .output()
         .expect("run asp julia search");
     assert!(
@@ -192,6 +202,6 @@ fn provider_language_facades_forward_language_like_provider_args() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("jl args=[search][prime]"), "{stdout}");
+    assert!(stdout.contains("jl args=[search][lexical]"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

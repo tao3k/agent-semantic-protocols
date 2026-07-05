@@ -139,6 +139,95 @@ fn search_pipe_selector_seed_renders_single_command_frontier_without_provider_sp
 }
 
 #[test]
+fn search_pipe_single_atom_query_does_not_render_pipe_plan_without_provider_spawn() {
+    let root = temp_project_root("search-pipe-rejects-single-atom");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "Connected",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search pipe with a single seed atom");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        !stdout.contains("seedPlan=") && !stdout.contains("nextCommand="),
+        "{stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "single-atom pipe should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn query_stale_structural_selector_fails_instead_of_empty_success() {
+    let root = temp_project_root("query-stale-structural-selector");
+    std::fs::create_dir_all(root.join("src")).expect("create source root");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn collect_search_pipe_auto_acquisition() {}\n",
+    )
+    .expect("write current source");
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "query",
+            "--selector",
+            "rust://crates/agent-semantic-client/src/search_pipe_source.rs#item/function/collect_search_pipe_auto_acquisition",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run stale structural selector query");
+
+    assert!(
+        !output.status.success(),
+        "stale structural selector must not exit successfully"
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "stale structural selector must not emit empty-success evidence"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stderr.contains("stale-index exact selector resolved no code payload"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("crates/agent-semantic-client/src/search_pipe_source.rs"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("recommendedNext=asp rust search owner"),
+        "{stderr}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn search_pipe_rejects_removed_pipeline_option_without_provider_spawn() {
     let root = temp_project_root("search-pipe-rejects-pipe-option");
     let bin_dir = root.join(".bin");
@@ -264,6 +353,11 @@ fn search_pipe_package_option_scopes_search_overlay_frontier_without_provider_sp
     )
     .expect("write scoped source");
     std::fs::write(
+        root.join("src/compiler/config.ts"),
+        "export function createProgramConfig() { return 3; }\n",
+    )
+    .expect("write second scoped source");
+    std::fs::write(
         root.join("src/server/program.ts"),
         "export function createProgramServer() { return 2; }\n",
     )
@@ -276,7 +370,7 @@ fn search_pipe_package_option_scopes_search_overlay_frontier_without_provider_sp
             "typescript",
             "search",
             "pipe",
-            "createProgram",
+            "createProgram createProgramConfig",
             "--package",
             "src/compiler",
             "--source",
@@ -300,7 +394,9 @@ fn search_pipe_package_option_scopes_search_overlay_frontier_without_provider_sp
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp fd -query createProgram --workspace src/compiler"),
+        stdout.contains(
+            "nextCommand=asp fd -query 'createProgram|createProgramConfig' --workspace src/compiler"
+        ),
         "{stdout}"
     );
     assert!(!stdout.contains("src/server/program.ts"), "{stdout}");

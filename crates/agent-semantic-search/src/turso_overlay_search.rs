@@ -5,13 +5,37 @@ use agent_semantic_client_db::{
 /// Search-owned document for a transient Turso overlay namespace.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoOverlaySearchDocument {
-    pub repo_id: String,
-    pub workspace_id: String,
-    pub session_id: String,
-    pub base_generation: String,
-    pub document_id: String,
-    pub selector: Option<String>,
-    pub document: String,
+    pub(crate) repo_id: String,
+    pub(crate) workspace_id: String,
+    pub(crate) session_id: String,
+    pub(crate) base_generation: String,
+    pub(crate) document_id: String,
+    pub(crate) selector: Option<String>,
+    pub(crate) document: String,
+}
+
+impl TursoOverlaySearchDocument {
+    /// Create a search-owned transient overlay document.
+    #[must_use]
+    pub fn new(
+        repo_id: impl Into<String>,
+        workspace_id: impl Into<String>,
+        session_id: impl Into<String>,
+        base_generation: impl Into<String>,
+        document_id: impl Into<String>,
+        selector: Option<String>,
+        document: impl Into<String>,
+    ) -> Self {
+        Self {
+            repo_id: repo_id.into(),
+            workspace_id: workspace_id.into(),
+            session_id: session_id.into(),
+            base_generation: base_generation.into(),
+            document_id: document_id.into(),
+            selector,
+            document: document.into(),
+        }
+    }
 }
 
 /// Search-owned projection for Turso-backed dynamic overlay hits.
@@ -51,13 +75,13 @@ pub async fn search_turso_overlay_documents(
 }
 
 fn turso_hit_to_overlay_hit(hit: TursoClientDbSearchHit) -> Option<TursoOverlaySearchHit> {
-    if hit.source != "overlay" {
+    if hit.source() != "overlay" {
         return None;
     }
     Some(TursoOverlaySearchHit {
-        document_id: hit.document_id,
-        selector: hit.selector,
-        document: hit.document,
+        document_id: hit.document_id().to_string(),
+        selector: hit.selector().map(ToString::to_string),
+        document: hit.document().to_string(),
     })
 }
 

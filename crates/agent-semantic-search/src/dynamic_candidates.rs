@@ -12,6 +12,8 @@ use crate::{
     search_lexical_overlay_candidates,
 };
 
+const DYNAMIC_LEXICAL_OVERLAY_DOCUMENT_SCAN_LIMIT: usize = 256;
+
 /// Candidate projected from a high-churn dynamic search overlay.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DynamicSearchCandidate {
@@ -203,6 +205,7 @@ pub fn collect_dynamic_lexical_overlay_candidates(
         .search_roots
         .iter()
         .flat_map(|paths| paths.iter())
+        .take(DYNAMIC_LEXICAL_OVERLAY_DOCUMENT_SCAN_LIMIT)
         .filter_map(|path| lexical_overlay_document(request.locator_root, path))
         .collect::<Vec<_>>();
 

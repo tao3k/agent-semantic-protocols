@@ -91,18 +91,20 @@ fn rtk_read_line_locator_routes_to_provider_query_with_range() {
             "crates/agent-semantic-hook/src/lib.rs"
         ]
     );
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(
         decision.routes[0].argv,
         vec![
             "asp",
             "rust",
-            "query",
-            "--selector",
-            "crates/agent-semantic-hook/src/lib.rs:10-20",
+            "search",
+            "owner",
+            "crates/agent-semantic-hook/src/lib.rs",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ]
     );
 }
@@ -120,18 +122,20 @@ fn rtk_read_whole_source_file_routes_to_selector_code_query() {
     );
 
     assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(
         decision.routes[0].argv,
         vec![
             "asp",
             "rust",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "crates/agent-semantic-hook/src/lib.rs",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ]
     );
 }

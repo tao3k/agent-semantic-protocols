@@ -50,8 +50,8 @@ fn rust_search_facade_fans_out_multiple_trailing_scope_roots() {
 }
 
 #[test]
-fn rust_search_facade_rejects_multiple_positional_project_roots() {
-    let root = temp_project_root("rust-search-facade-double-root");
+fn rust_search_facade_rejects_multiple_workspace_flags() {
+    let root = temp_project_root("rust-search-facade-double-workspace");
     let bin_dir = root.join(".bin");
     let provider_root = root.join("rust-provider");
     std::fs::create_dir_all(&provider_root).expect("create provider root");
@@ -72,10 +72,12 @@ fn rust_search_facade_rejects_multiple_positional_project_roots() {
             "ingest",
             "items",
             "tests",
+            "--workspace",
+            "rust-provider",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            "rust-provider",
-            ".",
         ])
         .output()
         .expect("run asp rust search");
@@ -83,14 +85,14 @@ fn rust_search_facade_rejects_multiple_positional_project_roots() {
     assert!(!output.status.success(), "stdout={:?}", output.stdout);
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        stderr.contains("expected at most one PROJECT_ROOT argument"),
+        stderr.contains("expected at most one --workspace argument"),
         "{stderr}"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn rust_search_facade_strips_explicit_workspace_before_provider_backend() {
+fn rust_search_facade_uses_explicit_workspace_for_graph_backend() {
     let root = temp_project_root("rust-search-facade-explicit-workspace");
     let bin_dir = root.join(".bin");
     let provider_root = root.join("rust-provider");
@@ -109,7 +111,8 @@ fn rust_search_facade_strips_explicit_workspace_before_provider_backend() {
         .args([
             "rust",
             "search",
-            "prime",
+            "lexical",
+            "source_index_fixture",
             "--workspace",
             "rust-provider",
             "--view",
@@ -124,19 +127,13 @@ fn rust_search_facade_strips_explicit_workspace_before_provider_backend() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.starts_with("[search-prime] root=rust-provider"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("alg=native-fd-prime-frontier-v1"),
-        "{stdout}"
-    );
+    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
+    assert!(stdout.contains("project-marker(Cargo.toml)"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn check_facade_uses_positional_existing_directory_as_project_root() {
+fn check_facade_uses_explicit_workspace_directory() {
     let root = temp_project_root("check-facade-positional-directory-root");
     let bin_dir = root.join(".bin");
     let provider_root = root.join("fixture");
@@ -147,7 +144,7 @@ fn check_facade_uses_positional_existing_directory_as_project_root() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(["gerbil-scheme", "check", "fixture"])
+        .args(["gerbil-scheme", "check", "--workspace", "fixture"])
         .output()
         .expect("run asp gerbil-scheme check");
 
@@ -221,7 +218,7 @@ fn gerbil_query_facade_allows_explicit_workspace_outside_activation_workspace() 
 }
 
 #[test]
-fn rust_search_facade_rejects_positional_project_root_outside_activation_workspace() {
+fn rust_search_facade_does_not_treat_positional_path_as_project_root() {
     let root = temp_project_root("rust-search-facade-positional-workspace-boundary");
     let bin_dir = root.join(".bin");
     let outside_root = root.parent().expect("temp root parent").join(format!(
@@ -245,17 +242,23 @@ fn rust_search_facade_rejects_positional_project_root_outside_activation_workspa
         .args([
             "rust",
             "search",
-            "prime",
+            "lexical",
+            outside_root.to_str().expect("outside root utf8"),
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            outside_root.to_str().expect("outside root utf8"),
         ])
         .output()
         .expect("run asp rust search");
 
-    assert!(!output.status.success(), "stdout={:?}", output.stdout);
-    let stderr = String::from_utf8(output.stderr).expect("stderr");
-    assert!(stderr.contains("is outside workspace"), "{stderr}");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(outside_root);
 }

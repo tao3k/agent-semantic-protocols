@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <register|list|show|reuse|status|lifecycle audit|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--root-session-id ID] [--parent-session-id ID] [--role ROLE] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <register|list|show|reuse|status|lifecycle audit|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -46,6 +46,7 @@ pub(super) struct SessionArgs {
     pub(super) active: bool,
     pub(super) replace: bool,
     pub(super) force: bool,
+    pub(super) activity: bool,
     pub(super) json: bool,
     pub(super) codex_args: Vec<String>,
 }
@@ -71,6 +72,7 @@ impl SessionArgs {
             active: false,
             replace: false,
             force: false,
+            activity: false,
             json: false,
             codex_args: Vec::new(),
         };
@@ -153,8 +155,15 @@ impl SessionArgs {
                         Some(non_empty_flag(args, index, arg.as_str())?.to_string());
                 }
                 "--role" => {
+                    return Err(
+                        "`--role` is no longer supported; use `--roles subagent,search`"
+                            .to_string(),
+                    );
+                }
+                "--roles" => {
                     index += 1;
-                    parsed.role = Some(non_empty_flag(args, index, "--role")?.to_string());
+                    parsed.role =
+                        Some(parse_roles_flag(non_empty_flag(args, index, "--roles")?)?.join(","));
                 }
                 "--model" => {
                     index += 1;
@@ -197,6 +206,7 @@ impl SessionArgs {
                 {
                     parsed.force = true;
                 }
+                "--activity" | "--heartbeat" => parsed.activity = true,
                 "--json" => parsed.json = true,
                 _ if is_codex_wrapper_command(parsed.command) => {
                     parsed.codex_args.push(arg.clone());
@@ -233,11 +243,11 @@ fn guide_text_for(
     command: SessionCommand,
 ) -> Option<&str> {
     match command {
-        SessionCommand::Register => guide.register.as_deref(),
-        SessionCommand::List => guide.list.as_deref(),
-        SessionCommand::Show => guide.show.as_deref(),
-        SessionCommand::Reuse => guide.reuse.as_deref(),
-        SessionCommand::Status => guide.status.as_deref(),
+        SessionCommand::Register => guide.register(),
+        SessionCommand::List => guide.list(),
+        SessionCommand::Show => guide.show(),
+        SessionCommand::Reuse => guide.reuse(),
+        SessionCommand::Status => guide.status(),
         SessionCommand::LifecycleAudit => Some(
             "asp agent session lifecycle audit guide\n\
 Read-only lifecycle audit for the current root session.\n\
@@ -356,49 +366,53 @@ fn load_agent_session_guide() -> agent_semantic_config::HookClientAgentSessionGu
 }
 
 fn default_agent_session_guide() -> agent_semantic_config::HookClientAgentSessionGuideConfig {
-    agent_semantic_config::HookClientAgentSessionGuideConfig {
-        register: Some(
+    agent_semantic_config::HookClientAgentSessionGuideConfig::new(
+        Some(
             "asp agent session register guide\n\
 Guide template failed to load. Run `asp sync` or install hooks, then rerun `asp agent session register --guide`."
                 .to_string(),
         ),
-        list: Some(
+        Some(
             "asp agent session list guide\n\
 List registered child sessions for the current root session."
                 .to_string(),
         ),
-        show: Some(
+        Some(
             "asp agent session show guide\n\
 Show one registered child session by --name or --child-session-id."
                 .to_string(),
         ),
-        reuse: Some(
+        Some(
             "asp agent session reuse guide\n\
 Guide template failed to load. Run `asp agent session register --guide` for bootstrap steps."
                 .to_string(),
         ),
-        status: Some(
+        Some(
             "asp agent session status guide\n\
 Guide template failed to load. Run `asp agent session register --guide` when nextAction=start-resident-child-and-register."
                 .to_string(),
         ),
-    }
+    )
 }
 
 fn render_agent_session_guide(
     mut guide: agent_semantic_config::HookClientAgentSessionGuideConfig,
 ) -> agent_semantic_config::HookClientAgentSessionGuideConfig {
     let host = agent_host_guide();
-    for text in [
-        &mut guide.register,
-        &mut guide.list,
-        &mut guide.show,
-        &mut guide.reuse,
-        &mut guide.status,
-    ] {
-        if let Some(value) = text {
-            *value = render_agent_session_guide_text(value, &host);
-        }
+    if let Some(value) = guide.register_mut() {
+        *value = render_agent_session_guide_text(value, &host);
+    }
+    if let Some(value) = guide.list_mut() {
+        *value = render_agent_session_guide_text(value, &host);
+    }
+    if let Some(value) = guide.show_mut() {
+        *value = render_agent_session_guide_text(value, &host);
+    }
+    if let Some(value) = guide.reuse_mut() {
+        *value = render_agent_session_guide_text(value, &host);
+    }
+    if let Some(value) = guide.status_mut() {
+        *value = render_agent_session_guide_text(value, &host);
     }
     guide
 }
@@ -424,7 +438,7 @@ fn agent_host_guide() -> AgentHostGuide {
         return AgentHostGuide {
             host_label: "codex",
             session_env: "CODEX_THREAD_ID",
-            create_action: "Codex action: start the configured subagent `asp_explorer`",
+            create_action: "Codex action: start the configured ASP managed subagent `asp_explorer` only if the host exposes that managed type; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
             config_source: "~/.agent-semantic-protocols/agents/asp-explorer_codex.toml",
             host_projection: "~/.codex/agents/asp-explorer.toml",
         };
@@ -478,6 +492,32 @@ fn load_agent_session_guide_from_str(
     let parsed: agent_semantic_config::HookClientConfigFile = toml::from_str(content).ok()?;
     agent_session_guide_has_any_text(&parsed.agent_session_guide)
         .then_some(parsed.agent_session_guide)
+}
+
+fn parse_roles_flag(value: &str) -> Result<Vec<String>, String> {
+    let mut roles = Vec::new();
+    for role in value
+        .split(',')
+        .map(str::trim)
+        .filter(|role| !role.is_empty())
+    {
+        match role {
+            "subagent" | "search" | "testing" | "build" | "checkpoint" => {
+                if !roles.iter().any(|existing| existing == role) {
+                    roles.push(role.to_string());
+                }
+            }
+            other => {
+                return Err(format!(
+                    "unknown session role `{other}`; expected one of subagent, search, testing, build, checkpoint"
+                ));
+            }
+        }
+    }
+    if roles.is_empty() {
+        return Err("--roles requires at least one schema role".to_string());
+    }
+    Ok(roles)
 }
 
 fn required_flag_value<'a>(

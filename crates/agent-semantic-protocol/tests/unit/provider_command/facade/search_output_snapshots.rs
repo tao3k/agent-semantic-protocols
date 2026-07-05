@@ -50,16 +50,13 @@ fn asp_rg_query_wrapper_stdout_snapshot() {
 }
 
 #[test]
-fn asp_rust_query_owner_selector_stdout_snapshot() {
-    let root = temp_project_root("asp-rust-query-owner-selector-stdout-snapshot");
+fn asp_rust_query_file_selector_code_without_item_is_rejected() {
+    let root = temp_project_root("asp-rust-query-file-selector-code-rejected");
     write_rust_owner_frontier_provider(&root);
     write_activation(&root, &[provider("rust", Vec::new())]);
     std::fs::create_dir_all(root.join("src")).expect("create src");
-    std::fs::write(
-        root.join("src/core.rs"),
-        "pub struct QueryExpr;\n\npub fn parse_query_expr() {}\n",
-    )
-    .expect("write source");
+    let source = "pub struct QueryExpr;\n\npub fn parse_query_expr() {}\n";
+    std::fs::write(root.join("src/core.rs"), source).expect("write source");
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -76,15 +73,96 @@ fn asp_rust_query_owner_selector_stdout_snapshot() {
         .expect("run asp rust owner selector query snapshot");
 
     assert!(
+        !output.status.success(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stderr.contains("ambiguous query --code selector `src/core.rs`"),
+        "{stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_rust_query_item_selector_code_returns_item_source() {
+    let root = temp_project_root("asp-rust-query-item-selector-code-source");
+    write_rust_owner_frontier_provider(&root);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(
+        root.join("src/core.rs"),
+        "pub struct QueryExpr;\n\npub fn parse_query_expr() {}\n",
+    )
+    .expect("write source");
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "query",
+            "--selector",
+            "rust://src/core.rs#item/function/parse_query_expr",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run asp rust exact item selector query");
+
+    assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert_single_line(&stdout, "[search-owner]");
-    assert_single_line(&stdout, "rank=");
-    assert_single_line(&stdout, "avoid=");
-    insta::assert_snapshot!("asp_rust_query_owner_selector_stdout", stdout);
+    assert_eq!(stdout, "pub fn parse_query_expr() {}\n");
+    assert!(!stdout.contains("[search-owner]"), "{stdout}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_rust_query_direct_source_read_returns_bounded_source_window() {
+    let root = temp_project_root("asp-rust-query-direct-read-source-window");
+    write_rust_owner_frontier_provider(&root);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(
+        root.join("src/core.rs"),
+        "pub struct QueryExpr;\n\npub fn parse_query_expr() {}\n",
+    )
+    .expect("write source");
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--fallback-reason",
+            "bounded-window-after-selector",
+            "--selector",
+            "src/core.rs:1:1",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run asp rust direct source read");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        "pub struct QueryExpr;\n"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }

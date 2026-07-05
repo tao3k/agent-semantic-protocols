@@ -21,7 +21,7 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
     );
     assert!(
         stdout.contains(
-            "asp agent session register --name asp-explore --child-session-id <child-session-id> --role asp-explore"
+            "asp agent session register --name asp-explore --child-session-id <child-session-id> --roles subagent,search"
         ),
         "{stdout}"
     );
@@ -29,7 +29,11 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
     assert!(stdout.contains("Session env: CODEX_THREAD_ID"), "{stdout}");
     assert!(stdout.contains("Action step flow"), "{stdout}");
     assert!(
-        stdout.contains("Codex action: start the configured subagent `asp_explorer`"),
+        stdout.contains("asp agent session lifecycle audit --json"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Codex action: start the configured ASP managed subagent `asp_explorer`"),
         "{stdout}"
     );
     assert!(
@@ -38,6 +42,18 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
     );
     assert!(
         stdout.contains("~/.codex/agents/asp-explorer.toml"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("agentMessageTargetId for message-agent sends"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("bootstrapBlocked=host-message-agent-target-unavailable"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("do not use normal-thread read/send"),
         "{stdout}"
     );
     assert!(
@@ -137,11 +153,16 @@ fn asp_agent_session_status_guide_explains_start_resident_child_action() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("Codex action: start the configured subagent `asp_explorer`"),
+        stdout.contains("Codex action: start the configured ASP managed subagent `asp_explorer`"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("asp agent session register --name asp-explore --child-session-id <child-session-id> --role asp-explore"),
+        stdout.contains("asp agent session register --name asp-explore --child-session-id <child-session-id> --roles subagent,search"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("agentMessageTargetId"), "{stdout}");
+    assert!(
+        stdout.contains("bootstrapBlocked=host-message-agent-target-unavailable"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

@@ -100,7 +100,16 @@ fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
         decision.message
     );
     assert!(
-        decision.message.contains("Return compact evidence only."),
+        decision
+            .message
+            .contains("Return selector-only `[asp-search-subagent]` evidence"),
+        "{command}: {}",
+        decision.message
+    );
+    assert!(
+        decision
+            .message
+            .contains("Do not return source bodies, snippets, or line-range selectors"),
         "{command}: {}",
         decision.message
     );
@@ -151,6 +160,7 @@ fn reason_kind_label(reason_kind: ReasonKind) -> &'static str {
         ReasonKind::SourceDirectoryEnumeration => "source-directory-enumeration",
         ReasonKind::AgentSearchJson => "agent-search-json",
         ReasonKind::SemanticAstPatchRequired => "semantic-ast-patch-required",
+        ReasonKind::ReadOnlySubagentWrite => "read-only-subagent-write",
         ReasonKind::SubagentReceiptRequired => "subagent-receipt-required",
     }
 }

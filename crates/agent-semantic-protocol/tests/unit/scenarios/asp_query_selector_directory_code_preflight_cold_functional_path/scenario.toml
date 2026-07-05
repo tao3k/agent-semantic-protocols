@@ -1,0 +1,23 @@
+id = "asp-query-selector-directory-code-preflight-cold-functional-path"
+title = "Query directory selectors fail before code projection"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-QUERY-SELECTOR-DIRECTORY-CODE-PREFLIGHT-COLD-001"]
+agent_goal = "Validate that query --selector <directory> --code is rejected as an exact-selector contract violation before provider execution, across query, from-hook, tree-sitter, and bare code request shapes."
+language = "rust"
+workspace = "."
+owners = [
+  "crates/agent-semantic-client/src/syntax_query_preflight.rs",
+  "crates/agent-semantic-client/tests/unit/syntax_query_preflight.rs",
+]
+queries = [
+  "from-hook fallback-reason direct-source-read",
+  "tree-sitter query selector directory code",
+]
+inputs = "A temporary Rust project with src/lib.rs and an active marker provider. The scenario runs directory-selector code query variants that previously could reach an empty code projection."
+expected = "Each directory selector command fails in query preflight with a bounded exact-selector diagnostic, does not spawn the provider, and points agents back to search lexical, search owner, or search pipe for directory-scoped discovery."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-client/src/syntax_query_preflight.rs",
+  "crates/agent-semantic-client/tests/unit/syntax_query_preflight.rs",
+  "docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface.org",
+  "docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org",
+]

@@ -1,0 +1,17 @@
+harness = "libtest"
+test = "exact_selector_inventory_routes_to_main_direct_fetch"
+snapshot = "exact_selector_inventory_routes_to_main_direct_fetch"
+target_total = "1ms"
+max_total = "5ms"
+observed_total = "1ms"
+regression_budget = "2ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "direct-inventory-fetch"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "Exact-selector metadata has satisfied preconditions and should remain a main-agent inventory operation. It is not final proof; final evidence must come from a direct --content or --code fetch by the main agent unless the inventory exposes fan-out or synthesis work."
+
+[observed_timings]
+direct_inventory_contract = "1ms"

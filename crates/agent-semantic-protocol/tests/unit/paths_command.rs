@@ -8,20 +8,19 @@ use serde_json::Value;
 fn paths_reports_project_root_and_org_state_paths() {
     let root = temp_project_root("paths");
     let state_home = temp_project_root("paths-state");
-    let resolved = ResolvedState::resolve_with_state_home(&root, &state_home)
-        .expect("resolved state")
-        .paths;
+    let resolved_state =
+        ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolved state");
+    let resolved = &resolved_state.paths;
     let expected_org_artifacts = resolved.artifacts_dir.join("org");
-    let expected_hook_state_dir = resolved
-        .workspace_dir
-        .join("live")
+    let expected_hook_dir = resolved_state
+        .state_home
         .join("hooks")
-        .join("state");
-    let expected_hook_cache_dir = resolved
-        .workspace_dir
-        .join("live")
-        .join("hooks")
-        .join("cache");
+        .join("projects")
+        .join(resolved_state.repo.repo_id.as_str())
+        .join("workspaces")
+        .join(resolved_state.workspace.workspace_id.as_str());
+    let expected_hook_state_dir = expected_hook_dir.join("state");
+    let expected_hook_cache_dir = expected_hook_dir.join("cache");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("ASP_STATE_HOME", &state_home)
@@ -121,20 +120,19 @@ fn paths_get_returns_single_absolute_field() {
 fn paths_json_is_machine_readable() {
     let root = temp_project_root("paths-json");
     let state_home = temp_project_root("paths-json-state");
-    let resolved = ResolvedState::resolve_with_state_home(&root, &state_home)
-        .expect("resolved state")
-        .paths;
+    let resolved_state =
+        ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolved state");
+    let resolved = &resolved_state.paths;
     let expected_org_artifacts = resolved.artifacts_dir.join("org");
-    let expected_hook_state_dir = resolved
-        .workspace_dir
-        .join("live")
+    let expected_hook_dir = resolved_state
+        .state_home
         .join("hooks")
-        .join("state");
-    let expected_hook_cache_dir = resolved
-        .workspace_dir
-        .join("live")
-        .join("hooks")
-        .join("cache");
+        .join("projects")
+        .join(resolved_state.repo.repo_id.as_str())
+        .join("workspaces")
+        .join(resolved_state.workspace.workspace_id.as_str());
+    let expected_hook_state_dir = expected_hook_dir.join("state");
+    let expected_hook_cache_dir = expected_hook_dir.join("cache");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("ASP_STATE_HOME", &state_home)

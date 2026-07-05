@@ -4,13 +4,15 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::Instant;
 
-use super::{
-    OwnerItemsColdFunctionalScenario, SharedBenchmarkToml, asp_command,
-    duration_millis_from_manifest, prepend_path, provider_with_owner_items, read_toml,
-    temp_project_root, write_activation, write_provider_bin_config,
+use super::owner_items_cold::OwnerItemsColdFunctionalScenario;
+use super::runtime_gates::{duration_millis_from_manifest, read_toml};
+use super::shared::SharedBenchmarkToml;
+use crate::provider_command::support::{
+    asp_command, prepend_path, provider_with_owner_items, temp_project_root, write_activation,
+    write_provider_bin_config,
 };
 
-pub(super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
         .join("tests")
@@ -21,7 +23,7 @@ pub(super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
     assert_eq!(
         benchmark.route_source.as_deref(),
-        Some("owner-items-cache"),
+        Some("owner-items-dynamic"),
         "rust owner-items hot path benchmark must declare route_source"
     );
     assert_eq!(
@@ -64,7 +66,6 @@ pub(super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
     fs::set_permissions(&provider_path, permissions).expect("chmod provider");
     write_provider_bin_config(&root, "rust", &provider_path);
     write_activation(&root, &[provider_with_owner_items("rust", Vec::new())]);
-
     let command_args = [
         "rust",
         "search",
@@ -104,7 +105,10 @@ pub(super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("alg=rust-harness-owner-items"), "{stdout}");
+    assert!(
+        stdout.contains("alg=asp-dynamic-owner-items-v1"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("item:symbol(dynamic_owner_item_index)"),
         "{stdout}"
@@ -113,10 +117,9 @@ pub(super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
         !stdout.contains("read=crate/src/lib.rs:1:1"),
         "owner-items hot path must not expose executable line-range selectors: {stdout}"
     );
-    assert_eq!(
-        fs::read_to_string(&count_path).expect("provider count"),
-        "1",
-        "cached hot path must not spawn rust harness provider again"
+    assert!(
+        !count_path.exists(),
+        "dynamic owner-items hot path must not spawn rust harness provider"
     );
     let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
     assert!(
@@ -181,7 +184,7 @@ pub(super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
     let _ = fs::remove_dir_all(root);
 }
 
-pub(super) fn asp_org_owner_items_cold_functional_path_stays_inside_scenario_gate() {
+pub(in super::super) fn asp_org_owner_items_cold_functional_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
         .join("tests")
@@ -372,8 +375,13 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
+    let expected_alg = if spec.language_id == "rust" {
+        "asp-dynamic-owner-items-v1"
+    } else {
+        spec.alg
+    };
     assert!(
-        stdout.contains(&format!("alg={}", spec.alg)),
+        stdout.contains(&format!("alg={expected_alg}")),
         "stdout={stdout}"
     );
     assert!(
@@ -384,11 +392,18 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
         !stdout.contains(&format!("read={}:1:1", spec.owner_path)),
         "owner-items cold path must not expose executable line-range selectors: {stdout}"
     );
-    assert_eq!(
-        fs::read_to_string(&count_path).expect("provider count"),
-        "1",
-        "cold path must spawn exactly one language harness provider"
-    );
+    if spec.language_id == "rust" {
+        assert!(
+            !count_path.exists(),
+            "rust dynamic owner-items path must not spawn language harness provider"
+        );
+    } else {
+        assert_eq!(
+            fs::read_to_string(&count_path).expect("provider count"),
+            "1",
+            "cold path must spawn exactly one language harness provider"
+        );
+    }
     let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
     let max_stdout_bytes = benchmark.max_stdout_bytes.unwrap_or(4096);
     assert!(
@@ -435,7 +450,7 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
     let _ = fs::remove_dir_all(root);
 }
 
-pub(super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+pub(in super::super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
         .join("tests")
@@ -614,7 +629,7 @@ pub(super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_ga
     let _ = fs::remove_dir_all(root);
 }
 
-pub(super) fn asp_python_owner_items_cache_hot_path_stays_inside_scenario_gate() {
+pub(in super::super) fn asp_python_owner_items_cache_hot_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root
         .join("tests")

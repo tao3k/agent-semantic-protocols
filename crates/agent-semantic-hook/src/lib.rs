@@ -19,6 +19,7 @@ mod protocol;
 mod protocol_activation;
 mod provider_manifest;
 mod provider_registry;
+pub use provider_registry::registered_language_ids;
 mod runtime_profile;
 pub mod source_access;
 mod source_dump_range;
@@ -84,3 +85,8 @@ pub(crate) use tool_action::{
     OperationIntent, ToolAction, collect_tool_actions, payload_string, subject_for_action,
 };
 mod dev_context;
+mod read_only_subagent;
+pub use read_only_subagent::{
+    HookSubagentPermissionContext, classify_read_only_subagent_receipt,
+    classify_read_only_subagent_write,
+};

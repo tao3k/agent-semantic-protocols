@@ -52,7 +52,7 @@ fn fast_search_usage(language_id: &str, subcommand: Option<&str>) -> String {
             "usage: asp {language_id} search owner <owner-path> items --query <symbol-or-a|b|c> --view seeds\n\nRanks owner-local items for an LLM-generated symbol/API query-set."
         ),
         _ => format!(
-            "usage: asp {language_id} search <pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime> ...\n\nUse --help after a search subcommand for focused usage.\nsearch deps: current manifest dependency topology and dependency-owned next actions."
+            "usage: asp {language_id} search <pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide> ...\n\nUse --help after a search subcommand for focused usage.\nsearch deps: current manifest dependency topology and dependency-owned next actions."
         ),
     }
 }

@@ -1,0 +1,979 @@
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+use super::runtime_gates::{duration_literal, duration_millis_from_manifest, read_toml};
+use super::search_owner_source_index_gates::source_trace_metric_ms;
+use super::shared::SharedBenchmarkToml;
+use crate::provider_command::support::{
+    asp_command, prepend_path, provider, temp_project_root, write_activation, write_marker_provider,
+};
+
+fn refresh_source_index(root: &Path) {
+    let output = asp_command(root)
+        .args(["cache", "source-index", "refresh"])
+        .output()
+        .expect("run asp cache source-index refresh");
+    assert!(
+        output.status.success(),
+        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+pub(in super::super) fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_source_index_search_pipe_warm_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_source_index_query_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-source-index-search-pipe");
+    let bin_dir = root.join(".tmp").join("provider-bin");
+    let marker = root.join("provider-called");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-source-index-search-pipe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn source_index_fixture() {}\npub fn unrelated() {}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    refresh_source_index(&root);
+    let _ = fs::remove_file(&marker);
+
+    let language = agent_semantic_client::LanguageId::from("rust");
+    let cache_root = crate::provider_command::support::cache_root(&root);
+    let warmup_lookup = agent_semantic_client::lookup_source_index_in_client_cache_dir(
+        agent_semantic_client::SourceIndexClientCacheLookupRequest {
+            cache_root: &cache_root,
+            indexed_project_root: &root,
+            language_id: Some(&language),
+            query: "source_index_fixture",
+            limit: 256,
+        },
+    )
+    .expect("warm source index lookup");
+    assert_eq!(
+        warmup_lookup.state,
+        agent_semantic_client::SourceIndexLookupState::Hit
+    );
+
+    let lookup_started_at = Instant::now();
+    let lookup = agent_semantic_client::lookup_source_index_in_client_cache_dir(
+        agent_semantic_client::SourceIndexClientCacheLookupRequest {
+            cache_root: &cache_root,
+            indexed_project_root: &root,
+            language_id: Some(&language),
+            query: "source_index_fixture",
+            limit: 256,
+        },
+    )
+    .expect("lookup source index");
+    let lookup_elapsed = lookup_started_at.elapsed();
+    let lookup_duration = duration_literal(lookup_elapsed);
+    assert_eq!(
+        lookup.state,
+        agent_semantic_client::SourceIndexLookupState::Hit
+    );
+    assert!(
+        lookup
+            .candidates
+            .iter()
+            .any(|candidate| candidate.path == "src/lib.rs"),
+        "lookup candidates={:?}",
+        lookup.candidates
+    );
+    assert!(
+        lookup_elapsed.as_millis() <= max_total_ms,
+        "source-index warm lookup exceeded benchmark max_total={} observed={} candidates={:?}",
+        benchmark.max_total,
+        lookup_elapsed.as_millis(),
+        lookup.candidates
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "source_index_fixture|src/lib.rs",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search pipe");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    for expected in [
+        "[search-pipe]",
+        "queryPack=clauses=2",
+        "sourceTrace=sourceIndex:used",
+        "search-overlay:skipped",
+        "ownerCoverage=bestOwner=src/lib.rs",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "source-index search pipe scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        !marker.exists(),
+        "source-index warm search pipe should not spawn provider"
+    );
+
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-source-index-search-pipe-warm-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "rust",
+            "search",
+            "pipe",
+            "source_index_fixture|src/lib.rs",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds"
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "maxRenderDuration": benchmark.max_total,
+            "maxStdoutBytes": 8192,
+            "requireSourceIndexHit": true,
+            "allowedFirstRoutes": ["source-index"],
+            "forbiddenRoutes": ["prime", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": lookup_duration,
+            "providerProcessCount": 0,
+            "providerElapsed": "0us",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0us",
+            "sourceIndexHit": true,
+            "sourceIndexDuration": lookup_duration,
+            "firstRoute": "source-index",
+            "executedRoutes": ["source-index", "query-code"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": lookup_duration,
+            "stdoutBytes": stdout.len()
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-source-index-search-pipe-warm-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(in super::super) fn asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_gate()
+ {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_source_index_lookup_adapter_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_source_index_query_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-source-index-lookup-adapter-cold");
+    let bin_dir = root.join(".tmp").join("provider-bin");
+    let marker = root.join("provider-called");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-source-index-lookup-adapter-cold\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn source_index_lookup_adapter_fixture() {}\npub fn unrelated() {}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    refresh_source_index(&root);
+    let _ = fs::remove_file(&marker);
+
+    let language = agent_semantic_client::LanguageId::from("rust");
+    let cache_root = crate::provider_command::support::cache_root(&root);
+    let lookup_started_at = Instant::now();
+    let lookup = agent_semantic_search::lookup_source_index_in_client_cache_dir(
+        agent_semantic_search::SourceIndexClientCacheLookupRequest {
+            cache_root: &cache_root,
+            indexed_project_root: &root,
+            language_id: Some(&language),
+            query: "source_index_lookup_adapter_fixture",
+            limit: 256,
+        },
+    )
+    .expect("lookup source index through search adapter");
+    let lookup_elapsed = lookup_started_at.elapsed();
+    let lookup_ms = lookup_elapsed.as_millis();
+    assert_eq!(
+        lookup.state,
+        agent_semantic_client::SourceIndexLookupState::Hit
+    );
+    assert!(
+        lookup
+            .candidates
+            .iter()
+            .any(|candidate| candidate.path == "src/lib.rs"),
+        "lookup candidates={:?}",
+        lookup.candidates
+    );
+    assert!(
+        lookup
+            .candidates
+            .iter()
+            .all(|candidate| candidate.query_keys.iter().all(|key| !key.contains(":1:"))),
+        "source-index lookup adapter must not expose line-range identity in query keys; candidates={:?}",
+        lookup.candidates
+    );
+    assert!(
+        !marker.exists(),
+        "source-index lookup adapter cold functional gate must not spawn provider during lookup"
+    );
+    assert!(
+        lookup_ms <= max_total_ms,
+        "source-index lookup adapter cold functional path exceeded benchmark max_total={} observed={}ms candidates={:?}",
+        benchmark.max_total,
+        lookup_ms,
+        lookup.candidates
+    );
+
+    let lookup_duration = duration_literal(lookup_elapsed);
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-source-index-lookup-adapter-cold-functional-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "agent_semantic_search::lookup_source_index_in_client_cache_dir"
+        ],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "requireSourceIndexHit": true,
+            "allowedFirstRoutes": ["source-index"],
+            "forbiddenRoutes": ["prime", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": lookup_duration,
+            "providerProcessCount": 0,
+            "providerElapsed": "0us",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0us",
+            "sourceIndexHit": true,
+            "sourceIndexDuration": lookup_duration,
+            "firstRoute": "source-index",
+            "executedRoutes": ["source-index"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": lookup_duration,
+            "stdoutBytes": 0
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-source-index-lookup-adapter-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(in super::super) fn asp_query_wrapper_source_index_trace_projection_cold_functional_path_stays_inside_scenario_gate()
+ {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_query_wrapper_source_index_trace_projection_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_query_wrapper_source_index_trace_projection_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let started_at = Instant::now();
+    let hit = agent_semantic_search::QueryWrapperSearchSourceIndexTrace {
+        lookup: agent_semantic_search::QueryWrapperSourceIndexLookup::new(
+            PathBuf::from("live/client/client.turso"),
+            "hit",
+            Vec::new(),
+        ),
+        candidate_count: 2,
+        elapsed: std::time::Duration::from_micros(750),
+    };
+    let hit_projection = agent_semantic_search::query_wrapper_source_index_trace_projection(&hit);
+    let missing_db = agent_semantic_search::QueryWrapperSearchSourceIndexTrace {
+        lookup: agent_semantic_search::QueryWrapperSourceIndexLookup::new(
+            PathBuf::from("live/client/client.turso"),
+            "missing-db",
+            Vec::new(),
+        ),
+        candidate_count: 0,
+        elapsed: std::time::Duration::from_millis(3),
+    };
+    let missing_projection =
+        agent_semantic_search::query_wrapper_source_index_trace_projection(&missing_db);
+    let elapsed = started_at.elapsed();
+    let elapsed_ms = elapsed.as_millis();
+
+    assert_eq!(hit_projection.source, "sourceIndex");
+    assert_eq!(hit_projection.status, "used");
+    assert_eq!(hit_projection.candidate_count, 2);
+    assert_eq!(hit_projection.skipped_count, 0);
+    assert!(!hit_projection.fields.contains_key("nextCommand"));
+    assert_eq!(missing_projection.status, "missing-db");
+    assert_eq!(missing_projection.skipped_count, 1);
+    assert_eq!(
+        missing_projection.fields["nextCommand"],
+        serde_json::json!("asp cache source-index refresh")
+    );
+    assert!(
+        elapsed_ms <= max_total_ms,
+        "query-wrapper source-index trace projection cold functional path exceeded benchmark max_total={} observed={}ms",
+        benchmark.max_total,
+        elapsed_ms
+    );
+
+    let observed_total = duration_literal(elapsed);
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-query-wrapper-source-index-trace-projection-cold-functional-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "agent_semantic_search::query_wrapper_source_index_trace_projection"
+        ],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "requireSearchOwnedProjection": true,
+            "allowedFirstRoutes": ["query-wrapper-source-index-trace-projection"],
+            "forbiddenRoutes": ["command-local-source-index-status", "native-finder", "provider-process"],
+            "requireRefreshHintOnMiss": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "providerElapsed": "0us",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0us",
+            "hitStatus": hit_projection.status,
+            "missingDbStatus": missing_projection.status,
+            "missingDbNextCommand": missing_projection.fields["nextCommand"],
+            "firstRoute": "query-wrapper-source-index-trace-projection",
+            "executedRoutes": ["query-wrapper-source-index-trace-projection"],
+            "stdoutBytes": 0,
+            "fallbackReason": "none"
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-query-wrapper-source-index-trace-projection-cold-functional-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["hitStatus"], "used");
+    assert_eq!(
+        performance_gate["observed"]["missingDbNextCommand"],
+        "asp cache source-index refresh"
+    );
+}
+
+pub(in super::super) fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_rg_query_source_index_warm_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_source_index_query_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-rg-query-source-index");
+    let bin_dir = root.join(".tmp").join("provider-bin");
+    let marker = root.join("provider-called");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-rg-query-source-index\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn source_index_fixture() {}\npub fn unrelated() {}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    refresh_source_index(&root);
+    let _ = fs::remove_file(&marker);
+
+    let warm_output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["rg", "-query", "source_index_fixture", "--workspace", "."])
+        .output()
+        .expect("warm asp rg -query");
+    assert!(
+        warm_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&warm_output.stderr)
+    );
+    assert!(
+        !marker.exists(),
+        "source-index warm-up rg query should not spawn provider"
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["rg", "-query", "source_index_fixture", "--workspace", "."])
+        .output()
+        .expect("run asp rg -query");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    for expected in [
+        "[search-rg]",
+        "source=source-index",
+        "sourceTrace=sourceIndex:used",
+        "query-overlay:skipped",
+        "packages=src/lib.rs",
+        "nextCommand=asp fd -query source_index_fixture --workspace .",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "source-index rg query scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        !stdout.contains("sourceTrace=finder:used"),
+        "rg warm SourceIndex path must not collect through query overlay; stdout={stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "source-index warm rg query should not spawn provider"
+    );
+    let collect_ms = source_trace_metric_ms(&stdout, "collectMs");
+    assert!(
+        collect_ms <= max_total_ms,
+        "source-index warm rg query exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        collect_ms
+    );
+    let observed_total = format!("{collect_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-rg-query-source-index-warm-path",
+        "languageId": "query-wrapper",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "rg",
+            "-query",
+            "source_index_fixture",
+            "--workspace",
+            "."
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "maxRenderDuration": benchmark.max_total,
+            "maxStdoutBytes": 8192,
+            "requireSourceIndexHit": true,
+            "allowedFirstRoutes": ["source-index"],
+            "forbiddenRoutes": ["prime", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": false,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "providerElapsed": "0us",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0us",
+            "sourceIndexHit": true,
+            "sourceIndexDuration": observed_total,
+            "firstRoute": "source-index",
+            "executedRoutes": ["source-index", "fd-query"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": observed_total,
+            "stdoutBytes": stdout.len()
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-rg-query-source-index-warm-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(in super::super) fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_fd_query_source_index_warm_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    assert_source_index_query_benchmark_contract(&benchmark);
+
+    let root = temp_project_root("scenario-fd-query-source-index");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-fd-query-source-index\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn source_index_fixture() {}\npub fn unrelated() {}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    refresh_source_index(&root);
+    let _ = fs::remove_file(&marker);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["fd", "-query", "source_index_fixture", "--workspace", "."])
+        .output()
+        .expect("run asp fd -query");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    for expected in [
+        "[search-fd]",
+        "source=source-index",
+        "sourceTrace=sourceIndex:used",
+        "query-overlay:skipped",
+        "src/lib.rs",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "source-index fd query scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        !stdout.contains("sourceTrace=finder:used"),
+        "fd warm SourceIndex path must not collect through query overlay; stdout={stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "source-index warm fd query should not spawn provider"
+    );
+    let collect_ms = source_trace_metric_ms(&stdout, "collectMs");
+    assert!(
+        collect_ms <= max_total_ms,
+        "source-index warm fd query exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        collect_ms
+    );
+    let observed_total = format!("{collect_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-fd-query-source-index-warm-path",
+        "languageId": "query-wrapper",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "fd",
+            "-query",
+            "source_index_fixture",
+            "--workspace",
+            "."
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "maxRenderDuration": benchmark.max_total,
+            "maxStdoutBytes": 8192,
+            "requireSourceIndexHit": true,
+            "allowedFirstRoutes": ["source-index"],
+            "forbiddenRoutes": ["prime", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": false,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "providerElapsed": "0us",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0us",
+            "sourceIndexHit": true,
+            "sourceIndexDuration": observed_total,
+            "firstRoute": "source-index",
+            "executedRoutes": ["source-index", "owner-items"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": observed_total,
+            "stdoutBytes": stdout.len()
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-fd-query-source-index-warm-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(in super::super) fn asp_rg_query_source_index_miss_skips_search_overlay_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_rg_query_source_index_miss_warm_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    assert_source_index_query_benchmark_contract(&benchmark);
+
+    let root = temp_project_root("scenario-rg-query-source-index-miss");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-rg-query-source-index-miss\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn source_index_fixture() {}\npub fn unrelated() {}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    refresh_source_index(&root);
+    let _ = fs::remove_file(&marker);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["rg", "-query", "missing_symbol", "--workspace", "."])
+        .output()
+        .expect("run asp rg -query source-index miss");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    for expected in [
+        "noOutput reason=source-index-miss",
+        "sourceTrace=sourceIndex:miss",
+        "query-overlay:skipped",
+        "nextCommand=asp cache source-index refresh",
+        "refineHint=SourceIndex miss",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "source-index miss scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        !stdout.contains("sourceTrace=finder:used"),
+        "rg SourceIndex miss must not fall back to query overlay in an indexed workspace; stdout={stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "source-index miss should not spawn provider"
+    );
+    let collect_ms = source_trace_metric_ms(&stdout, "collectMs");
+    assert!(
+        collect_ms <= max_total_ms,
+        "source-index warm rg miss exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        collect_ms
+    );
+    let observed_total = format!("{collect_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-rg-query-source-index-miss-warm-path",
+        "languageId": "query-wrapper",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "rg",
+            "-query",
+            "missing_symbol",
+            "--workspace",
+            "."
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "maxRenderDuration": benchmark.max_total,
+            "maxStdoutBytes": 8192,
+            "requireSourceIndexLookup": true,
+            "allowedFirstRoutes": ["source-index"],
+            "forbiddenRoutes": ["prime", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": false,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "providerElapsed": "0us",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0us",
+            "sourceIndexState": "miss",
+            "sourceIndexDuration": observed_total,
+            "firstRoute": "source-index",
+            "executedRoutes": ["source-index"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": observed_total,
+            "stdoutBytes": stdout.len()
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-rg-query-source-index-miss-warm-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["sourceIndexState"], "miss");
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+pub(in super::super) fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_lexical_source_index_warm_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_source_index_query_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-lexical-source-index");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-lexical-source-index\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn source_index_fixture() {}\npub fn unrelated() {}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    refresh_source_index(&root);
+    let _ = fs::remove_file(&marker);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "lexical",
+            "source_index_fixture",
+            "owner",
+            "items",
+            "tests",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search lexical");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    for expected in [
+        "[search-lexical]",
+        "source=source-index",
+        "sourceTrace=sourceIndex:used",
+        "search-overlay:skipped",
+        "O=owner:path(src/lib.rs)",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "source-index lexical scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        !stdout.contains("sourceTrace=finder:used"),
+        "lexical warm SourceIndex path must not collect through search overlay; stdout={stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "source-index warm lexical should not spawn provider"
+    );
+    let collect_ms = source_trace_metric_ms(&stdout, "collectMs");
+    assert!(
+        collect_ms <= max_total_ms,
+        "source-index warm lexical exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        collect_ms
+    );
+    let observed_total = format!("{collect_ms}ms");
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-lexical-source-index-warm-path",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "rust",
+            "search",
+            "lexical",
+            "source_index_fixture",
+            "owner",
+            "items",
+            "tests",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds"
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxSearchOverlayProcessCount": 0,
+            "maxRenderDuration": benchmark.max_total,
+            "maxStdoutBytes": 8192,
+            "requireSourceIndexHit": true,
+            "allowedFirstRoutes": ["source-index"],
+            "forbiddenRoutes": ["prime", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": false,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "providerElapsed": "0us",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0us",
+            "sourceIndexHit": true,
+            "sourceIndexDuration": observed_total,
+            "firstRoute": "source-index",
+            "executedRoutes": ["source-index", "owner-items", "tests"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": observed_total,
+            "stdoutBytes": stdout.len()
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-lexical-source-index-warm-path"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["sourceIndexHit"], true);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    let _ = fs::remove_dir_all(root);
+}
+
+fn assert_source_index_query_benchmark_contract(benchmark: &SharedBenchmarkToml) {
+    assert_eq!(benchmark.route_source.as_deref(), Some("source-index"));
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(8192));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
+fn assert_query_wrapper_source_index_trace_projection_benchmark_contract(
+    benchmark: &SharedBenchmarkToml,
+) {
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("query-wrapper-source-index-trace-projection")
+    );
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}

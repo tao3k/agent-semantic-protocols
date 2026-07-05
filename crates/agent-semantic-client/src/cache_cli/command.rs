@@ -55,11 +55,11 @@ pub(crate) fn run_cache(
                 checkout.state_namespace,
                 checkout.checkout,
                 checkout.index_owner,
-                source_index_report.generation_id,
-                source_index_report.reused_generation,
-                source_index_report.file_count,
-                source_index_report.owner_count,
-                source_index_report.selector_count
+                source_index_report.generation_id(),
+                source_index_report.reused_generation(),
+                source_index_report.file_count(),
+                source_index_report.owner_count(),
+                source_index_report.selector_count()
             );
             println!(
                 "|sourceRef manager=git repository={} checkout={}",
@@ -72,9 +72,9 @@ pub(crate) fn run_cache(
             );
             println!(
                 "|sourceIndex db={} generation={} reused={} projectRoot={} rawSourceStored=false",
-                source_index_report.db_path.display(),
-                source_index_report.generation_id,
-                source_index_report.reused_generation,
+                source_index_report.db_path().display(),
+                source_index_report.generation_id(),
+                source_index_report.reused_generation(),
                 checkout.checkout_dir.display()
             );
             println!("next=asp cache import");
@@ -92,12 +92,12 @@ pub(crate) fn run_cache(
                     "checkoutDir": checkout.checkout_dir.display().to_string(),
                     "sourceIndex": {
                         "status": "refreshed",
-                        "dbPath": source_index_report.db_path.display().to_string(),
-                        "generationId": source_index_report.generation_id.to_string(),
-                        "reused": source_index_report.reused_generation,
-                        "fileCount": source_index_report.file_count,
-                        "ownerCount": source_index_report.owner_count,
-                        "selectorCount": source_index_report.selector_count,
+                        "dbPath": source_index_report.db_path().display().to_string(),
+                        "generationId": source_index_report.generation_id().to_string(),
+                        "reused": source_index_report.reused_generation(),
+                        "fileCount": source_index_report.file_count(),
+                        "ownerCount": source_index_report.owner_count(),
+                        "selectorCount": source_index_report.selector_count(),
                         "rawSourceStored": false,
                         "projectRoot": checkout.checkout_dir.display().to_string()
                     },
@@ -119,7 +119,7 @@ pub(crate) fn run_cache(
             let db_engine_available = db_engine_report.is_some();
             let active_db_report = db_engine_report
                 .as_ref()
-                .map(|report| ClientDbEngine::inspect_client_dir(&report.client_dir));
+                .map(|report| ClientDbEngine::inspect_client_dir(report.client_dir()));
             let mut receipt = ClientReceipt::cache_status(provenance, &cache_report);
             if let Some(db_engine_report) = &db_engine_report {
                 apply_db_engine_report_to_receipt(&mut receipt, db_engine_report);
@@ -208,16 +208,17 @@ pub(crate) fn run_cache(
             }
             Ok(())
         }
-        [subcommand, action] if subcommand == "source-index" && action == "refresh" => {
-            let report = refresh_source_index(project_root)?;
+        [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "refresh" => {
+            let refresh_project_root = parse_cache_workspace(project_root, rest)?;
+            let report = refresh_source_index(&refresh_project_root)?;
             println!(
                 "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} reused={} files={} owners={} selectors={} rawSourceStored=false indexOwner={}",
-                report.db_path.display(),
-                report.generation_id,
-                report.reused_generation,
-                report.file_count,
-                report.owner_count,
-                report.selector_count,
+                report.db_path().display(),
+                report.generation_id(),
+                report.reused_generation(),
+                report.file_count(),
+                report.owner_count(),
+                report.selector_count(),
                 source_index_refresh_index_owner()
             );
             println!(
@@ -230,12 +231,12 @@ pub(crate) fn run_cache(
                     "schemaVersion": "1",
                     "status": "refreshed",
                     "route": "local-cache",
-                    "dbPath": report.db_path,
-                    "generationId": report.generation_id,
-                    "reused": report.reused_generation,
-                    "fileCount": report.file_count,
-                    "ownerCount": report.owner_count,
-                    "selectorCount": report.selector_count,
+                    "dbPath": report.db_path().display().to_string(),
+                    "generationId": report.generation_id().to_string(),
+                    "reused": report.reused_generation(),
+                    "fileCount": report.file_count(),
+                    "ownerCount": report.owner_count(),
+                    "selectorCount": report.selector_count(),
                     "rawSourceStored": false,
                     "indexOwner": source_index_refresh_index_owner()
                 });
@@ -425,10 +426,35 @@ pub(crate) fn run_cache(
             Ok(())
         }
         _ => Err(
-            "usage: asp cache <status|import|source-index refresh|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--root <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
+            "usage: asp cache <status|import|source-index refresh [--workspace <path>]|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--workspace <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
                 .to_string(),
         ),
     }
+}
+
+fn parse_cache_workspace(project_root: &Path, args: &[String]) -> Result<PathBuf, String> {
+    let mut workspace = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--workspace" => workspace = Some(next_flag_value("--workspace", &mut iter)?),
+            other => {
+                return Err(format!(
+                    "unexpected cache source-index refresh argument: {other}"
+                ));
+            }
+        }
+    }
+    Ok(workspace
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                project_root.join(path)
+            }
+        })
+        .unwrap_or_else(|| project_root.to_path_buf()))
 }
 
 struct SourceIndexLookupSpec {
@@ -631,15 +657,15 @@ fn print_db_engine_status(engine_report: Option<&ClientDbEngineReport>) {
     if let Some(engine_report) = engine_report {
         println!(
             "|dbEngine backend={} layoutVersion={} repoId={} workspaceId={} scopeId={} clientDir={} manifestPath={} dbPath={} artifactPath={}",
-            engine_report.backend,
-            engine_report.layout_version,
-            engine_report.repo_id,
-            engine_report.workspace_id,
-            engine_report.scope_id,
-            engine_report.client_dir.display(),
-            engine_report.manifest_path.display(),
-            engine_report.db_path.display(),
-            engine_report.artifact_path.display()
+            engine_report.backend(),
+            engine_report.layout_version(),
+            engine_report.repo_id(),
+            engine_report.workspace_id(),
+            engine_report.scope_id(),
+            engine_report.client_dir().display(),
+            engine_report.manifest_path().display(),
+            engine_report.db_path().display(),
+            engine_report.artifact_path().display()
         );
     } else {
         println!(
@@ -727,7 +753,7 @@ fn apply_db_engine_report_to_receipt(
     engine_report: &ClientDbEngineReport,
 ) {
     receipt.db_engine = Some(db_engine_receipt(engine_report));
-    let active_report = ClientDbEngine::inspect_client_dir(&engine_report.client_dir);
+    let active_report = ClientDbEngine::inspect_client_dir(engine_report.client_dir());
     apply_db_report_to_receipt(receipt, &active_report);
 }
 
@@ -748,27 +774,27 @@ fn apply_project_db_report_to_receipt(
 
 fn db_engine_receipt(engine_report: &ClientDbEngineReport) -> ClientDbEngineReceipt {
     ClientDbEngineReceipt {
-        backend: ClientDbBackend::from(engine_report.backend),
-        layout_version: ClientStateLayoutVersion::from(engine_report.layout_version),
-        db_file_name: ClientDbFileName::from(engine_report.db_file_name),
-        schema_version: engine_report.schema_version,
-        durability: ClientDbEngineDurability::from(engine_report.durability),
+        backend: ClientDbBackend::from(engine_report.backend()),
+        layout_version: ClientStateLayoutVersion::from(engine_report.layout_version()),
+        db_file_name: ClientDbFileName::from(engine_report.db_file_name()),
+        schema_version: engine_report.schema_version(),
+        durability: ClientDbEngineDurability::from(engine_report.durability()),
         features: ClientDbEngineFeaturesReceipt {
-            async_io: engine_report.features.async_io,
-            concurrent_writes: engine_report.features.concurrent_writes,
-            fts: engine_report.features.fts,
-            vector: engine_report.features.vector,
-            overlay_search: engine_report.features.overlay_search,
-            sync: engine_report.features.sync,
-            encryption: engine_report.features.encryption,
+            async_io: engine_report.features().async_io(),
+            concurrent_writes: engine_report.features().concurrent_writes(),
+            fts: engine_report.features().fts(),
+            vector: engine_report.features().vector(),
+            overlay_search: engine_report.features().overlay_search(),
+            sync: engine_report.features().sync(),
+            encryption: engine_report.features().encryption(),
         },
-        client_dir: ClientCachePath::from_path(&engine_report.client_dir),
-        db_path: ClientCachePath::from_path(&engine_report.db_path),
-        manifest_path: ClientCachePath::from_path(&engine_report.manifest_path),
-        artifact_path: ClientCachePath::from_path(&engine_report.artifact_path),
-        repo_id: ClientRepoId::from(engine_report.repo_id.clone()),
-        workspace_id: ClientWorkspaceId::from(engine_report.workspace_id.clone()),
-        scope_id: ClientScopeId::from(engine_report.scope_id.clone()),
+        client_dir: ClientCachePath::from_path(engine_report.client_dir()),
+        db_path: ClientCachePath::from_path(engine_report.db_path()),
+        manifest_path: ClientCachePath::from_path(engine_report.manifest_path()),
+        artifact_path: ClientCachePath::from_path(engine_report.artifact_path()),
+        repo_id: ClientRepoId::from(engine_report.repo_id().to_string()),
+        workspace_id: ClientWorkspaceId::from(engine_report.workspace_id().to_string()),
+        scope_id: ClientScopeId::from(engine_report.scope_id().to_string()),
     }
 }
 

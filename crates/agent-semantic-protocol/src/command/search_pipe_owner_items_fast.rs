@@ -1,23 +1,28 @@
 //! ASP-owned fast path for `search owner <path> items`.
 
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use super::graph::GraphTurboReceiptRequest;
 use super::language_owner_items::{
     LanguageOwnerItemsDispatchRequest, dispatch_language_owner_items,
 };
+use super::query_owner::{OwnerItem, collect_syn_rust_owner_items};
 use super::search_config::AspConfig;
-use super::search_pipe_args::parse_search_owner_items_query_args;
+use super::search_pipe_args::{OwnerQueryArgs, parse_search_owner_items_query_args};
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_view::reject_non_graph_turbo_receipt;
 use agent_semantic_client::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_items_workspace_root,
     run_language_owner_items_dispatch_plan,
 };
+use agent_semantic_runtime::language_owner_source_path;
 use agent_semantic_search::{
-    OwnerItemsSourceIndexTraceRender, OwnerItemsSourceIndexTraceStream,
-    owner_items_source_index_trace,
+    DynamicOwnerItem, DynamicOwnerItemsRequest, DynamicOwnerPath, DynamicOwnerQuery,
+    DynamicSearchLanguage, DynamicSearchRoots, render_dynamic_owner_items_code,
+    render_dynamic_owner_items_frontier,
 };
 
 pub(super) struct SearchOwnerItemsFastContext<'a> {
@@ -38,6 +43,7 @@ struct OwnerItemsSearchState<'a> {
     config: &'a AspConfig,
     provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     owner: &'a Path,
+    locator_root: &'a Path,
 }
 
 impl<'a> OwnerItemsSearchState<'a> {
@@ -55,7 +61,33 @@ impl<'a> OwnerItemsSearchState<'a> {
             config: context.config,
             provider_context: context.provider_context,
             owner,
+            locator_root: context.locator_root,
         }
+    }
+
+    fn try_dynamic_owner_items(&self, owner_query_args: &OwnerQueryArgs) -> Result<bool, String> {
+        let Some(collector) = dynamic_owner_item_collector(self.language_id) else {
+            return Ok(false);
+        };
+        let owner_path = language_owner_source_path(&self.owner_project_root, self.owner);
+        let dynamic_items = collector(&owner_path)?;
+        if dynamic_items.is_empty() {
+            return Ok(false);
+        }
+        let request = DynamicOwnerItemsRequest {
+            language: DynamicSearchLanguage::new(self.language_id),
+            roots: DynamicSearchRoots::new(&self.owner_project_root, self.locator_root),
+            owner: DynamicOwnerPath::new(self.owner),
+            query: DynamicOwnerQuery::new(&owner_query_args.query),
+            items: &dynamic_items,
+        };
+        let output = if owner_query_args.view == "hits" {
+            render_dynamic_owner_items_code(request)
+        } else {
+            render_dynamic_owner_items_frontier(request)
+        };
+        print!("{output}");
+        Ok(true)
     }
 
     fn try_provider(&self) -> Result<LanguageOwnerItemsAttempt, String> {
@@ -74,127 +106,8 @@ impl<'a> OwnerItemsSearchState<'a> {
     }
 }
 
-fn emit_source_index_trace(state: &OwnerItemsSearchState<'_>) -> Result<(), String> {
-    if let Some(trace) = owner_items_source_index_trace(&state.owner_project_root, state.owner)? {
-        let mut stdout = io::stdout().lock();
-        let mut stderr = io::stderr().lock();
-        let mut trace = trace.render();
-        append_source_index_search_frame_receipt(
-            &mut trace.line,
-            state.args,
-            state.language_id,
-            &state.owner_project_root,
-            state.owner,
-        );
-        write_source_index_trace(trace, &mut stdout, &mut stderr)?;
-    }
+fn emit_source_index_trace(_state: &OwnerItemsSearchState<'_>) -> Result<(), String> {
     Ok(())
-}
-
-fn append_source_index_search_frame_receipt(
-    line: &mut String,
-    args: &[String],
-    language_id: &str,
-    owner_project_root: &Path,
-    owner: &Path,
-) {
-    let owner = owner
-        .strip_prefix(owner_project_root)
-        .unwrap_or(owner)
-        .to_string_lossy()
-        .replace('\\', "/");
-    let workspace = search_owner_items_workspace(args)
-        .map(|workspace| workspace.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|| ".".to_string());
-    let item_query = search_owner_items_query(args).unwrap_or("*");
-    let view = search_owner_items_view(args).unwrap_or("seeds");
-    let rerun_command = format!(
-        "asp {} search owner {} items --query {} --workspace {} --view {}",
-        language_id,
-        shell_arg(&owner),
-        shell_arg(item_query),
-        shell_arg(&workspace),
-        shell_arg(view)
-    );
-    let source_trace = format!("source-index:{owner}");
-    let where_frame = format!("owner:{owner}");
-    let (recommended_next, action_frontier, how_frame, next_command) =
-        if line.contains("status=busy") {
-            (
-                "retry-source-index-lookup",
-                "retry-source-index-lookup,owner-items-dispatch",
-                "bounded-retry",
-                rerun_command,
-            )
-        } else if line.contains("status=missing-db") || line.contains("status=empty-index") {
-            (
-                "refresh-source-index",
-                "refresh-source-index,owner-items-dispatch",
-                "refresh-cache-then-search",
-                "asp cache source-index refresh --workspace .".to_string(),
-            )
-        } else if line.contains("status=hit") {
-            (
-                "search-owner-items",
-                "search-owner-items,query-exact-selector",
-                "owner-items-search",
-                rerun_command,
-            )
-        } else {
-            (
-                "search-owner-items",
-                "search-owner-items,revise-owner",
-                "owner-items-search",
-                rerun_command,
-            )
-        };
-    line.push_str(&format!(
-        " nextCommand={} recommendedNext={recommended_next} actionFrontier={action_frontier} sourceTrace={} avoid=inline-code-in-search,raw-read,repeat-owner whereFrame={} howFrame={how_frame}",
-        quote_search_frame_value(&next_command),
-        quote_search_frame_value(&source_trace),
-        quote_search_frame_value(&where_frame)
-    ));
-}
-
-fn search_owner_items_query(args: &[String]) -> Option<&str> {
-    flag_value(args, "--query").or_else(|| flag_value(args, "-q"))
-}
-
-fn search_owner_items_view(args: &[String]) -> Option<&str> {
-    flag_value(args, "--view")
-}
-
-fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
-    let mut index = 0;
-    while index < args.len() {
-        if args[index] == flag {
-            return args.get(index + 1).map(String::as_str);
-        }
-        index += 1;
-    }
-    None
-}
-
-fn shell_arg(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\"'\"'"))
-}
-
-fn quote_search_frame_value(value: &str) -> String {
-    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-fn write_source_index_trace(
-    trace: OwnerItemsSourceIndexTraceRender,
-    stdout: &mut dyn Write,
-    stderr: &mut dyn Write,
-) -> Result<LanguageOwnerItemsAttempt, String> {
-    match trace.stream {
-        OwnerItemsSourceIndexTraceStream::Stdout => writeln!(stdout, "{}", trace.line)
-            .map_err(|error| format!("failed to write source-index hit: {error}"))?,
-        OwnerItemsSourceIndexTraceStream::Stderr => writeln!(stderr, "{}", trace.line)
-            .map_err(|error| format!("failed to write source-index trace: {error}"))?,
-    }
-    Ok(LanguageOwnerItemsAttempt::Unsupported)
 }
 
 pub(super) fn run_search_owner_items_query_command(
@@ -210,6 +123,9 @@ pub(super) fn run_search_owner_items_query_command(
     }
     let state = OwnerItemsSearchState::new(args, context, &owner_query_args.owner);
     emit_source_index_trace(&state)?;
+    if state.try_dynamic_owner_items(&owner_query_args)? {
+        return Ok(());
+    }
     run_language_owner_items_dispatch_plan(LanguageOwnerItemsDispatchPlan {
         language_id: state.language_id,
         owner: state.owner,
@@ -228,4 +144,34 @@ fn search_owner_items_workspace(args: &[String]) -> Option<PathBuf> {
         index += 1;
     }
     None
+}
+
+type DynamicOwnerItemCollector = fn(&Path) -> Result<Vec<DynamicOwnerItem>, String>;
+
+fn dynamic_owner_item_collector(language_id: &str) -> Option<DynamicOwnerItemCollector> {
+    match language_id {
+        "rust" => Some(collect_dynamic_rust_owner_items),
+        _ => None,
+    }
+}
+
+fn collect_dynamic_rust_owner_items(owner_path: &Path) -> Result<Vec<DynamicOwnerItem>, String> {
+    let source = match fs::read_to_string(owner_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!(
+                "failed to read Rust owner {}: {error}",
+                owner_path.display()
+            ));
+        }
+    };
+    Ok(collect_syn_rust_owner_items(&source, owner_path)?
+        .iter()
+        .map(dynamic_owner_item_from_query_owner_item)
+        .collect())
+}
+
+fn dynamic_owner_item_from_query_owner_item(item: &OwnerItem) -> DynamicOwnerItem {
+    DynamicOwnerItem::new(item.name(), item.kind(), item.start_line(), item.end_line())
 }
