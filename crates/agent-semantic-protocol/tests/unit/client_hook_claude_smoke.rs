@@ -999,6 +999,7 @@ fn show_agent_session_json(root: &Path, child_session_id: &str) -> Value {
         .current_dir(root)
         .env("PATH", prepend_path(&root.join(".bin")))
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env("ASP_NO_AGENT_PLATFORM", "1")
         .env_remove("PRJ_CACHE_HOME")
         .output()
         .expect("show agent session");

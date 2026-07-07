@@ -149,7 +149,7 @@ fn nl_sed_pipeline_over_python_source_routes_to_python_by_extension_match() {
     assert_eq!(decision.reason_kind, ReasonKind::BulkSourceDump);
     assert_eq!(decision.language_ids, ["python".to_string()]);
     assert_eq!(decision.routes[0].provider_id, "py-harness");
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.subject.command.as_deref(), Some(command.as_str()));
     assert!(
         decision.subject.paths.iter().any(|path| path == &source),
@@ -299,7 +299,7 @@ fn assert_shell_source_dump_denied(name: &str, command: &str, expected_path: &st
 
     assert_eq!(decision.decision, DecisionKind::Deny, "{name}");
     assert_eq!(decision.reason_kind, ReasonKind::BulkSourceDump, "{name}");
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query, "{name}");
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner, "{name}");
     assert_eq!(decision.subject.command.as_deref(), Some(command), "{name}");
     assert!(
         decision

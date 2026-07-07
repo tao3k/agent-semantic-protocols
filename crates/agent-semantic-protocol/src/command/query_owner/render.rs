@@ -4,28 +4,57 @@ use std::path::Path;
 use super::item::OwnerItem;
 use super::request::{OwnerItemQuery, OwnerQueryRequest};
 
-pub(super) fn render_code_matches(source: &str, matches: &[&OwnerItem]) -> Result<(), String> {
-    let mut stdout = io::stdout();
+pub(super) fn format_code_matches(source: &str, matches: &[&OwnerItem]) -> String {
+    let mut rendered = String::new();
     for (index, item) in matches.iter().enumerate() {
         if index > 0 {
-            stdout
-                .write_all(b"\n")
-                .map_err(|error| format!("failed to write owner query stdout: {error}"))?;
+            rendered.push('\n');
         }
-        stdout
-            .write_all(select_line_range(source, item.start_line, item.end_line).as_bytes())
-            .map_err(|error| format!("failed to write owner query stdout: {error}"))?;
+        rendered.push_str(&select_line_range(source, item.start_line, item.end_line));
     }
-    Ok(())
+    rendered
 }
 
-pub(super) fn render_full_source(source: &str) -> Result<(), String> {
+pub(super) fn render_empty_code_match_error(
+    request: &OwnerQueryRequest,
+    item_query: &OwnerItemQuery,
+    path: &Path,
+    project_root: &Path,
+    locator_root: &Path,
+    same_name_kinds: &[&str],
+) -> Result<(), String> {
+    let display_path = display_relative_path(path, project_root, locator_root)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let selector_kind = item_query.kind().unwrap_or("any");
+    let (state, reason, actual_kinds) = if same_name_kinds.is_empty() {
+        ("not-found", "item-not-found", String::new())
+    } else {
+        (
+            "kind-mismatch",
+            "item-kind-mismatch",
+            format!(" actualKinds={}", same_name_kinds.join(",")),
+        )
+    };
+    Err(format!(
+        "exact selector matched no owner item: ownerPath={display_path} itemQuery={} selectorKind={selector_kind} state={state} reason={reason}{actual_kinds} recommendedNext=asp {} search owner {display_path} items --query {} --workspace . --view seeds",
+        item_query.term(),
+        request.language_id,
+        item_query.term()
+    ))
+}
+
+pub(super) fn write_owner_query_stdout(rendered: &str) -> Result<(), String> {
     io::stdout()
-        .write_all(source.as_bytes())
+        .write_all(rendered.as_bytes())
         .map_err(|error| format!("failed to write owner query stdout: {error}"))
 }
 
-pub(super) fn render_locator_matches(
+pub(super) fn format_full_source(source: &str) -> String {
+    source.to_string()
+}
+
+pub(super) fn format_locator_matches(
     request: &OwnerQueryRequest,
     item_query: &OwnerItemQuery,
     path: &Path,
@@ -33,7 +62,7 @@ pub(super) fn render_locator_matches(
     locator_root: &Path,
     line_count: usize,
     matches: &[&OwnerItem],
-) -> Result<(), String> {
+) -> String {
     let output = if request.names_only {
         "names"
     } else {
@@ -82,27 +111,25 @@ pub(super) fn render_locator_matches(
                 matches.len()
             ));
     }
-    io::stdout()
-        .write_all(rendered.as_bytes())
-        .map_err(|error| format!("failed to write owner query stdout: {error}"))
+    rendered
 }
 
-pub(super) fn render_non_source_owner_query(
+pub(super) fn format_non_source_owner_query(
     request: &OwnerQueryRequest,
     item_query: &OwnerItemQuery,
     path: &Path,
     project_root: &Path,
     locator_root: &Path,
     source: &str,
-) -> Result<(), String> {
+) -> Result<String, String> {
     if item_query.is_code_projection() {
         if source_contains_owner_term(source, item_query.term()) {
-            render_full_source(source)
+            Ok(format_full_source(source))
         } else {
-            render_code_matches(source, &[])
+            Ok(format_code_matches(source, &[]))
         }
     } else {
-        render_locator_matches(
+        Ok(format_locator_matches(
             request,
             item_query,
             path,
@@ -110,7 +137,7 @@ pub(super) fn render_non_source_owner_query(
             locator_root,
             source.lines().count(),
             &[],
-        )
+        ))
     }
 }
 
@@ -209,9 +236,9 @@ fn quote_search_frame_value(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-pub(super) fn render_unresolved_owner_query(request: &OwnerQueryRequest) -> Result<(), String> {
+pub(super) fn format_unresolved_owner_query(request: &OwnerQueryRequest) -> Result<String, String> {
     let Some(item_query) = request.item_query() else {
-        return Ok(());
+        return Ok(String::new());
     };
     if item_query.is_code_projection() {
         let display_path = request.owner_path.to_string_lossy().replace('\\', "/");
@@ -233,9 +260,7 @@ pub(super) fn render_unresolved_owner_query(request: &OwnerQueryRequest) -> Resu
         item_query.term(),
         item_query.term()
     );
-    io::stdout()
-        .write_all(rendered.as_bytes())
-        .map_err(|error| format!("failed to write owner query stdout: {error}"))
+    Ok(rendered)
 }
 
 fn select_line_range(source: &str, start: usize, end: usize) -> String {

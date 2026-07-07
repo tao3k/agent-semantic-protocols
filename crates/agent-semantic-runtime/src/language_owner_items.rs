@@ -185,7 +185,9 @@ pub fn resolve_language_owner_items_runtime_outcome(
     existing_owner_path: bool,
     provider_output: Option<LanguageOwnerItemsProviderOutput<'_>>,
 ) -> Result<LanguageOwnerItemsRuntimeOutcome, String> {
-    if let Some(cached) = read_language_owner_items_cache(request)? {
+    if let Some(cached) = read_language_owner_items_cache(request)?
+        && language_owner_items_stdout_supported(&cached)
+    {
         return Ok(LanguageOwnerItemsRuntimeOutcome::Handled {
             stdout: cached,
             stderr: Vec::new(),
@@ -226,6 +228,19 @@ pub fn resolve_language_owner_items_runtime_outcome(
         ));
     }
     let stdout = compact_language_owner_items_stdout(output.stdout);
+    if !language_owner_items_stdout_supported(&stdout) {
+        if !existing_owner_path {
+            return Ok(LanguageOwnerItemsRuntimeOutcome::Unsupported);
+        }
+        return Ok(LanguageOwnerItemsRuntimeOutcome::Failed(
+            language_owner_items_failure(
+                "provider-owned owner-items produced non-owner-items output",
+                request.owner,
+                output.stderr,
+                existing_owner_path,
+            ),
+        ));
+    }
     let mut stderr = output.stderr.to_vec();
     if let Err(error) = write_language_owner_items_cache(request, stdout.as_ref()) {
         if !stderr.is_empty() && !stderr.ends_with(b"\n") {
@@ -293,6 +308,20 @@ pub fn compact_language_owner_items_stdout(stdout: &[u8]) -> Vec<u8> {
             rendered
         })
         .into_bytes()
+}
+
+fn language_owner_items_stdout_supported(stdout: &[u8]) -> bool {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .any(language_owner_items_line_supported)
+}
+
+fn language_owner_items_line_supported(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("[search-owner]")
+        || line.starts_with("[gerbil-owner-items]")
+        || line.starts_with("|item ")
+        || line.starts_with("I=item:")
 }
 
 /// Render a compact failure packet for language harness `owner-items`.

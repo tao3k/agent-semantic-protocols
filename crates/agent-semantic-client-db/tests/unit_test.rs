@@ -8,3 +8,7 @@ mod db_engine;
 mod db_engine_provider_command;
 #[path = "unit/db/engine_source_index.rs"]
 mod db_engine_source_index;
+#[path = "unit/env.rs"]
+mod env;
+#[path = "unit/db/source_index_refresh_perf.rs"]
+mod source_index_refresh_perf;

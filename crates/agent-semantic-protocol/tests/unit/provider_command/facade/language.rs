@@ -105,7 +105,7 @@ fn language_facade_rejects_unsupported_language_without_unrelated_provider_recov
     );
     assert!(
         stderr.contains(
-            "Known language facades: rust|typescript|python|julia|gerbil-scheme|org|md."
+            "Known language facades: gerbil-scheme|julia|md|org|python|rust|typescript."
         ),
         "{stderr}"
     );
@@ -274,6 +274,99 @@ fn language_facade_selects_matching_provider_from_activation() {
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
         "ts args=[check][--changed]\n"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn registered_language_search_pipe_selector_gate_rejects_non_executable_selectors() {
+    let root = temp_project_root("registered-language-selector-gate");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    let marker = root.join("provider-called");
+    crate::provider_command::support::write_marker_provider(&bin_dir, "rs-harness", &marker);
+    crate::provider_command::support::write_marker_provider(&bin_dir, "ts-harness", &marker);
+    let language_cases = [
+        ("rust", "src/lib.rs:1:5", "rust://src/lib.rs#item/symbol/vec"),
+        (
+            "typescript",
+            "src/index.ts:1:5",
+            "typescript://src/index.ts#item/symbol/render",
+        ),
+        (
+            "python",
+            "src/main.py:1:5",
+            "python://src/main.py#item/symbol/render",
+        ),
+        (
+            "julia",
+            "src/Main.jl:1:5",
+            "julia://src/Main.jl#item/symbol/render",
+        ),
+        (
+            "gerbil-scheme",
+            "src/main.ss:1:5",
+            "gerbil-scheme://src/main.ss#item/symbol/render",
+        ),
+        (
+            "org",
+            "docs/index.org:1:5",
+            "org://docs/index.org#item/symbol/render",
+        ),
+        ("md", "README.md:1:5", "md://README.md#item/symbol/render"),
+    ];
+    let providers = language_cases
+        .iter()
+        .map(|(language_id, _, _)| provider(*language_id, Vec::new()))
+        .collect::<Vec<_>>();
+    write_activation(&root, &providers);
+
+    for (language_id, file_range_selector, symbol_selector) in language_cases {
+        for selector in [file_range_selector, symbol_selector] {
+            let output = asp_command(&root)
+                .env("PATH", prepend_path(&bin_dir))
+                .env("PRJ_CACHE_HOME", &cache_home)
+                .args([
+                    language_id,
+                    "search",
+                    "pipe",
+                    "--selector",
+                    selector,
+                    "--query",
+                    "selector identity drift",
+                    "--workspace",
+                    ".",
+                    "--view",
+                    "seeds",
+                ])
+                .output()
+                .expect("run registered language search pipe selector gate");
+
+            assert!(
+                output.status.success(),
+                "language={language_id} selector={selector} stderr={}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let stdout = String::from_utf8(output.stdout).expect("stdout");
+            assert!(stdout.contains("source=selector"), "{stdout}");
+            assert!(stdout.contains(&format!("selectorSeed={selector}")), "{stdout}");
+            assert!(
+                !stdout.contains("query-code"),
+                "language={language_id} selector={selector} stdout={stdout}"
+            );
+            assert!(
+                stdout.contains("actionFrontier=A1.owner-items,A2.rg-query"),
+                "language={language_id} selector={selector} stdout={stdout}"
+            );
+            assert!(
+                stdout.contains("recommendedNext=A1.owner-items"),
+                "language={language_id} selector={selector} stdout={stdout}"
+            );
+        }
+    }
+    assert!(
+        !marker.exists(),
+        "registered-language selector gate must not spawn providers"
     );
     let _ = std::fs::remove_dir_all(root);
 }

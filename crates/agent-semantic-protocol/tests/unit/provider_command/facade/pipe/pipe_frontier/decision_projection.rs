@@ -31,7 +31,7 @@ fn search_pipe_seeds_omits_graph_projection_from_default_stdout() {
             "rust",
             "search",
             "pipe",
-            "semantic locator route",
+            "semantic locator|route",
             "--view",
             "seeds",
             "languages/rust-harness",
@@ -50,6 +50,10 @@ fn search_pipe_seeds_omits_graph_projection_from_default_stdout() {
     assert!(!stdout.contains("evidenceEdges="), "{stdout}");
     assert!(!stdout.contains("rankedEvidence="), "{stdout}");
     assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
-    assert!(stdout.contains("nextCommand="), "{stdout}");
+    assert!(stdout.contains("nextCommand=asp fd -query"), "{stdout}");
+    assert!(
+        !stdout.contains("nextCommand=asp rust query --code"),
+        "{stdout}"
+    );
     let _ = std::fs::remove_dir_all(root);
 }

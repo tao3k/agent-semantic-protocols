@@ -46,7 +46,94 @@ pub fn write_codex_dynamic_model(config_path: &Path, model: &str) -> Result<(), 
         "primary".to_string(),
         toml::Value::String(model.to_string()),
     );
+    ensure_default_codex_agent_tables(root)?;
     write_toml_value(config_path, &value)
+}
+
+fn ensure_default_codex_agent_tables(root: &mut toml::Table) -> Result<(), String> {
+    let agents = root
+        .entry("agents".to_string())
+        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .as_table_mut()
+        .ok_or_else(|| "agents config root must contain an agents table".to_string())?;
+    ensure_codex_agent_table(
+        agents,
+        "asp_explorer",
+        CodexAgentTableDefaults {
+            session_name: "asp-explore",
+            host_agent_name: "asp_explorer",
+            profile: "asp-explorer_codex.toml",
+            projection: "asp-explorer.toml",
+            session_lifetime: "resident",
+            roles: &["subagent", "search"],
+            permissions: &["read-only"],
+            sandbox_mode: "read-only",
+        },
+    )?;
+    ensure_codex_agent_table(
+        agents,
+        "asp_testing",
+        CodexAgentTableDefaults {
+            session_name: "asp-testing",
+            host_agent_name: "asp_testing",
+            profile: "asp-testing_codex.toml",
+            projection: "asp-testing.toml",
+            session_lifetime: "resident",
+            roles: &["subagent", "testing", "build"],
+            permissions: &["workspace-write"],
+            sandbox_mode: "workspace-write",
+        },
+    )?;
+    Ok(())
+}
+
+struct CodexAgentTableDefaults<'a> {
+    session_name: &'a str,
+    host_agent_name: &'a str,
+    profile: &'a str,
+    projection: &'a str,
+    session_lifetime: &'a str,
+    roles: &'a [&'a str],
+    permissions: &'a [&'a str],
+    sandbox_mode: &'a str,
+}
+
+fn ensure_codex_agent_table(
+    agents: &mut toml::Table,
+    key: &str,
+    defaults: CodexAgentTableDefaults<'_>,
+) -> Result<(), String> {
+    let table = agents
+        .entry(key.to_string())
+        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .as_table_mut()
+        .ok_or_else(|| format!("agents.{key} must be a TOML table"))?;
+    ensure_toml_string(table, "session_name", defaults.session_name);
+    ensure_toml_string(table, "host_agent_name", defaults.host_agent_name);
+    ensure_toml_string(table, "profile", defaults.profile);
+    ensure_toml_string(table, "projection", defaults.projection);
+    ensure_toml_string(table, "session_lifetime", defaults.session_lifetime);
+    ensure_toml_array(table, "roles", defaults.roles);
+    ensure_toml_array(table, "permissions", defaults.permissions);
+    ensure_toml_string(table, "sandbox_mode", defaults.sandbox_mode);
+    Ok(())
+}
+
+fn ensure_toml_string(table: &mut toml::Table, key: &str, value: &str) {
+    table
+        .entry(key.to_string())
+        .or_insert_with(|| toml::Value::String(value.to_string()));
+}
+
+fn ensure_toml_array(table: &mut toml::Table, key: &str, values: &[&str]) {
+    table.entry(key.to_string()).or_insert_with(|| {
+        toml::Value::Array(
+            values
+                .iter()
+                .map(|value| toml::Value::String((*value).to_string()))
+                .collect(),
+        )
+    });
 }
 
 pub fn update_asp_codex_agent_sources_and_symlink_projections(
@@ -97,6 +184,10 @@ fn update_agent_model_file(path: &Path, model: &str) -> Result<(), String> {
         .as_table_mut()
         .ok_or_else(|| format!("{} must contain a TOML table", path.display()))?;
     table.insert("model".to_string(), toml::Value::String(model.to_string()));
+    table
+        .entry("sandbox_mode".to_string())
+        .or_insert_with(|| toml::Value::String("read-only".to_string()));
+    table.remove("session_lifetime");
     write_toml_value(path, &value)
 }
 
@@ -174,5 +265,95 @@ mod tests {
         assert!(source_text.contains("sandbox_mode = \"read-only\""));
         let projection = codex_agents.join("asp-explorer.toml");
         assert_eq!(fs::read_link(&projection).expect("read link"), source);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn codex_agent_projection_adds_read_only_sandbox_when_missing() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let asp_agents = temp.path().join("asp-agents");
+        let codex_agents = temp.path().join("codex-agents");
+        fs::create_dir_all(&asp_agents).expect("create asp agents");
+        let source = asp_agents.join("asp-explorer_codex.toml");
+        fs::write(
+            &source,
+            "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\n",
+        )
+        .expect("write source");
+
+        let mut updated = Vec::new();
+        update_asp_codex_agent_sources_and_symlink_projections(
+            &asp_agents,
+            &codex_agents,
+            "gpt-5.4-mini",
+            &mut updated,
+        )
+        .expect("update projection");
+
+        let source_text = fs::read_to_string(&source).expect("read source");
+        assert!(source_text.contains("sandbox_mode = \"read-only\""));
+        assert_eq!(
+            fs::read_link(codex_agents.join("asp-explorer.toml")).expect("read link"),
+            source
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn codex_agent_projection_removes_asp_only_session_lifetime() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let asp_agents = temp.path().join("asp-agents");
+        let codex_agents = temp.path().join("codex-agents");
+        fs::create_dir_all(&asp_agents).expect("create asp agents");
+        let source = asp_agents.join("asp-explorer_codex.toml");
+        fs::write(
+            &source,
+            "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nsession_lifetime = \"resident\"\n",
+        )
+        .expect("write source");
+
+        let mut updated = Vec::new();
+        update_asp_codex_agent_sources_and_symlink_projections(
+            &asp_agents,
+            &codex_agents,
+            "gpt-5.4-mini",
+            &mut updated,
+        )
+        .expect("update projection");
+
+        let source_text = fs::read_to_string(&source).expect("read source");
+        assert!(!source_text.contains("session_lifetime"));
+        assert!(source_text.contains("sandbox_mode = \"read-only\""));
+        assert_eq!(
+            fs::read_link(codex_agents.join("asp-explorer.toml")).expect("read link"),
+            source
+        );
+    }
+
+    #[test]
+    fn codex_dynamic_model_writes_managed_agent_session_names() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config_path = temp.path().join("agents/config.toml");
+
+        write_codex_dynamic_model(&config_path, "gpt-5.4-mini").expect("write dynamic model");
+
+        let text = fs::read_to_string(&config_path).expect("read config");
+        let value: toml::Value = toml::from_str(&text).expect("parse config");
+        assert_eq!(
+            value["platform"]["codex"]["models"]["primary"].as_str(),
+            Some("gpt-5.4-mini")
+        );
+        assert_eq!(
+            value["agents"]["asp_explorer"]["session_name"].as_str(),
+            Some("asp-explore")
+        );
+        assert_eq!(
+            value["agents"]["asp_explorer"]["session_lifetime"].as_str(),
+            Some("resident")
+        );
+        assert_eq!(
+            value["agents"]["asp_testing"]["session_name"].as_str(),
+            Some("asp-testing")
+        );
     }
 }

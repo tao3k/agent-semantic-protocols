@@ -57,6 +57,9 @@ fn collect_rust_item(item: &syn::Item, items: &mut Vec<OwnerItem>) {
         syn::Item::Type(item) => push_item(items, item.ident.to_string(), "type", item),
         syn::Item::Union(item) => push_item(items, item.ident.to_string(), "union", item),
         syn::Item::Impl(item) => {
+            if let Some(name) = rust_impl_owner_name(item) {
+                push_item(items, name, "impl", item);
+            }
             for impl_item in &item.items {
                 if let syn::ImplItem::Fn(function) = impl_item {
                     push_item(items, function.sig.ident.to_string(), "method", function);
@@ -64,6 +67,30 @@ fn collect_rust_item(item: &syn::Item, items: &mut Vec<OwnerItem>) {
             }
         }
         _ => {}
+    }
+}
+
+fn rust_impl_owner_name(item: &syn::ItemImpl) -> Option<String> {
+    rust_type_owner_name(&item.self_ty)
+}
+
+fn rust_type_owner_name(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Array(array) => rust_type_owner_name(&array.elem),
+        syn::Type::Group(group) => rust_type_owner_name(&group.elem),
+        syn::Type::Paren(paren) => rust_type_owner_name(&paren.elem),
+        syn::Type::Path(path) => path
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string()),
+        syn::Type::Ptr(ptr) => rust_type_owner_name(&ptr.elem),
+        syn::Type::Reference(reference) => rust_type_owner_name(&reference.elem),
+        syn::Type::Slice(slice) => rust_type_owner_name(&slice.elem),
+        syn::Type::Tuple(tuple) if tuple.elems.len() == 1 => {
+            tuple.elems.iter().next().and_then(rust_type_owner_name)
+        }
+        _ => None,
     }
 }
 
@@ -85,6 +112,7 @@ fn rust_syntax_node_for_kind(kind: &str) -> &'static str {
         "const" => "const_item",
         "enum" => "enum_item",
         "function" => "function_item",
+        "impl" => "impl_item",
         "macro" => "macro_invocation",
         "method" => "function_item",
         "module" => "mod_item",

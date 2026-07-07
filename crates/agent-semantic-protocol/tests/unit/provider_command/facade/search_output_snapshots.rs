@@ -79,7 +79,7 @@ fn asp_rust_query_file_selector_code_without_item_is_rejected() {
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        stderr.contains("ambiguous query --code selector `src/core.rs`"),
+        stderr.contains("invalid query --code selector `src/core.rs`"),
         "{stderr}"
     );
 

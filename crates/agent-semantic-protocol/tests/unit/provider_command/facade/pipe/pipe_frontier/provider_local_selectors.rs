@@ -31,7 +31,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
             "rust",
             "search",
             "pipe",
-            "Vec collection fields",
+            "Vec|collection fields",
             "--view",
             "seeds",
             "languages/rust-harness",

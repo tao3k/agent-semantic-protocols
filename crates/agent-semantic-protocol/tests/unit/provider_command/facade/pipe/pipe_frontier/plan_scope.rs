@@ -29,7 +29,7 @@ fn search_pipe_plan_preserves_search_scope_in_primary_command() {
             "rust",
             "search",
             "pipe",
-            "HookDecision ClientReceipt",
+            "HookDecision|ClientReceipt",
             "--workspace",
             ".",
             "--view",

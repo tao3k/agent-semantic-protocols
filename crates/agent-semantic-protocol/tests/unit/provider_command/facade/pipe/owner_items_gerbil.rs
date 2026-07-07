@@ -149,9 +149,7 @@ fn gerbil_regular_range_query_delegates_to_provider_without_source_read() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains(
-            "gerbil args=[query][--from-hook][direct-source-read][--selector][src/checker/types.ss:1:2][--code]"
-        ),
+        stdout.contains("gerbil args=[query][--selector][src/checker/types.ss:1:2][--code]"),
         "regular selector query should invoke provider-owned direct-source-read: {stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

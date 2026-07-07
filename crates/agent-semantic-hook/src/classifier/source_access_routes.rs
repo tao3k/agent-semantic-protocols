@@ -463,7 +463,7 @@ fn direct_read_route(
     selector_kind: SourceSelectorKind,
 ) -> DecisionRoute {
     match selector_kind {
-        SourceSelectorKind::ExactPath => selector_query_route(provider, path),
+        SourceSelectorKind::ExactPath => direct_read_query_route(provider, path),
         SourceSelectorKind::Pattern => {
             let route_context = provider.route_path_context(path);
             search_query_route_for_selector(
@@ -482,6 +482,41 @@ fn direct_read_route(
             })
         }
     }
+}
+
+fn direct_read_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
+    let route_context = provider.route_path_context(path);
+    let selector = route_context.selector;
+    let workspace = route_context.project_root;
+    let mut route = provider
+        .routes
+        .query
+        .as_ref()
+        .map(|template| {
+            provider.route_from_template(
+                DecisionRouteKind::Query,
+                template,
+                Some(&selector),
+                Some(&workspace),
+            )
+        })
+        .unwrap_or_else(|| selector_query_route(provider, path));
+    let output_flag = match route.language_id.as_str() {
+        "md" | "markdown" | "org" => "--content",
+        _ => "--code",
+    };
+    route.kind = DecisionRouteKind::Query;
+    route.argv = vec![
+        route.binary.clone(),
+        route.language_id.clone(),
+        "query".to_string(),
+        "--selector".to_string(),
+        selector,
+        "--workspace".to_string(),
+        workspace,
+        output_flag.to_string(),
+    ];
+    route
 }
 
 pub(super) fn classify_raw_search_command(

@@ -259,6 +259,12 @@ impl ClientDbEngine {
             )
         })?;
         let turso_db_path = Self::turso_path_for_client_dir(&client_dir);
+        if !turso_db_path.exists() {
+            let bootstrap_path = turso_db_path.clone();
+            block_on_db_engine_async(async move {
+                bootstrap_turso_client_db(&bootstrap_path).await.map(|_| ())
+            })?;
+        }
         Ok(ClientDbEngineWriteSession { turso_db_path })
     }
 

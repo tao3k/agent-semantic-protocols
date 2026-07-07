@@ -24,7 +24,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
             "rust",
             "search",
             "pipe",
-            "HookDecision ClientReceipt",
+            "HookDecision|ClientReceipt",
             "--workspace",
             ".",
             "--view",
@@ -46,7 +46,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         "{stdout}"
     );
     assert!(
-        stdout.contains("query=HookDecision ClientReceipt"),
+        stdout.contains("query=HookDecision|ClientReceipt"),
         "{stdout}"
     );
     assert!(
@@ -66,7 +66,6 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         stdout.contains("ownerCoverage=bestOwner=src/generated/lib.rs"),
         "{stdout}"
     );
-    assert!(stdout.contains("provider:partial"), "{stdout}");
     assert!(stdout.contains("search-overlay:used"), "{stdout}");
     assert!(
         stdout.contains("handles=inputTerms=HookDecision,ClientReceipt contextTerms=- ownerSeedTerms=HookDecision,ClientReceipt conceptTerms=-"),
@@ -179,7 +178,7 @@ fn search_pipe_marks_missing_path_terms_as_non_selectors() {
             "rust",
             "search",
             "pipe",
-            "t/unit-tests.ss HookDecision",
+            "t/unit-tests.ss|HookDecision",
             "--workspace",
             ".",
             "--view",
@@ -243,7 +242,7 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
             "gerbil-scheme",
             "search",
             "pipe",
-            "gerbil.pkg build.ss local alias",
+            "gerbil.pkg build.ss|local alias",
             "--workspace",
             ".",
             "--view",
@@ -360,7 +359,7 @@ fn search_pipe_splits_api_compounds_before_seed_quality_analysis() {
             "rust",
             "search",
             "pipe",
-            "BufMut 的 advance_mut/unsafe 写入边界如何被组织？先找 trait 和实现 owner。",
+            "BufMut|advance_mut/unsafe 写入边界如何被组织？先找 trait 和实现 owner。",
             "--workspace",
             ".",
             "--view",

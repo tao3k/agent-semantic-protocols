@@ -17,7 +17,7 @@ fn refresh_source_index(root: &std::path::Path) {
 }
 
 #[test]
-fn search_pipe_auto_uses_source_index_when_warm() {
+fn search_pipe_auto_defers_source_index_for_multi_clause_query() {
     let root = temp_project_root("search-pipe-source-index");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -44,7 +44,7 @@ fn search_pipe_auto_uses_source_index_when_warm() {
             "rust",
             "search",
             "pipe",
-            "source_index_fixture",
+            "source_index_fixture|src/lib.rs",
             "--workspace",
             ".",
             "--view",
@@ -60,17 +60,19 @@ fn search_pipe_auto_uses_source_index_when_warm() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.starts_with("[search-pipe]"), "{stdout}");
-    assert!(stdout.contains("source=source-index"), "{stdout}");
-    assert!(stdout.contains("sourceTrace=sourceIndex:used"), "{stdout}");
-    assert!(stdout.contains("search-overlay:skipped"), "{stdout}");
+    assert!(stdout.contains("source=search-overlay"), "{stdout}");
+    assert!(
+        stdout.contains("sourceTrace=sourceIndex:deferred"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("search-overlay:used"), "{stdout}");
     assert!(
         stdout.contains("ownerCoverage=bestOwner=src/lib.rs"),
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "nextCommand=asp rust search owner src/lib.rs items --query source_index_fixture --workspace . --view seeds"
-        ),
+        stdout
+            .contains("nextCommand=asp fd -query 'source_index_fixture|src/lib.rs' --workspace ."),
         "{stdout}"
     );
     assert!(
@@ -150,8 +152,8 @@ fn search_owner_items_source_index_trace_includes_search_frame_receipt() {
         "{stdout}"
     );
     assert!(
-        marker.exists(),
-        "source-index trace should route into provider-owned owner-items"
+        !marker.exists(),
+        "dynamic owner-items should not route source-index trace into the provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -184,7 +186,7 @@ fn search_pipe_skips_source_index_for_generic_action_query() {
             "rust",
             "search",
             "pipe",
-            "owner-items selector-code",
+            "owner-items|selector-code",
             "--workspace",
             ".",
             "--view",
@@ -201,7 +203,7 @@ fn search_pipe_skips_source_index_for_generic_action_query() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.starts_with("[search-pipe]"), "{stdout}");
     assert!(stdout.contains("source=search-overlay"), "{stdout}");
-    assert!(!stdout.contains("sourceIndex"), "{stdout}");
+    assert!(stdout.contains("sourceIndex:query-gate"), "{stdout}");
     assert!(stdout.contains("search-overlay:empty"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

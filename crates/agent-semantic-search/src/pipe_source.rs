@@ -55,6 +55,7 @@ pub struct SearchPipeSearchOverlayAcquisitionRequest<'a> {
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
+    pub require_multi_clause: bool,
     pub limit: usize,
 }
 
@@ -66,6 +67,7 @@ pub struct SearchPipeAutoAcquisitionRequest<'a> {
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
+    pub require_multi_clause: bool,
     pub limit: usize,
     pub source_index_lookup: Option<&'a SearchPipeSourceIndexLookup>,
 }
@@ -110,6 +112,7 @@ pub fn collect_search_pipe_auto_acquisition(
             owners: request.owners,
             ignore_dirs: request.ignore_dirs,
             include_hidden_dirs: request.include_hidden_dirs,
+            require_multi_clause: request.require_multi_clause,
             limit: request.limit,
         },
     )?;
@@ -119,20 +122,14 @@ pub fn collect_search_pipe_auto_acquisition(
     if let Some(source_index) = source_index.as_ref() {
         source_trace.push(source_index_trace(source_index));
     }
-    source_trace.extend([
-        SearchPipeSourceAcquisitionTrace {
-            source: "provider".to_string(),
-            status: "partial".to_string(),
-            matched: 0,
-            missing: usize::from(!candidates.is_empty()),
-            normalized: 0,
-            elapsed: Some(acquisition.elapsed),
-        },
-        candidate_trace(fallback_source, &candidates, Some(acquisition.elapsed)),
-    ]);
+    source_trace.push(candidate_trace(
+        fallback_source,
+        &candidates,
+        Some(acquisition.elapsed),
+    ));
     Ok(SearchPipeSourceAcquisition {
         source_trace,
-        candidate_sources: vec!["provider".to_string(), fallback_source.to_string()],
+        candidate_sources: vec![fallback_source.to_string()],
         candidates,
     })
 }
@@ -149,6 +146,7 @@ pub fn collect_search_pipe_search_overlay_acquisition(
         owners: request.owners,
         ignore_dirs: request.ignore_dirs,
         include_hidden_dirs: request.include_hidden_dirs,
+        require_multi_clause: request.require_multi_clause,
         limit: request.limit,
     })?;
     Ok(SearchPipeSearchOverlayAcquisition {
@@ -172,6 +170,7 @@ pub fn collect_search_pipe_failure_acquisition(
 ) -> Result<SearchPipeSearchOverlayAcquisition, String> {
     let query = failure_candidate_query(request.message);
     collect_search_pipe_search_overlay_acquisition(SearchPipeSearchOverlayAcquisitionRequest {
+        require_multi_clause: false,
         language_id: request.language_id,
         project_root: request.project_root,
         locator_root: request.locator_root,
@@ -290,6 +289,7 @@ pub fn collect_search_pipe_document_acquisition(
         SearchPipeSourceMode::Provider => document_element_acquisition(request),
         SearchPipeSourceMode::SearchOverlay => {
             search_overlay_source_acquisition(SearchPipeSearchOverlayAcquisitionRequest {
+                require_multi_clause: false,
                 language_id: request.language.id(),
                 project_root: request.project_root,
                 locator_root: request.locator_root,
@@ -307,6 +307,7 @@ fn document_auto_acquisition(
     request: SearchPipeDocumentAcquisitionRequest<'_>,
 ) -> Result<SearchPipeSourceAcquisition, String> {
     search_overlay_source_acquisition(SearchPipeSearchOverlayAcquisitionRequest {
+        require_multi_clause: false,
         language_id: request.language.id(),
         project_root: request.project_root,
         locator_root: request.locator_root,

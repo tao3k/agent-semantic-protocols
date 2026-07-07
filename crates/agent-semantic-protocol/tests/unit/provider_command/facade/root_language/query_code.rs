@@ -28,12 +28,14 @@ fn root_query_facade_owner_code_miss_is_empty_without_provider_fallback() {
         .output()
         .expect("run asp query code miss");
 
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(!output.status.success(), "code miss should fail");
     assert_eq!(String::from_utf8(output.stdout).expect("stdout"), "");
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stderr.contains("exact selector matched no owner item"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("recommendedNext=asp rust search owner src/lib.rs items --query missing_symbol --workspace . --view seeds"), "{stderr}");
     let _ = std::fs::remove_dir_all(root);
 }
 

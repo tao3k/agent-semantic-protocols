@@ -91,13 +91,19 @@ fn default_template_round_trips_through_config_parser() {
         .expect("binary gate invalid child message");
     assert!(invalid_child_message.contains("validation-warning-or-non-routable-child"));
     assert!(
-        invalid_child_message.contains("requiredAction=parent-follow-up-existing-child-with-model")
+        invalid_child_message.contains(
+            "messageTargetStatus=missing, validationStatus=failed, or childStatus is archived/closed/expired/invalid/missing/orphan-risk"
+        )
     );
-    assert!(invalid_child_message.contains("parent agent sends a Codex thread follow-up"));
+    assert!(invalid_child_message.contains("Codex native close-agent action"));
+    assert!(invalid_child_message.contains("archive only temporary Normal test threads"));
+    assert!(invalid_child_message.contains("parent agent sends an agent message"));
     assert!(invalid_child_message.contains("<requiredModel-from-validationReason>"));
     assert!(
         invalid_child_message.contains("configSwitchPurpose=Use the config switch command only")
     );
+    let legacy_close_delete = ["close", "/", "delete"].concat();
+    assert!(!invalid_child_message.contains(&legacy_close_delete));
     assert!(!invalid_child_message.contains("destroy-invalid-child-and-create-configured-child"));
     let asp_explore = resident_agent(&config, "asp-explore");
     assert!(asp_explore.enabled);

@@ -49,6 +49,8 @@ mod install_provider_cli;
 mod paths_command;
 #[path = "unit/provider_command/mod.rs"]
 mod provider_command;
+#[path = "unit/command/provider_language_facade.rs"]
+mod provider_language_facade;
 #[path = "unit/rfc_search_frame.rs"]
 mod rfc_search_frame;
 #[path = "unit/rs_harness_attribute.rs"]

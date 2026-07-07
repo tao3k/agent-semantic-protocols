@@ -920,6 +920,25 @@
         "requiresExact": {
           "type": "boolean"
         },
+        "candidateState": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rankEligible": {
+          "type": "boolean"
+        },
+        "exactReadCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readinessNextAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendedNextCommand": {
+          "type": "string",
+          "minLength": 1
+        },
         "matchedTerm": {
           "type": "string"
         },

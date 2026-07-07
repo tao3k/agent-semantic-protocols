@@ -51,15 +51,21 @@ fn temp_root(label: &str) -> PathBuf {
 struct EnvVarGuard {
     key: &'static str,
     previous: Option<OsString>,
+    _env_lock: std::sync::MutexGuard<'static, ()>,
 }
 
 impl EnvVarGuard {
     fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+        let env_lock = crate::env::ENV_LOCK.lock().expect("lock env");
         let previous = std::env::var_os(key);
         unsafe {
             std::env::set_var(key, value);
         }
-        Self { key, previous }
+        Self {
+            key,
+            previous,
+            _env_lock: env_lock,
+        }
     }
 }
 

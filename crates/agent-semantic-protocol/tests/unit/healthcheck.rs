@@ -35,7 +35,7 @@ fn healthcheck_json_reports_project_runtime_layout() {
     let provider = write_executable(&root, "rs-harness");
     write_activation(&root, &provider);
 
-    let output = run_healthcheck(&root, &["--json", "."], &[]);
+    let output = run_healthcheck(&root, &["--json", "."], &[("ASP_NO_AGENT_PLATFORM", "1")]);
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let value: Value = serde_json::from_str(&stdout(&output)).expect("parse healthcheck JSON");

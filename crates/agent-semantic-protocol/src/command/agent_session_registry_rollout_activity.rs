@@ -88,7 +88,7 @@ pub(super) fn rollout_activity_report(rollout_path: &Path, now: i64) -> RolloutA
         report.seconds_since_heartbeat = None;
         report.agent_instruction = match activity.status.as_str() {
             "tool-running" | "agent-active" => "child-activity-running-wait".to_string(),
-            "idle-resumable" => "child-idle-resumable-reuse-existing-child".to_string(),
+            "idle-resumable" => "child-idle-resumable-resume-existing-child".to_string(),
             _ => "child-activity-state-authoritative".to_string(),
         };
     }

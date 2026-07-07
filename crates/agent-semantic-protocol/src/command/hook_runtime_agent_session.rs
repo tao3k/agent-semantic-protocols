@@ -622,7 +622,7 @@ fn main_session_restricted_asp_command_decision(
         Some(stage) => format!("asp {} {stage}", invocation.facade),
         None => format!("asp {}", invocation.facade),
     };
-    let mut fields = agent_session_route_fields("reuse-resident-child", resident_child_name);
+    let mut fields = agent_session_route_fields("resume-resident-child", resident_child_name);
     append_resident_agent_fields(&mut fields, asp_session_policy);
     fields.insert(
         "mainSessionAspPolicy".to_string(),
@@ -802,7 +802,7 @@ fn append_resident_agent_fields(
 fn resident_child_create_action(platform: &str, asp_session_policy: &AspSessionPolicy) -> String {
     match platform {
         "codex" => format!(
-            "Codex action: start the configured ASP managed subagent `{}` only if the host exposes that managed type; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
+            "Codex action: start the configured ASP managed subagent `{}` only if the host exposes that managed type; use a resident search-lane seed; do not ask the child to fork, create, or register another session; send the exact denied ASP command to that same child with native message-agent send, wait for a bounded `[asp-search-subagent]` receipt, then cleanup only after the receipt; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
             asp_session_policy.resident_codex_agent_name()
         ),
         "claude" => "Claude action: start the configured subagent `asp-explorer`".to_string(),
@@ -873,7 +873,10 @@ fn agent_session_route_fields(
         ),
         (
             "agentSessionInvalidChildAction".to_string(),
-            serde_json::Value::String("close-delete-and-create-configured-child".to_string()),
+            serde_json::Value::String(
+                "close-native-subagent-or-archive-temporary-thread-and-create-configured-child"
+                    .to_string(),
+            ),
         ),
         (
             "agentSessionDuplicatePolicy".to_string(),
@@ -884,7 +887,7 @@ fn agent_session_route_fields(
         (
             "agentSessionLookupCommand".to_string(),
             serde_json::Value::String(format!(
-                "asp agent session reuse --name {resident_child_name} --json"
+                "asp agent session resume --name {resident_child_name} --json"
             )),
         ),
         (
@@ -915,7 +918,7 @@ fn append_agent_session_recovery_action_fields(
             "run-asp-agent-session-register-guide".to_string(),
             format!("{resident_child_name}-child-registration"),
         ),
-        "reuse-resident-child" => (
+        "reuse-resident-child" | "resume-resident-child" => (
             format!("send-to-{resident_child_name}"),
             format!("run-asp-command-in-registered-{resident_child_name}-child"),
             format!("{resident_child_name}-child-command"),

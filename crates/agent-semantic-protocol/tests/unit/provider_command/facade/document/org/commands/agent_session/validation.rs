@@ -53,7 +53,10 @@ fn asp_agent_session_rejects_mismatched_codex_model_profile() {
         stdout.contains("requiredAction=parent-send-message-same-child-with-required-model"),
         "{stdout}"
     );
-    assert!(stdout.contains("requiresAgentMessageTargetId=true"), "{stdout}");
+    assert!(
+        stdout.contains("requiresAgentMessageTargetId=true"),
+        "{stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -169,6 +172,73 @@ sessionLifetime = "resident"
 }
 
 #[test]
+fn asp_agent_session_reads_dynamic_agent_table_session_lifetime() {
+    let root = temp_project_root("agent-command-session-dynamic-agent-table-lifetime");
+    let home = root.join("home");
+    write_codex_asp_explorer_fixture_with_actual_profile(
+        &home,
+        "codex-root-thread",
+        "codex-child-thread",
+        "gpt-5.4-mini",
+        "gpt-5.4-mini",
+        "read-only",
+        "read-only",
+    );
+    let agents_dir = home.join(".agent-semantic-protocols").join("agents");
+    std::fs::create_dir_all(&agents_dir).expect("create ASP agents dir");
+    std::fs::write(
+        agents_dir.join("config.toml"),
+        r#"[agents.asp_explorer]
+session_name = "asp-explore"
+host_agent_name = "asp_explorer"
+profile = "asp-explorer_codex.toml"
+projection = "asp-explorer.toml"
+session_lifetime = "resident"
+roles = ["subagent", "search"]
+permissions = ["read-only"]
+"#,
+    )
+    .expect("write ASP dynamic agents config");
+
+    let output = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_AGENTS_HOME", &agents_dir)
+        .args([
+            "agent",
+            "session",
+            "status",
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            "codex-root-thread",
+            "--json",
+        ])
+        .output()
+        .expect("status reads dynamic agent table lifetime");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("status stdout");
+    let status_json: serde_json::Value = serde_json::from_str(&stdout).expect("parse status json");
+    assert_eq!(
+        status_json["sessionLifetime"].as_str(),
+        Some("resident"),
+        "{stdout}"
+    );
+    assert_eq!(status_json["resident"].as_bool(), Some(true), "{stdout}");
+    assert_eq!(
+        status_json["sessionLifetimeSource"].as_str(),
+        Some("agent-config"),
+        "{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn asp_agent_session_switch_model_updates_codex_dynamic_config_and_agent_projection() {
     let root = temp_project_root("agent-command-session-codex-switch-model");
     let home = root.join("home");
@@ -211,6 +281,7 @@ capacityThreshold = 0.8
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
         .env("CODEX_THREAD_ID", "codex-root-thread")
+        .env("ASP_NO_AGENT_PLATFORM", "1")
         .args([
             "agent",
             "session",
@@ -500,7 +571,10 @@ fn asp_agent_session_model_mismatch_is_warning_not_invalid() {
         stdout.contains("main/parent agent must send an agent message to the same managed child"),
         "{stdout}"
     );
-    assert!(stdout.contains("requiresAgentMessageTargetId=true"), "{stdout}");
+    assert!(
+        stdout.contains("requiresAgentMessageTargetId=true"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("bootstrapBlocked=host-message-agent-target-unavailable"),
         "{stdout}"
@@ -686,7 +760,10 @@ fn asp_agent_session_register_keeps_drifted_existing_child_on_model_warning() {
         stdout.contains("requiredAction=parent-send-message-same-child-with-required-model"),
         "{stdout}"
     );
-    assert!(stdout.contains("requiresAgentMessageTargetId=true"), "{stdout}");
+    assert!(
+        stdout.contains("requiresAgentMessageTargetId=true"),
+        "{stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }

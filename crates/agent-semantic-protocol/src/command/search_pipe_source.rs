@@ -66,6 +66,7 @@ pub(super) fn collect_search_pipe_candidates(
     scopes: &[PathBuf],
     source: SourceSpec,
     config: &AspConfig,
+    require_multi_clause: bool,
 ) -> Result<CandidateAcquisition, String> {
     if let Some(language) = document_language(language_id) {
         return collect_document_search_pipe_candidates(
@@ -86,6 +87,7 @@ pub(super) fn collect_search_pipe_candidates(
             intent,
             scopes,
             config,
+            require_multi_clause,
         ),
         SourceSpec::SearchOverlay => search_overlay_candidates(
             language_id,
@@ -94,6 +96,7 @@ pub(super) fn collect_search_pipe_candidates(
             intent,
             scopes,
             config,
+            require_multi_clause,
         ),
         SourceSpec::Provider => provider_candidates(),
         SourceSpec::Ingest => ingest_candidates(project_root, locator_root),
@@ -153,6 +156,7 @@ fn auto_candidates(
     intent: &str,
     scopes: &[PathBuf],
     config: &AspConfig,
+    require_multi_clause: bool,
 ) -> Result<CandidateAcquisition, String> {
     let language = agent_semantic_client::LanguageId::from(language_id);
     let source_index_query = source_index_lookup_query(language_id, intent);
@@ -174,6 +178,7 @@ fn auto_candidates(
         owners: scopes,
         ignore_dirs: &config.search.ignore_dirs,
         include_hidden_dirs: &config.search.include_hidden_dirs,
+        require_multi_clause,
         limit: PIPE_CANDIDATE_LINE_LIMIT,
         source_index_lookup: source_index_lookup.as_ref(),
     })?;
@@ -231,6 +236,7 @@ fn search_overlay_candidates(
     intent: &str,
     scopes: &[PathBuf],
     config: &AspConfig,
+    require_multi_clause: bool,
 ) -> Result<CandidateAcquisition, String> {
     if scopes.is_empty() {
         if let Some(acquisition) = turso_overlay_candidates(project_root, locator_root, intent)? {
@@ -246,6 +252,7 @@ fn search_overlay_candidates(
             owners: scopes,
             ignore_dirs: &config.search.ignore_dirs,
             include_hidden_dirs: &config.search.include_hidden_dirs,
+            require_multi_clause,
             limit: PIPE_CANDIDATE_LINE_LIMIT,
         },
     )?;

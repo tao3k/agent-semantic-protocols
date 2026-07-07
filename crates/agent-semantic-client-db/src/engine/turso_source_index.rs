@@ -16,9 +16,6 @@ use crate::types::normalized_project_root;
 use super::turso::{connect_turso_client_db, turso_table_column_exists};
 use super::turso_bootstrap::bootstrap_turso_client_db;
 use super::turso_operation_lock::acquire_turso_operation_lock;
-use super::turso_search::{
-    TursoClientDbSearchDocument, upsert_turso_search_documents_with_connection,
-};
 use super::turso_statement::{
     execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
     run_turso_operation_with_lock_retry,
@@ -92,7 +89,7 @@ pub(super) async fn bootstrap_turso_source_index_schema(
     Ok(())
 }
 
-async fn ensure_turso_source_index_owner_columns(
+pub(super) async fn ensure_turso_source_index_owner_columns(
     connection: &turso::Connection,
 ) -> Result<(), String> {
     for (column, definition) in [
@@ -116,7 +113,7 @@ async fn ensure_turso_source_index_owner_columns(
     Ok(())
 }
 
-async fn ensure_turso_source_index_selector_columns(
+pub(super) async fn ensure_turso_source_index_selector_columns(
     connection: &turso::Connection,
 ) -> Result<(), String> {
     for (column, definition) in [
@@ -161,13 +158,11 @@ pub async fn refresh_turso_source_index_import(
     )
     .await?
     {
+        upsert_turso_source_index_search_documents(&connection, &import).await?;
         return Ok(refresh);
     }
     write_turso_source_index_rows(&connection, &import, &project_root, &file_hashes_json).await?;
-    let search_documents = source_index_search_documents(&import);
-    if !search_documents.is_empty() {
-        upsert_turso_search_documents_with_connection(&connection, &search_documents).await?;
-    }
+    upsert_turso_source_index_search_documents(&connection, &import).await?;
     let (owner_count, selector_count) =
         turso_source_index_generation_row_counts(&connection, import.generation_id.as_str())
             .await?;
@@ -190,91 +185,6 @@ pub async fn refresh_turso_source_index_import(
         owner_count,
         selector_count,
     })
-}
-
-fn source_index_search_documents(
-    import: &ClientDbSourceIndexImport,
-) -> Vec<TursoClientDbSearchDocument> {
-    import
-        .owners
-        .iter()
-        .map(|owner| {
-            let mut terms = Vec::new();
-            push_source_index_search_term(&mut terms, owner.owner_path.as_str());
-            push_source_index_path_terms(&mut terms, owner.owner_path.as_str());
-            if let Some(language_id) = &owner.language_id {
-                push_source_index_search_term(&mut terms, language_id.to_string());
-            }
-            if let Some(provider_id) = &owner.provider_id {
-                push_source_index_search_term(&mut terms, provider_id.to_string());
-            }
-            push_source_index_search_term(&mut terms, owner.source_kind.as_str());
-            for query_key in &owner.query_keys {
-                push_source_index_search_term(&mut terms, query_key.as_str());
-            }
-
-            let mut first_selector_id = None;
-            for selector in import
-                .selectors
-                .iter()
-                .filter(|selector| selector.owner_path == owner.owner_path)
-            {
-                first_selector_id.get_or_insert_with(|| selector.selector_id.clone());
-                push_source_index_search_term(&mut terms, &selector.selector_id);
-                if let Some(symbol) = &selector.symbol {
-                    push_source_index_search_term(&mut terms, symbol);
-                }
-                if let Some(kind) = &selector.kind {
-                    push_source_index_search_term(&mut terms, kind);
-                }
-                push_source_index_search_term(&mut terms, selector.source.as_str());
-                for query_key in &selector.query_keys {
-                    push_source_index_search_term(&mut terms, query_key.as_str());
-                }
-            }
-
-            TursoClientDbSearchDocument {
-                namespace: "source-index".to_string(),
-                document_id: format!(
-                    "source-index:{}:{}",
-                    import.generation_id,
-                    owner.owner_path.as_str()
-                ),
-                entity_id: owner.owner_path.as_str().to_string(),
-                selector: first_selector_id.or_else(|| Some(owner.owner_path.as_str().to_string())),
-                document: terms.join(" "),
-            }
-        })
-        .collect()
-}
-
-fn push_source_index_search_term(terms: &mut Vec<String>, value: impl AsRef<str>) {
-    let value = value.as_ref().trim();
-    if !value.is_empty() {
-        terms.push(value.to_string());
-    }
-}
-
-fn push_source_index_path_terms(terms: &mut Vec<String>, path: impl AsRef<str>) {
-    let normalized = path.as_ref().trim().replace('\\', "/").to_ascii_lowercase();
-    let segments = normalized
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-    for start in 0..segments.len() {
-        push_source_index_search_term(terms, segments[start..].join("/"));
-    }
-    for segment in &segments {
-        push_source_index_search_term(terms, segment);
-    }
-    if let Some(basename) = segments.last() {
-        if let Some(stem_index) = basename.rfind('.').filter(|index| *index > 0) {
-            push_source_index_search_term(terms, &basename[..stem_index]);
-            if let Some(extension) = basename.get(stem_index + 1..) {
-                push_source_index_search_term(terms, extension);
-            }
-        }
-    }
 }
 
 pub async fn latest_turso_source_index_file_hashes(
@@ -593,6 +503,51 @@ async fn count_turso_source_index_generation_rows(
         })?
         .max(0)
         .min(i64::from(u32::MAX)) as u32)
+}
+
+async fn upsert_turso_source_index_search_documents(
+    connection: &turso::Connection,
+    import: &ClientDbSourceIndexImport,
+) -> Result<usize, String> {
+    let generation_id = import.generation_id.as_str();
+    let documents = import
+        .owners
+        .iter()
+        .map(|owner| {
+            let owner_path = owner.owner_path.as_str();
+            let selector = owner
+                .language_id
+                .as_ref()
+                .map(|language_id| format!("{}://{}#file", language_id.as_str(), owner_path));
+            let mut document_terms = vec![
+                owner_path.to_string(),
+                owner.source_kind.as_str().to_string(),
+            ];
+            if let Some(language_id) = &owner.language_id {
+                document_terms.push(language_id.as_str().to_string());
+            }
+            if let Some(provider_id) = &owner.provider_id {
+                document_terms.push(provider_id.as_str().to_string());
+            }
+            document_terms.extend(
+                owner
+                    .query_keys
+                    .iter()
+                    .map(|query_key| query_key.as_str().to_string()),
+            );
+            crate::TursoClientDbSearchDocument {
+                namespace: "stable".to_string(),
+                document_id: format!("source-index:{generation_id}:{owner_path}"),
+                entity_id: owner_path.to_string(),
+                selector,
+                document: document_terms.join(" "),
+            }
+        })
+        .collect::<Vec<_>>();
+    crate::engine::turso_search::upsert_turso_search_documents_with_connection(
+        connection, &documents,
+    )
+    .await
 }
 
 async fn write_turso_source_index_rows(

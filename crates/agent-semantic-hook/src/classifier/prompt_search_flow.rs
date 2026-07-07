@@ -32,6 +32,7 @@ pub(super) fn classify_prompt_search_flow_feedback(
     let command_tokens = action.command_tokens()?;
     let search_stage = asp_search_stage_tokens(&command_tokens);
     let query_code_or_direct_read = asp_query_code_or_direct_read_tokens(&command_tokens);
+    let parser_owned_query_code = asp_parser_owned_query_code_tokens(&command_tokens);
     let direct_inventory_or_fetch = asp_query_direct_inventory_or_fetch_tokens(&command_tokens);
     let direct_source_read_shape = asp_query_direct_source_read_shape_tokens(&command_tokens);
     if let Some((language_id, selector)) = file_level_query_code_selector(registry, &command_tokens)
@@ -84,7 +85,7 @@ pub(super) fn classify_prompt_search_flow_feedback(
             }
             _ => {}
         }
-        if query_code_or_direct_read && !direct_inventory_or_fetch {
+        if query_code_or_direct_read && !direct_inventory_or_fetch && !parser_owned_query_code {
             return Some(search_flow_feedback_decision(
                 platform,
                 event,
@@ -137,6 +138,22 @@ pub(super) fn classify_prompt_search_flow_feedback(
         return Some(decision);
     }
     None
+}
+
+fn asp_parser_owned_query_code_tokens(tokens: &[String]) -> bool {
+    let Some(asp_index) = tokens.iter().position(|token| is_asp_command_token(token)) else {
+        return false;
+    };
+    let after_asp = &tokens[asp_index + 1..];
+    let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
+        after_asp
+    } else if after_asp.get(1).map(String::as_str) == Some("query") {
+        &after_asp[1..]
+    } else {
+        return false;
+    };
+    query_tokens.iter().any(|token| token == "--code")
+        && option_value(query_tokens, "--selector").is_some_and(selector_is_parser_owned)
 }
 
 fn action_supports_prompt_search_flow_feedback(action: &ToolAction) -> bool {

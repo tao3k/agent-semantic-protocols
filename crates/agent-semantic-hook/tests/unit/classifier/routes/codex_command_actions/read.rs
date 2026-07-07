@@ -37,7 +37,7 @@ fn codex_read_core_shape_preserves_cmd() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(
         decision.subject.command.as_deref(),
         Some("sed -n '1,40p' crates/agent-semantic-hook/src/tool_action.rs")

@@ -1,8 +1,14 @@
 id = "asp-search-subagent-graphroute-receipt-contract-cold-functional-path"
 title = "ASP search subagent returns GraphRoute receipts instead of flat selector receipts"
 package = "agent-semantic-hook"
+policy_ids = ["RUST-AGENT-ASP-FUNCTIONAL-SUBAGENT-GRAPHROUTE-RECEIPT-COLD-001"]
 route_source = "read-only-subagent-receipt"
 agent_goal = "When a managed read-only ASP search child stops, the hook must accept compact graph-route receipts and reject flat owner/read/next receipts so the parent receives EvidenceGraph route evidence instead of a noisy selector transcript."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-hook/src",
+  "schemas",
+]
 
 must_include = [
   "schema=asp-search-subagent.graph.v1",

@@ -108,7 +108,7 @@ fn rollout_activity_completed_when_last_event_is_terminal() {
     assert_eq!(report.status, "idle-resumable");
     assert_eq!(
         report.agent_instruction,
-        "child-idle-resumable-reuse-existing-child"
+        "child-idle-resumable-resume-existing-child"
     );
     assert_eq!(report.last_terminal_event.as_deref(), Some("task_complete"));
     assert!(!report.running_session_closed);

@@ -69,6 +69,26 @@ pub(super) struct SessionStatusReport {
     pub(super) host_thread_existence_reason: String,
     #[serde(rename = "multiAgentChildState")]
     pub(super) multi_agent_child_state: String,
+    #[serde(
+        rename = "messageTargetStatus",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) message_target_status: Option<String>,
+    #[serde(
+        rename = "messageTargetResultSource",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) message_target_result_source: Option<String>,
+    #[serde(
+        rename = "messageAgentTargetId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) message_agent_target_id: Option<String>,
+    #[serde(
+        rename = "messageAgentTargetIdEqualsChild",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) message_agent_target_id_equals_child: Option<bool>,
     #[serde(rename = "hostRawStatus", skip_serializing_if = "Option::is_none")]
     pub(super) host_raw_status: Option<String>,
     #[serde(rename = "healthStatus")]
@@ -291,7 +311,11 @@ fn session_record_json_with_validation_projection(
     Ok(value)
 }
 
-pub(super) fn print_status_report(report: SessionStatusReport, json: bool) -> Result<(), String> {
+pub(super) fn print_status_report(
+    mut report: SessionStatusReport,
+    json: bool,
+) -> Result<(), String> {
+    hydrate_status_message_target_fields(&mut report);
     if json {
         println!(
             "{}",
@@ -366,6 +390,39 @@ pub(super) fn print_status_report(report: SessionStatusReport, json: bool) -> Re
         print_session_row(session);
     }
     Ok(())
+}
+
+fn hydrate_status_message_target_fields(report: &mut SessionStatusReport) {
+    if !report.routable {
+        if report.message_target_status.is_none() {
+            report.message_target_status = Some("missing".to_string());
+        }
+        return;
+    }
+    let Some(session) = report.session.as_ref() else {
+        if report.message_target_status.is_none() {
+            report.message_target_status = Some("missing".to_string());
+        }
+        return;
+    };
+    if report.message_target_status.is_none() {
+        report.message_target_status = Some("unverified".to_string());
+    }
+    if report.message_target_result_source.is_none() {
+        report.message_target_result_source = Some("registry-session-id-unverified".to_string());
+    }
+    if report.message_agent_target_id.is_none() {
+        report.message_agent_target_id = Some(session.session_id.clone());
+    }
+    if report.message_agent_target_id_equals_child.is_none() {
+        report.message_agent_target_id_equals_child = Some(
+            report
+                .message_agent_target_id
+                .as_deref()
+                .map(|target_id| target_id == session.session_id)
+                .unwrap_or(false),
+        );
+    }
 }
 
 pub(super) fn print_status_activity_report(

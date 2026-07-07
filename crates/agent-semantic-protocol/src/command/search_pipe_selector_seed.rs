@@ -27,23 +27,32 @@ pub(super) fn print_selector_seeded_search_pipe(
         request.workspace,
         request.scopes,
     );
-    let output = render_selector_seeded_search_pipe(
-        request.language_id,
-        request.selector,
-        request.query,
-        &workspace,
-    );
+    let output = render_selector_seeded_search_pipe(SelectorSeededSearchPipeRequest {
+        language_id: request.language_id,
+        selector: request.selector,
+        query: request.query,
+        workspace: &workspace,
+    });
     print!("{output}");
     Ok(())
 }
 
 /// Render a selector-seeded `search pipe` frontier without running providers.
-pub fn render_selector_seeded_search_pipe(
-    language_id: &str,
-    selector: &str,
-    query: &str,
-    workspace: &str,
-) -> String {
+#[derive(Clone, Copy, Debug)]
+pub struct SelectorSeededSearchPipeRequest<'a> {
+    pub language_id: &'a str,
+    pub selector: &'a str,
+    pub query: &'a str,
+    pub workspace: &'a str,
+}
+
+pub fn render_selector_seeded_search_pipe(request: SelectorSeededSearchPipeRequest<'_>) -> String {
+    let SelectorSeededSearchPipeRequest {
+        language_id,
+        selector,
+        query,
+        workspace,
+    } = request;
     let owner = selector_owner(selector);
     let symbol = selector_symbol(selector).unwrap_or("-");
     let actions = selector_seed_actions(language_id, selector, &owner, symbol, query, workspace);
@@ -111,8 +120,9 @@ fn selector_seed_actions(
     query: &str,
     workspace: &str,
 ) -> Vec<ActionNode> {
-    vec![
-        ActionNode {
+    let mut actions = Vec::new();
+    if is_executable_structural_selector(selector) {
+        actions.push(ActionNode {
             id: "A1".to_string(),
             kind: "query-code".to_string(),
             suffix: "selector-seed".to_string(),
@@ -123,29 +133,66 @@ fn selector_seed_actions(
                 symbol: symbol.to_string(),
                 workspace: workspace.to_string(),
             },
+        });
+    }
+    actions.push(ActionNode {
+        id: String::new(),
+        kind: "owner-items".to_string(),
+        suffix: "selector-owner-items".to_string(),
+        route: ActionRoute::OwnerItems {
+            language_id: language_id.to_string(),
+            owner: owner.to_string(),
+            query: query.to_string(),
+            scope: workspace.to_string(),
         },
-        ActionNode {
-            id: "A2".to_string(),
-            kind: "owner-items".to_string(),
-            suffix: "selector-owner-items".to_string(),
-            route: ActionRoute::OwnerItems {
-                language_id: language_id.to_string(),
-                owner: owner.to_string(),
-                query: query.to_string(),
-                scope: workspace.to_string(),
-            },
+    });
+    actions.push(ActionNode {
+        id: String::new(),
+        kind: "rg-query".to_string(),
+        suffix: "selector-context".to_string(),
+        route: ActionRoute::RgQuery {
+            query: query.to_string(),
+            scope: workspace.to_string(),
+            command_scope: Some(owner.to_string()),
         },
-        ActionNode {
-            id: "A3".to_string(),
-            kind: "rg-query".to_string(),
-            suffix: "selector-context".to_string(),
-            route: ActionRoute::RgQuery {
-                query: query.to_string(),
-                scope: workspace.to_string(),
-                command_scope: Some(owner.to_string()),
-            },
-        },
-    ]
+    });
+    actions
+        .into_iter()
+        .enumerate()
+        .map(|(index, mut action)| {
+            action.id = format!("A{}", index + 1);
+            action
+        })
+        .collect()
+}
+
+fn is_executable_structural_selector(selector: &str) -> bool {
+    let Some(kind) = structural_selector_item_kind(selector) else {
+        return false;
+    };
+    matches!(
+        kind,
+        "const"
+            | "enum"
+            | "field"
+            | "fn"
+            | "function"
+            | "impl"
+            | "macro"
+            | "method"
+            | "mod"
+            | "module"
+            | "static"
+            | "struct"
+            | "trait"
+            | "type"
+    )
+}
+
+fn structural_selector_item_kind(selector: &str) -> Option<&str> {
+    let (_, item) = selector.split_once("#item/")?;
+    let (kind, _) = item.split_once('/')?;
+    (!kind.is_empty()).then_some(kind)
 }
 
 fn selector_owner(selector: &str) -> String {

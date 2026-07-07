@@ -1,0 +1,22 @@
+id = "asp-cli-binary-startup-profile"
+title = "ASP CLI startup is profiled separately from query-owner materialization"
+policy_ids = ["RUST-AGENT-ASP-CLI-BINARY-STARTUP-PROFILE-001"]
+agent_goal = "Validate that command-line binary startup is tracked as its own scenario, so search selector performance gates can use in-process query-owner measurements instead of subprocess startup time."
+language = "rust"
+workspace = "."
+owners = [
+  "crates/agent-semantic-protocol/src/main.rs",
+  "crates/agent-semantic-protocol/src/lib.rs",
+  "crates/agent-semantic-protocol/src/query_owner_core.rs",
+]
+queries = [
+  "asp cli binary startup search frame",
+  "query-owner in-process performance gate",
+]
+inputs = "A temporary workspace root. The scenario warms the ASP CLI once, then measures only warm binary startup and top-level clap rendering."
+expected = "The CLI startup profile stays separate from search/query owner selector gates, spawns no provider process, and remains bounded by a dedicated startup threshold."
+reference_repositories = ["agent-semantic-protocols"]
+reference_patterns = [
+  "crates/agent-semantic-protocol/tests/unit/scenario_performance_gate/query_selector_preflight.rs",
+  "docs/10-19-rfcs/10.31.10-search-selector-source-index-drift.org",
+]

@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "provider_facts_timeout_stays_inside_performance_gate"
+snapshot = "provider_facts_timeout_stays_inside_performance_gate"
+target_total = "250ms"
+max_total = "350ms"
+observed_total = "287ms"
+regression_budget = "100ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "provider-facts-timeout-fallback"
+max_provider_process_count = 1
+max_stdout_bytes = 4096
+fallback_reason = "provider-facts-timeout"
+target_rationale = "Provider graph facts timeout path must bound the slow provider subprocess and still return compact search evidence through search-overlay and render recovery."
+
+[observed_timings]
+provider_facts_timeout = "189ms"
+search_overlay = "287ms"
+render = "41ms"

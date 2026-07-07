@@ -40,10 +40,23 @@ fn search_export_method(args: &[String]) -> String {
         .map_or_else(|| "search".to_string(), |arg| format!("search/{arg}"))
 }
 
-fn search_cache_forwarded_args(args: &[String]) -> std::borrow::Cow<'_, [String]> {
-    if args.first().is_some_and(|arg| arg == "dependency") {
+pub(crate) fn search_cache_forwarded_args(args: &[String]) -> std::borrow::Cow<'_, [String]> {
+    let dependency_alias = args.first().is_some_and(|arg| arg == "dependency");
+    let trailing_workspace_marker = args.last().is_some_and(|arg| {
+        if arg == "." {
+            return true;
+        }
+        let path = std::path::Path::new(arg);
+        path.is_absolute() && path.canonicalize().is_ok_and(|path| path.is_dir())
+    });
+    if dependency_alias || trailing_workspace_marker {
         let mut normalized = args.to_vec();
-        normalized[0] = "deps".to_string();
+        if dependency_alias {
+            normalized[0] = "deps".to_string();
+        }
+        if trailing_workspace_marker {
+            normalized.pop();
+        }
         std::borrow::Cow::Owned(normalized)
     } else {
         std::borrow::Cow::Borrowed(args)

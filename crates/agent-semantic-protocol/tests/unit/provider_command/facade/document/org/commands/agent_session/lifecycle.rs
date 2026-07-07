@@ -389,7 +389,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
     );
     assert_eq!(
         audit_json["summary"]["scannedRolloutCount"].as_u64(),
-        Some(2),
+        Some(1),
         "{audit_stdout}"
     );
     assert_eq!(
@@ -405,6 +405,130 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
     assert_eq!(
         audit_json["registeredRolloutSessions"][0]["rolloutStatus"].as_str(),
         Some("completed"),
+        "{audit_stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child() {
+    let root = temp_project_root("agent-command-session-lifecycle-audit-rollout-only-stale");
+    let sessions_dir = root.join("home").join(".codex").join("sessions");
+    let relevant_root = sessions_dir.join("2026").join("06").join("29");
+    fs::create_dir_all(&relevant_root).expect("create relevant rollout directory");
+    fs::write(
+        relevant_root
+            .join("rollout-2026-06-29T08-09-21-019f126d-0000-7000-8000-000000000031.jsonl"),
+        format!(
+            "{}\n{}\n{}\n",
+            json!({
+                "type": "session_meta",
+                "payload": {
+                    "id": "019f126d-0000-7000-8000-000000000031",
+                    "session_id": "019f126d-0000-7000-8000-000000000031",
+                    "parent_thread_id": "019f126d-0000-7000-8000-000000000031",
+                    "thread_source": "user",
+                    "agent_role": "user"
+                }
+            }),
+            json!({
+                "timestamp": "2026-06-29T08:09:21Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "agent_message",
+                    "turn_id": "turn-root"
+                }
+            }),
+            json!({
+                "timestamp": "2026-06-29T08:09:22Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "thread_spawn",
+                    "id": "019f126d-0000-7000-8000-000000000131",
+                    "parent_thread_id": "019f126d-0000-7000-8000-000000000031",
+                    "agent_role": "asp_explorer"
+                }
+            })
+        ),
+    )
+    .expect("write root rollout file");
+    fs::write(
+        relevant_root
+            .join("rollout-2026-06-29T08-09-22-019f126d-0000-7000-8000-000000000131.jsonl"),
+        format!(
+            "{}\n{}\n",
+            json!({
+                "type": "session_meta",
+                "payload": {
+                    "id": "019f126d-0000-7000-8000-000000000131",
+                    "session_id": "019f126d-0000-7000-8000-000000000031",
+                    "parent_thread_id": "019f126d-0000-7000-8000-000000000031",
+                    "thread_source": "subagent",
+                    "agent_role": "asp_explorer"
+                }
+            }),
+            json!({
+                "timestamp": "2026-06-29T08:09:22Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "agent_message",
+                    "turn_id": "turn-child"
+                }
+            })
+        ),
+    )
+    .expect("write stale child rollout file");
+
+    let audit_output = asp_command(&root)
+        .args([
+            "agent",
+            "session",
+            "lifecycle",
+            "audit",
+            "--root-session-id",
+            "019f126d-0000-7000-8000-000000000031",
+            "--json",
+        ])
+        .output()
+        .expect("run lifecycle audit");
+    assert!(
+        audit_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&audit_output.stderr)
+    );
+
+    let audit_stdout = String::from_utf8(audit_output.stdout).expect("audit stdout");
+    let audit_json: serde_json::Value =
+        serde_json::from_str(&audit_stdout).expect("parse lifecycle audit json");
+    assert_eq!(
+        audit_json["summary"]["rolloutOnlySessionCount"].as_u64(),
+        Some(1),
+        "{audit_stdout}"
+    );
+    assert_eq!(
+        audit_json["summary"]["rolloutOnlyActiveCount"].as_u64(),
+        Some(0),
+        "{audit_stdout}"
+    );
+    assert_eq!(
+        audit_json["summary"]["rolloutOnlyOrphanRiskCount"].as_u64(),
+        Some(1),
+        "{audit_stdout}"
+    );
+    assert_eq!(
+        audit_json["summary"]["activeSubagentRollouts"].as_u64(),
+        Some(0),
+        "{audit_stdout}"
+    );
+    assert_eq!(
+        audit_json["rolloutOnlySessions"][0]["rolloutStatus"].as_str(),
+        Some("orphan-risk"),
+        "{audit_stdout}"
+    );
+    assert_eq!(
+        audit_json["rolloutOnlySessions"][0]["rolloutStatusSource"].as_str(),
+        Some("rollout-only-reconcile"),
         "{audit_stdout}"
     );
 

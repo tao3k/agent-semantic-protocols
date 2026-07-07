@@ -55,12 +55,33 @@ fn agents_config_dir(project_root: &Path) -> Option<PathBuf> {
 fn read_resident_agent_lifetime(path: &Path, name: Option<&str>) -> Option<String> {
     let name = name?;
     let config: toml::Value = toml::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
-    let resident_agents = config
-        .get("agents")?
+    let agents = config.get("agents")?;
+    if let Some(lifetime) = agents
         .get("residentAgents")
-        .or_else(|| config.get("agents")?.get("resident_agents"))?
-        .as_array()?;
-    resident_agents.iter().find_map(|agent| {
+        .or_else(|| agents.get("resident_agents"))
+        .and_then(toml::Value::as_array)
+        .and_then(|resident_agents| {
+            resident_agents.iter().find_map(|agent| {
+                if resident_agent_matches(agent, name) {
+                    agent
+                        .get("sessionLifetime")
+                        .or_else(|| agent.get("session_lifetime"))
+                        .and_then(toml::Value::as_str)
+                        .map(normalize_session_lifetime)
+                } else {
+                    None
+                }
+            })
+        })
+    {
+        return Some(lifetime);
+    }
+    agents.as_table()?.iter().find_map(|(agent_key, agent)| {
+        if matches!(agent_key.as_str(), "residentAgents" | "resident_agents")
+            || !resident_agent_table_matches(agent_key, agent, name)
+        {
+            return None;
+        }
         if resident_agent_matches(agent, name) {
             agent
                 .get("sessionLifetime")
@@ -74,14 +95,31 @@ fn read_resident_agent_lifetime(path: &Path, name: Option<&str>) -> Option<Strin
 }
 
 fn resident_agent_matches(agent: &toml::Value, name: &str) -> bool {
+    let session_name = agent.get("session_name").and_then(toml::Value::as_str);
+    let session_name_camel = agent.get("sessionName").and_then(toml::Value::as_str);
     let agent_name = agent.get("name").and_then(toml::Value::as_str);
+    let host_agent_name = agent.get("host_agent_name").and_then(toml::Value::as_str);
+    let host_agent_name_camel = agent.get("hostAgentName").and_then(toml::Value::as_str);
     let codex_agent_name = agent.get("codexAgentName").and_then(toml::Value::as_str);
     let codex_agent_name_snake = agent.get("codex_agent_name").and_then(toml::Value::as_str);
     let role = agent.get("role").and_then(toml::Value::as_str);
-    [agent_name, codex_agent_name, codex_agent_name_snake, role]
-        .into_iter()
-        .flatten()
-        .any(|candidate| session_name_matches(name, candidate))
+    [
+        session_name,
+        session_name_camel,
+        agent_name,
+        host_agent_name,
+        host_agent_name_camel,
+        codex_agent_name,
+        codex_agent_name_snake,
+        role,
+    ]
+    .into_iter()
+    .flatten()
+    .any(|candidate| session_name_matches(name, candidate))
+}
+
+fn resident_agent_table_matches(agent_key: &str, agent: &toml::Value, name: &str) -> bool {
+    session_name_matches(name, agent_key) || resident_agent_matches(agent, name)
 }
 
 fn read_agent_file_lifetime(

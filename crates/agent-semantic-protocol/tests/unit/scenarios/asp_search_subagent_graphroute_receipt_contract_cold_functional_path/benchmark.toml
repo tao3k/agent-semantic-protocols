@@ -1,6 +1,19 @@
+harness = "libtest"
+test = "asp_search_subagent_graphroute_receipt_contract_cold_functional_path_stays_inside_scenario_gate"
+target_total = "5ms"
+max_total = "25ms"
+observed_total = "5ms"
+regression_budget = "5ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 0
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+snapshot = "asp_search_subagent_graphroute_receipt_contract_cold_functional_path"
+fallback_reason = "none"
 route_source = "read-only-subagent-receipt"
-max_total_ms = 25
-max_receipt_lines = 10
-max_evidence_rows = 3
-max_alt_actions = 2
 target_rationale = "Receipt validation is a hook-local contract check and must stay millisecond-scale. It should not run providers, native finder, Graph Turbo, or source reads."
+
+[observed_timings]
+receipt_contract = "5ms"
+provider_process_count = "0us"
+native_finder_process_count = "0us"

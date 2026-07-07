@@ -47,6 +47,8 @@ fn owner_item_kind_matches(language_id: &str, actual: &str, selector: &str) -> b
             ("rust", "function", "fn")
                 | ("rust", "trait-function", "fn")
                 | ("rust", "method", "fn")
+                | ("rust", "trait-function", "function")
+                | ("rust", "method", "function")
                 | ("typescript", "function", "fn")
         )
 }

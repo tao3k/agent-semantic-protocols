@@ -245,12 +245,6 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         );
         return Ok(());
     }
-    let query_clause_count =
-        super::search_pipe_query_pack::query_clauses(context.language_id, &pipe_args.seed_query)
-            .len();
-    if query_clause_count < 2 {
-        return Err("search pipe requires at least two query clauses; use search lexical for plain text search or search owner <path> items --query <terms> when the owner is known".to_string());
-    }
     let acquisition =
         dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
             language_id: context.language_id,
@@ -269,6 +263,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
                 &pipe_args.scopes,
                 pipe_args.source,
                 context.config,
+                true,
             )
         })?;
     let provider_facts_started_at = Instant::now();
@@ -301,7 +296,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         source_trace: &source_trace,
         scopes: &pipe_args.scopes,
         view: &pipe_args.view,
-        include_pipe_plan: acquisition.candidates.len() > 1,
+        include_pipe_plan: true,
         provider_facts: &provider_facts,
         provider_context: context.provider_context,
         config: context.config,
@@ -678,6 +673,7 @@ fn run_search_lexical_command(
         &pipe_args.owners,
         SourceSpec::Auto,
         context.config,
+        false,
     )?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,

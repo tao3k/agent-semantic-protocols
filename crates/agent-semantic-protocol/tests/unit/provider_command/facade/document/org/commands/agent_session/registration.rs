@@ -282,6 +282,7 @@ fn asp_agent_session_reuse_in_unregistered_child_does_not_use_codex_rollout_root
         .env("CODEX_HOME", home.join(".codex"))
         .env_remove("ASP_STATE_HOME")
         .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_NO_AGENT_PLATFORM", "1")
         .args([
             "agent",
             "session",
@@ -351,6 +352,7 @@ fn asp_agent_session_reuse_adopts_existing_codex_asp_child_from_root_rollout() {
         .env("CODEX_HOME", home.join(".codex"))
         .env_remove("ASP_STATE_HOME")
         .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_NO_AGENT_PLATFORM", "1")
         .args([
             "agent",
             "session",
@@ -379,6 +381,7 @@ fn asp_agent_session_reuse_adopts_existing_codex_asp_child_from_root_rollout() {
         .env("CODEX_HOME", home.join(".codex"))
         .env_remove("ASP_STATE_HOME")
         .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_NO_AGENT_PLATFORM", "1")
         .args([
             "agent",
             "session",

@@ -25,12 +25,14 @@ fn read_file_command_returns_hard_deny_for_source_path() {
         args(&[
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code",
+            "--view",
+            "seeds",
         ])
     );
 }

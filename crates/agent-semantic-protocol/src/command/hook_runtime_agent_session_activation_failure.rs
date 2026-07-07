@@ -23,7 +23,17 @@ pub(in crate::command) fn classify_activation_failure_main_session_asp(
     if commands.is_empty() {
         return Ok(None);
     }
-    let context = main_session_route_context(project_root, asp_session_policy)?;
+    let mut context = main_session_route_context(project_root, asp_session_policy)?;
+    let unusable_explore_session = matches!(
+        context
+            .active_explore_session
+            .as_ref()
+            .map(|session| session.status.as_str()),
+        Some("archived" | "closed" | "deleted" | "expired" | "invalid" | "missing" | "orphan-risk")
+    );
+    if unusable_explore_session {
+        context.active_explore_session = None;
+    }
     let now = unix_timestamp()?;
     if context.current_is_active_resident_child(now, asp_session_policy) {
         if commands
@@ -58,7 +68,9 @@ pub(in crate::command) fn classify_activation_failure_main_session_asp(
                 asp_session_policy,
             )));
         }
-        if let Some(topology) = context.current_register_required_resident_child(asp_session_policy)
+        if !unusable_explore_session
+            && let Some(topology) =
+                context.current_register_required_resident_child(asp_session_policy)
         {
             return Ok(Some(register_required_resident_child_decision(
                 platform,

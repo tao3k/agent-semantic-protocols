@@ -17,19 +17,21 @@ fn rtk_read_routes_to_provider_query() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code"
+            "--view",
+            "seeds"
         ]
     );
 }
@@ -47,19 +49,21 @@ fn rtk_read_routes_display_locator_to_clean_provider_selector() {
     );
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code"
+            "--view",
+            "seeds"
         ]
     );
 }
@@ -91,19 +95,21 @@ fn nested_parallel_exec_command_routes_to_provider_query() {
         Some("rtk read src/cli/agent-hooks.ts")
     );
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code"
+            "--view",
+            "seeds"
         ]
     );
 }

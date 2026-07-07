@@ -26,67 +26,26 @@ pub(crate) fn search_query_route(
 
 pub(crate) fn selector_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
     let route_context = provider.route_path_context(path);
-    if is_document_provider(provider) {
-        return DecisionRoute {
-            language_id: provider.language_id.clone(),
-            provider_id: provider.provider_id.clone(),
-            binary: "asp".to_string(),
-            kind: DecisionRouteKind::Query,
-            argv: provider.agent_facade_argv([
-                "query",
-                "--selector",
-                route_context.selector.as_str(),
-                "--workspace",
-                route_context.project_root.as_str(),
-                "--content",
-            ]),
-            stdin_mode: None,
-        };
-    }
-    let args = vec![
-        "search".to_string(),
-        "owner".to_string(),
-        source_owner_selector(&route_context.selector).to_string(),
-        "items".to_string(),
-        "--workspace".to_string(),
-        route_context.project_root,
-        "--view".to_string(),
-        "seeds".to_string(),
-    ];
+    let output_flag = if is_document_provider(provider) {
+        "--content"
+    } else {
+        "--code"
+    };
     DecisionRoute {
         language_id: provider.language_id.clone(),
         provider_id: provider.provider_id.clone(),
         binary: "asp".to_string(),
-        kind: DecisionRouteKind::Owner,
-        argv: provider.agent_facade_argv(args),
+        kind: DecisionRouteKind::Query,
+        argv: provider.agent_facade_argv([
+            "query",
+            "--selector",
+            route_context.selector.as_str(),
+            "--workspace",
+            route_context.project_root.as_str(),
+            output_flag,
+        ]),
         stdin_mode: None,
     }
-}
-
-fn source_owner_selector(selector: &str) -> &str {
-    let Some((path, suffix)) = selector.rsplit_once(':') else {
-        return selector;
-    };
-    if is_source_line_suffix(suffix) {
-        if let Some((path, suffix)) = path.rsplit_once(':')
-            && is_source_line_suffix(suffix)
-        {
-            return path;
-        }
-        return path;
-    }
-    selector
-}
-
-fn is_source_line_suffix(value: &str) -> bool {
-    if let Some((start, end)) = value.split_once('-') {
-        return is_decimal(start) && is_decimal(end);
-    }
-    is_decimal(value)
-}
-
-fn is_decimal(value: &str) -> bool {
-    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn is_document_provider(provider: &ActivatedProvider) -> bool {

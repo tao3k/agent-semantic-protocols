@@ -4,6 +4,7 @@ mod command;
 mod locator_artifact;
 mod probe;
 mod request;
+pub(crate) use request::search_cache_forwarded_args;
 mod structural_index_import;
 mod writeback;
 mod writeback_analysis_metadata;

@@ -46,7 +46,7 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
             "rust",
             "search",
             "pipe",
-            "serde Serialize",
+            "serde|Serialize",
             "--view",
             "graph-turbo-request",
             ".",
@@ -118,7 +118,15 @@ fn search_pipe_seeds_promotes_matching_dependency_route() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(["rust", "search", "pipe", "serde", "--view", "seeds", "."])
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "serde|dependency",
+            "--view",
+            "seeds",
+            ".",
+        ])
         .output()
         .expect("run asp rust search pipe seeds");
 
@@ -164,7 +172,7 @@ fn search_pipe_does_not_promote_dependency_route_from_natural_tree_word() {
             "rust",
             "search",
             "pipe",
-            "reasoning tree seed action frontier",
+            "reasoning tree|seed action frontier",
             "--view",
             "seeds",
             ".",
@@ -212,7 +220,7 @@ fn search_pipe_does_not_promote_dependency_route_from_meta_audit_query() {
             "rust",
             "search",
             "pipe",
-            "audit evidence state reasoning tree expected tests conclusions next plan dependency seed line selector",
+            "audit evidence state reasoning tree|expected tests conclusions next plan dependency seed line selector",
             "--view",
             "seeds",
             ".",
@@ -257,7 +265,7 @@ fn search_pipe_does_not_promote_dependency_route_from_negative_meta_query_with_l
             "rust",
             "search",
             "pipe",
-            "audit meta query dependency reasoning tree should not route to tree-sitter search-deps",
+            "audit meta query dependency reasoning tree|should not route to tree-sitter search-deps",
             "--view",
             "seeds",
             ".",
@@ -328,7 +336,7 @@ fn search_pipe_graph_request_reuses_cached_manifest_dependency_seed() {
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let first =
-        rust_dependency_graph_request_payload(&root, &bin_dir, &cache_home, "serde Serialize");
+        rust_dependency_graph_request_payload(&root, &bin_dir, &cache_home, "serde|Serialize");
     assert_eq!(
         first["cache"]["dependencySeed"]["status"].as_str(),
         Some("miss"),
@@ -337,7 +345,7 @@ fn search_pipe_graph_request_reuses_cached_manifest_dependency_seed() {
     assert_manifest_dependency(&first, "serde");
 
     let second =
-        rust_dependency_graph_request_payload(&root, &bin_dir, &cache_home, "serde Serialize");
+        rust_dependency_graph_request_payload(&root, &bin_dir, &cache_home, "serde|Serialize");
     assert_eq!(
         second["cache"]["dependencySeed"]["status"].as_str(),
         Some("hit"),
@@ -374,7 +382,7 @@ fn search_pipe_graph_request_uses_typescript_manifest_dependency_versions() {
             "typescript",
             "search",
             "pipe",
-            "react",
+            "react|version",
             "--view",
             "graph-turbo-request",
             ".",
@@ -419,7 +427,7 @@ fn search_pipe_graph_request_uses_python_manifest_dependency_versions() {
             "python",
             "search",
             "pipe",
-            "requests",
+            "requests|version",
             "--view",
             "graph-turbo-request",
             ".",
@@ -469,7 +477,7 @@ fn search_pipe_graph_request_uses_julia_manifest_dependency_versions() {
             "julia",
             "search",
             "pipe",
-            "DataFrames",
+            "DataFrames|version",
             "--view",
             "graph-turbo-request",
             ".",
@@ -514,7 +522,7 @@ fn search_pipe_graph_request_uses_gerbil_manifest_dependencies() {
             "gerbil-scheme",
             "search",
             "pipe",
-            "gerbil-poo",
+            "gerbil-poo|dependency",
             "--view",
             "graph-turbo-request",
             ".",
@@ -600,7 +608,7 @@ fn search_pipe_graph_request_uses_provider_declared_project_topology_markers() {
                 language,
                 "search",
                 "pipe",
-                "TopologyReceipt",
+                "TopologyReceipt|topology",
                 "--view",
                 "graph-turbo-request",
                 ".",
@@ -666,7 +674,7 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
             "rust",
             "search",
             "pipe",
-            "SubmoduleTopologyReceipt",
+            "SubmoduleTopologyReceipt|topology",
             "--view",
             "graph-turbo-request",
             ".",
@@ -804,7 +812,7 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
             "rust",
             "search",
             "pipe",
-            "SubmoduleTopologyReceipt",
+            "SubmoduleTopologyReceipt|topology",
             "--view",
             "graph-turbo-request",
             ".",

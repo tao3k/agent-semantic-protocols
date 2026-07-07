@@ -31,7 +31,7 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_semantic_facts() {
             "python",
             "search",
             "pipe",
-            "list collection fields",
+            "list|collection fields",
             "--view",
             "graph-turbo-request",
             ".",

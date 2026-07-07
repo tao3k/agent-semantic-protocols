@@ -163,18 +163,101 @@ fn search_pipe_single_atom_query_does_not_render_pipe_plan_without_provider_spaw
         .expect("run asp rust search pipe with a single seed atom");
 
     assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
+        !output.status.success(),
+        "stdout={}",
+        String::from_utf8_lossy(&output.stdout)
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        !stdout.contains("seedPlan=") && !stdout.contains("nextCommand="),
-        "{stdout}"
+        stderr.contains("search pipe requires at least two query clauses"),
+        "{stderr}"
     );
     assert!(
         !marker.exists(),
         "single-atom pipe should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_file_range_selector_seed_does_not_materialize_query_code() {
+    let root = temp_project_root("search-pipe-file-range-selector-seed");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    let language_cases = [
+        ("rust", "src/lib.rs:1:5"),
+        ("typescript", "src/index.ts:1:5"),
+        ("python", "src/main.py:1:5"),
+        ("julia", "src/Main.jl:1:5"),
+        ("gerbil-scheme", "src/main.ss:1:5"),
+        ("org", "docs/index.org:1:5"),
+        ("md", "README.md:1:5"),
+    ];
+    let providers = language_cases
+        .iter()
+        .map(|(language_id, _)| provider(*language_id, Vec::new()))
+        .collect::<Vec<_>>();
+    write_activation(&root, &providers);
+
+    let query = "runtime_profile_invocation RuntimeProfiles provider_command_prefix";
+    for (language_id, selector) in language_cases {
+        let output = asp_command(&root)
+            .env("PATH", prepend_path(&bin_dir))
+            .env("PRJ_CACHE_HOME", root.join(".cache"))
+            .args([
+                language_id,
+                "search",
+                "pipe",
+                "--selector",
+                selector,
+                "--query",
+                query,
+                "--workspace",
+                ".",
+                "--view",
+                "seeds",
+            ])
+            .output()
+            .expect("run asp search pipe with file-range selector seed");
+
+        assert!(
+            output.status.success(),
+            "language={language_id} stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("stdout");
+        assert!(stdout.contains("source=selector"), "{stdout}");
+        assert!(
+            stdout.contains(&format!("selectorSeed={selector}")),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("query-code"), "{stdout}");
+        assert!(
+            !stdout.contains(&format!(
+                "nextCommand=asp {language_id} query --selector {selector}"
+            )),
+            "{stdout}"
+        );
+        assert!(
+            !stdout.contains(&format!(
+                "nextCommand=asp {language_id} query --selector '{selector}'"
+            )),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("actionFrontier=A1.owner-items,A2.rg-query"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("recommendedNext=A1.owner-items"),
+            "{stdout}"
+        );
+    }
+    assert!(
+        !marker.exists(),
+        "file-range selector-seeded pipe should not spawn providers"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -370,7 +453,7 @@ fn search_pipe_package_option_scopes_search_overlay_frontier_without_provider_sp
             "typescript",
             "search",
             "pipe",
-            "createProgram createProgramConfig",
+            "createProgram|createProgramConfig",
             "--package",
             "src/compiler",
             "--source",

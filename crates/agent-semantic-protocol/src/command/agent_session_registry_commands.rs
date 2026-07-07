@@ -251,30 +251,273 @@ pub(super) fn list_sessions(
     Ok(())
 }
 
+pub(super) fn smoke_session(
+    _registry: &AgentSessionRegistry,
+    args: &SessionArgs,
+) -> Result<(), String> {
+    let report = run_invalid_child_bootstrap_smoke()?;
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .map_err(|error| format!("serialize agent session smoke report: {error}"))?
+        );
+    } else {
+        println!(
+            "[agent-session-smoke] scenario=\"{}\" success={} invalidChildBootstrapOk={}",
+            report["scenario"]
+                .as_str()
+                .unwrap_or("invalid-child-bootstrap"),
+            report["success"].as_bool().unwrap_or(false),
+            report["invalidChildBootstrapOk"].as_bool().unwrap_or(false)
+        );
+    }
+    if report["success"].as_bool().unwrap_or(false) {
+        Ok(())
+    } else {
+        Err("agent session smoke failed".to_string())
+    }
+}
+
+fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
+    let now = agent_session_unix_timestamp()?;
+    let temp_root = std::env::temp_dir().join(format!(
+        "asp-agent-session-smoke-{}-{now}",
+        std::process::id()
+    ));
+    let home = temp_root.join("home");
+    let codex_home = home.join(".codex");
+    let state_home = temp_root.join("asp-state");
+    let workspace = temp_root.join("workspace");
+    std::fs::create_dir_all(&workspace)
+        .map_err(|error| format!("create smoke workspace: {error}"))?;
+    let root_session_id = "asp-smoke-root-session";
+    let child_session_id = "asp-smoke-invalid-child";
+    write_smoke_codex_agent_fixture(&codex_home)?;
+    write_smoke_codex_rollout_fixture(&codex_home, &workspace, root_session_id, child_session_id)?;
+    let asp_bin = std::env::current_exe()
+        .map_err(|error| format!("resolve current asp executable for smoke: {error}"))?;
+    let register = std::process::Command::new(&asp_bin)
+        .current_dir(&workspace)
+        .env("HOME", &home)
+        .env("CODEX_HOME", &codex_home)
+        .env("ASP_STATE_HOME", &state_home)
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--name",
+            "asp-explore",
+            "--child-session-id",
+            child_session_id,
+            "--root-session-id",
+            root_session_id,
+            "--roles",
+            "subagent,search",
+            "--status",
+            "invalid",
+        ])
+        .output()
+        .map_err(|error| format!("run smoke register: {error}"))?;
+    let register_output = command_output_text(&register);
+    let denied = if register.status.success() {
+        Some(
+            std::process::Command::new(&asp_bin)
+                .current_dir(&workspace)
+                .env("HOME", &home)
+                .env("CODEX_HOME", &codex_home)
+                .env("ASP_STATE_HOME", &state_home)
+                .env("CODEX_THREAD_ID", root_session_id)
+                .args([
+                    "rust",
+                    "search",
+                    "owner",
+                    "crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs",
+                    "items",
+                    "--query",
+                    "message_target_snapshot",
+                    "--workspace",
+                    ".",
+                    "--view",
+                    "seeds",
+                ])
+                .output()
+                .map_err(|error| format!("run smoke denied search: {error}"))?,
+        )
+    } else {
+        None
+    };
+    let denied_output = denied.as_ref().map(command_output_text).unwrap_or_default();
+    let invalid_child_bootstrap_ok = register.status.success()
+        && denied
+            .as_ref()
+            .is_some_and(|output| !output.status.success())
+        && denied_output.contains("childStatus=invalid")
+        && denied_output.contains("do not use the existing asp-explore child")
+        && denied_output.contains("cleanup")
+        && !denied_output.contains("reuse");
+    let report = serde_json::json!({
+        "action": "agent-session-smoke",
+        "scenario": "invalid-child-bootstrap",
+        "success": invalid_child_bootstrap_ok,
+        "registerOk": register.status.success(),
+        "deniedSearchRejected": denied.as_ref().is_some_and(|output| !output.status.success()),
+        "invalidChildBootstrapOk": invalid_child_bootstrap_ok,
+        "tempStateRoot": state_home.display().to_string(),
+        "blockers": if invalid_child_bootstrap_ok {
+            Vec::<String>::new()
+        } else {
+            vec![format!(
+                "registerOutput={} deniedOutput={}",
+                compact_smoke_output(&register_output),
+                compact_smoke_output(&denied_output)
+            )]
+        },
+    });
+    let _ = std::fs::remove_dir_all(&temp_root);
+    Ok(report)
+}
+
+fn write_smoke_codex_agent_fixture(codex_home: &std::path::Path) -> Result<(), String> {
+    let agents_dir = codex_home.join("agents");
+    std::fs::create_dir_all(&agents_dir)
+        .map_err(|error| format!("create smoke codex agents dir: {error}"))?;
+    std::fs::write(
+        agents_dir.join("asp-explorer.toml"),
+        r#"name = "asp_explorer"
+description = "ASP reasoning and evidence exploration lane."
+nickname_candidates = ["ASP Explore", "ASP Reasoning"]
+model = "gpt-5.4-mini"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+developer_instructions = "ASP smoke fixture."
+"#,
+    )
+    .map_err(|error| format!("write smoke codex agent fixture: {error}"))?;
+    Ok(())
+}
+
+fn write_smoke_codex_rollout_fixture(
+    codex_home: &std::path::Path,
+    workspace: &std::path::Path,
+    root_session_id: &str,
+    child_session_id: &str,
+) -> Result<(), String> {
+    let rollout_dir = codex_home.join("sessions/2026/07/06");
+    std::fs::create_dir_all(&rollout_dir)
+        .map_err(|error| format!("create smoke rollout dir: {error}"))?;
+    let root_rollout_path = rollout_dir.join(format!(
+        "rollout-2026-07-06T00-00-00-{root_session_id}.jsonl"
+    ));
+    let child_rollout_path = rollout_dir.join(format!(
+        "rollout-2026-07-06T00-00-00-{child_session_id}.jsonl"
+    ));
+    let workspace_json = serde_json::to_string(&workspace.display().to_string())
+        .map_err(|error| format!("serialize smoke workspace: {error}"))?;
+    let root_session_meta = serde_json::json!({
+        "timestamp": "2026-07-06T00:00:00.000Z",
+        "type": "session_meta",
+        "payload": {
+            "id": root_session_id,
+            "session_id": root_session_id,
+            "timestamp": "2026-07-06T00:00:00.000Z",
+            "cwd": workspace.display().to_string(),
+            "originator": "Codex Desktop",
+            "cli_version": "0.142.5",
+            "thread_source": "local",
+            "model_provider": "openai"
+        }
+    });
+    let child_session_meta = serde_json::json!({
+        "timestamp": "2026-07-06T00:00:00.000Z",
+        "type": "session_meta",
+        "payload": {
+            "session_id": root_session_id,
+            "id": child_session_id,
+            "parent_thread_id": root_session_id,
+            "timestamp": "2026-07-06T00:00:00.000Z",
+            "cwd": workspace.display().to_string(),
+            "originator": "Codex Desktop",
+            "cli_version": "0.142.5",
+            "source": {
+                "subagent": {
+                    "thread_spawn": {
+                        "parent_thread_id": root_session_id,
+                        "depth": 1,
+                        "agent_path": null,
+                        "agent_nickname": "ASP Explore",
+                        "agent_role": "asp_explorer"
+                    }
+                }
+            },
+            "thread_source": "subagent",
+            "agent_nickname": "ASP Explore",
+            "agent_role": "asp_explorer",
+            "model_provider": "openai"
+        }
+    });
+    let turn_context = format!(
+        "{{\"timestamp\":\"2026-07-06T00:00:00.001Z\",\"type\":\"turn_context\",\"payload\":{{\"turn_id\":\"asp-smoke-turn\",\"cwd\":{workspace_json},\"workspace_roots\":[{workspace_json}],\"approval_policy\":\"never\",\"sandbox_policy\":{{\"type\":\"read-only\"}},\"model\":\"gpt-5.4-mini\"}}}}"
+    );
+    let root_content = format!("{root_session_meta}\n{turn_context}\n");
+    let child_content = format!("{child_session_meta}\n{turn_context}\n");
+    std::fs::write(&root_rollout_path, root_content)
+        .map_err(|error| format!("write smoke root rollout fixture: {error}"))?;
+    std::fs::write(&child_rollout_path, child_content)
+        .map_err(|error| format!("write smoke child rollout fixture: {error}"))?;
+    Ok(())
+}
+
+fn command_output_text(output: &std::process::Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
+}
+
+fn compact_smoke_output(value: &str) -> String {
+    value
+        .split_whitespace()
+        .take(80)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub(super) fn reuse_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
     let project_id = current_project_session_scope_id(registry)?;
     registry.refresh_expired_sessions()?;
-    let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?
-        .ok_or_else(|| {
-            "asp agent session reuse requires --root-session-id or agent session env".to_string()
-        })?;
     let name = required_non_empty(args.name.as_deref(), "--name")?;
     let current_session_id = std::env::var("CODEX_THREAD_ID")
         .ok()
         .or_else(|| current_agent_runtime_session().map(|session| session.id));
-    let current_session_registered = current_session_id
+    let current_session_record = current_session_id
         .as_deref()
         .map(|session_id| registry.session_by_id(&project_id, session_id))
         .transpose()?
-        .is_some();
+        .flatten();
+    let root_session_id = match args.root_session_id.as_deref() {
+        Some(root_session_id) => root_session_id.to_string(),
+        None => current_session_record
+            .as_ref()
+            .map(|record| record.root_session_id.clone())
+            .or_else(|| current_session_id.clone())
+            .or_else(|| resolved_root_session_id(registry, None).ok().flatten())
+            .ok_or_else(|| {
+                "asp agent session reuse requires --root-session-id or agent session env"
+                    .to_string()
+            })?,
+    };
     let root_lookup_allowed = args.root_session_id.is_some()
         || current_session_id.as_deref() == Some(root_session_id.as_str())
-        || current_session_registered;
+        || current_session_record.is_some();
     if !root_lookup_allowed {
-        let miss_root_session_id = current_session_id.as_deref().unwrap_or(root_session_id.as_str());
+        let miss_root_session_id = current_session_id
+            .as_deref()
+            .unwrap_or(root_session_id.as_str());
         return print_reuse_miss(
             registry.db_path(),
             Some(miss_root_session_id),
@@ -583,6 +826,10 @@ pub(super) fn status_session(
         host_thread_existence,
         host_thread_existence_reason,
         multi_agent_child_state,
+        message_target_status: None,
+        message_target_result_source: None,
+        message_agent_target_id: None,
+        message_agent_target_id_equals_child: None,
         host_raw_status: runtime_status.host_raw_status,
         health_status: runtime_status.health_status,
         timeout_semantics: runtime_status.timeout_semantics,

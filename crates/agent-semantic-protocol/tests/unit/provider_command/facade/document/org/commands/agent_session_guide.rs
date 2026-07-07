@@ -33,7 +33,8 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("Codex action: start the configured ASP managed subagent `asp_explorer`"),
+        stdout.contains("Codex action: start the configured ASP managed subagent `asp_explorer`")
+            && stdout.contains("do not ask the child to fork, create, or register another session"),
         "{stdout}"
     );
     assert!(
@@ -153,7 +154,8 @@ fn asp_agent_session_status_guide_explains_start_resident_child_action() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("Codex action: start the configured ASP managed subagent `asp_explorer`"),
+        stdout.contains("Codex action: start the configured ASP managed subagent `asp_explorer`")
+            && stdout.contains("do not ask the child to fork, create, or register another session"),
         "{stdout}"
     );
     assert!(

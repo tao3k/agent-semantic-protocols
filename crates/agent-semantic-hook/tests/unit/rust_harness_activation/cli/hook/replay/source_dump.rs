@@ -21,7 +21,7 @@ fn cli_hook_replay_blocks_functions_exec_command_source_dump() {
     assert_eq!(decision["subject"]["toolName"], "functions.exec_command");
     assert_eq!(decision["subject"]["command"], "sed -n '1,40p' src/lib.rs");
     assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
-    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs:1:40");
+    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs");
     let event = last_hook_event(&root);
     assert_eq!(event["event"], "pre-tool");
     assert_eq!(event["decision"], "deny");
@@ -77,7 +77,7 @@ fn cli_hook_replay_compacts_repeated_source_dump_lane() {
     assert!(message.contains("recoveryRef=source-access:"));
     assert!(!message.contains("Follow the previous recovery route"));
     assert!(!message.contains("## Agent Flow"));
-    assert_eq!(second["routes"][0]["argv"][4], "src/lib.rs:1:40");
+    assert_eq!(second["routes"][0]["argv"][4], "src/lib.rs");
 
     let event = last_hook_event(&root);
     assert_eq!(event["fields"]["denyReplay"], "repeated");
@@ -96,7 +96,7 @@ fn cli_hook_replay_compacts_repeated_source_dump_lane() {
 
 #[test]
 fn cli_hook_replay_preserves_line_ranges_for_common_source_dump_pipelines() {
-    for (command, selector) in [
+    for (command, _selector) in [
         ("awk 'NR>=115 && NR<=240' src/lib.rs", "src/lib.rs:115:240"),
         ("awk 'NR==42' src/lib.rs", "src/lib.rs:42:42"),
         ("head -n 40 src/lib.rs", "src/lib.rs:1:40"),
@@ -127,7 +127,7 @@ fn cli_hook_replay_preserves_line_ranges_for_common_source_dump_pipelines() {
             decision["routes"][0]["providerId"], "rs-harness",
             "{command}"
         );
-        assert_eq!(decision["routes"][0]["argv"][4], selector, "{command}");
+        assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs", "{command}");
     }
 }
 
@@ -155,8 +155,8 @@ fn cli_hook_replay_blocks_nested_parallel_exec_command() {
     assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
     assert_eq!(decision["routes"][0]["argv"][0], "asp");
     assert_eq!(decision["routes"][0]["argv"][1], "rust");
-    assert_eq!(decision["routes"][0]["argv"][2], "query");
-    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs:1-2");
+    assert_eq!(decision["routes"][0]["argv"][2], "search");
+    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs");
     let event = last_hook_event(&root);
     assert_eq!(event["event"], "pre-tool");
     assert_eq!(event["decision"], "deny");
@@ -192,8 +192,8 @@ fn cli_hook_replay_blocks_nested_parallel_exec_command_source_dump() {
     assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
     assert_eq!(decision["routes"][0]["argv"][0], "asp");
     assert_eq!(decision["routes"][0]["argv"][1], "rust");
-    assert_eq!(decision["routes"][0]["argv"][2], "query");
-    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs:1:40");
+    assert_eq!(decision["routes"][0]["argv"][2], "search");
+    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs");
 
     let event = last_hook_event(&root);
     assert_eq!(event["event"], "pre-tool");

@@ -10,9 +10,7 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_client_db::{ClientDbEngine, ClientDbEngineReadSession, ClientDbGenerationHit};
 use agent_semantic_search::{
-    PromptOutputFingerprintRequest, PromptOutputReplayRequest, QueryPacketReplayRequest,
-    is_prime_seed_search_request as search_is_prime_seed_search_request,
-    prompt_output_artifact_replay_safe,
+    PromptOutputFingerprintRequest, QueryPacketReplayRequest, prompt_output_artifact_replay_safe,
     prompt_output_request_fingerprint as search_prompt_output_request_fingerprint,
     query_packet_matches_request as search_query_packet_matches, render_query_packet_stdout,
     search_output_artifact_replay_safe,
@@ -91,12 +89,13 @@ pub(crate) fn load_replay_artifact(
         generation_hit: &ClientDbGenerationHit,
         request: &ClientRequest,
     ) -> String {
+        let forwarded_args = crate::cache_cli::search_cache_forwarded_args(&request.forwarded_args);
         search_prompt_output_request_fingerprint(PromptOutputFingerprintRequest {
             language_id: generation_hit.language_id.as_str(),
             provider_id: generation_hit.provider_id.as_str(),
             normalized_project_root: &normalized_path(&generation_hit.project_root),
             export_method: generation_hit.export_method.as_str(),
-            forwarded_args: &request.forwarded_args,
+            forwarded_args: forwarded_args.as_ref(),
         })
     }
 
@@ -133,13 +132,6 @@ pub(crate) fn load_replay_artifact(
     if !replay_file_hashes_match(&generation_hit.project_root, &generation_hit.file_hashes) {
         return None;
     }
-    if is_prime_seed_search_request(request)
-        && generation_hit.request_fingerprint.as_deref()?
-            != prompt_output_request_fingerprint(generation_hit, request)
-    {
-        return None;
-    }
-
     let has_structured_evidence_artifact = generation_hit
         .artifact_ids
         .iter()
@@ -164,13 +156,6 @@ pub(crate) fn load_replay_artifact(
                 load_prompt_output_artifact(cache_root, generation_hit, request)
             }
         })
-}
-
-fn is_prime_seed_search_request(request: &ClientRequest) -> bool {
-    search_is_prime_seed_search_request(PromptOutputReplayRequest {
-        is_search_method: request.method == ClientMethod::Search,
-        forwarded_args: &request.forwarded_args,
-    })
 }
 
 fn load_search_packet_artifact(

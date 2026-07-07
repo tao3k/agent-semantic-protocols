@@ -18,12 +18,14 @@ fn cli_hook_replay_blocks_common_source_read_escape_surfaces() {
         json!([
             "asp",
             "rust",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             selector,
+            "items",
             "--workspace",
             ".",
-            "--code"
+            "--view",
+            "seeds"
         ])
     };
 
@@ -322,12 +324,7 @@ fn cli_hook_replay_blocks_common_source_read_escape_surfaces() {
                 case.name
             );
         }
-        let expected_selector = match (case.name, case.command) {
-            ("hook-escape-functions-head", _) | (_, Some("sed -n '1,40p' src/lib.rs")) => {
-                "src/lib.rs:1:40"
-            }
-            _ => "src/lib.rs",
-        };
+        let expected_selector = "src/lib.rs";
         assert_eq!(
             decision["routes"][0]["argv"],
             direct_source_route(expected_selector),
@@ -339,7 +336,7 @@ fn cli_hook_replay_blocks_common_source_read_escape_surfaces() {
                 .as_array()
                 .expect("route argv")
                 .iter()
-                .any(|arg| arg == "--code"),
+                .all(|arg| arg != "--code"),
             "case={}",
             case.name
         );
@@ -369,12 +366,14 @@ fn cli_hook_replay_blocks_absolute_source_path_escape_surface() {
         json!([
             "asp",
             "rust",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             root.join("src/lib.rs").to_string_lossy(),
+            "items",
             "--workspace",
             ".",
-            "--code"
+            "--view",
+            "seeds"
         ])
     );
 

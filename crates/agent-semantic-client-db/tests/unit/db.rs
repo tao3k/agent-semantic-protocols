@@ -16,7 +16,7 @@ use agent_semantic_client_db::{
     source_index_scope_dirs,
 };
 
-static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+use crate::env::ENV_LOCK;
 
 struct EnvVarGuard {
     key: &'static str,

@@ -4,6 +4,213 @@ use super::support::{
 use crate::provider_command::support::{asp_command, temp_project_root};
 
 #[test]
+fn asp_agent_session_archived_child_does_not_block_missing_resident_bootstrap() {
+    let root = temp_project_root("agent-command-session-archived-child-bootstrap");
+    let home = root.join("home");
+    let root_session_id = "codex-root-thread";
+    let child_session_id = "codex-child-thread";
+    write_codex_asp_explorer_fixture(
+        &home,
+        root_session_id,
+        child_session_id,
+        "gpt-5.3-codex-spark",
+        "read-only",
+    );
+
+    let state_home = root.join(".asp-home");
+    let register = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--name",
+            "asp-explore",
+            "--child-session-id",
+            child_session_id,
+            "--root-session-id",
+            root_session_id,
+            "--roles",
+            "subagent,search",
+        ])
+        .output()
+        .expect("register child session");
+    assert!(
+        register.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&register.stderr)
+    );
+
+    let close = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .args([
+            "agent",
+            "session",
+            "close",
+            "--child-session-id",
+            child_session_id,
+            "--root-session-id",
+            root_session_id,
+            "--json",
+        ])
+        .output()
+        .expect("close child session");
+    assert!(
+        close.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&close.stderr)
+    );
+
+    let denied = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .args([
+            "rust",
+            "search",
+            "owner",
+            "crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs",
+            "items",
+            "--query",
+            "message_target_snapshot",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("main session denied search");
+    assert!(!denied.status.success(), "search should be denied");
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&denied.stdout),
+        String::from_utf8_lossy(&denied.stderr)
+    );
+    assert!(output.contains("childStatus=archived"), "{output}");
+    assert!(
+        output.contains("do not use the existing asp-explore child")
+            || output.contains("do not use the existing child"),
+        "{output}"
+    );
+    assert!(
+        output.contains("start the configured ASP managed subagent"),
+        "{output}"
+    );
+    assert!(!output.contains("reuse"), "{output}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_agent_session_invalid_child_does_not_block_missing_resident_bootstrap() {
+    let root = temp_project_root("agent-command-session-invalid-child-bootstrap");
+    let home = root.join("home");
+    let root_session_id = "codex-root-thread";
+    let child_session_id = "codex-child-thread";
+    write_codex_asp_explorer_fixture(
+        &home,
+        root_session_id,
+        child_session_id,
+        "gpt-5.3-codex-spark",
+        "read-only",
+    );
+
+    let state_home = root.join(".asp-home");
+    let register = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--name",
+            "asp-explore",
+            "--child-session-id",
+            child_session_id,
+            "--root-session-id",
+            root_session_id,
+            "--roles",
+            "subagent,search",
+            "--status",
+            "invalid",
+        ])
+        .output()
+        .expect("register invalid child session");
+    assert!(
+        register.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&register.stderr)
+    );
+
+    let denied = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .args([
+            "rust",
+            "search",
+            "owner",
+            "crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs",
+            "items",
+            "--query",
+            "message_target_snapshot",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("main session denied search");
+    assert!(!denied.status.success(), "search should be denied");
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&denied.stdout),
+        String::from_utf8_lossy(&denied.stderr)
+    );
+    assert!(
+        output.contains("start the configured ASP managed subagent"),
+        "{output}"
+    );
+    assert!(
+        !output.contains("childSessionId={child_session_id}"),
+        "{output}"
+    );
+    assert!(!output.contains("reuse"), "{output}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_agent_session_smoke_invalid_child_bootstrap_runs_one_step() {
+    let root = temp_project_root("agent-command-session-smoke-invalid-child-bootstrap");
+    let smoke = asp_command(&root)
+        .args(["agent", "session", "smoke", "--json"])
+        .output()
+        .expect("run agent session smoke");
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&smoke.stdout),
+        String::from_utf8_lossy(&smoke.stderr)
+    );
+    assert!(smoke.status.success(), "{output}");
+    assert!(
+        output.contains("\"invalidChildBootstrapOk\": true"),
+        "{output}"
+    );
+    assert!(output.contains("\"success\": true"), "{output}");
+    assert!(!output.contains("reuse"), "{output}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn asp_agent_session_wraps_codex_saved_session_commands() {
     let root = temp_project_root("agent-command-session-codex-wrapper");
     let home = root.join("home");
@@ -64,9 +271,13 @@ fn asp_agent_session_wraps_codex_saved_session_commands() {
         "stderr: {}",
         String::from_utf8_lossy(&resume.stderr)
     );
-    assert_eq!(
-        String::from_utf8(resume.stdout).expect("resume stdout"),
-        "resume codex-child-thread\n"
+    let resume_stdout = String::from_utf8(resume.stdout).expect("resume stdout");
+    assert!(
+        resume_stdout.contains("[agent-session-status]")
+            && resume_stdout.contains("session=\"codex-child-thread\"")
+            && resume_stdout.contains("rolloutActivityStatus=\"agent-active\"")
+            && resume_stdout.contains("nextAction=\"child-activity-running-wait\""),
+        "unexpected resume stdout: {resume_stdout}"
     );
 
     let delete = asp_command(&root)
@@ -146,6 +357,7 @@ fn asp_agent_session_status_from_temp_cwd_uses_root_project_scope() {
         .env("CODEX_HOME", home.join(".codex"))
         .env("ASP_STATE_HOME", &state_home)
         .env("CODEX_THREAD_ID", child_session_id)
+        .env("ASP_NO_AGENT_PLATFORM", "1")
         .args([
             "agent",
             "session",

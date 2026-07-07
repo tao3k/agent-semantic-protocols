@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <register|list|show|reuse|status|lifecycle audit|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <register|list|show|reuse|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -16,6 +16,7 @@ pub(super) enum SessionCommand {
     Reuse,
     Status,
     LifecycleAudit,
+    Smoke,
     Resume,
     Fork,
     Archive,
@@ -95,6 +96,7 @@ impl SessionArgs {
                 "show" | "get" if index == 0 => parsed.command = SessionCommand::Show,
                 "reuse" if index == 0 => parsed.command = SessionCommand::Reuse,
                 "status" if index == 0 => parsed.command = SessionCommand::Status,
+                "smoke" | "check" if index == 0 => parsed.command = SessionCommand::Smoke,
                 "lifecycle-audit" if index == 0 => {
                     parsed.command = SessionCommand::LifecycleAudit;
                 }
@@ -253,6 +255,12 @@ fn guide_text_for(
 Read-only lifecycle audit for the current root session.\n\
 Combines ASP registry rows with Codex rollout session/activity evidence without creating, closing, or deleting sessions.\n\
 asp agent session lifecycle audit --json",
+        ),
+        SessionCommand::Smoke => Some(
+            "asp agent session smoke guide\n\
+Run one-step lifecycle smoke checks in temporary ASP/Codex state.\n\
+The default scenario verifies invalid resident children enter cleanup/bootstrap without invoking a restricted search command from the shell hook.\n\
+asp agent session smoke --json",
         ),
         SessionCommand::Close => Some(
             "asp agent session close guide\n\
@@ -438,7 +446,7 @@ fn agent_host_guide() -> AgentHostGuide {
         return AgentHostGuide {
             host_label: "codex",
             session_env: "CODEX_THREAD_ID",
-            create_action: "Codex action: start the configured ASP managed subagent `asp_explorer` only if the host exposes that managed type; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
+            create_action: "Codex action: start the configured ASP managed subagent `asp_explorer` only if the host exposes that managed type; use a resident search-lane seed; do not ask the child to fork, create, or register another session; send the exact denied ASP command to that same child with native message-agent send, wait for a bounded `[asp-search-subagent]` receipt, then cleanup only after the receipt; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
             config_source: "~/.agent-semantic-protocols/agents/asp-explorer_codex.toml",
             host_projection: "~/.codex/agents/asp-explorer.toml",
         };

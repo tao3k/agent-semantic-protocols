@@ -20,19 +20,21 @@ fn shell_path_wrapper_routes_content_dump_to_provider_query() {
         decision.subject.paths,
         ["src/cli/agent-hooks.ts:1:8", "src/cli/agent-hooks.ts"]
     );
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
-            "src/cli/agent-hooks.ts:1:8",
+            "search",
+            "owner",
+            "src/cli/agent-hooks.ts",
+            "items",
             "--workspace",
             ".",
-            "--code"
+            "--view",
+            "seeds"
         ]
     );
 }
@@ -60,19 +62,21 @@ fn node_eval_read_file_sync_routes_content_dump_to_provider_query() {
         decision.subject.paths,
         ["languages/typescript-lang-project-harness/src/cli/semantic-search/item-query.ts"]
     );
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "asp",
             "typescript",
-            "query",
-            "--selector",
+            "search",
+            "owner",
             "languages/typescript-lang-project-harness/src/cli/semantic-search/item-query.ts",
+            "items",
             "--workspace",
             ".",
-            "--code"
+            "--view",
+            "seeds"
         ]
     );
 }

@@ -234,27 +234,24 @@ where
     if !sessions_dir.is_dir() {
         return Ok(None);
     }
-    let mut rollout_paths = match codex_rollout_paths_for_session_id(&sessions_dir, root_session_id)
-    {
-        Ok(paths) => paths,
-        Err(error)
-            if error.starts_with("Codex rollout invariant broken: no rollout JSONL found") =>
-        {
-            Vec::new()
-        }
-        Err(error) => return Err(error),
-    };
-    for path in rg_rollout_paths_containing_session_id(&sessions_dir, root_session_id)? {
-        if !rollout_paths.iter().any(|existing| existing == &path) {
-            rollout_paths.push(path);
-        }
-    }
-
     let mut child_session_ids: BTreeSet<String> = session_ids
         .into_iter()
         .filter(|session_id| !session_id.is_empty() && *session_id != root_session_id)
         .map(str::to_string)
         .collect();
+    let mut rollout_paths = if child_session_ids.is_empty() {
+        match codex_rollout_paths_for_session_id(&sessions_dir, root_session_id) {
+            Ok(paths) => paths,
+            Err(error)
+                if error.starts_with("Codex rollout invariant broken: no rollout JSONL found") =>
+            {
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        Vec::new()
+    };
     let mut missing_rollout_by_session = BTreeMap::new();
     let mut pending_session_ids = child_session_ids.iter().cloned().collect::<Vec<_>>();
     let mut processed_session_ids = BTreeSet::new();
@@ -411,56 +408,6 @@ fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
         && haystack
             .windows(needle.len())
             .any(|window| window == needle)
-}
-
-fn rg_rollout_paths_containing_session_id(
-    sessions_dir: &Path,
-    session_id: &str,
-) -> Result<Vec<PathBuf>, String> {
-    let mut paths = Vec::new();
-    for search_root in rollout_search_roots_for_session_id(sessions_dir, session_id) {
-        if !search_root.is_dir() {
-            continue;
-        }
-        let output = match Command::new("rg")
-            .arg("--files-with-matches")
-            .arg("--fixed-strings")
-            .arg("--glob")
-            .arg("**/rollout-*.jsonl")
-            .arg(session_id)
-            .arg(&search_root)
-            .output()
-        {
-            Ok(output) => output,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => {
-                return Err(format!(
-                    "failed to run rg for Codex sessions dir {}: {error}",
-                    search_root.display()
-                ));
-            }
-        };
-        if !output.status.success() {
-            if output.status.code() == Some(1) {
-                continue;
-            }
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!(
-                "rg failed while searching Codex sessions dir {}: {}",
-                search_root.display(),
-                stderr.trim()
-            ));
-        }
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            let path = PathBuf::from(line);
-            if path.is_file() {
-                paths.push(path);
-            }
-        }
-    }
-    paths.sort();
-    paths.dedup();
-    Ok(paths)
 }
 
 fn spawned_agent_ids_for_rollout(rollout_path: &Path) -> Result<Vec<String>, String> {
@@ -726,19 +673,18 @@ fn parse_rollout_file(
             }
             Some("response_item") => {
                 let payload = value.get("payload").unwrap_or(&Value::Null);
-                if let Some(output) = payload.get("output").and_then(Value::as_str) {
-                    if let Ok(output_value) = serde_json::from_str::<Value>(output) {
-                        if let Some(agent_id) = output_value.get("agent_id").and_then(Value::as_str)
-                        {
-                            last_running_session_id = Some(agent_id.to_string());
-                        }
-                    }
+                if let Some(output) = payload.get("output").and_then(Value::as_str)
+                    && let Ok(output_value) = serde_json::from_str::<Value>(output)
+                    && let Some(agent_id) = output_value.get("agent_id").and_then(Value::as_str)
+                {
+                    last_running_session_id = Some(agent_id.to_string());
                 }
             }
             Some("event_msg") => {
                 let payload = value.get("payload").unwrap_or(&Value::Null);
-                if let Some(status) = payload.get("status").and_then(Value::as_str) {
-                    if status == "closed" {
+                if let Some(status) = payload.get("status").and_then(Value::as_str)
+                    && status == "closed"
+                {
                         last_terminal_event = Some("event_msg:closed".to_string());
                         current_turn_id = payload
                             .get("turn_id")
@@ -761,7 +707,6 @@ fn parse_rollout_file(
                             agent_instruction: None,
                             scanned_line_count: line_count,
                         });
-                    }
                 }
             }
             _ => {}

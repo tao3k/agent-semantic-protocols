@@ -405,10 +405,7 @@ fn parse_selector_action(value: &str) -> Option<PipeAction> {
     let (index, rest) = rest.split_once(".selector(")?;
     let index = index.parse::<usize>().ok()?;
     let fields = rest.split_once(")!")?.0;
-    let selector = action_field(fields, "sourceLocatorHint")
-        .or_else(|| action_field(fields, "structuralSelector"))
-        .or_else(|| action_field(fields, "selector"))?
-        .to_string();
+    let selector = executable_structural_selector_from_action_fields(fields)?.to_string();
     let owner = action_field(fields, "owner")
         .unwrap_or_default()
         .to_string();
@@ -489,14 +486,52 @@ fn pipe_action_from_node_segment(segment: &str) -> Option<(String, PipeAction)> 
 }
 
 fn owner_and_selector(locator: &str) -> Option<(String, String)> {
-    let mut parts = locator.rsplitn(3, ':');
-    let end = parts.next()?;
-    let start = parts.next()?;
-    let owner = parts.next()?;
-    if owner.is_empty() || start.is_empty() || end.is_empty() {
+    if !is_executable_structural_selector(locator) {
         return None;
     }
-    Some((owner.to_string(), format!("{owner}:{start}:{end}")))
+    let owner = structural_selector_owner(locator)?;
+    Some((owner.to_string(), locator.to_string()))
+}
+
+fn executable_structural_selector_from_action_fields(fields: &str) -> Option<&str> {
+    action_field(fields, "structuralSelector")
+        .or_else(|| action_field(fields, "selector"))
+        .filter(|selector| is_executable_structural_selector(selector))
+}
+
+fn is_executable_structural_selector(selector: &str) -> bool {
+    let Some(kind) = structural_selector_item_kind(selector) else {
+        return false;
+    };
+    matches!(
+        kind,
+        "const"
+            | "enum"
+            | "field"
+            | "fn"
+            | "function"
+            | "impl"
+            | "macro"
+            | "method"
+            | "mod"
+            | "module"
+            | "static"
+            | "struct"
+            | "trait"
+            | "type"
+    )
+}
+
+fn structural_selector_item_kind(selector: &str) -> Option<&str> {
+    let (_, item) = selector.split_once("#item/")?;
+    let (kind, _) = item.split_once('/')?;
+    (!kind.is_empty()).then_some(kind)
+}
+
+fn structural_selector_owner(selector: &str) -> Option<&str> {
+    let (_, rest) = selector.split_once("://")?;
+    let (owner, _) = rest.split_once("#item/")?;
+    (!owner.is_empty()).then_some(owner)
 }
 
 fn node_symbol(node: &str) -> Option<String> {

@@ -143,3 +143,18 @@ SQLite implementation as ASP's DB Engine. The best-practices guide is the
 normative downstream implementation policy for Turso opens, transaction retry,
 multi-process CLI access, pressure gates, and the future high-throughput AI
 writer runtime.
+* Implementation checkpoint: M0 DB/cache closure
+The current M0 closure keeps the DB Engine boundary executable without reverting to a retired SQL path:
+- =ClientDbEngine::open_write_session_client_dir= materializes the Turso file and schema on first open, then skips bootstrap for existing DB files so hot write sessions stay subsecond under process pressure.
+- cache generation lookup, prompt-output replay, search packet replay, and query packet replay share the same cache request identity normalization.
+- trailing workspace markers such as =.= and absolute workspace roots are request-routing markers, not semantic cache identity. They must not split generations for the same query/search intent.
+- external absolute roots may select the effective cache project root for probing, but the CLI parser must continue forwarding positional paths according to its public contract.
+- search packet replay must run before prompt-output artifact replay, and prompt-output fingerprint checks must not block =search/*.json= packet artifacts.
+
+Verified gates for this checkpoint:
+- =cargo test -p agent-semantic-client-db --locked=
+- =cargo test -p agent-semantic-client --locked cache_cli -- --nocapture=
+- =cargo test -p agent-semantic-client --locked cli_args -- --nocapture=
+- =cargo test -p agent-semantic-protocol --locked provider_command::receipt -- --nocapture=
+- =git diff --check && git diff --cached --check=
+- no new dead-code suppression diff.

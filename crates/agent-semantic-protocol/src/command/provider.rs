@@ -187,7 +187,7 @@ fn reject_search_file_workspace(args: &[String], invocation_root: &Path) -> Resu
 
 fn invalid_source_selector_code_message(language_id: &str, selector: &str) -> String {
     format!(
-        "invalid query --code selector `{selector}`: file selectors are not executable code selectors; use search owner <path> items --workspace <root> --view seeds, then query an exact parser-owned selector such as {language_id}://path#item/function/name"
+        "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name"
     )
 }
 
@@ -210,6 +210,25 @@ fn is_plain_file_selector_code_query(args: &[String]) -> bool {
         return false;
     };
     !selector.contains("://") && selector.split_once(':').is_none()
+}
+
+fn is_provider_owned_structural_code_query(language_id: &str, args: &[String]) -> bool {
+    if language_id != "typescript"
+        || !matches!(args.first().map(String::as_str), Some("query"))
+        || !args.iter().any(|arg| arg == "--code")
+        || args.iter().any(|arg| {
+            matches!(
+                arg.as_str(),
+                "--json" | "--term" | "--treesitter-query" | "--names-only"
+            )
+        })
+    {
+        return false;
+    }
+    let Some(selector) = option_value(args, "--selector") else {
+        return false;
+    };
+    selector.starts_with("typescript://") && selector.contains("#item/")
 }
 
 fn reject_registered_source_selector_query_code(
@@ -429,6 +448,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
     reject_manifest_source_selector_query_code(language_id, &command_args)?;
     if !is_plain_file_selector_code_query(&command_args)
+        && !is_provider_owned_structural_code_query(language_id, &command_args)
         && let Some(result) =
             run_pre_activation_fast_owner_query(language_id, &command_args, &invocation_root)?
     {
@@ -479,14 +499,16 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 }
             )
         })?;
-    reject_registered_source_selector_query_code(language_id, &provider_args, provider)?;
+    reject_registered_source_selector_query_code(language_id, &command_args, provider)?;
 
-    if run_asp_fast_owner_query_command(
-        language_id,
-        &provider_args,
-        &project_root,
-        &invocation_root,
-    )? {
+    if !is_provider_owned_structural_code_query(language_id, &provider_args)
+        && run_asp_fast_owner_query_command(
+            language_id,
+            &provider_args,
+            &project_root,
+            &invocation_root,
+        )?
+    {
         return Ok(());
     }
 

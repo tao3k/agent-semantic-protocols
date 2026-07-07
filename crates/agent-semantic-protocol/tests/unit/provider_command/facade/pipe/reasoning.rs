@@ -202,17 +202,22 @@ fn owner_tests_are_asp_owned_and_owner_items_require_provider_interface() {
         .output()
         .expect("run asp rust search owner items");
     assert!(
-        !owner_items.status.success(),
-        "owner-items should require provider-owned interface"
+        owner_items.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&owner_items.stderr)
     );
-    let owner_items_stderr = String::from_utf8(owner_items.stderr).expect("stderr");
+    let owner_items_stdout = String::from_utf8(owner_items.stdout).expect("stdout");
     assert!(
-        owner_items_stderr.contains("provider-owned owner-items produced empty output"),
-        "{owner_items_stderr}"
+        owner_items_stdout.contains("alg=asp-dynamic-owner-items-v1"),
+        "{owner_items_stdout}"
     );
     assert!(
-        marker.exists(),
-        "owner-items should invoke the provider-owned interface"
+        owner_items_stdout.contains("render_fast_prime_search"),
+        "{owner_items_stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "dynamic owner-items should not invoke the provider-owned interface"
     );
     let _ = std::fs::remove_dir_all(root);
 }

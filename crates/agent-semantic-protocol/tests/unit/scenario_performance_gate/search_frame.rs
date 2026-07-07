@@ -2,7 +2,9 @@ use std::env;
 use std::path::Path;
 use std::time::Instant;
 
-use agent_semantic_protocol::render_selector_seeded_search_pipe;
+use agent_semantic_protocol::{
+    SelectorSeededSearchPipeRequest, render_selector_seeded_search_pipe,
+};
 
 use super::runtime_gates::{duration_literal, duration_millis_from_manifest, read_toml};
 use super::shared::{SearchFrameReferenceBenchmarkToml, SharedBenchmarkToml, SharedScenarioToml};
@@ -21,7 +23,12 @@ pub(in super::super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_sc
     let selector = "rust://crates/agent-semantic-protocol/src/command/provider_process.rs#item/fn/provider_invocation_with_profile";
     let query = "runtime_profile_invocation RuntimeProfiles provider_command_prefix";
     let started_at = Instant::now();
-    let stdout = render_selector_seeded_search_pipe("rust", selector, query, ".");
+    let stdout = render_selector_seeded_search_pipe(SelectorSeededSearchPipeRequest {
+        language_id: "rust",
+        selector,
+        query,
+        workspace: ".",
+    });
     let elapsed = started_at.elapsed();
     let elapsed_ms = elapsed.as_millis();
     let render_duration = duration_literal(elapsed);
@@ -275,5 +282,59 @@ fn assert_codebase_memory_mcp_reference_benchmark_contract(
     assert!(
         !evidence_advantage.trim().is_empty(),
         "evidenceAdvantage must explain the comparison value"
+    );
+}
+#[test]
+fn file_range_selector_seeded_search_pipe_does_not_materialize_query_code() {
+    let selector = "src/lib.rs:1:5";
+    let query = "runtime_profile_invocation RuntimeProfiles provider_command_prefix";
+    let stdout = render_selector_seeded_search_pipe(SelectorSeededSearchPipeRequest {
+        language_id: "rust",
+        selector,
+        query,
+        workspace: ".",
+    });
+
+    assert!(stdout.contains("source=selector"), "{stdout}");
+    assert!(stdout.contains("selectorSeed=src/lib.rs:1:5"), "{stdout}");
+    assert!(!stdout.contains("query-code"), "{stdout}");
+    assert!(
+        !stdout.contains("nextCommand=asp rust query --selector src/lib.rs:1:5"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("actionFrontier=A1.owner-items,A2.rg-query"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("recommendedNext=A1.owner-items"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn symbol_selector_seeded_search_pipe_does_not_materialize_query_code() {
+    let selector = "rust://src/lib.rs#item/symbol/vec";
+    let query = "Vec collection fields";
+    let stdout = render_selector_seeded_search_pipe(SelectorSeededSearchPipeRequest {
+        language_id: "rust",
+        selector,
+        query,
+        workspace: ".",
+    });
+
+    assert!(stdout.contains("source=selector"), "{stdout}");
+    assert!(
+        stdout.contains("selectorSeed=rust://src/lib.rs#item/symbol/vec"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("query-code"), "{stdout}");
+    assert!(
+        stdout.contains("actionFrontier=A1.owner-items,A2.rg-query"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("recommendedNext=A1.owner-items"),
+        "{stdout}"
     );
 }

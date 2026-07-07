@@ -20,7 +20,7 @@ fn language_facade_help_lists_client_and_provider_commands() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         stdout.contains(
-            "usage: asp <rust|typescript|python|julia|gerbil-scheme|org|md> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ..."
+            "usage: asp <gerbil-scheme|julia|md|org|python|rust|typescript> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ..."
         ),
         "{stdout}"
     );
@@ -137,7 +137,7 @@ fn language_facade_rejects_unknown_agent_subcommand() {
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
         stderr.contains(
-            "usage: asp <rust|typescript|python|julia|gerbil-scheme|org|md> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ..."
+            "usage: asp <gerbil-scheme|julia|md|org|python|rust|typescript> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ..."
         ),
         "{stderr}"
     );

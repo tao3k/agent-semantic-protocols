@@ -5,28 +5,27 @@ use super::item::owner_item_matches_request;
 use super::owner_path::{owner_path_is_file_like, resolve_owner_path};
 use super::python_imports::python_imported_owner_items;
 use super::render::{
-    render_code_matches, render_full_source, render_locator_matches, render_non_source_owner_query,
-    render_unresolved_owner_query,
+    format_code_matches, format_full_source, format_locator_matches, format_non_source_owner_query,
+    format_unresolved_owner_query, render_empty_code_match_error, write_owner_query_stdout,
 };
 use super::request::OwnerQueryRequest;
 use super::rust_items::collect_syn_rust_owner_items;
 use super::tree_sitter_items::collect_tree_sitter_owner_items;
 
-pub(in crate::command) fn run_asp_fast_owner_query_command(
+pub(crate) fn run_asp_fast_owner_query_to_string(
     language_id: &str,
     args: &[String],
     project_root: &Path,
     locator_root: &Path,
-) -> Result<bool, String> {
+) -> Result<Option<String>, String> {
     let Some(request) = OwnerQueryRequest::parse(language_id, args)? else {
-        return Ok(false);
+        return Ok(None);
     };
     let Some(path) = resolve_owner_path(project_root, locator_root, &request.owner_path) else {
         if owner_path_is_file_like(&request.owner_path) {
-            render_unresolved_owner_query(&request)?;
-            return Ok(true);
+            return Ok(Some(format_unresolved_owner_query(&request)?));
         }
-        return Ok(false);
+        return Ok(None);
     };
     let source = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
@@ -35,15 +34,14 @@ pub(in crate::command) fn run_asp_fast_owner_query_command(
     };
     let items = if language_id == "rust" {
         if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
-            render_non_source_owner_query(
+            return Ok(Some(format_non_source_owner_query(
                 &request,
                 item_query,
                 &path,
                 project_root,
                 locator_root,
                 &source,
-            )?;
-            return Ok(true);
+            )?));
         }
         collect_syn_rust_owner_items(&source, &path)?
     } else {
@@ -56,19 +54,17 @@ pub(in crate::command) fn run_asp_fast_owner_query_command(
                     &source,
                     item_query.term(),
                 )? {
-                    render_full_source(&imported.source)?;
-                    return Ok(true);
+                    return Ok(Some(format_full_source(&imported.source)));
                 }
             }
-            render_non_source_owner_query(
+            return Ok(Some(format_non_source_owner_query(
                 &request,
                 item_query,
                 &path,
                 project_root,
                 locator_root,
                 &source,
-            )?;
-            return Ok(true);
+            )?));
         };
         items
     };
@@ -83,21 +79,43 @@ pub(in crate::command) fn run_asp_fast_owner_query_command(
             )
         })
         .collect::<Vec<_>>();
+    let same_name_kinds = if matches.is_empty() {
+        items
+            .iter()
+            .filter(|item| item.name() == item_query.term())
+            .map(|item| item.kind())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     if language_id == "python" && matches.is_empty() {
-        return run_python_import_fallback(
+        return run_python_import_fallback_to_string(
             &request,
             item_query,
             project_root,
             locator_root,
             &path,
             &source,
+            &same_name_kinds,
         );
     }
 
     if item_query.is_code_projection() {
-        render_code_matches(&source, &matches)?;
+        if matches.is_empty() {
+            render_empty_code_match_error(
+                &request,
+                item_query,
+                &path,
+                project_root,
+                locator_root,
+                &same_name_kinds,
+            )?;
+            unreachable!("render_empty_code_match_error always returns Err for code misses");
+        } else {
+            return Ok(Some(format_code_matches(&source, &matches)));
+        }
     } else {
-        render_locator_matches(
+        return Ok(Some(format_locator_matches(
             &request,
             item_query,
             &path,
@@ -105,19 +123,34 @@ pub(in crate::command) fn run_asp_fast_owner_query_command(
             locator_root,
             source.lines().count(),
             &matches,
-        )?;
+        )));
     }
+}
+
+pub(in crate::command) fn run_asp_fast_owner_query_command(
+    language_id: &str,
+    args: &[String],
+    project_root: &Path,
+    locator_root: &Path,
+) -> Result<bool, String> {
+    let Some(rendered) =
+        run_asp_fast_owner_query_to_string(language_id, args, project_root, locator_root)?
+    else {
+        return Ok(false);
+    };
+    write_owner_query_stdout(&rendered)?;
     Ok(true)
 }
 
-fn run_python_import_fallback(
+fn run_python_import_fallback_to_string(
     request: &OwnerQueryRequest,
     item_query: &super::request::OwnerItemQuery,
     project_root: &Path,
     locator_root: &Path,
     path: &Path,
     source: &str,
-) -> Result<bool, String> {
+    same_name_kinds: &[&str],
+) -> Result<Option<String>, String> {
     if let Some(imported) =
         python_imported_owner_items(project_root, locator_root, path, source, item_query.term())?
     {
@@ -135,14 +168,16 @@ fn run_python_import_fallback(
             .collect::<Vec<_>>();
         if item_query.is_code_projection() {
             if imported_matches.is_empty() {
-                render_full_source(&imported.source)?;
+                return Ok(Some(format_full_source(&imported.source)));
             } else {
-                render_code_matches(&imported.source, &imported_matches)?;
+                return Ok(Some(format_code_matches(
+                    &imported.source,
+                    &imported_matches,
+                )));
             }
-            return Ok(true);
         }
         if !imported_matches.is_empty() {
-            render_locator_matches(
+            return Ok(Some(format_locator_matches(
                 request,
                 item_query,
                 &imported.path,
@@ -150,13 +185,19 @@ fn run_python_import_fallback(
                 locator_root,
                 imported.source.lines().count(),
                 &imported_matches,
-            )?;
-            return Ok(true);
+            )));
         }
     }
     if item_query.is_code_projection() {
-        render_code_matches(source, &[])?;
-        return Ok(true);
+        render_empty_code_match_error(
+            request,
+            item_query,
+            path,
+            project_root,
+            locator_root,
+            same_name_kinds,
+        )?;
+        unreachable!("render_empty_code_match_error always returns Err for code misses");
     }
-    Ok(false)
+    Ok(None)
 }

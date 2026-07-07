@@ -489,14 +489,27 @@ pub fn codex_fs_read_file_decision(
     })
     .into_iter()
     .next()?;
-    let route = selector_query_route(matched.provider, path);
+    let language_id = matched.provider.language_id.clone();
+    let provider_id = matched.provider.provider_id.clone();
+    let route_argv = vec![
+        "asp".to_string(),
+        language_id.clone(),
+        "search".to_string(),
+        "owner".to_string(),
+        path.to_string(),
+        "items".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+    ];
     Some(SourceAccessDecision::hard_fs_deny(
         SourceAccessHardFsDenyInput {
-            language_id: route.language_id,
-            provider_id: route.provider_id.into(),
+            language_id,
+            provider_id: SourceAccessProviderId(provider_id),
             rpc_method: rpc_method.into(),
             path: path.to_string(),
-            route_argv: route.argv,
+            route_argv,
         },
     ))
 }

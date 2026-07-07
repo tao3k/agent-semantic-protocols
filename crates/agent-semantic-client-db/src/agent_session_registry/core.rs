@@ -392,6 +392,7 @@ pub(super) async fn connect_turso_agent_session_registry(
 async fn connect_turso_agent_session_registry_once(
     db_path: &Path,
 ) -> Result<turso::Connection, String> {
+    let db_path = prepare_turso_agent_session_registry_path(db_path)?;
     let database = turso::Builder::new_local(db_path.to_string_lossy().as_ref())
         .experimental_index_method(true)
         .experimental_multiprocess_wal(true)
@@ -407,6 +408,30 @@ async fn connect_turso_agent_session_registry_once(
             format!("failed to configure Turso agent session registry busy timeout: {error}")
         })?;
     Ok(connection)
+}
+
+fn prepare_turso_agent_session_registry_path(db_path: &Path) -> Result<PathBuf, String> {
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create Turso agent session registry dir `{}`: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    if !db_path.exists() {
+        fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(db_path)
+            .map_err(|error| {
+                format!(
+                    "failed to create Turso agent session registry `{}`: {error}",
+                    db_path.display()
+                )
+            })?;
+    }
+    Ok(db_path.to_path_buf())
 }
 
 async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Result<(), String> {

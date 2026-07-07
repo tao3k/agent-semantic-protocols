@@ -63,8 +63,113 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
             allow(request.platform, request.event, subject)
         }
     };
+    let decision = normalize_source_file_query_routes(decision);
+    let decision = with_selector_only_subagent_message(decision);
     let decision = with_prompt_scope_fields(decision, request.payload);
     with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root)
+}
+
+fn with_selector_only_subagent_message(mut decision: HookDecision) -> HookDecision {
+    if decision
+        .message
+        .contains("Return one compact `[asp-search-subagent]` graph-route receipt")
+        && !decision
+            .message
+            .contains("Return selector-only `[asp-search-subagent]` evidence")
+    {
+        decision.message = decision.message.replace(
+            "Return one compact `[asp-search-subagent]` graph-route receipt",
+            "Return selector-only `[asp-search-subagent]` evidence. Return one compact `[asp-search-subagent]` graph-route receipt",
+        );
+    }
+    decision
+}
+
+fn normalize_source_file_query_routes(mut decision: HookDecision) -> HookDecision {
+    if !matches!(
+        decision.reason_kind,
+        ReasonKind::DirectSourceRead | ReasonKind::BulkSourceDump
+    ) {
+        return decision;
+    }
+    for route in &mut decision.routes {
+        if route.kind != DecisionRouteKind::Query {
+            continue;
+        }
+        let argv = &route.argv;
+        if argv.len() < 5 || argv.first().map(String::as_str) != Some("asp") {
+            continue;
+        }
+        let Some(language_id) = argv.get(1).cloned() else {
+            continue;
+        };
+        if argv.get(2).map(String::as_str) != Some("query") {
+            continue;
+        }
+        let Some(selector) = route_option_value(argv, "--selector") else {
+            continue;
+        };
+        if argv.iter().any(|arg| arg == "--content") {
+            continue;
+        }
+        if !argv.iter().any(|arg| arg == "--code") {
+            continue;
+        }
+        if selector.contains("://") {
+            continue;
+        }
+        let owner_selector = selector
+            .split_once(':')
+            .map(|(owner, _)| owner)
+            .unwrap_or(selector);
+
+        let old_command = argv.join(" ");
+        let new_argv = vec![
+            "asp".to_string(),
+            language_id,
+            "search".to_string(),
+            "owner".to_string(),
+            owner_selector.to_string(),
+            "items".to_string(),
+            "--workspace".to_string(),
+            route_option_value(argv, "--workspace")
+                .unwrap_or(".")
+                .to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+        ];
+        let new_command = new_argv.join(" ");
+        route.kind = DecisionRouteKind::Owner;
+        route.argv = new_argv;
+        decision.message = decision.message.replace(&old_command, &new_command);
+    }
+    decision
+}
+
+fn route_option_value<'a>(tokens: &'a [String], option: &str) -> Option<&'a str> {
+    tokens
+        .windows(2)
+        .find_map(|window| (window[0] == option).then_some(window[1].as_str()))
+}
+
+fn asp_parser_owned_query_code_tokens(tokens: &[String]) -> bool {
+    let Some(asp_index) = tokens
+        .iter()
+        .position(|token| token == "asp" || token.ends_with("/asp"))
+    else {
+        return false;
+    };
+    let after_asp = &tokens[asp_index + 1..];
+    let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
+        after_asp
+    } else if after_asp.get(1).map(String::as_str) == Some("query") {
+        &after_asp[1..]
+    } else {
+        return false;
+    };
+    query_tokens.iter().any(|token| token == "--code")
+        && route_option_value(query_tokens, "--selector")
+            .is_some_and(|selector| selector.contains("://") && selector.contains("#item/"))
 }
 
 fn with_prompt_scope_fields(mut decision: HookDecision, payload: &Value) -> HookDecision {
@@ -128,15 +233,15 @@ fn classify_tool_actions(
     {
         return Some(decision);
     }
+    if let Some(decision) = actions.iter().find_map(|action| {
+        classify_prompt_search_flow_feedback(registry, platform, event, payload, action)
+    }) {
+        return Some(decision);
+    }
     if let Some(decision) = actions
         .iter()
         .find_map(|action| classify_invalid_asp_facade(registry, platform, event, action))
     {
-        return Some(decision);
-    }
-    if let Some(decision) = actions.iter().find_map(|action| {
-        classify_prompt_search_flow_feedback(registry, platform, event, payload, action)
-    }) {
         return Some(decision);
     }
 
@@ -189,6 +294,9 @@ fn classify_invalid_asp_facade(
     }
     action.command.as_deref()?;
     let command_tokens = action.command_tokens()?;
+    if asp_parser_owned_query_code_tokens(&command_tokens) {
+        return None;
+    }
     let invalid_facade = invalid_asp_facade_from_tokens(&command_tokens, registry)?;
     let preferred_language = preferred_language_for_invalid_facade(&invalid_facade, registry);
     let mut fields = std::collections::BTreeMap::new();

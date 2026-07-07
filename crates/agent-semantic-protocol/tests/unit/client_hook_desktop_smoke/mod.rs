@@ -45,7 +45,7 @@ fn codex_desktop_read_aliases_reach_runtime_policy() {
         assert_eq!(decision["reasonKind"], "direct-source-read", "{tool_name}");
         assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
         assert_route_mentions(&decision, "src/lib.rs");
-        assert_route_uses_workspace_code(&decision);
+        assert_route_uses_owner_items_recovery(&decision);
     }
 }
 
@@ -72,7 +72,7 @@ fn codex_desktop_shell_read_wrappers_reach_runtime_policy() {
         assert_eq!(decision["reasonKind"], "bulk-source-dump", "{command}");
         assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
         assert_route_mentions(&decision, "src/lib.rs");
-        assert_route_uses_workspace_code(&decision);
+        assert_route_uses_owner_items_recovery(&decision);
     }
 }
 
@@ -339,7 +339,7 @@ fn assert_route_mentions(decision: &Value, needle: &str) {
     );
 }
 
-fn assert_route_uses_workspace_code(decision: &Value) {
+fn assert_route_uses_owner_items_recovery(decision: &Value) {
     let argv = decision["routes"][0]["argv"]
         .as_array()
         .expect("route argv");
@@ -348,15 +348,18 @@ fn assert_route_uses_workspace_code(decision: &Value) {
         .map(|arg| arg.as_str().expect("route arg string"))
         .collect::<Vec<_>>();
     assert!(
-        args.windows(3)
-            .any(|window| window == ["--workspace", ".", "--code",]),
-        "route argv should use --workspace . --code: {args:?}"
+        args.windows(5)
+            .any(|window| window == ["asp", "rust", "search", "owner", "src/lib.rs",]),
+        "route argv should use search owner recovery: {args:?}"
     );
     assert!(
-        !args
-            .windows(2)
-            .any(|window| window[0] == "--code" && window[1] == "."),
-        "route argv must not use --code .: {args:?}"
+        args.windows(4)
+            .any(|window| window == ["items", "--workspace", ".", "--view",]),
+        "route argv should use owner items --workspace . --view: {args:?}"
+    );
+    assert!(
+        !args.iter().any(|arg| *arg == "--code"),
+        "owner recovery route must not request --code: {args:?}"
     );
 }
 

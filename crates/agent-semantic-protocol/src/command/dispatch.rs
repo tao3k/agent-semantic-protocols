@@ -28,6 +28,7 @@ use super::sync::run_sync_command;
 
 pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> {
     normalize_agent_session_command_args(&mut args)?;
+    reject_agent_platform_json_output(&args)?;
     reject_file_workspace_for_search(&args)?;
     enforce_agent_session_asp_query_gate(&args)?;
     match args.first().map(String::as_str) {
@@ -63,6 +64,51 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some(language_id) => run_language_command(language_id, &args[1..]),
         _ => Err(usage()),
     }
+}
+
+fn reject_agent_platform_json_output(args: &[String]) -> Result<(), String> {
+    if !has_json_output_arg(args)
+        || !agent_platform_session_active()
+        || explicit_non_agent_platform_output()
+    {
+        return Ok(());
+    }
+    Err("warning: --json output is disabled inside agent platform sessions; JSON is for debug or programmatic use only, not normal agent workflow, because it wastes tokens. Use the default compact output, or set ASP_NO_AGENT_PLATFORM=1 only for non-agent/debug automation."
+        .to_string())
+}
+
+fn has_json_output_arg(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg == "--json" || arg.starts_with("--json="))
+}
+
+fn agent_platform_session_active() -> bool {
+    const AGENT_PLATFORM_SESSION_ENV_VARS: &[&str] = &[
+        "CODEX_THREAD_ID",
+        "CODEX_PARENT_THREAD_ID",
+        "CLAUDE_SESSION_ID",
+        "CLAUDE_CODE_SESSION_ID",
+        "AGENT_SESSION_ID",
+        "AGENT_PLATFORM_SESSION_ID",
+    ];
+    AGENT_PLATFORM_SESSION_ENV_VARS
+        .iter()
+        .any(|name| env_var_nonempty(name))
+}
+
+fn explicit_non_agent_platform_output() -> bool {
+    env_var_enabled("ASP_NO_AGENT_PLATFORM")
+}
+
+fn env_var_nonempty(name: &str) -> bool {
+    std::env::var_os(name).is_some_and(|value| !value.is_empty())
+}
+
+fn env_var_enabled(name: &str) -> bool {
+    std::env::var_os(name).is_some_and(|value| {
+        let value = value.to_string_lossy();
+        !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+    })
 }
 
 fn reject_file_workspace_for_search(args: &[String]) -> Result<(), String> {
@@ -399,7 +445,7 @@ fn resident_child_missing_message(
 fn resident_child_create_action(hook_config: &ClientHookConfig) -> String {
     if env::var_os("CODEX_THREAD_ID").is_some() {
         return format!(
-            "Codex action: start the configured ASP managed subagent `{}` only if the host exposes that managed type; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
+            "Codex action: start the configured ASP managed subagent `{}` only if the host exposes that managed type; use a resident search-lane seed and do not ask the child to fork, create, or register another session; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
             hook_config.resident_asp_explore_codex_agent_name()
         );
     }

@@ -138,6 +138,7 @@ fn paths_json_is_machine_readable() {
         .env("ASP_STATE_HOME", &state_home)
         .env("PATH", "")
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("ASP_NO_AGENT_PLATFORM", "1")
         .args(["paths", "--json"])
         .output()
         .expect("run asp paths --json");

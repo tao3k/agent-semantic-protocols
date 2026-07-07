@@ -111,13 +111,19 @@ pub(super) fn lifecycle_audit_report(
 
     if let Some(index) = rollout_session_index.as_ref() {
         rollout_activity_count = index.activity_by_session.len();
-        missing_rollout_count = index.missing_rollout_by_session.len();
+        let visible_missing_rollout_by_session: std::collections::BTreeMap<_, _> = index
+            .missing_rollout_by_session
+            .iter()
+            .filter(|(session_id, _)| registered_session_ids.contains(*session_id))
+            .map(|(session_id, reason)| (session_id.clone(), reason.clone()))
+            .collect();
+        missing_rollout_count = visible_missing_rollout_by_session.len();
         scanned_rollout_count = index.scanned_rollout_count;
         skipped_rollout_count = index.skipped_rollout_count;
-        missing_rollout_by_session = serde_json::to_value(&index.missing_rollout_by_session)
+        missing_rollout_by_session = serde_json::to_value(&visible_missing_rollout_by_session)
             .map_err(|error| format!("serialize missing rollout map: {error}"))?;
         for record in &index.records {
-            let Some((session_id, entry)) =
+            let Some((session_id, mut entry)) =
                 lifecycle_rollout_session_entry(index, record, &registered_status_by_session)?
             else {
                 continue;
@@ -130,15 +136,34 @@ pub(super) fn lifecycle_audit_report(
             let rollout_status = entry
                 .get("rolloutStatus")
                 .and_then(serde_json::Value::as_str)
-                .unwrap_or("silent");
-            if is_subagent_rollout && rollout_status == "active" {
+                .unwrap_or("silent")
+                .to_string();
+            let registered_session = registered_session_ids.contains(&session_id);
+            let effective_rollout_status = if registered_session {
+                rollout_status.as_str()
+            } else {
+                lifecycle_rollout_only_status(&entry, &rollout_status)
+            };
+            if effective_rollout_status != rollout_status {
+                if let Some(object) = entry.as_object_mut() {
+                    object.insert(
+                        "rolloutStatus".to_string(),
+                        serde_json::json!(effective_rollout_status),
+                    );
+                    object.insert(
+                        "rolloutStatusSource".to_string(),
+                        serde_json::json!("rollout-only-reconcile"),
+                    );
+                }
+            }
+            if is_subagent_rollout && effective_rollout_status == "active" {
                 active_subagent_rollouts += 1;
             }
-            if registered_session_ids.contains(&session_id) {
+            if registered_session {
                 registered_rollout_sessions.push(entry);
             } else {
                 if is_subagent_rollout {
-                    match rollout_status {
+                    match effective_rollout_status {
                         "active" => rollout_only_active_count += 1,
                         "orphan-risk" => rollout_only_orphan_risk_count += 1,
                         _ => rollout_only_completed_count += 1,
@@ -183,6 +208,29 @@ pub(super) fn lifecycle_audit_report(
         "missingRegisteredRolloutSessions": missing_registered_rollout_sessions,
         "missingRolloutBySession": missing_rollout_by_session,
     }))
+}
+
+fn lifecycle_rollout_only_status<'a>(
+    entry: &serde_json::Value,
+    rollout_status: &'a str,
+) -> &'a str {
+    if rollout_status != "active" {
+        return rollout_status;
+    }
+    let has_recent_heartbeat = entry
+        .get("lastHeartbeatAt")
+        .and_then(serde_json::Value::as_str)
+        .is_some();
+    let terminal_event = entry
+        .get("lastTerminalEvent")
+        .and_then(serde_json::Value::as_str);
+    if matches!(terminal_event, Some("task_complete" | "turn_aborted")) {
+        return "completed";
+    }
+    if has_recent_heartbeat {
+        return "active";
+    }
+    "orphan-risk"
 }
 
 fn lifecycle_registry_session_entry(session: &AgentSessionRecord) -> serde_json::Value {

@@ -37,9 +37,14 @@ pub(crate) fn provider_cache_probe(
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
 ) -> Option<ProviderCacheProbe> {
-    if request.is_hook_direct_source_read() || request.is_source_content_output() {
+    if request.is_hook_direct_source_read()
+        || request.is_source_content_output()
+        || is_structural_item_code_query(request)
+    {
         return None;
     }
+    let effective_project_root = cache_project_root_for_request(project_root, request);
+    let project_root = effective_project_root.as_path();
     let cache_report = ClientCacheManifest::inspect_project(project_root);
     let cache_root = cache_report.cache_root.as_ref()?;
     let db_session = ClientDbEngine::open_read_session_client_dir(cache_root)
@@ -176,6 +181,37 @@ pub(crate) fn provider_cache_probe(
         db_write_count: 0,
         replay,
     })
+}
+
+fn is_structural_item_code_query(request: &ClientRequest) -> bool {
+    if !request.forwarded_args.iter().any(|arg| arg == "--code") {
+        return false;
+    }
+    request
+        .forwarded_args
+        .windows(2)
+        .any(|window| window[0] == "--selector" && is_structural_item_selector(&window[1]))
+}
+
+fn is_structural_item_selector(selector: &str) -> bool {
+    selector.contains("://") && selector.contains("#item/")
+}
+
+fn cache_project_root_for_request(project_root: &Path, request: &ClientRequest) -> PathBuf {
+    let Some(candidate) = request.forwarded_args.last() else {
+        return project_root.to_path_buf();
+    };
+    if candidate == "." || candidate.starts_with('-') {
+        return project_root.to_path_buf();
+    }
+    let path = PathBuf::from(candidate);
+    if !path.is_absolute() {
+        return project_root.to_path_buf();
+    }
+    path.canonicalize()
+        .ok()
+        .filter(|path| path.is_dir())
+        .unwrap_or_else(|| project_root.to_path_buf())
 }
 
 fn load_fresh_prime_replay(
@@ -372,3 +408,4 @@ pub(crate) fn cache_hit_receipt(
     receipt.elapsed_ms = elapsed_ms;
     receipt
 }
+use std::path::PathBuf;

@@ -104,7 +104,7 @@ impl OwnerQueryRequest {
         };
         let from_hook = arg_value(args, "--from-hook").unwrap_or_else(|| {
             if args.iter().any(|arg| arg == "--code") {
-                "query-code"
+                "item-skeleton"
             } else {
                 "syntax-outline"
             }
@@ -130,7 +130,7 @@ impl OwnerQueryRequest {
                     }),
                 })),
                 None if code => Err(format!(
-                    "ambiguous query --code selector `{selector}` would read an entire source file; use an exact parser-owned item selector such as rust://path#item/function/name, or use --from-hook direct-source-read for an explicit direct read"
+                    "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items"
                 )),
                 None => Ok(None),
             };

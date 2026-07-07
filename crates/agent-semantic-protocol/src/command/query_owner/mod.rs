@@ -9,7 +9,7 @@ mod owner_path;
 mod python_imports;
 mod render;
 mod request;
-mod runner;
+pub(crate) mod runner;
 mod rust_items;
 mod structural_selector;
 mod tree_sitter_items;

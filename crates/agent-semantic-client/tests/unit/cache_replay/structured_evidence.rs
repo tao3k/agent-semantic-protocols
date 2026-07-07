@@ -149,13 +149,14 @@ fn prompt_output_request_fingerprint(root: &Path, request: &ClientRequest) -> St
         .unwrap_or_else(|_| root.to_path_buf())
         .display()
         .to_string();
+    let forwarded_args = crate::cache_cli::search_cache_forwarded_args(&request.forwarded_args);
     let seed = format!(
         "{}\0{}\0{}\0{}\0{}\0{}\0{}",
         "rust",
         "rs-harness",
         project_root,
         "search/lexical",
-        request.forwarded_args.join("\0"),
+        forwarded_args.join("\0"),
         "syntax-query-ast-abi:none",
         "prompt-output-render-abi:none"
     );

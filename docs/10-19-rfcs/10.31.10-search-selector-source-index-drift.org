@@ -204,6 +204,13 @@ evidence.
 The first fixed slice makes two failure modes non-silent:
 1. Source-index rows are no longer treated as final evidence merely because the DB returned a hit. A missing owner path is classified as =stale-index=. A current owner path that only has DB row/query-key evidence is classified as =inventory-only=. Neither state may short-circuit search overlay as =selector-ready=.
 2. Exact structural selector code reads that resolve to no owner now fail with a typed stale-index message instead of returning exit 0 with empty stdout.
+3. Exact structural selector code reads whose owner exists but whose item does
+   not resolve must fail with =empty-payload= instead of returning exit 0 with
+   empty stdout. This includes selector-kind drift such as a recommended
+   =rust://...#item/function/name= selector for a Rust impl method that was
+   materialized as =method=. The Rust query resolver must accept =function= as
+   the documented callable alias for free functions, trait functions, and impl
+   methods, while still treating unresolved item names as typed miss evidence.
 
 This keeps the invariant:
 #+begin_src text
@@ -215,6 +222,10 @@ Current recovery surface:
 stale-index exact selector resolved no code payload
 -> state=stale-index
 -> recommendedNext=asp <language> search owner <owner-path> items --workspace . --view seeds
+
+empty-payload exact selector resolved no code payload
+-> state=empty-payload
+-> recommendedNext=asp <language> search owner <owner-path> items --query <item> --workspace . --view seeds
 #+end_src
 
 * P1 implementation slice
@@ -294,3 +305,96 @@ Remaining follow-up:
 1. Teach the real provider/parser source-index refresh producer to emit selector-level =payload_proof= only after the exact bounded payload is known to resolve.
 2. Add scenario gates that prove legacy DB rows, moved files, and selector schema drift cannot enter GraphRoute as rank-eligible final reads.
 3. Keep Graph Turbo responsible for intent-domain ranking after Search Frame has removed stale, invalid, and inventory-only evidence.
+* Implementation checkpoint: M0 boundary
+The DB/cache M0 closure fixes a prerequisite class of drift without claiming the full selector-readiness contract:
+- cache replay now normalizes workspace markers consistently across lookup, writeback, and prompt-output replay;
+- external absolute roots can find the correct State Core cache bucket without changing the CLI parser's positional-path forwarding behavior;
+- search packet and query packet artifacts can replay without falling through to provider execution when the generation is fresh;
+- Turso write sessions materialize the DB once and keep hot concurrent write/read pressure subsecond.
+
+This checkpoint does not complete the P0/P1 selector-readiness work in this RFC. The remaining required work is still:
+- shared candidate state/readiness typing in =agent-semantic-search=;
+- source-index/provider payload proof before =selector-ready= promotion;
+- GraphRoute exclusion of =inventory-only=, =stale-index=, =invalid-selector=, and =empty-payload= candidates from final exact-read actions;
+- scenario gates proving stale or empty selectors cannot be advertised as final evidence.
+* P0 executable selector contract
+
+Search output may include display ranges, =sourceLocatorHint= fields, and compact
+symbol handles, but those values are evidence hints only. They MUST NOT be
+materialized into =asp <language> query --selector ... --code= actions.
+
+An executable query selector requires parser-owned exact item identity:
+=<language>://<owner>#item/<exact-kind>/<name>=. The =#item/symbol/...= form is
+a weak handle for owner discovery and follow-up narrowing, not a direct code
+query selector. Display ranges such as =path:start:end= remain display or
+diagnostic hints even when they are the only locator in a search packet.
+
+This contract is language-neutral. Registered language facades MUST enforce the
+same gate for every active language, instead of relying on Rust-specific search
+fixtures or provider-private behavior. When the search pipe cannot prove exact
+item identity, the recommended route is owner-items or query refinement, not a
+file-range query fallback.
+* P0 selector materialization update
+This update supersedes the older P0 wording that used =empty-payload= for all
+exact selector code misses.
+
+Rust impl blocks are materializable owner items. A selector such as
+=rust://...#item/impl/SessionArgs= must resolve to bounded impl block code from
+the query-owner lane.
+
+When an exact structural selector names no item in an existing owner, the query
+must return =state=not-found reason=item-not-found=. When the item name exists
+but the selector kind is wrong, it must return
+=state=kind-mismatch reason=item-kind-mismatch actualKinds=<kinds>=. The
+=empty-payload= state is reserved for the narrower case where an item is
+selected but the provider cannot produce a bounded payload.
+
+This keeps the recovery action parser-owned:
+#+begin_src text
+exact selector matched no owner item
+-> state=not-found | state=kind-mismatch
+-> recommendedNext=asp <language> search owner <owner-path> items --query <item> --workspace . --view seeds
+#+end_src
+* Performance measurement boundary
+The structural selector materialization gate measures the warm query-owner route,
+not debug CLI cold start. In local evidence, the first =asp= subprocess launched
+from =cargo test= can spend about two seconds in debug binary cold start while
+the subsequent exact selector cases complete under 100ms. That cold-start cost
+must be tracked by a separate CLI-startup scenario.
+
+The root invariant is:
+#+begin_src text
+selector materialization gate = parser/query-owner work
+CLI cold-start gate = binary load, debug symbol, dyld/page-cache, and process startup
+#+end_src
+
+Do not relax selector materialization budgets to absorb CLI cold-start cost. If
+cold start remains above the target, optimize the binary/test execution shape:
+use release or stripped artifacts for CLI gates, reduce debug payload, or expose
+an in-process query-owner core gate for algorithmic checks.
+
+Follow-up implementation direction:
+1. Keep the structural selector scenario as a warm query-owner gate with a
+   sub-250ms max-case budget.
+2. Add a separate CLI cold-start scenario that measures first process launch
+   with stdout redirected and records binary path, size, and profile. That gate
+   owns debug/release/profile decisions.
+3. Add an in-process query-owner core API for algorithmic gates. It should
+   return a typed result instead of writing directly to stdout, so tests can
+   measure parser/query-owner work without launching the full CLI binary.
+4. For agent workflows that need repeated exact reads, prefer a resident/native
+   transport or warmed ASP lane instead of treating every exact selector read as
+   an independent cold process launch.
+* Scenario split after root-cause measurement
+
+The structural selector materialization gate now measures the in-process query-owner
+core instead of launching the =asp= binary. The warm-path scenario is
+=asp-rust-query-structural-selector-materialization= and observed the selector
+matrix at 1 ms with zero provider processes.
+
+Warm command-line startup is tracked separately by
+=asp-cli-binary-startup-profile= and observed 72 ms after warmup. The observed
+2041 ms first launch for
+=asp --help= in the debug test artifact remains a cold-start diagnostic outside
+the scenario hard gate. That cost belongs to binary startup / loader / debuginfo
+paging, not to Search Frame query-owner materialization.

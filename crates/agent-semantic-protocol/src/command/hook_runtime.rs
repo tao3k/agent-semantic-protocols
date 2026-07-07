@@ -303,7 +303,7 @@ fn lookup_hook_session(
 }
 
 fn resident_asp_explore_sandbox_mode() -> Option<String> {
-    let path = std::env::var_os("ASP_AGENTS_HOME")
+    let Some(path) = std::env::var_os("ASP_AGENTS_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| {
             std::env::var_os("HOME").map(|home| {
@@ -311,13 +311,22 @@ fn resident_asp_explore_sandbox_mode() -> Option<String> {
                     .join(".agent-semantic-protocols")
                     .join("agents")
             })
-        })?
-        .join("asp-explorer_codex.toml");
-    let config: toml::Value = toml::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+        })
+        .map(|path| path.join("asp-explorer_codex.toml"))
+    else {
+        return Some("read-only".to_string());
+    };
+    let Some(contents) = std::fs::read_to_string(path).ok() else {
+        return Some("read-only".to_string());
+    };
+    let Some(config) = toml::from_str::<toml::Value>(&contents).ok() else {
+        return Some("read-only".to_string());
+    };
     config
         .get("sandbox_mode")
         .and_then(toml::Value::as_str)
         .map(str::to_string)
+        .or_else(|| Some("read-only".to_string()))
 }
 
 fn default_or_discovered_activation_path() -> PathBuf {

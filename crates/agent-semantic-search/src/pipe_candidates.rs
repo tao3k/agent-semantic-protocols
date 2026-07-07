@@ -2,12 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::dynamic_overlay::DynamicOverlayLane;
 use crate::{
-    DynamicSearchCandidate, DynamicSearchRootCandidateRequest, SearchOverlayCollectionRequest,
-    SearchOverlayConfig, SearchOverlaySurface,
-    collect_dynamic_lexical_overlay_candidates_from_roots, collect_search_overlay_candidates,
-    language_file_spec,
+    DynamicSearchCandidate, DynamicSearchRootCandidateRequest,
+    collect_dynamic_lexical_overlay_candidates_from_roots, language_file_spec,
 };
 
 /// Candidate returned by the search pipe candidate service.
@@ -31,6 +28,7 @@ pub struct SearchPipeCandidateRequest<'a> {
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
+    pub require_multi_clause: bool,
     pub limit: usize,
 }
 
@@ -42,35 +40,11 @@ pub fn collect_search_pipe_candidates(
     if terms.is_empty() {
         return Err("search pipe requires a non-empty query".to_string());
     }
-
-    if terms.iter().all(|term| search_term_looks_like_path(term)) {
-        let roots = resolved_owner_roots(request.project_root, request.owners);
-        let native_candidates =
-            collect_search_overlay_candidates(SearchOverlayCollectionRequest {
-                lane: DynamicOverlayLane::Search,
-                surface: native_surface_for_pipe_terms(&terms),
-                language_id: request.language_id,
-                file_spec_override: None,
-                accept_all_files: false,
-                project_root: request.project_root,
-                locator_root: request.locator_root,
-                roots: &roots,
-                terms: &terms,
-                config: SearchOverlayConfig {
-                    ignore_dirs: request.ignore_dirs,
-                    include_hidden_dirs: request.include_hidden_dirs,
-                },
-                native_args: &[],
-            })?
-            .map(|collection| {
-                collection
-                    .candidates
-                    .into_iter()
-                    .map(SearchPipeCandidate::from)
-                    .collect()
-            })
-            .unwrap_or_default();
-        return Ok(native_candidates);
+    if request.require_multi_clause && terms.len() < 2 {
+        return Err(
+            "search pipe requires at least two query clauses; use search lexical for plain text search or search owner <path> items --query <terms>"
+                .to_string(),
+        );
     }
 
     let file_spec = language_file_spec(request.language_id);
@@ -99,34 +73,6 @@ fn query_terms(query: &str) -> Vec<String> {
         .filter(|term| !term.is_empty())
         .map(str::to_lowercase)
         .collect()
-}
-
-fn resolved_owner_roots(project_root: &Path, owners: &[PathBuf]) -> Vec<PathBuf> {
-    if owners.is_empty() {
-        return vec![project_root.to_path_buf()];
-    }
-    owners
-        .iter()
-        .map(|owner| {
-            if owner.is_absolute() {
-                owner.clone()
-            } else {
-                project_root.join(owner)
-            }
-        })
-        .collect()
-}
-
-fn native_surface_for_pipe_terms(terms: &[String]) -> SearchOverlaySurface {
-    if matches!(terms, [term] if search_term_looks_like_path(term)) {
-        SearchOverlaySurface::Path
-    } else {
-        SearchOverlaySurface::Both
-    }
-}
-
-fn search_term_looks_like_path(term: &str) -> bool {
-    term.contains('/') || term.contains('\\') || term.contains('.')
 }
 
 impl From<crate::SearchOverlayCandidate> for SearchPipeCandidate {

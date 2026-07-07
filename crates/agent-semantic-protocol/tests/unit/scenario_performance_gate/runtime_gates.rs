@@ -172,7 +172,7 @@ pub(crate) fn asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_
         true,
         Some(agent_semantic_runtime::LanguageOwnerItemsProviderOutput {
             status_success: true,
-            stdout: b"actionFrontier=internal\npublic owner item\n",
+            stdout: b"actionFrontier=internal\nI=item:symbol(runtime_owner_items)\n",
             stderr: b"provider note\n",
         }),
     )
@@ -187,7 +187,10 @@ pub(crate) fn asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_
 
     assert_eq!(receipt.outcome, "handled");
     assert_eq!(receipt.provider_process_count, 1);
-    assert_eq!(receipt.stdout_bytes, b"public owner item\n".len());
+    assert_eq!(
+        receipt.stdout_bytes,
+        b"I=item:symbol(runtime_owner_items)\n".len()
+    );
     assert_eq!(receipt.stderr_bytes, b"provider note\n".len());
     assert!(!receipt.cache_hit);
     assert_eq!(receipt.fallback_reason, "none");

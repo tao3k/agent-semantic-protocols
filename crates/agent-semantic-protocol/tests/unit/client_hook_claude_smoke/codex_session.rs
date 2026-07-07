@@ -39,7 +39,7 @@ fn codex_session_start_reuses_registered_asp_explore() {
     );
     assert_eq!(
         decision["fields"]["agentSessionInvalidChildAction"].as_str(),
-        Some("close-delete-and-create-configured-child")
+        Some("close-native-subagent-or-archive-temporary-thread-and-create-configured-child")
     );
     assert_eq!(
         decision["fields"]["agentSessionDuplicatePolicy"].as_str(),
@@ -166,7 +166,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
     );
     assert_eq!(
         decision["fields"]["agentSessionLookupCommand"].as_str(),
-        Some("asp agent session reuse --name asp-explore --json")
+        Some("asp agent session resume --name asp-explore --json")
     );
     assert_eq!(
         decision["fields"]["agentSessionRegisterCommandTemplate"].as_str(),
@@ -518,7 +518,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_is_expired() {
     );
     assert_eq!(
         decision["fields"]["agentSessionLookupCommand"].as_str(),
-        Some("asp agent session reuse --name asp-explore --json")
+        Some("asp agent session resume --name asp-explore --json")
     );
     assert_eq!(
         decision["fields"]["agentSessionRegisterCommandTemplate"].as_str(),
@@ -607,7 +607,7 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
     );
     assert_eq!(
         decision["fields"]["agentSessionLookupCommand"].as_str(),
-        Some("asp agent session reuse --name asp-explore --json")
+        Some("asp agent session resume --name asp-explore --json")
     );
     assert_eq!(
         decision["fields"]["agentSessionRegisterCommandTemplate"].as_str(),
@@ -659,7 +659,7 @@ fn codex_session_start_bootstraps_missing_asp_explore() {
     );
     assert_eq!(
         decision["fields"]["agentSessionLookupCommand"].as_str(),
-        Some("asp agent session reuse --name asp-explore --json")
+        Some("asp agent session resume --name asp-explore --json")
     );
     assert_eq!(
         decision["fields"]["agentSessionRegisterCommandTemplate"].as_str(),

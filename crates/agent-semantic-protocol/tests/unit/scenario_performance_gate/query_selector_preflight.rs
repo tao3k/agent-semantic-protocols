@@ -8,7 +8,7 @@ use agent_semantic_client_core::{ClientMethod, ClientRequest};
 
 use super::runtime_gates::{duration_literal, duration_millis_from_manifest, read_toml};
 use super::shared::SharedBenchmarkToml;
-use crate::provider_command::support::temp_project_root;
+use crate::provider_command::support::{asp_command, temp_project_root};
 
 pub(crate) fn asp_query_selector_directory_code_preflight_cold_functional_path_stays_inside_scenario_gate()
  {
@@ -181,4 +181,228 @@ fn assert_query_selector_directory_preflight_benchmark_contract(benchmark: &Shar
     assert_eq!(benchmark.max_provider_process_count, Some(0));
     assert_eq!(benchmark.max_stdout_bytes, Some(4096));
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
+#[test]
+fn asp_rust_query_structural_selector_materialization_stays_inside_scenario_gate() {
+    use agent_semantic_protocol::query_owner_core::run_fast_owner_query_to_string;
+
+    let scenario_started_at = Instant::now();
+    let trace_timings = std::env::var_os("ASP_TEST_TIMINGS").is_some();
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_rust_query_structural_selector_materialization");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("query-owner-exact-selector")
+    );
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-rust-query-structural-selector-materialization");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-rust-query-structural-selector-materialization\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub struct AspSessionPolicy;\n\
+         impl AspSessionPolicy {\n\
+             fn main_asp_command_allowed(&self) -> bool {\n\
+                 true\n\
+             }\n\
+        }\n",
+    )
+    .expect("write source");
+    let setup_elapsed = scenario_started_at.elapsed();
+
+    let matrix: &[(&str, &str, bool, &str)] = &[
+        (
+            "impl-code",
+            "rust://src/lib.rs#item/impl/AspSessionPolicy",
+            true,
+            "impl AspSessionPolicy {",
+        ),
+        (
+            "missing-item",
+            "rust://src/lib.rs#item/function/missing_policy",
+            false,
+            "state=not-found",
+        ),
+        (
+            "kind-mismatch",
+            "rust://src/lib.rs#item/function/AspSessionPolicy",
+            false,
+            "state=kind-mismatch",
+        ),
+    ];
+
+    let mut max_case_elapsed = Duration::ZERO;
+    let mut output_bytes = 0usize;
+    let mut observed_routes = Vec::new();
+    for (case, selector, should_succeed, expected) in matrix {
+        let case_started_at = Instant::now();
+        let args = vec![
+            "query".to_string(),
+            "--selector".to_string(),
+            (*selector).to_string(),
+            "--workspace".to_string(),
+            ".".to_string(),
+            "--code".to_string(),
+        ];
+        let result =
+            run_fast_owner_query_to_string("rust", &args, &root, &root).and_then(|rendered| {
+                rendered.ok_or_else(|| format!("fast owner query did not handle {selector}"))
+            });
+        max_case_elapsed = max_case_elapsed.max(case_started_at.elapsed());
+        observed_routes.push(*case);
+        assert_eq!(
+            result.is_ok(),
+            *should_succeed,
+            "{case} status mismatch result={result:?}"
+        );
+        let rendered = match result {
+            Ok(rendered) => rendered,
+            Err(rendered) => rendered,
+        };
+        output_bytes += rendered.len();
+        assert!(
+            rendered.contains(expected),
+            "{case} expected {expected:?}; rendered={rendered}"
+        );
+    }
+    let elapsed_ms = max_case_elapsed.as_millis();
+    assert!(
+        elapsed_ms <= max_total_ms,
+        "structural selector materialization exceeded benchmark max_total={} maxCaseObserved={}ms routes={observed_routes:?}",
+        benchmark.max_total,
+        elapsed_ms
+    );
+    assert!(
+        output_bytes <= benchmark.max_stdout_bytes.unwrap_or(4096) as usize,
+        "scenario output exceeded max_stdout_bytes={:?} observed={output_bytes}",
+        benchmark.max_stdout_bytes
+    );
+
+    let observed_total = duration_literal(max_case_elapsed);
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-rust-query-structural-selector-materialization",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": matrix.iter().map(|(_, selector, _, _)| {
+            vec!["rust", "query", "--selector", selector, "--workspace", ".", "--code"]
+        }).collect::<Vec<_>>(),
+        "phase": "warm",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "allowedFirstRoutes": ["query-owner-exact-selector"],
+            "forbiddenRoutes": ["provider-process", "search-overlay", "empty-code-projection", "raw-source-read"],
+            "fallbackReason": "none"
+        },
+        "observed": {
+            "observedTotal": observed_total,
+            "providerProcessCount": 0,
+            "executedRoutes": observed_routes,
+            "outputBytes": output_bytes,
+            "fallbackReason": "none"
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-rust-query-structural-selector-materialization"]
+    });
+    if trace_timings {
+        eprintln!(
+            "structural-selector-materialization setup={}ms max_case={}ms total_before_cleanup={}ms output_bytes={output_bytes}",
+            setup_elapsed.as_millis(),
+            max_case_elapsed.as_millis(),
+            scenario_started_at.elapsed().as_millis()
+        );
+    }
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["fallbackReason"], "none");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_cli_binary_startup_profile_stays_inside_scenario_gate() {
+    let trace_timings = std::env::var_os("ASP_TEST_TIMINGS").is_some();
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_cli_binary_startup_profile");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("cli-binary-startup")
+    );
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let root = temp_project_root("scenario-cli-binary-startup-profile");
+    let warmup = asp_command(&root)
+        .arg("--help")
+        .output()
+        .expect("warm asp cli startup profile");
+    assert!(
+        warmup.status.success(),
+        "asp --help warmup failed stderr={}",
+        String::from_utf8_lossy(&warmup.stderr)
+    );
+
+    let mut best_elapsed = None;
+    let mut best_output_bytes = None;
+    for _ in 0..3 {
+        let scenario_started_at = Instant::now();
+        let output = asp_command(&root)
+            .arg("--help")
+            .output()
+            .expect("run asp cli startup profile");
+        let elapsed = scenario_started_at.elapsed();
+        assert!(
+            output.status.success(),
+            "asp --help failed stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let output_bytes = output.stdout.len() + output.stderr.len();
+        if best_elapsed.is_none_or(|best| elapsed < best) {
+            best_elapsed = Some(elapsed);
+            best_output_bytes = Some(output_bytes);
+        }
+    }
+    let elapsed = best_elapsed.expect("startup profile sample");
+    assert!(
+        elapsed.as_millis() <= max_total_ms,
+        "cli binary startup exceeded benchmark max_total={} observed={}",
+        benchmark.max_total,
+        duration_literal(elapsed)
+    );
+    let output_bytes = best_output_bytes.expect("startup profile output bytes");
+    assert!(
+        output_bytes <= benchmark.max_stdout_bytes.unwrap_or(65536) as usize,
+        "scenario output exceeded max_stdout_bytes={:?} observed={output_bytes}",
+        benchmark.max_stdout_bytes
+    );
+    if trace_timings {
+        eprintln!(
+            "cli-binary-startup elapsed={} output_bytes={output_bytes}",
+            duration_literal(elapsed)
+        );
+    }
+    let _ = fs::remove_dir_all(root);
 }

@@ -2,7 +2,7 @@ use super::support::write_codex_asp_explorer_fixture;
 use crate::provider_command::support::{asp_command, temp_project_root};
 
 #[test]
-fn asp_query_gate_reports_registered_invalid_child_instead_of_missing_child() {
+fn asp_query_gate_invalid_child_enters_cleanup_bootstrap() {
     let root = temp_project_root("agent-command-session-invalid-child-gate");
     let home = root.join("home");
     std::fs::create_dir_all(&home).expect("create temp home");
@@ -65,19 +65,16 @@ fn asp_query_gate_reports_registered_invalid_child_instead_of_missing_child() {
     assert!(!denied.status.success());
     let stderr = String::from_utf8(denied.stderr).expect("denied stderr");
     assert!(
-        stderr.contains("registered asp-explore child session is not routable")
-            || stderr.contains("denied by non-routable child"),
+        stderr.contains("start the configured ASP managed subagent"),
         "{stderr}"
     );
     assert!(
-        stderr.contains(&format!("childSessionId={child_session_id}")),
+        !stderr.contains(&format!(
+            "Route this command to resident asp-explore child session `{child_session_id}`"
+        )),
         "{stderr}"
     );
-    assert!(stderr.contains("childStatus=invalid"), "{stderr}");
-    assert!(
-        !stderr.contains("no active asp-explore child session is registered"),
-        "{stderr}"
-    );
+    assert!(!stderr.contains("reuse"), "{stderr}");
 
     let _ = std::fs::remove_dir_all(root);
 }

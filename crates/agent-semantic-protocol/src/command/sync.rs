@@ -16,6 +16,7 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
     let project_root = project_root_arg(args)?;
     let sync = run_org_state_sync(&project_root)?;
     let agent_config_count = sync_global_agent_configs()?;
+    sync_codex_plugin_activation_cache(&project_root)?;
     let org_state = agent_semantic_runtime::project_state_paths(&project_root)?
         .protocol_home
         .join("org");
@@ -71,6 +72,29 @@ fn sync_global_agent_configs() -> Result<usize, String> {
         }
     }
     Ok(synced)
+}
+
+fn sync_codex_plugin_activation_cache(project_root: &Path) -> Result<(), String> {
+    let source = agent_semantic_runtime::project_state_paths(project_root)?.activation_path;
+    if !source.is_file() {
+        return Ok(());
+    }
+    let target = codex_home()
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("hooks")
+        .join("activation.json");
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    fs::copy(&source, &target).map(|_| ()).map_err(|error| {
+        format!(
+            "failed to copy {} to {}: {error}",
+            source.display(),
+            target.display()
+        )
+    })
 }
 
 fn codex_home() -> PathBuf {

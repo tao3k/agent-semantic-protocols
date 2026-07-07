@@ -110,14 +110,18 @@ fn owner_items_runtime_outcome_uses_cache_before_provider_output() {
         project_root: &root,
         cache_home: &cache_home,
     };
-    write_language_owner_items_cache(&request, b"cached owner-items\n").expect("write cache");
+    write_language_owner_items_cache(
+        &request,
+        b"|item kind=function name=cached selector=language://src/lib.rs#item/function/cached\n",
+    )
+    .expect("write cache");
 
     let outcome =
         resolve_language_owner_items_runtime_outcome(&request, true, None).expect("resolve cache");
     assert_eq!(
         outcome,
         LanguageOwnerItemsRuntimeOutcome::Handled {
-            stdout: b"cached owner-items\n".to_vec(),
+            stdout: b"|item kind=function name=cached selector=language://src/lib.rs#item/function/cached\n".to_vec(),
             stderr: Vec::new(),
             cache_hit: true,
         }
@@ -147,7 +151,7 @@ fn owner_items_runtime_outcome_compacts_and_caches_provider_success() {
         true,
         Some(LanguageOwnerItemsProviderOutput {
             status_success: true,
-            stdout: b"actionFrontier=internal\npublic owner item\n",
+            stdout: b"actionFrontier=internal\n|item kind=function name=owner selector=language://src/lib.rs#item/function/owner\n",
             stderr: b"provider note\n",
         }),
     )
@@ -155,15 +159,143 @@ fn owner_items_runtime_outcome_compacts_and_caches_provider_success() {
     assert_eq!(
         outcome,
         LanguageOwnerItemsRuntimeOutcome::Handled {
-            stdout: b"public owner item\n".to_vec(),
+            stdout: b"|item kind=function name=owner selector=language://src/lib.rs#item/function/owner\n".to_vec(),
             stderr: b"provider note\n".to_vec(),
             cache_hit: false,
         }
     );
     assert_eq!(
         read_language_owner_items_cache(&request).expect("read cache"),
-        Some(b"public owner item\n".to_vec())
+        Some(
+            b"|item kind=function name=owner selector=language://src/lib.rs#item/function/owner\n"
+                .to_vec()
+        )
     );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_runtime_ignores_help_shaped_cache_and_rejects_help_success() {
+    let root = temp_root("owner-items-help-output");
+    let cache_home = root.join(".cache");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
+    let args = vec!["items".to_string()];
+    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let request = LanguageOwnerItemsCacheRequest {
+        language_id: "rust",
+        args: &args,
+        invocation: &invocation,
+        owner: std::path::Path::new("src/lib.rs"),
+        project_root: &root,
+        cache_home: &cache_home,
+    };
+    write_language_owner_items_cache(
+        &request,
+        b"gslph - Gerbil Scheme semantic search and project harness\nUsage:\n",
+    )
+    .expect("write help cache");
+
+    let outcome = resolve_language_owner_items_runtime_outcome(
+        &request,
+        true,
+        Some(LanguageOwnerItemsProviderOutput {
+            status_success: true,
+            stdout: b"gslph - Gerbil Scheme semantic search and project harness\nUsage:\n",
+            stderr: b"",
+        }),
+    )
+    .expect("resolve help output");
+
+    assert!(matches!(
+        outcome,
+        LanguageOwnerItemsRuntimeOutcome::Failed(message)
+            if message.contains("non-owner-items output")
+    ));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_runtime_accepts_python_structural_selector_output() {
+    let root = temp_root("owner-items-python-structural-output");
+    let cache_home = root.join(".cache");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("src/query.py"),
+        "def run_query_command():\n    pass\n",
+    )
+    .expect("write owner");
+    let args = vec!["items".to_string()];
+    let invocation = vec!["py-harness".to_string(), "query".to_string()];
+    let request = LanguageOwnerItemsCacheRequest {
+        language_id: "python",
+        args: &args,
+        invocation: &invocation,
+        owner: std::path::Path::new("src/query.py"),
+        project_root: &root,
+        cache_home: &cache_home,
+    };
+
+    let stdout = b"I=item:symbol(run_query_command) selector=python://src/query.py#item/function/run_query_command nextCommand=\"asp python query --selector python://src/query.py#item/function/run_query_command --workspace . --code\"\n";
+    let outcome = resolve_language_owner_items_runtime_outcome(
+        &request,
+        true,
+        Some(LanguageOwnerItemsProviderOutput {
+            status_success: true,
+            stdout,
+            stderr: b"",
+        }),
+    )
+    .expect("resolve python owner-items output");
+
+    assert_eq!(
+        outcome,
+        LanguageOwnerItemsRuntimeOutcome::Handled {
+            stdout: stdout.to_vec(),
+            stderr: Vec::new(),
+            cache_hit: false,
+        }
+    );
+    assert_eq!(
+        read_language_owner_items_cache(&request).expect("read cache"),
+        Some(stdout.to_vec())
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn owner_items_runtime_rejects_dynamic_owner_fallback_output() {
+    let root = temp_root("owner-items-dynamic-fallback-output");
+    let cache_home = root.join(".cache");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
+    let args = vec!["items".to_string()];
+    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let request = LanguageOwnerItemsCacheRequest {
+        language_id: "rust",
+        args: &args,
+        invocation: &invocation,
+        owner: std::path::Path::new("src/lib.rs"),
+        project_root: &root,
+        cache_home: &cache_home,
+    };
+
+    let outcome = resolve_language_owner_items_runtime_outcome(
+        &request,
+        true,
+        Some(LanguageOwnerItemsProviderOutput {
+            status_success: true,
+            stdout: b"entries=owner-query(O,Q=>dynamic-items)\n",
+            stderr: b"",
+        }),
+    )
+    .expect("resolve dynamic fallback output");
+
+    assert!(matches!(
+        outcome,
+        LanguageOwnerItemsRuntimeOutcome::Failed(message)
+            if message.contains("non-owner-items output")
+    ));
     let _ = fs::remove_dir_all(root);
 }
 

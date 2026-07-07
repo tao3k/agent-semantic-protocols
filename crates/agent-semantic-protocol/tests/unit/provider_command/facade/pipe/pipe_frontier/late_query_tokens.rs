@@ -35,7 +35,7 @@ fn search_pipe_graph_turbo_request_keeps_late_query_token_candidates() {
             "rust",
             "search",
             "pipe",
-            "Vec collection fields",
+            "Vec|collection fields",
             "--view",
             "graph-turbo-request",
             ".",

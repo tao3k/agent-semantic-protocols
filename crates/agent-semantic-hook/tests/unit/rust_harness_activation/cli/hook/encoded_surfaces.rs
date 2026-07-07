@@ -17,12 +17,14 @@ fn cli_hook_replay_blocks_encoded_payload_escape_surfaces() {
     let direct_source_route = json!([
         "asp",
         "rust",
-        "query",
-        "--selector",
+        "search",
+        "owner",
         "src/lib.rs",
+        "items",
         "--workspace",
         ".",
-        "--code"
+        "--view",
+        "seeds"
     ]);
 
     let cases = vec![

@@ -36,7 +36,7 @@ use agent_session_registry_args::{
 use agent_session_registry_codex::run_codex_session_wrapper;
 use agent_session_registry_commands::{
     close_session, gc_sessions, lifecycle_audit_session, list_sessions, reconcile_sessions,
-    register_session, reuse_session, show_session, status_session,
+    register_session, reuse_session, show_session, smoke_session, status_session,
 };
 use agent_session_registry_state::open_or_create_default_registry;
 use std::{env, path::PathBuf};
@@ -91,9 +91,13 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         SessionCommand::Reuse => reuse_session(&registry, &args),
         SessionCommand::Status => status_session(&registry, &args, &project_root),
         SessionCommand::LifecycleAudit => lifecycle_audit_session(&registry, &args),
+        SessionCommand::Smoke => smoke_session(&registry, &args),
         SessionCommand::Close => close_session(&registry, &args),
         SessionCommand::Gc => gc_sessions(&registry, &args),
         SessionCommand::Reconcile => reconcile_sessions(&registry, &args),
+        SessionCommand::Resume if should_render_resume_status(&args) => {
+            status_session(&registry, &args, &project_root)
+        }
         SessionCommand::Resume => run_codex_session_wrapper(&registry, &args, "resume", false),
         SessionCommand::Fork => run_codex_session_wrapper(&registry, &args, "fork", false),
         SessionCommand::Archive => run_codex_session_wrapper(&registry, &args, "archive", false),
@@ -103,6 +107,29 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         }
         SessionCommand::SwitchModel => switch_model(&args),
     }
+}
+
+fn should_render_resume_status(args: &SessionArgs) -> bool {
+    if args.json {
+        return false;
+    }
+    agent_platform_session_active() || !std::io::IsTerminal::is_terminal(&std::io::stdin())
+}
+
+fn agent_platform_session_active() -> bool {
+    if env::var_os("ASP_NO_AGENT_PLATFORM").is_some() {
+        return false;
+    }
+    [
+        "CODEX_THREAD_ID",
+        "CODEX_PARENT_THREAD_ID",
+        "CLAUDE_SESSION_ID",
+        "CLAUDE_CODE_SESSION_ID",
+        "AGENT_SESSION_ID",
+        "AGENT_PLATFORM_SESSION_ID",
+    ]
+    .into_iter()
+    .any(|name| env::var_os(name).is_some_and(|value| !value.is_empty()))
 }
 
 fn switch_model(args: &SessionArgs) -> Result<(), String> {

@@ -370,14 +370,6 @@ fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction)
 }
 
 fn query_code_selector(action: &PipeAction) -> String {
-    if action.source_alias.starts_with('I')
-        && let Some((path, start, end)) = selector_parts(&action.selector)
-        && start == end
-    {
-        let context_start = start.saturating_sub(8).max(1);
-        let context_end = end + 12;
-        return format!("{path}:{context_start}:{context_end}");
-    }
     action.selector.clone()
 }
 
@@ -498,6 +490,10 @@ fn action_root_arg(
 }
 
 fn selector_path(selector: &str) -> Option<&str> {
+    if let Some((_, rest)) = selector.split_once("://") {
+        let (owner, _) = rest.split_once("#item/")?;
+        return (!owner.is_empty()).then_some(owner);
+    }
     let mut parts = selector.rsplitn(3, ':');
     let _end = parts.next()?;
     let _start = parts.next()?;

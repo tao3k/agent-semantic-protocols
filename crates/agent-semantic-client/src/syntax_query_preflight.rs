@@ -50,9 +50,12 @@ fn validate_code_selector_target(request: &ClientRequest) -> Result<(), String> 
             "query --selector with --code requires an exact file, range, or structural selector; `{selector}` is a directory. Use search lexical or search owner with --workspace for directory-scoped discovery"
         ));
     }
+    if tree_sitter_query_source(request)?.is_some() {
+        return Ok(());
+    }
     if let Some(language_id) = registered_source_selector_language(request, selector) {
         return Err(format!(
-            "invalid query --code selector `{selector}`: file selectors are not executable code selectors; use search owner <path> items --workspace <root> --view seeds, then query an exact parser-owned selector such as {language_id}://path#item/function/name"
+            "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items"
         ));
     }
     if let Some(owner) = selector_owner {

@@ -49,12 +49,14 @@ fn read_file_command_rewrites_selector_to_package_root() {
         args(&[
             "asp",
             "rust",
-            "query",
-            "--selector",
-            "src/lib.rs",
+            "search",
+            "owner",
+            "packages/rust-crate/src/lib.rs",
+            "items",
             "--workspace",
-            "packages/rust-crate",
-            "--code",
+            ".",
+            "--view",
+            "seeds",
         ])
     );
 }

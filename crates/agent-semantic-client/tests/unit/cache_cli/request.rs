@@ -271,6 +271,46 @@ fn non_tree_sitter_generation_probe_uses_exact_request_fingerprint() {
     );
 }
 
+#[test]
+fn search_request_fingerprint_ignores_trailing_workspace_markers() {
+    let provider = rust_provider();
+    let project_root = std::env::current_dir().expect("current dir");
+    let export_method = CacheExportMethod::from("search/prime");
+    let base_args = vec![
+        "prime".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+    ];
+    let dot_args = vec![
+        "prime".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+        ".".to_string(),
+    ];
+    let absolute_workspace_args = vec![
+        "prime".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+        project_root.display().to_string(),
+    ];
+
+    let base_fingerprint =
+        exact_request_fingerprint(&provider, &project_root, &export_method, &base_args);
+    assert_eq!(
+        base_fingerprint,
+        exact_request_fingerprint(&provider, &project_root, &export_method, &dot_args)
+    );
+    assert_eq!(
+        base_fingerprint,
+        exact_request_fingerprint(
+            &provider,
+            &project_root,
+            &export_method,
+            &absolute_workspace_args
+        )
+    );
+}
+
 fn rust_provider() -> ResolvedProvider {
     ResolvedProvider {
         language_id: LanguageId::from("rust"),

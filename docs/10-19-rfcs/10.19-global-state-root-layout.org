@@ -178,3 +178,17 @@ The CLI must call the State Core service. It must not compose paths itself.
 - =asp state locate --json= validates against
   =schemas/semantic-state-locate-report.v2.schema.json=;
 - no command-layer path helper reconstructs State Core v2 paths directly.
+* Implementation checkpoint: M0 DB/cache identity closure
+The M0 DB/cache closure keeps State Core as the source of path truth:
+- active client DB paths resolve through State Core and DB Engine services under =live/client/client.turso=;
+- command code must not compose =projects/by-id/<repo_id>/workspaces/<workspace_id>/...= paths by hand;
+- external absolute workspace roots may be used by cache probing to choose the effective project state bucket;
+- positional path arguments remain part of the CLI/provider forwarding contract unless they are explicit cache identity markers;
+- cache request fingerprints must ignore trailing workspace markers such as =.= and absolute workspace directories so equivalent invocations reuse the same generation;
+- project-local cache remains diagnostic-only and is still not a v2 fallback or migration source.
+
+The matching validation gates are:
+- =cargo test -p agent-semantic-client --locked cli_args -- --nocapture=
+- =cargo test -p agent-semantic-client --locked cache_cli -- --nocapture=
+- =cargo test -p agent-semantic-protocol --locked provider_command::receipt -- --nocapture=
+- =cargo test -p agent-semantic-client-db --locked=

@@ -35,7 +35,9 @@ fn cache_usage_lists_flush() {
     let root = temp_root("usage");
     let error = run_cache(&root, None, &["unknown".to_string()], false).expect_err("usage");
 
-    assert!(error.contains("status|import|source-index refresh|source-index lookup"));
+    assert!(error.contains("status|import|source-index refresh"));
+    assert!(error.contains("source-index lookup --query <term>"));
+    assert!(error.contains("invalidate|flush [syntax-rows]"));
     assert!(error.contains("runtime-source acquire --language-id <id>"));
 }
 

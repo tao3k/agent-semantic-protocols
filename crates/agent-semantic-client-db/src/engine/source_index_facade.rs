@@ -221,6 +221,11 @@ pub(super) async fn persist_structural_index_read_model_at_path(
     db_path: &Path,
     import: &ClientDbStructuralIndexImport,
 ) -> Result<ClientDbEngineStructuralIndexReadModelReport, String> {
+    let _refresh_write_guard = structural_index_refresh_write_lock()
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|error| format!("failed to acquire structural index refresh lock: {error}"))?;
     let trace_started = std::time::Instant::now();
     super::turso_bootstrap::bootstrap_turso_client_db(db_path).await?;
     db_engine_trace("structural-index-bootstrap", trace_started);
@@ -239,6 +244,12 @@ pub(super) async fn persist_structural_index_read_model_at_path(
         graph_report,
         search_document_count,
     ))
+}
+
+fn structural_index_refresh_write_lock() -> &'static std::sync::Arc<tokio::sync::Semaphore> {
+    static LOCK: std::sync::OnceLock<std::sync::Arc<tokio::sync::Semaphore>> =
+        std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Arc::new(tokio::sync::Semaphore::new(1)))
 }
 
 fn structural_index_read_model_report(
@@ -293,6 +304,20 @@ async fn lookup_source_index_read_model_at_path(
             ClientDbSourceIndexLookupState::EmptyIndex,
             Vec::new(),
         ));
+    }
+    match super::turso_source_index::ensure_turso_source_index_selector_columns(&connection).await {
+        Ok(()) => {}
+        Err(error) if is_turso_lock_error(&error) => {
+            return Ok(source_index_busy_lookup_result(db_path));
+        }
+        Err(error) => return Err(error),
+    }
+    match super::turso_source_index::ensure_turso_source_index_owner_columns(&connection).await {
+        Ok(()) => {}
+        Err(error) if is_turso_lock_error(&error) => {
+            return Ok(source_index_busy_lookup_result(db_path));
+        }
+        Err(error) => return Err(error),
     }
     let candidates = match query_turso_source_index_candidates_with_connection(
         &connection,

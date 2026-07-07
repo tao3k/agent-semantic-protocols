@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 const OWNER_ITEMS_FACADE_DEBUG_SUBPROCESS_GATE: Duration = Duration::from_millis(750);
 
 #[test]
-fn language_owner_items_routes_to_harness_even_without_capability_flag() {
+fn language_owner_items_uses_dynamic_owner_items_without_provider_fallback() {
     let root = temp_project_root("search-owner-language-routes-to-harness");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -39,25 +39,25 @@ fn language_owner_items_routes_to_harness_even_without_capability_flag() {
         .expect("run asp language search owner items");
 
     assert!(
-        !output.status.success(),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stderr.contains("provider-owned owner-items produced empty output"),
-        "{stderr}"
+        stdout.contains("alg=asp-dynamic-owner-items-v1"),
+        "{stdout}"
     );
-    assert!(stderr.contains("no fallback executed"), "{stderr}");
+    assert!(stdout.contains("dynamic_owner_item_index"), "{stdout}");
     assert!(
-        marker.exists(),
-        "owner-items should route to the language harness CLI instead of ASP synthesizing source items"
+        !marker.exists(),
+        "dynamic owner-items should not invoke the provider fallback"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn language_owner_items_caches_harness_stdout_by_owner_content() {
+fn language_owner_items_reuses_dynamic_owner_items_without_provider_cache() {
     let root = temp_project_root("search-owner-language-harness-cache");
     let bin_dir = home_local_bin(&root);
     let count_path = root.join("provider-count");
@@ -113,9 +113,9 @@ fn language_owner_items_caches_harness_stdout_by_owner_content() {
         );
     }
 
-    assert_eq!(
-        std::fs::read_to_string(&count_path).expect("provider count"),
-        "1"
+    assert!(
+        !count_path.exists(),
+        "dynamic owner-items should not invoke or cache the provider output"
     );
     let _ = std::fs::remove_dir_all(root);
 }

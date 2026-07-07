@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_rust_query_structural_selector_materialization_stays_inside_scenario_gate"
+phase = "warm"
+target_total = "5ms"
+max_total = "25ms"
+observed_total = "1ms"
+regression_budget = "10ms"
+memory_budget_bytes = 67108864
+observed_memory_bytes = 0
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+snapshot = "asp_rust_query_structural_selector_materialization_stays_inside_scenario_gate"
+fallback_reason = "none"
+route_source = "query-owner-exact-selector"
+target_rationale = "Warm Rust exact structural selector code queries should materialize parser-owned items in the main query-owner lane, including impl blocks, and classify missing or kind-mismatched selectors before activation, provider startup, search overlay, or source-read fallback. Cold debug binary startup is a separate CLI-startup gate and must not be charged to selector materialization."
+
+[observed_timings]
+structural_selector_materialization = "1ms"
+provider_process_count = "0us"

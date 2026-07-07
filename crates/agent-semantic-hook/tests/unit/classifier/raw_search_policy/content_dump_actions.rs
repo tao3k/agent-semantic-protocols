@@ -38,31 +38,31 @@ fn sed_content_dump_routes_source_suffixes_across_languages() {
 
 #[test]
 fn range_content_dump_routes_source_suffixes_across_languages() {
-    for (command, provider_id, selector) in [
+    for (command, provider_id, owner) in [
         (
             "awk 'NR>=10 && NR<=20' src/lib.rs",
             "rs-harness",
-            "src/lib.rs:10:20",
+            "src/lib.rs",
         ),
         (
             "head -n 20 src/cli/main.ts",
             "ts-harness",
-            "src/cli/main.ts:1:20",
+            "src/cli/main.ts",
         ),
         (
             "head -n 20 src/cli/main.js",
             "ts-harness",
-            "src/cli/main.js:1:20",
+            "src/cli/main.js",
         ),
         (
             "tail -n +10 packages/python/src/tools/semantic_sandtable/receipts.py | head -n 21",
             "py-harness",
-            "packages/python/src/tools/semantic_sandtable/receipts.py:10:30",
+            "packages/python/src/tools/semantic_sandtable/receipts.py",
         ),
         (
             "nl -ba tests/unit/semantic_sandtable/test_receipt_token_cost.py | sed -n '5,12p'",
             "py-harness",
-            "tests/unit/semantic_sandtable/test_receipt_token_cost.py:5:12",
+            "tests/unit/semantic_sandtable/test_receipt_token_cost.py",
         ),
     ] {
         let decision = classify_hook(
@@ -83,17 +83,9 @@ fn range_content_dump_routes_source_suffixes_across_languages() {
         );
         assert_eq!(decision.routes[0].binary, "asp", "{command}");
         assert_eq!(decision.routes[0].provider_id, provider_id, "{command}");
-        let selector_index = decision.routes[0]
-            .argv
-            .iter()
-            .position(|arg| arg == "--selector")
-            .expect("selector flag");
         assert_eq!(
-            decision.routes[0]
-                .argv
-                .get(selector_index + 1)
-                .map(String::as_str),
-            Some(selector),
+            decision.routes[0].argv.get(4).map(String::as_str),
+            Some(owner),
             "{command}"
         );
     }

@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "asp_cli_binary_startup_profile_stays_inside_scenario_gate"
+phase = "warm"
+target_total = "25ms"
+max_total = "300ms"
+observed_total = "72ms"
+regression_budget = "25ms"
+memory_budget_bytes = 67108864
+observed_memory_bytes = 0
+max_provider_process_count = 0
+max_stdout_bytes = 65536
+snapshot = "asp_cli_binary_startup_profile_stays_inside_scenario_gate"
+fallback_reason = "none"
+route_source = "cli-binary-startup"
+target_rationale = "CLI binary startup is measured separately from search/query selector materialization. The scenario profiles warm startup and top-level clap rendering under the global scenario hard gate; cold debug binary page-in remains a separate diagnostic and must not be charged to Search Frame warm query-owner gates."
+
+[observed_timings]
+cli_binary_startup = "72ms"
+provider_process_count = "0us"
