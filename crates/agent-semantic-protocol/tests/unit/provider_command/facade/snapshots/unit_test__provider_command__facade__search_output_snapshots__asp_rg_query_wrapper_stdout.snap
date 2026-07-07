@@ -11,7 +11,7 @@ scopeQuality=high
 clauseCoverage=C1 matched=fiber,queue missing=-
 clauseCoverage=C2 matched=stale,refresh,turso,cache missing=-
 packageCohesion=high packages=effect.ts
-sourceTrace=query-overlay:used[backend=rg;candidateBasis=source-lines;collectMs=<ms>;elapsedMs=<ms>;inputCandidates=3;qualityMs=<ms>;selectedCandidates=3;sourceSearchPasses=1]
+sourceTrace=query-overlay:used[collectMs=<ms>;elapsedMs=<ms>;qualityMs=<ms>]
 nextCommand=asp fd -query 'Fiber|Queue|stale|refresh|turso|cache' --workspace src
 nextClasses=owner-items,query-selector,fd-query
 avoid=repeat-rg,manual-window-scan,raw-read

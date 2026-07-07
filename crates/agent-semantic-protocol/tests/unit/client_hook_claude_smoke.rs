@@ -708,6 +708,13 @@ fn claude_fixture() -> PathBuf {
     std::fs::write(root.join("src/lib.rs"), "pub fn demo() {}\n").expect("write src");
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create provider bin dir");
+    let asp_path = bin_dir.join("asp");
+    std::fs::write(
+        &asp_path,
+        format!("#!/bin/sh\nexec \"{}\" \"$@\"\n", env!("CARGO_BIN_EXE_asp")),
+    )
+    .expect("write asp shim");
+    make_executable(&asp_path);
     let provider_path = bin_dir.join("rs-harness");
     std::fs::write(
         &provider_path,

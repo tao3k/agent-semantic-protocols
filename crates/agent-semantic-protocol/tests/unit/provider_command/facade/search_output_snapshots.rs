@@ -192,6 +192,9 @@ fn normalize_search_line(line: &str) -> String {
     if line.starts_with("sourceTrace=finder:used[") {
         return "sourceTrace=finder:used[collectMs=<ms>;elapsedMs=<ms>;qualityMs=<ms>]".to_string();
     }
+    if line.starts_with("sourceTrace=query-overlay:used[") {
+        return "sourceTrace=query-overlay:used[collectMs=<ms>;elapsedMs=<ms>;qualityMs=<ms>]".to_string();
+    }
 
     ["collectMs", "elapsedMs", "qualityMs"]
         .into_iter()
