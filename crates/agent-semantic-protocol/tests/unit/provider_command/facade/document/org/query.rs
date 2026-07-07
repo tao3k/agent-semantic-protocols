@@ -275,13 +275,8 @@ fn org_facade_search_memory_defaults_to_codex_thread_id() {
         "name = \"asp_explorer\"\nmodel = \"gpt-5.3-codex-spark\"\nsandbox_mode = \"read-only\"\n",
     )
     .expect("write asp explorer config");
-    let rollout_dir = root
-        .join("home")
-        .join(".codex")
-        .join("sessions")
-        .join("2026")
-        .join("07")
-        .join("01");
+    let sessions_dir = root.join("home").join(".codex").join("sessions");
+    let rollout_dir = sessions_dir.join("2026").join("07").join("01");
     std::fs::create_dir_all(&rollout_dir).expect("create codex rollout dir");
     let session_meta = serde_json::json!({
         "type": "session_meta",
@@ -314,11 +309,17 @@ fn org_facade_search_memory_defaults_to_codex_thread_id() {
             "permission_profile": {"type": "disabled"}
         }
     });
+    let rollout_body = format!("{session_meta}\n{turn_context}\n");
     std::fs::write(
         rollout_dir.join("rollout-2026-07-01T00-00-00-codex-child-a.jsonl"),
-        format!("{session_meta}\n{turn_context}\n"),
+        &rollout_body,
     )
     .expect("write codex rollout");
+    std::fs::write(
+        sessions_dir.join("rollout-2026-07-01T00-00-00-codex-child-a.jsonl"),
+        &rollout_body,
+    )
+    .expect("write codex rollout root index");
 
     let register = asp_command(&root)
         .env("CODEX_THREAD_ID", "codex-thread-a")

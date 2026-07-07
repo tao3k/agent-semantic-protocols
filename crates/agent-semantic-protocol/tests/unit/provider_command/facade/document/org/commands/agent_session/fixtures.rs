@@ -128,13 +128,10 @@ fn write_codex_asp_explorer_fixture_with_agent_path_presence(
         .display()
         .to_string();
 
-    let rollout_dir = home
-        .join(".codex")
-        .join("sessions")
-        .join("2026")
-        .join("07")
-        .join("01");
+    let sessions_dir = home.join(".codex").join("sessions");
+    let rollout_dir = sessions_dir.join("2026").join("07").join("01");
     std::fs::create_dir_all(&rollout_dir).expect("create codex rollout dir");
+    std::fs::create_dir_all(&sessions_dir).expect("create codex sessions dir");
     let root_rollout_path =
         rollout_dir.join(format!("rollout-2026-07-01T00-00-00-{root_session_id}.jsonl"));
     let root_session_meta = serde_json::json!({
@@ -153,11 +150,15 @@ fn write_codex_asp_explorer_fixture_with_agent_path_presence(
             "output": child_spawn_output.to_string()
         }
     });
+    let root_rollout = format!("{root_session_meta}\n{child_spawn}\n");
+    std::fs::write(&root_rollout_path, &root_rollout).expect("write root codex rollout");
     std::fs::write(
-        root_rollout_path,
-        format!("{root_session_meta}\n{child_spawn}\n"),
+        sessions_dir.join(format!(
+            "rollout-2026-07-01T00-00-00-{root_session_id}.jsonl"
+        )),
+        &root_rollout,
     )
-    .expect("write root codex rollout");
+    .expect("write root codex rollout root index");
     let rollout_path =
         rollout_dir.join(format!("rollout-2026-07-01T00-00-00-{child_session_id}.jsonl"));
     let mut session_meta = serde_json::json!({
@@ -194,6 +195,13 @@ fn write_codex_asp_explorer_fixture_with_agent_path_presence(
             "permission_profile": {"type": "disabled"}
         }
     });
-    std::fs::write(rollout_path, format!("{session_meta}\n{turn_context}\n"))
-        .expect("write codex rollout");
+    let child_rollout = format!("{session_meta}\n{turn_context}\n");
+    std::fs::write(rollout_path, &child_rollout).expect("write codex rollout");
+    std::fs::write(
+        sessions_dir.join(format!(
+            "rollout-2026-07-01T00-00-00-{child_session_id}.jsonl"
+        )),
+        &child_rollout,
+    )
+    .expect("write codex rollout root index");
 }
