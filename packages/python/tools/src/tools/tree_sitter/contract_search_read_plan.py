@@ -44,16 +44,14 @@ def _check_rust_search_frontier(env: dict[str, str], asp_bin: str) -> None:
         asp_bin,
         "rust",
         "search",
-        "fzf",
-        "parse_query",
-        "owner",
-        "tests",
+        "pipe",
+        "parse_query cli query command tests",
         "--workspace",
         "languages/rust-lang-project-harness",
         "--view",
         "seeds",
     )
-    search_frontier(output, "rust search frontier")
+    search_pipe_frontier(output, "rust search frontier")
     contains(output, "src/cli/query.rs", "rust search frontier")
     not_contains(output, "pub(super) fn parse_query", "rust search frontier")
 
@@ -82,16 +80,14 @@ def _check_python_search_frontier(env: dict[str, str], asp_bin: str) -> None:
         asp_bin,
         "python",
         "search",
-        "fzf",
-        "run_query_command",
-        "owner",
-        "tests",
+        "pipe",
+        "run_query_command cli query command tests",
         "--workspace",
         "languages/python-lang-project-harness",
         "--view",
         "seeds",
     )
-    search_frontier(output, "python search frontier")
+    search_pipe_frontier(output, "python search frontier")
     contains(output, "src/python_lang_project_harness/_cli_query.py", "python search frontier")
     not_contains(output, "def run_query_command", "python search frontier")
 
