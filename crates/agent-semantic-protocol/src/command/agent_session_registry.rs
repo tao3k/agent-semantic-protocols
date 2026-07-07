@@ -12,6 +12,8 @@ mod agent_session_registry_lifecycle_audit;
 mod agent_session_registry_lifetime;
 #[path = "agent_session_registry_render.rs"]
 mod agent_session_registry_render;
+#[path = "agent_session_registry_resume.rs"]
+mod agent_session_registry_resume;
 #[path = "agent_session_registry_rollout_activity.rs"]
 mod agent_session_registry_rollout_activity;
 #[path = "agent_session_registry_rollout_adopt.rs"]
@@ -96,7 +98,7 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         SessionCommand::Gc => gc_sessions(&registry, &args),
         SessionCommand::Reconcile => reconcile_sessions(&registry, &args),
         SessionCommand::Resume if should_render_resume_status(&args) => {
-            status_session(&registry, &args, &project_root)
+            agent_session_registry_resume::resume_session(&registry, &args, &project_root)
         }
         SessionCommand::Resume => run_codex_session_wrapper(&registry, &args, "resume", false),
         SessionCommand::Fork => run_codex_session_wrapper(&registry, &args, "fork", false),

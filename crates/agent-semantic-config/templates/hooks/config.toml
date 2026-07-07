@@ -188,7 +188,7 @@ ASP query/search command denied in main agent session.
 Route this command to resident {{residentChildName}} child session `{{childSessionId}}`; do not spawn another {{residentChildName}} session.
 rootSessionId={{rootSessionId}}
 childSessionId={{childSessionId}}
-lookupCommand=asp agent session resume --name {{residentChildName}} --json
+lookupCommand=asp agent session resume --name {{residentChildName}}
 command={{command}}
 """
 binaryGateWithoutChild = """
@@ -204,7 +204,7 @@ Action step flow:
    asp agent session status --name {{residentChildName}} --json
 4. Retry the blocked ASP command.
 rootSessionId={{rootSessionId}}
-lookupCommand=asp agent session resume --name {{residentChildName}} --json
+lookupCommand=asp agent session resume --name {{residentChildName}}
 command={{command}}
 """
 binaryGateInvalidChild = """
@@ -234,7 +234,7 @@ nextAction=retry-session-status-or-resume-do-not-fallback
 0. Shell action: inspect status after the registry lock clears.
    asp agent session status --name {{residentChildName}} --json
 1. Shell action: retry resume.
-   asp agent session resume --name {{residentChildName}} --json
+   asp agent session resume --name {{residentChildName}}
 2. Do not fall back to raw source tools while the registry is locked.
 registryError={{registryError}}
 command={{command}}

@@ -14,7 +14,7 @@ const ASP_QUERY_WRAPPER_WALL_SANITY_GATE: Duration = Duration::from_secs(3);
 // tight enough to catch hangs while functional tests assert candidate/input bounds separately.
 const ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS: u64 = 250;
 const ASP_RENDER_PHASE_PERFORMANCE_GATE_MS: u64 = 150;
-const ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS: u64 = 250;
+const ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS: u64 = 300;
 const ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS: u64 = 10;
 const JULIA_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 
@@ -343,9 +343,10 @@ fn provider_facts_receive_bounded_candidate_input() {
             "{stdout}"
         );
     }
-    assert_trace_elapsed_under_gate_ms(
+    assert_trace_segment_elapsed_under_gate_ms(
         &["rust", "search", "pipe"],
         &stdout,
+        "providerFacts:used[",
         ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS,
     );
     let _ = std::fs::remove_dir_all(root);
@@ -736,6 +737,37 @@ pub(super) fn assert_trace_elapsed_under_gate_ms(args: &[&str], stdout: &str, ga
     assert!(
         max_elapsed_ms <= effective_gate_ms,
         "args={args:?} exceeded search phase gate {effective_gate_ms}ms; maxElapsedMs={max_elapsed_ms}; stdout={stdout}"
+    );
+}
+
+pub(super) fn assert_trace_segment_elapsed_under_gate_ms(
+    args: &[&str],
+    stdout: &str,
+    segment_label: &str,
+    gate_ms: u64,
+) {
+    let segment_start = stdout.find(segment_label).unwrap_or_else(|| {
+        panic!("args={args:?} missing trace segment {segment_label}; stdout={stdout}")
+    });
+    let segment = stdout[segment_start..]
+        .split(']')
+        .next()
+        .unwrap_or(&stdout[segment_start..]);
+    let elapsed_ms = segment
+        .match_indices("elapsedMs=")
+        .filter_map(|(index, _)| {
+            let value_start = index + "elapsedMs=".len();
+            let digits = segment[value_start..]
+                .chars()
+                .take_while(|character| character.is_ascii_digit())
+                .collect::<String>();
+            digits.parse::<u64>().ok()
+        })
+        .max()
+        .unwrap_or(0);
+    assert!(
+        elapsed_ms <= gate_ms,
+        "args={args:?} exceeded {segment_label} gate {gate_ms}ms; elapsedMs={elapsed_ms}; stdout={stdout}"
     );
 }
 

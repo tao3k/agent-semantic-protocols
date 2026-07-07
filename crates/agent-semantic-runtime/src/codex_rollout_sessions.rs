@@ -685,28 +685,28 @@ fn parse_rollout_file(
                 if let Some(status) = payload.get("status").and_then(Value::as_str)
                     && status == "closed"
                 {
-                        last_terminal_event = Some("event_msg:closed".to_string());
-                        current_turn_id = payload
-                            .get("turn_id")
-                            .and_then(Value::as_str)
-                            .map(str::to_string)
-                            .or(current_turn_id);
-                        activity = Some(CodexRolloutActivityReport {
-                            status: "closed".to_string(),
-                            rollout_path: rollout_path.to_path_buf(),
-                            last_event_at: payload.get("timestamp").and_then(Value::as_i64),
-                            last_event_kind: Some("event_msg".to_string()),
-                            last_heartbeat_at: payload.get("timestamp").and_then(Value::as_i64),
-                            last_heartbeat_kind: Some("event_msg".to_string()),
-                            recent_heartbeats: Vec::new(),
-                            seconds_since_heartbeat: None,
-                            current_turn_id: current_turn_id.clone(),
-                            last_running_session_id: last_running_session_id.clone(),
-                            running_session_closed: true,
-                            last_terminal_event: last_terminal_event.clone(),
-                            agent_instruction: None,
-                            scanned_line_count: line_count,
-                        });
+                    last_terminal_event = Some("event_msg:closed".to_string());
+                    current_turn_id = payload
+                        .get("turn_id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                        .or(current_turn_id);
+                    activity = Some(CodexRolloutActivityReport {
+                        status: "closed".to_string(),
+                        rollout_path: rollout_path.to_path_buf(),
+                        last_event_at: payload.get("timestamp").and_then(Value::as_i64),
+                        last_event_kind: Some("event_msg".to_string()),
+                        last_heartbeat_at: payload.get("timestamp").and_then(Value::as_i64),
+                        last_heartbeat_kind: Some("event_msg".to_string()),
+                        recent_heartbeats: Vec::new(),
+                        seconds_since_heartbeat: None,
+                        current_turn_id: current_turn_id.clone(),
+                        last_running_session_id: last_running_session_id.clone(),
+                        running_session_closed: true,
+                        last_terminal_event: last_terminal_event.clone(),
+                        agent_instruction: None,
+                        scanned_line_count: line_count,
+                    });
                 }
             }
             _ => {}

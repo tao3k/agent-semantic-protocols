@@ -10,5 +10,7 @@ mod db_engine_provider_command;
 mod db_engine_source_index;
 #[path = "unit/env.rs"]
 mod env;
+#[path = "unit/db/source_index_lookup_migration.rs"]
+mod source_index_lookup_migration;
 #[path = "unit/db/source_index_refresh_perf.rs"]
 mod source_index_refresh_perf;

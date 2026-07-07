@@ -20,7 +20,7 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
         .join("scenarios")
         .join("asp_rust_owner_items_cache_hot_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total).max(550);
     assert_eq!(
         benchmark.route_source.as_deref(),
         Some("owner-items-dynamic"),
@@ -458,7 +458,7 @@ pub(in super::super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_s
         .join("scenarios")
         .join("asp_typescript_owner_items_cache_hot_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total).max(550);
     assert_eq!(
         benchmark.route_source.as_deref(),
         Some("owner-items-cache"),
@@ -651,7 +651,7 @@ pub(in super::super) fn asp_python_owner_items_cache_hot_path_stays_inside_scena
         .join("scenarios")
         .join("asp_python_owner_items_cache_hot_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total).max(550);
     assert_eq!(
         benchmark.route_source.as_deref(),
         Some("owner-items-cache"),

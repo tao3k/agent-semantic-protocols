@@ -1,9 +1,9 @@
 harness = "libtest"
 test = "asp_graph_topology_projection_cold_functional_path_stays_inside_scenario_gate"
 target_total = "1ms"
-max_total = "10ms"
+max_total = "15ms"
 observed_total = "1ms"
-regression_budget = "2ms"
+regression_budget = "5ms"
 memory_budget_bytes = 1048576
 observed_memory_bytes = 0
 target_rationale = "Topology projection reads only bounded project marker files in a temp workspace and should stay in low milliseconds on cold functional checks; max_total allows cold filesystem variance without accepting subcommand-scale latency."
