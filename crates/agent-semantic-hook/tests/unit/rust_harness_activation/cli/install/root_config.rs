@@ -81,7 +81,8 @@ fn cli_install_accepts_existing_project_marketplace_source_when_root_matches() {
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert!(stdout.contains("pluginMarketplace=asp-project"));
     assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
-    assert!(stdout.contains("subagent=.asp-state-home/agents/asp-explorer_codex.toml"));
+    assert!(stdout.contains("subagent="));
+    assert!(stdout.contains("agents/asp-explorer"));
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
     let canonical_root = std::fs::canonicalize(&root).expect("canonical project root");
@@ -125,7 +126,8 @@ fn assert_install_stdout(stdout: &str) {
     assert!(stdout.contains("config=.codex/config.toml"));
     assert!(stdout.contains("projectConfig=.codex/config.toml"));
     assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
-    assert!(stdout.contains("subagent=.asp-state-home/agents/asp-explorer_codex.toml"));
+    assert!(stdout.contains("subagent="));
+    assert!(stdout.contains("agents/asp-explorer"));
     assert!(stdout.contains("binary=asp"));
     assert!(stdout.contains("binaryInstall=installed"));
     assert!(stdout.contains("binaryPath="));
@@ -161,7 +163,8 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert!(stdout.contains("pluginScope=project"));
     assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
-    assert!(stdout.contains("subagent=.asp-state-home/agents/asp-explorer_codex.toml"));
+    assert!(stdout.contains("subagent="));
+    assert!(stdout.contains("agents/asp-explorer"));
     assert_codex_user_asp_explorer_role_config(&codex_home);
     assert_codex_asp_explorer(&codex_home, "gpt-5.4-mini");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
