@@ -192,7 +192,13 @@ pub(in super::super) fn asp_org_owner_items_cold_functional_path_stays_inside_sc
         .join("scenarios")
         .join("asp_org_owner_items_cold_functional_path");
     let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
-    assert_owner_items_cold_functional_benchmark_contract(&benchmark);
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("dynamic-owner-items")
+    );
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 
     let root = temp_project_root("scenario-org-owner-items-cold-functional");
     fs::create_dir_all(root.join("docs")).expect("create docs root");
@@ -247,9 +253,11 @@ pub(in super::super) fn asp_org_owner_items_cold_functional_path_stays_inside_sc
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     for expected in [
-        "[search-owner] lang=org",
-        "|heading docs/plan.org:1-4",
-        "title=\"Heading\"",
+        "[search-owner]",
+        "selector=items",
+        "alg=asp-dynamic-owner-items-v1",
+        "kind=heading",
+        "Heading",
     ] {
         assert!(
             stdout.contains(expected),
@@ -260,10 +268,9 @@ pub(in super::super) fn asp_org_owner_items_cold_functional_path_stays_inside_sc
         !stdout.contains("read=docs/plan.org:1:1"),
         "org owner-items cold path must not expose executable line-range selectors: {stdout}"
     );
-    assert_eq!(
-        fs::read_to_string(&count_path).expect("provider count"),
-        "1",
-        "org cold path must spawn exactly one language harness provider"
+    assert!(
+        !count_path.exists(),
+        "org cold path must stay on ASP dynamic owner-items without spawning provider"
     );
     assert!(
         stdout.len() <= benchmark.max_stdout_bytes.unwrap_or(4096) as usize,
@@ -287,7 +294,7 @@ pub(in super::super) fn asp_org_owner_items_cold_functional_path_stays_inside_sc
         },
         "observed": {
             "observedTotal": observed_total,
-            "providerProcessCount": 1,
+            "providerProcessCount": 0,
             "nativeFinderProcessCount": 0,
             "firstRoute": benchmark.route_source,
             "executedRoutes": [benchmark.route_source],
@@ -298,7 +305,7 @@ pub(in super::super) fn asp_org_owner_items_cold_functional_path_stays_inside_sc
         "verdict": "pass",
         "evidenceRefs": ["scenario:asp-org-owner-items-cold-functional-path"]
     });
-    assert_eq!(performance_gate["observed"]["providerProcessCount"], 1);
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
     let _ = fs::remove_dir_all(root);

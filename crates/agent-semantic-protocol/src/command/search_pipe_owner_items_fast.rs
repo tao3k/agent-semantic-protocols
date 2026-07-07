@@ -151,6 +151,7 @@ type DynamicOwnerItemCollector = fn(&Path) -> Result<Vec<DynamicOwnerItem>, Stri
 fn dynamic_owner_item_collector(language_id: &str) -> Option<DynamicOwnerItemCollector> {
     match language_id {
         "rust" => Some(collect_dynamic_rust_owner_items),
+        "org" => Some(collect_dynamic_org_owner_items),
         _ => None,
     }
 }
@@ -170,6 +171,47 @@ fn collect_dynamic_rust_owner_items(owner_path: &Path) -> Result<Vec<DynamicOwne
         .iter()
         .map(dynamic_owner_item_from_query_owner_item)
         .collect())
+}
+
+fn collect_dynamic_org_owner_items(owner_path: &Path) -> Result<Vec<DynamicOwnerItem>, String> {
+    let source = match fs::read_to_string(owner_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!(
+                "failed to read Org owner {}: {error}",
+                owner_path.display()
+            ));
+        }
+    };
+    let mut items = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let stars = line
+            .chars()
+            .take_while(|character| *character == '*')
+            .count();
+        if stars == 0 {
+            continue;
+        }
+        let Some(rest) = line.get(stars..) else {
+            continue;
+        };
+        if !rest.starts_with(' ') {
+            continue;
+        }
+        let title = rest.trim();
+        if title.is_empty() {
+            continue;
+        }
+        let line_number = line_index + 1;
+        items.push(DynamicOwnerItem::new(
+            title,
+            "heading",
+            line_number,
+            line_number,
+        ));
+    }
+    Ok(items)
 }
 
 fn dynamic_owner_item_from_query_owner_item(item: &OwnerItem) -> DynamicOwnerItem {

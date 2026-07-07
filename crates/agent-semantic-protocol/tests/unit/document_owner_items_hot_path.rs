@@ -30,22 +30,42 @@ async fn org_owner_items_stays_on_document_fast_path() {
         .arg(owner_path)
         .arg("items")
         .arg("--query")
-        .arg("Evidence Graph GraphRoute compact ranked evidence subagent receipt")
+        .arg("EvidenceGraph flow")
         .arg("--workspace")
         .arg(&repo_root)
         .arg("--view")
         .arg("seeds");
 
     let started = Instant::now();
-    let output = run_with_timeout(command, Duration::from_secs(5)).await;
+    let output = run_with_timeout(command, Duration::from_millis(750)).await;
     let elapsed = started.elapsed();
 
     let output =
         output.unwrap_or_else(|error| panic!("{error}; asp_bin={asp_bin}; elapsed={elapsed:?}"));
     assert!(
-        elapsed < Duration::from_secs(5),
-        "org owner-items should fail or return on the document fast path; elapsed={elapsed:?}; stderr={}",
+        elapsed < Duration::from_millis(750),
+        "org owner-items should stay on the document fast path; elapsed={elapsed:?}; stderr={}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.status.success(),
+        "org owner-items document fast path should succeed; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("[search-owner]")
+            && stdout.contains("selector=items")
+            && stdout.contains("alg=asp-dynamic-owner-items-v1"),
+        "org owner-items should render a search-owner packet; stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("kind=heading") && stdout.contains("#item/heading/"),
+        "org owner-items should expose heading items; stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("EvidenceGraph flow"),
+        "org owner-items should match the RFC heading query; stdout={stdout}"
     );
     assert!(
         !String::from_utf8_lossy(&output.stderr).contains("failed to execute provider"),
