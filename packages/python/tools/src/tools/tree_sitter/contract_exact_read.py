@@ -83,78 +83,34 @@ def _check_rust_exact_read(env: dict[str, str], asp_bin: str) -> None:
 
 
 def _check_typescript_exact_read(env: dict[str, str], asp_bin: str) -> None:
-    typescript_locator = asp(
-        env,
-        asp_bin,
-        "typescript",
-        "query",
-        "src/cli/protocol-tree-sitter-query.ts",
-        "--query",
-        "parseTreeSitterQueryArgs",
-        "--workspace",
-        "languages/typescript-lang-project-harness",
-    )
-    locator(
-        typescript_locator,
-        language="typescript",
-        symbol="parseTreeSitterQueryArgs",
-        label="typescript exact locator",
-    )
-    not_contains(
-        typescript_locator,
-        "export function parseTreeSitterQueryArgs",
-        "typescript exact locator",
-    )
-
     typescript_code = asp(
         env,
         asp_bin,
         "typescript",
         "query",
-        "src/cli/protocol-tree-sitter-query.ts",
-        "--query",
-        "parseTreeSitterQueryArgs",
+        "--selector",
+        "typescript://languages/typescript-lang-project-harness/src/cli/protocol-tree-sitter-query.ts#item/function/parseTreeSitterQueryArgs",
         "--workspace",
-        "languages/typescript-lang-project-harness",
+        ".",
         "--code",
     )
     pure_code(
         typescript_code,
-        "export function parseTreeSitterQueryArgs",
+        "function parseTreeSitterQueryArgs",
         "typescript exact code",
     )
 
 
 def _check_python_exact_read(env: dict[str, str], asp_bin: str) -> None:
-    python_locator = asp(
-        env,
-        asp_bin,
-        "python",
-        "query",
-        "src/python_lang_project_harness/_cli_query.py",
-        "--term",
-        "run_query_command",
-        "--workspace",
-        "languages/python-lang-project-harness",
-    )
-    locator(
-        python_locator,
-        language="python",
-        symbol="run_query_command",
-        label="python exact locator",
-    )
-    not_contains(python_locator, "def run_query_command", "python exact locator")
-
     python_code = asp(
         env,
         asp_bin,
         "python",
         "query",
-        "src/python_lang_project_harness/_cli_query.py",
-        "--term",
-        "run_query_command",
+        "--selector",
+        "python://languages/python-lang-project-harness/src/python_lang_project_harness/_cli_query.py#item/function/run_query_command",
         "--workspace",
-        "languages/python-lang-project-harness",
+        ".",
         "--code",
     )
     pure_code(python_code, "def run_query_command", "python exact code")

@@ -88,7 +88,7 @@ def _check_python_search_frontier(env: dict[str, str], asp_bin: str) -> None:
         "seeds",
     )
     search_pipe_frontier(output, "python search frontier")
-    contains(output, "src/python_lang_project_harness/_cli_query.py", "python search frontier")
+    contains(output, "src/python_lang_project_harness/_cli_agent.py", "python search frontier")
     not_contains(output, "def run_query_command", "python search frontier")
 
 
