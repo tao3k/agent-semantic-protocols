@@ -68,18 +68,18 @@ pub(crate) fn codex_rollout_paths_for_session_id(
     if paths.is_empty() {
         for search_root in &search_roots {
             if search_root.is_dir() {
-                paths.extend(recursive_rollout_paths_for_session_id(
-                    search_root,
-                    session_id,
-                    3,
-                )?);
+                paths.extend(rg_rollout_paths_for_session_id(search_root, session_id)?);
             }
         }
     }
     if paths.is_empty() {
         for search_root in &search_roots {
             if search_root.is_dir() {
-                paths.extend(rg_rollout_paths_for_session_id(search_root, session_id)?);
+                paths.extend(recursive_rollout_paths_for_session_id(
+                    search_root,
+                    session_id,
+                    3,
+                )?);
             }
         }
     }
