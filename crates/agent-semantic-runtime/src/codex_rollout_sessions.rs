@@ -300,18 +300,15 @@ where
         .filter(|session_id| !session_id.is_empty() && *session_id != root_session_id)
         .map(str::to_string)
         .collect();
-    let mut rollout_paths = if child_session_ids.is_empty() {
-        match codex_rollout_paths_for_session_id(&sessions_dir, root_session_id) {
-            Ok(paths) => paths,
-            Err(error)
-                if error.starts_with("Codex rollout invariant broken: no rollout JSONL found") =>
-            {
-                Vec::new()
-            }
-            Err(error) => return Err(error),
+    let mut rollout_paths = match codex_rollout_paths_for_session_id(&sessions_dir, root_session_id)
+    {
+        Ok(paths) => paths,
+        Err(error)
+            if error.starts_with("Codex rollout invariant broken: no rollout JSONL found") =>
+        {
+            Vec::new()
         }
-    } else {
-        Vec::new()
+        Err(error) => return Err(error),
     };
     let mut missing_rollout_by_session = BTreeMap::new();
     let mut pending_session_ids = child_session_ids.iter().cloned().collect::<Vec<_>>();

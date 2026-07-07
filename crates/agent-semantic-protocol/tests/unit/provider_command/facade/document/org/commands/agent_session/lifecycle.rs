@@ -389,7 +389,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
     );
     assert_eq!(
         audit_json["summary"]["scannedRolloutCount"].as_u64(),
-        Some(1),
+        Some(2),
         "{audit_stdout}"
     );
     assert_eq!(
