@@ -68,6 +68,17 @@ pub(crate) fn codex_rollout_paths_for_session_id(
     if paths.is_empty() {
         for search_root in &search_roots {
             if search_root.is_dir() {
+                paths.extend(recursive_rollout_paths_for_session_id(
+                    search_root,
+                    session_id,
+                    3,
+                )?);
+            }
+        }
+    }
+    if paths.is_empty() {
+        for search_root in &search_roots {
+            if search_root.is_dir() {
                 paths.extend(rg_rollout_paths_for_session_id(search_root, session_id)?);
             }
         }
@@ -171,6 +182,56 @@ fn civil_from_unix_day(unix_day: i64) -> (i32, u32, u32) {
         year += 1;
     }
     (year as i32, month as u32, day as u32)
+}
+
+fn recursive_rollout_paths_for_session_id(
+    search_root: &Path,
+    session_id: &str,
+    max_depth: usize,
+) -> Result<Vec<PathBuf>, String> {
+    let suffix = format!("{session_id}.jsonl");
+    let mut paths = Vec::new();
+    collect_rollout_paths_bounded(search_root, &suffix, max_depth, 0, &mut paths)?;
+    Ok(paths)
+}
+
+fn collect_rollout_paths_bounded(
+    root: &Path,
+    suffix: &str,
+    max_depth: usize,
+    depth: usize,
+    paths: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    for entry in
+        fs::read_dir(root).map_err(|error| format!("failed to read {}: {error}", root.display()))?
+    {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to read Codex session entry below {}: {error}",
+                root.display()
+            )
+        })?;
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|error| {
+            format!(
+                "failed to inspect Codex session entry {}: {error}",
+                path.display()
+            )
+        })?;
+        if file_type.is_file() {
+            let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if file_name.starts_with("rollout-") && file_name.ends_with(suffix) {
+                paths.push(path);
+            }
+            continue;
+        }
+        if file_type.is_dir() && depth < max_depth {
+            collect_rollout_paths_bounded(&path, suffix, max_depth, depth + 1, paths)?;
+        }
+    }
+    Ok(())
 }
 
 fn rg_rollout_paths_for_session_id(
