@@ -117,6 +117,36 @@ jobs:
       - name: Fetch cargo dependencies
         run: cargo fetch
 
+      - name: Prepare provider binaries for Rust tests
+        if: ${{ matrix.os != 'windows-latest' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_root="$PWD"
+          mkdir -p .bin
+          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin rs-harness
+          install -m 755 languages/rust-lang-project-harness/target/debug/rs-harness .bin/rs-harness
+          cat > .bin/py-harness <<EOF
+          #!/usr/bin/env bash
+          exec uv run --project "$repo_root/languages/python-lang-project-harness" --frozen py-harness "\$@"
+          EOF
+          cat > .bin/ts-harness <<EOF
+          #!/usr/bin/env bash
+          exec node "$repo_root/languages/typescript-lang-project-harness/dist/src/cli/main.js" "\$@"
+          EOF
+          cat > .bin/asp-julia-harness <<'EOF'
+          #!/usr/bin/env bash
+          echo "asp-julia-harness is validated outside the Rust unit-test job" >&2
+          exit 127
+          EOF
+          cat > .bin/gslph <<'EOF'
+          #!/usr/bin/env bash
+          echo "gslph is validated by the Gerbil language CI job" >&2
+          exit 127
+          EOF
+          chmod 755 .bin/py-harness .bin/ts-harness .bin/asp-julia-harness .bin/gslph
+          echo "$PWD/.bin" >> "$GITHUB_PATH"
+
       - name: Check formatting
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: cargo fmt --all -- --check
