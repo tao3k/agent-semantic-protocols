@@ -135,7 +135,8 @@ fn write_codex_asp_explorer_fixture_with_agent_path_presence(
         .join("07")
         .join("01");
     std::fs::create_dir_all(&rollout_dir).expect("create codex rollout dir");
-    let root_rollout_path = rollout_dir.join(format!("rollout-test-{root_session_id}.jsonl"));
+    let root_rollout_path =
+        rollout_dir.join(format!("rollout-2026-07-01T00-00-00-{root_session_id}.jsonl"));
     let root_session_meta = serde_json::json!({
         "type": "session_meta",
         "payload": {
@@ -157,7 +158,8 @@ fn write_codex_asp_explorer_fixture_with_agent_path_presence(
         format!("{root_session_meta}\n{child_spawn}\n"),
     )
     .expect("write root codex rollout");
-    let rollout_path = rollout_dir.join(format!("rollout-test-{child_session_id}.jsonl"));
+    let rollout_path =
+        rollout_dir.join(format!("rollout-2026-07-01T00-00-00-{child_session_id}.jsonl"));
     let mut session_meta = serde_json::json!({
         "type": "session_meta",
         "payload": {

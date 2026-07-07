@@ -315,7 +315,7 @@ fn org_facade_search_memory_defaults_to_codex_thread_id() {
         }
     });
     std::fs::write(
-        rollout_dir.join("rollout-test-codex-child-a.jsonl"),
+        rollout_dir.join("rollout-2026-07-01T00-00-00-codex-child-a.jsonl"),
         format!("{session_meta}\n{turn_context}\n"),
     )
     .expect("write codex rollout");
