@@ -124,8 +124,12 @@ jobs:
           set -euo pipefail
           repo_root="$PWD"
           mkdir -p .bin
+          cargo build --bin asp
+          install -m 755 target/debug/asp .bin/asp
           cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin rs-harness
           install -m 755 languages/rust-lang-project-harness/target/debug/rs-harness .bin/rs-harness
+          npm --prefix languages/typescript-lang-project-harness ci
+          npm --prefix languages/typescript-lang-project-harness run build
           cat > .bin/py-harness <<EOF
           #!/usr/bin/env bash
           exec uv run --project "$repo_root/languages/python-lang-project-harness" --frozen py-harness "\$@"
