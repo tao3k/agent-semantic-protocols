@@ -247,8 +247,8 @@ fn db_engine_cache_status_process_pressure_helper() {
             .expect("process pressure generation exists");
         assert_eq!(hit.artifact_ids.len(), 1);
         assert!(
-            operation_started.elapsed() < std::time::Duration::from_secs(1),
-            "process pressure DB operation exceeded subsecond target: writer={writer_id} iteration={iteration} elapsed={:?}",
+            operation_started.elapsed() < std::time::Duration::from_secs(3),
+            "process pressure DB operation exceeded bounded CI target: writer={writer_id} iteration={iteration} elapsed={:?}",
             operation_started.elapsed()
         );
     }

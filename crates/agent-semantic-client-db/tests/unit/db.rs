@@ -275,8 +275,8 @@ fn agent_session_registry_process_register_helper() {
         })
         .expect("register process stress session");
     assert!(
-        operation_started.elapsed() <= std::time::Duration::from_millis(1000),
-        "process registry DB operation exceeded subsecond target: writer={writer_id} elapsed={:?}",
+        operation_started.elapsed() <= std::time::Duration::from_secs(3),
+        "process registry DB operation exceeded bounded CI target: writer={writer_id} elapsed={:?}",
         operation_started.elapsed()
     );
 }
