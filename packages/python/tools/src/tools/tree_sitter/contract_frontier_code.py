@@ -30,6 +30,7 @@ def _check_rust_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "(function_item name: (identifier) @function.name)",
         "--selector",
         "src/cli/query.rs",
+        "--workspace",
         "languages/rust-lang-project-harness",
     )
     contains(rust_locate, "[query-treesitter]", "rust locate")
@@ -80,6 +81,7 @@ def _check_rust_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "--selector",
         "src/cli/query.rs",
         "--json",
+        "--workspace",
         "languages/rust-lang-project-harness",
     )
     json_string(
@@ -106,6 +108,7 @@ def _check_typescript_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "(function_declaration name: (identifier) @function.name)",
         "--selector",
         "src/cli/protocol-tree-sitter-query.ts",
+        "--workspace",
         "languages/typescript-lang-project-harness",
     )
     contains(ts_locate, "src/cli/protocol-tree-sitter-query.ts:", "typescript locate")
@@ -138,6 +141,7 @@ def _check_typescript_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "--selector",
         "src/cli/protocol-tree-sitter-query.ts",
         "--json",
+        "--workspace",
         "languages/typescript-lang-project-harness",
     )
     json_string(
@@ -167,6 +171,7 @@ def _check_python_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "(function_definition name: (identifier) @function.name)",
         "--selector",
         "src/python_lang_project_harness/_cli_query.py",
+        "--workspace",
         "languages/python-lang-project-harness",
     )
     contains(python_locate, "src/python_lang_project_harness/_cli_query.py:", "python locate")
@@ -199,6 +204,7 @@ def _check_python_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "--selector",
         "src/python_lang_project_harness/_cli_query.py",
         "--json",
+        "--workspace",
         "languages/python-lang-project-harness",
     )
     json_string(
