@@ -143,7 +143,7 @@ def test_cli_first_rfc_defines_agent_facing_guide_acceptance() -> None:
         "search-prime      output=handles/profiles/frontier code=false json=false",
         "syntax-locate     command=\"query --treesitter-query <pattern>\"",
         "syntax-code       command=\"query --selector <exact> --treesitter-query <pattern> --code\" output=pure-code",
-        "hook-recovery     output=markdown-prompt runNext=query-from-hook detectedBinaries=runtime-profile",
+        "hook-recovery     output=markdown-prompt runNext=owner-items detectedBinaries=runtime-profile",
         "debug-surfaces    json,receipts,cachePaths,artifactIds hiddenFromDefault=true",
         "retired-routes    agent-prefixed-guide,search-wrapper-hook-query,ts-query,syntax-query rejectedFromGuides=true",
         "stable, low-token, and executable through",

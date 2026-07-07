@@ -30,6 +30,7 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
         limit: 16,
+        require_multi_clause: false,
     })
     .expect("collect pipe candidates");
 
@@ -60,6 +61,7 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
         limit: 16,
+        require_multi_clause: false,
     })
     .expect_err("empty query should fail before collection");
 

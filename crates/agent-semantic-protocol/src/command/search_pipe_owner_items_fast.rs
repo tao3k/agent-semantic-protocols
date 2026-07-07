@@ -66,6 +66,18 @@ impl<'a> OwnerItemsSearchState<'a> {
     }
 
     fn try_dynamic_owner_items(&self, owner_query_args: &OwnerQueryArgs) -> Result<bool, String> {
+        if self.language_id == "org" && owner_query_args.view == "seeds" {
+            let owner_path = language_owner_source_path(&self.owner_project_root, self.owner);
+            let document_items = collect_org_document_owner_items(&owner_path)?;
+            if !document_items.is_empty() {
+                render_org_document_owner_items_frontier(
+                    self.owner,
+                    &owner_query_args.query,
+                    &document_items,
+                );
+                return Ok(true);
+            }
+        }
         let Some(collector) = dynamic_owner_item_collector(self.language_id) else {
             return Ok(false);
         };
@@ -212,6 +224,96 @@ fn collect_dynamic_org_owner_items(owner_path: &Path) -> Result<Vec<DynamicOwner
         ));
     }
     Ok(items)
+}
+
+struct OrgDocumentOwnerItem {
+    kind: &'static str,
+    title: String,
+    start_line: usize,
+    end_line: usize,
+}
+
+fn collect_org_document_owner_items(
+    owner_path: &Path,
+) -> Result<Vec<OrgDocumentOwnerItem>, String> {
+    let source = match fs::read_to_string(owner_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!(
+                "failed to read Org owner {}: {error}",
+                owner_path.display()
+            ));
+        }
+    };
+    let mut items = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let stars = line
+            .chars()
+            .take_while(|character| *character == '*')
+            .count();
+        if stars == 0 {
+            continue;
+        }
+        let Some(rest) = line.get(stars..) else {
+            continue;
+        };
+        if !rest.starts_with(' ') {
+            continue;
+        }
+        let title = rest.trim();
+        if title.is_empty() {
+            continue;
+        }
+        let line_number = line_index + 1;
+        items.push(OrgDocumentOwnerItem {
+            kind: "heading",
+            title: title.to_string(),
+            start_line: line_number,
+            end_line: line_number,
+        });
+    }
+    Ok(items)
+}
+
+fn render_org_document_owner_items_frontier(
+    owner: &Path,
+    query: &str,
+    items: &[OrgDocumentOwnerItem],
+) {
+    let owner = owner.display();
+    println!(
+        "[search-owner] lang=org q={query} owner={owner} selector=items alg=asp-dynamic-owner-items-v1"
+    );
+    for item in items.iter().take(80) {
+        let slug = document_heading_slug(&item.title);
+        println!(
+            "|item kind={} selector=\"org://{}#item/heading/{}\" title=\"{}\" range=\"{}:{}\"",
+            item.kind, owner, slug, item.title, item.start_line, item.end_line
+        );
+    }
+}
+
+fn document_heading_slug(title: &str) -> String {
+    let mut slug = String::new();
+    let mut last_was_dash = false;
+    for character in title.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character);
+            last_was_dash = false;
+        } else if !last_was_dash && !slug.is_empty() {
+            slug.push('-');
+            last_was_dash = true;
+        }
+    }
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+    if slug.is_empty() {
+        "heading".to_string()
+    } else {
+        slug
+    }
 }
 
 fn dynamic_owner_item_from_query_owner_item(item: &OwnerItem) -> DynamicOwnerItem {
