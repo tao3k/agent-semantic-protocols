@@ -2,7 +2,7 @@ use std::{
     env,
     ffi::{OsStr, OsString},
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Arc, Barrier},
     thread,

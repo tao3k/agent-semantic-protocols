@@ -483,10 +483,7 @@ pub fn collect_search_pipe_source_index_acquisition(
         SearchPipeSourceIndexDecision::DeferBackend
     } else if candidates.is_empty() {
         SearchPipeSourceIndexDecision::Fallthrough
-    } else if candidates
-        .iter()
-        .all(|candidate| source_index_candidate_ready(candidate))
-    {
+    } else if candidates.iter().all(source_index_candidate_ready) {
         SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay
     } else {
         SearchPipeSourceIndexDecision::DeferBackend

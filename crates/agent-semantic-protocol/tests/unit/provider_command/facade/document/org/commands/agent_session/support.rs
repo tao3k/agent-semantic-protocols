@@ -57,6 +57,7 @@ pub(super) fn write_codex_asp_explorer_fixture_with_actual_profile(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_codex_asp_explorer_fixture_with_actual_agent_path(
     home: &Path,
     root_session_id: &str,
@@ -102,6 +103,7 @@ pub(super) fn write_codex_asp_explorer_fixture_without_agent_path(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_codex_asp_explorer_fixture_with_agent_path_presence(
     home: &Path,
     root_session_id: &str,
@@ -150,6 +152,7 @@ pub(super) fn write_codex_asp_explorer_fixture_with_default_agent_role(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_codex_asp_explorer_fixture_with_agent_role(
     home: &Path,
     root_session_id: &str,

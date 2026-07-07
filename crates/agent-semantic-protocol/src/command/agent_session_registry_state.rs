@@ -147,10 +147,10 @@ pub(super) fn current_recall_session_id(
 fn current_agent_project_scope_id(
     registry: &AgentSessionRegistry,
 ) -> Result<Option<String>, String> {
-    if let Some(session) = current_agent_runtime_session() {
-        if let Some(record) = registry.session_by_id_any_project(&session.id)? {
-            return Ok(Some(record.project_id));
-        }
+    if let Some(session) = current_agent_runtime_session()
+        && let Some(record) = registry.session_by_id_any_project(&session.id)?
+    {
+        return Ok(Some(record.project_id));
     }
     if let Some(root_session_id) = current_agent_runtime_root_session_id() {
         return registry.project_id_for_root_session_id(&root_session_id);

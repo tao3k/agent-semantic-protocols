@@ -404,12 +404,12 @@ fn first_query_owner_arg_index(args: &[String]) -> Option<usize> {
 }
 
 fn positional_project_root(language_id: &str, path: &Path, check_command: bool) -> Option<PathBuf> {
-    if path.exists() {
-        if project_activation_path(path).is_ok_and(|activation_path| activation_path.is_file())
-            || client_cache_manifest_path(path).is_some_and(|manifest_path| manifest_path.is_file())
-        {
-            return Some(canonical_or_existing(path.to_path_buf()));
-        }
+    if path.exists()
+        && (project_activation_path(path).is_ok_and(|activation_path| activation_path.is_file())
+            || client_cache_manifest_path(path)
+                .is_some_and(|manifest_path| manifest_path.is_file()))
+    {
+        return Some(canonical_or_existing(path.to_path_buf()));
     }
     if check_command && path.is_dir() {
         return Some(canonical_or_existing(path.to_path_buf()));

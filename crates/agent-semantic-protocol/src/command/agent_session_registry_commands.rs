@@ -666,21 +666,21 @@ pub(super) fn status_session(
     args: &SessionArgs,
     project_root: &Path,
 ) -> Result<(), String> {
-    if args.activity {
-        if let Some(child_session_id) = args.child_session_id.as_deref() {
-            let now = agent_session_unix_timestamp()?;
-            if let Some(rollout_path) =
-                super::agent_session_registry_rollout_lookup::fast_rollout_path_for_session_id(
-                    child_session_id,
-                )
-            {
-                let report = rollout_activity_report(&rollout_path, now);
-                return super::agent_session_registry_render::print_status_activity_report(
-                    Some(&report),
-                    report.agent_instruction.as_str(),
-                    args.json,
-                );
-            }
+    if args.activity
+        && let Some(child_session_id) = args.child_session_id.as_deref()
+    {
+        let now = agent_session_unix_timestamp()?;
+        if let Some(rollout_path) =
+            super::agent_session_registry_rollout_lookup::fast_rollout_path_for_session_id(
+                child_session_id,
+            )
+        {
+            let report = rollout_activity_report(&rollout_path, now);
+            return super::agent_session_registry_render::print_status_activity_report(
+                Some(&report),
+                report.agent_instruction.as_str(),
+                args.json,
+            );
         }
     }
 
@@ -758,7 +758,7 @@ pub(super) fn status_session(
     let host_thread_id = record
         .as_ref()
         .map(|session| session.session_id.as_str())
-        .or_else(|| root_session_id.as_deref());
+        .or(root_session_id.as_deref());
     let runtime_status = agent_session_runtime_status_snapshot(
         (
             project_root,
@@ -978,7 +978,7 @@ pub(super) fn close_session(
     if args.json {
         print_lifecycle_json(
             "close",
-            &[record.session_id.clone()],
+            std::slice::from_ref(&record.session_id),
             1,
             usize::from(archived),
             Some("archived"),
@@ -1012,10 +1012,10 @@ pub(super) fn gc_sessions(
     let mut deleted = Vec::new();
     for record in candidates {
         inspected += 1;
-        if args.force || is_gc_candidate_status(&record.status) {
-            if registry.delete_session(&project_id, &record.session_id)? {
-                deleted.push(record.session_id);
-            }
+        if (args.force || is_gc_candidate_status(&record.status))
+            && registry.delete_session(&project_id, &record.session_id)?
+        {
+            deleted.push(record.session_id);
         }
     }
     if args.json {

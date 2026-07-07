@@ -334,8 +334,8 @@ fn db_engine_cache_status_survives_concurrent_process_read_write_pressure() {
 }
 
 fn concurrent_cache_status_manifest(
-    client_dir: &PathBuf,
-    project_root: &PathBuf,
+    client_dir: &Path,
+    project_root: &Path,
     generation_index: usize,
 ) -> ClientCacheManifest {
     serde_json::from_value(json!({
@@ -371,8 +371,8 @@ fn concurrent_cache_status_manifest(
 }
 
 fn process_cache_status_manifest(
-    client_dir: &PathBuf,
-    project_root: &PathBuf,
+    client_dir: &Path,
+    project_root: &Path,
     writer_id: usize,
     iteration: usize,
 ) -> ClientCacheManifest {

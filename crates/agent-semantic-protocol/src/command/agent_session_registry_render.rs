@@ -301,12 +301,11 @@ fn session_record_json_with_validation_projection(
     session: &AgentSessionRecord,
 ) -> Result<serde_json::Value, serde_json::Error> {
     let mut value = session_record_json_without_metadata(session)?;
-    if let Some(object) = value.as_object_mut() {
-        if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(&session.metadata_json) {
-            if let Some(validation) = metadata.get("validation") {
-                object.insert("validation".to_string(), validation.clone());
-            }
-        }
+    if let Some(object) = value.as_object_mut()
+        && let Ok(metadata) = serde_json::from_str::<serde_json::Value>(&session.metadata_json)
+        && let Some(validation) = metadata.get("validation")
+    {
+        object.insert("validation".to_string(), validation.clone());
     }
     Ok(value)
 }

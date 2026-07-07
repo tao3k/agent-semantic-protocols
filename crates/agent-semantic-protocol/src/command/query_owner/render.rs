@@ -81,7 +81,7 @@ pub(super) fn format_locator_matches(
         display_path.display()
     ));
     for item in matches {
-        let structural_selector = owner_item_structural_selector(request, &display_path, item);
+        let structural_selector = owner_item_structural_selector(request, display_path, item);
         rendered.push_str(&format!(
                 "|item name={} kind={} owner={} structuralSelector={} displayLineRange={}:{} sourceLocatorHint={}:{}:{} syn=node:{} projection={} codePolicy=code-after-exact-selector\n",
                 item.name,
@@ -97,8 +97,7 @@ pub(super) fn format_locator_matches(
                 item_query.projection()
             ));
     }
-    let search_frame =
-        search_frame_owner_items_receipt(request, item_query, &display_path, matches);
+    let search_frame = search_frame_owner_items_receipt(request, item_query, display_path, matches);
     if matches.is_empty() {
         rendered.push_str(&format!(
                 "|query itemQuery={} status=miss match=none item=0 reason=asp-syn-owner-query output={output} next=revise-query{search_frame}\n",

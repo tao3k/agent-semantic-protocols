@@ -358,7 +358,7 @@ fn assert_route_uses_owner_items_recovery(decision: &Value) {
         "route argv should use owner items --workspace . --view: {args:?}"
     );
     assert!(
-        !args.iter().any(|arg| *arg == "--code"),
+        !args.contains(&"--code"),
         "owner recovery route must not request --code: {args:?}"
     );
 }

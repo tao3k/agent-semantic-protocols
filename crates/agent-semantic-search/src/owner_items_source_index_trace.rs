@@ -100,7 +100,7 @@ pub fn render_owner_items_source_index_lookup_trace(
     let mut line = format!(
         "|sourceIndex status={} source=source-index query={}",
         lookup.state.as_str(),
-        trace_value(&query)
+        trace_value(query)
     );
     match lookup.state {
         ClientDbSourceIndexLookupState::Hit => {

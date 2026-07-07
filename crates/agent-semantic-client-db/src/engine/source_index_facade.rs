@@ -559,7 +559,7 @@ async fn query_turso_source_index_candidates_with_connection(
             provider_id.as_deref(),
             &source_kind,
             &query_keys,
-            &selector_haystack,
+            selector_haystack,
             terms,
         );
         if match_score == 0 {

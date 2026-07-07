@@ -144,17 +144,17 @@ pub(super) fn lifecycle_audit_report(
             } else {
                 lifecycle_rollout_only_status(&entry, &rollout_status)
             };
-            if effective_rollout_status != rollout_status {
-                if let Some(object) = entry.as_object_mut() {
-                    object.insert(
-                        "rolloutStatus".to_string(),
-                        serde_json::json!(effective_rollout_status),
-                    );
-                    object.insert(
-                        "rolloutStatusSource".to_string(),
-                        serde_json::json!("rollout-only-reconcile"),
-                    );
-                }
+            if effective_rollout_status != rollout_status
+                && let Some(object) = entry.as_object_mut()
+            {
+                object.insert(
+                    "rolloutStatus".to_string(),
+                    serde_json::json!(effective_rollout_status),
+                );
+                object.insert(
+                    "rolloutStatusSource".to_string(),
+                    serde_json::json!("rollout-only-reconcile"),
+                );
             }
             if is_subagent_rollout && effective_rollout_status == "active" {
                 active_subagent_rollouts += 1;

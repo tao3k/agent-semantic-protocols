@@ -222,10 +222,11 @@ fn enforce_agent_session_asp_query_gate(args: &[String]) -> Result<(), String> {
             ));
         }
     };
-    if let Some(session) = current_session {
-        if session.name == resident_child_name && session.is_routable_at(now) {
-            return Ok(());
-        }
+    if let Some(session) = current_session
+        && session.name == resident_child_name
+        && session.is_routable_at(now)
+    {
+        return Ok(());
     }
     let resident_child =
         match super::asp_explore_session_for_current_root(&project_root, resident_child_name) {

@@ -108,10 +108,10 @@ fn read_rollout_tail(path: &Path, max_bytes: u64) -> Result<String, String> {
     let mut buffer = String::new();
     file.read_to_string(&mut buffer)
         .map_err(|error| format!("failed to read rollout {}: {error}", path.display()))?;
-    if start > 0 {
-        if let Some(index) = buffer.find('\n') {
-            buffer = buffer[index + 1..].to_string();
-        }
+    if start > 0
+        && let Some(index) = buffer.find('\n')
+    {
+        buffer = buffer[index + 1..].to_string();
     }
     Ok(buffer)
 }
@@ -246,15 +246,14 @@ impl RolloutActivityState {
     fn observe_response_item(&mut self, payload: &Value, timestamp: Option<&str>) {
         match payload.get("type").and_then(Value::as_str) {
             Some("function_call") => {
-                if payload.get("name").and_then(Value::as_str) == Some("write_stdin") {
-                    if let (Some(call_id), Some(arguments)) = (
+                if payload.get("name").and_then(Value::as_str) == Some("write_stdin")
+                    && let (Some(call_id), Some(arguments)) = (
                         payload.get("call_id").and_then(Value::as_str),
                         payload.get("arguments").and_then(Value::as_str),
-                    ) {
-                        if let Some(session_id) = session_id_from_arguments(arguments) {
-                            self.call_sessions.insert(call_id.to_string(), session_id);
-                        }
-                    }
+                    )
+                    && let Some(session_id) = session_id_from_arguments(arguments)
+                {
+                    self.call_sessions.insert(call_id.to_string(), session_id);
                 }
             }
             Some("function_call_output") => {
@@ -263,14 +262,12 @@ impl RolloutActivityState {
                 if let Some(session_id) = running_session_id_from_output(output) {
                     self.running_sessions.insert(session_id.clone(), false);
                     self.last_running_session_id = Some(session_id);
-                } else if let Some(call_id) = payload.get("call_id").and_then(Value::as_str) {
-                    if let Some(session_id) = self.call_sessions.get(call_id) {
-                        if output.contains("Process exited with code")
-                            || output.contains("aborted by user")
-                        {
-                            self.running_sessions.insert(session_id.clone(), true);
-                        }
-                    }
+                } else if let Some(call_id) = payload.get("call_id").and_then(Value::as_str)
+                    && let Some(session_id) = self.call_sessions.get(call_id)
+                    && (output.contains("Process exited with code")
+                        || output.contains("aborted by user"))
+                {
+                    self.running_sessions.insert(session_id.clone(), true);
                 }
             }
             _ => {}

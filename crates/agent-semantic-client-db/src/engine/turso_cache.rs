@@ -384,6 +384,7 @@ pub async fn lookup_recent_turso_cache_generations(
     Ok(hits)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn turso_cache_generation_hit_from_row(
     language_id: String,
     provider_id: String,

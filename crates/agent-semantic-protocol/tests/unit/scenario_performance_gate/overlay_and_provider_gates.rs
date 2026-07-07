@@ -86,7 +86,7 @@ pub(crate) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
         "single-clause search pipe rejection should not spawn provider"
     );
     assert!(
-        u128::from(collect_ms) <= max_total_ms,
+        collect_ms <= max_total_ms,
         "dynamic overlay search pipe rejection exceeded benchmark max_total={} observed={}ms stderr={stderr}",
         benchmark.max_total,
         collect_ms

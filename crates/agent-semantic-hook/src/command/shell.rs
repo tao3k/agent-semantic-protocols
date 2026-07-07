@@ -30,7 +30,7 @@ shell_kind_matcher!(
 
 fn shell_tokens(command: &str) -> Vec<String> {
     if let Some(tokens) = fallback_shell_tokens_if_simple(command) {
-        return tokens;
+        tokens
     } else {
         bash_ast_tokens(command).unwrap_or_else(|| fallback_shell_tokens(command))
     }

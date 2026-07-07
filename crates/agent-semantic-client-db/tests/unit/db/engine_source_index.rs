@@ -592,7 +592,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
                     path: "src/source_index_pressure.rs".to_string(),
                     sha256: format!("{round:016x}").repeat(4),
                     byte_len: text.len() as u64,
-                    mtime_ms: u64::from(round + 2),
+                    mtime_ms: round + 2,
                 }],
                 files: vec![ClientDbSourceIndexImportFile {
                     relative_path: "src/source_index_pressure.rs".to_string(),

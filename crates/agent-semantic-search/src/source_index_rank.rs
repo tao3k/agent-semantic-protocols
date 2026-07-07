@@ -94,12 +94,12 @@ fn insert_source_index_path_terms(terms: &mut BTreeSet<String>, path: &str) {
     for segment in &segments {
         terms.insert((*segment).to_string());
     }
-    if let Some(basename) = segments.last() {
-        if let Some(stem_index) = basename.rfind('.').filter(|index| *index > 0) {
-            terms.insert(basename[..stem_index].to_string());
-            if let Some(extension) = basename.get(stem_index + 1..) {
-                terms.insert(extension.to_string());
-            }
+    if let Some(basename) = segments.last()
+        && let Some(stem_index) = basename.rfind('.').filter(|index| *index > 0)
+    {
+        terms.insert(basename[..stem_index].to_string());
+        if let Some(extension) = basename.get(stem_index + 1..) {
+            terms.insert(extension.to_string());
         }
     }
 }

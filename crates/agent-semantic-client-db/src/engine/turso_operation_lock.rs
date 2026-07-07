@@ -37,6 +37,7 @@ pub(super) fn acquire_turso_operation_lock(
     }
     let file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)
@@ -107,11 +108,11 @@ fn insert_held_lock(lock_path: &Path) {
 fn decrement_held_lock(lock_path: &Path) {
     HELD_TURSO_OPERATION_LOCKS.with(|locks| {
         let mut locks = locks.borrow_mut();
-        if let Some(count) = locks.get_mut(lock_path) {
-            if *count > 1 {
-                *count -= 1;
-                return;
-            }
+        if let Some(count) = locks.get_mut(lock_path)
+            && *count > 1
+        {
+            *count -= 1;
+            return;
         }
         locks.remove(lock_path);
     });

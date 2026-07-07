@@ -177,8 +177,10 @@ fn run_provider_process(
 }
 
 fn default_provider_process_limits() -> Result<ProviderProcessLimits, String> {
-    let mut limits = ProviderProcessLimits::default();
-    limits.timeout = provider_timeout_from_env()?;
+    let limits = ProviderProcessLimits {
+        timeout: provider_timeout_from_env()?,
+        ..ProviderProcessLimits::default()
+    };
     Ok(limits)
 }
 

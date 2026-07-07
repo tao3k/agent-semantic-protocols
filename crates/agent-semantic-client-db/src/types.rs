@@ -110,6 +110,7 @@ pub struct ClientDbProviderCommandSelection {
 
 impl ClientDbProviderCommandSelection {
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         manifest_id: String,
         manifest_digest: String,

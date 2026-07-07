@@ -422,6 +422,7 @@ fn prepare_turso_agent_session_registry_path(db_path: &Path) -> Result<PathBuf, 
     if !db_path.exists() {
         fs::OpenOptions::new()
             .create(true)
+            .truncate(false)
             .write(true)
             .open(db_path)
             .map_err(|error| {

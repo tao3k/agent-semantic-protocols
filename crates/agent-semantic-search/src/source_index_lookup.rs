@@ -144,12 +144,11 @@ pub fn lookup_source_index_in_client_cache_dir_with_planner(
     if !lookup.candidates.is_empty() {
         return Ok(lookup);
     }
-    if let Some(file_locator) = request.file_locator {
-        if let Some(file_lookup) =
+    if let Some(file_locator) = request.file_locator
+        && let Some(file_lookup) =
             source_index_file_locator_lookup(&lookup, request.source_index, file_locator)
-        {
-            return Ok(file_lookup);
-        }
+    {
+        return Ok(file_lookup);
     }
     Ok(lookup)
 }

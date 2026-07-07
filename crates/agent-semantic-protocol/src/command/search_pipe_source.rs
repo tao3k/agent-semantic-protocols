@@ -58,6 +58,7 @@ pub(super) fn parse_source_spec(value: &str) -> Result<SourceSpec, String> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn collect_search_pipe_candidates(
     language_id: &str,
     project_root: &Path,
@@ -238,10 +239,10 @@ fn search_overlay_candidates(
     config: &AspConfig,
     require_multi_clause: bool,
 ) -> Result<CandidateAcquisition, String> {
-    if scopes.is_empty() {
-        if let Some(acquisition) = turso_overlay_candidates(project_root, locator_root, intent)? {
-            return Ok(acquisition);
-        }
+    if scopes.is_empty()
+        && let Some(acquisition) = turso_overlay_candidates(project_root, locator_root, intent)?
+    {
+        return Ok(acquisition);
     }
     let acquisition = collect_search_pipe_search_overlay_acquisition(
         SearchPipeSearchOverlayAcquisitionRequest {
@@ -303,7 +304,7 @@ fn turso_search_hit_candidate(locator_root: &Path, hit: TursoClientDbSearchHit) 
     let path = selector
         .as_deref()
         .and_then(selector_path)
-        .unwrap_or_else(|| hit.document_id.as_str())
+        .unwrap_or(hit.document_id.as_str())
         .to_string();
     let path = display_locator_path(locator_root, &path);
     Candidate {

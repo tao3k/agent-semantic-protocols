@@ -46,16 +46,17 @@ pub(crate) fn run_asp_fast_owner_query_to_string(
         collect_syn_rust_owner_items(&source, &path)?
     } else {
         let Some(items) = collect_tree_sitter_owner_items(language_id, &source, &path)? else {
-            if language_id == "python" && item_query.is_code_projection() {
-                if let Some(imported) = python_imported_owner_items(
+            if language_id == "python"
+                && item_query.is_code_projection()
+                && let Some(imported) = python_imported_owner_items(
                     project_root,
                     locator_root,
                     &path,
                     &source,
                     item_query.term(),
-                )? {
-                    return Ok(Some(format_full_source(&imported.source)));
-                }
+                )?
+            {
+                return Ok(Some(format_full_source(&imported.source)));
             }
             return Ok(Some(format_non_source_owner_query(
                 &request,
@@ -112,10 +113,10 @@ pub(crate) fn run_asp_fast_owner_query_to_string(
             )?;
             unreachable!("render_empty_code_match_error always returns Err for code misses");
         } else {
-            return Ok(Some(format_code_matches(&source, &matches)));
+            Ok(Some(format_code_matches(&source, &matches)))
         }
     } else {
-        return Ok(Some(format_locator_matches(
+        Ok(Some(format_locator_matches(
             &request,
             item_query,
             &path,
@@ -123,7 +124,7 @@ pub(crate) fn run_asp_fast_owner_query_to_string(
             locator_root,
             source.lines().count(),
             &matches,
-        )));
+        )))
     }
 }
 
