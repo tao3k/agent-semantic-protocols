@@ -15,7 +15,12 @@ from tools.provider_registry_query_contract import (
     query_descriptors,
     single_language,
 )
-from tools.provider_registry_runtime import load_json, provider_registry, resolve_asp_bin
+from tools.provider_registry_runtime import (
+    load_json,
+    provider_registry,
+    provider_registry_with_env,
+    resolve_asp_bin,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,13 +42,14 @@ def validate_provider_registries(
     *,
     provider_ids: list[str] | None = None,
     asp_bin: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> list[str]:
     root = (repo_root or default_repo_root()).resolve()
     asp = resolve_asp_bin(asp_bin)
     validator = _language_registry_validator(root)
     failures: list[str] = []
     for provider in provider_ids or ["rust", "typescript", "python"]:
-        failures.extend(_provider_failures(asp, provider, root, validator))
+        failures.extend(_provider_failures(asp, provider, root, validator, env=env))
     return failures
 
 
@@ -88,8 +94,13 @@ def _provider_failures(
     provider: str,
     root: Path,
     validator: Draft202012Validator,
+    *,
+    env: dict[str, str] | None,
 ) -> list[str]:
-    registry_result = provider_registry(asp_bin, provider, root)
+    if env is None:
+        registry_result = provider_registry(asp_bin, provider, root)
+    else:
+        registry_result = provider_registry_with_env(asp_bin, provider, root, env=env)
     if registry_result.error is not None:
         return [registry_result.error]
 

@@ -7,7 +7,7 @@ import os
 import shutil
 import stat
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from tools.console import emit
@@ -76,6 +76,7 @@ def check_provider_registry_contracts(env: dict[str, str], asp_bin: str) -> None
         ROOT,
         provider_ids=["rust", "typescript", "python"],
         asp_bin=asp_bin,
+        env=env,
     )
     if failures:
         raise ContractFailure("\n".join(failures))
@@ -106,7 +107,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 def _run_single_gate(argv: list[str] | None, gate: Gate, message: str) -> None:
     _ignore_args(argv)
-    gate(os.environ.copy(), _resolve_asp())
+    gate(_contract_env(os.environ), _resolve_asp())
     emit(message)
 
 
@@ -150,6 +151,7 @@ class _runtime_env:
         self.asp_bin = asp_bin
         self._tmp: tempfile.TemporaryDirectory[str] | None = None
         self._asp_toml_backup: Path | None = None
+        self._codex_config_backup: Path | None = None
         self._hook_config_backup: Path | None = None
 
     def __enter__(self) -> dict[str, str]:
@@ -159,6 +161,10 @@ class _runtime_env:
             self._asp_toml_backup = _backup_runtime_file(
                 shim_dir,
                 ROOT / ".agents/asp.toml",
+            )
+            self._codex_config_backup = _backup_runtime_file(
+                shim_dir,
+                ROOT / ".codex/config.toml",
             )
             self._hook_config_backup = _backup_runtime_file(
                 shim_dir,
@@ -180,6 +186,7 @@ class _runtime_env:
             env = os.environ.copy()
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
             env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
+            env["ASP_NO_AGENT_PLATFORM"] = "1"
             run([str(self.asp_bin), "install", "plugin", "--codex", "."], env=env)
             return env
         except Exception:
@@ -188,6 +195,7 @@ class _runtime_env:
 
     def __exit__(self, *_exc: object) -> None:
         _restore_runtime_file(ROOT / ".agents/asp.toml", self._asp_toml_backup)
+        _restore_runtime_file(ROOT / ".codex/config.toml", self._codex_config_backup)
         _restore_runtime_file(
             ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
             self._hook_config_backup,
@@ -215,6 +223,12 @@ def _restore_runtime_file(path: Path, backup: Path | None) -> None:
 def _write_shim(path: Path, body: str) -> None:
     path.write_text(f"#!/usr/bin/env bash\n{body}", encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def _contract_env(source: Mapping[str, str]) -> dict[str, str]:
+    env = dict(source)
+    env["ASP_NO_AGENT_PLATFORM"] = "1"
+    return env
 
 
 _GATES: dict[str, Gate] = {

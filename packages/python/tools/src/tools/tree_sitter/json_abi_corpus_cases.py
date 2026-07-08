@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -101,6 +102,7 @@ def _validate_case(
 ) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         project_root = Path(temp_dir)
+        _write_project_manifest(case.language, project_root)
         source_path = project_root / case.source_path
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text(case.source, encoding="utf-8")
@@ -108,9 +110,51 @@ def _validate_case(
     _assert_packet_shape(case, packet, optional_catalogs)
 
 
+def _write_project_manifest(language: str, project_root: Path) -> None:
+    if language == "rust":
+        (project_root / "Cargo.toml").write_text(
+            '[package]\nname = "asp-corpus"\nversion = "0.0.0"\nedition = "2021"\n',
+            encoding="utf-8",
+        )
+        return
+    if language == "typescript":
+        (project_root / "package.json").write_text(
+            '{"name":"asp-corpus","version":"0.0.0","type":"module"}\n',
+            encoding="utf-8",
+        )
+        return
+    if language == "python":
+        (project_root / "pyproject.toml").write_text(
+            '[project]\nname = "asp-corpus"\nversion = "0.0.0"\n',
+            encoding="utf-8",
+        )
+
+
 def _run_query(
     case: _CorpusCase,
     project_root: Path,
+    *,
+    asp_bin: str,
+    repo_root: Path,
+) -> dict[str, Any]:
+    return _run_catalog_query(
+        case,
+        project_root,
+        _exact_source_selector(case),
+        asp_bin=asp_bin,
+        repo_root=repo_root,
+    )
+
+
+def _exact_source_selector(case: _CorpusCase) -> str:
+    line_count = max(1, len(case.source.splitlines()))
+    return f"{case.source_path}:1:{line_count}"
+
+
+def _run_catalog_query(
+    case: _CorpusCase,
+    project_root: Path,
+    selector: str,
     *,
     asp_bin: str,
     repo_root: Path,
@@ -123,17 +167,31 @@ def _run_query(
             "--catalog",
             case.catalog,
             "--selector",
-            case.source_path,
+            selector,
             "--json",
             str(project_root),
         ],
         cwd=repo_root,
-        check=True,
+        check=False,
+        env=_automation_env(),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"{case.language}:{case.title}:{case.catalog}: "
+            f"query failed for {selector} with exit={completed.returncode}\n"
+            f"stdout:\n{completed.stdout}\n"
+            f"stderr:\n{completed.stderr}"
+        )
     return json.loads(completed.stdout)
+
+
+def _automation_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env["ASP_NO_AGENT_PLATFORM"] = "1"
+    return env
 
 
 def _assert_packet_shape(

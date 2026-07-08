@@ -36,12 +36,23 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def provider_registry(asp_bin: str, provider: str, repo_root: Path) -> RegistryResult:
+    return provider_registry_with_env(asp_bin, provider, repo_root, env=None)
+
+
+def provider_registry_with_env(
+    asp_bin: str,
+    provider: str,
+    repo_root: Path,
+    *,
+    env: dict[str, str] | None,
+) -> RegistryResult:
     argv = [asp_bin, provider, "agent", "doctor", "--json", str(repo_root)]
     try:
         completed = subprocess.run(
             argv,
             check=False,
             capture_output=True,
+            env=_automation_env(env),
             text=True,
             timeout=30,
         )
@@ -61,3 +72,9 @@ def provider_registry(asp_bin: str, provider: str, repo_root: Path) -> RegistryR
     if not isinstance(registry, dict):
         return RegistryResult(error=f"{provider}: registry JSON must be an object")
     return RegistryResult(registry=registry)
+
+
+def _automation_env(env: dict[str, str] | None) -> dict[str, str]:
+    result = dict(env or os.environ)
+    result["ASP_NO_AGENT_PLATFORM"] = "1"
+    return result
