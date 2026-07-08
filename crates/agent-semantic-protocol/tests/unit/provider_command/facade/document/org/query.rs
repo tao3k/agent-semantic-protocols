@@ -421,16 +421,10 @@ fn org_facade_search_memory_denies_generic_agent_session_without_child() {
         ])
         .output()
         .expect("run asp org search memory");
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("ASP query/search command denied in agent session"),
-        "{stderr}"
-    );
-    assert!(stderr.contains("rootSessionId=agent-session-a"), "{stderr}");
-    assert!(
-        stderr.contains("no active asp-explore child session is registered"),
-        "{stderr}"
+        output.status.success(),
+        "generic agent-session env should not trigger Codex/Claude resident-child gate\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 
     let _ = std::fs::remove_dir_all(root);

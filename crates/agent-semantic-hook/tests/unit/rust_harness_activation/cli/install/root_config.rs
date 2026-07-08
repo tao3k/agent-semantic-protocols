@@ -48,8 +48,8 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let parsed_config =
         toml::from_str::<toml::Value>(&config).expect("installed Codex config is valid TOML");
     assert_plugin_entries(&parsed_config);
-    assert_no_codex_user_trust_config(&codex_home);
-    assert_codex_asp_explorer(&codex_home, "gpt-5.3-codex-spark");
+    assert_codex_user_trust_config(&codex_home);
+    assert_codex_asp_explorer(&codex_home, "gpt-5.4-mini");
     assert_installed_activation(&root);
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -92,7 +92,7 @@ fn cli_install_accepts_existing_project_marketplace_source_when_root_matches() {
     assert!(!config.contains("[agents.asp_explorer]"));
     assert_codex_user_asp_explorer_role_config(&codex_home);
     assert!(config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
-    assert_codex_asp_explorer(&codex_home, "gpt-5.3-codex-spark");
+    assert_codex_asp_explorer(&codex_home, "gpt-5.4-mini");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -263,17 +263,15 @@ fn assert_codex_config(config: &str, root: &std::path::Path) {
     assert!(config.contains("enabled = true"));
 }
 
-fn assert_no_codex_user_trust_config(codex_home: &std::path::Path) {
+fn assert_codex_user_trust_config(codex_home: &std::path::Path) {
     let config_path = codex_home.join("config.toml");
-    if !config_path.exists() {
-        return;
-    }
+    assert!(config_path.exists(), "Codex user config should be written");
     let config = std::fs::read_to_string(config_path).expect("read Codex user config");
     assert!(
-        !config.contains("[hooks.state."),
-        "Codex plugin installation should not write hook trust state"
+        config.contains("[hooks.state."),
+        "Codex plugin installation should write hook trust state"
     );
-    assert!(!config.contains("agent-semantic-protocol trusted hook state"));
+    assert!(config.contains("agent-semantic-protocol trusted hook state"));
 }
 
 fn assert_codex_user_asp_explorer_role_config(codex_home: &std::path::Path) {
@@ -282,9 +280,10 @@ fn assert_codex_user_asp_explorer_role_config(codex_home: &std::path::Path) {
     assert!(config.contains("[agents.asp_explorer]"));
     assert!(config.contains("description = "));
     assert!(config.contains("config_file = \"agents/asp-explorer.toml\""));
-    assert!(config.contains(
-        "nickname_candidates = [\"ASP owner\", \"ASP rg\", \"ASP selector\", \"ASP search\"]"
-    ));
+    assert!(
+        config
+            .contains("nickname_candidates = [\"ASP Explore\", \"ASP Reasoning\", \"ASP Search\"]")
+    );
 }
 
 fn assert_plugin_entries(config: &toml::Value) {
@@ -313,7 +312,7 @@ fn assert_claude_asp_explorer(root: &std::path::Path, model: &str) {
     assert_asp_explorer_instructions(&agent);
 }
 
-fn assert_codex_asp_explorer(codex_home: &std::path::Path, _model: &str) {
+fn assert_codex_asp_explorer(codex_home: &std::path::Path, model: &str) {
     let path = codex_home
         .parent()
         .expect("Codex home parent")
@@ -334,10 +333,14 @@ fn assert_codex_asp_explorer(codex_home: &std::path::Path, _model: &str) {
         "fork_turns is not a supported custom-agent TOML key"
     );
     assert!(agent.contains("name = \"asp_explorer\""));
+    assert!(agent.contains(&format!("model = \"{model}\"")));
     assert!(table.contains_key("description"));
     assert!(agent.contains("nickname_candidates = ["));
-    assert!(agent.contains("session_lifetime = \"resident\""));
-    assert!(agent.contains("model_reasoning_effort = \"medium\""));
+    assert!(
+        !agent.contains("session_lifetime"),
+        "session_lifetime is an ASP registry field, not a Codex agent TOML field"
+    );
+    assert!(agent.contains("model_reasoning_effort = \"low\""));
     assert!(agent.contains("sandbox_mode = \"read-only\""));
     assert!(agent.contains("developer_instructions = \"\"\""));
     assert!(!agent.contains("fork_turns"), "{agent}");

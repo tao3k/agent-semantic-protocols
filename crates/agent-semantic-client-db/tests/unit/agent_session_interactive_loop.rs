@@ -1,5 +1,6 @@
 use agent_semantic_client_db::agent_session_registry::{
-    AgentSessionLoopState, AgentSessionRecord, resident_child_bootstrap_menu,
+    AgentSessionLoopState, AgentSessionRecord, ResidentChildBootstrapMenuInput,
+    resident_child_bootstrap_menu,
 };
 
 fn active_record(model: Option<&str>, message_target_id: Option<&str>) -> AgentSessionRecord {
@@ -28,16 +29,16 @@ fn active_record(model: Option<&str>, message_target_id: Option<&str>) -> AgentS
 
 #[test]
 fn missing_record_requires_audit_before_create() {
-    let menu = resident_child_bootstrap_menu(
-        "codex",
-        "asp-explore",
-        Some("root"),
-        None,
-        Some("gpt-5.4-mini"),
-        None,
-        None,
-        2,
-    );
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: None,
+        expected_model: Some("gpt-5.4-mini"),
+        rollout_history_status: None,
+        rollout_history_action: None,
+        now: 2,
+    });
 
     assert_eq!(menu.state, AgentSessionLoopState::Audit);
     assert_eq!(menu.choices.len(), 1);
@@ -60,16 +61,16 @@ fn missing_record_requires_audit_before_create() {
 
 #[test]
 fn checked_rollout_miss_offers_managed_create_or_host_blocker() {
-    let menu = resident_child_bootstrap_menu(
-        "codex",
-        "asp-explore",
-        Some("root"),
-        None,
-        Some("gpt-5.4-mini"),
-        Some("checked-no-reusable-rollout"),
-        Some("create-resident-child-after-rollout-history-miss"),
-        2,
-    );
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: None,
+        expected_model: Some("gpt-5.4-mini"),
+        rollout_history_status: Some("checked-no-reusable-rollout"),
+        rollout_history_action: Some("create-resident-child-after-rollout-history-miss"),
+        now: 2,
+    });
 
     assert_eq!(menu.state, AgentSessionLoopState::Create);
     assert_eq!(menu.choices.len(), 2);
@@ -102,16 +103,16 @@ fn checked_rollout_miss_offers_managed_create_or_host_blocker() {
 #[test]
 fn model_mismatch_requires_validation_choice() {
     let record = active_record(Some("gpt-5.5"), Some("target"));
-    let menu = resident_child_bootstrap_menu(
-        "codex",
-        "asp-explore",
-        Some("root"),
-        Some(&record),
-        Some("gpt-5.4-mini"),
-        Some("not-needed"),
-        Some("none"),
-        2,
-    );
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        rollout_history_status: Some("not-needed"),
+        rollout_history_action: Some("none"),
+        now: 2,
+    });
 
     assert_eq!(menu.state, AgentSessionLoopState::Validate);
     assert_eq!(menu.choices[0].id, "confirm-configured-model");
@@ -130,16 +131,16 @@ fn model_mismatch_requires_validation_choice() {
 #[test]
 fn missing_message_target_can_recover_host_single_agent_id() {
     let record = active_record(Some("gpt-5.4-mini"), None);
-    let menu = resident_child_bootstrap_menu(
-        "codex",
-        "asp-explore",
-        Some("root"),
-        Some(&record),
-        Some("gpt-5.4-mini"),
-        Some("not-needed"),
-        Some("none"),
-        2,
-    );
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        rollout_history_status: Some("not-needed"),
+        rollout_history_action: Some("none"),
+        now: 2,
+    });
 
     assert_eq!(menu.state, AgentSessionLoopState::Recover);
     assert_eq!(menu.choices[0].id, "recover-native-message-target");
@@ -159,16 +160,16 @@ fn missing_message_target_can_recover_host_single_agent_id() {
 #[test]
 fn aligned_routable_record_is_ready() {
     let record = active_record(Some("gpt-5.4-mini"), Some("target"));
-    let menu = resident_child_bootstrap_menu(
-        "codex",
-        "asp-explore",
-        Some("root"),
-        Some(&record),
-        Some("gpt-5.4-mini"),
-        Some("not-needed"),
-        Some("none"),
-        2,
-    );
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        rollout_history_status: Some("not-needed"),
+        rollout_history_action: Some("none"),
+        now: 2,
+    });
 
     assert_eq!(menu.state, AgentSessionLoopState::Ready);
     assert_eq!(menu.choices.len(), 1);
@@ -191,16 +192,16 @@ fn aligned_routable_record_is_ready() {
 #[test]
 fn serialized_menu_is_choice_only_and_keeps_message_target() {
     let record = active_record(Some("gpt-5.4-mini"), Some("target"));
-    let menu = resident_child_bootstrap_menu(
-        "native-host",
-        "asp-explore",
-        Some("root"),
-        Some(&record),
-        Some("gpt-5.4-mini"),
-        Some("not-needed"),
-        Some("none"),
-        2,
-    );
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "native-host",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        rollout_history_status: Some("not-needed"),
+        rollout_history_action: Some("none"),
+        now: 2,
+    });
 
     let value = serde_json::to_value(&menu).expect("serialize interactive menu");
     assert!(value.get("nextCommand").is_none());

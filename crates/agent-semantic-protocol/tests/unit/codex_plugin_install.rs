@@ -65,22 +65,24 @@ mod unix {
             "{project_config}"
         );
         assert!(
-            project_config.contains("# BEGIN agent-semantic-protocol agent hooks"),
+            !project_config.contains("# BEGIN agent-semantic-protocol agent hooks"),
             "{project_config}"
         );
         assert!(
-            project_config.contains("[[hooks.PreToolUse]]"),
-            "{project_config}"
-        );
-        assert!(project_config.contains("direnv exec"), "{project_config}");
-        assert!(
-            project_config.contains("/.bin/asp\" hook"),
+            !project_config.contains("[[hooks.pre_tool_use]]"),
             "{project_config}"
         );
         assert!(
-            project_config.contains(
-                r#"nickname_candidates = ["ASP Explore", "ASP Reasoning", "ASP Search"]"#
-            ),
+            !project_config.contains("[[hooks.PreToolUse]]"),
+            "{project_config}"
+        );
+        assert!(!project_config.contains("direnv exec"), "{project_config}");
+        assert!(
+            !project_config.contains("\"$repo_root/.bin/asp\" hook"),
+            "{project_config}"
+        );
+        assert!(
+            !project_config.contains("[agents.asp_explorer]"),
             "{project_config}"
         );
         let explorer_agent =
@@ -102,13 +104,32 @@ mod unix {
         );
         let global_config = std::fs::read_to_string(codex_home.join("config.toml"))
             .expect("read global Codex config");
-        let project_config_path = std::fs::canonicalize(root.join(".codex").join("config.toml"))
-            .expect("canonical project config path");
         assert!(
-            global_config.contains(&format!(
-                "{}:pre_tool_use:0:0",
-                project_config_path.display()
-            )),
+            global_config.contains("# BEGIN agent-semantic-protocol agent hooks"),
+            "{global_config}"
+        );
+        assert!(
+            global_config.contains("[[hooks.pre_tool_use]]"),
+            "{global_config}"
+        );
+        assert!(global_config.contains("direnv exec"), "{global_config}");
+        assert!(global_config.contains(" hook pre-tool "), "{global_config}");
+        assert!(
+            global_config.contains(r#"repo_root="${CODEX_WORKSPACE_ROOT:-${PWD:-.}}""#),
+            "{global_config}"
+        );
+        assert!(
+            !global_config.contains("\"$repo_root/.bin/asp\" hook"),
+            "{global_config}"
+        );
+        assert!(
+            global_config.contains(
+                r#"nickname_candidates = ["ASP Explore", "ASP Reasoning", "ASP Search"]"#
+            ),
+            "{global_config}"
+        );
+        assert!(
+            global_config.contains(".codex-home/config.toml:pre_tool_use:0:0"),
             "{global_config}"
         );
         let agent_config = std::fs::read_to_string(root.join(".agents").join("asp.toml"))

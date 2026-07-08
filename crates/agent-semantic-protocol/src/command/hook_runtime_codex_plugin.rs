@@ -2,8 +2,7 @@
 
 use super::hook_runtime_subagent::install_codex_resident_agents;
 use agent_semantic_hook::{
-    codex_hook_block, install_codex_user_trust_state, merge_codex_asp_explorer_role_config,
-    merge_codex_config, validate_codex_config_toml,
+    merge_codex_asp_explorer_role_config, merge_codex_config, validate_codex_config_toml,
 };
 use std::env;
 use std::fs;
@@ -58,8 +57,10 @@ pub(super) fn install_codex_plugin_hooks(
     let plugin_manifest = plugin_cache.join(".codex-plugin").join("plugin.json");
     let marketplace_name = ASP_CODEX_PLUGIN_MARKETPLACE_NAME;
     let project_config_path = install_codex_project_plugin_config(project_root)?;
-    let trust_config_path = install_codex_user_trust_state(&project_config_path)?;
+    let trust_config_path =
+        agent_semantic_hook::install_codex_user_project_trust(&project_config_path)?;
     let codex_agent_config_path = global_codex_config_path()?;
+    ensure_codex_user_hook_config(&codex_agent_config_path)?;
     let codex_agent_home = codex_agent_config_path
         .parent()
         .ok_or_else(|| "global Codex config path has no parent".to_string())?
@@ -256,7 +257,7 @@ fn ensure_codex_plugin_cache_static_files(
                 cache_root.display()
             ));
         }
-        fs::create_dir_all(&cache_root)
+        fs::create_dir_all(cache_root)
             .map_err(|error| format!("failed to create {}: {error}", cache_root.display()))?;
     }
     write_codex_plugin_file(
@@ -328,7 +329,7 @@ fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, S
             .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
     }
     let merged = normalize_codex_project_plugin_config(&existing);
-    let merged = merge_codex_config(&merged, &codex_hook_block(project_root));
+    let merged = agent_semantic_hook::remove_codex_managed_hook_config(&merged);
     if merged != existing || !config_path.is_file() {
         validate_codex_config_toml(&merged).map_err(|error| {
             format!("refusing to write invalid Codex project plugin config TOML: {error}")
@@ -339,13 +340,38 @@ fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, S
     Ok(config_path)
 }
 
+fn ensure_codex_user_hook_config(config_path: &Path) -> Result<(), String> {
+    let existing = fs::read_to_string(config_path).unwrap_or_default();
+    validate_codex_config_toml(&existing)
+        .map_err(|error| format!("refusing to update invalid Codex config TOML: {error}"))?;
+    let hook_binary = std::env::current_exe()
+        .map_err(|error| format!("failed to resolve current asp binary: {error}"))?;
+    let merged = merge_codex_config(
+        &existing,
+        &agent_semantic_hook::codex_global_hook_block_with_binary(Some(&hook_binary)),
+    );
+    let merged = agent_semantic_hook::merge_codex_global_hook_trust_config(
+        &merged,
+        config_path,
+        Some(&hook_binary),
+    );
+    if merged != existing {
+        validate_codex_config_toml(&merged).map_err(|error| {
+            format!("refusing to write invalid Codex user hook config TOML: {error}")
+        })?;
+        fs::write(config_path, merged.as_bytes())
+            .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
+    }
+    Ok(())
+}
+
 fn normalize_codex_project_plugin_config(content: &str) -> String {
     let mut lines = content
         .trim()
         .lines()
         .map(str::to_string)
         .collect::<Vec<_>>();
-    ensure_codex_project_feature_flags(&mut lines, &["hooks", "plugins"]);
+    ensure_codex_project_feature_flags(&mut lines, &["hooks", "plugins", "unified_exec"]);
     let normalized = lines.join("\n");
     if normalized.trim().is_empty() {
         String::new()

@@ -165,6 +165,6 @@ pub fn asp_workspace_member_policy_for(
     package_name: &str,
 ) -> Option<&'static AspRustProjectHarnessMemberPolicy> {
     asp_workspace_member_policies()
-        .into_iter()
+        .iter()
         .find(|policy| policy.package_name == package_name)
 }

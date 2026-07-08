@@ -185,14 +185,14 @@ fn reject_search_file_workspace(args: &[String], invocation_root: &Path) -> Resu
     Ok(())
 }
 
-fn invalid_source_selector_code_message(
+fn invalid_source_selector_query_message(
     language_id: &str,
     selector: &str,
     args: &[String],
 ) -> String {
     let workspace = option_value(args, "--workspace").unwrap_or(".");
     format!(
-        "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nprojection=code\nallowed=false\nreason=file-selectors-are-not-code-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
+        "invalid query selector `{selector}`: file selectors are not executable query selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nprojection=query\nallowed=false\nreason=file-selectors-are-not-query-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
     )
 }
 
@@ -208,6 +208,20 @@ fn is_plain_file_selector_code_query(args: &[String]) -> bool {
         || args
             .iter()
             .any(|arg| arg == "--from-hook" || arg.starts_with("--from-hook="))
+    {
+        return false;
+    }
+    let Some(selector) = option_value(args, "--selector") else {
+        return false;
+    };
+    !selector.contains("://") && selector.split_once(':').is_none()
+}
+
+fn is_file_selector_query(args: &[String]) -> bool {
+    if !matches!(args.first().map(String::as_str), Some("query"))
+        || args
+            .iter()
+            .any(|arg| arg == "--term" || arg == "--treesitter-query")
     {
         return false;
     }
@@ -236,12 +250,12 @@ fn is_provider_owned_structural_code_query(language_id: &str, args: &[String]) -
     selector.starts_with("typescript://") && selector.contains("#item/")
 }
 
-fn reject_registered_source_selector_query_code(
+fn reject_registered_source_selector_query(
     language_id: &str,
     args: &[String],
     provider: &agent_semantic_hook::ActivatedProvider,
 ) -> Result<(), String> {
-    if !is_plain_file_selector_code_query(args) {
+    if !is_file_selector_query(args) {
         return Ok(());
     }
     let Some(selector) = option_value(args, "--selector") else {
@@ -264,7 +278,7 @@ fn reject_registered_source_selector_query_code(
     if !registered_source {
         return Ok(());
     }
-    Err(invalid_source_selector_code_message(
+    Err(invalid_source_selector_query_message(
         language_id,
         selector,
         args,
@@ -303,7 +317,7 @@ fn reject_manifest_source_selector_query_code(
     if !registered_source {
         return Ok(());
     }
-    Err(invalid_source_selector_code_message(
+    Err(invalid_source_selector_query_message(
         language_id,
         selector,
         args,
@@ -512,7 +526,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 }
             )
         })?;
-    reject_registered_source_selector_query_code(language_id, &command_args, provider)?;
+    reject_registered_source_selector_query(language_id, &command_args, provider)?;
 
     if !is_provider_owned_structural_code_query(language_id, &provider_args)
         && run_asp_fast_owner_query_command(

@@ -171,7 +171,7 @@ fn write_codex_asp_explorer_fixture_with_agent_role(
     std::fs::write(
         &expected_agent_path,
         format!(
-            "name = \"asp_explorer\"\nmodel = \"{expected_model}\"\nsandbox_mode = \"{expected_sandbox}\"\n"
+            "name = \"asp_explorer\"\nmodel = \"{expected_model}\"\nsandbox_mode = \"{expected_sandbox}\"\nsession_lifetime = \"resident\"\n"
         ),
     )
     .expect("write asp explorer config");

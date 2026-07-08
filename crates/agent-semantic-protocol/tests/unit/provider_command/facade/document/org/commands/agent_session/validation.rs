@@ -608,11 +608,13 @@ fn asp_agent_session_model_mismatch_is_warning_not_invalid() {
         "{status_stdout}"
     );
     assert!(
-        status_stdout.contains("\"routable\": true"),
+        status_stdout.contains("\"routable\": false"),
         "{status_stdout}"
     );
     assert!(
-        status_stdout.contains("\"nextAction\": \"child-activity-running-wait\""),
+        status_stdout.contains(
+            "\"nextAction\": \"register-existing-child-with-native-message-target-or-create-managed-child\""
+        ),
         "{status_stdout}"
     );
 

@@ -20,20 +20,19 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "asp agent session register --name asp-explore --child-session-id <child-session-id> --message-target-id <agent-message-target-id> --roles subagent,search --replace"
-        ),
+        stdout
+            .contains("Register is a low-level step owned by the resident-child interactive loop"),
         "{stdout}"
     );
     assert!(stdout.contains("Detected host: codex"), "{stdout}");
     assert!(stdout.contains("Session env: CODEX_THREAD_ID"), "{stdout}");
     assert!(
-        stdout.contains("Resident ASP child lifecycle loop"),
+        stdout.contains("Canonical loop entry:")
+            && stdout.contains("asp agent session bootstrap --name asp-explore --json"),
         "{stdout}"
     );
-    assert!(stdout.contains("Classify the audit result"), "{stdout}");
     assert!(
-        stdout.contains("asp agent session lifecycle audit --json"),
+        stdout.contains("Only run register when a loop choice asks for durable registration"),
         "{stdout}"
     );
     assert!(
@@ -42,7 +41,6 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
         ) && stdout.contains("do not ask the child to fork, create, or register another session"),
         "{stdout}"
     );
-    assert!(stdout.contains("no registered or rollout-only resident child: create the configured resident ASP child now"), "{stdout}");
     assert!(
         stdout.contains("~/.agent-semantic-protocols/agents/asp-explorer_codex.toml"),
         "{stdout}"
@@ -52,29 +50,7 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("agentMessageTargetId for message-agent sends"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("messageTargetStatus=missing or non-routable"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "bootstrapBlocked=host-message-agent-target-unavailable with the attempted child id"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("do not use normal-thread read/send"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("asp agent session status --name asp-explore --json"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("Do not use `asp agent session fork` as bootstrap"),
+        stdout.contains("Do not use register --guide, lifecycle audit, normal-thread reads"),
         "{stdout}"
     );
 
@@ -135,7 +111,7 @@ fn asp_agent_session_fork_guide_refuses_bootstrap_semantics() {
     );
     assert!(stdout.contains("do not use fork as bootstrap"), "{stdout}");
     assert!(
-        stdout.contains("asp agent session register --guide"),
+        stdout.contains("asp agent session bootstrap --name asp-explore --json"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -166,8 +142,9 @@ fn asp_agent_session_status_guide_explains_start_resident_child_action() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("Codex action: start the configured ASP managed subagent `asp_explorer`")
-            && stdout.contains("do not ask the child to fork, create, or register another session"),
+        stdout.contains(
+            "Codex action: start or resume the configured ASP managed subagent `asp_explorer`"
+        ) && stdout.contains("do not ask the child to fork, create, or register another session"),
         "{stdout}"
     );
     assert!(

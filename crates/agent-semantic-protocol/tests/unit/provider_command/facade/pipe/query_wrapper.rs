@@ -13,12 +13,12 @@ use super::assert_graph_turbo_request_contract;
 
 fn refresh_source_index(root: &std::path::Path) {
     let output = asp_command(root)
-        .args(["cache", "source-index", "refresh"])
+        .args(["cache", "source-index", "rebuild"])
         .output()
-        .expect("run asp cache source-index refresh");
+        .expect("run asp cache source-index rebuild");
     assert!(
         output.status.success(),
-        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        "source-index rebuild failed\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );

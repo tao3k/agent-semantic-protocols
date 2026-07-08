@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_db::agent_session_registry::{
     AgentSessionInteractiveMenu, AgentSessionLookupRequest, AgentSessionRegistry,
-    resident_child_bootstrap_menu,
+    ResidentChildBootstrapMenuInput, resident_child_bootstrap_menu,
 };
 
 use super::agent_session_registry_args::SessionArgs;
@@ -63,16 +63,16 @@ pub(super) fn bootstrap_session(
         )?;
     let platform =
         crate::command::agent_session_registry::active_platform().unwrap_or("{platform}");
-    let menu = resident_child_bootstrap_menu(
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
         platform,
         name,
-        root_session_id.as_deref(),
-        record.as_ref(),
-        expected_model.as_deref(),
-        Some(rollout_history_status),
-        Some(rollout_history_action),
+        root_session_id: root_session_id.as_deref(),
+        record: record.as_ref(),
+        expected_model: expected_model.as_deref(),
+        rollout_history_status: Some(rollout_history_status),
+        rollout_history_action: Some(rollout_history_action),
         now,
-    );
+    });
     if args.json {
         println!(
             "{}",

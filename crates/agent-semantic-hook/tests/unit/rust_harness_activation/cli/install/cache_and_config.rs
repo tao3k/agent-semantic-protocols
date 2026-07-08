@@ -185,20 +185,22 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     let config = std::fs::read_to_string(&config_path).expect("installed config");
     let parsed_config =
         toml::from_str::<toml::Value>(&config).expect("installed Codex config is valid TOML");
-    assert_eq!(
-        parsed_config
-            .get("unified_exec")
-            .and_then(toml::Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        parsed_config.get("hooks").and_then(toml::Value::as_bool),
-        Some(false)
-    );
     let features = parsed_config
         .get("features")
         .and_then(toml::Value::as_table)
         .expect("features table");
+    assert_eq!(
+        features.get("hooks").and_then(toml::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        features.get("plugins").and_then(toml::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        features.get("unified_exec").and_then(toml::Value::as_bool),
+        Some(true)
+    );
     assert_eq!(
         features.get("multi_agent").and_then(toml::Value::as_bool),
         Some(true)
@@ -214,6 +216,6 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     let user_config =
         std::fs::read_to_string(codex_home.join("config.toml")).expect("user trust config");
     assert!(user_config.contains("sha256:old"));
-    assert!(!user_config.contains("agent-semantic-protocol trusted hook state"));
+    assert!(user_config.contains("agent-semantic-protocol trusted hook state"));
     let _ = std::fs::remove_dir_all(&root);
 }

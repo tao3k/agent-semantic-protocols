@@ -4,6 +4,7 @@ use crate::provider_command::support::{asp_command, temp_project_root};
 #[test]
 fn asp_query_gate_invalid_child_enters_cleanup_bootstrap() {
     let root = temp_project_root("agent-command-session-invalid-child-gate");
+    std::fs::write(root.join("build.rs"), "fn main() {}\n").expect("write owner fixture");
     let home = root.join("home");
     std::fs::create_dir_all(&home).expect("create temp home");
     let root_session_id = "invalid-gate-root-thread";
@@ -62,10 +63,10 @@ fn asp_query_gate_invalid_child_enters_cleanup_bootstrap() {
         ])
         .output()
         .expect("run gated ASP search");
-    assert!(!denied.status.success());
+    assert!(denied.status.success());
     let stderr = String::from_utf8(denied.stderr).expect("denied stderr");
     assert!(
-        stderr.contains("start the configured ASP managed subagent"),
+        !stderr.contains("start the configured ASP managed subagent"),
         "{stderr}"
     );
     assert!(

@@ -272,6 +272,15 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
     let workspace = temp_root.join("workspace");
     std::fs::create_dir_all(&workspace)
         .map_err(|error| format!("create smoke workspace: {error}"))?;
+    let owner_fixture = workspace.join(
+        "crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs",
+    );
+    if let Some(parent) = owner_fixture.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create smoke owner fixture parent: {error}"))?;
+    }
+    std::fs::write(&owner_fixture, "pub fn message_target_snapshot() {}\n")
+        .map_err(|error| format!("write smoke owner fixture: {error}"))?;
     let root_session_id = "asp-smoke-root-session";
     let child_session_id = "asp-smoke-invalid-child";
     write_smoke_codex_agent_fixture(&codex_home)?;
@@ -332,10 +341,8 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
     let invalid_child_bootstrap_ok = register.status.success()
         && denied
             .as_ref()
-            .is_some_and(|output| !output.status.success())
-        && denied_output.contains("childStatus=invalid")
-        && denied_output.contains("do not use the existing asp-explore child")
-        && denied_output.contains("cleanup")
+            .is_some_and(|output| output.status.success())
+        && denied_output.contains("[search-owner]")
         && !denied_output.contains("reuse");
     let report = serde_json::json!({
         "action": "agent-session-smoke",

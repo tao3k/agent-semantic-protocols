@@ -50,6 +50,42 @@ source = "."
 }
 
 #[test]
+fn codex_hook_merge_replaces_legacy_bare_asp_explorer_role() {
+    let existing = r#"[features]
+hooks = true
+plugins = true
+
+[agents.asp_explorer]
+description = "legacy"
+config_file = "agents/legacy.toml"
+nickname_candidates = ["ASP selector"]
+
+[marketplaces.asp-project]
+source_type = "local"
+source = "."
+"#;
+
+    let merged =
+        agent_semantic_hook::merge_codex_config(existing, &codex_hook_block(PROJECT_ROOT.as_ref()));
+
+    toml::from_str::<toml::Value>(&merged).expect("merged Codex config is valid TOML");
+    assert!(merged.contains(ROOT_BLOCK_BEGIN), "{merged}");
+    assert_eq!(
+        merged.matches("[agents.asp_explorer]").count(),
+        1,
+        "{merged}"
+    );
+    assert!(merged.contains("config_file = \"agents/asp-explorer.toml\""));
+    assert!(!merged.contains("agents/legacy.toml"));
+    assert!(merged.contains("[marketplaces.asp-project]"));
+    assert!(merged.contains("[[hooks.pre_tool_use]]"), "{merged}");
+    assert!(merged.contains("[[hooks.session_start]]"), "{merged}");
+    assert!(merged.contains("[[hooks.permission_request]]"), "{merged}");
+    assert!(!merged.contains("[[hooks.PreToolUse]]"), "{merged}");
+    assert!(!merged.contains("[[hooks.SessionStart]]"), "{merged}");
+}
+
+#[test]
 fn claude_hook_matcher_reuses_shared_tool_surfaces() {
     let block = claude_hook_block(Path::new(PROJECT_ROOT));
     let pre_tool = block["hooks"]["PreToolUse"][0]["matcher"]

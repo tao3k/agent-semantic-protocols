@@ -224,7 +224,7 @@ fn language_facade_query_file_selector_code_is_rejected() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        stderr.contains("invalid query --code selector `src/core.rs`"),
+        stderr.contains("invalid query selector `src/core.rs`"),
         "{stderr}"
     );
     assert!(
@@ -281,7 +281,7 @@ fn registered_language_facade_query_source_selector_code_is_rejected() {
         );
         let stderr = String::from_utf8(output.stderr).expect("stderr");
         assert!(
-            stderr.contains(&format!("invalid query --code selector `{selector}`")),
+            stderr.contains(&format!("invalid query selector `{selector}`")),
             "{language_id}: {stderr}"
         );
         assert!(

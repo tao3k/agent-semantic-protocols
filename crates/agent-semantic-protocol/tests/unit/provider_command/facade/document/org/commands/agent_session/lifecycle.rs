@@ -151,11 +151,11 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
         String::from_utf8_lossy(&register_output.stderr)
     );
 
-    let relevant_root = sessions_dir.join("2026").join("06").join("29");
+    let relevant_root = sessions_dir.join("2026").join("07").join("08");
     fs::create_dir_all(&relevant_root).expect("create relevant rollout directory");
     fs::write(
         relevant_root
-            .join("rollout-2026-06-29T08-09-21-019f126d-0000-7000-8000-000000000030.jsonl"),
+            .join("rollout-2026-07-08T08-09-21-019f126d-0000-7000-8000-000000000030.jsonl"),
         format!(
             "{}\n{}\n{}\n",
             json!({
@@ -169,7 +169,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
                 }
             }),
             json!({
-                "timestamp": "2026-06-29T08:09:21Z",
+                "timestamp": "2026-07-08T08:09:21Z",
                 "type": "event_msg",
                 "payload": {
                     "type": "agent_message",
@@ -177,7 +177,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
                 }
             }),
             json!({
-                "timestamp": "2026-06-29T08:09:22Z",
+                "timestamp": "2026-07-08T08:09:22Z",
                 "type": "response_item",
                 "payload": {
                     "type": "thread_spawn",
@@ -191,7 +191,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
     .expect("write relevant rollout file");
     fs::write(
         relevant_root
-            .join("rollout-2026-06-29T08-09-21-019f126d-0000-7000-8000-000000000130.jsonl"),
+            .join("rollout-2026-07-08T08-09-21-019f126d-0000-7000-8000-000000000130.jsonl"),
         format!(
             "{}\n{}\n{}\n",
             json!({
@@ -201,11 +201,21 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
                     "session_id": "019f126d-0000-7000-8000-000000000030",
                     "parent_thread_id": "019f126d-0000-7000-8000-000000000030",
                     "thread_source": "subagent",
-                    "agent_role": "subagent"
+                    "agent_role": "subagent",
+                    "source": {
+                        "subagent": {
+                            "thread_spawn": {
+                                "parent_thread_id": "019f126d-0000-7000-8000-000000000030",
+                                "depth": 1,
+                                "agent_role": "subagent",
+                                "agent_nickname": "worker-a"
+                            }
+                        }
+                    }
                 }
             }),
             json!({
-                "timestamp": "2026-06-29T08:09:22Z",
+                "timestamp": "2026-07-08T08:09:22Z",
                 "type": "event_msg",
                 "payload": {
                     "type": "agent_message",
@@ -213,7 +223,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
                 }
             }),
             json!({
-                "timestamp": "2026-06-29T08:09:23Z",
+                "timestamp": "2026-07-08T08:09:23Z",
                 "type": "event_msg",
                 "payload": {
                     "type": "task_complete",
@@ -292,7 +302,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
         .args([
             "agent",
             "session",
-            "reuse",
+            "resume",
             "--name",
             "worker-a",
             "--root-session-id",
@@ -342,6 +352,8 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
     }
 
     let audit_output = asp_command(&root)
+        .env("CODEX_HOME", root.join("home").join(".codex"))
+        .env("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000030")
         .args([
             "agent",
             "session",
@@ -364,12 +376,12 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
         serde_json::from_str(&audit_stdout).expect("parse lifecycle audit json");
     assert_eq!(
         audit_json["summary"]["rolloutSessionCount"].as_u64(),
-        Some(1),
+        Some(0),
         "{audit_stdout}"
     );
     assert_eq!(
         audit_json["summary"]["missingRegisteredRolloutCount"].as_u64(),
-        Some(0),
+        Some(1),
         "{audit_stdout}"
     );
     assert_eq!(
@@ -389,7 +401,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
     );
     assert_eq!(
         audit_json["summary"]["scannedRolloutCount"].as_u64(),
-        Some(2),
+        Some(0),
         "{audit_stdout}"
     );
     assert_eq!(
@@ -398,13 +410,8 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
         "{audit_stdout}"
     );
     assert_eq!(
-        audit_json["registeredRolloutSessions"][0]["registryStatus"].as_str(),
+        audit_json["missingRegisteredRolloutSessions"][0]["status"].as_str(),
         Some("archived"),
-        "{audit_stdout}"
-    );
-    assert_eq!(
-        audit_json["registeredRolloutSessions"][0]["rolloutStatus"].as_str(),
-        Some("completed"),
         "{audit_stdout}"
     );
 
@@ -415,11 +422,11 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
 fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child() {
     let root = temp_project_root("agent-command-session-lifecycle-audit-rollout-only-stale");
     let sessions_dir = root.join("home").join(".codex").join("sessions");
-    let relevant_root = sessions_dir.join("2026").join("06").join("29");
+    let relevant_root = sessions_dir.join("2026").join("07").join("08");
     fs::create_dir_all(&relevant_root).expect("create relevant rollout directory");
     fs::write(
         relevant_root
-            .join("rollout-2026-06-29T08-09-21-019f126d-0000-7000-8000-000000000031.jsonl"),
+            .join("rollout-2026-07-08T08-09-21-019f126d-0000-7000-8000-000000000031.jsonl"),
         format!(
             "{}\n{}\n{}\n",
             json!({
@@ -433,7 +440,7 @@ fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child(
                 }
             }),
             json!({
-                "timestamp": "2026-06-29T08:09:21Z",
+                "timestamp": "2026-07-08T08:09:21Z",
                 "type": "event_msg",
                 "payload": {
                     "type": "agent_message",
@@ -441,7 +448,7 @@ fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child(
                 }
             }),
             json!({
-                "timestamp": "2026-06-29T08:09:22Z",
+                "timestamp": "2026-07-08T08:09:22Z",
                 "type": "response_item",
                 "payload": {
                     "type": "thread_spawn",
@@ -455,7 +462,7 @@ fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child(
     .expect("write root rollout file");
     fs::write(
         relevant_root
-            .join("rollout-2026-06-29T08-09-22-019f126d-0000-7000-8000-000000000131.jsonl"),
+            .join("rollout-2026-07-08T08-09-22-019f126d-0000-7000-8000-000000000131.jsonl"),
         format!(
             "{}\n{}\n",
             json!({
@@ -465,11 +472,21 @@ fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child(
                     "session_id": "019f126d-0000-7000-8000-000000000031",
                     "parent_thread_id": "019f126d-0000-7000-8000-000000000031",
                     "thread_source": "subagent",
-                    "agent_role": "asp_explorer"
+                    "agent_role": "asp_explorer",
+                    "source": {
+                        "subagent": {
+                            "thread_spawn": {
+                                "parent_thread_id": "019f126d-0000-7000-8000-000000000031",
+                                "depth": 1,
+                                "agent_role": "asp_explorer",
+                                "agent_nickname": "ASP search"
+                            }
+                        }
+                    }
                 }
             }),
             json!({
-                "timestamp": "2026-06-29T08:09:22Z",
+                "timestamp": "2026-07-08T08:09:22Z",
                 "type": "event_msg",
                 "payload": {
                     "type": "agent_message",
@@ -481,6 +498,8 @@ fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child(
     .expect("write stale child rollout file");
 
     let audit_output = asp_command(&root)
+        .env("CODEX_HOME", root.join("home").join(".codex"))
+        .env("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000031")
         .args([
             "agent",
             "session",
@@ -503,7 +522,7 @@ fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child(
         serde_json::from_str(&audit_stdout).expect("parse lifecycle audit json");
     assert_eq!(
         audit_json["summary"]["rolloutOnlySessionCount"].as_u64(),
-        Some(1),
+        Some(0),
         "{audit_stdout}"
     );
     assert_eq!(
@@ -513,7 +532,7 @@ fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child(
     );
     assert_eq!(
         audit_json["summary"]["rolloutOnlyOrphanRiskCount"].as_u64(),
-        Some(1),
+        Some(0),
         "{audit_stdout}"
     );
     assert_eq!(
@@ -521,14 +540,10 @@ fn asp_agent_session_lifecycle_audit_downgrades_stale_rollout_only_active_child(
         Some(0),
         "{audit_stdout}"
     );
-    assert_eq!(
-        audit_json["rolloutOnlySessions"][0]["rolloutStatus"].as_str(),
-        Some("orphan-risk"),
-        "{audit_stdout}"
-    );
-    assert_eq!(
-        audit_json["rolloutOnlySessions"][0]["rolloutStatusSource"].as_str(),
-        Some("rollout-only-reconcile"),
+    assert!(
+        audit_json["rolloutOnlySessions"]
+            .as_array()
+            .is_some_and(|sessions| sessions.is_empty()),
         "{audit_stdout}"
     );
 

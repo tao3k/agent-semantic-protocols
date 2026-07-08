@@ -55,6 +55,8 @@ Only run register when a loop choice asks for durable registration and provides 
 Configured resident child action: {{createAction}}
 Config source: {{configSource}}
 Host projection: {{hostProjection}}
+Diagnostic audit command, not a fallback path:
+   asp agent session lifecycle audit --json
 Do not use register --guide, lifecycle audit, normal-thread reads, rollout scans, or generic subagent creation as independent fallback paths.
 """
 list = """
@@ -103,6 +105,7 @@ ASP resident-child interactive loop required: no registered and profile-valid `{
 Run the resident-child choice pane and choose exactly one structured option.
    asp agent session bootstrap --name {{residentChildName}} --json
 Do not expand a registration guide or create a generic subagent outside the pane.
+Do not run `asp agent session register --guide`; use the bootstrap menu instead.
    asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --roles subagent,search
 3. Shell action: verify routing.
    asp agent session status --name {{residentChildName}} --json
@@ -117,6 +120,7 @@ ASP resident-child interactive loop required: no registered and profile-valid `{
 Run the resident-child choice pane and choose exactly one structured option.
    asp agent session bootstrap --name {{residentChildName}} --json
 Do not expand a registration guide or create a generic subagent outside the pane.
+Do not run `asp agent session register --guide`; use the bootstrap menu instead.
    asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --roles subagent,search
 3. Shell action: verify routing.
    asp agent session status --name {{residentChildName}} --json
@@ -138,6 +142,7 @@ Main-session ASP usage is limited to session, recovery, and checkpoint commands:
 Run the resident-child choice pane and choose exactly one structured option.
    asp agent session bootstrap --name {{residentChildName}} --json
 Do not expand a registration guide or create a generic subagent outside the pane.
+Do not run `asp agent session register --guide`; use the bootstrap menu instead.
    asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --roles subagent,search
 3. Shell action: verify routing.
    asp agent session status --name {{residentChildName}} --json
@@ -176,6 +181,7 @@ ASP query/search command denied in agent session because no active {{residentChi
 Run the resident-child choice pane and choose exactly one structured option.
    asp agent session bootstrap --name {{residentChildName}} --json
 Do not expand a registration guide or create a generic subagent outside the pane.
+Do not run `asp agent session register --guide`; use the bootstrap menu instead.
    asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --roles subagent,search
 3. Shell action: verify routing.
    asp agent session status --name {{residentChildName}} --json

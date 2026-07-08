@@ -314,7 +314,7 @@ fn asp_agent_session_reuse_in_unregistered_child_does_not_use_codex_rollout_root
         .env("CODEX_HOME", home.join(".codex"))
         .env_remove("ASP_STATE_HOME")
         .env("CODEX_THREAD_ID", unregistered_child_session_id)
-        .args(["agent", "session", "reuse", "--name", "asp-explore"])
+        .args(["agent", "session", "resume", "--name", "asp-explore"])
         .output()
         .expect("do not reuse resident child from unregistered subagent rollout");
     assert!(
@@ -323,9 +323,17 @@ fn asp_agent_session_reuse_in_unregistered_child_does_not_use_codex_rollout_root
         String::from_utf8_lossy(&reuse.stderr)
     );
     let stdout = String::from_utf8(reuse.stdout).expect("reuse stdout");
-    assert!(stdout.contains("status=\"miss\""), "{stdout}");
+    assert!(stdout.contains("[agent-session-resume]"), "{stdout}");
     assert!(
-        stdout.contains(&format!("rootSession=\"{unregistered_child_session_id}\"")),
+        stdout.contains(&format!("session=\"{registered_child_session_id}\"")),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("messageTargetStatus=\"missing\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("rootSession=\"{root_session_id}\"")),
         "{stdout}"
     );
 
@@ -356,7 +364,7 @@ fn asp_agent_session_reuse_adopts_existing_codex_asp_child_from_root_rollout() {
         .args([
             "agent",
             "session",
-            "reuse",
+            "resume",
             "--name",
             "asp-explore",
             "--json",
@@ -370,11 +378,18 @@ fn asp_agent_session_reuse_adopts_existing_codex_asp_child_from_root_rollout() {
     );
     let stdout = String::from_utf8(reuse.stdout).expect("reuse stdout");
     assert!(
-        stdout.contains(&format!("\"sessionId\": \"{child_session_id}\"")),
+        stdout.contains(&format!("session=\"{child_session_id}\"")),
         "{stdout}"
     );
-    assert!(stdout.contains("\"name\": \"asp-explore\""), "{stdout}");
-    assert!(stdout.contains("\"status\": \"active\""), "{stdout}");
+    assert!(stdout.contains("name=\"asp-explore\""), "{stdout}");
+    assert!(
+        stdout.contains("rolloutHistoryStatus=\"adopted-reusable-rollout\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("messageTargetStatus=\"missing\""),
+        "{stdout}"
+    );
 
     let second_reuse = asp_command(&root)
         .env("HOME", &home)
@@ -385,7 +400,7 @@ fn asp_agent_session_reuse_adopts_existing_codex_asp_child_from_root_rollout() {
         .args([
             "agent",
             "session",
-            "reuse",
+            "resume",
             "--name",
             "asp-explore",
             "--json",
@@ -399,7 +414,11 @@ fn asp_agent_session_reuse_adopts_existing_codex_asp_child_from_root_rollout() {
     );
     let second_stdout = String::from_utf8(second_reuse.stdout).expect("second reuse stdout");
     assert!(
-        second_stdout.contains(&format!("\"sessionId\": \"{child_session_id}\"")),
+        second_stdout.contains(&format!("session=\"{child_session_id}\"")),
+        "{second_stdout}"
+    );
+    assert!(
+        second_stdout.contains("messageTargetStatus=\"missing\""),
         "{second_stdout}"
     );
 

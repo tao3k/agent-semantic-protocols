@@ -73,32 +73,40 @@ pub enum AgentSessionLoopState {
 
 pub type AgentSessionInteractiveReceipt<'a> = LoopReceipt<'a>;
 
+pub struct ResidentChildBootstrapMenuInput<'a> {
+    pub platform: &'a str,
+    pub name: &'a str,
+    pub root_session_id: Option<&'a str>,
+    pub record: Option<&'a AgentSessionRecord>,
+    pub expected_model: Option<&'a str>,
+    pub rollout_history_status: Option<&'a str>,
+    pub rollout_history_action: Option<&'a str>,
+    pub now: i64,
+}
+
 pub fn resident_child_bootstrap_menu<'a>(
-    platform: &'a str,
-    name: &'a str,
-    root_session_id: Option<&'a str>,
-    record: Option<&'a AgentSessionRecord>,
-    expected_model: Option<&'a str>,
-    rollout_history_status: Option<&'a str>,
-    rollout_history_action: Option<&'a str>,
-    now: i64,
+    input: ResidentChildBootstrapMenuInput<'a>,
 ) -> AgentSessionInteractiveMenu<'a> {
-    let (state, choices, trace) =
-        resident_child_state_and_choices(record, expected_model, rollout_history_status, now);
+    let (state, choices, trace) = resident_child_state_and_choices(
+        input.record,
+        input.expected_model,
+        input.rollout_history_status,
+        input.now,
+    );
     AgentSessionInteractiveMenu {
         schema_id: "agent.semantic-protocols.agent-session-interactive-menu",
         schema_version: "1",
         owner: "rust",
         state,
-        name,
-        root_session_id,
-        expected_model,
-        rollout_history_status,
-        rollout_history_action,
-        session: record.map(interactive_session_record),
+        name: input.name,
+        root_session_id: input.root_session_id,
+        expected_model: input.expected_model,
+        rollout_history_status: input.rollout_history_status,
+        rollout_history_action: input.rollout_history_action,
+        session: input.record.map(interactive_session_record),
         host_requirement: AgentSessionHostRequirement {
-            platform,
-            resident_child_name: name,
+            platform: input.platform,
+            resident_child_name: input.name,
             managed_agent_kind: "asp_explorer",
             required_transport: "message-agent",
             required_outputs: &["childSessionId", "agentMessageTargetId"],

@@ -5,12 +5,12 @@ use crate::provider_command::support::{
 
 fn refresh_source_index(root: &std::path::Path) {
     let output = asp_command(root)
-        .args(["cache", "source-index", "refresh"])
+        .args(["cache", "source-index", "rebuild"])
         .output()
-        .expect("run asp cache source-index refresh");
+        .expect("run asp cache source-index rebuild");
     assert!(
         output.status.success(),
-        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        "source-index rebuild failed\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -60,12 +60,12 @@ fn search_pipe_auto_defers_source_index_for_multi_clause_query() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.starts_with("[search-pipe]"), "{stdout}");
-    assert!(stdout.contains("source=search-overlay"), "{stdout}");
+    assert!(stdout.contains("source=source-index"), "{stdout}");
     assert!(
         stdout.contains("sourceTrace=sourceIndex:deferred"),
         "{stdout}"
     );
-    assert!(stdout.contains("search-overlay:used"), "{stdout}");
+    assert!(stdout.contains("search-overlay:skipped"), "{stdout}");
     assert!(
         stdout.contains("ownerCoverage=bestOwner=src/lib.rs"),
         "{stdout}"

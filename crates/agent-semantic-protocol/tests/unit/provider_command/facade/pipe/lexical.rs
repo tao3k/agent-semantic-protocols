@@ -46,12 +46,12 @@ fn lexical_rejects_owner_dependency_surface_combination_without_provider_spawn()
 
 fn refresh_source_index(root: &std::path::Path) {
     let output = asp_command(root)
-        .args(["cache", "source-index", "refresh"])
+        .args(["cache", "source-index", "rebuild"])
         .output()
-        .expect("run asp cache source-index refresh");
+        .expect("run asp cache source-index rebuild");
     assert!(
         output.status.success(),
-        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        "source-index rebuild failed\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -140,7 +140,7 @@ fn query_bare_file_selector_code_returns_source_not_owner_frontier() {
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        stderr.contains("file selectors are not executable code selectors"),
+        stderr.contains("file selectors are not executable query selectors"),
         "{stderr}"
     );
     assert!(stderr.contains("search owner <path> items"), "{stderr}");

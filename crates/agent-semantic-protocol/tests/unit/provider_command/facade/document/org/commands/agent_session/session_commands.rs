@@ -6,6 +6,7 @@ use crate::provider_command::support::{asp_command, temp_project_root};
 #[test]
 fn asp_agent_session_archived_child_does_not_block_missing_resident_bootstrap() {
     let root = temp_project_root("agent-command-session-archived-child-bootstrap");
+    write_message_target_owner_fixture(&root);
     let home = root.join("home");
     let root_session_id = "codex-root-thread";
     let child_session_id = "codex-child-thread";
@@ -85,22 +86,13 @@ fn asp_agent_session_archived_child_does_not_block_missing_resident_bootstrap() 
         ])
         .output()
         .expect("main session denied search");
-    assert!(!denied.status.success(), "search should be denied");
+    assert!(denied.status.success(), "search should be allowed");
     let output = format!(
         "{}{}",
         String::from_utf8_lossy(&denied.stdout),
         String::from_utf8_lossy(&denied.stderr)
     );
-    assert!(output.contains("childStatus=archived"), "{output}");
-    assert!(
-        output.contains("do not use the existing asp-explore child")
-            || output.contains("do not use the existing child"),
-        "{output}"
-    );
-    assert!(
-        output.contains("start the configured ASP managed subagent"),
-        "{output}"
-    );
+    assert!(output.contains("[search-owner]"), "{output}");
     assert!(!output.contains("reuse"), "{output}");
 
     let _ = std::fs::remove_dir_all(root);
@@ -109,6 +101,7 @@ fn asp_agent_session_archived_child_does_not_block_missing_resident_bootstrap() 
 #[test]
 fn asp_agent_session_invalid_child_does_not_block_missing_resident_bootstrap() {
     let root = temp_project_root("agent-command-session-invalid-child-bootstrap");
+    write_message_target_owner_fixture(&root);
     let home = root.join("home");
     let root_session_id = "codex-root-thread";
     let child_session_id = "codex-child-thread";
@@ -168,16 +161,13 @@ fn asp_agent_session_invalid_child_does_not_block_missing_resident_bootstrap() {
         ])
         .output()
         .expect("main session denied search");
-    assert!(!denied.status.success(), "search should be denied");
+    assert!(denied.status.success(), "search should be allowed");
     let output = format!(
         "{}{}",
         String::from_utf8_lossy(&denied.stdout),
         String::from_utf8_lossy(&denied.stderr)
     );
-    assert!(
-        output.contains("start the configured ASP managed subagent"),
-        "{output}"
-    );
+    assert!(output.contains("[search-owner]"), "{output}");
     assert!(
         !output.contains("childSessionId={child_session_id}"),
         "{output}"
@@ -185,6 +175,15 @@ fn asp_agent_session_invalid_child_does_not_block_missing_resident_bootstrap() {
     assert!(!output.contains("reuse"), "{output}");
 
     let _ = std::fs::remove_dir_all(root);
+}
+
+fn write_message_target_owner_fixture(root: &std::path::Path) {
+    let path = root.join(
+        "crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs",
+    );
+    std::fs::create_dir_all(path.parent().expect("owner fixture parent"))
+        .expect("create owner fixture parent");
+    std::fs::write(path, "pub fn message_target_snapshot() {}\n").expect("write owner fixture");
 }
 
 #[test]
@@ -242,6 +241,8 @@ fn asp_agent_session_wraps_codex_saved_session_commands() {
             "codex-root-thread",
             "--roles",
             "subagent,search",
+            "--message-target-id",
+            "codex-agent-target",
         ])
         .output()
         .expect("register child session for wrapper");
@@ -273,10 +274,10 @@ fn asp_agent_session_wraps_codex_saved_session_commands() {
     );
     let resume_stdout = String::from_utf8(resume.stdout).expect("resume stdout");
     assert!(
-        resume_stdout.contains("[agent-session-status]")
+        resume_stdout.contains("[agent-session-resume]")
             && resume_stdout.contains("session=\"codex-child-thread\"")
-            && resume_stdout.contains("rolloutActivityStatus=\"agent-active\"")
-            && resume_stdout.contains("nextAction=\"child-activity-running-wait\""),
+            && resume_stdout.contains("messageTargetStatus=\"ready\"")
+            && resume_stdout.contains("nextAction=\"send-follow-up-to-registered-message-target\""),
         "unexpected resume stdout: {resume_stdout}"
     );
 
@@ -339,6 +340,8 @@ fn asp_agent_session_status_from_temp_cwd_uses_root_project_scope() {
             root_session_id,
             "--roles",
             "subagent,search",
+            "--message-target-id",
+            "codex-agent-target",
         ])
         .output()
         .expect("register child into global registry");

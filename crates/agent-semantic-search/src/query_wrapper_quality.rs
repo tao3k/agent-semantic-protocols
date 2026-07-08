@@ -44,27 +44,14 @@ pub struct QueryWrapperQuality {
 /// Split one query-wrapper raw query into stable lowercase terms.
 #[must_use]
 pub fn query_wrapper_terms(query: &str) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    query
-        .split(|character: char| character == '|' || character == ',' || character.is_whitespace())
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .map(str::to_ascii_lowercase)
-        .filter(|term| seen.insert(term.clone()))
-        .collect()
+    query_wrapper_terms_and_axis(query).0
 }
 
 /// Expand one query-wrapper raw query into search axes, including identifier
 /// components such as camelCase and PascalCase segments.
 #[must_use]
 pub fn query_wrapper_axis_terms(raw: &str) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    raw.split(|character: char| character == '|' || character == ',' || character.is_whitespace())
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .flat_map(expanded_query_terms)
-        .filter(|term| seen.insert(term.clone()))
-        .collect()
+    query_wrapper_terms_and_axis(raw).1
 }
 
 /// Build query-wrapper clauses from raw query strings.
@@ -74,12 +61,12 @@ pub fn query_wrapper_clauses(queries: &[String]) -> Vec<QueryWrapperSearchClause
         .iter()
         .enumerate()
         .filter_map(|(index, raw)| {
-            let terms = query_wrapper_terms(raw);
+            let (terms, axis_terms) = query_wrapper_terms_and_axis(raw);
             (!terms.is_empty()).then_some(QueryWrapperSearchClause {
                 id: index + 1,
                 raw: raw.clone(),
                 terms,
-                axis_terms: query_wrapper_axis_terms(raw),
+                axis_terms,
             })
         })
         .collect()
@@ -88,27 +75,39 @@ pub fn query_wrapper_clauses(queries: &[String]) -> Vec<QueryWrapperSearchClause
 /// Return deduplicated clause terms in first-seen order.
 #[must_use]
 pub fn query_wrapper_unique_clause_terms(clauses: &[QueryWrapperSearchClause]) -> Vec<String> {
-    clauses
-        .iter()
-        .flat_map(|clause| clause.terms.iter())
-        .fold(Vec::new(), |mut terms, term| {
-            if !terms.iter().any(|seen| seen == term) {
-                terms.push(term.clone());
-            }
-            terms
-        })
+    let mut terms = Vec::new();
+    for clause in clauses {
+        for term in &clause.terms {
+            push_unique_term(&mut terms, term.clone());
+        }
+    }
+    terms
 }
 
-fn expanded_query_terms(raw: &str) -> Vec<String> {
-    let normalized = raw.to_ascii_lowercase();
-    let normalized_filter = normalized.clone();
-    std::iter::once(normalized)
-        .chain(
-            identifier_components(raw)
-                .into_iter()
-                .filter(move |component| component.len() >= 2 && component != &normalized_filter),
-        )
-        .collect()
+fn query_wrapper_terms_and_axis(raw: &str) -> (Vec<String>, Vec<String>) {
+    let mut terms = Vec::new();
+    let mut axis_terms = Vec::new();
+    for token in raw
+        .split(|character: char| character == '|' || character == ',' || character.is_whitespace())
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+    {
+        let normalized = token.to_ascii_lowercase();
+        push_unique_term(&mut terms, normalized.clone());
+        push_unique_term(&mut axis_terms, normalized.clone());
+        for component in identifier_components(token) {
+            if component.len() >= 2 && component != normalized {
+                push_unique_term(&mut axis_terms, component);
+            }
+        }
+    }
+    (terms, axis_terms)
+}
+
+fn push_unique_term(terms: &mut Vec<String>, term: String) {
+    if !terms.iter().any(|seen| seen == &term) {
+        terms.push(term);
+    }
 }
 
 fn identifier_components(raw: &str) -> Vec<String> {

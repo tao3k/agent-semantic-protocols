@@ -40,7 +40,6 @@ pub struct CodexUserTrustStatus {
 
 #[derive(Debug, Clone, Copy)]
 struct CodexHookEvent {
-    event: &'static str,
     state_label: &'static str,
     matcher: Option<&'static str>,
     status: &'static str,
@@ -57,10 +56,15 @@ struct ClaudeHookEvent {
 
 /// Render the managed Codex hook block that dispatches through `asp hook`.
 pub fn codex_hook_block(project_root: &Path) -> String {
+    codex_hook_block_with_binary(project_root, None)
+}
+
+/// Render the managed Codex hook block that dispatches through `asp hook`.
+pub fn codex_hook_block_with_binary(project_root: &Path, asp_binary: Option<&Path>) -> String {
     let events = codex_hook_events();
     let body = events
         .iter()
-        .map(|event| codex_hook_event_block(event, project_root))
+        .map(|event| codex_hook_event_block(event, project_root, asp_binary))
         .collect::<Vec<_>>()
         .join("\n\n");
     format!(
@@ -69,6 +73,7 @@ pub fn codex_hook_block(project_root: &Path) -> String {
     )
 }
 
+/// Render the Codex custom agent role block for the ASP Explorer resident.
 pub fn codex_asp_explorer_role_block() -> String {
     format!(
         "[agents.{ASP_EXPLORER_ROLE_NAME}]\ndescription = {}\nconfig_file = {}\nnickname_candidates = [\"ASP Explore\", \"ASP Reasoning\", \"ASP Search\"]",
@@ -214,7 +219,7 @@ pub fn validate_codex_config_toml(content: &str) -> Result<(), String> {
 
 /// Merge the managed hook block into existing Codex project config text.
 pub fn merge_codex_config(existing: &str, block: &str) -> String {
-    let mut content = remove_managed_block(existing, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END);
+    let mut content = remove_codex_managed_hook_config(existing);
     content = ensure_codex_required_features(&content);
     let prefix = content.trim();
     if prefix.is_empty() {
@@ -227,59 +232,62 @@ pub fn merge_codex_config(existing: &str, block: &str) -> String {
     }
 }
 
+/// Remove ASP-managed Codex hook config and legacy ASP Explorer role tables.
+pub fn remove_codex_managed_hook_config(existing: &str) -> String {
+    let mut content = remove_managed_block(existing, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END);
+    content = remove_toml_table(&content, &format!("agents.{ASP_EXPLORER_ROLE_NAME}"));
+    if content.trim().is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", content.trim_end())
+    }
+}
+
 fn codex_hook_events() -> [CodexHookEvent; 8] {
     [
         CodexHookEvent {
-            event: "SessionStart",
             state_label: "session_start",
             matcher: Some("startup|resume|clear|compact"),
             status: "Loading semantic agent hook activation",
             hook_event: "session-start",
         },
         CodexHookEvent {
-            event: "UserPromptSubmit",
             state_label: "user_prompt_submit",
             matcher: None,
             status: "Planning semantic search flow",
             hook_event: "user-prompt",
         },
         CodexHookEvent {
-            event: "PreToolUse",
             state_label: "pre_tool_use",
             matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Checking semantic search flow",
             hook_event: "pre-tool",
         },
         CodexHookEvent {
-            event: "PermissionRequest",
             state_label: "permission_request",
             matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Checking semantic approval flow",
             hook_event: "permission-request",
         },
         CodexHookEvent {
-            event: "PostToolUse",
             state_label: "post_tool_use",
             matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Updating semantic search flow state",
             hook_event: "post-tool",
         },
         CodexHookEvent {
-            event: "SubagentStart",
             state_label: "subagent_start",
             matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Preparing semantic subagent context",
             hook_event: "subagent-start",
         },
         CodexHookEvent {
-            event: "SubagentStop",
             state_label: "subagent_stop",
             matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Checking semantic subagent evidence",
             hook_event: "subagent-stop",
         },
         CodexHookEvent {
-            event: "Stop",
             state_label: "stop",
             matcher: None,
             status: "Checking semantic changed files",
@@ -288,26 +296,33 @@ fn codex_hook_events() -> [CodexHookEvent; 8] {
     ]
 }
 
-fn codex_hook_event_block(event: &CodexHookEvent, project_root: &Path) -> String {
+fn codex_hook_event_block(
+    event: &CodexHookEvent,
+    project_root: &Path,
+    asp_binary: Option<&Path>,
+) -> String {
     let matcher_line = event
         .matcher
         .map(|value| format!("matcher = {}\n\n", toml_basic_string(value)))
         .unwrap_or_else(|| "\n".to_string());
-    let command = codex_hook_command(event.hook_event, project_root);
+    let command = codex_hook_command(event.hook_event, project_root, asp_binary);
     format!(
         "[[hooks.{event_name}]]\n{matcher_line}[[hooks.{event_name}.hooks]]\ntype = \"command\"\ntimeout = 5\nstatusMessage = \"{status}\"\ncommand = '''\n{command}'''",
-        event_name = event.event,
+        event_name = event.state_label,
         status = event.status,
     )
 }
 
-fn codex_hook_command(hook_event: &str, project_root: &Path) -> String {
+fn codex_hook_command(hook_event: &str, project_root: &Path, asp_binary: Option<&Path>) -> String {
     let activation_path = project_activation_path(project_root)
         .expect("State Core activation path should resolve for Codex hook config");
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
+    let asp_binary = asp_binary
+        .map(|path| shell_single_quoted(&path.display().to_string()))
+        .unwrap_or_else(|| "\"$repo_root/.bin/asp\"".to_string());
     format!(
-        "repo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec direnv exec \"$repo_root\" \"$repo_root/.bin/asp\" hook {hook_event} --client codex --activation \"$activation\"\n"
+        "repo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec direnv exec \"$repo_root\" {asp_binary} hook {hook_event} --client codex --activation \"$activation\"\n"
     )
 }
 
@@ -362,7 +377,7 @@ fn codex_hook_trusted_hash(event: &CodexHookEvent, project_root: &Path) -> Strin
         "hooks".to_string(),
         Value::Array(vec![json!({
             "type": "command",
-            "command": codex_hook_command(event.hook_event, project_root),
+            "command": codex_hook_command(event.hook_event, project_root, None),
             "timeout": 5,
             "async": false,
             "statusMessage": event.status,
@@ -672,4 +687,22 @@ fn remove_managed_block(existing: &str, begin: &str, end: &str) -> String {
         content.replace_range(start..end_index, "");
     }
     content.trim().to_string()
+}
+
+fn remove_toml_table(existing: &str, table_name: &str) -> String {
+    let mut skip = false;
+    let mut lines = Vec::new();
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if let Some(header) = toml_table_header(trimmed) {
+            skip = header == table_name;
+            if skip {
+                continue;
+            }
+        }
+        if !skip {
+            lines.push(line.to_string());
+        }
+    }
+    lines.join("\n").trim().to_string()
 }

@@ -12,12 +12,12 @@ use crate::provider_command::support::{
 
 fn refresh_source_index(root: &Path) {
     let output = asp_command(root)
-        .args(["cache", "source-index", "refresh"])
+        .args(["cache", "source-index", "rebuild"])
         .output()
-        .expect("run asp cache source-index refresh");
+        .expect("run asp cache source-index rebuild");
     assert!(
         output.status.success(),
-        "source-index refresh failed\nstdout: {}\nstderr: {}",
+        "source-index rebuild failed\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -137,8 +137,9 @@ pub(in super::super) fn asp_source_index_search_pipe_warm_path_stays_inside_scen
     for expected in [
         "[search-pipe]",
         "queryPack=clauses=2",
+        "source=source-index",
         "sourceTrace=sourceIndex:deferred",
-        "search-overlay:used",
+        "search-overlay:skipped",
         "ownerCoverage=bestOwner=src/lib.rs",
         "nextCommand=asp fd -query 'source_index_fixture|src/lib.rs' --workspace .",
     ] {
@@ -179,7 +180,7 @@ pub(in super::super) fn asp_source_index_search_pipe_warm_path_stays_inside_scen
             "maxRenderDuration": benchmark.max_total,
             "maxStdoutBytes": 8192,
             "requireSourceIndexHit": false,
-            "allowedFirstRoutes": ["search-overlay"],
+            "allowedFirstRoutes": ["source-index"],
             "forbiddenRoutes": ["prime", "native-finder", "provider-process"],
             "requireExactCodeIdentity": true,
             "requireNoExecutableLineRange": true
@@ -192,8 +193,8 @@ pub(in super::super) fn asp_source_index_search_pipe_warm_path_stays_inside_scen
             "nativeFinderElapsed": "0us",
             "sourceIndexHit": false,
             "sourceIndexDuration": lookup_duration,
-            "firstRoute": "search-overlay",
-            "executedRoutes": ["source-index-deferred", "search-overlay", "fd-query"],
+            "firstRoute": "source-index",
+            "executedRoutes": ["source-index-deferred", "fd-query"],
             "executableLineRangeSelectorCount": 0,
             "packetOutMode": "not-applicable",
             "renderDuration": lookup_duration,

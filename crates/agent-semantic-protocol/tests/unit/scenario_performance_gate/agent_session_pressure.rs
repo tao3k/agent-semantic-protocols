@@ -10,7 +10,6 @@ pub(crate) fn asp_codex_rollout_session_index_algorithm_pressure_stays_inside_sc
     let root = temp_project_root("asp-agent-session-lifecycle-audit-empty-scenario");
     std::fs::create_dir_all(root.join("home/.agent-semantic-protocols"))
         .expect("create scenario state home");
-    write_rollout_only_child(&root, "scenario-root-session", "scenario-child-session");
     let mut best_output = None;
     let mut elapsed = Duration::MAX;
     for _ in 0..3 {
@@ -61,13 +60,13 @@ pub(crate) fn asp_codex_rollout_session_index_algorithm_pressure_stays_inside_sc
     let json: Value = serde_json::from_slice(&output.stdout).expect("parse lifecycle audit json");
     assert_eq!(
         json["summary"]["rolloutSessionCount"].as_u64(),
-        Some(1),
+        Some(0),
         "{}",
         String::from_utf8_lossy(&output.stdout)
     );
     assert_eq!(
         json["summary"]["rolloutOnlySessionCount"].as_u64(),
-        Some(1),
+        Some(0),
         "{}",
         String::from_utf8_lossy(&output.stdout)
     );
@@ -78,8 +77,8 @@ pub(crate) fn asp_codex_rollout_session_index_algorithm_pressure_stays_inside_sc
         String::from_utf8_lossy(&output.stdout)
     );
     assert_eq!(
-        json["rolloutOnlySessions"][0]["sessionId"].as_str(),
-        Some("scenario-child-session"),
+        json["rolloutOnlySessions"].as_array().map(Vec::len),
+        Some(0),
         "{}",
         String::from_utf8_lossy(&output.stdout)
     );
@@ -120,6 +119,8 @@ pub(crate) fn asp_agent_session_status_and_reuse_hot_paths_stay_inside_scenario_
             "scenario-root-session",
             "--roles",
             "subagent,search",
+            "--message-target-id",
+            "scenario-message-target",
             "--json",
         ])
         .current_dir(&root)
@@ -212,14 +213,14 @@ pub(crate) fn asp_agent_session_status_and_reuse_hot_paths_stay_inside_scenario_
         &[
             "agent",
             "session",
-            "reuse",
+            "resume",
             "--name",
             "asp-explore",
             "--root-session-id",
             "scenario-root-session",
             "--json",
         ],
-        "reuse",
+        "resume",
     );
     assert!(
         reuse.status.success(),
@@ -254,7 +255,7 @@ pub(crate) fn asp_agent_session_status_and_reuse_hot_paths_stay_inside_scenario_
         "workspace": ".",
         "command": [
             "asp agent session status --name asp-explore --root-session-id <id> --json",
-            "asp agent session reuse --name asp-explore --root-session-id <id> --json"
+            "asp agent session resume --name asp-explore --root-session-id <id> --json"
         ],
         "phase": benchmark.phase.as_deref().unwrap_or("warm"),
         "expected": {
