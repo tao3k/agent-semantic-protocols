@@ -129,9 +129,12 @@ impl OwnerQueryRequest {
                         projection: "outline",
                     }),
                 })),
-                None if code => Err(format!(
-                    "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items"
-                )),
+                None if code => {
+                    let workspace = arg_value(args, "--workspace").unwrap_or(".");
+                    Err(format!(
+                        "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nprojection=code\nallowed=false\nreason=file-selectors-are-not-code-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
+                    ))
+                }
                 None => Ok(None),
             };
         }

@@ -14,7 +14,7 @@
     "semantic-search"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
+  "hooks": ["./hooks/hooks.json"],
   "interface": {
     "displayName": "Agent Semantic Protocol",
     "shortDescription": "Guides Codex toward ASP search and hook policy.",

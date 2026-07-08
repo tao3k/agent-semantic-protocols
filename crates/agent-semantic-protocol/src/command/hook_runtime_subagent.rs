@@ -124,10 +124,9 @@ fn codex_resident_search_agent(subagent_model: &str) -> Result<String, String> {
     Ok(format!(
         r#"name = "asp_explorer"
 description = "ASP search/query evidence explorer."
-nickname_candidates = ["ASP owner", "ASP rg", "ASP selector", "ASP search"]
-session_lifetime = "resident"
+nickname_candidates = ["ASP Explore", "ASP Reasoning", "ASP Search"]
 model = {}
-model_reasoning_effort = "medium"
+model_reasoning_effort = "low"
 sandbox_mode = "read-only"
 developer_instructions = """
 {}
@@ -144,7 +143,7 @@ fn codex_resident_testing_agent(subagent_model: &str) -> Result<String, String> 
 description = "ASP test/build execution lane."
 nickname_candidates = ["ASP test", "ASP check", "ASP build"]
 model = {}
-model_reasoning_effort = "medium"
+model_reasoning_effort = "low"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 Run only ASP-routed test, check, build, and compile commands for the current project.

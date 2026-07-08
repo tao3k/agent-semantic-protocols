@@ -2297,3 +2297,23 @@ Search/query changes that affect Rust-owned fast routing must be representable b
 Scenario gates must record the command, phase, provider process count and elapsed time, native finder process count and elapsed time, render duration, and stdout bytes. Index-backed fields such as SourceIndex, FactIndex, DependencyIndex, and GraphTurbo duration should be added to the same receipt as those subsystems become active.
 
 A selector-seeded =search pipe= scenario should assert =providerProcessCount=0= and =nativeFinderProcessCount=0= before exact projection, with a sub-millisecond target and a tight millisecond ceiling. Scenario fixtures must validate this typed gate data and the rendered packet shape directly, instead of measuring debug binary startup as search latency.
+** File selector code recovery is shared
+File-selector =--code= recovery is a shared preflight contract, not a
+language-specific error string. When any registered source language receives
+=query --selector <file> --code=, the facade must stop before provider
+execution and render compact machine-readable recovery fields:
+#+begin_src text
+selectorState=file-selector
+projection=code
+allowed=false
+reason=file-selectors-are-not-code-selectors
+nextAction=materialize-owner-items
+nextCommand=asp <language> search owner <file> items --workspace <workspace-root> --view seeds
+requiredSelector=<language>://<file>#item/<kind>/<name>
+#+end_src
+The command may also include prose, but agents should be able to route from
+these fields alone. If owner-items later returns exactly one parser-owned item,
+that search surface may add a recommended exact =query --selector
+<parser-owned-uri> --code= action. The initial query preflight must not guess
+the item, read the file, render source text, or fall through to provider
+fallback.

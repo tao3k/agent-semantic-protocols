@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-session-interactive-menu.v1.schema.json",
+  "title": "Semantic Agent Session Interactive Menu v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "owner",
+    "state",
+    "name",
+    "hostRequirement",
+    "trace",
+    "choices",
+    "receipt"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-session-interactive-menu"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "$ref": "#/$defs/loopState"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expectedModel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rolloutHistoryStatus": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rolloutHistoryAction": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session": {
+      "$ref": "#/$defs/session"
+    },
+    "hostRequirement": {
+      "$ref": "#/$defs/hostRequirement"
+    },
+    "trace": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/traceStep"
+      }
+    },
+    "choices": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/choice"
+      }
+    },
+    "receipt": {
+      "$ref": "#/$defs/receipt"
+    }
+  },
+  "$defs": {
+    "loopState": {
+      "enum": [
+        "Audit",
+        "Classify",
+        "Recover",
+        "Adopt",
+        "Cleanup",
+        "Create",
+        "Register",
+        "Validate",
+        "Ready",
+        "SendDeniedCommand",
+        "WaitReceipt",
+        "RetryOriginal"
+      ]
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "childSessionId",
+        "status",
+        "role",
+        "messageTargetStatus"
+      ],
+      "properties": {
+        "childSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "messageTargetStatus": {
+          "enum": [
+            "ready",
+            "missing"
+          ]
+        },
+        "messageTargetId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "hostRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "residentChildName",
+        "managedAgentKind",
+        "requiredTransport",
+        "requiredOutputs",
+        "blockedWhen"
+      ],
+      "properties": {
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "residentChildName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "managedAgentKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredTransport": {
+          "enum": [
+            "message-agent"
+          ]
+        },
+        "requiredOutputs": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "enum": [
+              "childSessionId",
+              "agentMessageTargetId"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "blockedWhen": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "native-built-in-agent-type-only",
+              "normal-thread-id-only",
+              "agent-message-target-missing"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "traceStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "result"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/loopState"
+        },
+        "result": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "platformAction",
+        "nextState",
+        "requiredInputs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platformAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextState": {
+          "$ref": "#/$defs/loopState"
+        },
+        "requiredInputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "loop_name",
+        "invariant",
+        "noNextCommand"
+      ],
+      "properties": {
+        "loop_name": {
+          "const": "asp-resident-child-bootstrap"
+        },
+        "invariant": {
+          "type": "string",
+          "minLength": 1
+        },
+        "noNextCommand": {
+          "const": true
+        }
+      }
+    }
+  }
+}

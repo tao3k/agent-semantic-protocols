@@ -1,0 +1,20 @@
+id = "search-subagent-compact-receipt"
+title = "ASP search subagents return compact graph-route receipts"
+policy_ids = [
+  "SEARCH-AGENT-ASP-SUBAGENT-COMPACT-RECEIPT-001",
+]
+agent_goal = "Keep ASP search subagent replies compact, graph-route based, and free of source bodies, confidence fields, line-range selectors, and command logs."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "asp-search-subagent",
+  "graph-route",
+  "schema",
+  "intent",
+  "route",
+  "state",
+  "evidence",
+  "next",
+]
+inputs = "inputs"
+expected = "expected"
+command = "cargo test -p agent-semantic-search --test unit_test search_flow_subagent_receipt_is_compact_graph_route -- --nocapture"

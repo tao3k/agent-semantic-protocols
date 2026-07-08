@@ -292,6 +292,146 @@ fn codex_main_session_denies_env_prefixed_asp_query_when_asp_explore_registered(
 }
 
 #[test]
+fn codex_main_session_denies_registered_language_reasoning_query_and_search() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000014",
+        "019f126d-0000-7000-8000-000000000114",
+    );
+
+    let commands = [
+        (
+            "asp typescript query --term useEffect --workspace . --code",
+            "typescript",
+        ),
+        (
+            "asp python search pipe 'import django' --workspace . --view seeds",
+            "python",
+        ),
+        (
+            "direnv exec . asp python search pipe 'import django' --workspace . --view seeds",
+            "python",
+        ),
+        ("asp julia query --term graph --workspace . --code", "julia"),
+        (
+            "asp gerbil-scheme search pipe 'session case' --workspace . --view seeds",
+            "gerbil-scheme",
+        ),
+        (
+            "asp org query --term lifecycle --workspace . --content",
+            "org",
+        ),
+        (
+            "asp md search pipe 'pane grammar' --workspace . --view seeds",
+            "md",
+        ),
+    ];
+
+    for (command, language_id) in commands {
+        let decision = run_codex_pre_tool_decision_with_env(
+            &root,
+            codex_asp_query_payload(command),
+            &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000014")],
+        );
+
+        assert_eq!(
+            decision["decision"].as_str(),
+            Some("deny"),
+            "command={command} decision={decision}"
+        );
+        assert_eq!(
+            decision["reasonKind"].as_str(),
+            Some("raw-broad-search"),
+            "command={command} decision={decision}"
+        );
+        assert!(
+            decision["languageIds"]
+                .as_array()
+                .expect("languageIds array")
+                .iter()
+                .any(|value| value.as_str() == Some(language_id)),
+            "command={command} languageId={language_id} decision={decision}"
+        );
+    }
+}
+
+#[test]
+fn codex_main_session_allows_registered_language_precise_query_and_search() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000003",
+        "019f126d-0000-7000-8000-000000000103",
+    );
+
+    let commands = [
+        "asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --code",
+        "asp typescript query --selector typescript://src/app.ts#item/function/run --workspace . --code",
+        "asp python query --selector python://src/app.py#item/function/run --workspace . --code",
+        "asp julia query --selector julia://src/app.jl#item/function/run --workspace . --code",
+        "asp gerbil-scheme query --selector gerbil-scheme://src/main.ss#item/function/run --workspace . --code",
+        "asp org query --selector org://docs/spec.org#heading/run --workspace . --content",
+        "asp md query --selector md://docs/spec.md#heading/run --workspace . --content",
+        "asp rust search owner src/lib.rs items --workspace . --view seeds",
+        "asp typescript search owner src/app.ts items --workspace . --view seeds",
+        "asp python search owner src/app.py items --workspace . --view seeds",
+        "direnv exec . asp python search owner src/app.py items --workspace . --view seeds",
+        "asp julia search owner src/app.jl items --workspace . --view seeds",
+        "asp gerbil-scheme search owner src/main.ss items --workspace . --view seeds",
+        "asp org search owner docs/spec.org items --workspace . --view seeds",
+        "asp md search owner docs/spec.md items --workspace . --view seeds",
+    ];
+
+    for command in commands {
+        let decision = run_codex_pre_tool_decision_with_env(
+            &root,
+            codex_asp_query_payload(command),
+            &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000003")],
+        );
+
+        assert_eq!(
+            decision["decision"].as_str(),
+            Some("allow"),
+            "command={command} decision={decision}"
+        );
+    }
+}
+
+#[test]
+fn codex_main_session_denies_reasoning_search_pipe_when_asp_explore_registered() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    register_asp_explore_session(
+        &root,
+        "019f126d-0000-7000-8000-000000000004",
+        "019f126d-0000-7000-8000-000000000104",
+    );
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("asp rust search pipe 'run transport' --workspace . --view seeds"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000004")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(decision["reasonKind"].as_str(), Some("raw-broad-search"));
+    assert_eq!(
+        decision["fields"]["agentSessionRoute"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["requiredAction"].as_str(),
+        Some("send-to-asp-explore")
+    );
+}
+
+#[test]
 fn codex_installed_hook_full_resident_child_lifecycle_scenario() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -407,7 +547,7 @@ fn codex_main_session_reuses_model_drifted_asp_explore_registration() {
 }
 
 #[test]
-fn asp_binary_denies_main_session_query_when_asp_explore_registered() {
+fn asp_binary_does_not_deny_main_session_query_when_asp_explore_registered() {
     let root = claude_fixture();
     register_asp_explore_session(
         &root,
@@ -425,19 +565,27 @@ fn asp_binary_denies_main_session_query_when_asp_explore_registered() {
         .output()
         .expect("run asp rust query in main session");
 
-    assert!(!output.status.success());
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(combined.contains("ASP query/search command denied in main agent session"));
-    assert!(combined.contains("childSessionId=019f126d-0000-7000-8000-000000000140"));
-    assert!(combined.contains("do not spawn another asp-explore session"));
+    assert!(
+        !combined.contains("ASP query/search command denied in main agent session"),
+        "{combined}"
+    );
+    assert!(
+        !combined.contains("childSessionId=019f126d-0000-7000-8000-000000000140"),
+        "{combined}"
+    );
+    assert!(
+        !combined.contains("do not spawn another asp-explore session"),
+        "{combined}"
+    );
 }
 
 #[test]
-fn asp_binary_denies_main_session_query_without_asp_explore_registered() {
+fn asp_binary_does_not_deny_main_session_query_without_asp_explore_registered() {
     let root = claude_fixture();
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -450,14 +598,19 @@ fn asp_binary_denies_main_session_query_without_asp_explore_registered() {
         .output()
         .expect("run asp org query in main session");
 
-    assert!(!output.status.success());
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(combined.contains("no active asp-explore child session is registered"));
-    assert!(combined.contains("asp agent session register --guide"));
+    assert!(
+        !combined.contains("no active asp-explore child session is registered"),
+        "{combined}"
+    );
+    assert!(
+        !combined.contains("asp agent session register --guide"),
+        "{combined}"
+    );
 }
 
 #[test]
@@ -528,8 +681,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_is_expired() {
     );
     assert!(decision["fields"].get("childSessionId").is_none());
     let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP session-start bootstrap required"));
-    assert!(message.contains("asp agent session status --name asp-explore --json"));
+    assert!(message.contains("asp agent session bootstrap --name asp-explore --json"));
 }
 
 #[test]
@@ -575,7 +727,7 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
     );
     assert_eq!(
         decision["fields"]["nextAction"].as_str(),
-        Some("run-asp-agent-session-register-guide")
+        Some("run-asp-agent-session-bootstrap-loop")
     );
     assert_eq!(
         decision["fields"]["targetAgentName"].as_str(),
@@ -591,7 +743,7 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
     );
     assert_eq!(
         decision["fields"]["completionReceipt"].as_str(),
-        Some("asp-explore-child-registration")
+        Some("asp-explore-choice-pane-receipt")
     );
     assert_eq!(
         decision["fields"]["agentSessionBootstrap"].as_str(),
@@ -599,7 +751,7 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
     );
     assert_eq!(
         decision["fields"]["agentSessionBootstrapGuideCommand"].as_str(),
-        Some("asp agent session register --guide")
+        Some("asp agent session bootstrap --name asp-explore --json")
     );
     assert_eq!(
         decision["fields"]["residentCodexAgentName"].as_str(),
@@ -621,14 +773,8 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
     );
     assert!(decision["fields"].get("childSessionId").is_none());
     let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP session-start bootstrap required"));
-    assert!(message.contains("Action step flow"));
-    assert!(message.contains("Codex action: start the configured subagent `asp_explorer`"));
-    assert!(message.contains("Shell action: register the returned child session id"));
-    assert!(message.contains("asp agent session status --name asp-explore --json"));
-    assert!(message.contains("--child-session-id <child-session-id>"));
-    assert!(message.contains("Do not use `asp agent session fork` as bootstrap"));
-    assert!(message.contains("Retry the original tool command"));
+    assert!(message.contains("asp agent session bootstrap --name asp-explore --json"));
+    assert!(!message.contains("asp agent session register --guide"));
 }
 
 #[test]
@@ -672,9 +818,8 @@ fn codex_session_start_bootstraps_missing_asp_explore() {
         Some("019f126d-0000-7000-8000-000000000020")
     );
     let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP session-start bootstrap"));
-    assert!(message.contains("agent `asp_explorer`"));
-    assert!(message.contains("--child-session-id <child-session-id>"));
+    assert!(message.contains("ASP resident-child interactive loop"));
+    assert!(message.contains("asp agent session bootstrap --name asp-explore --json"));
     assert!(message.contains("asp-explore"));
 }
 

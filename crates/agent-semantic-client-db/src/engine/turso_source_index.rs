@@ -204,6 +204,25 @@ pub async fn latest_turso_source_index_file_hashes(
         .map_err(|error| format!("failed to decode Turso source-index file hashes: {error}"))
 }
 
+pub async fn latest_turso_source_index_stats(
+    db_path: &Path,
+    project_root: &Path,
+    schema_id: &SemanticSchemaId,
+    schema_version: &SemanticSchemaVersion,
+) -> Result<Option<ClientDbSourceIndexStats>, String> {
+    let Some((generation_id, _, owner_count, selector_count)) =
+        latest_turso_source_index_generation(db_path, project_root, schema_id, schema_version)
+            .await?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(ClientDbSourceIndexStats {
+        generation_id: generation_id.into(),
+        owner_count,
+        selector_count,
+    }))
+}
+
 pub async fn latest_turso_source_index_scope_files(
     db_path: &Path,
     project_root: &Path,
@@ -252,10 +271,17 @@ pub async fn latest_turso_source_index_scope_files(
         else {
             continue;
         };
-        files.push(ClientDbSourceIndexScopeFile {
-            path: PathBuf::from(row.get::<String>(0).map_err(|error| {
+        let owner_path =
+            PathBuf::from(row.get::<String>(0).map_err(|error| {
                 format!("failed to read Turso source-index owner path: {error}")
-            })?),
+            })?);
+        let path = if owner_path.is_absolute() {
+            owner_path
+        } else {
+            project_root.join(owner_path)
+        };
+        files.push(ClientDbSourceIndexScopeFile {
+            path,
             language_id: LanguageId::from(language_id),
             provider_id: ProviderId::from(provider_id),
             selector_receipts: Vec::new(),

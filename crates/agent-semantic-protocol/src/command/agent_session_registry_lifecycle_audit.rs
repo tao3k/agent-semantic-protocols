@@ -24,13 +24,14 @@ pub(super) fn lifecycle_audit_session(
     let sessions =
         registry.query_sessions(&project_id, root_filter.as_deref(), args.name.as_deref())?;
     let (rollout_session_index, rollout_index_error) = match root_filter.as_deref() {
-        Some(root_session_id) => {
+        Some(root_session_id) if !sessions.is_empty() => {
             let session_ids = sessions.iter().map(|session| session.session_id.as_str());
             match codex_rollout_session_index_for_sessions(root_session_id, session_ids) {
                 Ok(index) => (index, None),
                 Err(error) => (None, Some(error)),
             }
         }
+        Some(_) => (None, None),
         None => (None, None),
     };
     let report = lifecycle_audit_report(

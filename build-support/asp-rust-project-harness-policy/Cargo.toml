@@ -1,0 +1,13 @@
+[package]
+name = "asp-rust-project-harness-policy"
+version = "0.1.0"
+edition = "2024"
+publish = false
+build = "build.rs"
+
+[dependencies]
+rust-lang-project-harness = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+rust-lang-project-harness = { workspace = true }

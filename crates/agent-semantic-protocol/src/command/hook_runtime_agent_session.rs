@@ -71,9 +71,16 @@ impl AspSessionPolicy {
     }
 
     fn main_asp_command_allowed(&self, tokens: &[String], asp_index: usize) -> bool {
-        self.main_allowed_asp_command_prefixes
-            .iter()
-            .any(|prefix| command_prefix_matches(tokens, asp_index, prefix))
+        match hook_runtime_agent_session_command::classify_main_session_asp_command(
+            tokens, asp_index,
+        ) {
+            hook_runtime_agent_session_command::MainSessionAspCommandClass::Precise => true,
+            hook_runtime_agent_session_command::MainSessionAspCommandClass::Reasoning => false,
+            hook_runtime_agent_session_command::MainSessionAspCommandClass::Unknown => self
+                .main_allowed_asp_command_prefixes
+                .iter()
+                .any(|prefix| command_prefix_matches(tokens, asp_index, prefix)),
+        }
     }
 }
 
@@ -475,7 +482,15 @@ fn missing_resident_asp_explore_decision(
     );
     fields.insert(
         "agentSessionBootstrapGuideCommand".to_string(),
-        serde_json::Value::String("asp agent session register --guide".to_string()),
+        serde_json::Value::String(format!(
+            "asp agent session bootstrap --name {resident_child_name} --json"
+        )),
+    );
+    fields.insert(
+        "agentSessionBootstrapCommand".to_string(),
+        serde_json::Value::String(format!(
+            "asp agent session bootstrap --name {resident_child_name} --json"
+        )),
     );
     if let Some(root_session_id) = root_session_id.as_ref() {
         fields.insert(
@@ -483,26 +498,10 @@ fn missing_resident_asp_explore_decision(
             serde_json::Value::String(root_session_id.clone()),
         );
     }
-    let command_line = command
-        .map(|command| format!("\nOriginal command: {command}"))
-        .unwrap_or_default();
-    let create_action = resident_child_create_action(platform, asp_session_policy);
-    let message = render_agent_session_template(
-        asp_session_policy
-            .messages
-            .missing_resident_explore
-            .as_deref(),
-        &[
-            template_value("residentChildName", resident_child_name),
-            template_value(
-                "residentCodexAgentName",
-                asp_session_policy.resident_codex_agent_name(),
-            ),
-            template_value("createAction", &create_action),
-            template_value("rootSessionId", root_session_id.as_deref().unwrap_or("")),
-            template_value("originalCommandLine", &command_line),
-            template_value("command", command.unwrap_or("")),
-        ],
+    let bootstrap_command =
+        format!("asp agent session bootstrap --name {resident_child_name} --json");
+    let message = format!(
+        "ASP resident child lifecycle is required.\nRun `{bootstrap_command}` and choose one structured menu option. Re-enter the same loop until state=ready; do not use guide fallback or normal-thread reads."
     );
     HookDecision {
         schema_id: HOOK_DECISION_SCHEMA_ID,
@@ -915,8 +914,8 @@ fn append_agent_session_recovery_action_fields(
     let (required_action, next_action, completion_receipt) = match action {
         "start-resident-child" => (
             format!("start-{resident_child_name}-child"),
-            "run-asp-agent-session-register-guide".to_string(),
-            format!("{resident_child_name}-child-registration"),
+            "run-asp-agent-session-bootstrap-loop".to_string(),
+            format!("{resident_child_name}-choice-pane-receipt"),
         ),
         "reuse-resident-child" | "resume-resident-child" => (
             format!("send-to-{resident_child_name}"),

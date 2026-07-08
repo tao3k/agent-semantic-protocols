@@ -11,7 +11,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-rust-lang-project-harness.workspace = true
+asp-rust-project-harness-policy.workspace = true
 
 [build-dependencies]
-rust-lang-project-harness.workspace = true
+asp-rust-project-harness-policy.workspace = true

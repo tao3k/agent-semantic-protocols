@@ -1,0 +1,21 @@
+harness = "libtest"
+test = "search_flow_source_index_owner_item_graph_chain_is_executable"
+phase = "warm"
+target_total = "10ms"
+max_total = "50ms"
+observed_total = "1ms"
+regression_budget = "40ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "source-index-owner-item-graph-chain"
+graph_router = "lexical-v1"
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+fallback_reason = "none"
+target_rationale = "A warmed source-index hit should project to executable owner, item, and hot EvidenceGraph nodes without provider startup, native finder fallback, or line-range selectors as the item identity."
+
+[observed_timings]
+source_index_projection = "1ms"
+owner_node_projection = "1ms"
+item_node_projection = "1ms"
+hot_node_projection = "1ms"

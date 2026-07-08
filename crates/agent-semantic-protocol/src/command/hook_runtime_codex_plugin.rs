@@ -2,8 +2,8 @@
 
 use super::hook_runtime_subagent::install_codex_resident_agents;
 use agent_semantic_hook::{
-    install_codex_user_project_trust, merge_codex_asp_explorer_role_config,
-    validate_codex_config_toml,
+    codex_hook_block, install_codex_user_trust_state, merge_codex_asp_explorer_role_config,
+    merge_codex_config, validate_codex_config_toml,
 };
 use std::env;
 use std::fs;
@@ -58,7 +58,7 @@ pub(super) fn install_codex_plugin_hooks(
     let plugin_manifest = plugin_cache.join(".codex-plugin").join("plugin.json");
     let marketplace_name = ASP_CODEX_PLUGIN_MARKETPLACE_NAME;
     let project_config_path = install_codex_project_plugin_config(project_root)?;
-    let trust_config_path = install_codex_user_project_trust(&project_config_path)?;
+    let trust_config_path = install_codex_user_trust_state(&project_config_path)?;
     let codex_agent_config_path = global_codex_config_path()?;
     let codex_agent_home = codex_agent_config_path
         .parent()
@@ -66,6 +66,8 @@ pub(super) fn install_codex_plugin_hooks(
         .to_path_buf();
     fs::create_dir_all(&codex_agent_home)
         .map_err(|error| format!("failed to create {}: {error}", codex_agent_home.display()))?;
+    let global_plugin_cache =
+        ensure_codex_global_plugin_cache_static_files(&codex_agent_home, project_root)?;
     let subagent_path = install_codex_resident_agents(&codex_agent_home, subagent_model)?;
     let codex_home = match scope {
         CodexPluginScope::Project => Some(project_root.join(".codex")),
@@ -115,7 +117,7 @@ pub(super) fn install_codex_plugin_hooks(
     Ok((
         config_path,
         format!(
-            " pluginScope={} pluginManifest={} pluginMarketplace={} projectConfig={} projectTrustConfig={} codexAgentConfig={} subagent={}{}",
+            " pluginScope={} pluginManifest={} pluginMarketplace={} projectConfig={} projectTrustConfig={} codexAgentConfig={} subagent={} globalPluginCache={}{}",
             scope.label(),
             super::display_path(project_root, &plugin_manifest),
             marketplace_name,
@@ -123,9 +125,35 @@ pub(super) fn install_codex_plugin_hooks(
             super::display_path(project_root, &trust_config_path),
             super::display_path(project_root, &codex_agent_config_path),
             super::display_path(project_root, &subagent_path),
+            super::display_path(project_root, &global_plugin_cache),
             installed_path,
         ),
     ))
+}
+
+fn ensure_codex_hook_wrapper(project_root: &Path) -> Result<PathBuf, String> {
+    let wrapper_path = project_root.join(".bin").join("asp-codex-hook");
+    if let Some(parent) = wrapper_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    let workspace_arg = shell_quote_path(project_root);
+    let binary_arg = shell_quote_path(&project_root.join(".bin").join("asp"));
+    let script = format!(
+        "#!/bin/sh\nexec direnv exec {workspace_arg} {binary_arg} hook \"$@\" 2>/dev/null\n"
+    );
+    fs::write(&wrapper_path, script.as_bytes())
+        .map_err(|error| format!("failed to write {}: {error}", wrapper_path.display()))?;
+    #[cfg(unix)]
+    {
+        let mut permissions = fs::metadata(&wrapper_path)
+            .map_err(|error| format!("failed to stat {}: {error}", wrapper_path.display()))?
+            .permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        fs::set_permissions(&wrapper_path, permissions)
+            .map_err(|error| format!("failed to chmod {}: {error}", wrapper_path.display()))?;
+    }
+    Ok(wrapper_path)
 }
 
 fn write_codex_plugin_file(path: &Path, content: &str) -> Result<(), String> {
@@ -138,6 +166,57 @@ fn write_codex_plugin_file(path: &Path, content: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn render_codex_plugin_hooks_json(hook_wrapper: &Path) -> Result<String, String> {
+    let mut hooks = serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_HOOKS_JSON)
+        .map_err(|error| format!("invalid ASP Codex plugin hooks JSON: {error}"))?;
+    let hook_events = hooks
+        .get_mut("hooks")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "ASP Codex plugin hooks JSON missing object `hooks`".to_string())?;
+    let wrapper_arg = shell_quote_path(hook_wrapper);
+    for handlers in hook_events.values_mut() {
+        let Some(handlers) = handlers.as_array_mut() else {
+            return Err("ASP Codex plugin hooks event entry must be an array".to_string());
+        };
+        for handler in handlers {
+            let Some(hooks) = handler
+                .get_mut("hooks")
+                .and_then(serde_json::Value::as_array_mut)
+            else {
+                return Err("ASP Codex plugin hook handler missing array `hooks`".to_string());
+            };
+            for hook in hooks {
+                let Some(command) = hook
+                    .get("command")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+                else {
+                    return Err("ASP Codex plugin hook entry missing string `command`".to_string());
+                };
+                let Some((_, hook_args)) = command.split_once("asp hook ") else {
+                    return Err(format!(
+                        "ASP Codex plugin hook command must contain `asp hook`: {command}"
+                    ));
+                };
+                hook["command"] = serde_json::Value::String(format!("{wrapper_arg} {hook_args}"));
+            }
+        }
+    }
+    serde_json::to_string_pretty(&hooks)
+        .map_err(|error| format!("failed to render ASP Codex plugin hooks JSON: {error}"))
+}
+
+fn shell_quote_path(path: &Path) -> String {
+    let value = path.display().to_string();
+    if value.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '/' | '.' | '_' | '-')
+    }) {
+        value
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
 pub(super) fn sync_codex_project_plugin_cache(
     project_root: &Path,
 ) -> Result<Option<PathBuf>, String> {
@@ -146,7 +225,30 @@ pub(super) fn sync_codex_project_plugin_cache(
 }
 
 fn ensure_codex_project_plugin_cache_static_files(project_root: &Path) -> Result<PathBuf, String> {
-    let cache_root = codex_project_plugin_cache_path(project_root)?;
+    ensure_codex_plugin_cache_static_files(
+        &codex_project_plugin_cache_path(project_root)?,
+        project_root,
+    )
+}
+
+fn ensure_codex_global_plugin_cache_static_files(
+    codex_home: &Path,
+    project_root: &Path,
+) -> Result<PathBuf, String> {
+    let cache_root = codex_home
+        .join("plugins")
+        .join("cache")
+        .join(ASP_CODEX_PLUGIN_MARKETPLACE_NAME)
+        .join(ASP_CODEX_PLUGIN_NAME)
+        .join(asp_codex_plugin_version()?);
+    ensure_codex_plugin_cache_static_files(&cache_root, project_root)
+}
+
+fn ensure_codex_plugin_cache_static_files(
+    cache_root: &Path,
+    project_root: &Path,
+) -> Result<PathBuf, String> {
+    let hook_wrapper = ensure_codex_hook_wrapper(project_root)?;
     if !cache_root.is_dir() {
         if cache_root.exists() {
             return Err(format!(
@@ -163,9 +265,9 @@ fn ensure_codex_project_plugin_cache_static_files(project_root: &Path) -> Result
     )?;
     write_codex_plugin_file(
         &cache_root.join("hooks").join("hooks.json"),
-        ASP_CODEX_PLUGIN_HOOKS_JSON,
+        &render_codex_plugin_hooks_json(&hook_wrapper)?,
     )?;
-    Ok(cache_root)
+    Ok(cache_root.to_path_buf())
 }
 
 pub(super) fn codex_project_plugin_cache_skill_path(
@@ -226,6 +328,7 @@ fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, S
             .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
     }
     let merged = normalize_codex_project_plugin_config(&existing);
+    let merged = merge_codex_config(&merged, &codex_hook_block(project_root));
     if merged != existing || !config_path.is_file() {
         validate_codex_config_toml(&merged).map_err(|error| {
             format!("refusing to write invalid Codex project plugin config TOML: {error}")
@@ -237,12 +340,76 @@ fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, S
 }
 
 fn normalize_codex_project_plugin_config(content: &str) -> String {
-    let content = content.trim();
-    if content.is_empty() {
+    let mut lines = content
+        .trim()
+        .lines()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    ensure_codex_project_feature_flags(&mut lines, &["hooks", "plugins"]);
+    let normalized = lines.join("\n");
+    if normalized.trim().is_empty() {
         String::new()
     } else {
-        format!("{content}\n")
+        format!("{}\n", normalized.trim_end())
     }
+}
+
+fn ensure_codex_project_feature_flags(lines: &mut Vec<String>, required_features: &[&str]) {
+    let Some((features_start, mut features_end)) = codex_features_section_bounds(lines) else {
+        if !lines.is_empty() && lines.last().is_some_and(|line| !line.trim().is_empty()) {
+            lines.push(String::new());
+        }
+        lines.push("[features]".to_string());
+        for feature in required_features {
+            lines.push(format!("{feature} = true"));
+        }
+        return;
+    };
+
+    for feature in required_features {
+        if let Some(line) = lines[features_start + 1..features_end]
+            .iter_mut()
+            .find(|line| toml_bare_key_line(line, feature))
+        {
+            let indent = line
+                .chars()
+                .take_while(|character| character.is_whitespace())
+                .collect::<String>();
+            *line = format!("{indent}{feature} = true");
+        } else {
+            lines.insert(features_end, format!("{feature} = true"));
+            features_end += 1;
+        }
+    }
+}
+
+fn codex_features_section_bounds(lines: &[String]) -> Option<(usize, usize)> {
+    let mut features_start = None;
+    for (index, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if !toml_table_header(trimmed) {
+            continue;
+        }
+        if trimmed == "[features]" {
+            features_start = Some(index);
+            continue;
+        }
+        if let Some(start) = features_start {
+            return Some((start, index));
+        }
+    }
+    features_start.map(|start| (start, lines.len()))
+}
+
+fn toml_table_header(trimmed: &str) -> bool {
+    trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.starts_with("[[")
+}
+
+fn toml_bare_key_line(line: &str, key: &str) -> bool {
+    line.trim_start()
+        .strip_prefix(key)
+        .and_then(|rest| rest.trim_start().strip_prefix('='))
+        .is_some()
 }
 
 fn ensure_codex_asp_explorer_role_config(config_path: &Path) -> Result<(), String> {

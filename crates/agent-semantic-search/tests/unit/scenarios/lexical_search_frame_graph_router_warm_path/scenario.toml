@@ -1,0 +1,18 @@
+id = "lexical-search-frame-graph-router-warm-path"
+title = "Lexical SearchFrame routes warmed evidence through GraphRouter"
+policy_ids = [
+  "SEARCH-AGENT-ASP-PERF-LEXICAL-FRAME-WARM-001",
+]
+agent_goal = "Keep lexical search on the shared SearchFrame and GraphRouter warm route before provider startup, cold scan, or native finder fallback."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "SearchFrameRequest",
+  "CandidateAcquisitionPlan",
+  "EvidenceGraph",
+  "GraphRouter",
+  "plan_lexical_search_frame",
+  "LexicalAcquisitionRoute::WarmOverlay",
+]
+inputs = "inputs"
+expected = "expected"
+command = "agent_semantic_search::plan_lexical_search_frame"

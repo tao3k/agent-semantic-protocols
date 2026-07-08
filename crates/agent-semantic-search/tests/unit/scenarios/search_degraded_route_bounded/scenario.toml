@@ -1,0 +1,23 @@
+[scenario]
+id = "search-degraded-route-bounded"
+title = "Search degraded route remains explicit and bounded"
+package = "agent-semantic-search"
+phase = "recovery"
+intent = "source-index owner-item miss routes to bounded recovery"
+
+[search_frame]
+route = "bounded-cold-scan"
+state = "needs-cold-scan"
+fallback_reason = "warm-miss"
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+
+[evidence_graph]
+required_nodes = ["route-miss"]
+required_edges = ["intent-requires-bounded-route"]
+forbidden_fields = ["body", "code", "commandLog", "confidence", "displayLineRange", "lineRange", "sourceBody"]
+
+[graph_router]
+next_action = "bounded-cold-scan"
+must_emit_reason = true
+must_remain_compact = true

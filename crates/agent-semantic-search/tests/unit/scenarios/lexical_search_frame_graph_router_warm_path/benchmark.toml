@@ -1,0 +1,20 @@
+harness = "libtest"
+test = "lexical_search_frame_warm_path_stays_inside_scenario_gate"
+phase = "warm"
+target_total = "10ms"
+max_total = "50ms"
+observed_total = "1ms"
+regression_budget = "40ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 262144
+route_source = "lexical-search-frame"
+graph_router = "lexical-v1"
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+fallback_reason = "none"
+target_rationale = "After warm candidate acquisition, repeated lexical frame routing should stay in-process and choose GraphRouter next actions without provider startup, workspace-scale cold scan, or native finder fallback."
+
+[observed_timings]
+lexical_search_frame = "1ms"
+graph_router = "1ms"
+warm_candidate_projection = "1ms"

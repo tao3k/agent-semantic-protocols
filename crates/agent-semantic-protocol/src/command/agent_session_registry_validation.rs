@@ -447,6 +447,16 @@ fn load_expected_agent_profile(kind: ValidatedAgentKind) -> Result<ExpectedAgent
     })
 }
 
+pub(super) fn expected_model_for_session_profile(
+    name: &str,
+    role: &str,
+) -> Result<Option<String>, String> {
+    let Some(agent_kind) = validated_agent_kind(name, role) else {
+        return Ok(None);
+    };
+    Ok(Some(load_expected_agent_profile(agent_kind)?.model))
+}
+
 fn codex_model_switch_config(value: &toml::Value) -> CodexModelSwitchConfig {
     let Some(models) = value
         .get("platform")

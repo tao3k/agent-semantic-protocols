@@ -76,6 +76,77 @@ fn direct_source_read_rejects_whole_file_selector_even_with_fallback_reason() {
 }
 
 #[test]
+fn query_code_file_selector_recovery_is_language_neutral() {
+    let root = support::temp_project_root("query-code-file-selector-recovery");
+    let language_cases = [
+        ("rust", "src/lib.rs"),
+        ("typescript", "src/index.ts"),
+        ("python", "src/main.py"),
+        ("julia", "src/Main.jl"),
+        ("gerbil-scheme", "src/main.ss"),
+    ];
+    std::fs::create_dir_all(root.join("src")).expect("create src dir");
+    for (_, selector) in language_cases {
+        std::fs::write(root.join(selector), "placeholder\n").expect("write source fixture");
+    }
+    let providers = language_cases
+        .iter()
+        .map(|(language_id, _)| support::provider(*language_id, Vec::new()))
+        .collect::<Vec<_>>();
+    support::write_activation(&root, &providers);
+
+    for (language_id, selector) in language_cases {
+        let output = support::asp_command(&root)
+            .args([
+                language_id,
+                "query",
+                "--selector",
+                selector,
+                "--workspace",
+                ".",
+                "--code",
+            ])
+            .output()
+            .expect("run asp");
+
+        assert!(
+            !output.status.success(),
+            "language={language_id} stdout={}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("selectorState=file-selector"),
+            "language={language_id} stderr={stderr}"
+        );
+        assert!(stderr.contains("projection=code"), "stderr={stderr}");
+        assert!(stderr.contains("allowed=false"), "stderr={stderr}");
+        assert!(
+            stderr.contains("reason=file-selectors-are-not-code-selectors"),
+            "stderr={stderr}"
+        );
+        assert!(
+            stderr.contains("nextAction=materialize-owner-items"),
+            "stderr={stderr}"
+        );
+        assert!(
+            stderr.contains(&format!(
+                "nextCommand=asp {language_id} search owner {selector} items --workspace . --view seeds"
+            )),
+            "stderr={stderr}"
+        );
+        assert!(
+            stderr.contains(&format!(
+                "requiredSelector={language_id}://{selector}#item/<kind>/<name>"
+            )),
+            "stderr={stderr}"
+        );
+    }
+
+    std::fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
 fn direct_source_read_rejects_wide_selector_range() {
     let root = direct_read_fixture("direct-read-wide-range");
     let output = support::asp_command(&root)

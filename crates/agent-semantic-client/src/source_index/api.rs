@@ -23,10 +23,12 @@ use super::config::{
 };
 use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
 
-/// Refresh the DB Engine source index for a project without storing raw source.
-pub fn refresh_source_index(project_root: &Path) -> Result<SourceIndexRefreshReport, String> {
+/// Reuse the DB Engine source index for a project without scanning source files.
+pub fn refresh_source_index(
+    project_root: &Path,
+) -> Result<Option<SourceIndexRefreshReport>, String> {
     let trace_started = Instant::now();
-    let mut context = SourceIndexRefreshContext::resolve(project_root)?;
+    let context = SourceIndexRefreshContext::resolve(project_root)?;
     source_index_trace("context-resolved", trace_started);
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
     source_index_trace("provider-registry-loaded", trace_started);
@@ -43,9 +45,23 @@ pub fn refresh_source_index(project_root: &Path) -> Result<SourceIndexRefreshRep
             },
         )? {
             source_index_trace("scope-reused", trace_started);
-            return Ok(report);
+            return Ok(Some(report));
         }
     }
+    source_index_trace("scope-reuse-missed", trace_started);
+    Ok(None)
+}
+
+/// Rebuild the DB Engine source index for a project without storing raw source.
+pub fn rebuild_source_index(project_root: &Path) -> Result<SourceIndexRefreshReport, String> {
+    let trace_started = Instant::now();
+    let mut context = SourceIndexRefreshContext::resolve(project_root)?;
+    source_index_trace("context-resolved", trace_started);
+    let snapshot = ProviderRegistrySnapshot::load(project_root)?;
+    source_index_trace("provider-registry-loaded", trace_started);
+    let registry = snapshot.evidence(project_root);
+    let previous_file_hashes = context.latest_file_hashes(project_root)?;
+    source_index_trace("previous-file-hashes-loaded", trace_started);
     let files = collect_source_index_files(project_root, &snapshot)?;
     source_index_trace("scope-files-collected", trace_started);
     context.refresh_generation(SourceIndexGenerationRefresh {
@@ -75,23 +91,54 @@ pub fn refresh_runtime_source_index(
             .into(),
     )?;
 
-    let files = collect_runtime_source_index_files(
-        (
-            runtime_context.checkout_root.as_path(),
-            language_id.as_str(),
-            provider_id.as_str(),
-            SOURCE_INDEX_FILE_LIMIT,
-        )
-            .into(),
-    )?
-    .into_iter()
-    .map(|file| SourceIndexScopeFile {
-        path: file.path,
-        language_id: LanguageId::from(file.language_id),
-        provider_id: ProviderId::from(file.provider_id),
-        selector_receipts: Vec::new(),
-    })
-    .collect::<Vec<_>>();
+    let previous_file_hashes = context.latest_file_hashes(&runtime_context.checkout_root)?;
+    let files = if let Some(previous_file_hashes) = previous_file_hashes.as_deref() {
+        let files = runtime_source_index_files_from_previous_hashes(
+            &runtime_context.checkout_root,
+            previous_file_hashes,
+            language_id,
+            provider_id,
+        );
+        if files.is_empty() {
+            collect_runtime_source_index_files(
+                (
+                    runtime_context.checkout_root.as_path(),
+                    language_id.as_str(),
+                    provider_id.as_str(),
+                    SOURCE_INDEX_FILE_LIMIT,
+                )
+                    .into(),
+            )?
+            .into_iter()
+            .map(|file| SourceIndexScopeFile {
+                path: file.path,
+                language_id: LanguageId::from(file.language_id),
+                provider_id: ProviderId::from(file.provider_id),
+                selector_receipts: Vec::new(),
+            })
+            .collect::<Vec<_>>()
+        } else {
+            files
+        }
+    } else {
+        collect_runtime_source_index_files(
+            (
+                runtime_context.checkout_root.as_path(),
+                language_id.as_str(),
+                provider_id.as_str(),
+                SOURCE_INDEX_FILE_LIMIT,
+            )
+                .into(),
+        )?
+        .into_iter()
+        .map(|file| SourceIndexScopeFile {
+            path: file.path,
+            language_id: LanguageId::from(file.language_id),
+            provider_id: ProviderId::from(file.provider_id),
+            selector_receipts: Vec::new(),
+        })
+        .collect::<Vec<_>>()
+    };
     if files.is_empty() {
         return Err(format!(
             "runtime source index found no source files in {} for language {}",
@@ -103,13 +150,33 @@ pub fn refresh_runtime_source_index(
         fingerprint: runtime_context.registry_fingerprint,
         scope_dirs: BTreeSet::new(),
     };
-    let previous_file_hashes = context.latest_file_hashes(&runtime_context.checkout_root)?;
     context.refresh_generation(SourceIndexGenerationRefresh {
         index_root: &runtime_context.checkout_root,
         files: &files,
         previous_file_hashes: previous_file_hashes.as_deref(),
         registry: &registry,
     })
+}
+
+fn runtime_source_index_files_from_previous_hashes(
+    index_root: &Path,
+    previous_file_hashes: &[ClientCacheFileHash],
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+) -> Vec<SourceIndexScopeFile> {
+    previous_file_hashes
+        .iter()
+        .filter(|file_hash| !file_hash.path.as_str().starts_with("@scope/"))
+        .filter_map(|file_hash| {
+            let path = index_root.join(file_hash.path.as_str());
+            path.is_file().then(|| SourceIndexScopeFile {
+                path,
+                language_id: language_id.clone(),
+                provider_id: provider_id.clone(),
+                selector_receipts: Vec::new(),
+            })
+        })
+        .collect()
 }
 
 struct SourceIndexRefreshContext {
@@ -241,39 +308,44 @@ fn try_reuse_source_index_scope(
     let Some(previous_file_hashes) = scope.previous_file_hashes else {
         return Ok(None);
     };
-    let files = match context.db_session.latest_source_index_scope_files(
-        scope.index_root,
-        &context.schema_id,
-        &context.schema_version,
-    )? {
-        Some(files) => files,
-        None => return Ok(None),
-    };
-    let file_hashes = match source_index_file_hashes(
-        scope.index_root,
-        &files,
-        Some(previous_file_hashes),
-        &scope.registry.fingerprint,
-        scope.registry.scope_dirs.iter().map(String::as_str),
-    ) {
-        Ok(file_hashes) => file_hashes,
-        Err(_) => return Ok(None),
-    };
-    let Some(stats) = context.db_session.reusable_source_index_generation(
-        scope.index_root,
-        &context.schema_id,
-        &context.schema_version,
-        &file_hashes,
-    )?
-    else {
+    let file_count = source_index_previous_file_hash_count(previous_file_hashes);
+    if file_count == 0
+        || !source_index_registry_evidence_matches(
+            previous_file_hashes,
+            &scope.registry.fingerprint,
+        )
+    {
         return Ok(None);
-    };
-    Ok(Some(source_index_refresh_report(
-        &context.db_path,
-        stats,
-        files.len(),
-        true,
-    )))
+    }
+    Ok(context
+        .db_session
+        .latest_source_index_stats(
+            scope.index_root,
+            &context.schema_id,
+            &context.schema_version,
+        )?
+        .map(|stats| source_index_refresh_report(&context.db_path, stats, file_count, true)))
+}
+
+fn source_index_previous_file_hash_count(previous_file_hashes: &[ClientCacheFileHash]) -> usize {
+    previous_file_hashes
+        .iter()
+        .filter(|hash| !hash.path.as_str().starts_with("@scope/"))
+        .count()
+}
+
+fn source_index_registry_evidence_matches(
+    previous_file_hashes: &[ClientCacheFileHash],
+    registry_fingerprint: &str,
+) -> bool {
+    let expected_sha256 = format!("{:x}", Sha256::digest(registry_fingerprint.as_bytes()));
+    let expected_byte_len = registry_fingerprint.len().min(u64::MAX as usize) as u64;
+    previous_file_hashes.iter().any(|hash| {
+        hash.path == "@scope/registry"
+            && hash.sha256 == expected_sha256
+            && hash.byte_len == expected_byte_len
+            && hash.mtime_ms == 0
+    })
 }
 
 fn source_index_refresh_report(
@@ -289,3 +361,4 @@ fn source_index_refresh_report(
         reused_generation,
     )
 }
+use sha2::{Digest, Sha256};

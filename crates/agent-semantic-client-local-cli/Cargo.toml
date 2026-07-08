@@ -12,13 +12,14 @@ bytes = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-[build-dependencies]
-rust-lang-project-harness = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
-rust-lang-project-harness = { workspace = true }
+asp-rust-project-harness-policy.workspace = true
 
 [[bench]]
 name = "backend_hot_path"
 harness = false
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

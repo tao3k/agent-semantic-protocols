@@ -36,6 +36,14 @@ pub(super) fn owner_item_matches_request(
     if item.name != term {
         return false;
     }
+    owner_item_kind_matches_request(item, language_id, selector_kind)
+}
+
+pub(super) fn owner_item_kind_matches_request(
+    item: &OwnerItem,
+    language_id: &str,
+    selector_kind: Option<&str>,
+) -> bool {
     selector_kind
         .is_none_or(|selector_kind| owner_item_kind_matches(language_id, item.kind, selector_kind))
 }

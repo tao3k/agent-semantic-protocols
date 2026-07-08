@@ -114,6 +114,20 @@ pub(super) struct SessionStatusReport {
     pub(super) last_artifact_path: Option<String>,
     #[serde(rename = "nextAction")]
     pub(super) next_action: String,
+    #[serde(rename = "requiredModel", skip_serializing_if = "Option::is_none")]
+    pub(super) required_model: Option<String>,
+    #[serde(rename = "actualModel", skip_serializing_if = "Option::is_none")]
+    pub(super) actual_model: Option<String>,
+    #[serde(
+        rename = "modelAlignmentAction",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) model_alignment_action: Option<String>,
+    #[serde(
+        rename = "modelAlignmentMessage",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) model_alignment_message: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -212,28 +226,6 @@ pub(super) fn print_reuse_session(
         escape_field(&session.session_id),
         escape_field(&session.role),
         escape_field(&session.status),
-        db_path.display()
-    );
-    Ok(())
-}
-
-pub(super) fn print_reuse_miss(
-    db_path: &Path,
-    root_session_id: Option<&str>,
-    name: &str,
-    reason: &str,
-    json: bool,
-) -> Result<(), String> {
-    if json {
-        return print_json_report(db_path, root_session_id, Vec::new());
-    }
-    println!(
-        "[agent-session-reuse] owner=rust status=\"miss\" rootSession={} name=\"{}\" reason=\"{}\" db=\"{}\"",
-        root_session_id
-            .map(|value| format!("\"{}\"", escape_field(value)))
-            .unwrap_or_else(|| "\"*\"".to_string()),
-        escape_field(name),
-        escape_field(reason),
         db_path.display()
     );
     Ok(())
@@ -349,7 +341,7 @@ pub(super) fn print_status_report(
         .map(|activity| activity.running_session_closed)
         .unwrap_or(false);
     println!(
-        "[agent-session-status] owner=rust rootSession={} name={} registryStatus=\"{}\" routable={} validationStatus=\"{}\" validationReason=\"{}\" hostClient={} hostStatus=\"{}\" hostThreadExistence=\"{}\" multiAgentChildState=\"{}\" rolloutActivityStatus=\"{}\" rolloutLastHeartbeatAt=\"{}\" rolloutLastHeartbeatKind=\"{}\" rolloutLastTerminalEvent=\"{}\" rolloutRunningSessionClosed={} healthStatus=\"{}\" artifactStatus=\"{}\" artifactAgeSeconds={} nextAction=\"{}\" duplicateWorkerAllowed={} db=\"{}\" artifactsDir=\"{}\"",
+        "[agent-session-status] owner=rust rootSession={} name={} registryStatus=\"{}\" routable={} validationStatus=\"{}\" validationReason=\"{}\" hostClient={} hostStatus=\"{}\" hostThreadExistence=\"{}\" multiAgentChildState=\"{}\" messageTargetStatus={} messageTargetResultSource={} messageAgentTargetId={} rolloutActivityStatus=\"{}\" rolloutLastHeartbeatAt=\"{}\" rolloutLastHeartbeatKind=\"{}\" rolloutLastTerminalEvent=\"{}\" rolloutRunningSessionClosed={} healthStatus=\"{}\" artifactStatus=\"{}\" artifactAgeSeconds={} requiredModel={} actualModel={} modelAlignmentAction={} modelAlignmentMessage={} nextAction=\"{}\" duplicateWorkerAllowed={} db=\"{}\" artifactsDir=\"{}\"",
         report
             .root_session_id
             .as_deref()
@@ -372,6 +364,21 @@ pub(super) fn print_status_report(
         escape_field(&report.host_status),
         escape_field(&report.host_thread_existence),
         escape_field(&report.multi_agent_child_state),
+        report
+            .message_target_status
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"missing\"".to_string()),
+        report
+            .message_target_result_source
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"none\"".to_string()),
+        report
+            .message_agent_target_id
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"\"".to_string()),
         escape_field(rollout_activity_status),
         escape_field(rollout_last_heartbeat_at),
         escape_field(rollout_last_heartbeat_kind),
@@ -380,6 +387,26 @@ pub(super) fn print_status_report(
         escape_field(&report.health_status),
         escape_field(&report.artifact_status),
         optional_i64_field(report.artifact_age_seconds),
+        report
+            .required_model
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"\"".to_string()),
+        report
+            .actual_model
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"\"".to_string()),
+        report
+            .model_alignment_action
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"none\"".to_string()),
+        report
+            .model_alignment_message
+            .as_deref()
+            .map(|value| format!("\"{}\"", escape_field(value)))
+            .unwrap_or_else(|| "\"none\"".to_string()),
         escape_field(&report.next_action),
         report.duplicate_worker_allowed,
         report.db_path,
@@ -392,35 +419,77 @@ pub(super) fn print_status_report(
 }
 
 fn hydrate_status_message_target_fields(report: &mut SessionStatusReport) {
-    if !report.routable {
-        if report.message_target_status.is_none() {
-            report.message_target_status = Some("missing".to_string());
-        }
-        return;
-    }
     let Some(session) = report.session.as_ref() else {
         if report.message_target_status.is_none() {
             report.message_target_status = Some("missing".to_string());
         }
+        if report.message_target_result_source.is_none() {
+            report.message_target_result_source = Some("none".to_string());
+        }
+        report.routable = false;
         return;
     };
-    if report.message_target_status.is_none() {
-        report.message_target_status = Some("unverified".to_string());
+
+    if let Some(target_id) = session
+        .message_target_id()
+        .filter(|target_id| !target_id.trim().is_empty())
+    {
+        if report.message_target_status.is_none() {
+            report.message_target_status = Some("ready".to_string());
+        }
+        if report.message_target_result_source.is_none() {
+            report.message_target_result_source = Some("registry-message-target-id".to_string());
+        }
+        if report.message_agent_target_id.is_none() {
+            report.message_agent_target_id = Some(target_id.to_string());
+        }
+        if report.message_agent_target_id_equals_child.is_none() {
+            report.message_agent_target_id_equals_child = Some(target_id == session.session_id);
+        }
+    } else {
+        if report.message_target_status.is_none() {
+            report.message_target_status = Some("missing".to_string());
+        }
+        if report.message_target_result_source.is_none() {
+            report.message_target_result_source =
+                Some("registry-message-target-id-missing".to_string());
+        }
+        report.message_agent_target_id = None;
+        report.message_agent_target_id_equals_child = Some(false);
+        report.routable = false;
+        report.next_action =
+            "register-existing-child-with-native-message-target-or-create-managed-child"
+                .to_string();
+        if let Some(required_model) = report.required_model.as_deref() {
+            let name = report.name.as_deref().unwrap_or("asp-explore");
+            report.model_alignment_action =
+                Some("parent-register-native-message-target-before-model-follow-up".to_string());
+            report.model_alignment_message = Some(format!(
+                "The resident child is lifecycle-valid but has no native message-agent target. The parent must register the existing child with its native Codex message target or create a managed ASP child with model override {required_model} and light/low reasoning, then rerun asp agent session status --name {name}."
+            ));
+        }
     }
-    if report.message_target_result_source.is_none() {
-        report.message_target_result_source = Some("registry-session-id-unverified".to_string());
+    downgrade_unverified_message_route(report);
+}
+
+fn downgrade_unverified_message_route(report: &mut SessionStatusReport) {
+    if report.host_thread_existence != "not-validated" {
+        return;
     }
-    if report.message_agent_target_id.is_none() {
-        report.message_agent_target_id = Some(session.session_id.clone());
+    if report.message_target_status.as_deref() != Some("unverified") {
+        return;
     }
-    if report.message_agent_target_id_equals_child.is_none() {
-        report.message_agent_target_id_equals_child = Some(
-            report
-                .message_agent_target_id
-                .as_deref()
-                .map(|target_id| target_id == session.session_id)
-                .unwrap_or(false),
-        );
+    if report.message_target_result_source.as_deref() != Some("registry-session-id-unverified") {
+        return;
+    }
+
+    report.routable = false;
+    report.next_action = "resume-existing-child-then-validate-message-route".to_string();
+    if let Some(index) = report.session_lifecycle_index.as_mut() {
+        index.routable = false;
+    }
+    if let Some(snapshot) = report.activity_snapshot_short.as_mut() {
+        snapshot.next_action = report.next_action.clone();
     }
 }
 

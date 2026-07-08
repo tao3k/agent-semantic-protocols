@@ -91,6 +91,11 @@ fn render_match(
     };
     let selector = structural_selector(language, display_owner, item_match);
     let source_locator_hint = format!("{}:{}:{}", display_owner, item_match.start, item_match.end);
+    let reason = if item_match.rank > 0 {
+        "owner-local-source-attribution"
+    } else {
+        "dynamic-owner-item-ready"
+    };
     let _ = writeln!(
         rendered,
         "{label}=item:symbol({})@{}!syntax",
@@ -98,13 +103,14 @@ fn render_match(
     );
     let _ = writeln!(
         rendered,
-        "|item symbol={} kind={} structuralSelector={} displayLineRange={}:{} sourceLocatorHint={} reason=dynamic-owner-item-ready",
+        "|item symbol={} kind={} structuralSelector={} displayLineRange={}:{} sourceLocatorHint={} reason={}",
         item_match.term,
         item_match.kind,
         selector,
         item_match.start,
         item_match.end,
         source_locator_hint,
+        reason,
     );
 }
 
@@ -117,12 +123,17 @@ fn render_next_action(
 ) {
     if let Some(item_match) = first_match {
         let selector = structural_selector(language, display_owner, item_match);
+        let reason = if item_match.rank > 0 {
+            "owner-local-source-attribution"
+        } else {
+            "dynamic-owner-item-ready"
+        };
         let _ = writeln!(
             rendered,
             "nextCommand=asp {language} query --from-hook item-skeleton --selector {} --workspace . --names-only",
             shell_arg(&selector)
         );
-        rendered.push_str("reason=dynamic-owner-item-ready\n");
+        let _ = writeln!(rendered, "reason={reason}");
         rendered
             .push_str("avoid=selector-code-before-exact,direct-source-read,manual-window-scan\n");
     } else {

@@ -432,7 +432,9 @@ fn session_start_bootstrap_decision(
     );
     fields.insert(
         "agentSessionBootstrapGuideCommand".to_string(),
-        serde_json::Value::String("asp agent session register --guide".to_string()),
+        serde_json::Value::String(format!(
+            "asp agent session bootstrap --name {resident_child_name} --json"
+        )),
     );
     fields.insert(
         "agentSessionLifecycleAuditCommand".to_string(),

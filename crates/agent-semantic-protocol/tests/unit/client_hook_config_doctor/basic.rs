@@ -85,6 +85,42 @@ tool = "Bash"
 }
 
 #[test]
+fn codex_plugin_hooks_use_project_direnv_and_bounded_timeout() {
+    let hooks: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../asp-codex-plugin/hooks/hooks.json"
+    ))
+    .expect("parse hooks.json");
+    let hooks = hooks["hooks"].as_object().expect("hooks object");
+
+    for event in [
+        "SessionStart",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PermissionRequest",
+        "PostToolUse",
+        "SubagentStart",
+        "SubagentStop",
+        "Stop",
+    ] {
+        let command_hook = hooks[event][0]["hooks"][0]
+            .as_object()
+            .unwrap_or_else(|| panic!("{event} command hook object"));
+        let command = command_hook["command"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{event} command string"));
+        assert!(
+            command.starts_with("direnv exec . asp hook "),
+            "{event} command must use project direnv: {command}"
+        );
+        assert_eq!(
+            command_hook["timeout"].as_i64(),
+            Some(5),
+            "{event} hook timeout must cover project direnv startup"
+        );
+    }
+}
+
+#[test]
 fn doctor_rejects_invalid_client_hook_config() {
     let root = temp_project_root("doctor-invalid-config");
     let activation_path = write_activation(&root);

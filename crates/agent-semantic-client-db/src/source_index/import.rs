@@ -8,14 +8,12 @@ use agent_semantic_client_core::ClientCacheFileHash;
 use sha2::{Digest, Sha256};
 
 use super::text::{source_line_count, source_query_keys};
+use super::types::client_db_source_index_registry_evidence_hash;
 use super::types::{
     ClientDbSourceIndexImport, ClientDbSourceIndexImportAssemblyRequest,
     ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest, ClientDbSourceIndexOwner,
     ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexScopeFile,
     ClientDbSourceIndexSelector, ClientDbSourceIndexSource,
-};
-use super::types::{
-    client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
 };
 
 /// Build source-index file hashes and import rows from collected workspace
@@ -51,12 +49,8 @@ pub fn source_index_file_hashes<'a>(
         .iter()
         .map(|file| source_index_file_hash(project_root, file, previous_by_path.as_ref()))
         .collect::<Result<Vec<_>, _>>()?;
-    file_hashes.extend(source_scope_evidence_hashes(
-        project_root,
-        files,
-        registry_fingerprint,
-        extra_scope_dirs,
-    )?);
+    let _ = extra_scope_dirs;
+    file_hashes.extend(source_scope_evidence_hashes(registry_fingerprint));
     Ok(file_hashes)
 }
 
@@ -223,38 +217,10 @@ pub fn source_index_scope_dirs(
     dirs
 }
 
-fn source_scope_evidence_hashes<'a>(
-    project_root: &Path,
-    files: &[ClientDbSourceIndexScopeFile],
-    registry_fingerprint: &str,
-    extra_scope_dirs: impl IntoIterator<Item = &'a str>,
-) -> Result<Vec<ClientCacheFileHash>, String> {
-    let mut evidence = Vec::new();
-    evidence.push(client_db_source_index_registry_evidence_hash(
+fn source_scope_evidence_hashes(registry_fingerprint: &str) -> Vec<ClientCacheFileHash> {
+    vec![client_db_source_index_registry_evidence_hash(
         registry_fingerprint,
-    ));
-    let mut scope_dirs = source_index_scope_dirs(project_root, files);
-    scope_dirs.extend(extra_scope_dirs.into_iter().map(ToString::to_string));
-    for relative_dir in scope_dirs {
-        let dir_path = if relative_dir == "." {
-            project_root.to_path_buf()
-        } else {
-            project_root.join(&relative_dir)
-        };
-        let metadata = fs::metadata(&dir_path).map_err(|error| {
-            format!(
-                "failed to read source index dir metadata {}: {error}",
-                dir_path.display()
-            )
-        })?;
-        let mtime_ms = metadata_mtime_ms(&metadata, &dir_path)?;
-        evidence.push(client_db_source_index_scope_dir_evidence_hash(
-            &relative_dir,
-            metadata.len(),
-            mtime_ms,
-        ));
-    }
-    Ok(evidence)
+    )]
 }
 
 fn source_index_file_hash(

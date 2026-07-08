@@ -1,6 +1,9 @@
 //! Dynamic owner-local item search for high-churn source files.
 
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::dynamic_overlay::{
     DynamicOverlayDocument, DynamicOverlayNamespace, DynamicOverlayQuery,
@@ -116,7 +119,8 @@ impl DynamicOwnerItem {
 pub fn render_dynamic_owner_items_frontier(request: DynamicOwnerItemsRequest<'_>) -> String {
     let owner_path = resolved_owner_path(request.roots.project_root, request.owner.0);
     let display_owner = display_path(request.roots.locator_root, &owner_path);
-    let matches = overlay_owner_item_matches(&display_owner, request.items, request.query.0);
+    let matches =
+        overlay_owner_item_matches(&display_owner, &owner_path, request.items, request.query.0);
     render_frontier(
         request.language.as_str(),
         &display_owner,
@@ -134,7 +138,8 @@ pub fn render_dynamic_owner_items_frontier(request: DynamicOwnerItemsRequest<'_>
 pub fn render_dynamic_owner_items_code(request: DynamicOwnerItemsRequest<'_>) -> String {
     let owner_path = resolved_owner_path(request.roots.project_root, request.owner.0);
     let display_owner = display_path(request.roots.locator_root, &owner_path);
-    let matches = overlay_owner_item_matches(&display_owner, request.items, request.query.0);
+    let matches =
+        overlay_owner_item_matches(&display_owner, &owner_path, request.items, request.query.0);
     render_code(
         request.language.as_str(),
         &display_owner,
@@ -145,6 +150,7 @@ pub fn render_dynamic_owner_items_code(request: DynamicOwnerItemsRequest<'_>) ->
 
 fn overlay_owner_item_matches(
     display_owner: &str,
+    owner_path: &Path,
     items: &[DynamicOwnerItem],
     query: &str,
 ) -> Vec<OwnerItemMatch> {
@@ -174,7 +180,7 @@ fn overlay_owner_item_matches(
         .collect::<Vec<_>>();
     let mut overlay = default_dynamic_overlay_search_backend();
     overlay.upsert_documents(namespace.clone(), documents);
-    overlay
+    let matches = overlay
         .search(
             &namespace,
             &DynamicOverlayQuery::new(query).owner_path(display_owner),
@@ -190,7 +196,54 @@ fn overlay_owner_item_matches(
                 rank: 0,
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    if matches.is_empty() {
+        return owner_local_source_matches(owner_path, items, query);
+    }
+    matches
+}
+
+fn owner_local_source_matches(
+    owner_path: &Path,
+    items: &[DynamicOwnerItem],
+    query: &str,
+) -> Vec<OwnerItemMatch> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let Ok(source) = fs::read_to_string(owner_path) else {
+        return Vec::new();
+    };
+    let query = query.to_ascii_lowercase();
+    let mut matches = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        if !line.to_ascii_lowercase().contains(&query) {
+            continue;
+        }
+        let line_number = line_index + 1;
+        for item in items {
+            if line_number < item.start || line_number > item.end {
+                continue;
+            }
+            if matches.iter().any(|existing: &OwnerItemMatch| {
+                existing.start == item.start
+                    && existing.end == item.end
+                    && existing.kind == item.kind
+                    && existing.term == item.term
+            }) {
+                continue;
+            }
+            matches.push(OwnerItemMatch {
+                start: item.start,
+                end: item.end,
+                kind: item.kind.clone(),
+                term: item.term.clone(),
+                rank: 1,
+            });
+        }
+    }
+    matches
 }
 
 struct OwnerItemInput<'a> {

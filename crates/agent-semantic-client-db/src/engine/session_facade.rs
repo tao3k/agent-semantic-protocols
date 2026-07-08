@@ -33,7 +33,8 @@ use super::turso_provider_command::{
 };
 use super::turso_source_index::{
     latest_turso_source_index_file_hashes, latest_turso_source_index_scope_files,
-    lookup_reusable_turso_source_index_generation, refresh_turso_source_index_import,
+    latest_turso_source_index_stats, lookup_reusable_turso_source_index_generation,
+    refresh_turso_source_index_import,
 };
 use super::turso_syntax::{
     flush_turso_syntax_query_replay, lookup_turso_syntax_query_replay,
@@ -278,6 +279,23 @@ impl ClientDbEngineWriteSession {
                 &schema_version,
             )
             .await
+        })
+    }
+
+    /// Return stats from the latest source-index generation.
+    pub fn latest_source_index_stats(
+        &self,
+        project_root: &Path,
+        schema_id: &SemanticSchemaId,
+        schema_version: &SemanticSchemaVersion,
+    ) -> Result<Option<ClientDbSourceIndexStats>, String> {
+        let db_path = self.turso_db_path.clone();
+        let project_root = project_root.to_path_buf();
+        let schema_id = schema_id.clone();
+        let schema_version = schema_version.clone();
+        block_on_db_engine_async(async move {
+            latest_turso_source_index_stats(&db_path, &project_root, &schema_id, &schema_version)
+                .await
         })
     }
 

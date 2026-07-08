@@ -1,0 +1,18 @@
+id = "search-source-index-owner-item-graph-chain"
+title = "Source-index evidence projects to executable owner and item graph nodes"
+policy_ids = [
+  "SEARCH-AGENT-ASP-EVIDENCE-GRAPH-CHAIN-001",
+]
+agent_goal = "Keep source-index hits usable as EvidenceGraph inputs by proving owner, item, and hot graph nodes stay executable and selector-owned."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "source-index",
+  "owner",
+  "item",
+  "hot",
+  "EvidenceGraph",
+  "GraphRouter",
+]
+inputs = "inputs"
+expected = "expected"
+command = "cargo test -p agent-semantic-search --test unit_test search_flow_source_index_owner_item_graph_chain_is_executable -- --nocapture"

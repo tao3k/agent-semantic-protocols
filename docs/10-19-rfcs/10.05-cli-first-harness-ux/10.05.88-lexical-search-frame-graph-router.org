@@ -1,0 +1,117 @@
+* Lexical SearchFrame and GraphRouter
+
+Lexical search is an algorithmic search frame, not a provider fallback chain.
+The command shape
+
+#+begin_src shell
+asp <language> search lexical '<terms>' owner tests --workspace <root> --view seeds
+#+end_src
+
+must enter the shared search framework before any language-specific process,
+native finder, or graph-frontier fallback is considered.  The language facade
+selects the provider vocabulary and file predicate; the search package owns
+query planning, candidate acquisition, evidence graph construction, graph
+routing, ranking, next-action selection, and performance receipts.
+
+** TopLogic
+
+The lexical frame is:
+
+#+begin_src text
+SearchFrameRequest
+  -> QueryPack
+  -> CandidateAcquisitionPlan
+  -> EvidenceGraph
+  -> GraphRouter
+  -> CompactRankedEvidence + NextAction
+#+end_src
+
+GraphRouter is part of the algorithm, not an output decoration.  It chooses the
+next hop on the EvidenceGraph: owner, item, test, dependency, document, or an
+explicit degraded finder action.  A graph frontier renderer may display this
+route, but it must not be the first component that discovers it.
+
+** Acquisition Order
+
+Candidate acquisition is shared across languages and ordered by cost:
+
+#+begin_src text
+warm-overlay/source-index
+  -> source-index-owner-evidence
+  -> session-dynamic-overlay
+  -> provider-parser-owner-items
+  -> bounded-cold-scan
+  -> degraded-finder
+#+end_src
+Source-index owner evidence is valid when the index has non-stale owner/path candidates but lacks bounded selector proof. It lets GraphRouter jump to owner/item refinement without rebuilding the overlay.
+
+The warm route is the target path for repeated lexical searches.  It may use the
+Turso overlay/source-index adapter or another search-owned warm index, but it
+must return provider-neutral candidates and avoid provider process startup,
+workspace-scale file walks, and source body projection.  Cold scan is an
+audited recovery route, not the normal route.  Native finder output is degraded
+evidence and must be labeled as such.
+
+** Cross-Language Boundary
+
+Language providers own facts:
+
+#+begin_src text
+owner, item, selector, test, dependency, document, diagnostic, span
+#+end_src
+
+The search package owns algorithms:
+
+#+begin_src text
+query planning, acquisition selection, EvidenceGraph projection, GraphRouter,
+ranking, next action, performance receipt
+#+end_src
+
+This means the lexical frame must not encode Rust syntax or Rust-specific file
+layout.  Rust, TypeScript, Python, Julia, Gerbil Scheme, Org, and Markdown enter
+the same SearchFrame with different provider facts and file predicates.
+
+** Route Contract
+
+The frame emits a route receipt before compact rows:
+
+#+begin_src text
+searchFrame=lexical
+acquisitionRoute=warm-overlay|source-index-owner-evidence|session-dynamic-overlay|provider-owner-items|bounded-cold-scan|degraded-finder
+graphRouter=lexical-v1
+evidenceState=owner-ready|item-ready|test-ready|needs-cold-scan|degraded
+fallbackReason=none|warm-miss|selector-proof-missing|provider-missing|scope-too-wide|no-parser-facts
+providerProcessCount=0
+nativeFinderProcessCount=0
+#+end_src
+
+Compact evidence rows use graph node identities as executable decision points:
+parser-owned selectors, owner paths, test owners, dependency identities, or
+document selectors.  Display line ranges stay hints.  If the router cannot
+select an executable node, it must say why and choose one bounded next action.
+
+** Performance Gate
+=asp cache source-index refresh= is a warm check, not an index builder. It may validate and reuse the latest Turso source-index generation, or return =status=cold-required= with a bounded next action. It MUST NOT collect provider workspace scope files, start provider processes, or perform a workspace-scale source walk. Cold materialization belongs to the explicit =asp cache source-index rebuild= route, and scenario gates SHOULD cover both =refresh-without-generation-is-bounded= and =rebuild-then-refresh-reuses-generation=.
+
+The warm algorithm path excludes CLI startup and initial index/bootstrap.  The
+scenario gate for a warmed lexical frame should measure repeated in-process
+queries and keep them in the millisecond or low-sub-100ms range.  CLI startup is
+a separate diagnostic.  A cold scan can have a larger budget only when the route
+receipt marks =acquisitionRoute=bounded-cold-scan= and explains the miss.
+
+Search scenarios are declared through the ASP Rust harness policy interface in
+=build-support/asp-rust-project-harness-policy=, not by an ad-hoc registry
+inside =agent-semantic-search=.  The build-support interface owns the search
+scenario package and exposes it to the upstream Rust harness policy layer; the
+search crate owns only the concrete fixtures and tests that each scenario
+command executes.
+
+The motivating regression command is:
+
+#+begin_src shell
+asp rust search lexical 'render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match' owner tests --workspace . --view seeds
+#+end_src
+
+On a warmed search frame it should not rebuild an overlay from a full workspace
+walk.  It should use the warm route to select owner/item/test nodes and let
+GraphRouter choose the next exact action.

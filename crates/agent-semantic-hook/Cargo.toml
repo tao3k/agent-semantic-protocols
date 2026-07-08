@@ -18,8 +18,9 @@ toml = { workspace = true }
 tree-sitter = { workspace = true }
 tree-sitter-bash = { workspace = true }
 
-[build-dependencies]
-rust-lang-project-harness = { workspace = true }
 
 [dev-dependencies]
-rust-lang-project-harness = { workspace = true }
+asp-rust-project-harness-policy.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

@@ -13,6 +13,7 @@ agent-semantic-provider-transport = { path = "../agent-semantic-provider-transpo
 bytes = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true }
+uuid = "1.23.4"
 
 [build-dependencies]
 rust-lang-project-harness = { workspace = true }

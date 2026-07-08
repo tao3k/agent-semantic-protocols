@@ -1,6 +1,7 @@
 //! DB Engine-owned source index refresh and lookup facade.
 
 mod api;
+pub use api::rebuild_source_index;
 mod collect;
 mod config;
 mod lookup;

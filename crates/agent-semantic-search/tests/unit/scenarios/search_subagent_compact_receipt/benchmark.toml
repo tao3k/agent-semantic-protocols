@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "search_flow_subagent_receipt_is_compact_graph_route"
+phase = "receipt"
+target_total = "2ms"
+max_total = "25ms"
+observed_total = "0us"
+regression_budget = "23ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 0
+route_source = "subagent-compact-graph-route-receipt"
+graph_router = "receipt-projection"
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+fallback_reason = "none"
+target_rationale = "Search subagent receipts should be compact graph-route packets and should reject source bodies, confidence fields, line-range selectors, and command logs."
+
+[observed_timings]
+receipt_projection = "0us"
+receipt_validation = "0us"

@@ -64,6 +64,7 @@ pub(super) fn adopt_reusable_rollout_session(
             project_id: request.project_id,
             root_session_id: request.root_session_id,
             session_id: &candidate_session_id,
+            message_target_id: None,
             parent_session_id: Some(request.root_session_id),
             name: request.name,
             role: request.role,

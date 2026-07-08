@@ -31,7 +31,7 @@ fn planner_routes_filename_query_to_file_locator_before_source_index() {
 }
 
 #[test]
-fn planner_falls_through_to_source_index_when_file_locator_misses() {
+fn planner_enters_lexical_search_frame_when_file_locator_misses() {
     let locator = FileLocatorIndex::build(vec![PathBuf::from("src/lib.rs")]);
 
     let decision = plan_search_route(SearchPlannerRequest {
@@ -40,7 +40,7 @@ fn planner_falls_through_to_source_index_when_file_locator_misses() {
         file_locator: Some(&locator),
     });
 
-    assert_eq!(decision.route, SearchPlannerRoute::SourceIndex);
+    assert_eq!(decision.route, SearchPlannerRoute::LexicalSearchFrame);
     assert!(decision.file_candidates.is_empty());
 }
 

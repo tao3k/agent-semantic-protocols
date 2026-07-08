@@ -1,6 +1,13 @@
 #![recursion_limit = "256"]
 #![deny(dead_code)]
 
+#[path = "unit/command/agent_session_registry_control_plane.rs"]
+mod agent_session_registry_control_plane;
+#[path = "unit/command/agent_session_registry_resume_cli.rs"]
+mod agent_session_registry_resume_cli;
+#[path = "unit/command/agent_session_registry_resume_model_create_cli.rs"]
+mod agent_session_registry_resume_model_create_cli;
+
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;
 #[path = "unit/client_hook_claude_smoke.rs"]
@@ -51,6 +58,8 @@ mod paths_command;
 mod provider_command;
 #[path = "unit/command/provider_language_facade.rs"]
 mod provider_language_facade;
+#[path = "unit/query_owner_freshness.rs"]
+mod query_owner_freshness;
 #[path = "unit/rfc_search_frame.rs"]
 mod rfc_search_frame;
 #[path = "unit/rs_harness_attribute.rs"]

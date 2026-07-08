@@ -50,10 +50,10 @@ fn cache_source_index_refresh_builds_db_engine_rows() {
     run_cache(
         &root,
         None,
-        &["source-index".to_string(), "refresh".to_string()],
+        &["source-index".to_string(), "rebuild".to_string()],
         false,
     )
-    .expect("refresh source index");
+    .expect("rebuild source index");
     run_cache(
         &root,
         None,
@@ -79,6 +79,42 @@ fn cache_source_index_refresh_builds_db_engine_rows() {
     assert_eq!(result.candidates.len(), 1);
     assert_eq!(result.candidates[0].path, "src/usage.ss");
     assert_eq!(result.candidates[0].line_count, Some(3));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn cache_source_index_refresh_without_generation_is_bounded_warm_check() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("source-index-refresh-cold-required");
+    let _home_env = isolate_home(&root);
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = []\nresolver = \"2\"\n",
+    )
+    .expect("write workspace manifest");
+    let activation_path = write_rust_activation_with_ignored_prefixes(&root, &[]);
+    let _activation_env = EnvVarGuard::set(
+        ASP_PROVIDER_ACTIVATION_PATH_ENV,
+        activation_path.as_os_str(),
+    );
+
+    let started = std::time::Instant::now();
+    run_cache(
+        &root,
+        None,
+        &["source-index".to_string(), "refresh".to_string()],
+        false,
+    )
+    .expect("refresh without generation should be a warm check");
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(100),
+        "source-index refresh warm check exceeded gate: elapsedMs={}",
+        elapsed.as_millis()
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -113,10 +149,10 @@ fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
     run_cache(
         &root,
         None,
-        &["source-index".to_string(), "refresh".to_string()],
+        &["source-index".to_string(), "rebuild".to_string()],
         false,
     )
-    .expect("refresh source index");
+    .expect("rebuild source index");
     run_cache(
         &root,
         None,
@@ -132,10 +168,10 @@ fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
     run_cache(
         &root,
         None,
-        &["source-index".to_string(), "refresh".to_string()],
+        &["source-index".to_string(), "rebuild".to_string()],
         false,
     )
-    .expect("refresh changed source index");
+    .expect("rebuild changed source index");
 
     let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
     assert!(engine.db_path().exists());
@@ -196,10 +232,10 @@ fn cache_source_index_refresh_respects_provider_ignored_path_prefixes() {
     run_cache(
         &root,
         None,
-        &["source-index".to_string(), "refresh".to_string()],
+        &["source-index".to_string(), "rebuild".to_string()],
         false,
     )
-    .expect("refresh source index");
+    .expect("rebuild source index");
 
     let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
     assert!(engine.db_path().exists());
@@ -255,10 +291,10 @@ fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() {
     run_cache(
         &root,
         None,
-        &["source-index".to_string(), "refresh".to_string()],
+        &["source-index".to_string(), "rebuild".to_string()],
         false,
     )
-    .expect("refresh source index");
+    .expect("rebuild source index");
 
     let result = lookup_source_index_for_language(
         &root,
@@ -333,10 +369,10 @@ exit 2
     run_cache(
         &root,
         None,
-        &["source-index".to_string(), "refresh".to_string()],
+        &["source-index".to_string(), "rebuild".to_string()],
         false,
     )
-    .expect("refresh source index");
+    .expect("rebuild source index");
 
     let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
     assert!(engine.db_path().exists());

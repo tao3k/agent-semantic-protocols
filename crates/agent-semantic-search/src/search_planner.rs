@@ -13,6 +13,8 @@ pub enum SearchPlannerRoute {
     FileLocator,
     /// Query should continue through the source-index lookup.
     SourceIndex,
+    /// Query should enter the lexical SearchFrame acquisition planner.
+    LexicalSearchFrame,
 }
 
 /// Request for planning a search route.
@@ -50,7 +52,7 @@ pub fn plan_search_route(request: SearchPlannerRequest<'_>) -> SearchPlannerDeci
     }
 
     SearchPlannerDecision {
-        route: SearchPlannerRoute::SourceIndex,
+        route: SearchPlannerRoute::LexicalSearchFrame,
         file_candidates: Vec::new(),
     }
 }

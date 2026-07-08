@@ -43,3 +43,4 @@ rs-harness = { path = "../../languages/rust-lang-project-harness/rs-harness" }
 rust-lang-project-harness = { workspace = true }
 toml = "0.9"
 insta = "1"
+asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy" }

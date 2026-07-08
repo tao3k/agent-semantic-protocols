@@ -1,0 +1,13 @@
+[benchmark]
+id = "search-degraded-route-bounded"
+scenario = "search-degraded-route-bounded"
+timer_unit = "milliseconds"
+target_p95_ms = 10
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+
+[gate]
+policy = "SEARCH-AGENT-ASP-DEGRADED-ROUTE-BOUNDED-001"
+require_explicit_route = true
+require_compact_receipt = true
+forbid_silent_broad_finder_fallback = true

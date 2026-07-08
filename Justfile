@@ -127,6 +127,16 @@ agent-tools-install-protocol bin_dir="":
       test -x "${bin_dir}/asp"; \
       "${bin_dir}/asp" guide >/dev/null
 
+# Install the debug protocol binary into a local bin dir and prewarm it.
+agent-tools-install-protocol-debug bin_dir=".bin":
+    @bin_dir="{{bin_dir}}"; \
+      mkdir -p "${bin_dir}"; \
+      cargo build --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
+      install -m 755 target/debug/asp "${bin_dir}/asp"; \
+      rm -f "${bin_dir}/semantic-agent-protocol"; \
+      test -x "${bin_dir}/asp"; \
+      "${bin_dir}/asp" guide >/dev/null
+
 # Install the shared protocol binary used by hook runtime commands.
 agent-tools-install-hook bin_dir="":
 	@just agent-tools-install-protocol "{{bin_dir}}"

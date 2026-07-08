@@ -2,6 +2,8 @@
 
 #[path = "agent_session_registry_args.rs"]
 mod agent_session_registry_args;
+#[path = "agent_session_registry_bootstrap.rs"]
+mod agent_session_registry_bootstrap;
 #[path = "agent_session_registry_codex.rs"]
 mod agent_session_registry_codex;
 #[path = "agent_session_registry_commands.rs"]
@@ -10,6 +12,8 @@ mod agent_session_registry_commands;
 mod agent_session_registry_lifecycle_audit;
 #[path = "agent_session_registry_lifetime.rs"]
 mod agent_session_registry_lifetime;
+#[path = "agent_session_registry_profile.rs"]
+mod agent_session_registry_profile;
 #[path = "agent_session_registry_render.rs"]
 mod agent_session_registry_render;
 #[path = "agent_session_registry_resume.rs"]
@@ -38,7 +42,7 @@ use agent_session_registry_args::{
 use agent_session_registry_codex::run_codex_session_wrapper;
 use agent_session_registry_commands::{
     close_session, gc_sessions, lifecycle_audit_session, list_sessions, reconcile_sessions,
-    register_session, reuse_session, show_session, smoke_session, status_session,
+    register_session, show_session, smoke_session, status_session,
 };
 use agent_session_registry_state::open_or_create_default_registry;
 use std::{env, path::PathBuf};
@@ -87,10 +91,12 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
     };
 
     match args.command {
+        SessionCommand::Bootstrap => {
+            agent_session_registry_bootstrap::bootstrap_session(&registry, &args, &project_root)
+        }
         SessionCommand::Register => register_session(&registry, &args),
         SessionCommand::List => list_sessions(&registry, &args),
         SessionCommand::Show => show_session(&registry, &args),
-        SessionCommand::Reuse => reuse_session(&registry, &args),
         SessionCommand::Status => status_session(&registry, &args, &project_root),
         SessionCommand::LifecycleAudit => lifecycle_audit_session(&registry, &args),
         SessionCommand::Smoke => smoke_session(&registry, &args),
@@ -113,7 +119,7 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
 
 fn should_render_resume_status(args: &SessionArgs) -> bool {
     if args.json {
-        return false;
+        return true;
     }
     agent_platform_session_active() || !std::io::IsTerminal::is_terminal(&std::io::stdin())
 }
@@ -149,7 +155,7 @@ fn switch_model(args: &SessionArgs) -> Result<(), String> {
     }
 }
 
-fn active_platform() -> Option<&'static str> {
+pub(crate) fn active_platform() -> Option<&'static str> {
     if env::var_os("CODEX_THREAD_ID").is_some() {
         return Some("codex");
     }

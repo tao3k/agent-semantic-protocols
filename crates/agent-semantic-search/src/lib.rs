@@ -20,9 +20,12 @@ mod graph_query_owner_seed;
 mod graph_seed_decision;
 mod graph_topology_projection;
 mod lexical_overlay;
+mod lexical_search_frame;
 mod owner_items_source_index_trace;
 mod pipe_candidates;
 mod pipe_source;
+mod pipe_source_index_projection;
+mod pipe_source_lexical_frame;
 pub use pipe_source::SearchPipeSelectorPayloadProof;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
@@ -40,6 +43,7 @@ mod search_pipe_evidence;
 mod search_pipe_quality;
 mod search_pipe_query_pack;
 mod search_query_budget;
+mod search_subagent_receipt;
 mod source_index_lookup;
 mod source_index_rank;
 pub use source_index_rank::{
@@ -97,6 +101,10 @@ pub use graph_topology_projection::{
 pub use lexical_overlay::{
     LexicalOverlayCandidateHit, LexicalOverlayDocument, LexicalOverlaySearchHit,
     LexicalOverlaySearchRequest, search_lexical_overlay, search_lexical_overlay_candidates,
+};
+pub use lexical_search_frame::{
+    LexicalAcquisitionRoute, LexicalEvidenceState, LexicalSearchFrameCandidate,
+    LexicalSearchFrameRequest, LexicalSearchFrameRoute, plan_lexical_search_frame,
 };
 pub use owner_items_source_index_trace::{
     OwnerItemsSourceIndexTrace, OwnerItemsSourceIndexTraceRender, OwnerItemsSourceIndexTraceStream,
@@ -200,6 +208,10 @@ pub use search_pipe_query_pack::{
 pub use search_query_budget::{
     SearchQueryBudgetBlock, search_query_budget_block, search_query_terms,
     search_rg_terms_budget_block, search_terms_budget_block, specific_search_term,
+};
+pub use search_subagent_receipt::{
+    SEARCH_SUBAGENT_GRAPH_ROUTE_RECEIPT_SCHEMA, search_subagent_graph_route_receipt,
+    search_subagent_graph_route_receipt_is_compact,
 };
 pub use source_index_lookup::{
     SourceIndexClientCacheLookupRequest, SourceIndexClientCachePlannerLookupRequest,

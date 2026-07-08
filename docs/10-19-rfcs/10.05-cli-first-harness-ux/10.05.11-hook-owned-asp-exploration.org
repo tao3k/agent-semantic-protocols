@@ -1,0 +1,14 @@
+* Hook-owned ASP exploration classification
+Main-session routing for agent exploration is a hook policy, not a provider command semantic. The =asp <language> search= and =asp <language> query= facades keep their provider-owned behavior when executed directly. They must not embed resident-child routing, session adoption, duplicate-child prevention, or model-switch recovery inside command dispatch. Those decisions happen before command execution in the pre-tool hook, because the hook sees the current agent action, platform session, sandbox, and recovery lane.
+
+** Command classes
+- =Core / reasoning broad search=: commands that start a broad evidence frontier, compose query terms, or perform workspace-scale discovery from the main session. Examples include =asp <language> search ...=, =asp <language> search pipe ...=, root =asp search/query= broad forms, =asp rg=, =asp fd=, and document =asp org|md search= when the result drives reasoning. In a Codex main session these are denied by the hook and routed into the resident-child interactive loop.
+- =Exact parser-owned read=: commands with an exact structural selector already selected by prior ASP evidence, such as =asp <language> query --selector rust://path#item/function/name --workspace . --code=. These may run in the main session only when the selector is already parser-owned and bounded. A file path, directory, or line range is not an exact parser-owned selector for code extraction.
+- =Lifecycle / control=: =asp agent session status=, =resume=, =register=, =lifecycle audit=, and other session-control commands are allowed in the main session only as loop-owned steps. The hook should not present them as independent fallback instructions.
+- =Child-local exploration=: once the command is running inside the resident =asp-explore= child, search/query commands are allowed. The child returns compact graph-route receipts, selectors, and bounded continuation facts, not source dumps.
+
+** Fallback rule
+If the main agent tries a Core broad search and the hook denies it, the recovery protocol is the resident-child interactive loop. The agent must enter that loop, choose one typed option from the current menu, perform the platform-native action for that choice, and re-enter the loop until the resident child reaches =Ready=. The hook must not present =git diff=, raw file reads, normal thread reads, another search tool, or direct lifecycle preflight commands as fallback paths.
+
+** Interactive loop override
+The canonical fallback is the resident-child interactive loop entry. The loop presents typed choices for audit, adoption, cleanup, managed child creation, native message-target recovery, model alignment, bounded receipt wait, and retry of the denied command. The hook must not expand that lifecycle as free-form guide text. Older wording that says to run lifecycle preflight directly is superseded by this loop contract.

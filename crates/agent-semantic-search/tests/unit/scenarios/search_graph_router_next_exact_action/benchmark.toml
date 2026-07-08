@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "search_flow_graph_router_prefers_exact_action_for_selector_ready_item"
+phase = "route"
+target_total = "2ms"
+max_total = "25ms"
+observed_total = "0us"
+regression_budget = "23ms"
+memory_budget_bytes = 1048576
+observed_memory_bytes = 0
+route_source = "graph-router-next-action"
+graph_router = "evidence-state-reasoning-tree"
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+fallback_reason = "none"
+target_rationale = "After selector-ready evidence exists, GraphRouter should choose exact item actions and mark seed or prime as an escaped first action."
+
+[observed_timings]
+selection_policy = "0us"
+escape_detection = "0us"

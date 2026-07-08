@@ -208,9 +208,77 @@ pub(crate) fn run_cache(
             }
             Ok(())
         }
+        [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "rebuild" => {
+            let refresh_project_root = parse_cache_workspace(project_root, rest)?;
+            let report = crate::source_index::rebuild_source_index(&refresh_project_root)?;
+            println!(
+                "[asp-cache-source-index] status=rebuilt route=local-cache db={} generation={} reused={} files={} owners={} selectors={} rawSourceStored=false indexOwner={}",
+                report.db_path().display(),
+                report.generation_id(),
+                report.reused_generation(),
+                report.file_count(),
+                report.owner_count(),
+                report.selector_count(),
+                source_index_refresh_index_owner()
+            );
+            println!(
+                "|reason phase={} action=rebuild providerCommands=0",
+                source_index_refresh_phase()
+            );
+            if receipt_json {
+                let receipt = json!({
+                    "schemaId": "agent.semantic-protocols.semantic-source-index.refresh-receipt",
+                    "schemaVersion": "1",
+                    "status": "rebuilt",
+                    "route": "local-cache",
+                    "dbPath": report.db_path().display().to_string(),
+                    "generationId": report.generation_id().to_string(),
+                    "reused": report.reused_generation(),
+                    "fileCount": report.file_count(),
+                    "ownerCount": report.owner_count(),
+                    "selectorCount": report.selector_count(),
+                    "rawSourceStored": false,
+                    "indexOwner": source_index_refresh_index_owner()
+                });
+                eprintln!("{receipt}");
+            }
+            Ok(())
+        }
         [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "refresh" => {
             let refresh_project_root = parse_cache_workspace(project_root, rest)?;
-            let report = refresh_source_index(&refresh_project_root)?;
+            let Some(report) = refresh_source_index(&refresh_project_root)? else {
+                println!(
+                    "[asp-cache-source-index] status=cold-required route=local-cache db=- generation=- reused=false files=0 owners=0 selectors=0 rawSourceStored=false indexOwner={}",
+                    source_index_refresh_index_owner()
+                );
+                println!(
+                    "|reason phase={} action=refresh state=no-reusable-generation providerCommands=0",
+                    source_index_refresh_phase()
+                );
+                println!(
+                    "next=asp cache source-index rebuild --workspace {}",
+                    refresh_project_root.display()
+                );
+                if receipt_json {
+                    let receipt = json!({
+                        "schemaId": "agent.semantic-protocols.semantic-source-index.refresh-receipt",
+                        "schemaVersion": "1",
+                        "status": "cold-required",
+                        "route": "local-cache",
+                        "dbPath": null,
+                        "generationId": null,
+                        "reused": false,
+                        "fileCount": 0,
+                        "ownerCount": 0,
+                        "selectorCount": 0,
+                        "rawSourceStored": false,
+                        "indexOwner": source_index_refresh_index_owner(),
+                        "next": "asp cache source-index rebuild"
+                    });
+                    eprintln!("{receipt}");
+                }
+                return Ok(());
+            };
             println!(
                 "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} reused={} files={} owners={} selectors={} rawSourceStored=false indexOwner={}",
                 report.db_path().display(),
@@ -426,7 +494,7 @@ pub(crate) fn run_cache(
             Ok(())
         }
         _ => Err(
-            "usage: asp cache <status|import|source-index refresh [--workspace <path>]|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--workspace <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
+            "usage: asp cache <status|import|source-index refresh [--workspace <path>]|source-index rebuild [--workspace <path>]|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--workspace <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
                 .to_string(),
         ),
     }

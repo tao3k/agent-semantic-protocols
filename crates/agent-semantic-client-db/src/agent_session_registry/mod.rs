@@ -2,8 +2,15 @@
 
 mod bootstrap;
 mod core;
+mod interactive_loop;
 mod lifecycle;
 mod types;
+
+pub use interactive_loop::{
+    AgentSessionHostRequirement, AgentSessionInteractiveChoice, AgentSessionInteractiveMenu,
+    AgentSessionInteractiveReceipt, AgentSessionInteractiveSession, AgentSessionLoopState,
+    AgentSessionLoopTraceStep, resident_child_bootstrap_menu,
+};
 
 pub use core::AgentSessionRegistry;
 pub use types::{

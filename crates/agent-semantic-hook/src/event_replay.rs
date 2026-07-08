@@ -128,7 +128,7 @@ pub(crate) fn compact_source_access_deny_message(
         return message;
     }
     format!(
-        "ASP denied source access (`{reason}`). Run `asp agent session lifecycle audit --json` to inspect rollout-only and registered child sessions; register or resume an existing child before retrying ASP search/query. If no recoverable child exists, run `asp agent session register --guide`.\nrecoveryRef={recovery_ref}"
+        "ASP denied source access (`{reason}`). Enter the resident-child interactive loop with `asp agent session bootstrap --name asp-explore --json`, choose one typed menu option, perform the platform-native action, then re-enter the loop until state=ready.\nrecoveryRef={recovery_ref}"
     )
 }
 

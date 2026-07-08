@@ -23,6 +23,9 @@ pub struct AgentSessionRecord {
     /// Concrete Codex session id registered for this agent.
     #[serde(rename = "sessionId")]
     pub session_id: String,
+    /// Native host message-agent target id, when it differs from durable session identity.
+    #[serde(rename = "messageTargetId", skip_serializing_if = "Option::is_none")]
+    pub message_target_id: Option<String>,
     /// Optional parent session id when this row represents a delegated agent.
     #[serde(rename = "parentSessionId", skip_serializing_if = "Option::is_none")]
     pub parent_session_id: Option<String>,
@@ -84,6 +87,12 @@ impl AgentSessionRecord {
     #[must_use]
     pub fn session_id(&self) -> &str {
         &self.session_id
+    }
+
+    /// Native host message-agent target id, when available.
+    #[must_use]
+    pub fn message_target_id(&self) -> Option<&str> {
+        self.message_target_id.as_deref()
     }
 
     /// Optional parent session id when this row represents a delegated agent.
@@ -205,6 +214,8 @@ pub struct AgentSessionRegisterRequest<'a> {
     pub root_session_id: &'a str,
     /// Concrete child session id to register or refresh.
     pub session_id: &'a str,
+    /// Native host message-agent target id for sending follow-up messages.
+    pub message_target_id: Option<&'a str>,
     /// Optional parent session id for delegated agents.
     pub parent_session_id: Option<&'a str>,
     /// Stable registry lane name, such as `asp-explore`.

@@ -443,6 +443,7 @@ async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Result<(), Stri
             project_id TEXT NOT NULL DEFAULT 'default',
             root_session_id TEXT NOT NULL,
             session_id TEXT NOT NULL UNIQUE,
+            message_target_id TEXT,
             parent_session_id TEXT,
             name TEXT NOT NULL,
             role TEXT NOT NULL,
@@ -464,6 +465,7 @@ async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Result<(), Stri
     )
     .await?;
     ensure_turso_agent_sessions_project_id_column(&connection).await?;
+    ensure_turso_agent_sessions_message_target_id_column(&connection).await?;
     dedupe_turso_agent_sessions_by_session_id(&connection).await?;
     for statement in [
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_asp_agent_sessions_project_root_name
@@ -474,6 +476,8 @@ async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Result<(), Stri
             ON asp_agent_sessions(project_id, root_session_id)",
         "CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_parent
             ON asp_agent_sessions(parent_session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_message_target
+            ON asp_agent_sessions(message_target_id)",
         "CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_session
             ON asp_agent_sessions(project_id, session_id)",
     ] {
@@ -490,6 +494,37 @@ async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Result<(), Stri
 async fn ensure_turso_agent_sessions_project_id_column(
     connection: &turso::Connection,
 ) -> Result<(), String> {
+    if turso_agent_sessions_column_exists(connection, "project_id").await? {
+        return Ok(());
+    }
+    execute_turso_statement_with_lock_retry(
+        connection,
+        "ALTER TABLE asp_agent_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'",
+        "failed to migrate Turso session registry project_id",
+    )
+    .await?;
+    Ok(())
+}
+
+async fn ensure_turso_agent_sessions_message_target_id_column(
+    connection: &turso::Connection,
+) -> Result<(), String> {
+    if turso_agent_sessions_column_exists(connection, "message_target_id").await? {
+        return Ok(());
+    }
+    execute_turso_statement_with_lock_retry(
+        connection,
+        "ALTER TABLE asp_agent_sessions ADD COLUMN message_target_id TEXT",
+        "failed to migrate Turso session registry message_target_id",
+    )
+    .await?;
+    Ok(())
+}
+
+async fn turso_agent_sessions_column_exists(
+    connection: &turso::Connection,
+    expected_column: &str,
+) -> Result<bool, String> {
     let mut rows = run_turso_operation_with_lock_retry(
         || async {
             connection
@@ -508,17 +543,11 @@ async fn ensure_turso_agent_sessions_project_id_column(
         let column_name = row
             .get::<String>(1)
             .map_err(|error| format!("failed to read Turso session registry column: {error}"))?;
-        if column_name == "project_id" {
-            return Ok(());
+        if column_name == expected_column {
+            return Ok(true);
         }
     }
-    execute_turso_statement_with_lock_retry(
-        connection,
-        "ALTER TABLE asp_agent_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'",
-        "failed to migrate Turso session registry project_id",
-    )
-    .await?;
-    Ok(())
+    Ok(false)
 }
 
 async fn turso_register_session(
@@ -579,6 +608,7 @@ async fn turso_register_session_once(
         project_id,
         root_session_id,
         session_id,
+                message_target_id,
                 parent_session_id,
                 name,
                 role,
@@ -590,11 +620,12 @@ async fn turso_register_session_once(
                 last_heartbeat_at,
                 expires_at,
                 metadata_json
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?9, ?9, ?10, ?11)
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, ?10, ?10, ?11, ?12)
     ON CONFLICT DO UPDATE SET
         project_id = excluded.project_id,
         root_session_id = excluded.root_session_id,
         session_id = excluded.session_id,
+                message_target_id = excluded.message_target_id,
                 parent_session_id = excluded.parent_session_id,
                 name = excluded.name,
                 role = excluded.role,
@@ -609,6 +640,7 @@ async fn turso_register_session_once(
                         request.project_id,
                         request.root_session_id,
                         request.session_id,
+                        request.message_target_id,
                         request.parent_session_id,
                         request.name,
                         request.role,
@@ -674,25 +706,25 @@ async fn turso_query_sessions(
     let connection = connect_turso_agent_session_registry(db_path).await?;
     let sql = match (root_session_id, name) {
         (Some(_), Some(_)) => {
-            "SELECT project_id, root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
+            "SELECT project_id, root_session_id, session_id, message_target_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
              FROM asp_agent_sessions
              WHERE project_id = ?1 AND root_session_id = ?2 AND name = ?3
              ORDER BY updated_at DESC, session_id"
         }
         (Some(_), None) => {
-            "SELECT project_id, root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
+            "SELECT project_id, root_session_id, session_id, message_target_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
              FROM asp_agent_sessions
              WHERE project_id = ?1 AND root_session_id = ?2
              ORDER BY updated_at DESC, session_id"
         }
         (None, Some(_)) => {
-            "SELECT project_id, root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
+            "SELECT project_id, root_session_id, session_id, message_target_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
              FROM asp_agent_sessions
              WHERE project_id = ?1 AND name = ?2
              ORDER BY updated_at DESC, session_id"
         }
         (None, None) => {
-            "SELECT project_id, root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
+            "SELECT project_id, root_session_id, session_id, message_target_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
              FROM asp_agent_sessions
              WHERE project_id = ?1
              ORDER BY updated_at DESC, session_id"
@@ -769,7 +801,7 @@ async fn turso_session_by_id(
         || async {
             connection
                 .query(
-                    "SELECT project_id, root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
+                    "SELECT project_id, root_session_id, session_id, message_target_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
                      FROM asp_agent_sessions
                      WHERE project_id = ?1 AND session_id = ?2",
                     (project_id, session_id),
@@ -799,7 +831,7 @@ async fn turso_session_by_id_any_project(
         || async {
             connection
                 .query(
-                    "SELECT project_id, root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
+                    "SELECT project_id, root_session_id, session_id, message_target_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
                      FROM asp_agent_sessions
                      WHERE session_id = ?1
                      ORDER BY updated_at DESC
@@ -830,7 +862,7 @@ async fn turso_session_for_root_session_id_any_project(
         || async {
             connection
                 .query(
-                    "SELECT project_id, root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
+                    "SELECT project_id, root_session_id, session_id, message_target_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
                      FROM asp_agent_sessions
                      WHERE root_session_id = ?1
                      ORDER BY updated_at DESC
@@ -1030,54 +1062,57 @@ fn turso_session_record_from_row(row: &turso::Row) -> Result<AgentSessionRecord,
         session_id: row
             .get::<String>(2)
             .map_err(|error| format!("failed to read Turso session id: {error}"))?,
-        parent_session_id: row
+        message_target_id: row
             .get::<Option<String>>(3)
+            .map_err(|error| format!("failed to read Turso message target id: {error}"))?,
+        parent_session_id: row
+            .get::<Option<String>>(4)
             .map_err(|error| format!("failed to read Turso parent session id: {error}"))?,
         name: row
-            .get::<String>(4)
+            .get::<String>(5)
             .map_err(|error| format!("failed to read Turso session name: {error}"))?,
         role: row
-            .get::<String>(5)
+            .get::<String>(6)
             .map_err(|error| format!("failed to read Turso session role: {error}"))?,
         model: row
-            .get::<Option<String>>(6)
+            .get::<Option<String>>(7)
             .map_err(|error| format!("failed to read Turso session model: {error}"))?,
         status: row
-            .get::<String>(7)
+            .get::<String>(8)
             .map_err(|error| format!("failed to read Turso session status: {error}"))?,
         created_at: row
-            .get::<i64>(8)
+            .get::<i64>(9)
             .map_err(|error| format!("failed to read Turso session created_at: {error}"))?,
         updated_at: row
-            .get::<i64>(9)
+            .get::<i64>(10)
             .map_err(|error| format!("failed to read Turso session updated_at: {error}"))?,
         last_seen_at: row
-            .get::<Option<i64>>(10)
+            .get::<Option<i64>>(11)
             .map_err(|error| format!("failed to read Turso session last_seen_at: {error}"))?,
         last_heartbeat_at: row
-            .get::<Option<i64>>(11)
+            .get::<Option<i64>>(12)
             .map_err(|error| format!("failed to read Turso session last_heartbeat_at: {error}"))?,
         expires_at: row
-            .get::<Option<i64>>(12)
+            .get::<Option<i64>>(13)
             .map_err(|error| format!("failed to read Turso session expires_at: {error}"))?,
         archived_at: row
-            .get::<Option<i64>>(13)
+            .get::<Option<i64>>(14)
             .map_err(|error| format!("failed to read Turso session archived_at: {error}"))?,
         last_tool_event: row
-            .get::<Option<String>>(14)
+            .get::<Option<String>>(15)
             .map_err(|error| format!("failed to read Turso session last_tool_event: {error}"))?,
         last_command: row
-            .get::<Option<String>>(15)
+            .get::<Option<String>>(16)
             .map_err(|error| format!("failed to read Turso session last_command: {error}"))?,
         last_evidence_ref: row
-            .get::<Option<String>>(16)
+            .get::<Option<String>>(17)
             .map_err(|error| format!("failed to read Turso session last_evidence_ref: {error}"))?,
         metadata_json: row
-            .get::<String>(17)
+            .get::<String>(18)
             .map_err(|error| format!("failed to read Turso session metadata_json: {error}"))?,
     })
 }
 
-const AGENT_SESSION_SELECT_ONE_BY_ROOT_AND_NAME: &str = "SELECT project_id, root_session_id, session_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
+const AGENT_SESSION_SELECT_ONE_BY_ROOT_AND_NAME: &str = "SELECT project_id, root_session_id, session_id, message_target_id, parent_session_id, name, role, model, status, created_at, updated_at, last_seen_at, last_heartbeat_at, expires_at, archived_at, last_tool_event, last_command, last_evidence_ref, metadata_json
 FROM asp_agent_sessions
 WHERE project_id = ?1 AND root_session_id = ?2 AND name = ?3";

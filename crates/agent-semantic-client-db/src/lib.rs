@@ -2,7 +2,7 @@
 
 //! DB Engine facade and control adapters for `agent-semantic-client`.
 
-mod agent_session_registry;
+pub mod agent_session_registry;
 pub mod engine;
 mod evidence_graph;
 mod source_index;

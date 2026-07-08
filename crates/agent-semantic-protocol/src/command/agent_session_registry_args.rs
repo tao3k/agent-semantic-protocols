@@ -5,15 +5,15 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <register|list|show|reuse|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <bootstrap|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
 pub(super) enum SessionCommand {
+    Bootstrap,
     Register,
     List,
     Show,
-    Reuse,
     Status,
     LifecycleAudit,
     Smoke,
@@ -35,6 +35,7 @@ pub(super) struct SessionArgs {
     pub(super) state_root: Option<PathBuf>,
     pub(super) name: Option<String>,
     pub(super) child_session_id: Option<String>,
+    pub(super) message_target_id: Option<String>,
     pub(super) root_session_id: Option<String>,
     pub(super) parent_session_id: Option<String>,
     pub(super) role: Option<String>,
@@ -61,6 +62,7 @@ impl SessionArgs {
             state_root: None,
             name: None,
             child_session_id: None,
+            message_target_id: None,
             root_session_id: None,
             parent_session_id: None,
             role: None,
@@ -89,12 +91,12 @@ impl SessionArgs {
             match arg.as_str() {
                 "-h" | "--help" | "help" => parsed.help = true,
                 "--guide" | "guide" => parsed.guide = true,
+                "bootstrap" | "loop" if index == 0 => parsed.command = SessionCommand::Bootstrap,
                 "register" | "add" | "upsert" if index == 0 => {
                     parsed.command = SessionCommand::Register;
                 }
                 "list" | "ls" if index == 0 => parsed.command = SessionCommand::List,
                 "show" | "get" if index == 0 => parsed.command = SessionCommand::Show,
-                "reuse" if index == 0 => parsed.command = SessionCommand::Reuse,
                 "status" if index == 0 => parsed.command = SessionCommand::Status,
                 "smoke" | "check" if index == 0 => parsed.command = SessionCommand::Smoke,
                 "lifecycle-audit" if index == 0 => {
@@ -144,6 +146,13 @@ impl SessionArgs {
                 "--child-session-id" | "--child-session" => {
                     index += 1;
                     parsed.child_session_id =
+                        Some(non_empty_flag(args, index, arg.as_str())?.to_string());
+                }
+                "--message-target-id"
+                | "--message-agent-target-id"
+                | "--agent-message-target-id" => {
+                    index += 1;
+                    parsed.message_target_id =
                         Some(non_empty_flag(args, index, arg.as_str())?.to_string());
                 }
                 "--root-session-id" | "--root" => {
@@ -245,10 +254,14 @@ fn guide_text_for(
     command: SessionCommand,
 ) -> Option<&str> {
     match command {
+        SessionCommand::Bootstrap => Some(
+            "asp agent session bootstrap guide\n\
+Run the resident ASP child lifecycle loop as a structured menu. The loop prints state and choices only; the agent chooses a menu option, performs the platform-native action, then reruns bootstrap until state=ready.\n\
+asp agent session bootstrap --name asp-explore --json",
+        ),
         SessionCommand::Register => guide.register(),
         SessionCommand::List => guide.list(),
         SessionCommand::Show => guide.show(),
-        SessionCommand::Reuse => guide.reuse(),
         SessionCommand::Status => guide.status(),
         SessionCommand::LifecycleAudit => Some(
             "asp agent session lifecycle audit guide\n\
@@ -286,7 +299,7 @@ Action step flow for saved-session resume:\n\
    asp agent session resume --name <resident-name>\n\
 This does not create a resident ASP child session.\n\
 If no configured resident child is registered, use bootstrap flow instead:\n\
-asp agent session register --guide",
+asp agent session bootstrap --name asp-explore --json",
         ),
         SessionCommand::Fork => Some(
             "asp agent session fork guide\n\
@@ -298,7 +311,7 @@ Action step flow for saved-session fork:\n\
 This does not create a resident ASP child session.\n\
 If no configured resident child is registered, do not use fork as bootstrap.\n\
 Use bootstrap flow instead:\n\
-asp agent session register --guide",
+asp agent session bootstrap --name asp-explore --json",
         ),
         SessionCommand::Archive => Some(
             "asp agent session archive guide\n\
@@ -334,7 +347,6 @@ fn agent_session_guide_has_any_text(
     guide_text_for(guide, SessionCommand::Register).is_some()
         || guide_text_for(guide, SessionCommand::List).is_some()
         || guide_text_for(guide, SessionCommand::Show).is_some()
-        || guide_text_for(guide, SessionCommand::Reuse).is_some()
         || guide_text_for(guide, SessionCommand::Status).is_some()
 }
 
@@ -377,7 +389,7 @@ fn default_agent_session_guide() -> agent_semantic_config::HookClientAgentSessio
     agent_semantic_config::HookClientAgentSessionGuideConfig::new(
         Some(
             "asp agent session register guide\n\
-Guide template failed to load. Run `asp sync` or install hooks, then rerun `asp agent session register --guide`."
+Guide template failed to load. Run `asp sync` or install hooks, then enter `asp agent session bootstrap --name asp-explore --json`."
                 .to_string(),
         ),
         Some(
@@ -392,12 +404,12 @@ Show one registered child session by --name or --child-session-id."
         ),
         Some(
             "asp agent session reuse guide\n\
-Guide template failed to load. Run `asp agent session register --guide` for bootstrap steps."
+Guide template failed to load. The legacy reuse guide is removed; enter `asp agent session bootstrap --name asp-explore --json`."
                 .to_string(),
         ),
         Some(
             "asp agent session status guide\n\
-Guide template failed to load. Run `asp agent session register --guide` when nextAction=start-resident-child-and-register."
+Guide template failed to load. Enter `asp agent session bootstrap --name asp-explore --json` when the resident child is missing or non-routable."
                 .to_string(),
         ),
     )
@@ -408,7 +420,7 @@ fn render_agent_session_guide(
 ) -> agent_semantic_config::HookClientAgentSessionGuideConfig {
     let host = agent_host_guide();
     if let Some(value) = guide.register_mut() {
-        *value = render_agent_session_guide_text(value, &host);
+        *value = canonical_agent_session_register_guide(&host);
     }
     if let Some(value) = guide.list_mut() {
         *value = render_agent_session_guide_text(value, &host);
@@ -416,13 +428,32 @@ fn render_agent_session_guide(
     if let Some(value) = guide.show_mut() {
         *value = render_agent_session_guide_text(value, &host);
     }
-    if let Some(value) = guide.reuse_mut() {
-        *value = render_agent_session_guide_text(value, &host);
-    }
     if let Some(value) = guide.status_mut() {
         *value = render_agent_session_guide_text(value, &host);
     }
     guide
+}
+
+fn canonical_agent_session_register_guide(host: &AgentHostGuide) -> String {
+    format!(
+        "asp agent session register guide\n\
+Register is a low-level step owned by the resident-child interactive loop.\n\
+Detected host: {host_label}\n\
+Session env: {session_env}\n\
+Canonical loop entry:\n\
+   asp agent session bootstrap --name asp-explore --json\n\
+Use that loop after a hook deny. Choose exactly one typed menu option, perform the platform-native action for that choice, then re-enter the same loop until state=ready.\n\
+Only run register when a loop choice asks for durable registration and provides both childSessionId and agentMessageTargetId.\n\
+Configured resident child action: {create_action}\n\
+Config source: {config_source}\n\
+Host projection: {host_projection}\n\
+Do not use register --guide, lifecycle audit, normal-thread reads, rollout scans, or generic subagent creation as independent fallback paths.",
+        host_label = host.host_label,
+        session_env = host.session_env,
+        create_action = host.create_action,
+        config_source = host.config_source,
+        host_projection = host.host_projection
+    )
 }
 
 fn render_agent_session_guide_text(text: &str, host: &AgentHostGuide) -> String {
@@ -446,7 +477,7 @@ fn agent_host_guide() -> AgentHostGuide {
         return AgentHostGuide {
             host_label: "codex",
             session_env: "CODEX_THREAD_ID",
-            create_action: "Codex action: start the configured ASP managed subagent `asp_explorer` only if the host exposes that managed type; use a resident search-lane seed; do not ask the child to fork, create, or register another session; send the exact denied ASP command to that same child with native message-agent send, wait for a bounded `[asp-search-subagent]` receipt, then cleanup only after the receipt; otherwise report bootstrapBlocked=host-agent-type-unavailable and do not create a generic subagent",
+            create_action: "Codex action: start or resume the configured ASP managed subagent `asp_explorer`; use a resident search-lane seed; do not ask the child to fork, create, or register another session; the parent owns registration and must capture the native agentMessageTargetId returned by the host",
             config_source: "~/.agent-semantic-protocols/agents/asp-explorer_codex.toml",
             host_projection: "~/.codex/agents/asp-explorer.toml",
         };

@@ -1,0 +1,17 @@
+id = "search-graph-router-next-exact-action"
+title = "GraphRouter chooses exact actions after selector-ready evidence"
+policy_ids = [
+  "SEARCH-AGENT-ASP-GRAPH-ROUTER-NEXT-ACTION-001",
+]
+agent_goal = "Keep graph routing from escaping back to seed or prime once EvidenceGraph contains selector-ready item evidence."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "GraphRouter",
+  "SearchActionSelection",
+  "SearchEvidenceState::KnownSelector",
+  "item-skeleton",
+  "query-code",
+]
+inputs = "inputs"
+expected = "expected"
+command = "cargo test -p agent-semantic-search --test unit_test search_flow_graph_router_prefers_exact_action_for_selector_ready_item -- --nocapture"

@@ -71,7 +71,7 @@ pub fn codex_hook_block(project_root: &Path) -> String {
 
 pub fn codex_asp_explorer_role_block() -> String {
     format!(
-        "[agents.{ASP_EXPLORER_ROLE_NAME}]\ndescription = {}\nconfig_file = {}\nnickname_candidates = [\"ASP owner\", \"ASP rg\", \"ASP selector\", \"ASP search\"]",
+        "[agents.{ASP_EXPLORER_ROLE_NAME}]\ndescription = {}\nconfig_file = {}\nnickname_candidates = [\"ASP Explore\", \"ASP Reasoning\", \"ASP Search\"]",
         toml_basic_string(ASP_EXPLORER_DESCRIPTION),
         toml_basic_string(ASP_EXPLORER_CONFIG_FILE),
     )
@@ -307,7 +307,7 @@ fn codex_hook_command(hook_event: &str, project_root: &Path) -> String {
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
     format!(
-        "repo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec asp hook {hook_event} --client codex --activation \"$activation\"\n"
+        "repo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec direnv exec \"$repo_root\" \"$repo_root/.bin/asp\" hook {hook_event} --client codex --activation \"$activation\"\n"
     )
 }
 

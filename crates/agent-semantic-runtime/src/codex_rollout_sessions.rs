@@ -100,6 +100,16 @@ fn direct_rollout_paths_for_session_id(
     search_roots: &[PathBuf],
     session_id: &str,
 ) -> Result<Vec<PathBuf>, String> {
+    if let Some(file_name) = rollout_exact_filename_for_session_id(session_id) {
+        let paths = search_roots
+            .iter()
+            .map(|search_root| search_root.join(&file_name))
+            .filter(|path| path.is_file())
+            .collect::<Vec<_>>();
+        if !paths.is_empty() {
+            return Ok(paths);
+        }
+    }
     let suffix = format!("{session_id}.jsonl");
     let mut paths = Vec::new();
     for search_root in search_roots {
@@ -136,6 +146,20 @@ fn direct_rollout_paths_for_session_id(
     Ok(paths)
 }
 
+fn rollout_exact_filename_for_session_id(session_id: &str) -> Option<String> {
+    let unix_millis = uuid_v7_unix_millis(session_id)?;
+    let unix_seconds = unix_millis.div_euclid(1_000);
+    let unix_day = unix_seconds.div_euclid(86_400);
+    let seconds_of_day = unix_seconds.rem_euclid(86_400);
+    let (year, month, day) = civil_from_unix_day(unix_day);
+    let hour = seconds_of_day / 3_600;
+    let minute = (seconds_of_day % 3_600) / 60;
+    let second = seconds_of_day % 60;
+    Some(format!(
+        "rollout-{year:04}-{month:02}-{day:02}T{hour:02}-{minute:02}-{second:02}-{session_id}.jsonl"
+    ))
+}
+
 fn rollout_search_roots_for_session_id(sessions_dir: &Path, session_id: &str) -> Vec<PathBuf> {
     let Some(unix_day) = uuid_v7_unix_day(session_id) else {
         return vec![sessions_dir.to_path_buf()];
@@ -146,16 +170,17 @@ fn rollout_search_roots_for_session_id(sessions_dir: &Path, session_id: &str) ->
 }
 
 fn uuid_v7_unix_day(session_id: &str) -> Option<i64> {
-    let timestamp_hex = session_id
-        .chars()
-        .filter(|character| *character != '-')
-        .take(12)
-        .collect::<String>();
-    if timestamp_hex.len() != 12 {
-        return None;
-    }
-    let unix_millis = i64::from_str_radix(&timestamp_hex, 16).ok()?;
-    Some(unix_millis.div_euclid(86_400_000))
+    Some(uuid_v7_unix_millis(session_id)?.div_euclid(86_400_000))
+}
+
+fn uuid_v7_unix_millis(session_id: &str) -> Option<i64> {
+    let uuid = uuid::Uuid::parse_str(session_id).ok()?;
+    let timestamp = uuid.get_timestamp()?;
+    let (seconds, nanos) = timestamp.to_unix();
+    let millis = seconds
+        .checked_mul(1_000)?
+        .checked_add(u64::from(nanos.checked_div(1_000_000).unwrap_or_default()))?;
+    i64::try_from(millis).ok()
 }
 
 fn rollout_date_dir(sessions_dir: &Path, unix_day: i64) -> PathBuf {
@@ -413,28 +438,13 @@ fn thread_spawn_child_session_ids_for_rollout(
     rollout_path: &Path,
     root_session_id: &str,
 ) -> Result<Vec<String>, String> {
-    let file = match fs::File::open(rollout_path) {
-        Ok(file) => file,
-        Err(_) => return Ok(Vec::new()),
-    };
-    let mut reader = BufReader::new(file);
-    let mut line = Vec::new();
+    let lines = rollout_index_sample_lines(rollout_path)?;
     let mut child_session_ids = BTreeSet::new();
-    loop {
-        line.clear();
-        let read = reader.read_until(b'\n', &mut line).map_err(|error| {
-            format!(
-                "failed to read Codex rollout thread_spawn lines from {}: {error}",
-                rollout_path.display()
-            )
-        })?;
-        if read == 0 {
-            break;
-        }
-        if !bytes_contain(&line, b"thread_spawn") {
+    for line in lines {
+        if !line.contains("thread_spawn") {
             continue;
         }
-        let Ok(value) = serde_json::from_slice::<Value>(&line) else {
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
         if value.get("type").and_then(Value::as_str) != Some("response_item") {
@@ -458,14 +468,6 @@ fn thread_spawn_child_session_ids_for_rollout(
         }
     }
     Ok(child_session_ids.into_iter().collect())
-}
-
-fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
-    !needle.is_empty()
-        && haystack.len() >= needle.len()
-        && haystack
-            .windows(needle.len())
-            .any(|window| window == needle)
 }
 
 fn spawned_agent_ids_for_rollout(rollout_path: &Path) -> Result<Vec<String>, String> {

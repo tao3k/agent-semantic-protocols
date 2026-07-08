@@ -7,6 +7,7 @@ agent_goal = "Keep every agent-semantic-search unit and integration surface repr
 reference_repositories = ["tao3k/agent-semantic-protocols"]
 reference_patterns = [
   "document_auto_lexical_overlay_scenario",
+  "dynamic_owner_items",
   "dynamic_overlay",
   "dynamic_search_candidates",
   "evidence_graph_rank",
@@ -19,6 +20,7 @@ reference_patterns = [
   "graph_query_owner_seed",
   "graph_seed_decision",
   "graph_topology_projection",
+  "lexical_search_frame",
   "owner_items_source_index_trace",
   "pipe_candidates",
   "prompt_output_replay",
@@ -26,6 +28,7 @@ reference_patterns = [
   "query_packet_replay",
   "query_wrapper_candidates",
   "search_candidate",
+  "search_flow_scenarios",
   "search_language_files",
   "search_lexical_replay",
   "search_packet_replay",

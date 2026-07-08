@@ -21,13 +21,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 
-[build-dependencies]
-rust-lang-project-harness = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
-rust-lang-project-harness = { workspace = true }
+asp-rust-project-harness-policy.workspace = true
 
 [[bench]]
 name = "client_microbench"
 harness = false
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

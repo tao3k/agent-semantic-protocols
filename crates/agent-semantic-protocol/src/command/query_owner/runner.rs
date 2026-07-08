@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::item::owner_item_matches_request;
+use super::item::{OwnerItem, owner_item_kind_matches_request, owner_item_matches_request};
 use super::owner_path::{owner_path_is_file_like, resolve_owner_path};
 use super::python_imports::python_imported_owner_items;
 use super::render::{
@@ -69,7 +69,7 @@ pub(crate) fn run_asp_fast_owner_query_to_string(
         };
         items
     };
-    let matches = items
+    let mut matches = items
         .iter()
         .filter(|item| {
             owner_item_matches_request(
@@ -80,6 +80,15 @@ pub(crate) fn run_asp_fast_owner_query_to_string(
             )
         })
         .collect::<Vec<_>>();
+    if matches.is_empty() {
+        matches = owner_local_source_matches(
+            &items,
+            &source,
+            item_query.term(),
+            &request.language_id,
+            item_query.kind(),
+        );
+    }
     let same_name_kinds = if matches.is_empty() {
         items
             .iter()
@@ -126,6 +135,44 @@ pub(crate) fn run_asp_fast_owner_query_to_string(
             &matches,
         )))
     }
+}
+
+fn owner_local_source_matches<'a>(
+    items: &'a [OwnerItem],
+    source: &str,
+    term: &str,
+    language_id: &str,
+    selector_kind: Option<&str>,
+) -> Vec<&'a OwnerItem> {
+    let term = term.trim();
+    if term.is_empty() {
+        return Vec::new();
+    }
+    let term = term.to_ascii_lowercase();
+    let mut matches: Vec<&OwnerItem> = Vec::new();
+    for (line_index, line) in source.lines().enumerate() {
+        if !line.to_ascii_lowercase().contains(&term) {
+            continue;
+        }
+        let line_number = line_index + 1;
+        for item in items {
+            if line_number < item.start_line()
+                || line_number > item.end_line()
+                || !owner_item_kind_matches_request(item, language_id, selector_kind)
+            {
+                continue;
+            }
+            if !matches.iter().any(|existing| {
+                existing.name() == item.name()
+                    && existing.kind() == item.kind()
+                    && existing.start_line() == item.start_line()
+                    && existing.end_line() == item.end_line()
+            }) {
+                matches.push(item);
+            }
+        }
+    }
+    matches
 }
 
 pub(in crate::command) fn run_asp_fast_owner_query_command(

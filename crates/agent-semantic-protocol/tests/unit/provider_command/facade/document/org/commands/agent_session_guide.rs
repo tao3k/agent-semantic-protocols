@@ -21,22 +21,28 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
     );
     assert!(
         stdout.contains(
-            "asp agent session register --name asp-explore --child-session-id <child-session-id> --roles subagent,search"
+            "asp agent session register --name asp-explore --child-session-id <child-session-id> --message-target-id <agent-message-target-id> --roles subagent,search --replace"
         ),
         "{stdout}"
     );
     assert!(stdout.contains("Detected host: codex"), "{stdout}");
     assert!(stdout.contains("Session env: CODEX_THREAD_ID"), "{stdout}");
-    assert!(stdout.contains("Action step flow"), "{stdout}");
+    assert!(
+        stdout.contains("Resident ASP child lifecycle loop"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Classify the audit result"), "{stdout}");
     assert!(
         stdout.contains("asp agent session lifecycle audit --json"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("Codex action: start the configured ASP managed subagent `asp_explorer`")
-            && stdout.contains("do not ask the child to fork, create, or register another session"),
+        stdout.contains(
+            "Codex action: start or resume the configured ASP managed subagent `asp_explorer`"
+        ) && stdout.contains("do not ask the child to fork, create, or register another session"),
         "{stdout}"
     );
+    assert!(stdout.contains("no registered or rollout-only resident child: create the configured resident ASP child now"), "{stdout}");
     assert!(
         stdout.contains("~/.agent-semantic-protocols/agents/asp-explorer_codex.toml"),
         "{stdout}"
@@ -50,7 +56,13 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("bootstrapBlocked=host-message-agent-target-unavailable"),
+        stdout.contains("messageTargetStatus=missing or non-routable"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "bootstrapBlocked=host-message-agent-target-unavailable with the attempted child id"
+        ),
         "{stdout}"
     );
     assert!(

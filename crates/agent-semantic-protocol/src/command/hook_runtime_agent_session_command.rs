@@ -6,8 +6,123 @@ pub(super) fn command_requires_resident_child(
 ) -> bool {
     let tokens = shell_like_tokens(command);
     tokens.iter().enumerate().any(|(index, token)| {
-        is_asp_binary_token(token) && !main_asp_command_allowed(&tokens, index)
+        if !is_asp_binary_token(token) {
+            return false;
+        }
+        match classify_main_session_asp_command(&tokens, index) {
+            MainSessionAspCommandClass::Precise => false,
+            MainSessionAspCommandClass::Reasoning => true,
+            MainSessionAspCommandClass::Unknown => !main_asp_command_allowed(&tokens, index),
+        }
     })
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum MainSessionAspCommandClass {
+    Precise,
+    Reasoning,
+    Unknown,
+}
+
+pub(super) fn classify_main_session_asp_command(
+    tokens: &[String],
+    asp_index: usize,
+) -> MainSessionAspCommandClass {
+    let Some(first) = tokens.get(asp_index + 1).map(|token| token.as_str()) else {
+        return MainSessionAspCommandClass::Unknown;
+    };
+    if first.eq_ignore_ascii_case("agent") {
+        return MainSessionAspCommandClass::Precise;
+    }
+    if first.eq_ignore_ascii_case("search") {
+        return classify_search_command(tokens, asp_index + 2);
+    }
+    if first.eq_ignore_ascii_case("rg") {
+        return MainSessionAspCommandClass::Reasoning;
+    }
+    let Some(second) = tokens.get(asp_index + 2).map(|token| token.as_str()) else {
+        return MainSessionAspCommandClass::Unknown;
+    };
+    if second.eq_ignore_ascii_case("search") {
+        return classify_search_command(tokens, asp_index + 3);
+    }
+    if second.eq_ignore_ascii_case("rg") {
+        return MainSessionAspCommandClass::Reasoning;
+    }
+    if !second.eq_ignore_ascii_case("query") {
+        return MainSessionAspCommandClass::Unknown;
+    }
+    classify_query_command(tokens, asp_index + 3)
+}
+
+fn classify_search_command(
+    tokens: &[String],
+    search_args_start: usize,
+) -> MainSessionAspCommandClass {
+    if tokens
+        .get(search_args_start)
+        .is_some_and(|token| token.eq_ignore_ascii_case("owner"))
+        && tokens
+            .get(search_args_start + 2)
+            .is_some_and(|token| token.eq_ignore_ascii_case("items"))
+    {
+        return MainSessionAspCommandClass::Precise;
+    }
+
+    MainSessionAspCommandClass::Reasoning
+}
+
+fn classify_query_command(
+    tokens: &[String],
+    query_args_start: usize,
+) -> MainSessionAspCommandClass {
+    if tokens
+        .iter()
+        .skip(query_args_start)
+        .any(|token| token == "--term" || token == "-t")
+    {
+        return MainSessionAspCommandClass::Reasoning;
+    }
+    let code_projection = tokens
+        .iter()
+        .skip(query_args_start)
+        .any(|token| token == "--code");
+    let selector = selector_arg(tokens, query_args_start);
+    match (selector, code_projection) {
+        (Some(selector), true) if is_exact_parser_owned_item_selector(selector) => {
+            MainSessionAspCommandClass::Precise
+        }
+        (Some(_), true) => MainSessionAspCommandClass::Reasoning,
+        (Some(_), false) => MainSessionAspCommandClass::Precise,
+        (None, _) => MainSessionAspCommandClass::Reasoning,
+    }
+}
+
+fn selector_arg(tokens: &[String], query_args_start: usize) -> Option<&str> {
+    let mut index = query_args_start;
+    while index < tokens.len() {
+        let token = tokens[index].as_str();
+        if token == "--selector" {
+            return tokens.get(index + 1).map(String::as_str);
+        }
+        if token.starts_with('-') {
+            index += if flag_takes_value(token) { 2 } else { 1 };
+            continue;
+        }
+        return Some(token);
+    }
+    None
+}
+
+fn flag_takes_value(token: &str) -> bool {
+    matches!(
+        token,
+        "--workspace" | "--view" | "--format" | "--limit" | "--lang" | "--language"
+    )
+}
+
+fn is_exact_parser_owned_item_selector(selector: &str) -> bool {
+    selector.contains("://") && selector.contains("#item/")
 }
 
 pub(super) fn command_contains_asp_binary(command: &str) -> bool {

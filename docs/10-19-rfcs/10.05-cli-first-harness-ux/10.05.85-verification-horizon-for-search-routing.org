@@ -33,6 +33,8 @@ Required review facts:
 Scenario quality does not replace trajectory verification. It checks whether the
 gate itself is faithful before =routeVerificationTrace= judges an execution.
 
+Scenario benchmark metadata must make timer units explicit in field names. Gates should use fields such as =target_p95_ms= and may also include =timer_unit = "milliseconds"= for human readability. Bare fields such as =target_p95= are invalid because they hide whether the threshold is milliseconds, seconds, or command-count units. Non-time budgets must use their own typed names, such as =max_provider_process_count= or =max_native_finder_process_count=.
+
 ** Routing principle
 
 Search is not a mandatory pipeline. Before =search prime=, =search pipe=,

@@ -142,11 +142,19 @@ pub(super) fn classify_codex_probe_output(output: &Output) -> CodexEnforcementRe
             detail,
         };
     }
-    if saw_sentinel {
+    if saw_sentinel && saw_hook_event {
         return CodexEnforcementReport {
             status: "configured-but-not-enforced",
             probe: "codex-exec",
             reason: "source-sentinel-leaked",
+            detail,
+        };
+    }
+    if saw_sentinel {
+        return CodexEnforcementReport {
+            status: "unproven",
+            probe: "codex-exec-unsupported",
+            reason: "codex-exec-hook-surface-missing",
             detail,
         };
     }

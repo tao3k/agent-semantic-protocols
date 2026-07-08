@@ -54,8 +54,9 @@ fn validate_code_selector_target(request: &ClientRequest) -> Result<(), String> 
         return Ok(());
     }
     if let Some(language_id) = registered_source_selector_language(request, selector) {
+        let workspace_arg = query_workspace_arg(request).unwrap_or(".");
         return Err(format!(
-            "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items"
+            "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nprojection=code\nallowed=false\nreason=file-selectors-are-not-code-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace_arg} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
         ));
     }
     if let Some(owner) = selector_owner {
@@ -219,9 +220,13 @@ fn looks_like_owner_path(value: &str) -> bool {
 }
 
 fn query_workspace(request: &ClientRequest) -> PathBuf {
-    option_value(&request.forwarded_args, "--workspace")
+    query_workspace_arg(request)
         .map(|workspace| resolve_under_workspace(&request.project_root, workspace))
         .unwrap_or_else(|| request.project_root.clone())
+}
+
+fn query_workspace_arg(request: &ClientRequest) -> Option<&str> {
+    option_value(&request.forwarded_args, "--workspace")
 }
 
 fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {

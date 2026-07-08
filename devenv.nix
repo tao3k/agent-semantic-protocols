@@ -14,6 +14,10 @@
   packages = [
     pkgs.pkg-config
     pkgs.openssl
+    pkgs.sqlite
+    pkgs.sqlite.dev
+    pkgs.zlib
+    pkgs.zlib.dev
     pkgs.protobuf
     pkgs.just
     pkgs.codeql
@@ -21,10 +25,25 @@
     pkgs.ripgrep
     pkgs.fzf
     pkgs.eza
+    pkgs.gcc
   ];
 
   env.PKG_CONFIG_PATH = lib.makeSearchPath "lib/pkgconfig" [
     pkgs.openssl.dev
+    pkgs.sqlite.dev
+    pkgs.zlib.dev
+  ];
+
+  env.CPATH = lib.makeSearchPath "include" [
+    pkgs.openssl.dev
+    pkgs.sqlite.dev
+    pkgs.zlib.dev
+  ];
+
+  env.LIBRARY_PATH = lib.makeSearchPath "lib" [
+    pkgs.openssl.out
+    pkgs.sqlite.out
+    pkgs.zlib.out
   ];
 
   languages.rust = {

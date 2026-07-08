@@ -1,5 +1,7 @@
 #![deny(dead_code)]
 
+#[path = "unit/agent_session_interactive_loop.rs"]
+mod agent_session_interactive_loop;
 #[path = "unit/db.rs"]
 mod db;
 #[path = "unit/db/engine/mod.rs"]

@@ -44,6 +44,8 @@ preserves the next reasoning decision.  That structure must be part of the
 whole =search= interface, not a special =owner= view.
 
 * LLM reasoning model
+When warm source-index, owner-item, or selector-proof evidence misses, the subagent receipt must still be a GraphRoute artifact. It should return a compact route state such as =bounded-cold-scan= / =needs-cold-scan= with the miss reason, boundedness, and process-count constraints as evidence. It must not silently convert the miss into broad finder output, source snippets, line ranges, confidence labels, or a flat command log. The parent agent should see the recovery route and decide whether to authorize the next exact action.
+
 
 ASP search subagents return the same graph slice that normal compact search
 renders. They must not fan in by dumping every selected owner/item selector as

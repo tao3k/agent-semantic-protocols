@@ -14,15 +14,17 @@ sha2 = { workspace = true }
 fs2 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 turso = { workspace = true }
+agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
 
 [[bench]]
 name = "turso_cache_hot_path"
 harness = false
 
-[build-dependencies]
-rust-lang-project-harness = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
-rust-lang-project-harness = { workspace = true }
+asp-rust-project-harness-policy.workspace = true
 tokio = { workspace = true }
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true

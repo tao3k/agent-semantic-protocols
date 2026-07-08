@@ -5,7 +5,7 @@ use super::support::{root_owned_rust_activation_json, rust_harness_activation};
 
 #[test]
 fn root_owned_rust_activation_tracks_rust_harness_default_scope() {
-    let config = rust_lang_project_harness::default_rust_harness_config();
+    let config = asp_rust_project_harness_policy::default_rust_harness_config();
     let runtime = rust_harness_activation();
     let provider = &runtime.providers[0];
 

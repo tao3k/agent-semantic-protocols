@@ -1,0 +1,170 @@
+* Normal-thread control-plane test
+** Interactive loop Diagram V1
+Diagram V1 is the first stable control-flow contract for resident-child recovery. It is intentionally small: every transition either reaches =Ready=, returns to =Audit= with a bounded reason, or presents another choice pane. The loop never asks the agent to infer a hidden next command from prose.
+
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> Audit
+    Audit --> Classify
+    Classify --> Ready: "registered + routable + messageTarget ready"
+    Classify --> Recover: "registered but non-routable or messageTarget missing"
+    Classify --> Adopt: "rollout-only recoverable child"
+    Classify --> Cleanup: "invalid, expired, orphan-risk, duplicate, or stale child"
+    Classify --> Create: "no resident child"
+    Recover --> Register: "recover native target or model alignment"
+    Adopt --> Register: "adopt existing managed child"
+    Cleanup --> Audit: "native close/archive, then re-audit"
+    Create --> Register: "native managed subagent create"
+    Register --> Validate
+    Validate --> Ready: "role + nickname + model + target pass"
+    Validate --> Recover: "model/target mismatch recoverable"
+    Validate --> Cleanup: "invalid stale child"
+    Ready --> SendDeniedCommand
+    SendDeniedCommand --> WaitReceipt
+    WaitReceipt --> RetryOriginal: "bounded receipt received"
+    WaitReceipt --> Audit: "no heartbeat, closed, or orphan-risk"
+    RetryOriginal --> [*]
+#+end_src
+
+** Agent choice pane V1 grammar
+The schema is the validation and transport layer. It is not the agent-facing interaction. The agent-facing pane is a compact question/action grammar, not JSON and not a checklist protocol. A checklist is only one renderer.
+
+Pane V1 uses stable fields with colon syntax:
+- =pane=: loop surface id, such as =asp.session.recover.v1=.
+- =state=: current state-machine node.
+- =target=: the resident or temporary subject, using placeholders.
+- =why=: one short reason this pane is shown.
+- =must=: invariant the agent must preserve while choosing.
+- =transport=: native host transport placeholder.
+- =choice=: stable choice id.
+- =ask=: the question the agent is answering.
+- =do=: native transport action, written through a placeholder.
+- =expect=: observation required from the host action.
+- =after=: next loop state after the observation is returned.
+
+The =do= field is a natural-language template plus placeholders. The natural language tells the agent how to trigger the host-native behavior. The placeholders let each platform replace the exact trigger phrase, field name, or transport payload. Codex, Claude, and PR-review hosts can therefore share the same choice grammar while substituting different native wording.
+
+Canonical visible pane V1 uses block grammar. Hyphen bullets are not field separators. Top-level fields start at column zero, and nested fields are indented under the owning choice. This is the pane form hooks and CLI should show by default:
+#+begin_src text
+pane: asp.session.recover.v1
+state: Recover
+target: {asp.residentChild.name}
+why: {obs.validation.reason}
+must: {asp.invariant.deniedReasoningSearchStaysOutOfMain}
+transport: {native.host.messageAgent.text} using {native.host.messageAgent.schemaRef}
+
+1: recover-target
+  ask: recover native message target for {asp.residentChild.name}?
+  do: {native.host.messageAgent.resolveTarget.text}
+  expect: {native.host.agentMessageTargetId}
+  after: Register
+
+2: align-model
+  ask: confirm configured model on {asp.residentChild.name}?
+  do: {native.host.messageAgent.sendModelAlignment.text} with model {cfg.models.active} and reasoning {cfg.reasoning.active}
+  expect: {obs.aspExplorerModelReady}
+  after: Validate
+
+3: cleanup-stale
+  ask: close only the stale ASP-managed child?
+  do: {native.host.lifecycle.archiveManagedChild.text}
+  expect: {obs.noActiveStaleResident}
+  after: Audit
+
+select: return exactly one number, such as "1"; perform its do action through native transport; return expect; re-enter the loop at after.
+#+end_src
+
+Placeholder namespaces are explicit:
+- =native.*=: fields and action names aligned to the host native transport schema, such as =codex-native-agent-transport.v1=.
+- =asp.*=: ASP-managed lifecycle state, never projected as native host fields.
+- =cfg.*=: values resolved from templates and dynamic config.
+- =obs.*=: observations returned by the host action or registry validation.
+
+Pane text is allowed to be natural language because current agent hosts expose native subagent actions through natural-language follow-up. The grammar around that text is not optional: every visible =choice= must map to one typed =Choice= id, one =do= transport action, one =expect= observation, and one =after= state. If a user or agent selects an invalid action, the loop re-renders the prior pane with =why= updated instead of emitting an ad hoc next command.
+
+A normal Codex thread is a temporary test harness, not the resident search lane. It is valid only when the parent test controls its lifecycle and records a bounded receipt.
+
+The test is complete only after all of these phases are observed:
+
+- the hook denies a Core broad search in the normal thread
+- =asp agent session resume/status --name asp-explore= reports the configured model and a native parent follow-up or create action
+- the parent attempts the native child-message path only when a distinct agent-message target is available
+- the normal thread returns a compact receipt with =hookDenied=, =resumeOutputModelGuidance=, =statusOutputModelGuidance=, =childResumedOrCreated=, =duplicateCreated=, =modelFollowupSent=, =finalStatus=, and =gapsFound=
+- the parent archives the temporary normal thread after the receipt, or after a bounded missing-receipt verdict
+
+Missing phases are structured control-plane failures, not timeout guesses:
+
+- =NeedsModelGuidance=: resume/status did not tell the parent which configured model to use
+- =NeedsChildMessageTarget=: the parent cannot address the resident child through the native message-agent path
+- =NeedsBoundedReceipt=: the normal thread did not return the required receipt, or drifted into source-entrypoint inspection
+- =NeedsStepContract=: the normal thread started with ASP discovery, rollout inspection, or another preparatory route instead of the required first hook-deny step
+- =NeedsArchive=: the temporary normal thread was left open after the test result
+
+If the normal thread starts inspecting source entrypoints instead of returning the receipt, the parent stops the test and records =NeedsBoundedReceipt= rather than waiting indefinitely.
+
+** Native message target boundary
+
+The registry session id identifies durable ASP lifecycle state. It is not a native Codex message-agent target and must not be used as a fallback send target. A resident child is only routable when:
+
+- its registry row is active and validation passes
+- its configured model is reported to the parent
+- its registry row carries an explicit native =messageTargetId=
+
+When the registry row is lifecycle-valid but lacks =messageTargetId=, =resume= and =status= must report =messageTargetStatus="missing"=, =messageTargetResultSource="registry-message-target-id-missing"=, and =routable=false=. The parent must enter the resident-child interactive loop and choose the recover or cleanup/create option offered by the current menu. The parent must not treat normal-thread reads, rollout scans, direct lifecycle preflight, or the child session id as a substitute message channel.
+
+** P0 interactive loop engine
+
+Resident child recovery is not a guide text problem. It is a P0 interactive loop problem. The hook deny path must hand the agent to one structured loop entry, and the loop must present a menu of choices until the resident child is ready. The loop output must not expose =nextCommand= as the primary protocol. The agent chooses from typed choices, performs the platform-native action described by that choice, then re-enters the same loop.
+
+The command layer is only a thin adapter. The state machine and choice catalog live above a reusable =agent-semantic-loop= package surface so the same interactive loop model can later drive search recovery, evidence routing, model switching, and other agent-choice workflows.
+
+The reusable loop package owns the agent-facing choice-pane primitives:
+
+- =Choice=: stable id, concise label, native platform action, =nextState=, and required inputs.
+- =TraceStep=: state/result breadcrumb that explains why this pane is being shown.
+- =HostRequirement=: native host capability requirement, such as managed agent kind and required message-target outputs.
+- =LoopReceipt=: loop invariant and =noNextCommand=true= continuation rule.
+
+Session bootstrap owns only the ASP session-specific classifier. It must not duplicate choice-pane structs inside command code.
+
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> Audit
+    Audit --> Classify
+
+    Classify --> Ready: "registered + routable + messageTarget ready"
+    Classify --> Recover: "registered but non-routable or messageTarget missing"
+    Classify --> Adopt: "rollout-only recoverable child"
+    Classify --> Cleanup: "invalid, expired, orphan-risk, duplicate, or stale child"
+    Classify --> Create: "no resident child"
+
+    Recover --> Register: "recover native target or model alignment"
+    Adopt --> Register: "adopt existing managed child"
+    Cleanup --> Audit: "native close/archive, then re-audit"
+    Create --> Register: "native managed subagent create"
+
+    Register --> Validate
+    Validate --> Ready: "role + nickname + model + target pass"
+    Validate --> Recover: "model/target mismatch recoverable"
+    Validate --> Cleanup: "invalid stale child"
+
+    Ready --> SendDeniedCommand
+    SendDeniedCommand --> WaitReceipt
+    WaitReceipt --> RetryOriginal: "bounded receipt received"
+    WaitReceipt --> Audit: "no heartbeat, closed, or orphan-risk"
+    RetryOriginal --> [*]
+#+end_src
+
+The interactive menu contract is schema-owned by =schemas/semantic-agent-session-interactive-menu.v1.schema.json=:
+
+- =state=: current state-machine node.
+- =choices=: available actions only; each choice carries an id, natural-language label, platform-native action, =nextState=, and required inputs.
+- =trace=: state/result breadcrumbs produced by the loop classifier so the agent can see why the current menu is =Audit=, =Create=, =Recover=, =Validate=, or =Ready= without reading rollout logs or guessing from a timeout.
+- =hostRequirement=: native host capability contract for the menu. For Codex resident search this requires managed agent kind =asp_explorer=, transport =message-agent=, and outputs =childSessionId= plus =agentMessageTargetId=. If the host only exposes a generic agent or a normal thread id, the agent must choose the host-blocker menu item.
+- =receipt.noNextCommand=true=: the loop owns continuation; commands are not chained through free-form guidance.
+- =platformAction=: phrased in native host terms such as Codex managed subagent create, Codex message-agent send, or Codex native close/archive.
+- =requiredInputs=: values the agent must obtain from the host action, such as =childSessionId= and =agentMessageTargetId=.
+
+The hook deny output for missing or non-routable =asp-explore= must point to the loop entry only. It must not expand the lifecycle guide, tell the agent to run raw searches, or allow normal-thread reads as a substitute for message-agent transport.
+
+The =Create= menu must include both the managed-child creation choice and a structured host-blocker choice. If the host exposes only generic/default/explorer/worker/asp_testing agents, or returns only a normal thread id without =agentMessageTargetId=, the agent reports =bootstrapBlocked=host-managed-agent-target-unavailable= and does not create a generic replacement.

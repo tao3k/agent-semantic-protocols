@@ -45,26 +45,17 @@ commandPrefixes = [
 [agentSessionGuide]
 register = """
 asp agent session register guide
-Action step flow when no asp-explore child is registered:
+Register is a low-level step owned by the resident-child interactive loop.
 Detected host: {{hostLabel}}
 Session env: {{sessionEnv}}
-1. Shell action: audit existing Codex rollout/session evidence before creating a new child.
-   asp agent session lifecycle audit --json
-   If the audit shows a recoverable rollout-only child for the intended resident role, register or resume that existing child instead of creating a replacement.
-2. {{createAction}}.
-   Config source: {{configSource}}
-   Host projection: {{hostProjection}}
-   Expected result: the host returns childSessionId for registry and agentMessageTargetId for message-agent sends.
-   If the host returns only a thread/session id, report bootstrapBlocked=host-message-agent-target-unavailable; do not use normal-thread read/send and do not create a generic subagent.
-3. Shell action: register that returned id.
-   asp agent session register --name asp-explore --child-session-id <child-session-id> --roles subagent,search
-   The detected session env is the root session; do not pass --root-session-id unless registering across sessions.
-4. Shell action: verify routing.
-   asp agent session status --name asp-explore --json
-5. Send the exact denied ASP query/search command to the registered child with the host native message-agent API. The child task must include the concrete ASP command or exact selector; do not send a vague search request.
-6. Wait for a bounded compact `[asp-search-subagent]` receipt from that same child before retrying, cleanup, or closing the child. A parent-side wait timeout is not proof that the child is dead; check lifecycle activity first.
-7. Retry the original ASP query/search command only after the child receipt is received or report bootstrapBlocked=host-message-agent-receipt-unavailable with the child id.
-Do not use `asp agent session fork` as bootstrap; fork only manages existing saved sessions.
+Canonical loop entry:
+   asp agent session bootstrap --name asp-explore --json
+Use that loop after a hook deny. Choose exactly one typed menu option, perform the platform-native action for that choice, then re-enter the same loop until state=ready.
+Only run register when a loop choice asks for durable registration and provides both childSessionId and agentMessageTargetId.
+Configured resident child action: {{createAction}}
+Config source: {{configSource}}
+Host projection: {{hostProjection}}
+Do not use register --guide, lifecycle audit, normal-thread reads, rollout scans, or generic subagent creation as independent fallback paths.
 """
 list = """
 asp agent session list guide
@@ -108,13 +99,10 @@ Before treating a wait timeout as failure, run `asp agent session status --name 
 Timeout is not a duplicate-worker trigger.
 """
 sessionStartBootstrap = """
-ASP session-start bootstrap required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
-Action step flow:
-0. Shell action: read the bootstrap guide.
-   asp agent session register --guide
-1. Codex action: start the configured subagent `{{residentCodexAgentName}}`.
-   Expected result: the host returns a child session id.
-2. Shell action: register the returned child session id.
+ASP resident-child interactive loop required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
+Run the resident-child choice pane and choose exactly one structured option.
+   asp agent session bootstrap --name {{residentChildName}} --json
+Do not expand a registration guide or create a generic subagent outside the pane.
    asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --roles subagent,search
 3. Shell action: verify routing.
    asp agent session status --name {{residentChildName}} --json
@@ -125,14 +113,10 @@ Do not use `asp agent session fork` as bootstrap; fork only manages existing sav
 If registration fails validation, close/delete the drifted child and create a fresh configured child.
 """
 missingResidentExplore = """
-ASP session-start bootstrap required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
-Action step flow:
-0. Shell action: read the bootstrap guide.
-   asp agent session register --guide
-1. {{createAction}}.
-   Codex action: start the configured subagent `{{residentCodexAgentName}}`.
-   Expected result: the host returns a child session id.
-2. Shell action: register the returned child session id.
+ASP resident-child interactive loop required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
+Run the resident-child choice pane and choose exactly one structured option.
+   asp agent session bootstrap --name {{residentChildName}} --json
+Do not expand a registration guide or create a generic subagent outside the pane.
    asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --roles subagent,search
 3. Shell action: verify routing.
    asp agent session status --name {{residentChildName}} --json
@@ -151,13 +135,9 @@ Command: {{command}}
 mainRestrictedWithoutChild = """
 ASP denied main-session ASP command (`{{commandLabel}}`).
 Main-session ASP usage is limited to session, recovery, and checkpoint commands: `asp agent session ...`, `asp org recall ...`, and `asp org capture ...`.
-Action step flow:
-0. Shell action: read the bootstrap guide.
-   asp agent session register --guide
-1. {{createAction}}.
-   Codex action: start the configured subagent `{{residentCodexAgentName}}`.
-   Expected result: the host returns a child session id.
-2. Shell action: register the returned child session id.
+Run the resident-child choice pane and choose exactly one structured option.
+   asp agent session bootstrap --name {{residentChildName}} --json
+Do not expand a registration guide or create a generic subagent outside the pane.
    asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --roles subagent,search
 3. Shell action: verify routing.
    asp agent session status --name {{residentChildName}} --json
@@ -193,12 +173,9 @@ command={{command}}
 """
 binaryGateWithoutChild = """
 ASP query/search command denied in agent session because no active {{residentChildName}} child session is registered for this root session.
-Action step flow:
-0. Shell action: read the bootstrap guide.
-   asp agent session register --guide
-1. {{createAction}}.
-   Expected result: the host returns a child session id.
-2. Shell action: register the returned child session id.
+Run the resident-child choice pane and choose exactly one structured option.
+   asp agent session bootstrap --name {{residentChildName}} --json
+Do not expand a registration guide or create a generic subagent outside the pane.
    asp agent session register --name {{residentChildName}} --child-session-id <child-session-id> --roles subagent,search
 3. Shell action: verify routing.
    asp agent session status --name {{residentChildName}} --json
@@ -242,8 +219,8 @@ command={{command}}
 sourceAccessCompact = """
 ASP denied source access (`{{reason}}`).
 Use asp-explore as the default resident search lane when {{residentChildName}} is not overridden.
-Send an agent message to {{residentChildName}} for ASP search/query only when a distinct agentMessageTargetId or a host single agent id accepted by the native message-agent send API is available, then receive its subagent message receipt. If only childSessionId/threadId is available and it cannot be used with native message-agent send, report bootstrapBlocked=host-message-agent-target-unavailable and do not use normal/read thread or `asp agent session resume` as the subagent protocol. If no valid child is registered, run:
-   asp agent session register --guide
+Send an agent message to {{residentChildName}} for ASP search/query only when a distinct agentMessageTargetId or a host single agent id accepted by the native message-agent send API is available, then receive its subagent message receipt. If only childSessionId/threadId is available, if the target is missing, or if no valid child is registered, enter the resident-child interactive loop:
+   asp agent session bootstrap --name {{residentChildName}} --json
 Recovery is allowlisted: use only Codex Message to agent / send_input for ASP-managed evidence work. Do not switch to any non-ASP-native evidence acquisition channel.
 recoveryRef={{recoveryRef}}
 """
