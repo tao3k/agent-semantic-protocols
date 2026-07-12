@@ -1,16 +1,19 @@
 harness = "libtest"
-test = "asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_scenario_gate"
-target_total = "250ms"
+test = "scenario_performance_gate::gerbil_projection_owner_items::asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate"
+phase = "lifecycle"
+target_total = "50ms"
 max_total = "500ms"
-observed_total = "1ms"
-regression_budget = "100ms"
+observed_total = "0ms"
+regression_budget = "450ms"
 memory_budget_bytes = 67108864
 observed_memory_bytes = 0
-route_source = "owner-items-provider"
-max_provider_process_count = 1
+route_source = "turso-evidence-graph"
+max_provider_process_count = 0
 max_stdout_bytes = 4096
 fallback_reason = "none"
-target_rationale = "Cold owner-items search is the first functional gate for Gerbil Scheme. The gate prioritizes provider-owned evidence, route correctness, no fallback, and no source synthesis; hot cache scenarios own the tighter measured optimization budget."
+target_rationale = "Cold and warm owner-items reads must use only the Turso EvidenceGraph. The explicit projection lifecycle owns the one bounded harness process; normal search never starts a Gerbil provider."
 
 [observed_timings]
-owner_items_cold_functional_path = "0us"
+cold_graph_read = "0ms"
+projection_import = "0ms"
+warm_graph_read = "0ms"

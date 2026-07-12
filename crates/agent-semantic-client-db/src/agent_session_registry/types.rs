@@ -33,9 +33,21 @@ pub struct AgentSessionRecord {
     pub name: String,
     /// Agent role advertised by the registry lane.
     pub role: String,
-    /// Optional model id observed or requested for this agent session.
+    /// Model id observed by a trusted native host source.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Trusted native source that produced the model observation.
+    #[serde(
+        rename = "modelObservationSource",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub model_observation_source: Option<String>,
+    /// Unix timestamp when the native host model observation was produced.
+    #[serde(rename = "modelObservedAt", skip_serializing_if = "Option::is_none")]
+    pub model_observed_at: Option<i64>,
+    /// Stable native evidence reference for auditing the model observation.
+    #[serde(rename = "modelEvidenceRef", skip_serializing_if = "Option::is_none")]
+    pub model_evidence_ref: Option<String>,
     /// Durable routing status stored in the registry.
     pub status: String,
     /// Unix timestamp when this row was first created.
@@ -68,6 +80,48 @@ pub struct AgentSessionRecord {
     /// Caller metadata plus validation receipt JSON.
     #[serde(rename = "metadataJson")]
     pub metadata_json: String,
+}
+
+impl AgentSessionRecord {
+    /// Return whether this session can receive routed work at `now`.
+    #[must_use]
+    pub fn is_routable_at(&self, now: i64) -> bool {
+        super::agent_session_status_is_routable(&self.status)
+            && self.expires_at.is_none_or(|expires| expires > now)
+    }
+}
+
+/// Trusted native-host observation of a child session model profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AgentSessionModelObservationRef<'a> {
+    /// Model id reported by the native host event or rollout.
+    pub model: &'a str,
+    /// Provenance identifier such as `codex.subagent-start` or `codex.rollout`.
+    pub source: AgentSessionModelObservationSource,
+    /// Unix timestamp associated with the native observation.
+    pub observed_at: i64,
+    /// Stable event, rollout, or turn reference used to audit this observation.
+    pub evidence_ref: Option<&'a str>,
+}
+
+/// Closed catalog of native sources trusted to report a child model profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentSessionModelObservationSource {
+    /// Codex native `SubagentStart` hook payload.
+    CodexSubagentStart,
+    /// Codex native rollout metadata observed during validation.
+    CodexRollout,
+}
+
+impl AgentSessionModelObservationSource {
+    /// Return the stable storage identifier for this native source.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CodexSubagentStart => "codex.subagent-start",
+            Self::CodexRollout => "codex.rollout",
+        }
+    }
 }
 
 impl AgentSessionRecord {
@@ -222,8 +276,8 @@ pub struct AgentSessionRegisterRequest<'a> {
     pub name: &'a str,
     /// Agent role advertised to routing and validation.
     pub role: &'a str,
-    /// Optional expected or observed model id.
-    pub model: Option<&'a str>,
+    /// Optional model observation produced by a trusted native host source.
+    pub model_observation: Option<AgentSessionModelObservationRef<'a>>,
     /// Durable routing status to store.
     pub status: &'a str,
     /// Optional expiration timestamp for routability.

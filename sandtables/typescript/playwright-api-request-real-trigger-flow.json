@@ -17,6 +17,13 @@
   ],
   "evidence": {
     "source": "real-trigger",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "Playwright",
+      "package": "playwright",
+      "repository": "microsoft/playwright",
+      "workdirKind": "checkout"
+    },
     "intent": "Implement APIRequestContext fetch behavior before selecting files to edit",
     "recordedAt": "2026-06-01",
     "receiptPath": "sandtables/receipts/typescript/playwright-api-request-real-trigger-flow.receipt.json",
@@ -30,7 +37,7 @@
     },
     "querySetOpportunities": [
       {
-        "view": "fzf",
+        "view": "lexical",
         "queries": 3,
         "saveCommands": 2,
         "selector": "exact-set",
@@ -46,7 +53,7 @@
       {
         "kind": "tests-ranking",
         "severity": "info",
-        "message": "fzf query-set owner coverage preserves packages/playwright-core/src/server/fetch.ts in the first owner frontier"
+        "message": "lexical query-set owner coverage preserves packages/playwright-core/src/server/fetch.ts in the first owner frontier"
       }
     ]
   },
@@ -66,7 +73,8 @@
     {
       "id": "workspace",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "workspace",
         "--workspace",
@@ -86,7 +94,8 @@
     {
       "id": "prime-root",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "prime",
         "--view",
@@ -108,16 +117,19 @@
     {
       "id": "text-api-request-query-set",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
-        "fzf",
-        "--query-set",
+        "lexical",
+        "--query",
         "APIRequestContext",
-        "--query-set",
+        "--query",
         "BrowserContextAPIRequestContext",
-        "--query-set",
+        "--query",
         "fetch",
+        "--query",
         "owner",
+        "--query",
         "tests",
         "--view",
         "seeds",
@@ -127,7 +139,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf]",
+          "[search-lexical]",
           "querySet=3",
           "packages/playwright-core/src/server/fetch.ts",
           "tests/playwright-test/playwright.spec.ts",
@@ -140,7 +152,8 @@
     {
       "id": "owner-fetch-items",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "owner",
         "packages/playwright-core/src/server/fetch.ts",
@@ -165,7 +178,8 @@
     {
       "id": "tests-fetch-missing",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "tests",
         "packages/playwright-core/src/server/fetch.ts",
@@ -196,7 +210,8 @@
         "tests/library/global-fetch-cookie.spec.ts"
       ],
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "ingest",
         "--view",

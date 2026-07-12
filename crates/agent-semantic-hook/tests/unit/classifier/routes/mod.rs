@@ -3,7 +3,6 @@ use agent_semantic_hook::{ActivatedProvider, HookRuntime, StdinMode};
 use super::{command, command_with_stdin, provider, provider_routes, typescript_provider};
 
 mod codex_command_actions;
-mod direct_read;
 mod python_priority;
 mod raw_search;
 mod search_json;

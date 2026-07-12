@@ -388,7 +388,7 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
     );
     assert!(output.contains("risk=broad-direct-read,manual-window-scan,repeat-prime"));
     assert!(output.contains(
-        "next=\"asp rust search lexical '<question-or-feature-term>' owner tests --workspace . --view seeds\""
+        "next=\"asp rust search lexical <question-term> <related-feature-term> owner tests --workspace . --view seeds\""
     ));
     assert!(output.contains(
         "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next"

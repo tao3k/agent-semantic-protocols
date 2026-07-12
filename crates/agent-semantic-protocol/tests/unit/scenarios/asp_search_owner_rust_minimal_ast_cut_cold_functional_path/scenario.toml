@@ -1,0 +1,9 @@
+id = "asp-search-owner-rust-minimal-ast-cut-cold-functional-path"
+title = "Rust owner-items emits the minimal matching AST cut"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001",
+]
+agent_goal = "Search a known Rust owner for a term inside a method and receive only the most specific matching AST item."
+inputs = "inputs/owner.rs"
+expected = "expected/frontier.txt"

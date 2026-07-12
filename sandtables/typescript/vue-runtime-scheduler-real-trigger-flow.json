@@ -17,6 +17,13 @@
   ],
   "evidence": {
     "source": "real-trigger",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "Vue",
+      "package": "vue",
+      "repository": "vuejs/core",
+      "workdirKind": "checkout"
+    },
     "intent": "Implement runtime scheduler flush behavior before selecting files to edit",
     "recordedAt": "2026-06-01",
     "receiptPath": "sandtables/receipts/typescript/vue-runtime-scheduler-real-trigger-flow.receipt.json",
@@ -30,7 +37,7 @@
     },
     "querySetOpportunities": [
       {
-        "view": "fzf",
+        "view": "lexical",
         "queries": 3,
         "saveCommands": 2,
         "selector": "exact-set",
@@ -73,7 +80,8 @@
     {
       "id": "workspace",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "workspace",
         "--workspace",
@@ -93,16 +101,19 @@
     {
       "id": "text-scheduler-query-set",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
-        "fzf",
-        "--query-set",
+        "lexical",
+        "--query",
         "queueJob",
-        "--query-set",
+        "--query",
         "flushJobs",
-        "--query-set",
+        "--query",
         "nextTick",
+        "--query",
         "owner",
+        "--query",
         "tests",
         "--view",
         "seeds",
@@ -112,7 +123,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf]",
+          "[search-lexical]",
           "querySet=3",
           "owner:path(src/scheduler.ts)",
           "test:path(src/scheduler.ts)"
@@ -124,7 +135,8 @@
     {
       "id": "owner-scheduler-items",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "owner",
         "src/scheduler.ts",
@@ -149,7 +161,8 @@
     {
       "id": "tests-scheduler-package-miss",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "tests",
         "src/scheduler.ts",
@@ -172,7 +185,8 @@
     {
       "id": "tests-scheduler-root-noisy",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "tests",
         "packages/runtime-core/src/scheduler.ts",
@@ -195,12 +209,13 @@
     {
       "id": "tests-query-set-unsupported",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "tests",
-        "--query-set",
+        "--query",
         "src/scheduler.ts",
-        "--query-set",
+        "--query",
         "src/apiWatch.ts",
         "--view",
         "seeds",

@@ -1,0 +1,18 @@
+[benchmark]
+id = "search-source-index-cold-required-overlay-skipped"
+scenario = "search-source-index-cold-required-overlay-skipped"
+timer_unit = "milliseconds"
+target_p95_ms = 2
+max_total_ms = 10
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+max_overlay_collection_count = 0
+
+[gate]
+policy = "SEARCH-AGENT-ASP-SOURCE-INDEX-COLD-REQUIRED-OVERLAY-SKIPPED-001"
+require_source_index_cold_required_trace = true
+require_overlay_skipped_trace = true
+require_explicit_rebuild_action = true
+forbid_search_overlay_fallback = true
+forbid_provider_startup = true
+forbid_native_finder_fallback = true

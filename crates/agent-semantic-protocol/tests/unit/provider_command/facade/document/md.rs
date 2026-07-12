@@ -49,6 +49,7 @@ fn md_facade_search_lexical_uses_asp_fast_search() {
             "search",
             "lexical",
             "Document",
+            "Prime",
             "--workspace",
             ".",
             "--view",
@@ -63,11 +64,8 @@ fn md_facade_search_lexical_uses_asp_fast_search() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("[graph-frontier]"), "stdout={stdout}");
-    assert!(
-        stdout.contains("provider-root:language-root(md:.)"),
-        "stdout={stdout}"
-    );
+    assert!(stdout.contains("[graph-route]"), "stdout={stdout}");
+    assert!(stdout.contains("owner=path(guide.md)"), "stdout={stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 

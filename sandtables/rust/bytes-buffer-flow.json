@@ -20,7 +20,7 @@
     {
       "id": "prime",
       "command": [
-        "rs-harness",
+        "asp rust",
         "search",
         "prime",
         "--view",
@@ -51,9 +51,9 @@
     {
       "id": "text-bytes-mut",
       "command": [
-        "rs-harness",
+        "asp rust",
         "search",
-        "fzf",
+        "lexical",
         "BytesMut",
         "--view",
         "seeds",
@@ -68,7 +68,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf]",
+          "[search-lexical]",
           "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "G>{",
           "rank=",
@@ -86,7 +86,7 @@
     {
       "id": "owner-bytes-items",
       "command": [
-        "rs-harness",
+        "asp rust",
         "search",
         "owner",
         "{bytesOwner}",
@@ -120,7 +120,7 @@
     {
       "id": "tests-bytes-owner",
       "command": [
-        "rs-harness",
+        "asp rust",
         "search",
         "tests",
         "{bytesOwner}",

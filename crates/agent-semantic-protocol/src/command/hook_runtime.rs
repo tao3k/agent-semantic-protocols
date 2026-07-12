@@ -4,6 +4,8 @@
 mod hook_runtime_agent_session;
 #[path = "hook_runtime_codex_plugin.rs"]
 mod hook_runtime_codex_plugin;
+#[path = "hook_runtime_codex_plugin_identity.rs"]
+mod hook_runtime_codex_plugin_identity;
 #[path = "hook_runtime_doctor.rs"]
 mod hook_runtime_doctor;
 #[path = "hook_runtime_skill.rs"]
@@ -95,6 +97,11 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     ensure_supported_client(client)?;
     let emit = flag_value(args, "--emit").unwrap_or("platform");
     let event = first_positional(args).ok_or_else(|| "missing hook event".to_string())?;
+    let classification_event = if client == "codex" && event == "permission-request" {
+        "pre-tool"
+    } else {
+        event
+    };
     let activation_path = flag_value(args, "--activation")
         .map(PathBuf::from)
         .unwrap_or_else(default_or_discovered_activation_path);
@@ -171,18 +178,26 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
-    let mut decision = if let Some(read_only_decision) =
-        classify_read_only_resident_receipt(&project_root, client, event, &hook_config, &payload)
-    {
+    let mut decision = if let Some(read_only_decision) = classify_read_only_resident_receipt(
+        &project_root,
+        client,
+        classification_event,
+        &hook_config,
+        &payload,
+    ) {
         read_only_decision
-    } else if let Some(read_only_decision) =
-        classify_read_only_resident_write(&project_root, client, event, &hook_config, &payload)
-    {
+    } else if let Some(read_only_decision) = classify_read_only_resident_write(
+        &project_root,
+        client,
+        classification_event,
+        &hook_config,
+        &payload,
+    ) {
         read_only_decision
     } else if let Some(agent_session_decision) = classify_main_session_asp_exploration(
         &project_root,
         client,
-        event,
+        classification_event,
         &runtime,
         &asp_session_policy,
         &payload,
@@ -193,10 +208,30 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             registry: &runtime,
             config: &hook_config,
             platform: client,
-            event,
+            event: classification_event,
             payload: &payload,
         })
     };
+    decision.event = event.to_string();
+    if event == "subagent-stop" {
+        if let Some(session_id) =
+            archive_stopped_managed_child(client, &project_root, &payload, &asp_session_policy)?
+        {
+            decision.decision = DecisionKind::Allow;
+            decision.reason_kind = ReasonKind::None;
+            decision.message =
+                "ASP archived the stopped managed child; allow native subagent shutdown."
+                    .to_string();
+            decision.fields.insert(
+                "agentSessionAction".to_string(),
+                serde_json::Value::String("subagent-stop-archived-managed-child".to_string()),
+            );
+            decision.fields.insert(
+                "childSessionId".to_string(),
+                serde_json::Value::String(session_id),
+            );
+        }
+    }
     if let Err(error) = annotate_payload_context(&project_root, &mut decision, &payload) {
         eprintln!("[agent-semantic-hook] failed to annotate hook payload context: {error}");
     }
@@ -300,6 +335,74 @@ fn lookup_hook_session(
         })
         .ok()
         .flatten()
+}
+
+fn archive_stopped_managed_child(
+    platform: &str,
+    project_root: &Path,
+    payload: &serde_json::Value,
+    asp_session_policy: &hook_runtime_agent_session::AspSessionPolicy,
+) -> Result<Option<String>, String> {
+    let session_id = if platform == "codex" {
+        if payload
+            .get("hook_event_name")
+            .and_then(serde_json::Value::as_str)
+            != Some("SubagentStop")
+        {
+            return Ok(None);
+        }
+        let Some(agent_type) = string_field(payload, &["agent_type", "agentType"]) else {
+            return Ok(None);
+        };
+        if agent_type != asp_session_policy.resident_agent_role() {
+            return Ok(None);
+        }
+        let Some(agent_id) = string_field(payload, &["agent_id", "agentId"]) else {
+            return Ok(None);
+        };
+        agent_id
+    } else {
+        let Some(session_id) = string_field(
+            payload,
+            &[
+                "child_session_id",
+                "childSessionId",
+                "session_id",
+                "sessionId",
+            ],
+        ) else {
+            return Ok(None);
+        };
+        session_id
+    };
+    let Some(registry) = AgentSessionRegistry::open_existing_project(project_root)? else {
+        return Ok(None);
+    };
+    let project_id = AgentSessionRegistry::project_scope_id(project_root);
+    let Some(session) = registry.lookup_session(AgentSessionLookupRequest {
+        project_id: &project_id,
+        session_id: Some(&session_id),
+        root_session_id: None,
+        name: None,
+    })?
+    else {
+        return Ok(None);
+    };
+    if !hook_runtime_agent_session::session_matches_resident_agent(
+        &session,
+        asp_session_policy.resident_child_name(),
+        asp_session_policy.resident_agent_role(),
+    ) {
+        return Ok(None);
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("failed to read subagent-stop timestamp: {error}"))?
+        .as_secs() as i64;
+    if registry.archive_session(&project_id, &session_id, now)? {
+        return Ok(Some(session_id));
+    }
+    Ok(None)
 }
 
 fn resident_asp_explore_sandbox_mode() -> Option<String> {
@@ -720,7 +823,14 @@ pub(super) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), Strin
                 .to_string(),
         );
     }
-    run_install_for_client("codex", args, "plugin-install")
+    let mut global_args = args.to_vec();
+    if !global_args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--global" | "--global-plugin"))
+    {
+        global_args.push("--global".to_string());
+    }
+    run_install_for_client("codex", &global_args, "plugin-install")
 }
 
 fn run_install_for_client(
@@ -767,6 +877,10 @@ fn run_install_for_client(
     let installed_skill = Some(match client {
         "codex" => install_agent_semantic_protocols_plugin_skill(
             &project_root,
+            match codex_plugin_scope {
+                CodexPluginScope::Project => hook_runtime_skill::PluginSkillScope::Project,
+                CodexPluginScope::Global => hook_runtime_skill::PluginSkillScope::Global,
+            },
             &activation,
             &runtime_profiles,
         )?,
@@ -782,6 +896,17 @@ fn run_install_for_client(
         } else {
             None
         };
+    if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
+        let legacy_project_cache = project_root.join(".codex/plugins/cache/asp-project");
+        if legacy_project_cache.exists() {
+            std::fs::remove_dir_all(&legacy_project_cache).map_err(|error| {
+                format!(
+                    "failed to remove legacy Codex project plugin cache {}: {error}",
+                    legacy_project_cache.display()
+                )
+            })?;
+        }
+    }
     timings.mark("plugin-cache");
     let project_skill_receipt = installed_skill
         .as_ref()

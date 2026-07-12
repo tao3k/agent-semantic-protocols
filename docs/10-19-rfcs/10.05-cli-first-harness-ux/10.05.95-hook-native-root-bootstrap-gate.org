@@ -1,0 +1,28 @@
+#+title: Hook Native Root Bootstrap Gate
+#+status: accepted
+#+priority: P0
+
+* Problem
+
+A newly started Normal platform task has a native root session identity before
+ASP has written any session-registry row.  Treating an empty registry as
+"outside agent session" lets reasoning search commands bypass the hook and
+prevents the interactive resident-child bootstrap loop from starting.
+
+* Contract
+
+- A platform-native root session identity is sufficient to enter the ASP hook
+  control plane.  Registry presence is not a prerequisite.
+- Reasoning flows, including broad =search= and =query= forms for every
+  registered language facade, are denied in the main agent and routed to the
+  resident-child interactive loop.
+- Exact parser-owned item selectors remain direct evidence reads.
+- A task is outside the agent-session control plane only when it has neither a
+  native root identity, rollout topology, nor an ASP registry relationship.
+
+* Verification
+
+The Codex =permission-request= scenario must start with an empty registry and a
+non-empty =CODEX_THREAD_ID=.  =asp <language> search prime= must return deny and
+the bootstrap pane command.  The matrix also keeps an exact item selector
+allowed and covers a non-Rust registered language facade.

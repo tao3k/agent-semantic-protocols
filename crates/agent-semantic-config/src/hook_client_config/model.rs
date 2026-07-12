@@ -402,6 +402,10 @@ pub struct HookClientRuleMatchConfig {
     pub tool_any: Vec<String>,
     #[serde(default)]
     pub command_any: Vec<String>,
+    /// Exact argument-vector prefixes evaluated at each parsed shell-command stage.
+    /// For example, `argvPrefixAny = [["rm", "-rf"]]` matches `rm -rf target`.
+    #[serde(default)]
+    pub argv_prefix_any: Vec<Vec<String>>,
     #[serde(default)]
     pub command_contains_any: Vec<String>,
     #[serde(default)]

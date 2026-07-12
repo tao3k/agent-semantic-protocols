@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-search-command-intent.v1.schema.json",
+  "title": "ASP Search Command Intent",
+  "description": "Shared classification for main-session ASP evidence command routing.",
+  "oneOf": [
+    {
+      "properties": {
+        "schemaId": { "const": "agent.semantic-protocols.search-command-intent" },
+        "schemaVersion": { "const": "1" },
+        "intent": { "const": "control-plane" },
+        "route": { "const": "main-agent" }
+      },
+      "required": ["schemaId", "schemaVersion", "intent", "route"]
+    },
+    {
+      "properties": {
+        "schemaId": { "const": "agent.semantic-protocols.search-command-intent" },
+        "schemaVersion": { "const": "1" },
+        "intent": { "const": "exact-evidence-read" },
+        "route": { "const": "main-agent" },
+        "selector": { "type": "string", "minLength": 1 }
+      },
+      "required": ["schemaId", "schemaVersion", "intent", "route", "selector"]
+    },
+    {
+      "properties": {
+        "schemaId": { "const": "agent.semantic-protocols.search-command-intent" },
+        "schemaVersion": { "const": "1" },
+        "intent": { "const": "reasoning-flow" },
+        "route": { "const": "asp-explore" }
+      },
+      "required": ["schemaId", "schemaVersion", "intent", "route"]
+    },
+    {
+      "properties": {
+        "schemaId": { "const": "agent.semantic-protocols.search-command-intent" },
+        "schemaVersion": { "const": "1" },
+        "intent": { "const": "unknown" },
+        "route": { "enum": ["main-agent", "policy"] }
+      },
+      "required": ["schemaId", "schemaVersion", "intent", "route"]
+    }
+  ],
+  "additionalProperties": false
+}

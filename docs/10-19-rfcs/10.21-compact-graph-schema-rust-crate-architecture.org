@@ -730,7 +730,7 @@ The refactor is not successful until these are measurable:
 - Every provider query returns selector-first evidence; line ranges are display hints only.
 - Search receipts record =providerStartMs=, =providerHandshakeMs=, =providerQueryMs=, =changeDetectMs=, =ftsSearchMs=, =overlayMergeMs=, =graphRankMs=, =renderIrMs=, and =totalMs=.
 - Julia replay can distinguish algorithm failure from execution-shape failure by reading the same receipts Python production used.
-- Replacing =fzf= is gated on recall@k, MRR/nDCG, dirty-update latency, stale-selector rate, token-to-actionable-selector, and false-positive-at-1.
+- Replacing =lexical= is gated on recall@k, MRR/nDCG, dirty-update latency, stale-selector rate, token-to-actionable-selector, and false-positive-at-1.
 
 The first implementation milestone should be a receipt-only shadow path: keep current commands working, but record enough stage timing and worker identity to prove where the actual latency sits. Only then should provider warm pools, overlay search, and graph worker reuse become default behavior.
 

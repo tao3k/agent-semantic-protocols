@@ -4,7 +4,7 @@ Lexical search is an algorithmic search frame, not a provider fallback chain.
 The command shape
 
 #+begin_src shell
-asp <language> search lexical '<terms>' owner tests --workspace <root> --view seeds
+asp <language> search lexical <seed> <seed> owner tests --workspace <root> --view seeds
 #+end_src
 
 must enter the shared search framework before any language-specific process,
@@ -19,10 +19,11 @@ The lexical frame is:
 
 #+begin_src text
 SearchFrameRequest
-  -> QueryPack
+  -> QueryBundle(QueryPack + relation)
   -> CandidateAcquisitionPlan
-  -> EvidenceGraph
-  -> GraphRouter
+  -> per-seed CandidateEvidence
+  -> EvidenceGraph(owner/item/relation projection)
+  -> GraphRouter(cohesive/bridge route selection)
   -> CompactRankedEvidence + NextAction
 #+end_src
 
@@ -31,6 +32,22 @@ next hop on the EvidenceGraph: owner, item, test, dependency, document, or an
 explicit degraded finder action.  A graph frontier renderer may display this
 route, but it must not be the first component that discovers it.
 
+Multi-seed lexical search is a =QueryBundle=, not a string concatenation. A
+bundle preserves each seed as a clause, projects candidates per seed, and asks
+GraphRouter to explain how the seeds connect. The default relation is
+=cohesive=: rank owner/item routes that cover multiple seeds before one-seed
+union hits. A single seed is not a semantic lexical search; it MUST return
+=query-bundle-required= and guide the agent to write a stronger query bundle
+instead of treating recall as reasoning. Other relation modes are reserved for
+explicit route requests: =bridge= for paths connecting seeds across owners, and
+=compare= for side-by-side seed contrast.
+
+The canonical human and agent CLI is positional multi-seed input. The parser
+collects positional seeds until the first surface token such as =owner=,
+=items=, =tests=, or =deps=. Repeated =--query= flags remain the stable
+machine/script form and the escape hatch for ambiguous seeds. Delimiter bundles
+such as =manifest_path|try_map_resources|plugin_root= may be accepted as a
+legacy compact input, but they are not the recommended prompt-facing UX.
 ** Acquisition Order
 
 Candidate acquisition is shared across languages and ordered by cost:
@@ -71,24 +88,75 @@ This means the lexical frame must not encode Rust syntax or Rust-specific file
 layout.  Rust, TypeScript, Python, Julia, Gerbil Scheme, Org, and Markdown enter
 the same SearchFrame with different provider facts and file predicates.
 
+** Owner Item Evidence Packet
+Provider owner-items output is not only a compact seed list. It is the boundary where native parser proof becomes routeable EvidenceGraph input.
+
+The shared packet shape is =OwnerItemEvidence=. Every provider SHOULD project native owner-local facts into this language-neutral shape:
+#+begin_src text
+owner.path
+item.kind
+item.name
+item.selector          ; parser-owned structural selector when available
+proof.source           ; native-parser, source-index, overlay, degraded-finder
+proof.span             ; debug hint only, never an executable selector
+edges.calls[]
+edges.tests[]
+edges.dependencies[]
+next.readCommand
+#+end_src
+
+Line ranges and source locator hints may be present as proof metadata, but they MUST NOT be the executable identity for a parser-owned item. When a provider can prove a definition, method, form, heading, or document block, it must emit a structural selector such as:
+#+begin_src text
+rust://path#item/function/name
+gerbil-scheme://path#item/def/name
+org://path#heading/id-or-title
+#+end_src
+
+Gerbil Scheme is the motivating non-Rust case. A query such as:
+#+begin_src shell
+asp gerbil-scheme search owner src/contract/json-schema-valid.ss items --query 'poo-flow-json-schema-pattern-row-valid?' --workspace . --view seeds
+#+end_src
+must not force the agent to execute a raw source read from a =path:start-end= selector. The compact =seeds= view may render only the selected graph route, but the provider-owned evidence behind that route must include the def identity, native-parser proof, and bounded call edges needed for the router to choose the next exact action.
+
+JSON is a transport, not a view. =--view seeds --json= keeps the same route semantics as =--view seeds=, but in non-agent/debug automation it returns the bounded =OwnerItemEvidence= packet instead of the compact token-saving text receipt. Inside normal agent sessions, JSON remains disabled by default to avoid token blowups. Setting =ASP_NO_AGENT_PLATFORM=1= is the explicit debug escape hatch and MUST NOT still collapse the response into compact text.
+
+For Lisp-family providers, owner item evidence is not limited to definitions and call forms. Module imports, exports, package/build inputs, and generated launcher inputs are first-class graph facts because they are the routeable evidence for build failures such as a compiled launcher reading an absent module while a package spec omits it. These facts should be projected into =OwnerItemEvidence= with =item.kind= values such as =import=, =export=, or =build-input= and explicit edges such as =imports=, =exports=, =builds=, and =generatedFrom=. The compact receipt may display only the winning route, but the backing packet must let GraphRouter explain whether a path came from parser syntax, source-index lookup, package spec, or generated build metadata. A source-index miss and a build-graph hit for the same term is a state delta, not an empty search result.
+
+Provider binary verification must also prove source provenance. A local harness
+binary that dynamically loads a command module from a globally installed package
+or stale package-local build output is not a valid search proof, even when the
+CLI command exits successfully. Build receipts for provider command modules
+therefore need owner/item evidence for the command implementation module, the
+launcher module, and the generated static/link inputs. If a command module is
+not present in the local binary lane, the route result is
+=provider-runtime-source-mismatch= and the fix belongs in the provider build
+graph before search ranking is evaluated.
+
+For dynamically loaded provider commands, source provenance includes load-path order and binding resolution. The launcher must prefer the active checkout's compiled module lane over global user or installed package lanes, and it must verify that =load-module= plus binding lookup resolves to a procedure from that lane before invoking it. A =#!unbound= binding, a binding resolved from a stale global package, or a local wrapper that delegates to stale implementation code is not a normal command error. It is =provider-runtime-source-mismatch= with a bounded recovery action: compile/materialize the local dynamic module lane, fix load-path precedence, then rerun the same GraphRoute evidence command.
+
+This contract is required for Gerbil Scheme structural selectors. A selector such as =gerbil-scheme://src/commands/query.ss#item/def/emit-query-selector= must be routed by the local provider's structural selector parser. If the runtime falls through to a file/range reader and attempts to read =./gerbil-scheme=, GraphRouter must report a provenance/query-router mismatch instead of treating the empty or error result as search evidence.
+
 ** Route Contract
 
 The frame emits a route receipt before compact rows:
 
 #+begin_src text
-searchFrame=lexical
-acquisitionRoute=warm-overlay|source-index-owner-evidence|session-dynamic-overlay|provider-owner-items|bounded-cold-scan|degraded-finder
-graphRouter=lexical-v1
-evidenceState=owner-ready|item-ready|test-ready|needs-cold-scan|degraded
-fallbackReason=none|warm-miss|selector-proof-missing|provider-missing|scope-too-wide|no-parser-facts
-providerProcessCount=0
-nativeFinderProcessCount=0
+[graph-route] profile=owner-query alg=typed-ppr-diverse relation=cohesive route=owner-item covered=<covered>/<query-count> budget=<n>
+owner=path(<project-path>) score=<rank-score> hits=<local-hit-count> symbols=<bounded-symbol-list>
+next=asp <language> search owner <project-path> items --query '<query-bundle>' --workspace <root> --view seeds
+avoid=frontier-dump,source-body,line-selector
 #+end_src
 
+The route receipt is the default =--view seeds= output. The view name remains
+=seeds= because the agent is asking for seed evidence, but the renderer must use
+GraphRouter internally instead of dumping a basic seed/frontier union. Graph
+Turbo, including the Python implementation, is invoked through the built-in
+route wrapper and must not appear as a prompt-facing view choice. =rank= and
+=frontier= rows are debug fallback output only when no route can be selected.
 Compact evidence rows use graph node identities as executable decision points:
 parser-owned selectors, owner paths, test owners, dependency identities, or
-document selectors.  Display line ranges stay hints.  If the router cannot
-select an executable node, it must say why and choose one bounded next action.
+document selectors. Display line ranges stay hints. If the router cannot select
+an executable node, it must say why and choose one bounded next action.
 
 ** Performance Gate
 =asp cache source-index refresh= is a warm check, not an index builder. It may validate and reuse the latest Turso source-index generation, or return =status=cold-required= with a bounded next action. It MUST NOT collect provider workspace scope files, start provider processes, or perform a workspace-scale source walk. Cold materialization belongs to the explicit =asp cache source-index rebuild= route, and scenario gates SHOULD cover both =refresh-without-generation-is-bounded= and =rebuild-then-refresh-reuses-generation=.
@@ -109,9 +177,11 @@ command executes.
 The motivating regression command is:
 
 #+begin_src shell
-asp rust search lexical 'render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match' owner tests --workspace . --view seeds
+asp rust search lexical render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match owner tests --workspace . --view seeds
 #+end_src
 
 On a warmed search frame it should not rebuild an overlay from a full workspace
-walk.  It should use the warm route to select owner/item/test nodes and let
-GraphRouter choose the next exact action.
+walk. It should use the warm route to select one cohesive owner/item/test route,
+show the query-axis coverage that made that route win, and give a bounded next
+action. It must not render a concatenated frontier of every owner, item, hot
+range, and test node as the default user-facing result.

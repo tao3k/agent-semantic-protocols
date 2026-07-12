@@ -17,6 +17,13 @@
   ],
   "evidence": {
     "source": "real-trigger",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "Vite",
+      "package": "vite",
+      "repository": "vitejs/vite",
+      "workdirKind": "checkout"
+    },
     "intent": "Implement plugin container resolveId behavior before selecting files to edit",
     "recordedAt": "2026-06-01",
     "receiptPath": "sandtables/receipts/typescript/vite-plugin-container-real-trigger-flow.receipt.json",
@@ -30,7 +37,7 @@
     },
     "querySetOpportunities": [
       {
-        "view": "fzf",
+        "view": "lexical",
         "queries": 2,
         "saveCommands": 1,
         "selector": "exact-set",
@@ -41,7 +48,7 @@
       {
         "kind": "source-coverage",
         "severity": "info",
-        "message": "Vite package prime still surfaces build scripts, while fzf owner resolution now reaches src/node server owners"
+        "message": "Vite package prime still surfaces build scripts, while lexical owner resolution now reaches src/node server owners"
       },
       {
         "kind": "ingest-workaround",
@@ -66,7 +73,8 @@
     {
       "id": "workspace",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "workspace",
         "--workspace",
@@ -86,7 +94,8 @@
     {
       "id": "prime-vite-package",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "prime",
         "--view",
@@ -108,14 +117,17 @@
     {
       "id": "text-plugin-query-set",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
-        "fzf",
-        "--query-set",
+        "lexical",
+        "--query",
         "pluginContainer",
-        "--query-set",
+        "--query",
         "resolveId",
+        "--query",
         "owner",
+        "--query",
         "tests",
         "--view",
         "seeds",
@@ -125,7 +137,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf]",
+          "[search-lexical]",
           "querySet=2",
           "src/node/server/pluginContainer.ts",
           "src/node/server/__tests__/pluginContainer.spec.ts"
@@ -137,7 +149,8 @@
     {
       "id": "owner-plugin-container-not-visible",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "owner",
         "src/node/server/pluginContainer.ts",
@@ -167,7 +180,8 @@
         "packages/vite/src/node/server/pluginContainer.ts"
       ],
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "ingest",
         "--view",

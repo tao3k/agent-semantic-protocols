@@ -53,6 +53,63 @@ fn fast_rollout_lookup_uses_rollout_filename_not_content_search() {
 }
 
 #[test]
+fn rollout_liveness_uses_the_filename_matched_tail_under_the_fast_path_gate() {
+    let session_id = "019f2dc6-3ed6-73b3-809d-62c4a3802ffb";
+    let root = std::env::temp_dir().join(format!(
+        "asp-rollout-liveness-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos()
+    ));
+    let day_dir = root.join("2026/07/04");
+    fs::create_dir_all(&day_dir).expect("create rollout day dir");
+    let rollout_path = day_dir.join(format!("rollout-2026-07-04T08-36-35-{session_id}.jsonl"));
+    fs::write(
+        &rollout_path,
+        concat!(
+            r#"{"timestamp":"2026-07-04T15:36:35.171Z","type":"session_meta","payload":{"id":"019f2dc6-3ed6-73b3-809d-62c4a3802ffb"}}"#,
+            "\n",
+            r#"{"timestamp":"2026-07-04T17:29:50.992Z","type":"task_complete","payload":{}}"#,
+            "\n"
+        ),
+    )
+    .expect("write rollout liveness fixture");
+
+    let started = Instant::now();
+    let liveness = super::rollout::rollout_session_liveness_for_session_id_in(&root, session_id);
+    let elapsed = started.elapsed();
+
+    match &liveness {
+        super::rollout::CodexRolloutSessionLiveness::Resumable(activity)
+        | super::rollout::CodexRolloutSessionLiveness::Active(activity)
+        | super::rollout::CodexRolloutSessionLiveness::Unknown(activity) => {
+            assert!(!activity.status.is_empty());
+            assert!(activity.scanned_bytes > 0);
+        }
+        super::rollout::CodexRolloutSessionLiveness::Missing => {}
+        super::rollout::CodexRolloutSessionLiveness::Unavailable(error) => {
+            assert!(!error.is_empty());
+        }
+    }
+    assert!(matches!(
+        liveness,
+        super::rollout::CodexRolloutSessionLiveness::Resumable(activity)
+            if activity.last_event_kind.as_deref() == Some("task_complete")
+    ));
+    assert!(matches!(
+        super::rollout::rollout_session_liveness_for_session_id(""),
+        super::rollout::CodexRolloutSessionLiveness::Missing
+    ));
+    assert!(
+        elapsed.as_millis() < 50,
+        "fast rollout liveness regressed to {elapsed:?}"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn rollout_session_meta_extracts_codex_subagent_topology() {
     let root = std::env::temp_dir().join(format!(
         "asp-rollout-meta-{}-{}",

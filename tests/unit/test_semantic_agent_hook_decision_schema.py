@@ -25,18 +25,18 @@ def minimal_decision(reason_kind: str) -> dict[str, object]:
         "languageIds": ["typescript"],
         "subject": {
             "toolName": "Bash",
-            "command": "ts-harness search fzf location.path owner tests --json .",
+            "command": "ts-harness search lexical location.path owner tests --json .",
         },
         "routes": [
             {
                 "languageId": "typescript",
                 "providerId": "ts-harness",
                 "binary": "ts-harness",
-                "kind": "fzf",
+                "kind": "lexical",
                 "argv": [
                     "ts-harness",
                     "search",
-                    "fzf",
+                    "lexical",
                     "location.path",
                     "owner",
                     "tests",

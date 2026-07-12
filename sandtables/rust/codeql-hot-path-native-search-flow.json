@@ -52,7 +52,7 @@
         "asp",
         "rust",
         "search",
-        "fzf",
+        "lexical",
         "codeql",
         "owner",
         "tests",

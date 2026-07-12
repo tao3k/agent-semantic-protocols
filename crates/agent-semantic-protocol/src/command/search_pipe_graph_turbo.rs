@@ -14,7 +14,7 @@ use super::{
         append_candidate_nodes, append_hot_nodes, append_project_topology_nodes,
         append_submodule_owner_edges, candidate_node_id, hot_node_id, stable_node_id,
     },
-    search_pipe_graph_turbo_owner_rank::ranked_candidate_paths_with_topology,
+    search_pipe_graph_turbo_owner_rank::graph_owner_rank_report_with_topology,
     search_pipe_graph_turbo_seed::{has_package_path_candidate, query_owner_seed_paths},
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
     search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsContext},
@@ -89,16 +89,20 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     let query_present = query.map(|query| !query.trim().is_empty()).unwrap_or(false);
     let mut query_seed_present = false;
     if let Some(query) = query.filter(|query| !query.trim().is_empty()) {
-        let query_id = stable_node_id("query", query);
-        seed_ids.push(query_id.clone());
-        query_seed_present = true;
-        nodes.push(json!({
-            "id": query_id,
-            "kind": "query",
-            "role": "term",
-            "value": query,
-            "action": "lexical"
-        }));
+        for term in query_terms(query) {
+            let query_id = stable_node_id("query", &term);
+            if !seed_ids.contains(&query_id) {
+                seed_ids.push(query_id.clone());
+                query_seed_present = true;
+                nodes.push(json!({
+                    "id": query_id,
+                    "kind": "query",
+                    "role": "term",
+                    "value": term,
+                    "action": "lexical"
+                }));
+            }
+        }
     }
 
     let computed_quality = if precomputed_quality.is_none() {
@@ -122,11 +126,16 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         .and_then(|policy| policy.get("topologyMembership"))
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    let owners = ranked_candidate_paths_with_topology(
+    let owner_rank_report = graph_owner_rank_report_with_topology(
         &graph_candidates,
         &query_terms,
         topology_membership_enabled.then_some(dependency_root),
     );
+    let owners = owner_rank_report
+        .ranked_owners
+        .iter()
+        .map(|owner| owner.path.clone())
+        .collect::<Vec<_>>();
     let topology_submodule_count =
         agent_semantic_search::graph_project_submodule_paths(dependency_root).len();
     let dependency_seed = if include_deps(&surfaces) {
@@ -275,6 +284,18 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         },
     );
 
+    let route = (surface == "search-lexical")
+        .then(|| {
+            graph_route_value(
+                language_id,
+                query,
+                &query_terms,
+                &owner_rank_report.query_axes,
+                &owner_rank_report.ranked_owners,
+                &surfaces,
+            )
+        })
+        .flatten();
     let mut packet = json!({
         "schemaId": GRAPH_TURBO_REQUEST_SCHEMA_ID,
         "schemaVersion": "1",
@@ -310,6 +331,9 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
             "edges": edges,
         },
     });
+    if let Some(route) = route {
+        packet["route"] = route;
+    }
     if topology_membership_enabled && topology_submodule_count > 0 {
         packet["fields"] = json!({"topologyRank": "submodule-membership"});
     }
@@ -331,6 +355,97 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         packet["actionFrontier"] = Value::Array(external_action_frontier.to_vec());
     }
     packet
+}
+
+fn graph_route_value(
+    language_id: &str,
+    query: Option<&str>,
+    query_terms: &[String],
+    query_axes: &[String],
+    ranked_owners: &[agent_semantic_search::GraphOwnerRankedOwner],
+    surfaces: &[String],
+) -> Option<Value> {
+    let owner = ranked_owners.first()?;
+    let query = graph_route_query(query, query_terms);
+    if query.is_empty() {
+        return None;
+    }
+    Some(json!({
+        "kind": "graph-route",
+        "version": "lexical-route-v1",
+        "algorithm": "graph-owner-rank-v1",
+        "relation": graph_route_relation(query_terms),
+        "routeKind": graph_route_kind(surfaces),
+        "queryCount": graph_route_query_count(query_terms, query_axes),
+        "coveredQueryCount": owner.matched_query_axes.len(),
+        "owner": {
+            "path": owner.path.clone(),
+            "matchedQueryAxes": owner.matched_query_axes.clone(),
+            "score": graph_route_score(&owner.score),
+            "localHits": owner.score.local_hits,
+            "symbols": owner.symbols.iter().take(6).cloned().collect::<Vec<_>>(),
+        },
+        "nextAction": {
+            "kind": "search-owner-items",
+            "languageId": language_id,
+            "ownerPath": owner.path.clone(),
+            "query": query,
+        },
+        "avoid": ["frontier-dump", "source-body", "line-selector"],
+    }))
+}
+
+fn graph_route_query_count(query_terms: &[String], query_axes: &[String]) -> usize {
+    if query_axes.is_empty() {
+        query_terms.len()
+    } else {
+        query_axes.len()
+    }
+}
+
+fn graph_route_query(query: Option<&str>, query_terms: &[String]) -> String {
+    let joined_terms = query_terms
+        .iter()
+        .map(|term| term.trim())
+        .filter(|term| !term.is_empty())
+        .collect::<Vec<_>>()
+        .join("|");
+    if !joined_terms.is_empty() {
+        joined_terms
+    } else {
+        query.unwrap_or_default().trim().to_string()
+    }
+}
+
+fn graph_route_relation(query_terms: &[String]) -> &'static str {
+    if query_terms.len() > 1 {
+        "cohesive"
+    } else {
+        "query-bundle-required"
+    }
+}
+
+fn graph_route_kind(surfaces: &[String]) -> &'static str {
+    if include_deps(surfaces) {
+        "owner-deps"
+    } else if include_items(surfaces) {
+        "owner-item"
+    } else if include_tests(surfaces) {
+        "owner-test"
+    } else {
+        "owner"
+    }
+}
+
+fn graph_route_score(score: &agent_semantic_search::GraphOwnerRankScore) -> Value {
+    json!({
+        "total": score.total,
+        "queryAxisCount": score.query_axis_count,
+        "packageQueryAxisCount": score.package_query_axis_count,
+        "topologyQueryAxisCount": score.topology_query_axis_count,
+        "localHits": score.local_hits,
+        "symbolCount": score.symbol_count,
+    })
 }
 
 fn allow_query_anchor_candidates(quality: &SearchPipeQuality) -> bool {
@@ -567,30 +682,34 @@ fn append_query_match_edges(
     owners: &[String],
     surfaces: &[String],
 ) {
-    let query_id = stable_node_id("query", query);
-    if include_owner_context(surfaces) {
-        for owner in owners {
-            edges.push(edge(&query_id, &stable_node_id("owner", owner), "matches"));
+    for term in query_terms(query) {
+        let query_id = stable_node_id("query", &term);
+        if include_owner_context(surfaces) {
+            for owner in owners {
+                edges.push(edge(&query_id, &stable_node_id("owner", owner), "matches"));
+            }
         }
-    }
-    if include_items(surfaces) {
-        for candidate in candidates.iter().take(GRAPH_TURBO_CANDIDATE_NODE_LIMIT) {
-            edges.push(edge(&query_id, &candidate_node_id(candidate), "matches"));
+        if include_items(surfaces) {
+            for candidate in candidates.iter().take(GRAPH_TURBO_CANDIDATE_NODE_LIMIT) {
+                edges.push(edge(&query_id, &candidate_node_id(candidate), "matches"));
+            }
         }
     }
 }
 
 fn append_query_dependency_edges(edges: &mut Vec<Value>, query: &str, facts: &[DependencyFact]) {
-    let query_id = stable_node_id("query", query);
-    for fact in facts
-        .iter()
-        .filter(|fact| dependency_matches_query(&fact.dependency, query))
-    {
-        edges.push(edge(
-            &query_id,
-            &stable_node_id("dependency", &fact.dependency),
-            "matches",
-        ));
+    for term in query_terms(query) {
+        let query_id = stable_node_id("query", &term);
+        for fact in facts
+            .iter()
+            .filter(|fact| dependency_matches_query(&fact.dependency, &term))
+        {
+            edges.push(edge(
+                &query_id,
+                &stable_node_id("dependency", &fact.dependency),
+                "matches",
+            ));
+        }
     }
 }
 

@@ -76,7 +76,7 @@
         "stdoutJsonEquals": {
           "schemaId": "agent.semantic-protocols.semantic-codeql-evidence",
           "languageId": "rust",
-          "providerId": "rs-harness",
+          "providerId": "asp rust",
           "queryId": "asp.codeql.rust.raw-dbscheme.source-file",
           "projectRootPolicy": "local-only",
           "fields.executionBackend": "codeql",

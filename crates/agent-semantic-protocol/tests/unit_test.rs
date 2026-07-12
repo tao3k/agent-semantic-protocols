@@ -7,6 +7,8 @@ mod agent_session_registry_control_plane;
 mod agent_session_registry_resume_cli;
 #[path = "unit/command/agent_session_registry_resume_model_create_cli.rs"]
 mod agent_session_registry_resume_model_create_cli;
+#[path = "unit/command/build_profile.rs"]
+mod command_build_profile;
 
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;

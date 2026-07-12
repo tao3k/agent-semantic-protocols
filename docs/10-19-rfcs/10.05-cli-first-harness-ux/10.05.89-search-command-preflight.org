@@ -1,0 +1,63 @@
+#+TITLE: 10.05.89 Search Command Preflight
+#+DATE: 2026-07-09
+#+STATUS: accepted
+
+* Problem
+
+Search commands are agent-facing control-plane inputs. A malformed command must
+not be delegated to a language harness, because provider JSON routing cannot
+reliably recover the user's intent after the command has already crossed the
+Rust ASP boundary.
+
+The concrete failure mode is:
+
+#+begin_src sh
+asp gerbil-scheme search owner . items --query 'typed block Boundary' --workspace /path/to/project --view seeds
+#+end_src
+
+Here ~.~ is a search scope, not a concrete source owner. A directory owner has
+the same shape of error. Both commands are too broad for owner-items semantics
+and should be stopped before provider invocation.
+
+* Contract
+
+Rust ASP command preflight owns malformed search command rejection before any
+language provider or harness process is invoked.
+
+The implementation surface is a language-neutral Rust search-package interface.
+A language facade passes its language id and command arguments into
+~agent-semantic-search~. The command crate must stay a thin transport layer and
+must not invent a separate diagnostic grammar, provider-local fallback, or
+search algorithm.
+
+For ~asp <language> search owner <owner> items~, the preflight rejects:
+
+- an empty owner
+- a workspace root owner, including ~.~ and ~./~
+- an owner path that resolves to the project root
+- an owner path that resolves to a directory
+
+The command exits with code ~2~ and emits a compact diagnostic:
+
+#+begin_example
+[asp-search-query-error] code=invalid-owner owner="." reason=workspace-root-owner
+|hint search owner requires a concrete source owner path; workspace roots and directories are search scopes, not owners
+nextCommand=asp gerbil-scheme search pipe '<focused terms>' --workspace /path/to/project --view seeds
+example=asp gerbil-scheme search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace /path/to/project --view seeds
+#+end_example
+
+The diagnostic must include a single usable ~nextCommand~ that pushes the agent
+toward a narrower search shape instead of retrying the invalid command.
+
+* Non-Goals
+
+This preflight is not a language-harness fallback. It is a Rust command contract
+that prevents malformed search requests from reaching provider JSON dispatch.
+The same invalid command shape must produce the same diagnostic shape for
+Gerbil, Python, Rust, TypeScript, Julia, Org, Markdown, and any future facade.
+
+This preflight is not a replacement for performance gates. Broad but syntactically
+valid search routes still need search backend budgets and query-quality guards.
+The preflight itself still owns a local hot-path budget in the search package so
+invalid commands fail before provider dispatch without expanding command-layer
+logic.

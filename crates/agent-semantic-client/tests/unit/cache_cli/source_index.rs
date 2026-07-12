@@ -1,4 +1,6 @@
-use crate::{cache_cli::run_cache, lookup_source_index_for_language};
+use crate::{
+    cache_cli::run_cache, lookup_source_index_for_language, source_index::refresh_source_index,
+};
 use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
 use agent_semantic_client_db::ClientDbEngine;
 use agent_semantic_hook::{
@@ -9,6 +11,7 @@ use serde_json::json;
 use std::{
     ffi::{OsStr, OsString},
     path::Path,
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -47,6 +50,7 @@ fn cache_source_index_refresh_builds_db_engine_rows() {
     )
     .expect("write ignored plugin cache source");
 
+    let rebuild_started = std::time::Instant::now();
     run_cache(
         &root,
         None,
@@ -54,6 +58,12 @@ fn cache_source_index_refresh_builds_db_engine_rows() {
         false,
     )
     .expect("rebuild source index");
+    let rebuild_elapsed = rebuild_started.elapsed();
+    assert!(
+        rebuild_elapsed < std::time::Duration::from_secs(5),
+        "source-index cold rebuild exceeded fixture gate: elapsedMs={}",
+        rebuild_elapsed.as_millis()
+    );
     run_cache(
         &root,
         None,
@@ -186,6 +196,84 @@ fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
     assert_eq!(result.state.as_str(), "hit");
     assert_eq!(result.candidates.len(), 1);
     assert_eq!(result.candidates[0].path, "extra/new_usage.ss");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn cache_source_index_refresh_updates_dirty_tracked_worktree() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("source-index-dirty-tracked-worktree");
+    let _home_env = isolate_home(&root);
+    let source_dir = root.join("src");
+    std::fs::create_dir_all(&source_dir).expect("create source dir");
+    std::fs::write(root.join("gerbil.pkg"), "(package source-index-refresh)\n")
+        .expect("write gerbil package anchor");
+    let source_path = source_dir.join("usage.ss");
+    std::fs::write(
+        &source_path,
+        "(def (poo-read input)\n  ;; gerbil-poo://usage\n  input)\n",
+    )
+    .expect("write gerbil source");
+    let activation_path =
+        write_gerbil_activation_with_command_prefix(&root, vec!["true".to_string()], &["src"]);
+    let _activation_env = EnvVarGuard::set(
+        ASP_PROVIDER_ACTIVATION_PATH_ENV,
+        activation_path.as_os_str(),
+    );
+    run_git(&root, ["init", "--quiet"]);
+    run_git(&root, ["add", "gerbil.pkg", "src/usage.ss"]);
+    run_git(
+        &root,
+        [
+            "-c",
+            "user.email=source-index@example.invalid",
+            "-c",
+            "user.name=Source Index",
+            "commit",
+            "--quiet",
+            "-m",
+            "initial",
+        ],
+    );
+    run_cache(
+        &root,
+        None,
+        &["source-index".to_string(), "rebuild".to_string()],
+        false,
+    )
+    .expect("rebuild clean source index");
+
+    std::fs::write(
+        &source_path,
+        "(def (poo-read input)\n  ;; gerbil-poo://dirty\n  input)\n",
+    )
+    .expect("dirty tracked source");
+    let refreshed = refresh_source_index(&root)
+        .expect("refresh dirty source index")
+        .expect("refresh must publish changed tracked source without requiring rebuild");
+    assert!(
+        !refreshed.reused_generation,
+        "the first dirty refresh must publish changed source content"
+    );
+    let reused = refresh_source_index(&root)
+        .expect("reuse unchanged dirty source index")
+        .expect("unchanged dirty source must retain its source-index generation");
+    assert!(
+        reused.reused_generation,
+        "the second dirty refresh must hash only dirty paths and reuse the generation"
+    );
+    let result = lookup_source_index_for_language(
+        &root,
+        Some(&LanguageId::from("gerbil-scheme")),
+        "dirty",
+        8,
+    )
+    .expect("lookup refreshed dirty source index");
+    assert_eq!(result.state.as_str(), "hit");
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].path, "src/usage.ss");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -542,6 +630,20 @@ impl Drop for EnvVarGuard {
             }
         }
     }
+}
+
+fn run_git(project_root: &Path, args: impl IntoIterator<Item = &'static str>) {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .args(args)
+        .output()
+        .expect("run git for source-index fixture");
+    assert!(
+        output.status.success(),
+        "git source-index fixture command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn temp_root(label: &str) -> std::path::PathBuf {

@@ -4,11 +4,11 @@ use std::path::Path;
 
 use super::search_pipe_model::Candidate;
 
-pub(super) fn ranked_candidate_paths_with_topology(
+pub(super) fn graph_owner_rank_report_with_topology(
     candidates: &[Candidate],
     query_terms: &[String],
     workspace_root: Option<&Path>,
-) -> Vec<String> {
+) -> agent_semantic_search::GraphOwnerRankReport {
     let projection_candidates = candidates
         .iter()
         .map(|candidate| {
@@ -23,9 +23,15 @@ pub(super) fn ranked_candidate_paths_with_topology(
             )
         })
         .collect::<Vec<_>>();
-    agent_semantic_search::ranked_graph_owner_paths_with_topology(
-        &projection_candidates,
-        query_terms,
-        workspace_root,
-    )
+    let submodule_paths = workspace_root
+        .map(agent_semantic_search::graph_project_submodule_paths)
+        .unwrap_or_default();
+    agent_semantic_search::rank_graph_owner_report(agent_semantic_search::GraphOwnerRankRequest {
+        candidates: projection_candidates
+            .iter()
+            .map(agent_semantic_search::GraphOwnerRankCandidate::from)
+            .collect(),
+        query_terms: query_terms.to_vec(),
+        submodule_paths,
+    })
 }

@@ -177,6 +177,7 @@ fn validate_match_schema_shape(match_config: &HookClientRuleMatchConfig) -> Resu
     validate_optional_non_empty("rules[].match.tool", match_config.tool.as_deref())?;
     validate_non_empty_values("rules[].match.toolAny[]", &match_config.tool_any)?;
     validate_non_empty_values("rules[].match.commandAny[]", &match_config.command_any)?;
+    validate_argv_prefix_patterns("rules[].match.argvPrefixAny", &match_config.argv_prefix_any)?;
     validate_non_empty_values(
         "rules[].match.commandContainsAny[]",
         &match_config.command_contains_any,
@@ -280,6 +281,16 @@ fn validate_non_empty_values(field: &str, values: &[String]) -> Result<(), Strin
         if value.is_empty() {
             return Err(format!("{field} must not be empty"));
         }
+    }
+    Ok(())
+}
+
+fn validate_argv_prefix_patterns(field: &str, patterns: &[Vec<String>]) -> Result<(), String> {
+    for (index, pattern) in patterns.iter().enumerate() {
+        if pattern.is_empty() {
+            return Err(format!("{field}[{index}] must not be empty"));
+        }
+        validate_non_empty_values(&format!("{field}[{index}][]"), pattern)?;
     }
     Ok(())
 }

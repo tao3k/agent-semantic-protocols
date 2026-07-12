@@ -50,28 +50,43 @@ fn default_template_round_trips_through_config_parser() {
             .agent_session_guide
             .register
             .as_deref()
-            .is_some_and(|guide| guide.contains("asp agent session lifecycle audit --json"))
+            .is_some_and(|guide| guide.contains("asp agent session bootstrap"))
     );
     assert!(
         config
             .agent_session_guide
             .status
             .as_deref()
-            .is_some_and(|guide| guide.contains("nextAction=start-resident-child-and-register"))
+            .is_some_and(|guide| guide.contains("bootstrap --name asp-explore"))
+    );
+    assert!(config.agent_session_guide.reuse.is_none());
+    assert!(
+        config
+            .agent_session_messages
+            .missing_resident_explore
+            .as_deref()
+            .is_some_and(|message| message.contains("choose one number"))
     );
     assert!(
         config
             .agent_session_messages
             .missing_resident_explore
             .as_deref()
-            .is_some_and(|message| message.contains("asp agent session register --guide"))
+            .is_some_and(|message| !message.contains("register --guide"))
+    );
+    assert!(
+        config
+            .agent_session_messages
+            .missing_resident_explore
+            .as_deref()
+            .is_some_and(|message| !message.contains("agent session reuse"))
     );
     assert!(
         config
             .agent_session_messages
             .main_restricted_without_child
             .as_deref()
-            .is_some_and(|message| message.contains("Retry the blocked ASP command"))
+            .is_some_and(|message| message.contains("send the blocked ASP command"))
     );
     let source_access_compact_subagent = config
         .agent_session_messages
@@ -90,18 +105,6 @@ fn default_template_round_trips_through_config_parser() {
         .as_deref()
         .expect("binary gate invalid child message");
     assert!(invalid_child_message.contains("validation-warning-or-non-routable-child"));
-    assert!(
-        invalid_child_message.contains(
-            "messageTargetStatus=missing, validationStatus=failed, or childStatus is archived/closed/expired/invalid/missing/orphan-risk"
-        )
-    );
-    assert!(invalid_child_message.contains("Codex native close-agent action"));
-    assert!(invalid_child_message.contains("archive only temporary Normal test threads"));
-    assert!(invalid_child_message.contains("parent agent sends an agent message"));
-    assert!(invalid_child_message.contains("<requiredModel-from-validationReason>"));
-    assert!(
-        invalid_child_message.contains("configSwitchPurpose=Use the config switch command only")
-    );
     let legacy_close_delete = ["close", "/", "delete"].concat();
     assert!(!invalid_child_message.contains(&legacy_close_delete));
     assert!(!invalid_child_message.contains("destroy-invalid-child-and-create-configured-child"));

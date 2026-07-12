@@ -55,7 +55,7 @@ fn guide_rewrites_command_lines_to_language_facade() {
     assert!(stdout.contains("provider=rs-harness"), "{stdout}");
     assert!(
         stdout.contains(
-            "|cmd lexical=asp rust search lexical <query> owner tests --workspace . --view seeds"
+            "|cmd lexical=asp rust search lexical --query <seed> --query <seed> owner tests --workspace . --view seeds"
         ),
         "{stdout}"
     );

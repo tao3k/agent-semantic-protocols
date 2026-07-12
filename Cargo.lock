@@ -109,6 +109,8 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "turso",
+ "turso_sdk_kit",
+ "which 8.0.4",
 ]
 
 [[package]]
@@ -249,7 +251,16 @@ dependencies = [
 name = "agent-semantic-tree-sitter"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-tree-sitter-runtime",
  "rust-lang-project-harness 0.1.2",
+ "tree-sitter",
+]
+
+[[package]]
+name = "agent-semantic-tree-sitter-runtime"
+version = "0.1.0"
+dependencies = [
+ "streaming-iterator",
  "tree-sitter",
 ]
 
@@ -2534,6 +2545,7 @@ dependencies = [
 name = "rust-lang-project-harness"
 version = "0.1.2"
 dependencies = [
+ "agent-semantic-tree-sitter-runtime",
  "cargo-lock",
  "cargo_toml",
  "proc-macro2",
@@ -2545,6 +2557,8 @@ dependencies = [
  "sha2 0.11.0",
  "syn",
  "toml 1.1.2+spec-1.1.0",
+ "tree-sitter",
+ "tree-sitter-rust",
 ]
 
 [[package]]
@@ -3463,6 +3477,16 @@ name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
+
+[[package]]
+name = "tree-sitter-rust"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439e577dbe07423ec2582ac62c7531120dbfccfa6e5f92406f93dd271a120e45"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "turso"

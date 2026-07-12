@@ -79,7 +79,12 @@ fn agent_session_registry_storage_is_turso_owned() {
             parent_session_id: Some("parent-session"),
             name: "asp-explore",
             role: "search",
-            model: Some("gpt-test"),
+            model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
+                model: "gpt-test",
+                source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
+                observed_at: 10,
+                evidence_ref: Some("turn:test"),
+            }),
             message_target_id: None,
             status: "active",
             expires_at: Some(1_900_000_000),
@@ -90,6 +95,13 @@ fn agent_session_registry_storage_is_turso_owned() {
 
     assert_eq!(record.root_session_id, "root-session");
     assert_eq!(record.session_id, "child-session");
+    assert_eq!(record.model.as_deref(), Some("gpt-test"));
+    assert_eq!(
+        record.model_observation_source.as_deref(),
+        Some("codex.subagent-start")
+    );
+    assert_eq!(record.model_observed_at, Some(10));
+    assert_eq!(record.model_evidence_ref.as_deref(), Some("turn:test"));
     assert!(record.is_routable_at(1_800_000_001));
     assert_eq!(
         registry
@@ -98,6 +110,35 @@ fn agent_session_registry_storage_is_turso_owned() {
             .len(),
         1
     );
+
+    registry
+        .register_session(AgentSessionRegisterRequest {
+            project_id: "project-1",
+            root_session_id: "root-session",
+            session_id: "child-session",
+            parent_session_id: Some("parent-session"),
+            name: "asp-explore",
+            role: "search",
+            model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
+                model: "gpt-stale",
+                source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexRollout,
+                observed_at: 9,
+                evidence_ref: Some("rollout:stale"),
+            }),
+            message_target_id: None,
+            status: "active",
+            expires_at: Some(1_900_000_000),
+            metadata_json: "{\"route\":\"db-owned\"}",
+            now: 1_800_000_001,
+        })
+        .expect("ignore stale model observation");
+    let retained = registry
+        .session_by_id("project-1", "child-session")
+        .expect("lookup model observation")
+        .expect("session exists");
+    assert_eq!(retained.model.as_deref(), Some("gpt-test"));
+    assert_eq!(retained.model_observed_at, Some(10));
+    assert_eq!(retained.model_evidence_ref.as_deref(), Some("turn:test"));
 
     assert!(
         registry
@@ -187,7 +228,7 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
             parent_session_id: Some("old-root"),
             name: "asp-explore",
             role: "asp-explore",
-            model: None,
+            model_observation: None,
             message_target_id: None,
             status: "closed",
             expires_at: None,
@@ -204,7 +245,7 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
             parent_session_id: Some("new-root"),
             name: "asp-explore",
             role: "asp-explore",
-            model: None,
+            model_observation: None,
             message_target_id: None,
             status: "active",
             expires_at: None,
@@ -270,7 +311,12 @@ fn agent_session_registry_process_register_helper() {
             parent_session_id: Some("main-session"),
             name: "asp-explore",
             role: "asp-explore",
-            model: Some("gpt-test"),
+            model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
+                model: "gpt-test",
+                source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
+                observed_at: 10,
+                evidence_ref: Some("turn:test"),
+            }),
             message_target_id: None,
             status: "active",
             expires_at: None,

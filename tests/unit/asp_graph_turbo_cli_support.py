@@ -35,7 +35,7 @@ def sample_graph_turbo_request() -> dict[str, object]:
                     "kind": "query",
                     "role": "term",
                     "value": "cache",
-                    "action": "fzf",
+                    "action": "lexical",
                 },
                 {
                     "id": "owner:src/lib.rs",

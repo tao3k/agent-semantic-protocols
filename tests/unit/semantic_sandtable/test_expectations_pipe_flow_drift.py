@@ -53,7 +53,7 @@ def _drifting_pipe_flow_observation() -> dict[str, object]:
         "searchPipeCommands": 2,
         "searchPrimeCommands": 2,
         "searchFailureCommands": 2,
-        "searchFzfCommands": 0,
+        "searchLexicalCommands": 0,
         "searchReasoningCommands": 1,
         "querySelectorCommands": 0,
         "readLoopDirectCodeCommands": 3,

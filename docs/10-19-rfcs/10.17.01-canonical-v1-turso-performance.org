@@ -1,0 +1,283 @@
+#+TITLE: Canonical V1 Turso Source-Index Performance Decision
+#+STATUS: Active
+
+* Decision
+
+V1 has one canonical source-index representation. It is a scope-bound owner
+snapshot with a materialized B-tree token projection. There is no active
+pointer, fact log, membership table, scoped shadow table, or compatibility read
+path. Version 2 is not in scope.
+
+* Canonical Storage
+
+=asp_source_index_scope_v1= stores the committed generation receipt for one
+=(project_root, schema_id, schema_version)= scope.
+=asp_source_index_owner_v1= stores one current owner snapshot per scoped owner
+path, including the owner facts and canonical selector facts.
+=asp_source_index_term_v1= stores one normalized query token per scoped owner
+path. Its primary key is the scope, token, and owner path; its secondary index
+supports deleting all terms for one changed owner.
+
+The canonical layout receipt stores =term_projection_version=. It is absent for
+an old snapshot and becomes =1= only in the transaction that publishes matching
+owner and term rows. The layout is also represented by an =@scope/= evidence
+hash, so the client cannot reuse a pre-projection receipt before the DB writer
+has a chance to converge it.
+
+The writer derives tokens from the same owner and selector facts used by the
+structural scorer. It inserts a JSON token array with =json_each= in the same
+transaction as the owner snapshot. The importer therefore does not construct a
+per-token SQL statement or a second materialization pass.
+
+* Read Contract
+
+A lookup with an indexed project root resolves exactly one scope. The database
+joins normalized query terms with =asp_source_index_term_v1= and returns a
+bounded owner candidate set, ordered by matched terms. It then applies the
+existing deterministic structural scorer only to that set. A no-hit stays a
+no-hit and never falls back to an unscoped or full-table query.
+
+Unscoped lookup is permitted only when a database contains exactly one scope.
+Multiple scopes without an explicit indexed root are an error, not a
+latest-generation heuristic.
+
+Turso FTS is explicitly excluded from the V1 read path. The embedded read-only
+connection rejects =fts_match= as write-intent, violating the read-only lookup
+contract. The token projection provides database-side candidate reduction while
+preserving that contract.
+
+* Write And Migration Contract
+
+Each import uses one =BEGIN IMMEDIATE= transaction: classify changed and removed
+owners from the in-DB snapshot, delete their owner tokens, upsert their owner
+snapshots and tokens, delete removed owner rows, write the scope receipt, and
+commit. The historical storage tables are detected and retired only during a
+successful import. They are called pre-canonical storage and have no read
+fallback.
+
+A database without the token projection is cold-required. Reuse is forbidden
+until every current owner has at least one materialized token. This is a V1
+schema convergence rule, not a public schema-version change.
+
+* Dirty And Performance Gates
+
+The performance gate records large-repository cold import, warm reuse, and a
+dirty rebuild with a small tracked-file delta. Each receipt includes owner count,
+changed-owner count, token-row write count, transaction elapsed time,
+candidate-owner count, post-rerank count, final result count, and query-command
+coverage.
+
+The acceptance target is an evidence-backed threshold for the controlled corpus,
+not an absolute claim based on a small synthetic fixture. Cold import separates
+corpus collection from transaction time so the next improvement is aimed at the
+actual bottleneck. Warm reuse must not write. Dirty rebuild must scale with the
+changed owner set rather than the full owner set.
+
+** Executable Large-Library Search Gate
+
+The large-library command set is a declaration, not benchmark evidence. The
+runtime gate obtains the active provider registry through the public
+=asp <language> agent doctor --json= facade and executes every live
+=search/*= descriptor against every matching checkout through the public
+=asp <language> search ...= facade. It records the resolved checkout revision,
+the release ASP binary, the warm-up result, the registry snapshot, and the
+measured step receipt. A count of scenario JSON files or historical command
+strings does not pass this gate.
+
+The gate is automation, not an interactive agent prompt: it sets
+=ASP_NO_AGENT_PLATFORM=1= only for its child commands so the public JSON
+receipt remains available even when the parent runs inside an agent platform
+session. That override belongs to the gate runner, never to the provider
+contract or a user's interactive command.
+
+Each gate command owns an isolated process group. On timeout the runner must
+terminate the whole group, drain its output, and escalate to a forced group
+termination if it does not exit promptly. A facade timeout that leaves a
+provider child running invalidates subsequent timings and is a gate-runner
+failure, not provider performance evidence. Every step receipt records whether
+the timeout cleanup terminated a process tree so a failed command cannot hide
+benchmark contamination.
+
+The runner passes each descriptor's declared ceiling to the public facade as
+=ASP_PROVIDER_TIMEOUT_MS=. Both direct-provider and local-client facade paths
+must resolve that environment contract through the shared transport limit
+parser, allowing transport to terminate its own isolated provider group before
+the runner's outer timeout is reached. Outer cleanup still snapshots and
+terminates descendant process groups as a last-resort containment boundary.
+
+Each search descriptor must publish a =benchmarkInvocation= contract. The
+provider owns the parser-valid argument template, stdin template when needed,
+JSON expectation, and performance ceiling. The corpus owns only semantic
+inputs such as an existing =owner=, =query=, and =dependency=. The runtime
+substitutes those named inputs and rejects unknown placeholders, provider
+private launchers, missing workspace scope, empty payloads, explicit error
+receipts, invalid JSON packets, or elapsed time over the advertised ceiling.
+This separates the stable command grammar from real-project facts and makes a
+registry/parser change fail at the contract boundary instead of drifting a
+scenario snapshot.
+
+A concrete owner selector is a parser scope, not a hint to rebuild the full
+project index. Provider-owned =search/query= and =search/owner ... items=
+implementations must parse that owner only; a missing concrete owner has an
+empty parser scope, and wildcard selectors may retain project-wide discovery
+semantics.
+Similarly, a graph-fact descriptor that accepts stdin must provide the corpus
+owner locator in its benchmark invocation, so it measures the requested fact
+projection rather than a whole-repository materialization.
+
+The gate must execute the installed provider, not an adjacent source file.
+Pinned workspace releases therefore declare their deployment mode. A native or
+self-contained entrypoint is copied into the runtime and =$HOME/.local/bin=;
+a module-graph entrypoint is atomically symlinked to its built workspace file.
+The latter preserves Node ESM relative imports without adding a launcher
+process to every measured command. Release archives remain sealed copied
+artifacts and never inherit a developer workspace symlink.
+
+The full matrix names 14 repositories across Julia, Python, Rust, and
+TypeScript. Every one is command-bearing for the live-registry gate, including
+repositories whose older scenario did not declare a handwritten =search/*=
+step. A missing corpus is a not-ready gate failure with the scenario and
+checkout key; it is never silently converted to a successful static report.
+The gate fails unless every registered =search/*= method is observed for every
+resolved corpus, and it rejects any non-registry or retired legacy route.
+Handwritten scenario commands remain semantic examples and may retain their local budgets, but they
+are not the command authority for this runtime performance gate. The aggregate
+receipt reports the full registry-derived command set, per-command ceiling,
+slowest command, and per-language coverage.
+
+The runner receives an explicit release binary through =ASP_BENCHMARK_BIN=.
+It preserves =asp <language>= in scenario source and receipt provenance while
+resolving the executable once at the runner boundary. Debug binaries, ambient
+PATH selection, and per-provider private launchers are not valid performance
+evidence.
+
+* Current Controlled Corpus Evidence
+
+The controlled clean corpus at this decision recorded 1,173 owners and 1,173
+selectors. These are diagnostic measurements, not acceptance claims.
+
+| case | end-to-end | DB import | result |
+|------|------------|-----------|--------|
+| clean cold, pre-batch baseline | 19.92s | 18.49s | rejected: per-owner writes dominated |
+| clean cold, JSON set import | 26.42s | 22.59s | rejected: one large JSON statement is slower |
+| one tracked owner dirty rebuild | 3.69s | 0.92s | accepted as the dirty-path baseline |
+| clean cold, native Turso batch | 7.80s | 3.33s | accepted pending repeated-corpus gate |
+| clean warm reuse, native Turso batch | 4.08s | no write | source-scope collection remains dominant |
+| one tracked owner dirty rebuild, native Turso batch | 3.44s | 0.07s | explicit rebuild; all files rehashed |
+| dirty refresh | 1.61s | no write | returns =cold-required= |
+
+The dirty trace includes roughly 2.11s source-file collection and a 0.92s DB
+import. The latter consists of bounded scope/membership checks and set-based
+term deletion, owner upsert, term insertion, pruning, receipt publication, and
+commit. The native batch result moves cold import below the former 30-second
+write budget, but it must be repeated by the executable large-library gate
+before becoming a stable acceptance threshold. Warm reuse is now dominated by
+full source-scope collection, which is the next architectural target rather
+than a reason to reintroduce a stale metadata shortcut.
+
+* Relational Posting-List Correction
+** Incident And Root Cause
+The JSON token dictionary is not an acceptable read model. A query that joins
+=json_each(asp_source_index_token_v1.owner_paths_json)= expands every owner in
+each matched posting list before grouping, ordering, and applying its result
+limit. Common identifier components such as =build=, =worker=, and =count=
+therefore turn a bounded lookup into a CPU-bound Turso B-tree iterator.
+
+The failure is architectural, not a cache-tuning concern. The dictionary reduces
+write rows by encoding the inverted relation as JSON, but it moves the inverted
+index expansion to every read. No timeout, cache lifetime, or smaller result
+window is an acceptable substitute for removing that read amplification.
+
+** V1 Decision
+The public protocol remains V1. There is no public V2 command, receipt, or
+schema. The source-index internal projection advances to a new layout
+generation, with its own migration receipt, only after the relational posting
+index is complete and queryable.
+
+Replace =asp_source_index_token_v1.owner_paths_json= with the internal
+=asp_source_index_token_owner_v1= posting relation:
+
+| column                                      | role                    |
+|---------------------------------------------+-------------------------|
+| project_root, schema_id, schema_version     | scope key               |
+| token                                       | normalized lookup token |
+| owner_path                                  | scoped owner posting    |
+
+The primary key is =(project_root, schema_id, schema_version, token,
+owner_path)=. The key is the read index: a query first selects the requested
+tokens, joins their postings by exact token, groups only the matched owners,
+and then joins the bounded owner set to =asp_source_index_owner_v1=. No source
+index read may call =json_each= over a persisted owner-list JSON value.
+
+** Write And Publish Model
+The importer retains owner facts and =term_tokens_json= as its one owner-local
+write input. Turso derives postings with one set-based
+=INSERT ... SELECT ... json_each(term_tokens_json)= operation inside the same
+transaction that publishes the owner snapshot. It must not issue one SQL write
+per token.
+
+A full refresh builds the owner snapshot and posting relation for a new
+generation, validates their scope counts, and publishes the matching layout
+generation atomically. A dirty refresh deletes postings by changed =owner_path=
+and derives replacements only for the changed owner rows. The prior JSON token
+dictionary is dropped only after the new generation is published. Reuse is
+permitted only when scope, owner generation, and posting projection generation
+all match.
+
+** Search Route Contract
+=fd= is the V1 path/module candidate route. It performs path and module-name
+matching only; it must not query the source-index or act as an alias for
+=lexical=. It runs only for clauses that contain path or module evidence and
+returns its candidate scope and path recall evidence.
+
+=search lexical= is the V1 direct retrieval route. It accepts one or more
+literal query terms, requires a language facade, and performs one bounded
+relational posting lookup followed by structural owner scoring. Its candidates
+are an independent token and structural signal, not a path filter.
+
+=search pipe= is the V1 query-composition route. It classifies a multi-term
+question, unions eligible =fd= path/module candidates with one bounded lexical
+lookup, and then applies graph ranking. It runs an =rg= proof pass only over
+that union. When coverage remains insufficient, it may request one explicitly
+reported bounded raw-text rescue; the receipt must include its reason, scope,
+file and byte budgets, and result count. It must never silently substitute a
+broad scan for a warm-index lookup failure.
+
+=rg= is an explicit raw-text fallback only. It is not an implementation detail
+of =lexical= or =pipe= and produces no semantic owner guarantee.
+
+=asp fd -query= remains a public V1 route, but is reimplemented as the
+language-neutral path/module stage above. Its current source-index wrapper is
+removed. =fd= and =lexical= candidate sets are fused by union, never by a hard
+intersection; otherwise a lexical false negative would become an unrecoverable
+content-search false negative.
+
+** Required Performance Gates
+The Python registered-language runtime harness owns these gates. They run the
+real =asp <language>= binaries and retain the command-set receipt for every
+registered language and configured large repository.
+
+| gate                | corpus and route                                                    | release budget                        |
+|---------------------+---------------------------------------------------------------------+---------------------------------------|
+| cold publication    | 1,193 owners and at least 20,281 token-owner postings              | <= 1 s                                |
+| high-fanout lookup  | common-token relational lookup against that corpus                  | fresh client resolve <= 400 ms; point lookup traced |
+| warm fd CLI         | real =asp fd -query= path/module route                             | p95 <= 1 s                            |
+| warm lexical CLI    | real =asp <language> search lexical= over each registered language | p95 <= 2 s                            |
+| warm pipe CLI       | =fd= union lexical plus bounded =rg= proof command set             | p95 <= 3 s                            |
+| stale/missing index | lexical and pipe receipts                                           | explicit state, no hidden raw scan    |
+| route separation    | lexical and pipe command receipts                                   | stage source and union/rg scope shown |
+
+The large-library report must retain per-command wall time, source-index stage
+time, index state, query route, corpus revision, candidate counts by stage,
+candidate union size, =rg= proof scope, raw rescue state, and command-set
+coverage. CI fails on a missing registered-language route, an unaccounted
+command, budget regression, a JSON posting-list read, a missing known-owner or
+known-literal recall fixture, or an implicit fallback. Baselines are reviewed
+data, not self-updating thresholds.
+
+* Non-Goals
+
+This decision does not alter public search packets, add a V2 schema, allow
+provider-private string heuristics, or relax read-only lookup to obtain FTS.
+Future FTS work requires an independently verified read-only Turso execution
+contract and a new RFC decision.

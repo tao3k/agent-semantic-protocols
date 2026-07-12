@@ -6,6 +6,45 @@ use serde_json::Value;
 use super::assert_graph_turbo_request_contract;
 
 #[test]
+fn lexical_missing_view_value_reports_seeds_contract_before_provider_spawn() {
+    let root = temp_project_root("search-lexical-missing-view-value");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "lexical",
+            "cache_root",
+            "CacheRoot",
+            "owner",
+            "items",
+            "--workspace",
+            ".",
+            "--view",
+        ])
+        .output()
+        .expect("run asp rust search lexical missing view value");
+
+    assert!(!output.status.success(), "search unexpectedly succeeded");
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stderr.contains("search lexical --view requires seeds"),
+        "{stderr}"
+    );
+    assert!(
+        !marker.exists(),
+        "missing-view lexical rejection should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn lexical_rejects_owner_dependency_surface_combination_without_provider_spawn() {
     let root = temp_project_root("search-lexical-owner-deps-rejected");
     let bin_dir = root.join(".bin");
@@ -20,7 +59,7 @@ fn lexical_rejects_owner_dependency_surface_combination_without_provider_spawn()
             "rust",
             "search",
             "lexical",
-            "gxpkg",
+            "gxpkg|package",
             "owner",
             "deps",
             "--workspace",
@@ -79,6 +118,7 @@ fn lexical_seeds_is_asp_owned_for_cheap_discovery() {
             "search",
             "lexical",
             "cache_root",
+            "unrelated",
             "owner",
             "items",
             "tests",
@@ -96,10 +136,46 @@ fn lexical_seeds_is_asp_owned_for_cheap_discovery() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert_builtin_graph_frontier(&stdout, "cache_root");
+    assert_builtin_graph_route(&stdout, "cache_root");
     assert!(
         !marker.exists(),
         "search lexical seeds should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn lexical_rejects_single_seed_before_provider_spawn() {
+    let root = temp_project_root("search-lexical-single-seed-rejected");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "lexical",
+            "cache_root",
+            "owner",
+            "items",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search lexical single seed");
+
+    assert!(!output.status.success(), "search unexpectedly succeeded");
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(stderr.contains("query-bundle-required"), "{stderr}");
+    assert!(
+        !marker.exists(),
+        "single-seed lexical rejection should not spawn provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -536,7 +612,7 @@ fn lexical_seeds_use_source_index_when_warm() {
             "rust",
             "search",
             "lexical",
-            "source_index_fixture",
+            "source_index_fixture|unrelated",
             "owner",
             "items",
             "tests",
@@ -554,12 +630,9 @@ fn lexical_seeds_use_source_index_when_warm() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
-    assert!(stdout.contains("O=owner:path(src/lib.rs)"), "{stdout}");
-    assert!(
-        stdout.contains("item:symbol(source_index_fixture)"),
-        "{stdout}"
-    );
+    assert!(stdout.starts_with("[graph-route]"), "{stdout}");
+    assert!(stdout.contains("owner=path(src/lib.rs)"), "{stdout}");
+    assert!(stdout.contains("symbols=source_index_fixture"), "{stdout}");
     assert!(
         !marker.exists(),
         "search-overlay lexical path should not spawn provider"
@@ -574,7 +647,11 @@ fn lexical_frontier_receipt_out_is_asp_owned_runtime_capture() {
     let marker = root.join("provider-called");
     let receipt_path = root.join("frontier-receipt.json");
     std::fs::create_dir_all(root.join("src")).expect("create src");
-    std::fs::write(root.join("src/lib.rs"), "pub fn cache_root() {}\n").expect("write source");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn cache_root() {}\npub fn unrelated() {}\n",
+    )
+    .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
@@ -585,7 +662,7 @@ fn lexical_frontier_receipt_out_is_asp_owned_runtime_capture() {
             "rust",
             "search",
             "lexical",
-            "cache_root",
+            "cache_root|unrelated",
             "owner",
             "items",
             "tests",
@@ -622,7 +699,7 @@ fn lexical_frontier_receipt_out_is_asp_owned_runtime_capture() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert_builtin_graph_frontier(&stdout, "cache_root");
+    assert_builtin_graph_route(&stdout, "cache_root");
     let receipt: Value =
         serde_json::from_slice(&std::fs::read(&receipt_path).expect("read receipt"))
             .expect("receipt JSON");
@@ -655,7 +732,7 @@ fn lexical_scoped_root_outputs_workspace_relative_replayable_locators() {
     .expect("write demo manifest");
     std::fs::write(
         root.join("crates/demo/src/lib.rs"),
-        "pub fn cache_root() {}\n",
+        "pub fn cache_root() {}\npub fn unrelated() {}\n",
     )
     .expect("write scoped source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
@@ -668,7 +745,7 @@ fn lexical_scoped_root_outputs_workspace_relative_replayable_locators() {
             "rust",
             "search",
             "lexical",
-            "cache_root",
+            "cache_root|unrelated",
             "owner",
             "items",
             "tests",
@@ -686,13 +763,12 @@ fn lexical_scoped_root_outputs_workspace_relative_replayable_locators() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("O=owner:path(crates/demo/src/lib.rs)"),
+        stdout.contains("owner=path(crates/demo/src/lib.rs)"),
         "{stdout}"
     );
+    assert!(stdout.contains("symbols=cache_root"), "{stdout}");
     assert!(
-        stdout.contains(
-            "I=item:symbol(cache_root)@rust://crates/demo/src/lib.rs#item/symbol/cache_root"
-        ),
+        stdout.contains("next=asp rust search owner 'crates/demo/src/lib.rs' items --query"),
         "{stdout}"
     );
     assert!(
@@ -728,7 +804,7 @@ fn lexical_can_emit_graph_turbo_request_for_live_candidate_frontier() {
             "rust",
             "search",
             "lexical",
-            "cache_root",
+            "cache_root|unrelated",
             "owner",
             "items",
             "tests",
@@ -787,7 +863,7 @@ fn typescript_lexical_can_emit_typed_hot_request_for_live_candidate_frontier() {
             "typescript",
             "search",
             "lexical",
-            "cacheRoot",
+            "cacheRoot|unrelated",
             "owner",
             "items",
             "tests",
@@ -836,7 +912,7 @@ fn lexical_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
             "rust",
             "search",
             "lexical",
-            "cache_root",
+            "cache_root|unrelated",
             "owner",
             "items",
             "tests",
@@ -851,7 +927,7 @@ fn lexical_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert_builtin_graph_frontier(&stdout, "cache_root");
+    assert_builtin_graph_route(&stdout, "cache_root");
     assert!(
         !marker.exists(),
         "search lexical default view should not spawn provider"
@@ -880,7 +956,7 @@ fn typescript_lexical_default_view_uses_shared_graph_turbo_ranker() {
             "typescript",
             "search",
             "lexical",
-            "cacheRoot",
+            "cacheRoot|unrelated",
             "owner",
             "items",
             "tests",
@@ -894,10 +970,12 @@ fn typescript_lexical_default_view_uses_shared_graph_turbo_ranker() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.starts_with("[graph-route]"), "{stdout}");
+    assert!(stdout.contains("owner=path(src/index.ts)"), "{stdout}");
     assert!(
-        String::from_utf8(output.stdout)
-            .expect("stdout")
-            .contains("I=item:symbol(cacheroot)")
+        stdout.contains("next=asp typescript search owner 'src/index.ts' items --query"),
+        "{stdout}"
     );
     assert!(
         !marker.exists(),
@@ -906,21 +984,21 @@ fn typescript_lexical_default_view_uses_shared_graph_turbo_ranker() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-fn assert_builtin_graph_frontier(stdout: &str, symbol: &str) {
+fn assert_builtin_graph_route(stdout: &str, symbol: &str) {
     assert!(
-        stdout.starts_with("[graph-frontier] profile=owner-query"),
+        stdout.starts_with("[graph-route] profile=owner-query"),
         "{stdout}"
     );
+    assert!(stdout.contains("relation=cohesive"), "{stdout}");
+    assert!(stdout.contains("route=owner-item"), "{stdout}");
+    assert!(stdout.contains("owner=path(src/lib.rs)"), "{stdout}");
+    assert!(stdout.contains(&format!("symbols={symbol}")), "{stdout}");
     assert!(
-        stdout.contains(&format!("I=item:symbol({symbol})")),
+        stdout.contains("next=asp rust search owner 'src/lib.rs' items --query"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains(&format!("H=hot:range({symbol})")),
-        "{stdout}"
-    );
-    assert!(stdout.contains("rank="), "{stdout}");
-    assert!(stdout.contains("frontier="), "{stdout}");
+    assert!(!stdout.contains("rank="), "{stdout}");
+    assert!(!stdout.contains("frontier="), "{stdout}");
 }
 
 fn assert_graph_has_hot_code_path(payload: &Value, symbol: &str) {

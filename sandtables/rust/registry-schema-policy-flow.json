@@ -37,7 +37,7 @@
         "evidence-assurance"
       ],
       "command": [
-        "rs-harness",
+        "asp rust",
         "agent",
         "doctor",
         "--client",
@@ -50,8 +50,8 @@
         "stdoutJsonEquals": {
           "registryId": "agent.semantic-protocols.semantic-language-registry",
           "languages.0.languageId": "rust",
-          "languages.0.providerId": "rs-harness",
-          "languages.0.binary": "rs-harness"
+          "languages.0.providerId": "asp rust",
+          "languages.0.binary": "asp rust"
         },
         "stdoutJsonArrayContains": {
           "languages.0.methods": "evidence/assurance",
@@ -83,7 +83,7 @@
         "performance"
       ],
       "command": [
-        "rs-harness",
+        "asp rust",
         "evidence",
         "assurance",
         "--evidence-graph-json",
@@ -119,7 +119,7 @@
         "performance"
       ],
       "command": [
-        "rs-harness",
+        "asp rust",
         "search",
         "prime",
         "--json",
@@ -135,7 +135,7 @@
         "stdoutJsonEquals": {
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
           "languageId": "rust",
-          "providerId": "rs-harness",
+          "providerId": "asp rust",
           "method": "search/prime",
           "renderMode": "seeds"
         },
@@ -154,7 +154,7 @@
         "performance"
       ],
       "command": [
-        "rs-harness",
+        "asp rust",
         "search",
         "dependency",
         "serde,serde_json",
@@ -171,7 +171,7 @@
         "stdoutJsonEquals": {
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
           "languageId": "rust",
-          "providerId": "rs-harness",
+          "providerId": "asp rust",
           "method": "search/dependency",
           "query": "serde,serde_json",
           "header.fields.selector": "exact-set",
@@ -283,9 +283,9 @@
         "stdoutJsonArrayContains": {
           "routes": {
             "binary": "asp",
-            "kind": "fzf",
+            "kind": "lexical",
             "languageId": "rust",
-            "providerId": "rs-harness"
+            "providerId": "asp rust"
           }
         },
         "maxElapsedMsWarn": 5000

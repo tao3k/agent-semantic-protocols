@@ -1,19 +1,16 @@
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
-    run_provider_process as run_transport_process,
+    provider_process_limits_from_environment, run_provider_process as run_transport_process,
 };
 use agent_semantic_runtime::{project_state_paths, runtime_bin_dir_for_cache_home};
 use std::collections::BTreeMap;
 use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use super::install_provider_target::{home_dir, resolve_provider_binary_invocation};
 use super::search_config::AspConfig;
-
-const ASP_PROVIDER_TIMEOUT_MS_ENV: &str = "ASP_PROVIDER_TIMEOUT_MS";
 
 pub(super) fn run_provider_command(
     language_id: &str,
@@ -39,41 +36,6 @@ pub(super) fn run_provider_command(
         std::process::exit(output.status.code().unwrap_or(1));
     }
     Ok(())
-}
-
-pub(super) fn run_owner_items_provider_command(
-    language_id: &str,
-    provider: &ActivatedProvider,
-    invocation: &[String],
-    project_root: &Path,
-    cache_home: &Path,
-    owner_path: &str,
-) -> Result<(), String> {
-    let (program, forwarded) = invocation
-        .split_first()
-        .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
-    let output = run_provider_process(
-        language_id,
-        provider,
-        program,
-        forwarded,
-        project_root,
-        cache_home,
-    )?;
-    write_facade_stream(language_id, provider, output.stderr.as_ref(), io::stderr())?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "provider-owned owner-items failed for {owner_path}: {}",
-            stderr.trim()
-        ));
-    }
-    if output.stdout.iter().all(|byte| byte.is_ascii_whitespace()) {
-        return Err(format!(
-            "provider-owned owner-items produced empty output for {owner_path}"
-        ));
-    }
-    write_facade_stream(language_id, provider, output.stdout.as_ref(), io::stdout())
 }
 
 pub(super) fn run_provider_command_with_stdin(
@@ -177,28 +139,7 @@ fn run_provider_process(
 }
 
 fn default_provider_process_limits() -> Result<ProviderProcessLimits, String> {
-    let limits = ProviderProcessLimits {
-        timeout: provider_timeout_from_env()?,
-        ..ProviderProcessLimits::default()
-    };
-    Ok(limits)
-}
-
-fn provider_timeout_from_env() -> Result<Option<Duration>, String> {
-    let Ok(value) = env::var(ASP_PROVIDER_TIMEOUT_MS_ENV) else {
-        return Ok(None);
-    };
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    let millis = trimmed.parse::<u64>().map_err(|error| {
-        format!("{ASP_PROVIDER_TIMEOUT_MS_ENV} must be an integer number of milliseconds: {error}")
-    })?;
-    if millis == 0 {
-        return Ok(None);
-    }
-    Ok(Some(Duration::from_millis(millis)))
+    provider_process_limits_from_environment()
 }
 
 struct ProviderProcessRun<'a> {

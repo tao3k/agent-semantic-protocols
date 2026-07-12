@@ -210,7 +210,7 @@ Supported first-hop forms:
 ```sh
 rs-harness search dependency <dep1>,<dep2>,<dep3> items tests --package <pkg>
 rs-harness search owner <path1>,<path2>,<path3> items --package <pkg>
-ts-harness search fzf --query-set <q1> --query-set <q2> owner tests --owner <path> .
+ts-harness search lexical --query-set <q1> --query-set <q2> owner tests --owner <path> .
 ```
 
 Providers may add query-set support to other views only when each query term
@@ -249,7 +249,7 @@ Providers must not rely on comma-separated text such as
 The registry must advertise this explicitly:
 
 #+begin_src text
-method=search/fzf
+method=search/lexical
 supportsQuerySet=true
 acceptedQuerySetSelectors=exact-set
 acceptedPipes=owner,tests
@@ -261,7 +261,7 @@ with the owner path:
 
 #+begin_src json
 {
-  "method": "search/fzf",
+  "method": "search/lexical",
   "view": "text",
   "querySet": [
     {"value": "location.path", "kind": "text", "selector": "exact"},
@@ -291,7 +291,7 @@ the source edit frontier, the test frontier, and typed follow-up actions
 without teaching the agent a second prompt protocol.
 
 #+begin_src text
-[search-fzf] q=load,Thing querySet=2 selector=exact-set pkg=. own=3
+[search-lexical] q=load,Thing querySet=2 selector=exact-set pkg=. own=3
 [search-graph] mode=query-set root=. alg=change-frontier-query-set
 legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 aliases=G:search,O1:owner,O2:owner,T3:test
@@ -531,23 +531,23 @@ surface.  A real search phase around package root and source-layout policy ran
 many same-axis probes:
 
 #+begin_src text
-py-harness search fzf metadata owner tests .
-py-harness search fzf package-roots .
-py-harness search fzf package_paths .
-py-harness search fzf _src_layout_findings .
-py-harness search fzf scope.source_paths .
-py-harness search fzf package_roots .
-py-harness search fzf root / "src" .
-py-harness search fzf return True .
-py-harness search fzf return False .
-py-harness search fzf relative_to .
-py-harness search fzf ValueError .
+py-harness search lexical metadata owner tests .
+py-harness search lexical package-roots .
+py-harness search lexical package_paths .
+py-harness search lexical _src_layout_findings .
+py-harness search lexical scope.source_paths .
+py-harness search lexical package_roots .
+py-harness search lexical root / "src" .
+py-harness search lexical return True .
+py-harness search lexical return False .
+py-harness search lexical relative_to .
+py-harness search lexical ValueError .
 #+end_src
 
 The durable fix is not simply to concatenate those terms.  A mechanical
-=search fzf --query-set= union can still let broad terms such as =metadata= or
+=search lexical --query-set= union can still let broad terms such as =metadata= or
 =relative_to= consume the bounded hit budget, hiding the layout-policy owner
-that caused the trace.  Python =search fzf --query-set= must therefore:
+that caused the trace.  Python =search lexical --query-set= must therefore:
 
 - record =queryCoverage= for every term, including misses and truncated terms
 - merge hits fairly across terms before applying the compact hit limit
@@ -685,7 +685,7 @@ complete real-trigger sandtable can therefore have both:
 
 #+begin_src text
 client trigger: Codex PreToolUse -> hook deny/allow guide
-target replay:  <lang-harness> search prime/fzf/owner/tests/ingest
+target replay:  <lang-harness> search prime/lexical/owner/tests/ingest
 #+end_src
 
 This prevents a large target-library replay from being mistaken for the Codex
@@ -767,7 +767,7 @@ implementation-principle    explain how a behavior is implemented internally
 
 The CLI still does not parse natural-language intent.  The scenario records
 the human task in =evidence.intentCases=, then exercises deterministic harness
-commands such as =search prime=, =search fzf=, =search dependency=,
+commands such as =search prime=, =search lexical=, =search dependency=,
 =search owner=, =search tests=, or =search ingest=.  The agent client owns the
 intent-to-command choice; the provider owns only parser/schema/RFC facts and
 ranked compact packets.
@@ -797,7 +797,7 @@ Every library row must include all three intent classes.  A scenario may group
 the three intent cases for one library, but it must name the step ids and query
 terms that exercise each case so later receipts can compare command count,
 packet size, frontier quality, and repeated-search compression by intent kind.
-When same-view text probes are homogeneous, prefer one =search fzf
+When same-view text probes are homogeneous, prefer one =search lexical
 --query-set= step over three separate text steps; keep the per-intent
 =queryTerms= metadata as the audit join key.
 
@@ -822,14 +822,14 @@ make this visible with fields such as =fileListPasses= and
 =candidateFileBasis= so audits can distinguish exact all-file counts from
 source-matched lower bounds.
 
-For large TypeScript workspaces, =search fzf --query-set ... owner tests= must
+For large TypeScript workspaces, =search lexical --query-set ... owner tests= must
 rank parser-visible implementation owners above broad declaration, generated,
 or fixture-heavy owners when the implementation owner has owner-local exported
 symbol/type matches for multiple query terms.  A query-set such as
 =APIRequestContext,BrowserContextAPIRequestContext,fetch= should keep the owner
 that declares the matching request context classes in the first frontier even
 when generated =.d.ts= files or top-level tests have more lexical occurrences.
-This is still a fuzzy search result: the provider may use =rg+fzf= or another
+This is still a fuzzy search result: the provider may use =rg+lexical= or another
 prefilter to find candidates, but the final rank must be parser-owned and must
 prefer owner-local exported item evidence over weak path/text frequency.
 
@@ -1071,7 +1071,7 @@ Then continue with a more specific recipe.
 
 ## External candidate expansion rule
 
-When built-in =search fzf= or =search symbol= returns too few results,
+When built-in =search lexical= or =search symbol= returns too few results,
 use =rg= or =fd= — but always pipe back to =search ingest=:
 
 ```sh
@@ -1084,7 +1084,7 @@ Never paste raw =rg= / =fd= output.  The ingest command groups results by
 owner or path, annotates the input source, and keeps downstream navigation in
 the shared packet schema.  This is required for docs, schema files, generated
 artifacts, and any test files or other text that are outside the provider's
-=search fzf= index.
+=search lexical= index.
 
 ## Structural pattern rule
 
@@ -1096,7 +1096,7 @@ rs-harness search patterns
 ```
 
 Do not write raw =ast-grep= patterns.  Select a recipe by name.  If no
-recipe matches, fall back to =search fzf= or =rg | ingest=.
+recipe matches, fall back to =search lexical= or =rg | ingest=.
 
 ## After edits
 

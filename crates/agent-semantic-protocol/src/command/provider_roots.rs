@@ -88,17 +88,32 @@ fn validate_facade_view_args(args: &[String]) -> Result<(), String> {
         let arg = &args[index];
         if arg == "--view" {
             let Some(value) = args.get(index + 1) else {
-                return Err("--view requires a value".to_string());
+                return Err(if args.iter().any(|arg| arg == "lexical") {
+                    "search lexical --view requires seeds"
+                } else {
+                    "roots --view requires a value"
+                }
+                .to_string());
             };
             if value.starts_with('-') {
-                return Err("--view requires a value".to_string());
+                return Err(if args.iter().any(|arg| arg == "lexical") {
+                    "search lexical --view requires seeds"
+                } else {
+                    "roots --view requires a value"
+                }
+                .to_string());
             }
             index += 2;
             continue;
         }
         if let Some(value) = arg.strip_prefix("--view=") {
             if value.is_empty() {
-                return Err("--view requires a value".to_string());
+                return Err(if args.iter().any(|arg| arg == "lexical") {
+                    "search lexical --view requires seeds"
+                } else {
+                    "roots --view requires a value"
+                }
+                .to_string());
             }
             index += 1;
             continue;
@@ -361,7 +376,7 @@ fn is_search_view_name(arg: &str) -> bool {
             | "docs"
             | "docs-use"
             | "features"
-            | "fzf"
+            | "lexical"
             | "import"
             | "ingest"
             | "owner"

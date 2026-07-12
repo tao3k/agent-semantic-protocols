@@ -7,7 +7,7 @@ use agent_semantic_client_db::{
 };
 
 #[tokio::test(flavor = "current_thread")]
-async fn source_index_lookup_migrates_legacy_selector_payload_columns() {
+async fn source_index_lookup_reports_cold_required_for_precanonical_storage() {
     let temp_root = temp_project_root("source-index-legacy-selector-payload");
     let client_dir = temp_root.join("client");
     let project_root = temp_root.join("workspace");
@@ -24,12 +24,10 @@ async fn source_index_lookup_migrates_legacy_selector_payload_columns() {
             limit: 8,
         },
     )
-    .expect("lookup migrates legacy source-index selector schema");
+    .expect("lookup reports legacy source-index selector schema");
 
-    assert_eq!(result.state, ClientDbSourceIndexLookupState::Hit);
-    assert_eq!(result.candidates.len(), 1);
-    assert_eq!(result.candidates[0].path, "src/legacy.rs");
-    assert!(result.candidates[0].selector_proof.is_none());
+    assert_eq!(result.state, ClientDbSourceIndexLookupState::ColdRequired);
+    assert!(result.candidates.is_empty());
 
     let _ = fs::remove_dir_all(temp_root);
 }

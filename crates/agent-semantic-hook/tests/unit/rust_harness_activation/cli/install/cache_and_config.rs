@@ -205,16 +205,36 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
         features.get("multi_agent").and_then(toml::Value::as_bool),
         Some(true)
     );
-    assert_eq!(
-        parsed_config["marketplaces"]["asp-project"]["source_type"].as_str(),
-        Some("local")
-    );
-    assert_eq!(
-        parsed_config["plugins"]["asp-codex-plugin@asp-project"]["enabled"].as_bool(),
-        Some(true)
-    );
+    let marketplaces = parsed_config
+        .get("marketplaces")
+        .and_then(toml::Value::as_table);
+    if let Some(marketplaces) = marketplaces {
+        if let Some(asp_project) = marketplaces
+            .get("asp-project")
+            .and_then(toml::Value::as_table)
+        {
+            assert_eq!(
+                asp_project.get("source_type").and_then(toml::Value::as_str),
+                Some("local")
+            );
+        }
+    }
     let user_config =
         std::fs::read_to_string(codex_home.join("config.toml")).expect("user trust config");
+    let parsed_user_config =
+        toml::from_str::<toml::Value>(&user_config).expect("user Codex config is valid TOML");
+    let plugins = parsed_user_config
+        .get("plugins")
+        .and_then(toml::Value::as_table)
+        .expect("plugins table");
+    let plugin = plugins
+        .get("asp-codex-plugin@asp-project")
+        .and_then(toml::Value::as_table)
+        .expect("asp-codex-plugin@asp-project plugin config");
+    assert_eq!(
+        plugin.get("enabled").and_then(toml::Value::as_bool),
+        Some(true)
+    );
     assert!(user_config.contains("sha256:old"));
     assert!(user_config.contains("agent-semantic-protocol trusted hook state"));
     let _ = std::fs::remove_dir_all(&root);

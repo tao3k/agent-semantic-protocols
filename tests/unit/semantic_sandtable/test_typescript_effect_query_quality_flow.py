@@ -130,7 +130,7 @@ class TypeScriptEffectQueryQualityFlowTests(unittest.TestCase):
             stdout_contains,
         )
         self.assertIn(
-            "avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,direct-source-read,raw-read",
+            "avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read",
             stdout_contains,
         )
         self.assertIn("export interface Service", expect["stdoutNotContains"])
@@ -146,7 +146,7 @@ class TypeScriptEffectQueryQualityFlowTests(unittest.TestCase):
             "queryCoverage=matched=effect,concurrency,fiber,queue,stream,scope",
             expect["stdoutNotContains"],
         )
-        self.assertIn("frontier=Q.fzf", expect["stdoutNotContains"])
+        self.assertIn("frontier=Q.lexical", expect["stdoutNotContains"])
         self.assertIn(
             "packages/ai/google/src/Generated.ts", expect["stdoutNotContains"]
         )

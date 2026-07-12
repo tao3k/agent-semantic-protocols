@@ -251,6 +251,127 @@ fn agent_session_resume_missing_session_checks_rollout_history_before_create() {
 }
 
 #[test]
+fn agent_session_resume_archived_same_root_reuses_existing_child_before_rollout_lookup() {
+    let state_root = temp_state_root("asp-resume-archived-same-root");
+    let codex_home = temp_state_root("asp-resume-archived-same-root-codex-home");
+    let agents_dir = state_root.join("agents");
+    fs::create_dir_all(&agents_dir).expect("create agents dir");
+    fs::write(
+        agents_dir.join("asp-explorer_codex.toml"),
+        "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nsandbox_mode = \"read-only\"\n",
+    )
+    .expect("write asp explorer config");
+    let root_session_id = "019f2c45-ba38-7000-8000-000000000031";
+    let child_session_id = "019f2c45-ba38-7000-8000-000000000032";
+    let message_target_id = "native-message-agent-target-032";
+    write_codex_rollout_fixture(
+        &codex_home,
+        child_session_id,
+        root_session_id,
+        "gpt-5.4-mini",
+    );
+    let binary = env!("CARGO_BIN_EXE_asp");
+
+    let register = Command::new(binary)
+        .env("ASP_STATE_HOME", &state_root)
+        .env("CODEX_HOME", &codex_home)
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--state-root",
+            path_str(&state_root),
+            "--name",
+            "asp-explore",
+            "--child-session-id",
+            child_session_id,
+            "--message-target-id",
+            message_target_id,
+            "--root-session-id",
+            root_session_id,
+            "--roles",
+            "subagent,search",
+            "--model",
+            "gpt-5.4-mini",
+            "--active",
+        ])
+        .output()
+        .expect("register archived same-root resident");
+    assert_success("register", &register);
+
+    let close = Command::new(binary)
+        .env("ASP_STATE_HOME", &state_root)
+        .env("CODEX_HOME", &codex_home)
+        .args([
+            "agent",
+            "session",
+            "close",
+            "--state-root",
+            path_str(&state_root),
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            root_session_id,
+        ])
+        .output()
+        .expect("archive same-root resident");
+    assert_success("close", &close);
+    fs::remove_dir_all(codex_home.join("sessions")).expect("remove rollout before resume");
+
+    let resume = Command::new(binary)
+        .env("ASP_STATE_HOME", &state_root)
+        .env("CODEX_HOME", &codex_home)
+        .args([
+            "agent",
+            "session",
+            "resume",
+            "--state-root",
+            path_str(&state_root),
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            root_session_id,
+        ])
+        .output()
+        .expect("resume archived same-root resident");
+    assert_success("resume", &resume);
+
+    let stdout = String::from_utf8_lossy(&resume.stdout);
+    assert!(stdout.contains("registryStatus=\"archived\""), "{stdout}");
+    assert!(stdout.contains("registryRoutable=false"), "{stdout}");
+    assert!(
+        stdout.contains("session=\"019f2c45-ba38-7000-8000-000000000032\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("rolloutHistoryStatus=\"not-needed\""),
+        "{stdout}"
+    );
+    assert!(stdout.contains("rolloutHistoryAction=\"none\""), "{stdout}");
+    assert!(
+        stdout.contains("nextAction=\"resume-archived-same-root-child-with-native-host\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "modelAlignmentAction=\"parent-resume-existing-archived-child-with-native-host\""
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Session-start owns reactivation after the host resume"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("create-resident-child-after-rollout-history-miss"),
+        "{stdout}"
+    );
+
+    let _ = fs::remove_dir_all(state_root);
+    let _ = fs::remove_dir_all(codex_home);
+}
+
+#[test]
 fn agent_session_resume_reports_required_model_alignment_for_asp_explore() {
     let state_root = temp_state_root("asp-resume-model-alignment");
     let codex_home = temp_state_root("asp-resume-model-codex-home");

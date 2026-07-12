@@ -18,7 +18,7 @@ def check_search_read_plan_frontier_contract(
 
 
 def search_frontier(value: str, label: str) -> None:
-    if "[graph-frontier]" not in value and "[search-fzf]" not in value:
+    if "[graph-frontier]" not in value and "[search-lexical]" not in value:
         contains(value, "[graph-frontier]", label)
     if "profile=owner-query" not in value and "entries=owner-query" not in value:
         contains(value, "profile=owner-query", label)

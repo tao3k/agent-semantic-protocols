@@ -4,9 +4,9 @@ mod agent_session;
 mod agent_session_registry;
 
 pub(crate) use agent_session_registry::{
-    asp_explore_session_for_current_root, asp_explore_session_record_for_current_root,
-    current_registered_session, current_root_session_id, has_current_agent_session,
-    record_current_session_tool_event,
+    current_agent_session_id, current_registered_session, current_root_session_id,
+    has_current_agent_session, record_current_session_tool_event,
+    registered_resident_session_for_root,
 };
 pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;
@@ -16,6 +16,8 @@ mod dispatch_agent_session_policy;
 mod document_language_facade;
 mod document_provider;
 mod gerbil_check_cache;
+mod gerbil_deps;
+mod gerbil_graph_owner_items;
 mod graph;
 mod healthcheck;
 mod hook;
@@ -27,6 +29,7 @@ mod install_provider_archive;
 mod install_provider_release;
 mod install_provider_target;
 mod language_owner_items;
+mod language_projection_import;
 mod org_archive;
 mod org_capture;
 mod org_capture_contract_materialize;
@@ -96,4 +99,6 @@ pub(in crate::command) use hook_runtime_context::payload_indicates_subagent_cont
 pub(in crate::command) use protocol_binary::{
     ensure_protocol_binary_installed_for_path, protocol_binary_on_path,
 };
-pub(in crate::command) use protocol_version::protocol_version_line;
+pub(in crate::command) use protocol_version::{
+    protocol_version_line, run_protocol_version_command,
+};

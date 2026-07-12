@@ -4,11 +4,10 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use agent_semantic_client_core::{
-    ByteCount, CacheArtifactId, ClientCacheFileHash, ClientMethod, ClientRequest, LanguageId,
-    ProviderId, replay_artifact_path, structured_evidence_artifact_path,
-    syntax_query_ast_abi_fingerprint,
+    ByteCount, CacheArtifactId, ClientCacheFileHash, ClientMethod, ClientRequest,
+    replay_artifact_path, structured_evidence_artifact_path, syntax_query_ast_abi_fingerprint,
 };
-use agent_semantic_client_db::{ClientDbEngine, ClientDbEngineReadSession, ClientDbGenerationHit};
+use agent_semantic_client_db::ClientDbGenerationHit;
 use agent_semantic_search::{
     PromptOutputFingerprintRequest, QueryPacketReplayRequest, prompt_output_artifact_replay_safe,
     prompt_output_request_fingerprint as search_prompt_output_request_fingerprint,
@@ -24,9 +23,7 @@ const SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID: &str =
 
 use super::limits::MAX_CACHE_REPLAY_ARTIFACT_BYTES;
 use super::search_packet::render_search_packet_artifact_stdout;
-use super::syntax_query::{
-    render_semantic_tree_sitter_query_rows_stdout, render_semantic_tree_sitter_query_stdout,
-};
+use super::syntax_query::render_semantic_tree_sitter_query_stdout;
 
 #[derive(Clone)]
 pub(crate) struct ProviderCacheReplay {
@@ -56,19 +53,6 @@ impl ProviderCacheReplay {
             syntax_artifact_id: Some(syntax_artifact_id),
             packet_bytes: Some(ByteCount::from_len(packet_bytes)),
             db_read_count: 0,
-        }
-    }
-
-    fn syntax_rows(
-        stdout: impl Into<Bytes>,
-        syntax_artifact_id: Option<CacheArtifactId>,
-        packet_bytes: Option<u64>,
-    ) -> Self {
-        Self {
-            stdout: stdout.into(),
-            syntax_artifact_id,
-            packet_bytes: packet_bytes.map(ByteCount::new),
-            db_read_count: 1,
         }
     }
 }
@@ -140,15 +124,6 @@ pub(crate) fn load_replay_artifact(
     load_search_packet_artifact(cache_root, generation_hit, request)
         .or_else(|| load_query_packet_artifact(cache_root, generation_hit, request))
         .or_else(|| load_syntax_query_packet_artifact(cache_root, generation_hit, request))
-        .or_else(|| {
-            load_syntax_query_rows_replay(
-                cache_root,
-                &generation_hit.language_id,
-                &generation_hit.provider_id,
-                &generation_hit.project_root,
-                request,
-            )
-        })
         .or_else(|| {
             if is_tree_sitter_query_request(request) || has_structured_evidence_artifact {
                 None
@@ -256,78 +231,6 @@ fn render_syntax_query_packet_artifact(
     })
 }
 
-pub(crate) fn load_syntax_query_rows_replay(
-    cache_root: &Path,
-    language_id: &LanguageId,
-    provider_id: &ProviderId,
-    project_root: &Path,
-    request: &ClientRequest,
-) -> Option<ProviderCacheReplay> {
-    let (query_ast_fingerprint, selector) = syntax_query_rows_request_key(request)?;
-    render_syntax_query_rows_replay(
-        ClientDbEngine::lookup_syntax_query_replay_request_from_client_dir(
-            cache_root,
-            language_id,
-            provider_id,
-            project_root,
-            query_ast_fingerprint,
-            selector,
-        )
-        .ok()
-        .flatten()?,
-        project_root,
-    )
-}
-
-pub(crate) fn load_syntax_query_rows_replay_session(
-    db_session: &ClientDbEngineReadSession,
-    language_id: &LanguageId,
-    provider_id: &ProviderId,
-    project_root: &Path,
-    request: &ClientRequest,
-) -> Option<ProviderCacheReplay> {
-    let (query_ast_fingerprint, selector) = syntax_query_rows_request_key(request)?;
-    render_syntax_query_rows_replay(
-        db_session
-            .lookup_syntax_query_replay_request(
-                language_id,
-                provider_id,
-                project_root,
-                query_ast_fingerprint,
-                selector,
-            )
-            .ok()
-            .flatten()?,
-        project_root,
-    )
-}
-
-fn syntax_query_rows_request_key(request: &ClientRequest) -> Option<(String, Option<String>)> {
-    if request.method != ClientMethod::Query
-        || request.forwarded_args.iter().any(|arg| arg == "--code")
-    {
-        return None;
-    }
-    let query_ast_fingerprint = request_tree_sitter_query_ast_fingerprint(&request.forwarded_args)?;
-    let selector = request_flag_value(&request.forwarded_args, "--selector").map(str::to_string);
-    Some((query_ast_fingerprint, selector))
-}
-
-fn render_syntax_query_rows_replay(
-    replay: agent_semantic_client_db::ClientDbSyntaxQueryReplay,
-    project_root: &Path,
-) -> Option<ProviderCacheReplay> {
-    if !replay_file_hashes_match(project_root, &replay.file_hashes) {
-        return None;
-    }
-    let stdout = render_semantic_tree_sitter_query_rows_stdout(&replay);
-    Some(ProviderCacheReplay::syntax_rows(
-        stdout.into_bytes(),
-        replay.artifact_id,
-        replay.packet_bytes,
-    ))
-}
-
 fn render_query_packet_artifact(
     cache_root: &Path,
     artifact_id: &CacheArtifactId,
@@ -376,6 +279,9 @@ pub(crate) fn semantic_tree_sitter_query_packet_matches_request(
     if string_field(packet, "method")? != "query" {
         return None;
     }
+    if !semantic_tree_sitter_query_execution_is_complete(packet) {
+        return None;
+    }
     let query = packet.get("query")?;
     let request_query_ast_fingerprint =
         request_tree_sitter_query_ast_fingerprint(&request.forwarded_args)?;
@@ -400,6 +306,19 @@ pub(crate) fn semantic_tree_sitter_query_packet_matches_request(
     }
     Some(())
 }
+
+fn semantic_tree_sitter_query_execution_is_complete(packet: &Value) -> bool {
+    let Some(execution) = packet.get("execution") else {
+        return false;
+    };
+    string_field(execution, "engine") == Some("tree-sitter-querycursor")
+        && string_field(execution, "predicateEvaluator") == Some("asp-tree-sitter-predicate-v1")
+        && string_field(execution, "matchStatus").is_some()
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/cache_replay/artifact_execution.rs"]
+mod artifact_execution;
 
 fn request_tree_sitter_query_value(forwarded_args: &[String]) -> Option<&str> {
     request_flag_value(forwarded_args, "--treesitter-query")

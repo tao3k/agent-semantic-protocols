@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-exact-selector-receipt.v1.schema.json",
+  "title": "Semantic Exact Selector Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "status",
+    "reasonCode",
+    "cacheIdentity",
+    "nextAction"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "semantic-exact-selector-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "selector-not-materialized",
+        "projection-stale",
+        "provider-index-gap"
+      ]
+    },
+    "reasonCode": {
+      "enum": [
+        "structural-selector-ready",
+        "non-structural-selector",
+        "source-locator-hint",
+        "project-root-selector",
+        "projection-cache-miss",
+        "projection-cache-stale",
+        "projection-incomplete",
+        "provider-structural-selector-missing"
+      ]
+    },
+    "selector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resolution": {
+      "enum": [
+        "exact",
+        "alias",
+        "identity-drift",
+        "not-found"
+      ]
+    },
+    "canonicalIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "indexGeneration": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selectorAliases": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectorDialect",
+        "workspaceAnchor"
+      ],
+      "properties": {
+        "selectorDialect": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceAnchor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "moduleId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cacheIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerAbi",
+        "selectorDialect",
+        "workspaceAnchor",
+        "moduleGraphDigest",
+        "sourceDigest"
+      ],
+      "properties": {
+        "providerAbi": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectorDialect": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceAnchor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "moduleGraphDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceDigest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "providerOwner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nextAction": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ready"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "selector",
+          "identity"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "selector-not-materialized",
+              "projection-stale",
+              "provider-index-gap"
+            ]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "selector"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "provider-index-gap"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "providerOwner"
+        ]
+      }
+    }
+  ]
+}

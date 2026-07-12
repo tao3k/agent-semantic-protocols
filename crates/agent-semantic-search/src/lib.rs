@@ -45,13 +45,21 @@ mod search_pipe_query_pack;
 mod search_query_budget;
 mod search_subagent_receipt;
 mod source_index_lookup;
+mod graph_owner_item_route;
+
+pub use graph_owner_item_route::{
+    GraphOwnerItemEvidence, GraphOwnerItemRenderRequest, GraphOwnerItemRoute,
+    GraphOwnerItemRouteRequest, GraphSemanticKind, rank_graph_owner_items,
+    render_graph_owner_item_frontier,
+};
+
 mod source_index_rank;
 pub use source_index_rank::{
     SourceIndexRankReport, SourceIndexRankRequest, SourceIndexRankScore,
     SourceIndexRankedCandidate, rank_source_index_report,
 };
 mod structural_index_search;
-mod syntax_query_replay;
+pub mod syntax_query_replay;
 mod turso_overlay_search;
 
 pub use document_candidates::{
@@ -103,8 +111,9 @@ pub use lexical_overlay::{
     LexicalOverlaySearchRequest, search_lexical_overlay, search_lexical_overlay_candidates,
 };
 pub use lexical_search_frame::{
-    LexicalAcquisitionRoute, LexicalEvidenceState, LexicalSearchFrameCandidate,
-    LexicalSearchFrameRequest, LexicalSearchFrameRoute, plan_lexical_search_frame,
+    LexicalAcquisitionRoute, LexicalEvidenceState, LexicalQueryRelation,
+    LexicalSearchFrameCandidate, LexicalSearchFrameRequest, LexicalSearchFrameRoute,
+    plan_lexical_search_frame,
 };
 pub use owner_items_source_index_trace::{
     OwnerItemsSourceIndexTrace, OwnerItemsSourceIndexTraceRender, OwnerItemsSourceIndexTraceStream,
@@ -291,6 +300,7 @@ mod query_wrapper_candidates_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_candidate.rs"]
 mod search_candidate_tests;
+pub mod search_command_preflight;
 #[cfg(test)]
 #[path = "../tests/unit/search_language_files.rs"]
 mod search_language_files_tests;

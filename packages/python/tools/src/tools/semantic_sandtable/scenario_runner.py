@@ -27,14 +27,21 @@ from .utils import (
 )
 
 
-def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
+def run_scenario(
+    repo_root: Path,
+    path: Path,
+    *,
+    isolate: bool = True,
+) -> ScenarioResult:
     scenario = _load_scenario_or_result(repo_root, path)
     if isinstance(scenario, ScenarioResult):
         return scenario
-    return _run_loaded_scenario(repo_root, path, scenario)
+    return _run_loaded_scenario(repo_root, path, scenario, isolate=isolate)
 
 
-def _asp_binary(repo_root: Path) -> str:
+def _asp_binary(repo_root: Path, env: dict[str, str]) -> str:
+    if benchmark_binary := env.get("ASP_BENCHMARK_BIN"):
+        return benchmark_binary
     workspace_binary = repo_root / "target" / "debug" / "asp"
     if workspace_binary.is_file():
         return str(workspace_binary)
@@ -103,7 +110,7 @@ def _apply_provider_preflight(
     process_env = {**os.environ, **env}
     for language in languages:
         command = [
-            _asp_binary(repo_root),
+            _asp_binary(repo_root, process_env),
             "install",
             "language",
             language,
@@ -157,9 +164,14 @@ def _run_loaded_scenario(
     repo_root: Path,
     path: Path,
     scenario: dict[str, Any],
+    *,
+    isolate: bool,
 ) -> ScenarioResult:
     env = build_env(scenario.get("env", {}), repo_root=repo_root)
-    env, isolation_evidence = scenario_isolation_env(repo_root, path, scenario, env)
+    if isolate:
+        env, isolation_evidence = scenario_isolation_env(repo_root, path, scenario, env)
+    else:
+        isolation_evidence = None
     prepared = _prepare_loaded_scenario(repo_root, path, scenario, env)
     if isinstance(prepared, ScenarioResult):
         if isolation_evidence is not None:

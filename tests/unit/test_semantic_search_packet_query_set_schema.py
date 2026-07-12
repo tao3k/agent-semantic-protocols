@@ -6,7 +6,6 @@ import json
 import unittest
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
 
 
 _PROTOCOL_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -22,11 +21,11 @@ def semantic_search_query_set_minimal_packet() -> dict[str, object]:
         "providerId": "ts-harness",
         "binary": "ts-harness",
         "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
-        "method": "search/fzf",
+        "method": "search/lexical",
         "projectRoot": ".",
-        "view": "fzf",
+        "view": "lexical",
         "renderMode": "seeds",
-        "header": {"kind": "search-fzf", "fields": {}},
+        "header": {"kind": "search-lexical", "fields": {}},
         "nodes": [],
         "edges": [],
         "owners": [],
@@ -49,7 +48,7 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
     def validation_errors(self, packet: dict[str, object]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(packet)]
 
-    def test_fzf_query_set_can_classify_fixture_hits_and_avoid_false_owner(
+    def test_lexical_query_set_can_classify_fixture_hits_and_avoid_false_owner(
         self,
     ) -> None:
         packet = semantic_search_query_set_minimal_packet()
@@ -59,7 +58,7 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
         ]
         packet["queryComposition"] = {
             "mode": "query-set",
-            "view": "fzf",
+            "view": "lexical",
             "selector": "exact-set",
             "scope": {"projectRoot": "."},
             "merge": ["owners", "hits", "nextActions", "notes"],
@@ -195,7 +194,7 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
         ]
         packet["queryComposition"] = {
             "mode": "query-set",
-            "view": "fzf",
+            "view": "lexical",
             "selector": "exact-set",
             "merge": ["owners", "notes", "nextActions"],
         }

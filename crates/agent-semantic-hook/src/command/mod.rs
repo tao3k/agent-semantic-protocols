@@ -8,13 +8,9 @@ mod raw_search;
 mod search_json;
 mod shell;
 
-pub(crate) use shell::looks_like_command_transcript;
-
 pub(crate) use apply_patch::apply_patch_source_paths;
 pub(crate) use intent::{CommandIntent, command_intent};
-pub(crate) use provider_candidates::{
-    command_source_paths, path_like_token_matches, path_like_tokens,
-};
+pub(crate) use provider_candidates::{command_source_paths, path_like_token_matches};
 pub(crate) use query::{
     infer_query_from_path, search_query_route, search_query_route_for_selector,
     selector_query_route,

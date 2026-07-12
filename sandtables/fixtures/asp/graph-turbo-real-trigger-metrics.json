@@ -1,7 +1,7 @@
 {
   "algorithm": "typed-ppr-diverse",
   "commands": [
-    "asp rust search fzf graph_turbo owner tests ."
+    "asp rust search lexical graph_turbo owner tests ."
   ],
   "measuredAt": "2026-06-07T00:50:24Z",
   "metrics": {
@@ -19,7 +19,7 @@
   "profile": "owner-query",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",
-  "scenario": "rust-fzf-default-rank",
+  "scenario": "rust-lexical-default-rank",
   "schemaId": "agent.semantic-protocols.graph-turbo-real-trigger-metrics",
   "schemaVersion": "1",
   "source": "live-cli"

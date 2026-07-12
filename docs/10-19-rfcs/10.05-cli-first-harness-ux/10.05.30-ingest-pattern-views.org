@@ -35,7 +35,7 @@ operator DSL, not a second =ingest= command family, and not a public
 rg -n "contentBlocks" tests | asp python search ingest items tests --workspace . --view seeds
 #+end_src
 
-When the query spans multiple roots, repeated command history shows slow fzf
+When the query spans multiple roots, repeated command history shows slow lexical
 patterns, or the agent would otherwise hand-write a brittle pipe, the agent uses
 =search pipe=:
 
@@ -155,7 +155,7 @@ search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [-
   through =actionRank=, =actionFrontier=, =recommendedNext=, and =nextCommand=.
   If confidence is low, the same facts should compile into =commandHandles=,
   =treeSitterHandles=, and non-code =A*= actions instead of asking the agent to
-  run another broad fzf, guide probe, or direct source read after graph-turbo
+  run another broad lexical, guide probe, or direct source read after graph-turbo
   already selected the evidence boundary.
 
 The intended large-repo loop is two-stage when the first seed frontier is not
@@ -163,13 +163,13 @@ enough:
 
 #+begin_src shell
 asp typescript search pipe "Effect concurrency Fiber Queue Stream Scope" --workspace . --view seeds
-asp typescript search fzf "Fiber Queue Stream Scope" owner tests --workspace . --view seeds
+asp typescript search lexical "Fiber Queue Stream Scope" owner tests --workspace . --view seeds
 asp fd -query "Fiber|Queue|Stream|Scope|Runtime|internal" .
 asp rg -query "Fiber|Queue|Stream|Scope|fork|interrupt|runFork|Runtime" .
 asp typescript query --selector <path:start-end> --workspace . --code
 #+end_src
 
-=search fzf= remains the explicit lexical/fuzzy candidate command; it is not
+=search lexical= remains the explicit lexical/fuzzy candidate command; it is not
 replaced by =search pipe --source finder=.  =asp fd -query= searches
 owner/path/module recall.  =asp rg -query= searches content/hot-block recall.
 In both wrappers, =-query= belongs to ASP ranking context; flags after =--=
@@ -215,7 +215,7 @@ search ingest [items|owner|tests...] --view seeds
 search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] --view seeds
 fd -query <owner-or-path-term-a|term-b|term-c> [scope...] [-- native-fd-argv...]
 rg -query <content-or-error-term-a|term-b|term-c> [scope...] [-- native-rg-argv...]
-search fzf <term-or-error> [owner|tests|items...] --view seeds
+search lexical <term-or-error> [owner|tests|items...] --view seeds
 search reasoning owner-query --owner <path> --query <term> --view seeds
 search reasoning owner-tests --owner <path> --view seeds
 search owner <path> items --query <symbol-or-a|b|c> --view seeds
@@ -227,7 +227,7 @@ or bounded lexical matches under the selected root.  They must not construct a
 language provider's full project report, policy/check result, verification
 reasoning tree, package graph, or native parser fact index as a prerequisite.
 All emitted locators are relative to the agent invocation workspace, not to a
-scoped search root.  A locator printed from =asp rust search fzf ... crates/foo=
+scoped search root.  A locator printed from =asp rust search lexical ... crates/foo=
 must therefore replay as =asp rust query --selector crates/foo/... --workspace . --code=
 without requiring the agent to remember the original scoped root.
 
@@ -266,7 +266,7 @@ agent-facing latency and command behavior are language-neutral.
 The target invariant is that the following slow pattern:
 
 #+begin_src shell
-asp rust search fzf owner-items --view seeds crates/agent-semantic-protocol
+asp rust search lexical owner-items --view seeds crates/agent-semantic-protocol
 #+end_src
 
 can be replaced by:

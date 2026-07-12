@@ -40,10 +40,13 @@ equal to =requiredModel=, then reruns =asp agent session status --name
 asp-explore --json=. The child should not self-switch by shelling out, and the
 parent must not create a replacement child for this condition.
 
-=asp agent session switch-model --model <model> --json= is a configuration-layer
-operation. It updates the global ASP/Codex model mapping and projects
-ASP-managed Codex agent config symlinks. Use it for capacity fallback or durable
-mapping changes, not as the live-thread recovery action for a one-off mismatch.
+=asp agent session switch-model --name <resident-name> --model <model>= is a
+configuration-layer child-session model switch. It updates the expected model
+for an ASP-managed subagent/child-session config and its Codex projection; it
+does not switch the main session model. Use it for durable child-session mapping
+changes after capacity fallback. For a live resumed child mismatch, keep the
+main session model unchanged and send a native message-agent follow-up to that
+existing child session.
 
 ** Session event stream
 

@@ -120,7 +120,9 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| {
+                        "search pipe --view requires seeds or graph-turbo-request".to_string()
+                    })?
                     .clone();
                 index += 2;
             }
@@ -188,7 +190,9 @@ pub(super) fn parse_owner_query_args(args: &[String]) -> Result<OwnerQueryArgs, 
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| {
+                        "search reasoning owner-query --view requires seeds".to_string()
+                    })?
                     .clone();
                 index += 2;
             }
@@ -228,7 +232,7 @@ pub(super) fn parse_owner_only_args(
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| format!("search reasoning {profile} --view requires seeds"))?
                     .clone();
                 index += 2;
             }
@@ -271,7 +275,7 @@ pub(super) fn parse_search_owner_items_query_args(
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| "search owner items --view requires seeds".to_string())?
                     .clone();
                 index += 2;
             }
@@ -296,7 +300,7 @@ pub(super) fn parse_ingest_args(args: &[String]) -> Result<IngestArgs, String> {
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| "search ingest --view requires seeds".to_string())?
                     .clone();
                 index += 2;
             }
@@ -320,22 +324,26 @@ pub(super) fn parse_ingest_args(args: &[String]) -> Result<IngestArgs, String> {
 }
 
 pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, String> {
-    let query = args
-        .get(2)
-        .filter(|query| !query.starts_with('-'))
-        .ok_or_else(|| "search lexical requires a query".to_string())?
-        .clone();
+    let mut raw_queries = Vec::new();
     let mut pipes = Vec::new();
     let mut owners = Vec::new();
     let mut workspace = None;
     let mut view = "seeds".to_string();
-    let mut index = 3;
+    let mut index = 2;
     while index < args.len() {
         match args[index].as_str() {
+            "--query" => {
+                raw_queries.push(
+                    args.get(index + 1)
+                        .ok_or_else(|| "--query requires a value".to_string())?
+                        .clone(),
+                );
+                index += 2;
+            }
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| "search lexical --view requires seeds".to_string())?
                     .clone();
                 index += 2;
             }
@@ -371,7 +379,11 @@ pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, S
                 index += 1;
             }
             value => {
-                owners.push(PathBuf::from(value));
+                if pipes.is_empty() && !lexical_positional_looks_like_scope(value) {
+                    raw_queries.push(value.to_string());
+                } else {
+                    owners.push(PathBuf::from(value));
+                }
                 index += 1;
             }
         }
@@ -388,6 +400,7 @@ pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, S
     if pipes.is_empty() {
         pipes.extend(default_search_surfaces());
     }
+    let query = lexical_query_bundle(&raw_queries)?;
     Ok(SearchLexicalArgs {
         query,
         pipes,
@@ -395,6 +408,48 @@ pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, S
         workspace,
         view,
     })
+}
+
+fn lexical_query_bundle(raw_queries: &[String]) -> Result<String, String> {
+    let mut seeds = Vec::new();
+    for seed in raw_queries
+        .iter()
+        .flat_map(|query| lexical_query_seeds(query))
+    {
+        if !seeds.iter().any(|seen: &String| seen == &seed) {
+            seeds.push(seed);
+        }
+    }
+    if seeds.is_empty() {
+        return Err(
+            "query-bundle-required: search lexical requires at least one query seed".to_string(),
+        );
+    }
+    Ok(seeds.join(" | "))
+}
+
+fn lexical_positional_looks_like_scope(value: &str) -> bool {
+    value.contains('/')
+        || value.starts_with('.')
+        || value.ends_with(".rs")
+        || value.ends_with(".ts")
+        || value.ends_with(".tsx")
+        || value.ends_with(".js")
+        || value.ends_with(".jsx")
+        || value.ends_with(".py")
+        || value.ends_with(".jl")
+        || value.ends_with(".ss")
+        || value.ends_with(".scm")
+        || value.ends_with(".org")
+        || value.ends_with(".md")
+}
+
+fn lexical_query_seeds(query: &str) -> impl Iterator<Item = String> + '_ {
+    query
+        .split(|character: char| character == '|' || character.is_whitespace())
+        .map(str::trim)
+        .filter(|seed| !seed.is_empty())
+        .map(ToString::to_string)
 }
 
 pub(super) fn parse_failure_args(args: &[String]) -> Result<FailureArgs, String> {
@@ -420,7 +475,7 @@ pub(super) fn parse_failure_args(args: &[String]) -> Result<FailureArgs, String>
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| "search failure --view requires seeds".to_string())?
                     .clone();
                 index += 2;
             }

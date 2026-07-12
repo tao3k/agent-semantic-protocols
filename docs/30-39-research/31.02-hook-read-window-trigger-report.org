@@ -22,7 +22,7 @@ The agent started with owner and query-set searches around hook CLI dispatch:
 
 #+begin_src shell
 rs-harness search owner crates/semantic-agent-hook/src/cli.rs items --workspace . --view seeds
-rs-harness search fzf --query-set "install" --query-set "hook" --query-set "pre-tool" --workspace . --view seeds
+rs-harness search lexical --query-set "install" --query-set "hook" --query-set "pre-tool" --workspace . --view seeds
 rs-harness search owner crates/semantic-agent-hook/src/lib.rs items --workspace . --view seeds
 rs-harness search owner crates/semantic-agent-hook/src/protocol.rs items --workspace . --view seeds
 #+end_src
@@ -51,7 +51,7 @@ Then it continued with more owner/text probes:
 #+begin_src shell
 rs-harness search owner crates/semantic-agent-hook/src/classifier.rs items --workspace . --view seeds
 rs-harness search owner crates/semantic-agent-hook/src/command/intent.rs items --workspace . --view seeds
-rs-harness search fzf --query-set "direct-source-read" --query-set "owner" --query-set "routes" --workspace . --view seeds
+rs-harness search lexical --query-set "direct-source-read" --query-set "owner" --query-set "routes" --workspace . --view seeds
 #+end_src
 
 * Observed Problems
@@ -333,7 +333,7 @@ direnv exec . python -m pytest tests/unit/semantic_sandtable/test_raw_search_que
 #+end_src
 
 The raw-search query-packet sandtable now includes a real
-=rs-harness search fzf --query-set ... --view seeds crates/semantic-agent-hook=
+=rs-harness search lexical --query-set ... --view seeds crates/semantic-agent-hook=
 step. That step validates the live =window_set= line, so the sandtable covers
 both synthetic malformed packets and the actual Rust provider output used by the
 hook/read workflow.

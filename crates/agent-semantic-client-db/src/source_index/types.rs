@@ -17,12 +17,31 @@ pub const CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH: &str = "@scope/re
 pub const CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
+static LAST_SOURCE_INDEX_GENERATION_NANOS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 #[must_use]
 pub fn client_db_source_index_generation_id() -> CacheGenerationId {
-    let nanos = SystemTime::now()
+    let observed_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
+        .unwrap_or(0) as u64;
+    let nanos = loop {
+        let previous =
+            LAST_SOURCE_INDEX_GENERATION_NANOS.load(std::sync::atomic::Ordering::Acquire);
+        let candidate = observed_nanos.max(previous.saturating_add(1));
+        if LAST_SOURCE_INDEX_GENERATION_NANOS
+            .compare_exchange_weak(
+                previous,
+                candidate,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
+            .is_ok()
+        {
+            break candidate;
+        }
+    };
     CacheGenerationId::from(format!("source-index-{nanos}"))
 }
 
@@ -180,6 +199,7 @@ pub struct ClientDbSourceIndexScopeFile {
 pub enum ClientDbSourceIndexLookupState {
     MissingDb,
     EmptyIndex,
+    ColdRequired,
     Busy,
     Hit,
     Miss,
@@ -191,6 +211,7 @@ impl ClientDbSourceIndexLookupState {
         match self {
             Self::MissingDb => "missing-db",
             Self::EmptyIndex => "empty-index",
+            Self::ColdRequired => "cold-required",
             Self::Busy => "busy",
             Self::Hit => "hit",
             Self::Miss => "miss",
@@ -207,6 +228,10 @@ pub struct ClientDbSourceIndexCandidate {
     pub source_kind: ClientDbSourceIndexSourceKind,
     pub line_count: Option<u32>,
     pub query_keys: Vec<String>,
+    /// Parser-owned item identity associated with the bounded selector proof.
+    pub selector_symbol: Option<String>,
+    /// Parser-owned item kind associated with the bounded selector proof.
+    pub selector_kind: Option<String>,
     pub selector_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
 }
 
@@ -247,6 +272,8 @@ impl From<ClientDbSourceIndexSource> for ClientDbSourceIndexSourceKind {
 impl From<ClientDbSourceIndexOwner> for ClientDbSourceIndexCandidate {
     fn from(owner: ClientDbSourceIndexOwner) -> Self {
         Self {
+            selector_symbol: None,
+            selector_kind: None,
             selector_proof: None,
             path: owner.owner_path.as_str().to_string(),
             language_id: owner.language_id,

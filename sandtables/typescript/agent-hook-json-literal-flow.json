@@ -32,7 +32,7 @@
     },
     "querySetOpportunities": [
       {
-        "view": "fzf",
+        "view": "lexical",
         "queries": 2,
         "saveCommands": 1,
         "selector": "exact-set",
@@ -43,7 +43,7 @@
       {
         "kind": "flag-like-query",
         "severity": "info",
-        "message": "search fzf --json is now parsed as a literal text query when it is the first query positional"
+        "message": "search lexical --json is now parsed as a literal text query when it is the first query positional"
       },
       {
         "kind": "tests-association",
@@ -80,7 +80,7 @@
     {
       "id": "prime",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "prime",
         "--view",
@@ -101,9 +101,9 @@
     {
       "id": "text-hook-query-set",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
-        "fzf",
+        "lexical",
         "--query-set",
         "parseProtocolArgs",
         "--query-set",
@@ -118,7 +118,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf]",
+          "[search-lexical]",
           "querySet=2",
           "src/cli/protocol.ts",
           "tests/unit/cli_query_hook_surface.test.ts"
@@ -130,9 +130,9 @@
     {
       "id": "fixture-query-set-json-schema",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
-        "fzf",
+        "lexical",
         "--query-set",
         "AgentHookEvent",
         "--query-set",
@@ -146,7 +146,7 @@
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
         "stdoutJsonEquals": {
-          "method": "search/fzf",
+          "method": "search/lexical",
           "queryComposition.mode": "query-set",
           "queryCoverage.0.value": "AgentHookEvent",
           "queryCoverage.0.status": "miss",
@@ -167,7 +167,7 @@
     {
       "id": "owner-protocol-cli",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "owner",
         "src/cli/protocol.ts",
@@ -189,7 +189,7 @@
     {
       "id": "tests-protocol-cli",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "tests",
         "src/cli/protocol.ts",
@@ -211,9 +211,9 @@
     {
       "id": "flag-like-json-query",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
-        "fzf",
+        "lexical",
         "--json",
         "--view",
         "seeds",
@@ -223,7 +223,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf] q=--json",
+          "[search-lexical] q=--json",
           "alg=native-syntax-query",
           "tests/unit/cli_semantic_search.test.ts"
         ],

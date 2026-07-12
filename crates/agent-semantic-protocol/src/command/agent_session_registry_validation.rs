@@ -4,6 +4,7 @@ use agent_semantic_runtime::{
 };
 
 use std::{
+    collections::BTreeMap,
     env, fs,
     path::{Path, PathBuf},
 };
@@ -30,6 +31,7 @@ struct ExpectedAgentProfile {
     config_path: PathBuf,
     role: String,
     model: String,
+    reasoning_effort: Option<String>,
     fallback_models: Vec<String>,
     capacity_threshold: Option<f64>,
     sandbox: String,
@@ -38,6 +40,7 @@ struct ExpectedAgentProfile {
 #[derive(Default)]
 struct CodexModelSwitchConfig {
     primary_model: Option<String>,
+    agent_models: BTreeMap<String, String>,
     fallback_models: Vec<String>,
     capacity_threshold: Option<f64>,
 }
@@ -162,7 +165,7 @@ fn validate_session_profile_with_rollout_lookup(
         .as_deref()
         .map(|path| normalized_path_string(Path::new(path)));
     let mut failures = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
+    let warnings: Vec<String> = Vec::new();
     let mut pass_reason = None;
     if metadata.thread_source.as_deref() != Some("subagent") {
         failures.push(format!(
@@ -244,7 +247,7 @@ fn validate_session_profile_with_rollout_lookup(
                 .any(|fallback_model| fallback_model == actual_model) =>
         {
             pass_reason = Some(format!(
-                "model switched to configured fallback {actual_model}; primaryModel={} fallbackModels={} capacityThreshold={}",
+                "model matches configured fallback {actual_model}; primaryModel={} fallbackModels={} capacityThreshold={}",
                 expected.model,
                 expected.fallback_models.join(","),
                 expected
@@ -253,28 +256,14 @@ fn validate_session_profile_with_rollout_lookup(
                     .unwrap_or_else(|| "unset".to_string())
             ));
         }
-        Some(actual_model) => {
-            let switch_options = if expected.fallback_models.is_empty() {
-                "none".to_string()
-            } else {
-                expected.fallback_models.join(",")
-            };
-            let switch_command = expected
-                .fallback_models
-                .first()
-                .map(|model| format!("asp agent session switch-model --model {model} --json"))
-                .unwrap_or_else(|| "unavailable".to_string());
-            warnings.push(format!(
-                "model mismatch: this same Codex child is running {} but the configured model is {}. Agent instruction: main/parent agent must send an agent message to the same managed child with required model {} only when agentMessageTargetId is available, receive the child response through the subagent message receipt, then re-register and revalidate the same child; do not create or replace the child. If only childSessionId/threadId is available, report bootstrapBlocked=host-message-agent-target-unavailable and do not use normal/read thread as the ASP Explorer protocol. requiredAction=parent-send-message-same-child-with-required-model; requiredModel={}; targetChildSessionIdFromRegistry=true; requiresAgentMessageTargetId=true; configSwitchPurpose=parent-message-same-child-revalidate; resultSource=subagent-message-receipt; switchOptions={switch_options}; configSwitchCommand={switch_command}",
-                actual_model, expected.model, expected.model, expected.model
-            ));
-        }
-        None => {
-            warnings.push(format!(
-                "model mismatch: this same Codex child did not report a model but the configured model is {}. Agent instruction: main/parent agent must send an agent message to the same managed child with required model {} only when agentMessageTargetId is available, receive the child response through the subagent message receipt, then re-register and revalidate the same child; do not create or replace the child. If only childSessionId/threadId is available, report bootstrapBlocked=host-message-agent-target-unavailable and do not use normal/read thread as the ASP Explorer protocol. requiredAction=parent-send-message-same-child-with-required-model; requiredModel={}; targetChildSessionIdFromRegistry=true; requiresAgentMessageTargetId=true; configSwitchPurpose=parent-message-same-child-revalidate; resultSource=subagent-message-receipt",
-                expected.model, expected.model, expected.model
-            ));
-        }
+        Some(actual_model) => failures.push(format!(
+            "child-session model mismatch: host observed {actual_model}, configured managed-child profile requires {}. requiredAction=resume-configured-managed-child-profile; modelSource=configured-agent-profile; liveSwitchTransport=not-applicable; messageAgentModelInstruction=forbidden",
+            expected.model
+        )),
+        None => failures.push(format!(
+            "child-session model missing from host observation; configured managed-child profile requires {}. requiredAction=resume-configured-managed-child-profile; modelSource=configured-agent-profile; messageAgentModelInstruction=forbidden",
+            expected.model
+        )),
     }
     if let Some(reason) =
         sandbox_policy_mismatch_reason(&expected.sandbox, metadata.sandbox_policy.as_deref())
@@ -346,6 +335,13 @@ impl ValidatedAgentKind {
     }
 
     fn default_role(self) -> &'static str {
+        match self {
+            Self::AspExplore => "asp_explorer",
+            Self::AspTesting => "asp_testing",
+        }
+    }
+
+    fn agent_config_key(self) -> &'static str {
         match self {
             Self::AspExplore => "asp_explorer",
             Self::AspTesting => "asp_testing",
@@ -434,20 +430,25 @@ fn load_expected_agent_profile(kind: ValidatedAgentKind) -> Result<ExpectedAgent
     let model = toml_string(&value, "model")
         .ok_or_else(|| format!("{} missing `model`", config_path.display()))?;
     let model_switch = load_codex_model_switch_config()?;
-    let primary_model = model_switch.primary_model.clone().unwrap_or(model);
+    let primary_model = model_switch
+        .agent_model(kind)
+        .cloned()
+        .or(model_switch.primary_model)
+        .unwrap_or(model);
     let sandbox = toml_string(&value, "sandbox_mode")
         .ok_or_else(|| format!("{} missing `sandbox_mode`", config_path.display()))?;
     Ok(ExpectedAgentProfile {
         config_path,
         role,
         model: primary_model,
+        reasoning_effort: toml_string(&value, "model_reasoning_effort"),
         fallback_models: model_switch.fallback_models,
         capacity_threshold: model_switch.capacity_threshold,
         sandbox,
     })
 }
 
-pub(super) fn expected_model_for_session_profile(
+pub(crate) fn expected_model_for_session_profile(
     name: &str,
     role: &str,
 ) -> Result<Option<String>, String> {
@@ -457,22 +458,56 @@ pub(super) fn expected_model_for_session_profile(
     Ok(Some(load_expected_agent_profile(agent_kind)?.model))
 }
 
+pub(super) fn expected_reasoning_effort_for_session_profile(
+    name: &str,
+    role: &str,
+) -> Result<Option<String>, String> {
+    let Some(agent_kind) = validated_agent_kind(name, role) else {
+        return Ok(None);
+    };
+    Ok(load_expected_agent_profile(agent_kind)?.reasoning_effort)
+}
+
 fn codex_model_switch_config(value: &toml::Value) -> CodexModelSwitchConfig {
-    let Some(models) = value
+    let models = value
         .get("platform")
         .and_then(|value| value.get("codex"))
-        .and_then(|value| value.get("models"))
-    else {
-        return CodexModelSwitchConfig::default();
-    };
+        .and_then(|value| value.get("models"));
     CodexModelSwitchConfig {
-        primary_model: toml_string(models, "primary")
-            .or_else(|| toml_string(models, "primaryModel")),
-        fallback_models: toml_string_array(models, "fallback")
-            .or_else(|| toml_string_array(models, "fallbackModels"))
+        primary_model: models.and_then(|models| {
+            toml_string(models, "primary").or_else(|| toml_string(models, "primaryModel"))
+        }),
+        agent_models: codex_agent_model_overrides(value),
+        fallback_models: models
+            .and_then(|models| {
+                toml_string_array(models, "fallback")
+                    .or_else(|| toml_string_array(models, "fallbackModels"))
+            })
             .unwrap_or_default(),
-        capacity_threshold: toml_f64(models, "capacityThreshold"),
+        capacity_threshold: models.and_then(|models| toml_f64(models, "capacityThreshold")),
     }
+}
+
+impl CodexModelSwitchConfig {
+    fn agent_model(&self, kind: ValidatedAgentKind) -> Option<&String> {
+        self.agent_models.get(kind.agent_config_key())
+    }
+}
+
+fn codex_agent_model_overrides(value: &toml::Value) -> BTreeMap<String, String> {
+    value
+        .get("agents")
+        .and_then(toml::Value::as_table)
+        .map(|agents| {
+            agents
+                .iter()
+                .filter_map(|(key, agent)| {
+                    let model = toml_string(agent, "model")?;
+                    Some((key.to_string(), model))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn asp_agent_canonical_config_path(kind: ValidatedAgentKind) -> Result<PathBuf, String> {

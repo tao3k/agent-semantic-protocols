@@ -5,14 +5,13 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_client::lookup_query_wrapper_source_index;
 use agent_semantic_search::{
-    QUERY_OVERLAY_ROUTE_SOURCE, QueryWrapperSearchClause, QueryWrapperSearchRequest,
-    QueryWrapperSearchSourceIndexTrace, QueryWrapperSearchStageTraceProjection,
-    QueryWrapperSearchSurface,
     collect_query_wrapper_candidate_collection as collect_search_query_wrapper_candidate_collection,
     query_wrapper_clauses as search_query_wrapper_clauses, query_wrapper_owner_candidates,
     query_wrapper_package_clusters_from_paths, query_wrapper_rg_scope_next,
     query_wrapper_source_index_trace_projection,
     query_wrapper_unique_clause_terms as search_query_wrapper_unique_clause_terms,
+    QueryWrapperSearchClause, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
+    QueryWrapperSearchStageTraceProjection, QueryWrapperSearchSurface, QUERY_OVERLAY_ROUTE_SOURCE,
 };
 use serde_json::Value;
 
@@ -80,8 +79,12 @@ pub(super) fn collect_query_candidate_collection(
         })
         .collect::<Vec<_>>();
     let search_surface = query_wrapper_search_surface(surface);
-    let source_index_lookup =
-        lookup_query_wrapper_source_index(search_surface, project_root, terms)?;
+    // `fd` is the independent path/module signal. It must not short-circuit
+    // through the lexical source index, otherwise both routes duplicate the
+    // same candidate set and lose the intended recall union.
+    let source_index_lookup = (surface != QueryWrapperSurface::Fd)
+        .then(|| lookup_query_wrapper_source_index(search_surface, project_root, terms))
+        .transpose()?;
     let ranked_search_candidates = Vec::new();
     let collection =
         collect_search_query_wrapper_candidate_collection(QueryWrapperSearchRequest {
@@ -95,7 +98,7 @@ pub(super) fn collect_query_candidate_collection(
             include_hidden_dirs: &config.search.include_hidden_dirs,
             native_args,
             ranked_search_candidates: &ranked_search_candidates,
-            source_index_lookup,
+            source_index_lookup: source_index_lookup.flatten(),
         })?;
     let mut source_trace = Vec::new();
     let search_stage_trace_empty = collection.search_stage_trace_projections.is_empty();

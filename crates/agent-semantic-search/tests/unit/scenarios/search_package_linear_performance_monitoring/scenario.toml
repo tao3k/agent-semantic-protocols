@@ -41,6 +41,7 @@ reference_patterns = [
   "source_index_rank",
   "source_index_rank_performance",
   "syntax_query_replay",
+  "search_command_preflight",
   "turso_overlay_search",
   "unit_test",
   "unit_test_smoke",

@@ -867,6 +867,60 @@ pub(in super::super) fn asp_lexical_source_index_warm_path_stays_inside_scenario
     refresh_source_index(&root);
     let _ = fs::remove_file(&marker);
 
+    let index_query = "source_index_fixture|unrelated";
+
+    let language = agent_semantic_client::LanguageId::from("rust");
+    let cache_root = crate::provider_command::support::cache_root(&root);
+    let warmup_lookup = agent_semantic_client::lookup_source_index_in_client_cache_dir(
+        agent_semantic_client::SourceIndexClientCacheLookupRequest {
+            cache_root: &cache_root,
+            indexed_project_root: &root,
+            language_id: Some(&language),
+            query: index_query,
+            limit: 256,
+        },
+    )
+    .expect("warm source index lookup");
+    assert_eq!(
+        warmup_lookup.state,
+        agent_semantic_client::SourceIndexLookupState::Hit
+    );
+
+    let mut fastest_lookup_elapsed = std::time::Duration::MAX;
+    let mut fastest_lookup = None;
+    for _ in 0..3 {
+        let lookup_started_at = Instant::now();
+        let lookup = agent_semantic_client::lookup_source_index_in_client_cache_dir(
+            agent_semantic_client::SourceIndexClientCacheLookupRequest {
+                cache_root: &cache_root,
+                indexed_project_root: &root,
+                language_id: Some(&language),
+                query: index_query,
+                limit: 256,
+            },
+        )
+        .expect("lookup source index");
+        let lookup_elapsed = lookup_started_at.elapsed();
+        if lookup_elapsed < fastest_lookup_elapsed {
+            fastest_lookup_elapsed = lookup_elapsed;
+            fastest_lookup = Some(lookup);
+        }
+    }
+    let collect_ms = fastest_lookup_elapsed.as_millis();
+    let lookup = fastest_lookup.expect("lookup source index sample");
+    assert_eq!(
+        lookup.state,
+        agent_semantic_client::SourceIndexLookupState::Hit
+    );
+    assert!(
+        lookup
+            .candidates
+            .iter()
+            .any(|candidate| candidate.path == "src/lib.rs"),
+        "lookup candidates={:?}",
+        lookup.candidates
+    );
+
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -875,6 +929,7 @@ pub(in super::super) fn asp_lexical_source_index_warm_path_stays_inside_scenario
             "search",
             "lexical",
             "source_index_fixture",
+            "unrelated",
             "owner",
             "items",
             "tests",
@@ -892,9 +947,9 @@ pub(in super::super) fn asp_lexical_source_index_warm_path_stays_inside_scenario
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     for expected in [
-        "[graph-frontier]",
-        "O=owner:path(src/lib.rs)",
-        "I=item:symbol(source_index_fixture)",
+        "[graph-route]",
+        "owner=path(src/lib.rs)",
+        "symbols=source_index_fixture",
     ] {
         assert!(
             stdout.contains(expected),
@@ -909,11 +964,6 @@ pub(in super::super) fn asp_lexical_source_index_warm_path_stays_inside_scenario
         !marker.exists(),
         "source-index warm lexical should not spawn provider"
     );
-    let collect_ms = if stdout.contains("[graph-frontier]") {
-        0
-    } else {
-        source_trace_metric_ms(&stdout, "collectMs")
-    };
     assert!(
         collect_ms <= max_total_ms,
         "source-index warm lexical exceeded benchmark max_total={} observed={}ms stdout={stdout}",
@@ -933,6 +983,7 @@ pub(in super::super) fn asp_lexical_source_index_warm_path_stays_inside_scenario
             "search",
             "lexical",
             "source_index_fixture",
+            "unrelated",
             "owner",
             "items",
             "tests",

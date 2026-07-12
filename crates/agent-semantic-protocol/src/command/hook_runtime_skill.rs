@@ -44,12 +44,18 @@ pub(super) fn install_agent_semantic_protocols_skill(
     })
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PluginSkillScope {
+    Project,
+    Global,
+}
+
 pub(super) fn install_agent_semantic_protocols_plugin_skill(
     project_root: &Path,
+    scope: PluginSkillScope,
     activation: &HookActivation,
     runtime_profiles: &RuntimeProfiles,
 ) -> Result<InstalledAgentSkillPaths, String> {
-    let plugin_skill_path = plugin_skill_path(project_root)?;
     let paths = project_state_paths(project_root)?;
     let org_state_skill_path = paths
         .protocol_home
@@ -64,12 +70,19 @@ pub(super) fn install_agent_semantic_protocols_plugin_skill(
         activation,
         runtime_profiles,
     )?;
-    write_agent_skill(&plugin_skill_path, &rendered_skill)?;
     let global_plugin_skill_path = global_codex_plugin_cache_skill_path()?;
+    let plugin_skill_path = match scope {
+        PluginSkillScope::Project => {
+            let plugin_skill_path = plugin_skill_path(project_root)?;
+            write_agent_skill(&plugin_skill_path, &rendered_skill)?;
+            Some(plugin_skill_path)
+        }
+        PluginSkillScope::Global => None,
+    };
     write_agent_skill(&global_plugin_skill_path, &rendered_skill)?;
     Ok(InstalledAgentSkillPaths {
         skill_path: None,
-        plugin_skill_path: Some(plugin_skill_path),
+        plugin_skill_path: plugin_skill_path.or(Some(global_plugin_skill_path)),
     })
 }
 

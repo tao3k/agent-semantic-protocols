@@ -126,6 +126,7 @@ struct OwnerRank {
     parser_finder_local_hits: usize,
     path_hits: usize,
     query_axis_terms: HashSet<String>,
+    path_query_axis_terms: HashSet<String>,
     symbols: HashSet<String>,
 }
 
@@ -133,6 +134,7 @@ struct PreparedGraphOwnerRankCandidate<'a> {
     candidate: &'a GraphOwnerRankCandidate,
     package_root: String,
     matched_query_axes: Vec<String>,
+    matched_path_query_axes: Vec<String>,
     matching_submodule_path: Option<&'a str>,
 }
 
@@ -238,6 +240,7 @@ fn new_owner_rank(
         parser_finder_local_hits: 0,
         path_hits: 0,
         query_axis_terms: HashSet::new(),
+        path_query_axis_terms: HashSet::new(),
         symbols: HashSet::new(),
     }
 }
@@ -267,6 +270,13 @@ fn update_owner_rank(
         .for_each(|axis| {
             rank.query_axis_terms.insert(axis);
         });
+    prepared_candidate
+        .matched_path_query_axes
+        .iter()
+        .cloned()
+        .for_each(|axis| {
+            rank.path_query_axis_terms.insert(axis);
+        });
 }
 
 fn matched_query_axes(candidate: &GraphOwnerRankCandidate, query_axes: &[String]) -> Vec<String> {
@@ -284,6 +294,8 @@ fn matched_query_axes(candidate: &GraphOwnerRankCandidate, query_axes: &[String]
 type OwnerRankSortKey<'a> = (
     Reverse<usize>,
     Reverse<usize>,
+    Reverse<usize>,
+    bool,
     Reverse<usize>,
     Reverse<usize>,
     Reverse<usize>,
@@ -348,6 +360,8 @@ fn owner_rank_sort_key(rank: &OwnerRank) -> OwnerRankSortKey<'_> {
         Reverse(rank.package_query_axis_count.min(16)),
         Reverse(rank.topology_query_axis_count.min(16)),
         Reverse(rank.query_axis_terms.len()),
+        owner_path_is_test(&rank.path),
+        Reverse(rank.path_query_axis_terms.len()),
         Reverse(rank.topology_local_hits.min(12)),
         Reverse(rank.parser_finder_local_hits.min(12)),
         Reverse(rank.path_hits.min(8)),
@@ -367,11 +381,28 @@ fn prepare_owner_rank_candidate<'a>(
         candidate,
         package_root: owner_rank_package_root(&candidate.path),
         matched_query_axes: matched_query_axes(candidate, query_axes),
+        matched_path_query_axes: matched_path_query_axes(&candidate.path, query_axes),
         matching_submodule_path: submodule_paths
             .iter()
             .find(|submodule_path| graph_path_is_under(&candidate.path, submodule_path))
             .map(String::as_str),
     }
+}
+
+fn matched_path_query_axes(path: &str, query_axes: &[String]) -> Vec<String> {
+    let evidence = path.to_ascii_lowercase();
+    query_axes
+        .iter()
+        .filter(|axis| evidence.contains(axis.as_str()))
+        .cloned()
+        .collect()
+}
+
+fn owner_path_is_test(path: &str) -> bool {
+    path.starts_with("tests/")
+        || path.contains("/tests/")
+        || path.ends_with("_test.rs")
+        || path.ends_with("_tests.rs")
 }
 
 fn package_query_axes(

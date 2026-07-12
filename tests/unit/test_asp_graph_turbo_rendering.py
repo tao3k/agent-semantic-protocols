@@ -26,7 +26,7 @@ def test_compact_render_uses_asp_graph_frontier_contract() -> None:
         in compact
     )
     assert "aliases=G:graph" in compact
-    assert "Q=query:term(parser)!fzf" in compact
+    assert "Q=query:term(parser)!lexical" in compact
     assert "I=item:fn(collect_actions)@src/cli.py:10:20!code" in compact
     assert "H=hot:call(command_intent)@src/cli.py:24:28!code" in compact
     assert "G>{" in compact and "Q:matches" in compact and "O:selects" in compact
@@ -55,7 +55,7 @@ def test_compact_render_uses_asp_graph_frontier_contract() -> None:
     ):
         assert profile in profiles_line
     assert "\nomit=code,full-score-vector,full-graph\n" in compact
-    assert "\navoid=raw-read,repeat-owner,broad-fzf,manual-window-scan\n" in compact
+    assert "\navoid=raw-read,repeat-owner,broad-lexical,manual-window-scan\n" in compact
     assert (
         "\npipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-graph-turbo\n"
         in compact

@@ -7,7 +7,6 @@ use agent_semantic_client_db::{
     ClientDbEngine, ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexLookupResult,
     ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexQueryKey,
 };
-use agent_semantic_runtime::runtime_block_on_current_thread;
 
 use crate::{reorder_source_index_candidates, source_index_lookup_terms};
 
@@ -84,19 +83,8 @@ pub fn lookup_source_index_in_cache(
         return Ok(lookup);
     }
 
-    let engine = ClientDbEngine::resolve(request.cache_project_root)?;
-    if let Some(read_model_lookup) = turso_source_index_lookup_hit(
-        runtime_block_on_current_thread(engine.lookup_source_index_read_model(
-            request.query,
-            request.language_id,
-            request.limit,
-        )),
-    )? {
-        return Ok(rank_source_index_lookup_result(
-            read_model_lookup,
-            request.query,
-        ));
-    }
+    // Turso is durable state, not the interactive read path. A miss is returned
+    // to the planner so it can choose a bounded backend without a blocking DB scan.
     Ok(lookup)
 }
 
@@ -118,21 +106,7 @@ pub fn lookup_source_index_in_client_cache_dir(
         return Ok(lookup);
     }
 
-    if let Some(read_model_lookup) =
-        turso_source_index_lookup_hit(runtime_block_on_current_thread(
-            ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-                request.cache_root,
-                request.query,
-                request.language_id,
-                request.limit,
-            ),
-        ))?
-    {
-        return Ok(rank_source_index_lookup_result(
-            read_model_lookup,
-            request.query,
-        ));
-    }
+    // Keep the client-dir route consistent with project-root lookup semantics.
     Ok(lookup)
 }
 
@@ -179,6 +153,8 @@ fn source_index_file_locator_lookup(
                 source_kind: agent_semantic_client_db::ClientDbSourceIndexSourceKind::File,
                 line_count: None,
                 query_keys: vec![path],
+                selector_symbol: None,
+                selector_kind: None,
                 selector_proof: None,
             }
         })
@@ -191,16 +167,6 @@ fn source_index_file_locator_lookup(
         state: agent_semantic_client_db::ClientDbSourceIndexLookupState::Hit,
         candidates,
     })
-}
-
-fn turso_source_index_lookup_hit(
-    lookup: Result<Result<ClientDbSourceIndexLookupResult, String>, String>,
-) -> Result<Option<ClientDbSourceIndexLookupResult>, String> {
-    match lookup {
-        Ok(Ok(lookup)) if !lookup.candidates.is_empty() => Ok(Some(lookup)),
-        Ok(Ok(_)) | Ok(Err(_)) => Ok(None),
-        Err(error) => Err(error),
-    }
 }
 
 fn source_index_lookup_query_keys(query: &str) -> Vec<ClientDbSourceIndexQueryKey> {

@@ -173,12 +173,12 @@ def test_result_packet_is_schema_owned_ranking_evidence() -> None:
     )
     assert packet["algorithmMetrics"]["pathCount"] == len(packet["typedPaths"])
     assert packet["rank"] == [node["id"] for node in packet["rankedNodes"]]
-    assert any(entry["action"] == "fzf" for entry in packet["frontier"])
+    assert any(entry["action"] == "lexical" for entry in packet["frontier"])
     assert packet["omit"] == ["code", "full-score-vector", "full-graph"]
     assert packet["avoid"] == [
         "raw-read",
         "repeat-owner",
-        "broad-fzf",
+        "broad-lexical",
         "manual-window-scan",
     ]
 

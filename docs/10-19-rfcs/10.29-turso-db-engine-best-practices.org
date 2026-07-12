@@ -523,7 +523,7 @@ fallbacks.
 ** FTS fallback policy
 
 If Turso FTS is unavailable or unstable for a route, the fallback is not a
-command-local string matcher and not a resurrected fzf path. The fallback is a
+command-local string matcher and not a resurrected lexical path. The fallback is a
 search-adapter capability decision:
 
 #+begin_src text
@@ -828,7 +828,7 @@ by ASP crates, with CLI commands acting as thin callers.
 - Do not reintroduce retired SQLite/RustSQL code paths.
 - Do not use line ranges as DB identity.
 - Do not make dynamic dirty-code overlay durable only to make search easier.
-- Do not keep fzf as the canonical dynamic-search implementation.
+- Do not keep lexical as the canonical dynamic-search implementation.
 - Do not add broad dead-code allowance attributes.
 * Downstream Implementation Guide
 

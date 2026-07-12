@@ -37,7 +37,7 @@
           "decision": "deny",
           "reasonKind": "raw-broad-search",
           "languageIds.0": "rust",
-          "routes.0.kind": "fzf",
+          "routes.0.kind": "lexical",
           "routes.0.providerId": "rs-harness"
         },
         "maxElapsedMsWarn": 9000
@@ -62,7 +62,7 @@
           "decision": "deny",
           "reasonKind": "raw-broad-search",
           "languageIds.0": "typescript",
-          "routes.0.kind": "fzf",
+          "routes.0.kind": "lexical",
           "routes.0.providerId": "ts-harness"
         },
         "maxElapsedMsWarn": 9000

@@ -15,7 +15,6 @@ pub(super) struct RolloutAdoptRequest<'a> {
     pub(super) role: &'a str,
     pub(super) roles: &'a [String],
     pub(super) permissions: &'a [String],
-    pub(super) model: Option<&'a str>,
     pub(super) expires_at: Option<i64>,
     pub(super) now: i64,
     pub(super) excluded_session_id: Option<&'a str>,
@@ -68,7 +67,15 @@ pub(super) fn adopt_reusable_rollout_session(
             parent_session_id: Some(request.root_session_id),
             name: request.name,
             role: request.role,
-            model: candidate_model.as_deref().or(request.model),
+            model_observation: candidate_model.as_deref().map(|model| {
+                agent_semantic_client_db::AgentSessionModelObservationRef {
+                    model,
+                    source:
+                        agent_semantic_client_db::AgentSessionModelObservationSource::CodexRollout,
+                    observed_at: request.now,
+                    evidence_ref: None,
+                }
+            }),
             status: "active",
             expires_at: request.expires_at,
             metadata_json: &metadata_json,

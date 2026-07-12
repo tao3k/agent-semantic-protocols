@@ -1,0 +1,27 @@
+[scenario]
+id = "search-source-index-read-only-client-db-zero-write"
+title = "Source-index lookup remains read-only under client write denial"
+package = "agent-semantic-client-db"
+phase = "warm-recovery"
+intent = "an indexed source lookup must return bounded evidence while the client directory rejects all writes"
+
+[client_db]
+backend = "turso"
+open_mode = "read-only"
+client_directory_write_access = "denied"
+
+[source_index]
+state = "hit"
+candidate_count = 1
+requires_zero_write = true
+
+[search_frame]
+route = "source-index-read-model"
+must_skip_overlay = true
+
+[performance]
+target_p95_ms = 20
+max_total_ms = 100
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+max_overlay_collection_count = 0

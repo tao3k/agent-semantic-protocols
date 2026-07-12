@@ -333,16 +333,16 @@ def _pipe_flow_stage_present(stage: str, pipe_flow: dict[str, Any]) -> bool:
         return (optional_int(pipe_flow.get("searchPipeCommands")) or 0) > 0
     if stage == "search-prime":
         return (optional_int(pipe_flow.get("searchPrimeCommands")) or 0) > 0
-    if stage == "search-fzf":
-        return (optional_int(pipe_flow.get("searchFzfCommands")) or 0) > 0
+    if stage == "search-lexical":
+        return (optional_int(pipe_flow.get("searchLexicalCommands")) or 0) > 0
     if stage == "search-reasoning":
         return (optional_int(pipe_flow.get("searchReasoningCommands")) or 0) > 0
     if stage == "search-failure":
         return (optional_int(pipe_flow.get("searchFailureCommands")) or 0) > 0
-    if stage == "search-fzf-or-reasoning":
-        fzf = optional_int(pipe_flow.get("searchFzfCommands")) or 0
+    if stage == "search-lexical-or-reasoning":
+        lexical = optional_int(pipe_flow.get("searchLexicalCommands")) or 0
         reasoning = optional_int(pipe_flow.get("searchReasoningCommands")) or 0
-        return fzf + reasoning > 0
+        return lexical + reasoning > 0
     if stage == "query-selector":
         return (optional_int(pipe_flow.get("querySelectorCommands")) or 0) > 0
     if stage == "treesitter-query":

@@ -18,9 +18,9 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
                 "print('[search-query] q=async selector=src/lib.rs alg=query-set')\n"
                 "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
                 "print('aliases: graph:{G=search,O=owner,Q=query,D=dependency}')\n"
-                "print('O=owner:path(src/lib.rs)!owner;Q=query:term(async)!fzf;D=dependency:pkg(tokio)!deps')\n"
+                "print('O=owner:path(src/lib.rs)!owner;Q=query:term(async)!lexical;D=dependency:pkg(tokio)!deps')\n"
                 "print('G>{O:selects,Q:matches,D:uses}')\n"
-                "print('rank=O,Q,D frontier=O.owner,Q.fzf,D.deps')\n"
+                "print('rank=O,Q,D frontier=O.owner,Q.lexical,D.deps')\n"
                 "print('entries=owner-query(O,Q=>items+tests),query-deps(Q,D=>owners+imports),owner-tests(O=>covering-tests+fixtures)')"
             ),
         )

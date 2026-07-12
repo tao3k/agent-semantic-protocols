@@ -93,7 +93,9 @@ pub fn render_semantic_tree_sitter_query_stdout(packet: &Value) -> Option<String
                 capture_name: string_field(capture, "name")
                     .unwrap_or("capture")
                     .to_string(),
-                capture_node_type: query_capture_node_type.clone(),
+                capture_node_type: string_field(capture, "nodeType")
+                    .map(str::to_string)
+                    .or_else(|| query_capture_node_type.clone()),
                 item_node_type: syntax_item_node_type(item, capture)
                     .map(str::to_string)
                     .or_else(|| {
@@ -122,6 +124,7 @@ pub fn render_semantic_tree_sitter_query_stdout(packet: &Value) -> Option<String
             query_fields
                 .and_then(|fields| string_array_field(fields, "captures").first().cloned())
                 .as_deref(),
+            packet.get("execution"),
             &rows,
         ))
     }
@@ -157,6 +160,7 @@ pub fn render_semantic_tree_sitter_query_rows_stdout(replay: SyntaxQueryRowsRepl
         query_node_type,
         query_field,
         replay.captures.first().map(String::as_str),
+        None,
         &replay.rows,
     )
 }
@@ -197,15 +201,23 @@ fn render_syntax_query_frontier_graph(
     query_node_type: Option<&str>,
     query_field: Option<&str>,
     capture_name: Option<&str>,
+    execution: Option<&Value>,
     rows: &[SyntaxQueryReplayCapture],
 ) -> String {
     let pattern = syntax_query_pattern_label(query_node_type, query_field);
     let capture = capture_name
         .or_else(|| rows.first().map(|row| row.capture_name.as_str()))
         .unwrap_or("capture");
+    let execution_mode = execution
+        .and_then(|execution| string_field(execution, "engine"))
+        .unwrap_or("unknown");
+    let elapsed_ms = execution
+        .and_then(|execution| execution.get("elapsedMs"))
+        .and_then(Value::as_u64)
+        .map_or_else(|| "unknown".to_string(), |elapsed| elapsed.to_string());
     let mut output = String::new();
     output.push_str(&format!(
-        "[query-treesitter] root=. lang={language_id} pattern={pattern} capture={capture} alg=syntax-capture-frontier\n"
+        "[query-treesitter] root=. lang={language_id} pattern={pattern} capture={capture} mode={execution_mode} alg=syntax-capture-frontier elapsedMs={elapsed_ms}\n"
     ));
     output.push_str(
         "legend: aliases ID:kind; node ID=kind:role(value)!next; ts=node/field; frontier ID.next\n",
@@ -219,13 +231,14 @@ fn render_syntax_query_frontier_graph(
         let ts = syntax_ts_label(row.capture_node_type.as_deref(), row.field.as_deref());
         let item_kind = syntax_item_kind(row.item_node_type.as_deref(), &row.capture_name);
         let item_ts = row.item_node_type.as_deref().unwrap_or("node");
+        let graph_value = syntax_graph_value(row.capture_node_type.as_deref(), &row.text);
         output.push_str(&format!(
             "{capture_id}=capture:{}({})@{}!code ts={}\n",
-            row.capture_name, row.text, row.capture_locator, ts
+            row.capture_name, graph_value, row.capture_locator, ts
         ));
         output.push_str(&format!(
             "{item_id}=item:{item_kind}({})@{}!code ts={item_ts}\n",
-            row.text, row.match_locator
+            graph_value, row.match_locator
         ));
     }
 
@@ -317,6 +330,16 @@ fn syntax_item_kind(node_type: Option<&str>, capture_name: &str) -> &'static str
         "call"
     } else {
         "item"
+    }
+}
+
+fn syntax_graph_value(node_type: Option<&str>, text: &str) -> String {
+    match node_type {
+        Some("identifier" | "field_identifier" | "type_identifier" | "scoped_identifier") => {
+            text.to_string()
+        }
+        Some(node_type) => format!("<{node_type}>"),
+        None => "<node>".to_string(),
     }
 }
 

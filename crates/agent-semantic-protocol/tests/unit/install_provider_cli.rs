@@ -17,11 +17,25 @@ fn install_language_pinned_release_writes_runtime_bin_package_and_lock() {
 fn install_language_from_workspace_refreshes_home_local_bin() {
     let root = temp_project_root();
     let home = root.join("home");
-    let workspace_bin_dir = root.join(".bin");
-    std::fs::create_dir_all(&workspace_bin_dir).expect("create workspace bin");
-    let workspace_provider = workspace_bin_dir.join("rs-harness");
+    let workspace_provider =
+        root.join("languages/rust-lang-project-harness/target/debug/rs-harness");
+    std::fs::create_dir_all(
+        workspace_provider
+            .parent()
+            .expect("workspace provider parent"),
+    )
+    .expect("create workspace provider parent");
     std::fs::write(&workspace_provider, b"workspace-dev-provider\n")
         .expect("write workspace provider");
+    let legacy_workspace_provider = root.join(".bin/rs-harness");
+    std::fs::create_dir_all(
+        legacy_workspace_provider
+            .parent()
+            .expect("legacy workspace provider parent"),
+    )
+    .expect("create legacy workspace provider parent");
+    std::fs::write(&legacy_workspace_provider, b"legacy-workspace-provider\n")
+        .expect("write legacy workspace provider");
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
@@ -47,7 +61,15 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("source=workspace-bin"), "{stdout}");
+    assert!(stdout.contains("source=workspace-artifact"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "workspaceArtifact={}",
+            workspace_provider.display()
+        )),
+        "{stdout}"
+    );
+    assert!(!stdout.contains(".bin/rs-harness"), "{stdout}");
     assert!(
         stdout.contains("installTargetSource=home-local-bin"),
         "{stdout}"
@@ -58,6 +80,110 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
         std::fs::read(&installed).expect("read installed workspace provider"),
         b"workspace-dev-provider\n"
     );
+    let runtime_artifact = home.join(".agent-semantic-protocols/runtime/bin/rs-harness");
+    assert_eq!(
+        std::fs::read(&runtime_artifact).expect("read installed runtime artifact"),
+        b"workspace-dev-provider\n"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn install_typescript_from_workspace_uses_built_provider_entrypoint() {
+    let root = temp_project_root();
+    let home = root.join("home");
+    let workspace_provider =
+        root.join("languages/typescript-lang-project-harness/dist/src/cli/main.js");
+    std::fs::create_dir_all(
+        workspace_provider
+            .parent()
+            .expect("workspace provider parent"),
+    )
+    .expect("create workspace provider parent");
+    std::fs::write(
+        root.join("languages/typescript-lang-project-harness/package.json"),
+        "{\"type\":\"module\"}\n",
+    )
+    .expect("write workspace package manifest");
+    std::fs::write(
+        workspace_provider
+            .parent()
+            .expect("workspace provider parent")
+            .join("registry.js"),
+        "export const registry = 'workspace-module-graph';\n",
+    )
+    .expect("write workspace provider sibling module");
+    std::fs::write(
+        &workspace_provider,
+        concat!(
+            "#!/usr/bin/env node\n",
+            "import { registry } from './registry.js';\n",
+            "console.log(JSON.stringify({ registry, args: process.argv.slice(2) }));\n",
+        ),
+    )
+    .expect("write workspace provider");
+    make_executable(&workspace_provider);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "install",
+            "language",
+            "typescript",
+            "--from-workspace",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
+        .arg("--project")
+        .arg(&root)
+        .env("HOME", &home)
+        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .env_remove("PRJ_CACHE_HOME")
+        .env_remove("SEMANTIC_AGENT_BIN_DIR")
+        .output()
+        .expect("run asp install language typescript --from-workspace");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("source=workspace-artifact"), "{stdout}");
+    assert!(stdout.contains("workspaceInstall=symlink"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "workspaceArtifact={}",
+            workspace_provider.display()
+        )),
+        "{stdout}"
+    );
+    let installed = home.join(".local/bin/ts-harness");
+    assert!(
+        std::fs::symlink_metadata(&installed)
+            .expect("stat installed TypeScript provider")
+            .file_type()
+            .is_symlink(),
+        "workspace TypeScript provider must preserve its module graph with a symlink"
+    );
+    assert_eq!(
+        std::fs::canonicalize(&installed).expect("resolve installed TypeScript provider"),
+        std::fs::canonicalize(&workspace_provider).expect("resolve workspace TypeScript provider")
+    );
+    let provider_output = Command::new(&installed)
+        .args(["agent", "doctor"])
+        .output()
+        .expect("run installed TypeScript provider");
+    assert!(
+        provider_output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&provider_output.stdout),
+        String::from_utf8_lossy(&provider_output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&provider_output.stdout),
+        "{\"registry\":\"workspace-module-graph\",\"args\":[\"agent\",\"doctor\"]}\n"
+    );
 }
 
 #[test]
@@ -65,17 +191,22 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
 fn install_python_from_workspace_replaces_stale_home_wrapper() {
     let root = temp_project_root();
     let home = root.join("home");
-    let workspace_bin_dir = root.join(".bin");
+    let workspace_provider =
+        root.join("languages/python-lang-project-harness/.venv/bin/py-harness");
     let home_bin_dir = home.join(".local/bin");
-    std::fs::create_dir_all(&workspace_bin_dir).expect("create workspace bin");
+    std::fs::create_dir_all(
+        workspace_provider
+            .parent()
+            .expect("workspace provider parent"),
+    )
+    .expect("create workspace provider parent");
     std::fs::create_dir_all(&home_bin_dir).expect("create home-local bin");
 
     let workspace_wrapper = concat!(
         "#!/usr/bin/env bash\n",
         "exec uv run --project \"$ASP_PYTHON_PROJECT\" --frozen py-harness \"$@\"\n",
     );
-    std::fs::write(workspace_bin_dir.join("py-harness"), workspace_wrapper)
-        .expect("write workspace python wrapper");
+    std::fs::write(&workspace_provider, workspace_wrapper).expect("write workspace python wrapper");
     std::fs::write(
         home_bin_dir.join("py-harness"),
         concat!(
@@ -97,6 +228,7 @@ fn install_python_from_workspace_replaces_stale_home_wrapper() {
         .arg("--project")
         .arg(&root)
         .env("HOME", &home)
+        .env("ASP_NO_AGENT_PLATFORM", "1")
         .env_remove("PRJ_CACHE_HOME")
         .env_remove("SEMANTIC_AGENT_BIN_DIR")
         .output()
@@ -109,8 +241,15 @@ fn install_python_from_workspace_replaces_stale_home_wrapper() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("source=workspace-bin"), "{stdout}");
+    assert!(stdout.contains("source=workspace-artifact"), "{stdout}");
     assert!(stdout.contains("binary=py-harness"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "workspaceArtifact={}",
+            workspace_provider.display()
+        )),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("installTargetSource=home-local-bin"),
         "{stdout}"

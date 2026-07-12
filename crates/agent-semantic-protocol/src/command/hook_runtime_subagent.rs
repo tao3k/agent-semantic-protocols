@@ -1,16 +1,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const CODEX_DEFAULT_RESIDENT_AGENT_MODEL: &str = "gpt-5.4-mini";
+const CODEX_FALLBACK_RESIDENT_AGENT_MODEL: &str = "gpt-5.4-mini";
 const CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL: &str = "haiku";
 
 pub(super) fn subagent_model_arg(client: &str, model: Option<&str>) -> Result<String, String> {
     let model = match model {
-        Some(value) => value.trim(),
-        None => default_subagent_model(client),
+        Some(value) => value.trim().to_string(),
+        None => default_subagent_model(client)?,
     };
-    validate_subagent_model(model)?;
-    Ok(model.to_string())
+    validate_subagent_model(&model)?;
+    Ok(model)
 }
 
 pub(super) fn install_claude_resident_agents(
@@ -112,12 +112,43 @@ fn link_or_copy_agent_config(source: &Path, target: &Path) -> Result<(), String>
     })
 }
 
-fn default_subagent_model(client: &str) -> &'static str {
+fn default_subagent_model(client: &str) -> Result<String, String> {
     match client {
-        "codex" => CODEX_DEFAULT_RESIDENT_AGENT_MODEL,
-        "claude" => CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL,
+        "codex" => codex_default_subagent_model(),
+        "claude" => Ok(CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL.to_string()),
         _ => unreachable!("client support checked before model default"),
     }
+}
+
+fn codex_default_subagent_model() -> Result<String, String> {
+    let config_path = agent_semantic_runtime::state_core::resolve_state_home()?
+        .join("agents")
+        .join("config.toml");
+    Ok(read_codex_primary_model(&config_path)?
+        .unwrap_or_else(|| CODEX_FALLBACK_RESIDENT_AGENT_MODEL.to_string()))
+}
+
+fn read_codex_primary_model(config_path: &Path) -> Result<Option<String>, String> {
+    if !config_path.exists() {
+        return Ok(None);
+    }
+    let text = fs::read_to_string(config_path)
+        .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
+    let value = toml::from_str::<toml::Value>(&text)
+        .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?;
+    let model = value
+        .get("platform")
+        .and_then(toml::Value::as_table)
+        .and_then(|platform| platform.get("codex"))
+        .and_then(toml::Value::as_table)
+        .and_then(|codex| codex.get("models"))
+        .and_then(toml::Value::as_table)
+        .and_then(|models| models.get("primary"))
+        .and_then(toml::Value::as_str)
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string);
+    Ok(model)
 }
 
 fn codex_resident_search_agent(subagent_model: &str) -> Result<String, String> {
@@ -203,7 +234,7 @@ Follow ASP recommendedNext or nextCommand when present; stop retrying a command 
 Do not spawn subagents.
 
 Prefer:
-- asp <language> search lexical '<term-or-error>' owner tests --workspace . --view seeds
+- asp <language> search lexical <seed> <related-seed> owner tests --workspace . --view seeds
 - asp fd -query '<owner-or-path terms>' .
 - asp rg -query '<content-or-error terms>' .
 - asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace . --view seeds

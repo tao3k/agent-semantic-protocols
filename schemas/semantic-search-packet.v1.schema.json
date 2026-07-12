@@ -712,7 +712,7 @@
             "single",
             "exact-set",
             "prefix-set",
-            "fuzzy-set",
+            "lexical-set",
             "stdin-path-set"
           ]
         },

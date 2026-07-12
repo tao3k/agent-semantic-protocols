@@ -245,6 +245,18 @@ pub(super) fn assert_runtime_owner_items_receipt_benchmark_contract(
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
+pub(super) fn assert_rust_owner_items_minimal_ast_cut_benchmark_contract(
+    benchmark: &SharedBenchmarkToml,
+) {
+    assert_eq!(
+        benchmark.route_source.as_deref(),
+        Some("dynamic-owner-items")
+    );
+    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
+    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
+}
+
 pub(super) fn assert_runtime_timeout_policy_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(
         benchmark.route_source.as_deref(),

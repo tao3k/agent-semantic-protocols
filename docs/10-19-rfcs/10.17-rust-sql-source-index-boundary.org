@@ -102,6 +102,168 @@ command is unfiltered; language-scoped lookup must use the existing facade form
 compact candidate rows with path, language, provider, source kind, line count,
 and query keys. A miss prints a compact =noOutput= line with the miss state,
 query, and index root instead of emitting explanatory prose.
+* Cold rebuild transaction and bounded recovery
+
+=asp cache source-index refresh= remains a warm metadata/reuse check. The
+explicit =asp cache source-index rebuild= route may assemble and persist a new
+generation, but its complete cold path has one fixed end-to-end budget. The
+budget covers file reads, owner/query-key and selector assembly, and the Turso
+write transaction. A cold rebuild MUST either commit the complete generation
+within that budget or explicitly roll back every uncommitted generation, owner,
+and selector row. It MUST NOT retain a writer transaction after a timeout or
+write failure. An assembly timeout MUST identify its stage and processed/total
+file counts; a write timeout MUST identify intended owner/selector row counts.
+
+Stable owner recall is served directly from the committed source-index tables.
+Cold rebuild MUST NOT duplicate every source-index owner into a generic Turso
+FTS document table as a completion side effect: that projection reopens the FTS
+reader per owner and turns one source-index transaction into an unbounded
+second indexing pass. Generic search documents remain an overlay/fallback
+surface with their own materialization contract; source-index rebuild receipts
+describe only the source-index generation they committed.
+
+A cold source-index import holds the DB Engine's source-index write access
+guard before it opens a writable Turso handle or bootstraps schema. Concurrent
+source-index lookups use a nonblocking read guard: when a rebuild is waiting
+or active, they return the existing =Busy= lookup state instead of opening a
+competing read-only handle. This is a concurrency boundary, not a fallback to
+provider search or a permission to mutate the read path.
+
+The completion boundary is atomic: readers and reuse checks observe either the
+previous complete generation or the newly committed complete generation, never
+a partially written generation. After a successful cold commit, the writer
+MUST checkpoint and truncate the source-index WAL before returning its receipt.
+The bounded failure text MUST identify the cold-write phase, elapsed budget,
+and intended owner/selector row counts so an agent can distinguish a slow
+rebuild from a missing or stale index. Regression gates cover the warm check,
+successful rebuild-to-reuse handoff, cold-write rollback, WAL checkpoint, and
+concurrent lookup behavior under rebuild pressure.
+
+* V1 source-index performance stabilization
+
+** Hot DDL, dirty refresh, and bounded projection
+
+Source-index schema DDL is a migration concern, not a lookup or write concern.
+Every operation MAY probe the canonical layout with one read-only statement,
+but it MUST run =CREATE TABLE= or =CREATE INDEX= only when that probe proves the
+layout is absent or incomplete. Trace receipts distinguish =schema-migrated=
+from =schema-verified= so a hot write cannot silently regress to DDL.
+
+=refresh= is semantically complete for tracked dirty worktrees. A clean
+worktree reuses the latest generation without source scanning. A dirty
+worktree must content-hash its scoped source and publish a new generation
+through the changed-owner batch transaction; it must not return
+=cold-required= merely because Git reports tracked edits. A future collection
+optimization may reduce the dirty file set, but it may not weaken hash or
+owner-membership correctness.
+
+The token projection is the database-owned candidate ranker. Lookup applies the
+caller limit in SQL and decodes selector/query-key JSON only for the final
+candidate rows. Rust-side JSON projection must never expand a small lookup into
+an implicit 64-512 owner reranking scan.
+
+The routing projection retains bounded selector-source tokens when they are
+needed for V1 multi-word semantic recall. It stores the deduplicated token list
+with each owner and rebuilds a source-index-owned token dictionary in Turso with
+one row per token and a compact owner-path set. Candidate selection joins
+requested tokens to that dictionary and expands owner paths in SQL; it MUST NOT
+materialize one B-tree row per =(token, owner)= pair. The dictionary is replaced
+atomically with its owner scope and is not duplicated into generic search
+documents. Final selector facts remain available only for already-ranked
+owners, preserving V1 lookup packets and owner-local follow-up.
+
+Composite identifier tokens preserve the complete normalized spelling and add
+their underscore and hyphen components to the same owner token list. This keeps
+SQL candidate recall compatible with V1's final substring scoring: a query for
+=report= may nominate =report_chain= before the final ranker decides the exact
+owner ordering.
+
+Cold snapshot publication uses parameterized set-based writes: one owner upsert
+over the canonical changed-owner JSON payload and one term insert over a
+flattened ={ownerPath, token}= JSON payload inside the same transaction. The
+write path MUST NOT generate SQL text by interpolating owner, selector, token,
+or project values and pass that text to =execute_batch=.
+Those value batches create parse and prepare work proportional to payload size,
+duplicate the parameterized incremental path, and make a cold import slower as
+the repository grows. V1 keeps the same canonical owner/term tables and
+generation receipt; only the internal statement shape converges.
+
+Before inserting term rows, the transaction deletes every affected owner path.
+The canonical owner builder emits each owner once and term tokens are a set, so
+the subsequent term batch has no possible primary-key conflict. It MUST use a
+plain parameterized insert rather than performing a redundant per-row conflict
+probe. This ordering is part of the transaction's atomicity invariant, not an
+optimization that may be skipped by a future incremental path.
+
+** Active-fact storage convergence
+
+V1 generation receipts remain generation-based, but physical source facts converge on an active owner table and an active selector table for each =(project_root, schema_id, schema_version)= scope. The active owner key is =(project_root, schema_id, schema_version, owner_path)=; the active selector key additionally includes =selector_id=. Both retain =file_hash= and every public candidate field.
+
+One rebuild transaction replaces the complete active owner and selector scope, writes the generation receipt, and publishes the active pointer last. A failed replacement MUST roll back and leave the previously published active facts and pointer intact. Pointer-present readers query only active facts; pointer-absent databases retain the existing legacy generation-table fallback until their next rebuild. The public lookup packet, language filtering, scoring, deduplication, limits, and generation receipts do not change.
+
+This eliminates one active-membership write per owner and bounds storage by the current scope instead of historical file hashes. Cached prepared statements are the baseline import API. Parameterized multi-VALUES may be used only when the locked Turso version and the registered large-repository gate show a net improvement; raw SQL data interpolation is prohibited.
+
+*** Registered large-repository evidence
+
+The registered DB gate uses a fresh Git-initialized checkout containing the tracked and unignored worktree files, with the active =.bin/asp= provider bridge. On the 1193-file checkout, =env ASP_SOURCE_INDEX_TRACE=1 direnv exec . asp cache source-index rebuild --workspace <fixture>= recorded =rows-written= at 1029 milliseconds and 5.41 seconds process wall time. This is a 38 percent DB-write improvement over the prior 1663 millisecond v1 baseline, but remains 29 milliseconds above the one-second cold target and therefore is not a cold-gate pass.
+
+The same fixture with 12 added Rust files (1.0 percent dirty) recorded 54 milliseconds for =rows-written= and 3.53 seconds process wall time. A subsequent =direnv exec . asp cache source-index refresh --workspace <fixture>= reached =scope-reused= in 23 milliseconds. The gate records all three command receipts and fails the cold phase until the one-second budget is met; it must not replace the DB phase timing with process wall time, which includes provider startup and scope discovery.
+
+*** Current token-dictionary evidence
+
+The active 499-owner Rust harness workspace produced 21,152 normalized semantic
+tokens. A fresh-state =direnv exec . env ASP_SOURCE_INDEX_TRACE=1
+target/release/asp cache source-index rebuild --workspace
+languages/rust-lang-project-harness= wrote 2,486 token dictionary rows in 75
+milliseconds and completed the Turso import phase in 120 milliseconds. The
+preceding one-token-per-owner-pair projection wrote the same scope in about 502
+milliseconds. A fresh rebuild followed by a dirty refresh of the unchanged
+tracked worktree returned =dirty-scope-reused= in 273 milliseconds without
+source collection. These are DB-phase and refresh receipts, not process-wall
+substitutes for the registered 1,193-file gate above.
+
+The release-only 1,193-owner DB gate produced 20,281 semantic tokens and 4,785
+token dictionary rows. Its =rows-written= receipt was 211 milliseconds and the
+complete transaction was 220 milliseconds, satisfying the one-second V1 cold
+DB-write target. The scheduled large-library runtime workflow executes this
+release gate before the 14-corpus command matrix; unoptimized debug builds are
+not used as a proxy for the release DB latency contract.
+
+This work stabilizes the existing source-index v1 contract. It MUST NOT create
+a v2 schema id, command, packet, generation meaning, or compatibility route.
+The existing =refresh=, =rebuild=, lookup result states, and generation
+receipts remain the public surface. Internal Turso tables and indexes may be
+migrated additively when they preserve those v1 observations.
+
+The source-index write path MUST bootstrap only the base client DB state and
+the source-index v1 tables it needs. It MUST NOT initialize graph, overlay,
+route-receipt, or generic FTS tables as a side effect. Source-index rows are
+the stable recall store; generic FTS remains owned by its own explicit search
+materialization path.
+
+V1 lookup MUST push filtering, term matching, rank aggregation, and =LIMIT=
+into Turso. It MUST NOT load every owner and selector row for the latest
+generation into Rust merely to construct haystacks and score candidates. An
+additive source-index term index may support the existing query-key semantics;
+source-specific FTS is permitted only when it replaces rather than duplicates
+a bounded indexed query path.
+
+V1 rebuild remains generation-based, but unchanged files are reusable facts.
+When a prior compatible generation exists, the importer MUST copy unchanged
+owner, selector, and term rows with set-based SQL and assemble/write only
+changed files. Fresh imports use prepared or batched statements; a new
+generation id makes conflict clearing and unconditional per-row delete work
+invalid unless a retry is actually resuming that generation.
+
+The v1 performance gate uses a representative real repository and records
+scope discovery, file hashing, fact assembly, DB bootstrap, row import,
+commit/checkpoint, SQL statement count, WAL bytes, and final process wall time.
+For the registered large-repository fixture, the target budgets are: clean
+cold rebuild <= 1 second, 1 percent dirty rebuild <= 200 milliseconds, warm
+refresh <= 50 milliseconds, and indexed lookup p95 <= 10 milliseconds. A
+phase exceeding its share must fail with its phase receipt; aggregate wall time
+alone is not sufficient evidence of a pass.
+
 * Missing Index Behavior
 
 A provider command that cannot answer from bounded facts must return an
@@ -376,3 +538,66 @@ or backfilling state.
 Runtime materialization should resolve the config-owned layout once and create
 directories from that layout instance. It should not call per-directory helpers
 that each repeat git/config discovery.
+* V1 immutable file facts and active membership
+** Import transaction and WAL maintenance
+
+The import transaction commits immutable facts, active path membership, generation
+metadata, and the active pointer atomically. A source-index import MUST NOT run a
+synchronous =wal_checkpoint(TRUNCATE)= after that commit: checkpoint truncation is
+unbounded on a long-lived client DB and is cache maintenance rather than import
+work. Turso WAL readers observe the committed pointer directly; normal WAL
+auto-checkpoint policy owns maintenance outside the source-index hot path.
+
+The import trace MUST expose transaction and deferred-checkpoint boundaries so a
+real checkout benchmark can distinguish fact materialization from background WAL
+maintenance.
+
+** Controlled checkout evidence (2026-07-09)
+
+The controlled checkout mirrors the repository's tracked and unignored working
+tree files, creates a separate project-scoped client DB, and uses the registered
+provider binaries without copying build output.
+
+| route | files | DB write | end-to-end wall |
+|-------+-------+----------+-----------------|
+| synchronous truncate baseline | 1194 | 11.453s | 17.75s |
+| deferred checkpoint cold rebuild | 1193 | 3.172s | 6.81s |
+| deferred checkpoint plus primary-key-only facts | 1193 | 1.663s | 6.36s |
+| primary-key-only warm refresh | 1193 | n/a | 1.50s |
+
+The final cold write spent 371ms on owner facts, 1.174s on selector facts,
+1.528s after active membership, and committed at 1.647s. The final warm refresh
+reached =scope-reused= at 54ms; CLI process startup accounts for the remaining
+wall time.
+
+The source-index public protocol remains v1.  This is an internal Turso
+layout migration, not a new schema id, command, receipt, or compatibility
+route.
+
+The existing generation-keyed owner and selector rows make a one-file rebuild
+copy every unchanged row into a new generation.  Turso measurements show that
+this copy is slower than the prepared full write, so v1 must not implement
+incremental rebuilds by copying a generation.
+
+The replacement layout has three internal responsibilities:
+
+- an immutable file-fact identity keyed by project, source-index schema,
+  owner path, and file hash;
+- owner and selector facts owned by that file fact rather than by a generation;
+- one active membership per project/schema/owner path that points at the
+  current file fact, together with an active-generation pointer used for
+  existing generation receipts and reuse checks.
+
+On a dirty rebuild, Turso inserts facts only for changed or new files, upserts
+only their active memberships, removes memberships for deleted files, records
+the new generation receipt, and advances the active pointer in the same
+transaction.  It does not copy unchanged owner or selector rows.  Initial
+bootstrap may dual-write the existing v1 owner/selector tables until the
+reader migration is complete; reads then resolve the active pointer and active
+memberships while preserving the current candidate, receipt, and JSON shapes.
+
+The migration must be additive and restart-safe.  A read may use the legacy
+generation rows only until a complete active membership is recorded for the
+project/schema.  Write failure must leave both the active pointer and active
+membership unchanged.  Rebuild, refresh, lookup, and their public receipts
+remain v1 throughout.

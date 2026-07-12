@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{
+use agent_semantic_search::{
     search_query_budget_block, search_query_terms, search_rg_terms_budget_block,
     search_terms_budget_block, specific_search_term,
 };
@@ -44,6 +44,29 @@ fn search_query_budget_allows_specific_or_filtered_queries() {
         )
         .is_none()
     );
+}
+
+#[test]
+fn search_query_budget_requires_a_specific_anchor_for_concept_bundles() {
+    let terms = search_query_terms("search performance provider startup preflight");
+    let block = search_terms_budget_block(&terms, &[PathBuf::from(".")], false)
+        .expect("concept-only bundle should be blocked before acquisition");
+
+    assert_eq!(block.reason, "query-needs-specific-anchor");
+    assert_eq!(block.term_count, 5);
+
+    let anchored = search_query_terms("search provider run_language_command");
+    assert!(search_terms_budget_block(&anchored, &[PathBuf::from(".")], false).is_none());
+}
+
+#[test]
+fn search_query_budget_blocks_short_all_generic_queries() {
+    let terms = search_query_terms("search provider");
+    let block = search_terms_budget_block(&terms, &[PathBuf::from(".")], false)
+        .expect("all-generic query should be blocked");
+
+    assert_eq!(block.reason, "query-too-broad");
+    assert_eq!(block.term_count, 2);
 }
 
 #[test]

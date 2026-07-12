@@ -12,6 +12,17 @@ mod unix {
         let root = temp_project_root("codex-plugin-unified-install");
         let codex_home = root.join(".codex-home");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
+        std::fs::create_dir_all(root.join(".codex")).expect("create project codex dir");
+        std::fs::write(
+            root.join(".codex").join("config.toml"),
+            "[marketplaces.asp-project]\nsource_type = \"local\"\nsource = \".\"\n",
+        )
+        .expect("write legacy project marketplace config");
+        std::fs::write(
+            codex_home.join("config.toml"),
+            "# BEGIN agent-semantic-protocol agent hooks\n[[hooks.pre_tool_use]]\nmatcher = \"*\"\n[[hooks.pre_tool_use.hooks]]\ntype = \"command\"\ncommand = \"direnv exec . asp-codex-hook pre-tool\"\n# END agent-semantic-protocol agent hooks\n",
+        )
+        .expect("write legacy global hook config");
         let agent_config_path = root.join(".agents").join("asp.toml");
         std::fs::create_dir_all(agent_config_path.parent().expect("agent config parent"))
             .expect("create agent config parent");
@@ -53,6 +64,14 @@ mod unix {
             ),
             "stdout={stdout}"
         );
+        assert!(
+            stdout.contains("pluginSourceTrustConfig=.codex-home/config.toml"),
+            "stdout={stdout}"
+        );
+        assert!(
+            stdout.contains("pluginCacheTrustConfig=.codex-home/config.toml"),
+            "stdout={stdout}"
+        );
         assert_current_agent_config(&root);
         assert_project_plugin_cache_refreshed(&root);
         assert_global_plugin_cache_refreshed(&root, &codex_home);
@@ -78,11 +97,31 @@ mod unix {
         );
         assert!(!project_config.contains("direnv exec"), "{project_config}");
         assert!(
+            !project_config.contains(" hook pre-tool "),
+            "{project_config}"
+        );
+        assert!(
             !project_config.contains("\"$repo_root/.bin/asp\" hook"),
             "{project_config}"
         );
         assert!(
             !project_config.contains("[agents.asp_explorer]"),
+            "{project_config}"
+        );
+        assert!(
+            !project_config.contains("[marketplaces.asp-project]"),
+            "{project_config}"
+        );
+        assert!(
+            !project_config.contains("source_type = \"local\""),
+            "{project_config}"
+        );
+        assert!(
+            !project_config.contains("source = \".\""),
+            "{project_config}"
+        );
+        assert!(
+            project_config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"),
             "{project_config}"
         );
         let explorer_agent =
@@ -105,17 +144,20 @@ mod unix {
         let global_config = std::fs::read_to_string(codex_home.join("config.toml"))
             .expect("read global Codex config");
         assert!(
-            global_config.contains("# BEGIN agent-semantic-protocol agent hooks"),
+            !global_config.contains("# BEGIN agent-semantic-protocol agent hooks"),
             "{global_config}"
         );
         assert!(
-            global_config.contains("[[hooks.pre_tool_use]]"),
+            !global_config.contains("[[hooks.pre_tool_use]]"),
             "{global_config}"
         );
-        assert!(global_config.contains("direnv exec"), "{global_config}");
-        assert!(global_config.contains(" hook pre-tool "), "{global_config}");
+        assert!(!global_config.contains("direnv exec"), "{global_config}");
         assert!(
-            global_config.contains(r#"repo_root="${CODEX_WORKSPACE_ROOT:-${PWD:-.}}""#),
+            !global_config.contains(" hook pre-tool "),
+            "{global_config}"
+        );
+        assert!(
+            !global_config.contains(r#"repo_root="${CODEX_WORKSPACE_ROOT:-${PWD:-.}}""#),
             "{global_config}"
         );
         assert!(
@@ -123,19 +165,76 @@ mod unix {
             "{global_config}"
         );
         assert!(
-            global_config.contains(
-                r#"nickname_candidates = ["ASP Explore", "ASP Reasoning", "ASP Search"]"#
-            ),
+            !global_config.contains("nickname_candidates"),
             "{global_config}"
         );
         assert!(
-            global_config.contains(".codex-home/config.toml:pre_tool_use:0:0"),
+            !global_config.contains(".codex-home/config.toml:pre_tool_use:0:0"),
+            "{global_config}"
+        );
+        assert!(
+            global_config
+                .contains("asp-codex-plugin@asp-project:hooks/hooks.json:pre_tool_use:0:0"),
+            "{global_config}"
+        );
+        assert!(
+            global_config.contains("agent-semantic-protocol trusted hook state"),
             "{global_config}"
         );
         let agent_config = std::fs::read_to_string(root.join(".agents").join("asp.toml"))
             .expect("read agent config");
         assert!(agent_config.contains("[providers.org]"), "{agent_config}");
         assert!(agent_config.contains("enabled = false"), "{agent_config}");
+
+        std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    }
+
+    #[test]
+    fn install_plugin_codex_default_subagent_model_reads_asp_agents_config() {
+        let root = temp_project_root("codex-plugin-subagent-model-from-config");
+        let codex_home = root.join(".codex-home");
+        let state_home = root.join(".state");
+        std::fs::create_dir_all(&codex_home).expect("create codex home");
+        std::fs::create_dir_all(root.join(".codex")).expect("create project codex dir");
+        std::fs::create_dir_all(state_home.join("agents")).expect("create ASP agents dir");
+        std::fs::write(
+            state_home.join("agents").join("config.toml"),
+            r#"[platform.codex.models]
+primary = "gpt-5.3-codex-spark"
+fallback = ["gpt-5.4-mini"]
+"#,
+        )
+        .expect("write ASP agents config");
+        write_existing_project_plugin_cache(&root);
+
+        let fake_bin = write_fake_codex_cli(&root);
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&root)
+            .env("CODEX_HOME", &codex_home)
+            .env("PATH", prepend_path(&fake_bin))
+            .env("ASP_STATE_HOME", &state_home)
+            .env("PRJ_CACHE_HOME", root.join(".cache"))
+            .args(["install", "plugin", "--codex", "."])
+            .output()
+            .expect("run asp install plugin --codex");
+        assert!(
+            output.status.success(),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let explorer_agent =
+            std::fs::read_to_string(state_home.join("agents").join("asp-explorer_codex.toml"))
+                .expect("read canonical ASP Explorer agent");
+        assert!(
+            explorer_agent.contains(r#"model = "gpt-5.3-codex-spark""#),
+            "{explorer_agent}"
+        );
+        assert!(
+            !explorer_agent.contains(r#"model = "gpt-5.4-mini""#),
+            "{explorer_agent}"
+        );
 
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
     }
@@ -177,8 +276,93 @@ mod unix {
                 .is_file(),
             "tracked source plugin hooks must be preserved"
         );
+        let plugin_cache_root = root
+            .join(".codex")
+            .join("plugins")
+            .join("cache")
+            .join("asp-project")
+            .join("asp-codex-plugin")
+            .join("0.1.0");
+        let plugin_manifest_path = plugin_cache_root.join(".codex-plugin").join("plugin.json");
+        let plugin_manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&plugin_manifest_path).expect("read plugin manifest"),
+        )
+        .expect("parse plugin manifest");
+        assert_eq!(
+            plugin_manifest["hooks"].as_str(),
+            Some("./hooks/hooks.json"),
+            "Codex plugin hooks must use the native string path schema"
+        );
+        assert!(
+            !plugin_manifest["hooks"].is_array(),
+            "Codex plugin hooks must not be written as an array"
+        );
+        let hooks_path =
+            plugin_cache_root.join(plugin_manifest["hooks"].as_str().expect("hooks path"));
+        assert!(
+            hooks_path.is_file(),
+            "Codex plugin hooks path must resolve from plugin root: {}",
+            hooks_path.display()
+        );
         assert_project_plugin_cache_refreshed(&root);
         assert_global_plugin_cache_refreshed(&root, &codex_home);
+
+        std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    }
+
+    #[test]
+    fn install_plugin_codex_global_skips_project_plugin_cache() {
+        let root = temp_project_root("codex-plugin-global-scope");
+        let codex_home = root.join(".codex-home");
+        std::fs::create_dir_all(&codex_home).expect("create codex home");
+
+        let fake_bin = write_fake_codex_cli(&root);
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&root)
+            .env("CODEX_HOME", &codex_home)
+            .env("PATH", prepend_path(&fake_bin))
+            .env("ASP_STATE_HOME", root.join(".state"))
+            .env("PRJ_CACHE_HOME", root.join(".cache"))
+            .args(["install", "plugin", "--codex", "--global", "."])
+            .output()
+            .expect("run asp install plugin --codex --global");
+        assert!(
+            output.status.success(),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("pluginScope=global"), "stdout={stdout}");
+        assert!(
+            stdout.contains(
+                "globalPluginCache=.codex-home/plugins/cache/asp-project/asp-codex-plugin/0.1.0"
+            ),
+            "stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("pluginCache=.codex/plugins/cache/asp-project"),
+            "stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("pluginManifest=.codex/plugins/cache/asp-project"),
+            "stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("pluginSkill=.codex/plugins/cache/asp-project"),
+            "stdout={stdout}"
+        );
+        assert_global_plugin_cache_refreshed(&root, &codex_home);
+        let project_plugin_cache = root
+            .join(".codex")
+            .join("plugins")
+            .join("cache")
+            .join("asp-project");
+        assert!(
+            !project_plugin_cache.exists(),
+            "global plugin install must not create project plugin cache: {}",
+            project_plugin_cache.display()
+        );
 
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
     }
@@ -284,13 +468,20 @@ mod unix {
         );
         let hooks = std::fs::read_to_string(cache_root.join("hooks").join("hooks.json"))
             .expect("read plugin cache hooks");
-        assert!(hooks.contains("/.bin/asp-codex-hook"), "{hooks}");
-        assert!(!hooks.contains("direnv exec . asp hook"), "{hooks}");
-        let wrapper = std::fs::read_to_string(root.join(".bin").join("asp-codex-hook"))
-            .expect("read hook wrapper");
-        assert!(wrapper.contains("direnv exec "), "{wrapper}");
-        assert!(wrapper.contains("/.bin/asp hook"), "{wrapper}");
-        assert!(wrapper.contains("2>/dev/null"), "{wrapper}");
+        assert!(
+            hooks.contains("asp hook permission-request --client codex"),
+            "{hooks}"
+        );
+        assert!(
+            hooks.contains("asp hook pre-tool --client codex"),
+            "{hooks}"
+        );
+        assert!(!hooks.contains("direnv exec"), "{hooks}");
+        assert!(!hooks.contains("asp-codex-hook"), "{hooks}");
+        assert!(
+            !root.join(".bin").join("asp-codex-hook").exists(),
+            "legacy hook wrapper must not be generated"
+        );
         let cache_skill_dir = cache_root.join("skills").join("agent-semantic-protocols");
         let cache_skill_path = cache_skill_dir.join("SKILL.org");
         let skill = std::fs::read_to_string(&cache_skill_path).expect("read plugin cache skill");

@@ -52,6 +52,14 @@ pub(super) fn register_session(
     } else {
         validate_recent_session_profile(&session_id, &root_session_id, &name, &role, now)?
     };
+    let model_observation = validation.actual_model.as_deref().map(|model| {
+        agent_semantic_client_db::AgentSessionModelObservationRef {
+            model,
+            source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexRollout,
+            observed_at: now,
+            evidence_ref: None,
+        }
+    });
     let metadata_json = normalized_metadata_with_roles(
         args.metadata_json.as_deref(),
         &validation,
@@ -68,14 +76,14 @@ pub(super) fn register_session(
             parent_session_id: args.parent_session_id.as_deref(),
             name: &name,
             role: &role,
-            model: args.model.as_deref(),
+            model_observation,
             status: AGENT_SESSION_STATUS_INVALID,
             expires_at: args.expires_at,
             metadata_json: &metadata_json,
             now,
         });
         return Err(format!(
-            "agent session validation failed: {}.\nblockedState=validation-failed-or-non-routable-child\nnextAction=ask-existing-child-to-switch-model-and-revalidate\nstatusCommand=asp agent session status --name {name} --json\nagentInstruction=Use the existing `{name}` child session. If this is a model mismatch, switch that same Codex child to the requiredModel shown in the validation reason, then rerun status. Do not create or replace the child.\nconfigSwitchCommandTemplate=asp agent session switch-model --name {name} --model <requiredModel> --json\nconfigSwitchPurpose=Use the config switch command only when the underlying ASP/Codex model mapping or capacity fallback configuration must be updated.",
+            "agent session validation failed: {}.\nblockedState=validation-failed-or-non-routable-child\nloopCommand=asp agent session bootstrap --name {name}\nagentInstruction=Enter the resident-child choice pane and choose one number. The pane owns status inspection, model alignment, message target recovery, cleanup, creation, and registration; do not run low-level session commands as independent fallback workflows.",
             validation.reason
         ));
     }
@@ -106,7 +114,6 @@ pub(super) fn register_session(
                 role: &role,
                 roles: &roles,
                 permissions: &permissions,
-                model: args.model.as_deref(),
                 expires_at: args.expires_at,
                 now,
                 excluded_session_id: Some(&session_id),
@@ -129,7 +136,7 @@ pub(super) fn register_session(
         parent_session_id: args.parent_session_id.as_deref(),
         name: &name,
         role: &role,
-        model: args.model.as_deref(),
+        model_observation,
         status: &status,
         expires_at: args.expires_at,
         metadata_json: &metadata_json,
@@ -576,6 +583,40 @@ pub(super) fn status_session(
         })
         .transpose()?;
     if let (Some(session), Some(validation)) = (record.as_ref(), validation.as_ref())
+        && matches!(validation.status.as_str(), "passed" | "warning")
+        && let Some(model) = validation.actual_model.as_deref()
+    {
+        let recoverable = session.message_target_id.is_some()
+            && matches!(
+                session.status.as_str(),
+                "invalid" | "pending-target" | "idle"
+            );
+        let status = if recoverable {
+            "active"
+        } else {
+            session.status.as_str()
+        };
+        record = Some(registry.register_session(AgentSessionRegisterRequest {
+            project_id: &session.project_id,
+            root_session_id: &session.root_session_id,
+            session_id: &session.session_id,
+            message_target_id: session.message_target_id.as_deref(),
+            parent_session_id: session.parent_session_id.as_deref(),
+            name: &session.name,
+            role: &session.role,
+            model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
+                model,
+                source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexRollout,
+                observed_at: now,
+                evidence_ref: validation.rollout_path.as_deref(),
+            }),
+            status,
+            expires_at: session.expires_at,
+            metadata_json: &session.metadata_json,
+            now,
+        })?);
+    }
+    if let (Some(session), Some(validation)) = (record.as_ref(), validation.as_ref())
         && validation.status == "failed"
     {
         let _ = registry.mark_session_invalid(&project_id, &session.session_id, now);
@@ -714,12 +755,17 @@ pub(super) fn status_session(
     };
     if report.routable && report.required_model.is_some() {
         report.model_alignment_action = Some(
-            "parent-send-codex-follow-up-with-required-model-override-and-revalidate".to_string(),
+            "parent-send-native-message-same-child-with-required-child-session-model".to_string(),
         );
         let required_model = report.required_model.as_deref().unwrap_or("");
         let name = report.name.as_deref().unwrap_or("asp-explore");
+        let child_session = report
+            .session
+            .as_ref()
+            .map(|session| session.session_id.as_str())
+            .unwrap_or("<same-resident-child>");
         report.model_alignment_message = Some(format!(
-            "After native resume or before the next child task, the parent must send a Codex follow-up to this same child thread with model override {required_model} and light/low reasoning, wait for the child receipt, then rerun asp agent session status --name {name}."
+            "Keep the main session model unchanged. Before the next child task, parent must send a native message-agent follow-up to child session `{child_session}` requesting child-session model {required_model} with low/light reasoning, wait for a compact receipt, then rerun `asp agent session status --name {name}`."
         ));
     }
     if let Some(activity) = report.rollout_activity.as_ref() {
@@ -744,7 +790,9 @@ fn session_validation_next_action(
     if validation.status == "warning"
         && validation
             .reason
-            .contains("requiredAction=parent-send-message-same-child-with-required-model")
+            .contains(
+                "requiredAction=parent-send-native-message-same-child-with-required-child-session-model",
+            )
     {
         return Some("resume-or-send-follow-up-to-same-child-before-considering-replacement");
     }

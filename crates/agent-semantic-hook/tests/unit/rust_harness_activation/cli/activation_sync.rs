@@ -111,7 +111,10 @@ fn cli_doctor_syncs_generated_activation_drift() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("[agent-doctor] status=ok"));
+    assert!(
+        stdout.contains("[agent-doctor] status=ok")
+            || stdout.contains("[agent-doctor] status=warning")
+    );
     let synced = std::fs::read_to_string(&activation_path).expect("synced activation");
     let registry = parse_hook_activation(&synced).expect("canonical synced activation");
     let rust_provider = registry

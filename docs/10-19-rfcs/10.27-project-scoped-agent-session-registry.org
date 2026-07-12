@@ -20,15 +20,16 @@ identity:
 - =name=
 - =role=
 
-The normal command remains small:
+The normal-agent entrypoint remains small:
 
 #+BEGIN_SRC sh
-asp agent session register --name asp-explore --child-session-id <child-session-id> --role asp-explore
+asp agent session bootstrap --name asp-explore
 #+END_SRC
 
-The =project_id= is implicit from the current project. The root and parent may be
-filled from the platform adapter during register, but platform rollout data is
-validation evidence, not routing authority.
+The =project_id= is implicit from the current workspace. A normal agent never
+copies a host child id, message target, or model into a shell command. The
+platform adapter projects native lifecycle events into the registry; rollout
+data remains recovery evidence, not routing authority.
 
 * Gap Audit
 
@@ -71,8 +72,8 @@ close/delete the drifted child and create a fresh configured child.
   into the registry DB.
 - Reuse/status/pre-tool route checks no longer use rollout-only root inference
   for unregistered children.
-- Register still uses the platform adapter to fill root/parent when a child id
-  is supplied without explicit root flags.
+- The platform adapter writes root, child, message target, role, and model from
+  native lifecycle events; the normal agent does not supply those values.
 - Model, role, root, parent, and explicit agent config path mismatches are hard
   failures.
 - Missing rollout =agent_path= is warning-only when role/model/root/parent still
@@ -94,16 +95,16 @@ project-id resolver without changing the registry contract.
 
 #+BEGIN_SRC mermaid
 flowchart TD
-  A["agent has platform session id"] --> B["resolve project_id from cwd"]
-  B --> C{"registry has project_id + current child?"}
-  C -- yes --> D["use stored root_session_id"]
-  C -- no --> E["register current child or create configured child"]
-  E --> F["register validates rollout role/model/agent config"]
-  F -- pass/warn --> G["write project-scoped DB relation"]
-  F -- fail --> H["close/delete drifted child and recreate"]
-  G --> I{"main wants search/query/test?"}
-  I -- search/query --> J["route to asp-explore child id"]
-  I -- test/build --> K["route to asp-testing child id"]
+  A["normal agent enters bootstrap pane"] --> B{"resident route ready?"}
+  B -- yes --> H["dispatch through stored native message target"]
+  B -- no --> C["invoke native managed create or resume"]
+  C --> D["host emits SubagentStart"]
+  D --> E["adapter validates native type and model"]
+  E -- pass --> F["atomically claim project-scoped resident route"]
+  E -- mismatch or duplicate --> G["reject new child; retain valid resident"]
+  F --> H
+  H --> I["host emits SubagentStop"]
+  I --> J["retire only the matching native child route"]
 #+END_SRC
 
 * Non-Goals
@@ -115,6 +116,23 @@ flowchart TD
 Checkpoints, evidence summaries, and heartbeats can reuse the same project DB
 with session ids as foreign keys. They do not require a separate session artifact
 layout.
+
+* Managed profile provenance
+
+The configured managed-child profile is resolved from the canonical
+=agents/*_codex.toml= file plus the dynamic model overlay. That resolved
+profile, rather than the main session model or reasoning effort, is the only
+source for an =asp_explorer= child model and reasoning effort.
+
+Native create and native resume select the managed agent by its configured
+role. They must load the resolved child profile. =message-agent= carries
+search work and compact receipts only; it must not carry model or reasoning
+instructions. A parent follow-up must not be used to emulate profile loading.
+
+Validation compares the host-observed child profile with the resolved
+configuration. A missing or mismatched model/reasoning observation leaves the
+child in the validation/recovery loop. It is not a reason to inherit the main
+session profile, fabricate a registry model, or create a generic replacement.
 
 * Scenario Tests
 
@@ -176,6 +194,39 @@ one exists, behind the same project scope function.
 The command and hook behavior tests cover the failure modes and the full
 lifecycle. A declarative scenario-harness wrapper would make the same lifecycle
 easier to reuse for future lanes such as =asp-testing= and future host adapters.
+* Native lifecycle transport authority
+For Codex, generated native hook schemas are the source of truth. The
+=SubagentStart= adapter uses this fixed projection:
+
+| Registry field | Codex native field |
+| =root_session_id= | =session_id= |
+| =parent_session_id= | =session_id= |
+| child =session_id= | =agent_id= |
+| =message_target_id= | =agent_id= |
+| managed role/profile | =agent_type= |
+| observed model | =model= |
+
+=agent_id= is both the value returned by native =spawn_agent= and the address
+accepted by native =send_input=. A successful =SubagentStart= therefore closes
+the message-target handshake without a model-authored receipt or a second probe.
+=session_id= is the parent task and must never be registered as the child.
+
+The adapter ignores non-ASP =agent_type= values so customer subagents remain
+outside ASP lifecycle management. For the configured resident type, an atomic
+claim admits one resident. A duplicate or model-mismatched start is rejected
+through the native hook response while the existing valid resident remains
+authoritative. =SubagentStop= retires only the registry row whose child id equals
+the native =agent_id=.
+
+The bootstrap pane does not accept child identity as normal-agent output. After
+native create or resume, the normal agent re-enters the same pane. =Ready= is
+derived only from the registry row written by the native lifecycle hook.
+
+Codex currently does not expose effective reasoning effort in the generated
+=SubagentStart= input. ASP hard-validates =agent_type= and =model=. Reasoning
+remains managed-profile provenance until Codex adds a native
+=reasoning_effort= observation; ASP must not present it as runtime-observed data.
+
 * Project Hook State And Agent Config Projection
 ** Hook state belongs to the project workspace
 Global =state-root/hooks/state= is not a valid owner for activation,
@@ -235,13 +286,17 @@ When a Codex capacity warning requires changing models, ASP should surface an
 executable command instead of leaving only a mismatch warning:
 
 #+BEGIN_SRC sh
-asp agent session switch-model --model gpt-5.4-mini --json
+asp agent session switch-model --name asp-explore --model gpt-5.4-mini
 #+END_SRC
 
-For Codex, =switch-model= updates the dynamic primary in =agents/config.toml=
-and rewrites the Codex-native agent projection model fields so later subagents
-start with the same model. After that switch, validation accepts the new primary
-or a configured fallback and must not keep emitting the previous model warning.
+For Codex, =switch-model= updates ASP-managed subagent/child-session model
+configuration in =agents/config.toml= and the matching Codex agent projection. It
+does not switch the main session model. Later ASP-managed child sessions start
+with the configured child-session model. A currently running child session still
+needs a native message-agent follow-up from the main agent to confirm the
+configured child-session model; after that receipt, validation accepts the
+configured primary or fallback and must not keep emitting the previous child
+model warning.
 
 ** Scenario coverage
 The regression shape is:

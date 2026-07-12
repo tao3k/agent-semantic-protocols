@@ -14,12 +14,12 @@ def search_packet() -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
         "languageId": "python",
-        "method": "search/fzf",
-        "view": "fzf",
+        "method": "search/lexical",
+        "view": "lexical",
         "query": "semantic_string_type",
         "searchSynthesis": {
             "algorithm": "seed-frontier",
-            "scope": "fzf",
+            "scope": "lexical",
             "seeds": [
                 {"kind": "owner", "target": "src/types.py"},
                 {"kind": "owner", "target": "src/types.py"},
@@ -50,7 +50,7 @@ def test_artifact_evaluation_reports_cache_and_duplicate_metrics(tmp_path) -> No
     search_dir.mkdir()
     prompt_dir = tmp_path / "prompt-output"
     prompt_dir.mkdir()
-    (search_dir / "python-search-fzf-test.json").write_text(
+    (search_dir / "python-search-lexical-test.json").write_text(
         json.dumps(search_packet()),
         encoding="utf-8",
     )

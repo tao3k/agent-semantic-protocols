@@ -420,7 +420,7 @@ Agent clients must use compact output for interactive exploration.  =--json=
 is only for schema-contract tests, sandtable receipts/replay, IDE/Flowhub
 consumers, or a local validator that consumes the JSON directly.  It is not a
 prompt-facing discovery mode: repeated commands such as
-=search fzf <query> owner tests --json .= waste tokens, hide the intended line
+=search lexical <query> owner tests --json .= waste tokens, hide the intended line
 protocol guidance, and should be rejected by agent hooks with a safe compact
 route.
 
@@ -435,8 +435,8 @@ the semantic route, explain that agent search commands must not use =--json=,
 and remove only the output-mode error.  For example:
 
 #+begin_src text
-denied: asp typescript search fzf location.path owner tests --json .
-guide:  asp typescript search fzf location.path owner tests --workspace . --view seeds
+denied: asp typescript search lexical location.path owner tests --json .
+guide:  asp typescript search lexical location.path owner tests --workspace . --view seeds
 #+end_src
 
 If the rejected JSON-output command already carries a concrete owner path, the
@@ -448,17 +448,17 @@ provider-owned query fields, using this shape:
 asp <language> search owner <path> items --query <derived-query> .
 #+end_src
 
-For =search fzf=, the first required query positional is owned by the query,
+For =search lexical=, the first required query positional is owned by the query,
 even when the literal text begins with a dash.  For example,
-=ts-harness search fzf --json --workspace . --view seeds= searches for the literal
+=ts-harness search lexical --json --workspace . --view seeds= searches for the literal
 =--json= token.  A structured output request must put the output flag after the
-query, e.g. =ts-harness search fzf OrderStatus --json .=.  This prevents a
+query, e.g. =ts-harness search lexical OrderStatus --json .=.  This prevents a
 flag-like source token from silently becoming a prompt-facing JSON packet.
 The same literal ownership applies to explicit query flags:
-=search fzf --query --language owner tests --workspace . --view seeds= searches for the
+=search lexical --query --language owner tests --workspace . --view seeds= searches for the
 literal =--language= token, while =owner= and =tests= remain search surfaces.
-Providers must not route =search fzf --query <term>= into owner item-query
-state; it is the fzf query surface.
+Providers must not route =search lexical --query <term>= into owner item-query
+state; it is the lexical query surface.
 
 If a daemon is running, the CLI internally routes through the daemon socket.
 If no daemon is running, the CLI runs the native parser directly.  The agent

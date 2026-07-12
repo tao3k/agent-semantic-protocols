@@ -975,11 +975,15 @@ fn turso_client_db_counts(db_path: &Path) -> Result<TursoClientDbCounts, String>
                 "dependency-usage",
             )
             .await,
-            source_index_generations: count_turso_rows(&connection, "asp_source_index_generation")
-                .await?,
-            source_index_owners: count_turso_rows(&connection, "asp_source_index_owner").await?,
-            source_index_selectors: count_turso_rows(&connection, "asp_source_index_selector")
-                .await?,
+            source_index_generations: count_turso_rows_or_zero(
+                &connection,
+                "asp_source_index_scope_v1",
+            )
+            .await,
+            source_index_owners: count_turso_rows_or_zero(&connection, "asp_source_index_owner_v1")
+                .await,
+            source_index_selectors: count_turso_source_index_selector_rows_or_zero(&connection)
+                .await,
             artifact_events: count_turso_rows_or_zero(&connection, "asp_artifact_event").await,
         })
     })
@@ -1048,6 +1052,27 @@ async fn count_turso_rows(connection: &turso::Connection, table: &str) -> Result
                 Err(error)
             }
         })
+}
+
+async fn count_turso_source_index_selector_rows_or_zero(connection: &turso::Connection) -> u32 {
+    let mut rows = match connection
+        .query(
+            "SELECT COALESCE(SUM(selector_count), 0) FROM asp_source_index_owner_v1",
+            (),
+        )
+        .await
+    {
+        Ok(rows) => rows,
+        Err(error) if error.to_string().contains("no such table") => return 0,
+        Err(_) => return 0,
+    };
+    match rows.next().await {
+        Ok(Some(row)) => row
+            .get::<i64>(0)
+            .map(|count| count.max(0).min(i64::from(u32::MAX)) as u32)
+            .unwrap_or(0),
+        _ => 0,
+    }
 }
 
 async fn count_turso_graph_kind_or_zero(connection: &turso::Connection, kind: &str) -> u32 {

@@ -29,21 +29,25 @@ fn cli_install_refuses_protocol_bin_dir_outside_path() {
 fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     let root = git_project_root("install-invalid-toml");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    let protocol_bin_dir = root.join(".agent-bin");
+    let path = std::env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(&config_path, "unified_exec = \"unterminated\n").expect("write invalid config");
 
     let output = protocol_command()
-        .env("PATH", &provider_path)
+        .env("PATH", &path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
 
     assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("refusing to clean invalid Codex config TOML")
+        stderr.contains("refusing to clean invalid Codex config TOML"),
+        "{stderr}"
     );
     let config = std::fs::read_to_string(&config_path).expect("preserved config");
     assert_eq!(config, "unified_exec = \"unterminated\n");

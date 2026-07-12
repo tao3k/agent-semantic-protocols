@@ -103,6 +103,7 @@ mod language {
 mod client_commands;
 mod dependency_seed;
 mod document;
+mod gerbil_deps;
 mod guide;
 mod performance;
 mod pipe;

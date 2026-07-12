@@ -96,7 +96,7 @@ pub(crate) fn compact_source_access_deny_message(
             return message;
         }
         return format!(
-            "ASP denied source access again (`{reason}`). Use the active recovery lane; do not retry raw source tools.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access again (`{reason}`). Stay in the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number and re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
         );
     }
 
@@ -128,7 +128,7 @@ pub(crate) fn compact_source_access_deny_message(
         return message;
     }
     format!(
-        "ASP denied source access (`{reason}`). Enter the resident-child interactive loop with `asp agent session bootstrap --name asp-explore --json`, choose one typed menu option, perform the platform-native action, then re-enter the loop until state=ready.\nrecoveryRef={recovery_ref}"
+        "ASP denied source access (`{reason}`). Enter the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number, perform the native platform action, then re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
     )
 }
 
@@ -168,10 +168,10 @@ pub(crate) fn repeated_deny_message(decision: &HookDecision) -> String {
             .to_string(),
         String::new(),
         "## ASP Hook Recovery".to_string(),
-        "Follow the previous recovery route instead of retrying raw source tools.".to_string(),
+        "Enter the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number and re-enter until state=Ready.".to_string(),
         String::new(),
         "## Stop".to_string(),
-        "Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands on the matched source. The hook has already denied this lane."
+        "Do not switch to another evidence channel. The hook has already denied this lane."
             .to_string(),
     ]
     .join("\n")

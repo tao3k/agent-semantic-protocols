@@ -39,6 +39,8 @@ pub(crate) fn source_index_trace(
         SearchPipeSourceIndexDecision::QueryGate => "query-gate",
         SearchPipeSourceIndexDecision::DeferBackend => "deferred",
         SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay => "used",
+        SearchPipeSourceIndexDecision::Busy => "busy",
+        SearchPipeSourceIndexDecision::ColdRequired => "cold-required",
         SearchPipeSourceIndexDecision::Fallthrough => "fallthrough",
     };
     SearchPipeSourceAcquisitionTrace {

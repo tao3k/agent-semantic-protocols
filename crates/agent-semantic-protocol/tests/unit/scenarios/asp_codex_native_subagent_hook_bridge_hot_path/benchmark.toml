@@ -1,0 +1,19 @@
+harness = "libtest"
+test = "codex_native_subagent_start_stop_bridge_stays_inside_scenario_gate"
+phase = "warm"
+target_total = "200ms"
+max_total = "1000ms"
+observed_total = "200ms"
+regression_budget = "800ms"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 1048576
+route_source = "codex-native-subagent-hook"
+max_provider_process_count = 0
+max_stdout_bytes = 32768
+fallback_reason = "none"
+target_rationale = "Each native hook action has a 100ms target and 500ms hard cap. The path is bounded to typed payload projection, managed-profile validation, and one project-scoped Turso registry mutation; rollout scans, child text receipts, provider work, and generic subagent creation are forbidden."
+
+[observed_timings]
+subagent_start = "100ms"
+subagent_stop = "100ms"
+total = "200ms"

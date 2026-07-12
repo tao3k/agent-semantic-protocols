@@ -457,6 +457,130 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
     let _ = fs::remove_dir_all(root);
 }
 
+pub(super) fn asp_rust_owner_items_minimal_ast_cut_cold_functional_path_stays_inside_scenario_gate()
+{
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_id = "asp-search-owner-rust-minimal-ast-cut-cold-functional-path";
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_search_owner_rust_minimal_ast_cut_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    super::contracts::assert_rust_owner_items_minimal_ast_cut_benchmark_contract(&benchmark);
+
+    let root = temp_project_root("scenario-rust-owner-minimal-ast-cut");
+    let owner_path = "crate/src/lib.rs";
+    let owner = root.join(owner_path);
+    fs::create_dir_all(owner.parent().expect("owner parent")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-rust-owner-minimal-ast-cut\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        &owner,
+        include_str!("../scenarios/asp_search_owner_rust_minimal_ast_cut_cold_functional_path/inputs/owner.rs"),
+    )
+    .expect("write source");
+
+    let started_at = Instant::now();
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "owner",
+            owner_path,
+            "items",
+            "--query",
+            "persisted",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run cold asp search owner items");
+    let elapsed = started_at.elapsed();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    let method = "item:symbol(persist_source_index_read_model)";
+    let method_selector = "rust://crate/src/lib.rs#item/method/persist_source_index_read_model";
+    let parent_selector = "rust://crate/src/lib.rs#item/impl/ClientDbEngine";
+    assert_eq!(
+        stdout.matches(method).count(),
+        1,
+        "the matching method must be the unique owner-items frontier fact: {stdout}"
+    );
+    assert!(
+        stdout.contains(method_selector),
+        "the minimal matching AST item must retain its structural selector: {stdout}"
+    );
+    assert!(
+        !stdout.contains(parent_selector),
+        "a matching ancestor impl must not be emitted beside its matching method: {stdout}"
+    );
+    assert!(
+        !root.join(".agent-semantic-protocols").exists(),
+        "rust minimal AST cut must not materialize activation runtime state"
+    );
+    assert!(
+        stdout.len() <= benchmark.max_stdout_bytes.expect("max stdout bytes") as usize,
+        "{scenario_id} exceeded max_stdout_bytes; stdout={stdout}"
+    );
+    let max_total_ms = benchmark
+        .max_total
+        .strip_suffix("ms")
+        .expect("minimal AST cut max_total must use millisecond units")
+        .parse::<u128>()
+        .expect("minimal AST cut max_total must be a number");
+    assert!(
+        elapsed.as_millis() <= max_total_ms,
+        "{scenario_id} exceeded max_total={} observed={}ms",
+        benchmark.max_total,
+        elapsed.as_millis()
+    );
+
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": scenario_id,
+        "languageId": "rust",
+        "workspace": ".",
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxSearchOverlayProcessCount": 0,
+            "requireMinimalMatchingAstCut": true
+        },
+        "observed": {
+            "observedTotal": format!("{}ms", elapsed.as_millis()),
+            "providerProcessCount": 0,
+            "nativeFinderProcessCount": 0,
+            "firstRoute": benchmark.route_source,
+            "executedRoutes": [benchmark.route_source],
+            "minimalMatchingAstCut": true,
+            "stdoutBytes": stdout.len(),
+            "fallbackReason": benchmark.fallback_reason
+        },
+        "verdict": "pass",
+        "evidenceRefs": [format!("scenario:{scenario_id}")]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["minimalMatchingAstCut"], true);
+
+    let _ = fs::remove_dir_all(root);
+}
+
 pub(in super::super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_scenario_gate() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let scenario_root = crate_root

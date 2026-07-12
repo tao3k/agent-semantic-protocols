@@ -29,6 +29,7 @@ pub struct ClientDbEvidenceGraph {
 pub struct ClientDbEvidenceGraphNode {
     pub id: String,
     pub kind: &'static str,
+    pub semantic_kind: Option<String>,
     pub label: String,
     pub path: Option<String>,
     pub selector: Option<String>,
@@ -47,13 +48,15 @@ pub struct ClientDbEvidenceGraphEdge {
 
 #[must_use]
 pub fn source_index_evidence_graph(import: &ClientDbSourceIndexImport) -> ClientDbEvidenceGraph {
-    let mut graph = evidence_graph(import.generation_id.as_str(), import.project_root.clone());
+    let mut graph =
+        empty_evidence_graph(import.generation_id.as_str(), import.project_root.clone());
     for owner in &import.owners {
         let owner_path = owner.owner_path.as_str();
         let owner_id = source_owner_node_id(import.generation_id.as_str(), owner_path);
         graph.nodes.push(ClientDbEvidenceGraphNode {
             id: owner_id,
             kind: "source-owner",
+            semantic_kind: None,
             label: owner_path.to_string(),
             path: Some(owner_path.to_string()),
             selector: None,
@@ -78,6 +81,7 @@ pub fn source_index_evidence_graph(import: &ClientDbSourceIndexImport) -> Client
         graph.nodes.push(ClientDbEvidenceGraphNode {
             id: selector_id.clone(),
             kind: "selector",
+            semantic_kind: selector.kind.clone(),
             label: selector
                 .symbol
                 .as_deref()
@@ -106,12 +110,14 @@ pub fn source_index_evidence_graph(import: &ClientDbSourceIndexImport) -> Client
 pub fn structural_index_evidence_graph(
     import: &ClientDbStructuralIndexImport,
 ) -> ClientDbEvidenceGraph {
-    let mut graph = evidence_graph(import.generation_id.as_str(), import.project_root.clone());
+    let mut graph =
+        empty_evidence_graph(import.generation_id.as_str(), import.project_root.clone());
     for owner in &import.owners {
         let owner_path = owner.owner_path.as_str();
         graph.nodes.push(ClientDbEvidenceGraphNode {
             id: structural_owner_node_id(import.generation_id.as_str(), owner_path),
             kind: "structural-owner",
+            semantic_kind: None,
             label: owner_path.to_string(),
             path: Some(owner_path.to_string()),
             selector: None,
@@ -148,6 +154,7 @@ fn project_structural_symbol(
     graph.nodes.push(ClientDbEvidenceGraphNode {
         id: symbol_id.clone(),
         kind: "symbol",
+        semantic_kind: Some(symbol.kind.as_str().to_string()),
         label: symbol.name.as_str().to_string(),
         path: Some(owner_path.to_string()),
         selector: symbol
@@ -191,6 +198,7 @@ fn project_structural_dependency(
     graph.nodes.push(ClientDbEvidenceGraphNode {
         id: dependency_id.clone(),
         kind: "dependency-usage",
+        semantic_kind: None,
         label: dependency_label,
         path: Some(owner_path.to_string()),
         selector: dependency
@@ -212,7 +220,10 @@ fn project_structural_dependency(
     });
 }
 
-fn evidence_graph(generation_id: &str, project_root: PathBuf) -> ClientDbEvidenceGraph {
+pub(crate) fn empty_evidence_graph(
+    generation_id: &str,
+    project_root: PathBuf,
+) -> ClientDbEvidenceGraph {
     ClientDbEvidenceGraph {
         schema_id: CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_ID,
         schema_version: CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_VERSION,

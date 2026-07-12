@@ -231,10 +231,6 @@ impl OperationIntent {
         }
     }
 
-    pub(crate) fn is_direct_read_candidate(self) -> bool {
-        matches!(self, Self::DirectRead | Self::DirectoryRead)
-    }
-
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::ApplyPatch => "apply-patch",

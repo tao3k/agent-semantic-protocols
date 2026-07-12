@@ -183,7 +183,7 @@ fn prime_decision_line(packet: &Value) -> String {
         .filter(|language_id| !language_id.trim().is_empty())
         .unwrap_or("<language>");
     format!(
-        "|decision purpose=decision-primer answer=false code=false capabilities=lexical,pipe,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=lexical>fd-query|rg-query>owner-items>selector-code>pipe history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp {language_id} search lexical '<question-or-feature-term>' owner tests --workspace . --view seeds\""
+        "|decision purpose=decision-primer answer=false code=false capabilities=lexical,pipe,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=lexical>fd-query|rg-query>owner-items>selector-code>pipe history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp {language_id} search lexical <question-term> <related-feature-term> owner tests --workspace . --view seeds\""
     )
 }
 

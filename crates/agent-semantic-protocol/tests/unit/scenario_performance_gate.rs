@@ -2,6 +2,10 @@
 mod agent_session_pressure;
 #[path = "scenario_performance_gate/contracts.rs"]
 mod contracts;
+#[path = "scenario_performance_gate/gerbil_deps.rs"]
+mod gerbil_deps;
+#[path = "scenario_performance_gate/gerbil_projection_owner_items.rs"]
+mod gerbil_projection_owner_items;
 #[path = "scenario_performance_gate/graph.rs"]
 mod graph;
 #[path = "scenario_performance_gate/graph_rank.rs"]
@@ -38,6 +42,8 @@ mod scenario_performance_gate_impl;
 mod scenario_policy_scan;
 #[path = "scenario_performance_gate/search_candidate_contract.rs"]
 mod search_candidate_contract;
+#[path = "scenario_performance_gate/search_command_preflight.rs"]
+mod search_command_preflight;
 #[path = "scenario_performance_gate/search_frame.rs"]
 mod search_frame;
 #[path = "scenario_performance_gate/search_owner_source_index_gates.rs"]

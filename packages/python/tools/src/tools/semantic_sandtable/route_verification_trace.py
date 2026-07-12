@@ -392,7 +392,7 @@ def _direct_asp_route(verb: str) -> str | None:
 
 
 def _search_route(subcommand: str, args: list[str]) -> str | None:
-    if subcommand in {"prime", "pipe", "fzf"}:
+    if subcommand in {"prime", "pipe", "lexical"}:
         return subcommand
     if subcommand in {"fd", "finder"}:
         return "fd-query"
@@ -435,7 +435,7 @@ def _projection(command_argv: list[str], route: str) -> str:
 
 
 def _default_projection(route: str) -> str:
-    if route in {"prime", "pipe", "fzf", "fd-query", "rg-query"}:
+    if route in {"prime", "pipe", "lexical", "fd-query", "rg-query"}:
         return "seeds"
     if route == "owner-items":
         return "names"
@@ -462,7 +462,7 @@ def _expected_projection_for_route(route: str) -> str:
         return "names"
     if route in {"owner-skeleton", "syntax-outline"}:
         return "outline"
-    if route in {"prime", "pipe", "fzf", "fd-query", "rg-query"}:
+    if route in {"prime", "pipe", "lexical", "fd-query", "rg-query"}:
         return "seeds"
     return "unknown"
 
@@ -480,7 +480,7 @@ def _chosen_route_reason(route: str, anchors: list[str]) -> str:
         return f"route follows precise evidence anchors: {', '.join(anchors)}"
     if route == "prime":
         return "route starts from project-level discovery"
-    if route in {"fd-query", "rg-query", "fzf", "pipe"}:
+    if route in {"fd-query", "rg-query", "lexical", "pipe"}:
         return "route uses query terms before selecting parser-owned evidence"
     return "route reconstructed from recorded command trace"
 

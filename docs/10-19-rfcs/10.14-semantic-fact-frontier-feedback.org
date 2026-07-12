@@ -191,7 +191,7 @@ frontier=F.code,H.code,T.tests
 frontierActions=F.code=>asp rust query --selector src/cache.rs:18:24 --workspace . --code
 profiles=collection-impact,test-selection
 omit=source,full-callgraph,unrelated-fields
-avoid=raw-read,manual-window-scan,broad-fzf
+avoid=raw-read,manual-window-scan,broad-lexical
 #+end_src
 
 * Sparse matrix bank
@@ -361,7 +361,7 @@ Graph-turbo must penalize:
 - overlapping range repeated
 - same owner scanned repeatedly
 - raw read after exact frontier
-- broad fzf after projected frontier
+- broad lexical after projected frontier
 - frontier returned but ignored
 
 Graph-turbo must promote:
@@ -410,7 +410,7 @@ manualWindowScanCount
 rawReadFallbackCount
 repeatOwnerCount
 duplicateSelectorCount
-broadFzfCount
+broadLexicalCount
 testSelectionPrecision
 failureEvidenceHitRate
 commandsToFirstUsefulLocator

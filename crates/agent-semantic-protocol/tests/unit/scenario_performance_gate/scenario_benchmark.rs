@@ -98,6 +98,16 @@ fn asp_search_pipe_generated_candidate_cold_functional_path_stays_inside_scenari
 }
 
 #[test]
+fn asp_search_owner_items_invalid_owner_preflight_scenario_gate() {
+    super::search_command_preflight::search_owner_items_invalid_owner_preflight_scenario_gate();
+}
+
+#[test]
+fn asp_gerbil_deps_active_gxi_stdlib_hot_path_stays_inside_scenario_gate() {
+    super::gerbil_deps::asp_gerbil_deps_active_gxi_stdlib_hot_path_stays_inside_scenario_gate();
+}
+
+#[test]
 fn asp_provider_candidate_annotations_cold_functional_path_stays_inside_scenario_gate() {
     super::overlay_and_provider_gates::asp_provider_candidate_annotations_cold_functional_path_stays_inside_scenario_gate();
 }
@@ -229,6 +239,11 @@ fn asp_rust_owner_items_cold_functional_path_stays_inside_scenario_gate() {
 }
 
 #[test]
+fn asp_rust_owner_items_minimal_ast_cut_cold_functional_path_stays_inside_scenario_gate() {
+    super::owner_items::asp_rust_owner_items_minimal_ast_cut_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
 fn asp_typescript_owner_items_cold_functional_path_stays_inside_scenario_gate() {
     super::owner_items_cold::asp_typescript_owner_items_cold_functional_path_stays_inside_scenario_gate();
 }
@@ -243,11 +258,6 @@ fn asp_python_owner_items_cold_functional_path_stays_inside_scenario_gate() {
 fn asp_julia_owner_items_cold_functional_path_stays_inside_scenario_gate() {
     super::owner_items_cold::asp_julia_owner_items_cold_functional_path_stays_inside_scenario_gate(
     );
-}
-
-#[test]
-fn asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_scenario_gate() {
-    super::owner_items_cold::asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_scenario_gate();
 }
 
 #[test]

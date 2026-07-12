@@ -35,10 +35,10 @@ fallback renderer:
 
 #+begin_example
 [graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q budget=10
-frontier=Q.fzf,I.syntax,H.code,I2.syntax,I3.syntax,H2.code,H3.code,I4.syntax,I5.syntax,I6.syntax
+frontier=Q.lexical,I.syntax,H.code,I2.syntax,I3.syntax,H2.code,H3.code,I4.syntax,I5.syntax,I6.syntax
 cache=hit:backend=scipy-csr:entries=482:key=sha256:20fb015516e5
 metrics=nodes=188,edges=258,selectedEdges=8,reachable=129,ranked=10,paths=5,windows=0,cache=hit,readLoop=code:3|duplicate:0|adjacent:0|sameOwner:0,relationChannels=9,ppr=iter:100|residual:1.75e-07|mass:1.00
-avoid=raw-read,repeat-owner,broad-fzf
+avoid=raw-read,repeat-owner,broad-lexical
 #+end_example
 
 The receipt fixture records:
@@ -100,7 +100,7 @@ keeps stdout as the normal compact =[graph-frontier]= surface.
 The measured commands were:
 
 #+begin_example
-asp python search fzf \
+asp python search lexical \
   'semantic-fact-frontier-receipt relationChannels PPR' \
   owner tests --workspace . --view seeds
 # exit 0
@@ -150,7 +150,7 @@ PY
 rm -f /tmp/rfc014-asp-search-frontier-receipt.json \
   /tmp/rfc014-asp-search-frontier.stdout
 direnv exec . cargo run -q -p agent-semantic-protocol --bin asp -- \
-  python search fzf \
+  python search lexical \
   'semantic-fact-frontier-receipt relationChannels PPR' \
   owner tests --view seeds \
   --frontier-receipt-out /tmp/rfc014-asp-search-frontier-receipt.json \
@@ -178,7 +178,7 @@ uv run --project packages/python/asp_graph_turbo --frozen pytest -q \
 rm -f /tmp/rfc014-asp-search-frontier-followed-receipt.json \
   /tmp/rfc014-asp-search-frontier-followed.stdout
 direnv exec . cargo run -q -p agent-semantic-protocol --bin asp -- \
-  python search fzf \
+  python search lexical \
   'semantic-fact-frontier-receipt relationChannels PPR' \
   owner tests --view seeds \
   --frontier-receipt-out /tmp/rfc014-asp-search-frontier-followed-receipt.json \

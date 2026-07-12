@@ -400,7 +400,7 @@ and identify the safest owner areas to inspect before editing behavior.
 The expected successful flow is:
 
 ```text
-guide -> search prime -> search pipe -> owner/fzf or reasoning follow-up
+guide -> search prime -> search pipe -> owner/lexical or reasoning follow-up
 -> exact query/read -> answer.final
 ```
 

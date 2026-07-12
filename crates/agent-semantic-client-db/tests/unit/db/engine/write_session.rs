@@ -407,3 +407,173 @@ fn process_cache_status_manifest(
     }))
     .expect("process cache status manifest fixture")
 }
+#[test]
+fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
+    let state = std::env::temp_dir().join(format!(
+        "asp-agent-session-claim-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos(),
+    ));
+    std::fs::create_dir_all(&state).expect("temporary state root");
+    let registry =
+        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root(&state)
+            .expect("open registry");
+    let project_id = "claim-project";
+    let root_session_id = "claim-root";
+    let first_child_id = "claim-child-first";
+
+    let first = registry
+        .claim_resident_session(
+            agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
+                project_id,
+                root_session_id,
+                session_id: first_child_id,
+                message_target_id: None,
+                parent_session_id: Some(root_session_id),
+                name: "asp-explore",
+                role: "asp_explorer",
+                model_observation: Some(
+                    agent_semantic_client_db::AgentSessionModelObservationRef {
+                        model: "gpt-5.4-mini",
+                    source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
+                        observed_at: 10,
+                        evidence_ref: Some("turn:test"),
+                    },
+                ),
+                status: "pending-target",
+                expires_at: None,
+                metadata_json: "{}",
+                now: 1,
+            },
+        )
+        .expect("claim first resident child");
+    let duplicate = registry
+        .claim_resident_session(
+            agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
+                project_id,
+                root_session_id,
+                session_id: "claim-child-duplicate",
+                message_target_id: None,
+                parent_session_id: Some(root_session_id),
+                name: "asp-explore",
+                role: "asp_explorer",
+                model_observation: Some(
+                    agent_semantic_client_db::AgentSessionModelObservationRef {
+                        model: "gpt-5.4-mini",
+                    source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
+                        observed_at: 20,
+                        evidence_ref: Some("turn:test-2"),
+                    },
+                ),
+                status: "pending-target",
+                expires_at: None,
+                metadata_json: "{}",
+                now: 2,
+            },
+        )
+        .expect("read existing resident child");
+
+    assert_eq!(first.session_id, first_child_id);
+    assert_eq!(duplicate.session_id, first_child_id);
+    assert_eq!(
+        registry
+            .session_by_name(project_id, root_session_id, "asp-explore")
+            .expect("lookup resident child")
+            .expect("resident child row")
+            .session_id,
+        first_child_id
+    );
+    drop(registry);
+    std::fs::remove_dir_all(state).expect("remove temporary state root");
+}
+
+#[test]
+fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
+    let state = std::env::temp_dir().join(format!(
+        "asp-agent-session-archived-claim-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos(),
+    ));
+    std::fs::create_dir_all(&state).expect("temporary state root");
+    let registry =
+        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root(&state)
+            .expect("open registry");
+    let project_id = "archived-claim-project";
+    let root_session_id = "archived-claim-root";
+    let first_child_id = "archived-claim-first";
+
+    registry
+        .claim_resident_session(
+            agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
+                project_id,
+                root_session_id,
+                session_id: first_child_id,
+                message_target_id: None,
+                parent_session_id: Some(root_session_id),
+                name: "asp-explore",
+                role: "asp_explorer",
+                model_observation: Some(
+                    agent_semantic_client_db::AgentSessionModelObservationRef {
+                        model: "gpt-5.4-mini",
+                    source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
+                        observed_at: 10,
+                        evidence_ref: Some("turn:test"),
+                    },
+                ),
+                status: "pending-target",
+                expires_at: None,
+                metadata_json: "{}",
+                now: 1,
+            },
+        )
+        .expect("claim first resident child");
+    assert!(
+        registry
+            .archive_session(project_id, first_child_id, 2)
+            .expect("archive first resident child")
+    );
+
+    let replacement = registry
+        .claim_resident_session(
+            agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
+                project_id,
+                root_session_id,
+                session_id: "archived-claim-replacement",
+                message_target_id: None,
+                parent_session_id: Some(root_session_id),
+                name: "asp-explore",
+                role: "asp_explorer",
+                model_observation: Some(
+                    agent_semantic_client_db::AgentSessionModelObservationRef {
+                        model: "gpt-5.4-mini",
+                    source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
+                        observed_at: 20,
+                        evidence_ref: Some("turn:test-2"),
+                    },
+                ),
+                status: "pending-target",
+                expires_at: None,
+                metadata_json: "{}",
+                now: 3,
+            },
+        )
+        .expect("claim replacement resident child");
+
+    assert_eq!(replacement.session_id, "archived-claim-replacement");
+    assert_eq!(
+        registry
+            .session_by_name(project_id, root_session_id, "asp-explore")
+            .expect("lookup replacement resident child")
+            .expect("replacement resident child row")
+            .session_id,
+        "archived-claim-replacement"
+    );
+    drop(registry);
+    std::fs::remove_dir_all(state).expect("remove temporary state root");
+}

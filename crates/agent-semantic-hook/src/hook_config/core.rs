@@ -78,6 +78,7 @@ struct CompiledHookRule {
 struct RuleMatch {
     tool_any: Vec<String>,
     command_any: Vec<String>,
+    argv_prefix_any: Vec<Vec<String>>,
     command_contains_any: CompiledCommandContains,
     path_any: Vec<String>,
     path_glob_any: CompiledPathGlobs,
@@ -393,6 +394,7 @@ impl RuleMatch {
 
     fn needs_command_tokens(&self) -> bool {
         !self.command_any.is_empty()
+            || !self.argv_prefix_any.is_empty()
             || !self.argv_source_any.is_empty()
             || !self.argv_source_glob_any.is_empty()
     }
@@ -412,7 +414,10 @@ impl RuleMatch {
     }
 
     fn matches_command(&self, action: &ToolAction, command_tokens: Option<&[String]>) -> bool {
-        if self.command_any.is_empty() && self.command_contains_any.is_empty() {
+        if self.command_any.is_empty()
+            && self.argv_prefix_any.is_empty()
+            && self.command_contains_any.is_empty()
+        {
             return true;
         }
         let Some(command) = action.command.as_deref() else {
@@ -429,7 +434,13 @@ impl RuleMatch {
             });
         let contains_match =
             self.command_contains_any.is_empty() || self.command_contains_any.matches(command);
-        token_match && contains_match
+        let prefix_match = self.argv_prefix_any.is_empty()
+            || command_tokens.is_some_and(|tokens| {
+                self.argv_prefix_any
+                    .iter()
+                    .any(|prefix| command_stage_matches_argv_prefix(tokens, prefix))
+            });
+        token_match && prefix_match && contains_match
     }
 
     fn matches_path(&self, paths: &[String]) -> bool {
@@ -706,6 +717,7 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
         Ok(Self {
             tool_any,
             command_any: config.command_any,
+            argv_prefix_any: config.argv_prefix_any,
             command_contains_any: compile_command_contains(config.command_contains_any)?,
             path_any: config.path_any,
             path_glob_any: compile_globs("pathGlobAny", config.path_glob_any)?,
@@ -883,6 +895,23 @@ fn command_name_tokens(tokens: &[String]) -> impl Iterator<Item = &str> {
             None
         }
     })
+}
+
+fn command_stage_matches_argv_prefix(tokens: &[String], prefix: &[String]) -> bool {
+    tokens
+        .split(|token| is_shell_stage_separator(token))
+        .any(|stage| {
+            stage.len() >= prefix.len()
+                && stage
+                    .iter()
+                    .zip(prefix)
+                    .enumerate()
+                    .all(|(index, (actual, expected))| {
+                        actual.eq_ignore_ascii_case(expected)
+                            || (index == 0
+                                && command_token_basename(actual).eq_ignore_ascii_case(expected))
+                    })
+        })
 }
 
 fn command_token_basename(token: &str) -> &str {

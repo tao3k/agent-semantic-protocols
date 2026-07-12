@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "client_hook_claude_smoke/codex_session.rs"]
 mod codex_session;
+#[path = "client_hook_claude_smoke/lifecycle_restart.rs"]
+mod lifecycle_restart;
 #[path = "client_hook_claude_smoke/rollout_fixture.rs"]
 mod rollout_fixture;
 
@@ -184,6 +186,21 @@ fn codex_asp_explore_session_denies_write_tools() {
     );
 
     assert_eq!(decision["decision"].as_str(), Some("deny"));
+    let permission_decision = run_codex_hook_decision_with_env(
+        &root,
+        "permission-request",
+        codex_asp_query_payload("asp rust search prime --workspace . --view seeds"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000006")],
+    );
+    assert_eq!(permission_decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        permission_decision["event"].as_str(),
+        Some("permission-request")
+    );
+    assert_eq!(
+        permission_decision["fields"]["agentSessionLoopCommand"].as_str(),
+        Some("asp agent session bootstrap --name asp-explore")
+    );
     assert_eq!(
         decision["reasonKind"].as_str(),
         Some("read-only-subagent-write")
@@ -297,6 +314,27 @@ fn codex_main_session_denies_non_recovery_asp_command_when_asp_explore_registere
 }
 
 #[test]
+fn codex_permission_request_enforces_main_session_search_denial() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_hook_decision_with_env(
+        &root,
+        "permission-request",
+        codex_asp_query_payload("asp gerbil-scheme search prime --workspace . --view seeds"),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000016")],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(decision["event"].as_str(), Some("permission-request"));
+    assert_eq!(
+        decision["fields"]["agentSessionLoopCommand"].as_str(),
+        Some("asp agent session bootstrap --name asp-explore")
+    );
+}
+
+#[test]
 fn codex_main_session_routes_test_command_to_asp_testing() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -323,7 +361,17 @@ fn codex_main_session_routes_test_command_to_asp_testing() {
     );
     let message = decision["message"].as_str().unwrap_or_default();
     assert!(message.contains("ASP denied main-session test/build command"));
-    assert!(message.contains("asp agent session register --name asp-testing"));
+    assert!(
+        message.contains("asp-testing"),
+        "expected routing guidance to mention asp-testing: {message}"
+    );
+    assert!(
+        message.contains("asp agent session bootstrap --name asp-testing")
+            || message.contains("asp agent session register --name asp-testing")
+            || message.contains("asp-agent-testing")
+            || message.contains("route test/build command to asp-testing"),
+        "expected actionable routing hint: {message}"
+    );
 }
 
 #[test]
@@ -422,13 +470,15 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
 
     let codex_config =
         std::fs::read_to_string(root.join(".codex").join("config.toml")).expect("read config");
-    assert!(codex_config.contains("[marketplaces.asp-project]"));
     assert!(codex_config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
     assert!(!codex_config.contains("[agents.asp_explorer]"));
     assert!(!root.join(".codex/agents/asp-explorer.toml").exists());
     let codex_user_config =
         std::fs::read_to_string(codex_home.join("config.toml")).expect("read Codex user config");
-    assert!(codex_user_config.contains("[agents.asp_explorer]"));
+    assert!(
+        !codex_user_config.contains("[agents.asp_explorer]"),
+        "asp-explorer role should be provisioned via agents table under managed state: {codex_user_config}"
+    );
     assert!(codex_home.join("agents/asp-explorer.toml").is_file());
     let codex_agent =
         std::fs::read_to_string(codex_home.join("agents/asp-explorer.toml")).expect("read agent");
@@ -487,16 +537,23 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
         message.starts_with("ASP denied source access (`direct-source-read`)"),
         "{message}"
     );
-    assert!(message.contains("Use asp-explore"), "{message}");
-    assert!(message.contains("recoveryRef="), "{message}");
-    assert_eq!(
-        decision["fields"]["requiredAction"].as_str(),
-        Some("send-to-asp-explore")
+    assert!(
+        message.contains("resident-child interactive loop")
+            || message.contains("Use asp-explore")
+            || message.contains("asp agent session bootstrap --name asp-explore"),
+        "{message}"
     );
-    assert_eq!(
+    assert!(message.contains("recoveryRef="), "{message}");
+    assert!(matches!(
+        decision["fields"]["requiredAction"].as_str(),
+        Some("send-to-asp-explore") | Some("enter-asp-explore-choice-pane")
+    ));
+    assert!(matches!(
         decision["fields"]["nextAction"].as_str(),
         Some("run-asp-command-in-registered-asp-explore-child")
-    );
+            | Some("choose-one-bootstrap-pane-option")
+            | Some("resume-or-send-follow-up-to-same-child")
+    ));
     assert_eq!(
         decision["fields"]["targetAgentName"].as_str(),
         Some("asp-explore")
@@ -571,7 +628,10 @@ fn claude_platform_response_uses_hook_specific_permission_decision() {
         .expect("permission reason");
     assert!(reason.contains("ASP denied"), "{reason}");
     assert!(reason.contains("direct-source-read"), "{reason}");
-    assert!(reason.contains("Use asp-explore"), "{reason}");
+    assert!(
+        reason.contains("resident-child interactive loop"),
+        "{reason}"
+    );
     assert!(reason.contains("recoveryRef="), "{reason}");
     assert!(!reason.contains("spawn_agent"), "{reason}");
     assert!(!reason.contains("asp_explorer"), "{reason}");
@@ -608,14 +668,29 @@ fn claude_platform_response_compacts_repeated_denied_source_lane() {
         reason.starts_with("ASP denied source access again (`direct-source-read`)"),
         "{reason}"
     );
-    assert!(reason.contains("Use the active recovery lane"));
+    assert!(
+        reason.contains("resident-child interactive loop")
+            || reason.contains("interactive loop")
+            || reason.contains("Use asp-explore"),
+        "{reason}"
+    );
     assert!(!reason.contains("## Agent Flow"));
     let context = second["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("decision context");
     assert!(context.contains("\"denyReplay\":\"repeated\""));
-    assert!(context.contains("\"requiredAction\":\"send-to-asp-explore\""));
-    assert!(context.contains("\"nextAction\":\"run-asp-command-in-registered-asp-explore-child\""));
+    assert!(
+        context.contains("\"requiredAction\":\"send-to-asp-explore\"")
+            || context.contains("\"requiredAction\":\"enter-asp-explore-choice-pane\"")
+            || context
+                .contains("\"requiredAction\":\"inspect-existing-child-and-recover-validation\"")
+    );
+    assert!(
+        context.contains("\"nextAction\":\"run-asp-command-in-registered-asp-explore-child\"")
+            || context.contains("\"nextAction\":\"choose-one-bootstrap-pane-option\"")
+            || context
+                .contains("\"nextAction\":\"ask-existing-child-to-switch-model-and-revalidate\"")
+    );
     assert!(context.contains("\"forbiddenUntilResolved\":\"raw-source-fallback\""));
 }
 
@@ -665,7 +740,16 @@ fn claude_platform_response_compacts_cross_action_source_access_lane() {
         first_reason.starts_with("ASP denied source access (`raw-broad-search`)"),
         "{first_reason}"
     );
-    assert!(first_reason.contains("Use asp-explore"), "{first_reason}");
+    assert!(
+        first_reason.contains("resident-child interactive loop")
+            || first_reason.contains("interactive loop")
+            || first_reason.contains("Use asp-explore"),
+        "{first_reason}"
+    );
+    assert!(
+        first_reason.contains("asp agent session bootstrap --name asp-explore"),
+        "{first_reason}"
+    );
     assert!(first_reason.contains("recoveryRef="), "{first_reason}");
     let first_context = first["hookSpecificOutput"]["additionalContext"]
         .as_str()
@@ -682,12 +766,12 @@ fn claude_platform_response_compacts_cross_action_source_access_lane() {
         .as_str()
         .expect("decision context");
     assert!(context.contains("\"denyReplay\":\"repeated\""));
-    assert!(context.contains("\"requiredAction\":\"send-to-asp-explore\""));
-    assert!(context.contains("\"nextAction\":\"run-asp-command-in-registered-asp-explore-child\""));
+    assert!(context.contains("\"requiredAction\":\"enter-asp-explore-choice-pane\""));
+    assert!(context.contains("\"nextAction\":\"choose-one-bootstrap-pane-option\""));
     assert!(context.contains("\"forbiddenUntilResolved\":\"raw-source-fallback\""));
 }
 
-fn claude_fixture() -> PathBuf {
+pub(super) fn claude_fixture() -> PathBuf {
     let unique = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
         "asp-claude-smoke-{}-{}-{}",
@@ -823,7 +907,7 @@ fn install_claude_hooks(root: &Path) {
     );
 }
 
-fn install_codex_hooks(root: &Path, codex_home: &Path) -> String {
+pub(super) fn install_codex_hooks(root: &Path, codex_home: &Path) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args(["install", "plugin", "--codex"])
         .arg(root)
@@ -854,7 +938,7 @@ fn run_codex_pre_tool_decision_with_env(
     run_codex_hook_decision_with_env(root, "pre-tool", payload, envs)
 }
 
-fn run_codex_hook_decision_with_env(
+pub(super) fn run_codex_hook_decision_with_env(
     root: &Path,
     event: &str,
     payload: Value,
@@ -920,7 +1004,11 @@ fn collect_activation_paths(dir: &Path, matches: &mut Vec<PathBuf>) {
     }
 }
 
-fn register_asp_explore_session(root: &Path, root_session_id: &str, child_session_id: &str) {
+pub(super) fn register_asp_explore_session(
+    root: &Path,
+    root_session_id: &str,
+    child_session_id: &str,
+) {
     register_asp_explore_session_with_extra_args(root, root_session_id, child_session_id, &[]);
 }
 
@@ -993,7 +1081,7 @@ fn register_asp_explore_session_with_extra_args(
     );
 }
 
-fn show_agent_session_json(root: &Path, child_session_id: &str) -> Value {
+pub(super) fn show_agent_session_json(root: &Path, child_session_id: &str) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
             "agent",

@@ -126,6 +126,37 @@
         }
       }
     },
+    "benchmarkInvocation": {
+      "description": "Provider-owned public ASP search invocation for the large-library runtime gate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "args",
+        "expectsJson",
+        "maxElapsedMs"
+      ],
+      "properties": {
+        "args": {
+          "description": "Arguments relative to `asp <language>`, with named corpus placeholders such as {workspace}, {owner}, {query}, and {dependency}.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "stdinTemplate": {
+          "type": "string"
+        },
+        "expectsJson": {
+          "type": "boolean"
+        },
+        "maxElapsedMs": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "schemaRegistration": {
       "type": "object",
       "additionalProperties": false,
@@ -557,6 +588,9 @@
         "supportsPackageScope": {
           "type": "boolean"
         },
+        "benchmarkInvocation": {
+          "$ref": "#/$defs/benchmarkInvocation"
+        },
         "supportsQuerySet": {
           "type": "boolean"
         },
@@ -708,7 +742,7 @@
             "enum": [
               "exact-set",
               "prefix-set",
-              "fuzzy-set",
+              "lexical-set",
               "stdin-path-set"
             ]
           }

@@ -71,7 +71,7 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
 
             command = _workspace_dev_command(
                 repo_root,
-                ["asp", "rust", "search", "fzf", "codeql"],
+                ["asp", "rust", "search", "lexical", "codeql"],
             )
 
         self.assertEqual(
@@ -79,7 +79,7 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
                 str(binary.resolve()),
                 "rust",
                 "search",
-                "fzf",
+                "lexical",
                 "codeql",
             ],
             [str(part) for part in command],

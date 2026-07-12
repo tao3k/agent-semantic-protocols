@@ -20,19 +20,24 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
         "{stdout}"
     );
     assert!(
-        stdout
-            .contains("Register is a low-level step owned by the resident-child interactive loop"),
+        stdout.contains(
+            "Register is a low-level state write owned by the resident-child interactive loop"
+        ),
         "{stdout}"
     );
     assert!(stdout.contains("Detected host: codex"), "{stdout}");
     assert!(stdout.contains("Session env: CODEX_THREAD_ID"), "{stdout}");
     assert!(
         stdout.contains("Canonical loop entry:")
-            && stdout.contains("asp agent session bootstrap --name asp-explore --json"),
+            && stdout.contains("asp agent session bootstrap --name asp-explore"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("Only run register when a loop choice asks for durable registration"),
+        !stdout.contains("asp agent session bootstrap --name asp-explore --json"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("The pane owns audit, recovery, cleanup, creation, model alignment, and durable registration"),
         "{stdout}"
     );
     assert!(
@@ -50,7 +55,7 @@ fn asp_agent_session_register_guide_explains_child_session_flow() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("Do not use register --guide, lifecycle audit, normal-thread reads"),
+        stdout.contains("Do not run low-level session commands, thread reads"),
         "{stdout}"
     );
 
@@ -104,14 +109,21 @@ fn asp_agent_session_fork_guide_refuses_bootstrap_semantics() {
     );
     let stdout = String::from_utf8(guide.stdout).expect("fork guide stdout");
     assert!(stdout.contains("asp agent session fork guide"), "{stdout}");
-    assert!(stdout.contains("Action step flow"), "{stdout}");
+    assert!(
+        stdout.contains("Fork is a saved-session operation"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("This does not create a resident ASP child session"),
         "{stdout}"
     );
     assert!(stdout.contains("do not use fork as bootstrap"), "{stdout}");
     assert!(
-        stdout.contains("asp agent session bootstrap --name asp-explore --json"),
+        stdout.contains("asp agent session bootstrap --name asp-explore"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("asp agent session bootstrap --name asp-explore --json"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -136,24 +148,17 @@ fn asp_agent_session_status_guide_explains_start_resident_child_action() {
         stdout.contains("asp agent session status guide"),
         "{stdout}"
     );
-    assert!(stdout.contains("Action step flow"), "{stdout}");
+    assert!(stdout.contains("Status is diagnostic only"), "{stdout}");
     assert!(
-        stdout.contains("nextAction=start-resident-child-and-register"),
+        stdout.contains("asp agent session bootstrap --name asp-explore"),
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "Codex action: start or resume the configured ASP managed subagent `asp_explorer`"
-        ) && stdout.contains("do not ask the child to fork, create, or register another session"),
+        !stdout.contains("asp agent session bootstrap --name asp-explore --json"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("asp agent session register --name asp-explore --child-session-id <child-session-id> --roles subagent,search"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("agentMessageTargetId"), "{stdout}");
-    assert!(
-        stdout.contains("bootstrapBlocked=host-message-agent-target-unavailable"),
+        !stdout.contains("asp agent session register --name asp-explore"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

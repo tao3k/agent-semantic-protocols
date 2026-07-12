@@ -1,10 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.local/schemas/semantic-tree-sitter-query.v1.schema.json",
-  "title": "Semantic Tree-sitter Query Packet",
-  "description": "Tree-sitter-compatible syntax query and capture ABI emitted by native semantic language providers and replayed by ASP cache.",
+  "$id": "agent.semantic-protocols.semantic-tree-sitter-query.v1",
+  "title": "ASP Semantic Tree-sitter Query Packet",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "schemaId",
     "schemaVersion",
@@ -12,596 +10,96 @@
     "protocolVersion",
     "languageId",
     "providerId",
+    "method",
     "projectRoot",
     "grammarId",
-    "grammarProfileVersion",
     "sourceAuthority",
-    "adapterMode",
-    "compatibilityLevel",
+    "execution",
     "query",
     "matches",
-    "truncated"
+    "nativeFactRefs",
+    "truncated",
+    "cache"
   ],
   "properties": {
-    "schemaId": {
-      "const": "agent.semantic-protocols.semantic-tree-sitter-query"
-    },
-    "schemaVersion": {
-      "const": "1"
-    },
-    "protocolId": {
-      "const": "agent.semantic-protocols.semantic-language"
-    },
-    "protocolVersion": {
-      "const": "1"
-    },
-    "languageId": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*$"
-    },
-    "providerId": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*$"
-    },
-    "binary": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*$"
-    },
-    "namespace": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
-    },
-    "method": {
-      "const": "query"
-    },
-    "executionBackend": {
-      "description": "Engine that executed or replayed the compiled query plan. This is separate from sourceAuthority: CodeQL can be a backend while ASP still emits tree-sitter-compatible frontier packets.",
-      "enum": [
-        "native-parser",
-        "tree-sitter-runtime",
-        "codeql",
-        "hybrid",
-        "cached-replay"
-      ]
-    },
-    "projectRoot": {
-      "type": "string",
-      "minLength": 1
-    },
-    "packageName": {
-      "type": "string",
-      "minLength": 1
-    },
-    "grammarId": {
-      "type": "string",
-      "pattern": "^tree-sitter-[a-z][a-z0-9_-]*$"
-    },
-    "grammarProfileVersion": {
-      "type": "string",
-      "minLength": 1
-    },
-    "sourceAuthority": {
-      "enum": [
-        "native-parser",
-        "native-parser-adapter",
-        "tree-sitter-runtime",
-        "codeql",
-        "hybrid",
-        "cached-provider-export"
-      ]
-    },
+    "schemaId": { "const": "agent.semantic-protocols.semantic-tree-sitter-query" },
+    "schemaVersion": { "const": "1" },
+    "protocolId": { "const": "agent.semantic-protocols.semantic-language" },
+    "protocolVersion": { "const": "1" },
+    "languageId": { "type": "string", "minLength": 1 },
+    "providerId": { "type": "string", "minLength": 1 },
+    "method": { "const": "query" },
+    "projectRoot": { "type": "string", "minLength": 1 },
+    "grammarId": { "type": "string", "minLength": 1 },
+    "sourceAuthority": { "enum": ["native-parser", "codeql"] },
     "adapterMode": {
-      "enum": [
-        "native-projection",
-        "hybrid",
-        "tree-sitter-runtime",
-        "codeql-query",
-        "cached-replay"
-      ]
+      "enum": ["tree-sitter-querycursor", "codeql-query"]
     },
     "compatibilityLevel": {
-      "enum": [
-        "exact",
-        "approximate",
-        "native-only",
-        "tree-only"
-      ]
+      "enum": ["native-only", "approximate"]
+    },
+    "executionBackend": {
+      "enum": ["native-parser", "codeql"]
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "engine",
+        "predicateEvaluator",
+        "matchStatus",
+        "selectedFileCount",
+        "parsedFileCount",
+        "queryCompileCount",
+        "cursorMatchCount",
+        "elapsedMs"
+      ],
+      "properties": {
+        "engine": { "enum": ["tree-sitter-querycursor", "codeql"] },
+        "predicateEvaluator": {
+          "enum": ["asp-tree-sitter-predicate-v1", "codeql"]
+        },
+        "matchStatus": { "enum": ["hit", "miss", "unsupported", "invalid"] },
+        "unsupportedPredicates": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "selectedFileCount": { "type": "integer", "minimum": 0 },
+        "parsedFileCount": { "type": "integer", "minimum": 0 },
+        "queryCompileCount": { "type": "integer", "minimum": 0 },
+        "cursorMatchCount": { "type": "integer", "minimum": 0 },
+        "elapsedMs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
     },
     "query": {
-      "$ref": "#/$defs/query"
-    },
-    "matches": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/match"
-      }
-    },
-    "nativeFactRefs": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "semanticHandleRefs": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "cache": {
-      "$ref": "#/$defs/cache"
-    },
-    "notes": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/note"
-      }
-    },
-    "truncated": {
-      "type": "boolean"
-    }
-  },
-  "$defs": {
-    "projectPath": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
-    },
-    "lineRange": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
-    },
-    "location": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
-    },
-    "sourceLocator": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
-    },
-    "sourceSpanLocator": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceSpanLocator"
-    },
-    "sourceLocation": {
       "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange",
-        "location",
-        "sourceLocator",
-        "sourceSpanLocator"
-      ],
+      "required": ["input", "inputForm", "dialect", "grammarProfilePath", "compiledSource", "fields"],
       "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "$ref": "#/$defs/lineRange"
-        },
-        "location": {
-          "$ref": "#/$defs/location"
-        },
-        "sourceLocator": {
-          "$ref": "#/$defs/sourceLocator"
-        },
-        "sourceSpanLocator": {
-          "$ref": "#/$defs/sourceSpanLocator"
-        }
-      }
-    },
-    "range": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "$ref": "#/$defs/lineRange"
-        },
-        "startByte": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "endByte": {
-          "type": "integer",
-          "minimum": 0
-        }
-      }
-    },
-    "scalar": {
-      "oneOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "number"
-        },
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "array",
-          "items": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              }
-            ]
-          }
-        }
-      ]
-    },
-    "fields": {
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/scalar"
-      }
-    },
-    "queryFields": {
-      "type": "object",
-      "properties": {
-        "predicates": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/queryPredicate"
-          }
+        "input": { "type": "string" },
+        "inputForm": { "enum": ["catalog-id", "s-expression"] },
+        "dialect": { "const": "tree-sitter-query" },
+        "catalogId": { "type": "string" },
+        "catalogPath": { "type": "string" },
+        "grammarProfilePath": { "type": "string" },
+        "compiledSource": { "type": "string" },
+        "fields": {
+          "type": "object",
+          "properties": {
+            "predicates": {
+              "type": "array",
+              "items": { "type": "object" }
+            }
+          },
+          "additionalProperties": true
         }
       },
-      "additionalProperties": {
-        "$ref": "#/$defs/scalar"
-      }
+      "additionalProperties": false
     },
-    "queryPredicate": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "op",
-        "capture",
-        "values"
-      ],
-      "properties": {
-        "op": {
-          "enum": [
-            "eq",
-            "any-eq",
-            "any-of",
-            "match",
-            "any-match",
-            "not-eq",
-            "not-match"
-          ]
-        },
-        "capture": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
-        },
-        "values": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/queryPredicateValue"
-          }
-        }
-      }
-    },
-    "queryPredicateValue": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "value"
-      ],
-      "properties": {
-        "kind": {
-          "enum": [
-            "string",
-            "capture"
-          ]
-        },
-        "value": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
-    "query": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "inputForm"
-      ],
-      "properties": {
-        "input": {
-          "type": "string",
-          "minLength": 1
-        },
-        "inputForm": {
-          "enum": [
-            "selector",
-            "code-shaped",
-            "catalog-id",
-            "s-expression"
-          ]
-        },
-        "dialect": {
-          "const": "tree-sitter-query"
-        },
-        "catalogId": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_.-]*$"
-        },
-        "catalogPath": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "compiledSource": {
-          "type": "string",
-          "minLength": 1
-        },
-        "patternCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "fields": {
-          "$ref": "#/$defs/queryFields"
-        },
-        "grammarProfilePath": {
-          "$ref": "#/$defs/projectPath",
-          "description": "Canonical grammar-profile.json path associated with a catalog-id query when the provider exposes one."
-        }
-      }
-    },
-    "match": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "id",
-        "captures"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
-        },
-        "patternIndex": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "range": {
-          "$ref": "#/$defs/range"
-        },
-        "sourceLocation": {
-          "$ref": "#/$defs/sourceLocation"
-        },
-        "captures": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/capture"
-          }
-        },
-        "nativeFactRefs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "semanticHandleRefs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "fields": {
-          "$ref": "#/$defs/fields"
-        }
-      }
-    },
-    "capture": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "id",
-        "name",
-        "nodeType",
-        "range"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
-        },
-        "name": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
-        },
-        "nodeType": {
-          "type": "string",
-          "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*|ERROR|MISSING)$"
-        },
-        "field": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-        },
-        "named": {
-          "type": "boolean"
-        },
-        "range": {
-          "$ref": "#/$defs/range"
-        },
-        "sourceLocation": {
-          "$ref": "#/$defs/sourceLocation"
-        },
-        "predicateRefs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "directiveRefs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "nativeFactRefs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "semanticHandleRefs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "fields": {
-          "$ref": "#/$defs/fields"
-        }
-      }
-    },
-    "cache": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "requestFingerprint"
-      ],
-      "properties": {
-        "cacheStatus": {
-          "enum": [
-            "miss",
-            "warm-provider",
-            "hit",
-            "stale"
-          ]
-        },
-        "requestFingerprint": {
-          "type": "string",
-          "minLength": 1
-        },
-        "generation": {
-          "type": "string",
-          "minLength": 1
-        },
-        "generationId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "artifactId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "artifactKind": {
-          "const": "semantic-tree-sitter-query"
-        },
-        "catalogFingerprint": {
-          "type": "string",
-          "minLength": 1
-        },
-        "grammarProfileFingerprint": {
-          "type": "string",
-          "minLength": 1
-        },
-        "fileHashes": {
-          "description": "Source freshness hashes for replay eligibility. Entries store only project-relative path plus sha256 and may be supplied by the provider packet or derived by the client from validated syntax locator fields.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/fileHash"
-          }
-        },
-        "configDigests": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/configDigest"
-          }
-        },
-        "rawSourceStored": {
-          "const": false
-        }
-      }
-    },
-    "fileHash": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "hash"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "hash": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
-    "configDigest": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "path",
-        "digest"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "digest": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
-    "note": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "message"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "message": {
-          "type": "string",
-          "minLength": 1
-        },
-        "fields": {
-          "$ref": "#/$defs/fields"
-        }
-      }
-    }
-  }
+    "matches": { "type": "array" },
+    "nativeFactRefs": { "type": "array" },
+    "truncated": { "type": "boolean" },
+    "cache": { "type": "object" }
+  },
+  "additionalProperties": true
 }

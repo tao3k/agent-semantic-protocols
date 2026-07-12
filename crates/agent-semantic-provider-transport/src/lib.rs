@@ -12,6 +12,7 @@ pub use process_contract::{
     ProviderProcessReceipt, ProviderProcessSpec, StdinMode,
 };
 pub use transport::{
-    ProviderProcessOutput, run_provider_process, run_provider_process_async,
-    run_provider_process_async_with_framing, run_provider_process_with_framing,
+    ProviderProcessOutput, provider_process_limits_from_environment, run_provider_process,
+    run_provider_process_async, run_provider_process_async_with_framing,
+    run_provider_process_with_framing,
 };

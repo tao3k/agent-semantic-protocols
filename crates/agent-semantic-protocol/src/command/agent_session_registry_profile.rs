@@ -85,7 +85,6 @@ pub(super) fn adopt_reusable_rollout_session_before_create(
             role: &profile.role,
             roles: &profile.roles,
             permissions: &profile.permissions,
-            model: args.model.as_deref(),
             expires_at: args.expires_at,
             now,
             excluded_session_id,

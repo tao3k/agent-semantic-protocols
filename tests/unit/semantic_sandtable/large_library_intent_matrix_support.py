@@ -49,7 +49,7 @@ def _assert_provider_binary_commands(
             }
         ):
             raise AssertionError(
-                f"{path}: {step_id} must use search fzf/query-set, got {' '.join(command)}"
+                f"{path}: {step_id} must use search lexical/query-set, got {' '.join(command)}"
             )
 
 
@@ -201,7 +201,7 @@ def _is_query_set_search(
     if search_offset is None or len(command) <= search_offset + 1:
         return False
     subcommand = command[search_offset + 1]
-    if subcommand == "fzf" and "--query-set" in command:
+    if subcommand == "lexical" and "--query-set" in command:
         return True
     return (
         include_owner_items

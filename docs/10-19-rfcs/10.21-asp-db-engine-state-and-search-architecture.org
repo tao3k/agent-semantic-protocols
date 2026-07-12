@@ -167,7 +167,7 @@ Required work:
   snippets, parse-delta summaries, active failures, and overlay-local entity ids;
 - search router order is receipt anchors -> overlay -> dirty provider parse ->
   stable Turso FTS/BM25 -> semantic/vector fallback;
-- fzf is not an agent-facing ranking backend.
+- lexical is not an agent-facing ranking backend.
 
 Validation:
 - dirty edit search returns selector-first evidence;
@@ -229,7 +229,7 @@ The architecture is accepted when:
 - Turso is the only public DB backend token;
 - State Core paths are the only v2 durable paths;
 - source-index cold functional gate passes before hot gates;
-- dynamic overlay search no longer depends on fzf as agent ranking;
+- dynamic overlay search no longer depends on lexical as agent ranking;
 - command-layer heavy logic is moved to owning crates;
 - language harnesses share the common contract;
 - graph-route emits compact where/how evidence that lets agents reach decisive

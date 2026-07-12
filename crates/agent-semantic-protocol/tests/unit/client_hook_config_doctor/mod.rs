@@ -38,11 +38,7 @@ fn write_codex_project_plugin_config(root: &std::path::Path) {
         .expect("create project config dir");
     std::fs::write(
         &config_path,
-        r#"[marketplaces.asp-project]
-source_type = "local"
-source = "."
-
-[plugins."asp-codex-plugin@asp-project"]
+        r#"[plugins."asp-codex-plugin@asp-project"]
 enabled = true
 "#,
     )
@@ -59,20 +55,6 @@ enabled = true
     std::fs::create_dir_all(hooks_path.parent().expect("plugin hooks parent"))
         .expect("create project plugin hooks dir");
     std::fs::write(hooks_path, "{}\n").expect("write project plugin hooks");
-}
-
-fn write_codex_home_project_trust(root: &std::path::Path) {
-    let codex_home = root.join(".codex-home");
-    std::fs::create_dir_all(&codex_home).expect("create isolated Codex home");
-    let project_root = std::fs::canonicalize(root).expect("canonical project root");
-    std::fs::write(
-        codex_home.join("config.toml"),
-        format!(
-            "[projects.{}]\ntrust_level = \"trusted\"\n",
-            toml_basic_string(&project_root.display().to_string()),
-        ),
-    )
-    .expect("write Codex project trust config");
 }
 
 fn write_stale_codex_home_config(root: &std::path::Path) {

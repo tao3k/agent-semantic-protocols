@@ -94,6 +94,32 @@ pub(super) fn write_codex_asp_explore_rollout(
         .expect("write test Codex rollout");
 }
 
+pub(super) fn append_codex_rollout_terminal_event(
+    root: &Path,
+    child_session_id: &str,
+    terminal_event: &str,
+) {
+    let (rollout_dir_suffix, rollout_file_stamp) = codex_rollout_test_stamp(child_session_id);
+    let rollout_path = root
+        .join(".codex-home")
+        .join("sessions")
+        .join(rollout_dir_suffix)
+        .join(format!(
+            "rollout-{rollout_file_stamp}-{child_session_id}.jsonl"
+        ));
+    let event = json!({
+        "timestamp": "2026-07-11T12:00:00.000Z",
+        "type": "event_msg",
+        "payload": {"type": terminal_event}
+    });
+    use std::io::Write as _;
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&rollout_path)
+        .expect("open test Codex rollout for terminal event");
+    writeln!(file, "{event}").expect("append test Codex terminal event");
+}
+
 pub(super) fn codex_rollout_test_stamp(session_id: &str) -> (String, String) {
     let seconds = uuid_v7_unix_seconds(session_id);
     let output = date_for_unix_seconds(seconds, "bsd")

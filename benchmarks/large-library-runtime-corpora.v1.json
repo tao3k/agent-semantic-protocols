@@ -1,0 +1,118 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-large-library-corpora",
+  "schemaVersion": "1",
+  "corpora": [
+    {
+      "scenarioId": "julia.dataframes-intent-matrix",
+      "language": "julia",
+      "repository": "JuliaData/DataFrames.jl",
+      "directory": "julia-dataframes",
+      "environment": "SANDTABLE_JULIA_DATAFRAMES_ROOT",
+      "inputs": {"owner": "src/DataFrames.jl", "query": "DataFrame", "dependency": "Tables"}
+    },
+    {
+      "scenarioId": "julia.flux-intent-matrix",
+      "language": "julia",
+      "repository": "FluxML/Flux.jl",
+      "directory": "julia-flux",
+      "environment": "SANDTABLE_JULIA_FLUX_ROOT",
+      "inputs": {"owner": "src/Flux.jl", "query": "Chain", "dependency": "Zygote"}
+    },
+    {
+      "scenarioId": "julia.makie-intent-matrix",
+      "language": "julia",
+      "repository": "MakieOrg/Makie.jl",
+      "directory": "julia-makie",
+      "environment": "SANDTABLE_JULIA_MAKIE_ROOT",
+      "inputs": {"owner": "Makie/src/Makie.jl", "query": "Figure", "dependency": "GeometryBasics"}
+    },
+    {
+      "scenarioId": "python.fastapi-intent-matrix",
+      "language": "python",
+      "repository": "fastapi/fastapi",
+      "directory": "python-fastapi",
+      "environment": "SANDTABLE_PY_FASTAPI_ROOT",
+      "inputs": {"owner": "fastapi/routing.py", "query": "APIRouter", "dependency": "pydantic"}
+    },
+    {
+      "scenarioId": "python.pandas-intent-matrix",
+      "language": "python",
+      "repository": "pandas-dev/pandas",
+      "directory": "python-pandas",
+      "environment": "SANDTABLE_PY_PANDAS_ROOT",
+      "inputs": {"owner": "pandas/core/groupby/groupby.py", "query": "DataFrameGroupBy", "dependency": "numpy"}
+    },
+    {
+      "scenarioId": "python.rich-intent-matrix",
+      "language": "python",
+      "repository": "Textualize/rich",
+      "directory": "python-rich",
+      "environment": "SANDTABLE_PY_RICH_ROOT",
+      "inputs": {"owner": "rich/console.py", "query": "Console", "dependency": "markdown-it-py"}
+    },
+    {
+      "scenarioId": "rust.tokio-intent-matrix",
+      "language": "rust",
+      "repository": "tokio-rs/tokio",
+      "directory": "rust-tokio",
+      "environment": "SANDTABLE_RUST_TOKIO_ROOT",
+      "inputs": {"owner": "tokio/src/lib.rs", "query": "Runtime", "dependency": "bytes"}
+    },
+    {
+      "scenarioId": "rust.bytes-intent-matrix",
+      "language": "rust",
+      "repository": "tokio-rs/bytes",
+      "directory": "rust-bytes",
+      "environment": "SANDTABLE_RUST_BYTES_ROOT",
+      "inputs": {"owner": "src/lib.rs", "query": "Bytes", "dependency": "serde"}
+    },
+    {
+      "scenarioId": "rust.ignore-intent-matrix",
+      "language": "rust",
+      "repository": "BurntSushi/ripgrep",
+      "directory": "rust-ripgrep",
+      "environment": "SANDTABLE_RUST_IGNORE_ROOT",
+      "inputs": {"owner": "crates/core/main.rs", "query": "Args", "dependency": "ignore"}
+    },
+    {
+      "scenarioId": "typescript.typescript-intent-matrix",
+      "language": "typescript",
+      "repository": "microsoft/TypeScript",
+      "directory": "typescript-typescript",
+      "environment": "SANDTABLE_TS_TYPESCRIPT_ROOT",
+      "inputs": {"owner": "src/compiler/program.ts", "query": "createProgram", "dependency": "typescript"}
+    },
+    {
+      "scenarioId": "typescript.effect-claude-concurrency-flow",
+      "language": "typescript",
+      "repository": "Effect-TS/effect",
+      "directory": "typescript-effect",
+      "environment": "SANDTABLE_TS_EFFECT_ROOT",
+      "inputs": {"owner": "packages/effect/src/Effect.ts", "query": "Effect", "dependency": "effect"}
+    },
+    {
+      "scenarioId": "typescript.playwright-intent-matrix",
+      "language": "typescript",
+      "repository": "microsoft/playwright",
+      "directory": "typescript-playwright",
+      "environment": "SANDTABLE_TS_PLAYWRIGHT_ROOT",
+      "inputs": {"owner": "packages/playwright-core/src/server/fetch.ts", "query": "APIRequestContext", "dependency": "playwright"}
+    },
+    {
+      "scenarioId": "typescript.vite-intent-matrix",
+      "language": "typescript",
+      "repository": "vitejs/vite",
+      "directory": "typescript-vite",
+      "environment": "SANDTABLE_TS_VITE_ROOT",
+      "inputs": {"owner": "packages/vite/src/node/server/pluginContainer.ts", "query": "pluginContainer", "dependency": "vite"}
+    },
+    {
+      "scenarioId": "typescript.vue-runtime-scheduler-real-trigger-flow",
+      "language": "typescript",
+      "repository": "vuejs/core",
+      "directory": "typescript-vue",
+      "environment": "SANDTABLE_TS_VUE_CORE_ROOT",
+      "inputs": {"owner": "packages/runtime-core/src/scheduler.ts", "query": "queueJob", "dependency": "vue"}
+    }
+  ]
+}

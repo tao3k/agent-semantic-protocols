@@ -95,7 +95,7 @@ class SemanticGraphSchemaTests(unittest.TestCase):
         self.assertEqual([], self.validation_errors(minimal_graph()))
 
     def test_graph_agent_facing_scopes_match_synthesis_scopes(self) -> None:
-        for scope in ("policy", "query", "query-set", "fzf", "tests", "ingest"):
+        for scope in ("policy", "query", "query-set", "lexical", "tests", "ingest"):
             with self.subTest(scope=scope):
                 graph = minimal_graph()
                 graph["scope"] = scope

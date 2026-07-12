@@ -1,6 +1,7 @@
 //! Tokio-backed process runner for ASP language providers.
 
 use std::borrow::Cow;
+use std::env;
 use std::io::ErrorKind;
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
@@ -21,6 +22,29 @@ use crate::process_contract::{
 
 const EXECUTABLE_BUSY_SPAWN_RETRIES: usize = 5;
 const EXECUTABLE_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(10);
+const ASP_PROVIDER_TIMEOUT_MS_ENV: &str = "ASP_PROVIDER_TIMEOUT_MS";
+
+/// Resolve the optional facade timeout contract into provider process limits.
+pub fn provider_process_limits_from_environment() -> Result<ProviderProcessLimits, String> {
+    let timeout = env::var(ASP_PROVIDER_TIMEOUT_MS_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value.parse::<u64>().map_err(|error| {
+                format!(
+                    "{ASP_PROVIDER_TIMEOUT_MS_ENV} must be an integer number of milliseconds: {error}"
+                )
+            })
+        })
+        .transpose()?
+        .filter(|millis| *millis > 0)
+        .map(Duration::from_millis);
+    Ok(ProviderProcessLimits {
+        timeout,
+        ..ProviderProcessLimits::default()
+    })
+}
 
 /// Captured result from a provider process run.
 #[derive(Debug)]

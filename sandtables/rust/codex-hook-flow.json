@@ -93,7 +93,7 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rg -n \\\"fn run_agent\\\" --glob '*.rs' src tests | rs-harness search ingest items tests --view seeds --seeds 8 .\"}}",
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rg -n \\\"fn run_agent\\\" --glob '*.rs' src tests | asp rust search ingest items tests --view seeds --seeds 8 .\"}}",
       "expect": {
         "stdoutJsonEquals": {
           "decision": "deny",

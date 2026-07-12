@@ -22,8 +22,11 @@ use agent_semantic_client_db::{
     source_index_import_with_file_hashes,
 };
 
+#[path = "engine_source_index/language_projection.rs"]
+mod language_projection;
+
 #[tokio::test(flavor = "current_thread")]
-async fn db_engine_source_index_import_uses_active_turso_path_without_retired_db_control() {
+async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_control() {
     let client_dir = temp_root("db-engine-source-index-client");
     let project_root = temp_root("db-engine-source-index-project");
     let first_import = build_source_index_import(ClientDbSourceIndexImportRequest {
@@ -191,6 +194,17 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
     assert_eq!(proof.structural_selector, selector);
     assert_eq!(proof.payload_kind, "code");
     assert!(proof.bounded);
+
+    let other_language_id = LanguageId::from("gerbil-scheme");
+    let other_language_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        "source_index_scope_payload_proof_fixture",
+        Some(&other_language_id),
+        8,
+    )
+    .await
+    .expect("lookup source-index other-language read model");
+    assert!(other_language_lookup.candidates.is_empty());
 
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
@@ -371,7 +385,7 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn db_engine_source_index_import_populates_turso_fts_search_documents() {
+async fn db_engine_source_index_import_does_not_populate_turso_fts_search_documents() {
     let client_dir = temp_root("db-engine-source-index-fts-client");
     let project_root = temp_root("db-engine-source-index-fts-project");
     let rust_language_id = LanguageId::from("rust");
@@ -401,7 +415,7 @@ async fn db_engine_source_index_import_populates_turso_fts_search_documents() {
     let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
-            import: source_index_import,
+            import: source_index_import.clone(),
             file_count: 1,
         },
     )
@@ -415,21 +429,7 @@ async fn db_engine_source_index_import_populates_turso_fts_search_documents() {
         8,
     )
     .expect("search source-index documents through Turso stable search lane");
-    assert!(
-        hits.iter().any(|hit| {
-            hit.source == "stable"
-                && hit
-                    .document_id
-                    .starts_with("source-index:source-index-fts-turso:")
-                && hit.entity_id.as_deref() == Some("src/source_index_fts.rs")
-                && hit
-                    .selector
-                    .as_deref()
-                    .is_some_and(|selector| selector == "rust://src/source_index_fts.rs#file")
-                && hit.document.contains("source_index_fts_fixture")
-        }),
-        "hits={hits:?}"
-    );
+    assert!(hits.is_empty(), "hits={hits:?}");
 
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
@@ -525,6 +525,88 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
             .expect("concurrent source-index worker panicked")
             .expect("concurrent source-index worker failed");
     }
+
+    let _ = fs::remove_dir_all(client_dir);
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permission() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let client_dir = temp_root("db-engine-source-index-read-only-client");
+    let project_root = temp_root("db-engine-source-index-read-only-project");
+    let rust_language_id = LanguageId::from("rust");
+    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+        generation_id: CacheGenerationId::from("source-index-read-only-turso"),
+        project_root: project_root.clone(),
+        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        file_hashes: vec![ClientCacheFileHash {
+            path: "src/source_index_read_only.rs".to_string(),
+            sha256: "4444444444444444".repeat(4),
+            byte_len: 45,
+            mtime_ms: 44,
+        }],
+        files: vec![ClientDbSourceIndexImportFile {
+            relative_path: "src/source_index_read_only.rs".to_string(),
+            language_id: rust_language_id.clone(),
+            provider_id: ProviderId::from("rs-harness"),
+            text: "pub fn source_index_read_only_fixture() {}\n".to_string(),
+            selectors: Vec::new(),
+        }],
+    })
+    .expect("build read-only Turso source-index import");
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        ClientDbSourceIndexRefreshRequest {
+            import: source_index_import,
+            file_count: 1,
+        },
+    )
+    .expect("refresh read-only source-index fixture");
+
+    let before = client_dir_snapshot(&client_dir);
+    let entries = fs::read_dir(&client_dir)
+        .expect("read client directory before permission change")
+        .map(|entry| entry.expect("read client entry").path())
+        .collect::<Vec<_>>();
+    for path in &entries {
+        let mode = if path.is_dir() { 0o555 } else { 0o444 };
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))
+            .expect("make client entry read-only");
+    }
+    fs::set_permissions(&client_dir, fs::Permissions::from_mode(0o555))
+        .expect("make client directory read-only");
+
+    let lookup_started_at = std::time::Instant::now();
+    let lookup_result = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        "source_index_read_only_fixture",
+        Some(&rust_language_id),
+        8,
+    )
+    .await;
+    let lookup_elapsed = lookup_started_at.elapsed();
+
+    fs::set_permissions(&client_dir, fs::Permissions::from_mode(0o755))
+        .expect("restore client directory permission");
+    for path in &entries {
+        let mode = if path.is_dir() { 0o755 } else { 0o644 };
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))
+            .expect("restore client entry permission");
+    }
+
+    let lookup = lookup_result.expect("read-only source-index lookup succeeds");
+    assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Hit);
+    assert_eq!(lookup.candidates.len(), 1);
+    assert!(
+        lookup_elapsed <= std::time::Duration::from_millis(100),
+        "read-only source-index lookup exceeded 100ms: {lookup_elapsed:?}"
+    );
+    assert_eq!(client_dir_snapshot(&client_dir), before);
 
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
@@ -643,7 +725,8 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
                             }
                         }
                         ClientDbSourceIndexLookupState::MissingDb
-                        | ClientDbSourceIndexLookupState::EmptyIndex => {
+                        | ClientDbSourceIndexLookupState::EmptyIndex
+                        | ClientDbSourceIndexLookupState::ColdRequired => {
                             return Err(format!(
                                 "pressure lookup saw invalid state after initial refresh: {lookup:?}"
                             ));
@@ -764,114 +847,6 @@ async fn db_engine_source_index_lookup_converges_historical_graph_entity_schema(
     let _ = fs::remove_dir_all(project_root);
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn db_engine_source_index_bootstrap_converges_historical_owner_schema_columns() {
-    let client_dir = temp_root("db-engine-source-index-migration-client");
-    let project_root = temp_root("db-engine-source-index-migration-project");
-    fs::create_dir_all(&client_dir).expect("create client dir");
-    let db_path = client_dir.join("client.turso");
-    {
-        let db_path_string = db_path.display().to_string();
-        let database = turso::Builder::new_local(&db_path_string)
-            .experimental_index_method(true)
-            .build()
-            .await
-            .expect("create historical source-index fixture database");
-        let connection = database
-            .connect()
-            .expect("connect historical source-index fixture database");
-        connection
-            .execute(
-                "CREATE TABLE asp_source_index_owner (
-                    generation_id TEXT NOT NULL,
-                    owner_path TEXT NOT NULL,
-                    PRIMARY KEY (generation_id, owner_path)
-                )",
-                (),
-            )
-            .await
-            .expect("create historical source-index owner schema");
-    }
-
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
-        generation_id: CacheGenerationId::from("source-index-migrated-turso"),
-        project_root: project_root.clone(),
-        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
-        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
-        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
-        file_hashes: vec![ClientCacheFileHash {
-            path: "src/source_index_migrated_turso.rs".to_string(),
-            sha256: "abcdef1234567890".repeat(4),
-            byte_len: 51,
-            mtime_ms: 12,
-        }],
-        files: vec![ClientDbSourceIndexImportFile {
-            relative_path: "src/source_index_migrated_turso.rs".to_string(),
-            language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
-            text: "pub fn source_index_migrated_turso_fixture() {}\n".to_string(),
-            selectors: Vec::new(),
-        }],
-    })
-    .expect("build migrated Turso source-index import");
-
-    let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import,
-            file_count: 1,
-        },
-    )
-    .expect("refresh source-index through migrated Turso owner schema");
-    assert_eq!(
-        refresh.generation_id.as_str(),
-        "source-index-migrated-turso"
-    );
-    assert_eq!(refresh.owner_count, 1);
-    assert_eq!(refresh.selector_count, 1);
-
-    let rust_language_id = LanguageId::from("rust");
-    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        "source_index_migrated_turso_fixture",
-        Some(&rust_language_id),
-        8,
-    )
-    .await
-    .expect("lookup migrated Turso source-index read model");
-    assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Hit);
-    assert!(
-        lookup.candidates.iter().any(|candidate| candidate.path
-            == "src/source_index_migrated_turso.rs"
-            && candidate.language_id.as_ref().map(|id| id.as_str()) == Some("rust")
-            && candidate.provider_id.as_ref().map(|id| id.as_str()) == Some("rs-harness")),
-        "lookup={lookup:?}"
-    );
-    let facade_lookup = ClientDbEngine::lookup_source_index_from_client_dir(
-        ClientDbSourceIndexClientDirLookupRequest {
-            client_dir: &client_dir,
-            indexed_project_root: &project_root,
-            language_id: Some(&rust_language_id),
-            query_keys: vec![ClientDbSourceIndexQueryKey::from(
-                "source_index_migrated_turso_fixture",
-            )],
-            limit: 8,
-        },
-    )
-    .expect("lookup source-index through facade with migrated Turso owner schema");
-    assert_eq!(facade_lookup.state, ClientDbSourceIndexLookupState::Hit);
-    assert!(
-        facade_lookup
-            .candidates
-            .iter()
-            .any(|candidate| candidate.path == "src/source_index_migrated_turso.rs"),
-        "facade_lookup={facade_lookup:?}"
-    );
-
-    let _ = fs::remove_dir_all(client_dir);
-    let _ = fs::remove_dir_all(project_root);
-}
-
 fn temp_root(label: &str) -> PathBuf {
     let mut root = std::env::temp_dir();
     let unique = format!(
@@ -886,3 +861,71 @@ fn temp_root(label: &str) -> PathBuf {
     fs::create_dir_all(&root).expect("create temp root");
     root
 }
+
+#[cfg(unix)]
+fn client_dir_snapshot(root: &std::path::Path) -> Vec<(String, u64, std::time::SystemTime)> {
+    let mut snapshot = fs::read_dir(root)
+        .expect("read client directory snapshot")
+        .map(|entry| {
+            let entry = entry.expect("read client directory entry");
+            let metadata = entry.metadata().expect("read client entry metadata");
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                metadata.len(),
+                metadata.modified().expect("read client entry mtime"),
+            )
+        })
+        .collect::<Vec<_>>();
+    snapshot.sort_by(|left, right| left.0.cmp(&right.0));
+    snapshot
+}
+#[tokio::test(flavor = "current_thread")]
+async fn db_engine_source_index_bootstrap_creates_canonical_snapshot_schema() {
+    let client_dir = temp_root("db-engine-source-index-legacy-fact-schema-client");
+    let project_root = temp_root("db-engine-source-index-legacy-fact-schema-project");
+    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+        generation_id: CacheGenerationId::from("source-index-legacy-fact-schema-turso"),
+        project_root: project_root.clone(),
+        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        file_hashes: vec![ClientCacheFileHash {
+            path: "src/legacy_fact_schema.rs".to_string(),
+            sha256: "5555555555555555".repeat(4),
+            byte_len: 1,
+            mtime_ms: 55,
+        }],
+        files: vec![ClientDbSourceIndexImportFile {
+            relative_path: "src/legacy_fact_schema.rs".to_string(),
+            language_id: LanguageId::from("rust"),
+            provider_id: ProviderId::from("rs-harness"),
+            text: "fn legacy_fact_schema() {}\n".to_string(),
+            selectors: Vec::new(),
+        }],
+    })
+    .expect("build legacy source-index import");
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        ClientDbSourceIndexRefreshRequest {
+            import: source_index_import,
+            file_count: 1,
+        },
+    )
+    .expect("bootstrap legacy source-index schema");
+    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        "legacy_fact_schema",
+        Some(&LanguageId::from("rust")),
+        1,
+    )
+    .await
+    .expect("lookup after legacy schema bootstrap");
+    assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Hit);
+    let _ = fs::remove_dir_all(client_dir);
+    let _ = fs::remove_dir_all(project_root);
+}
+#[path = "engine_source_index/active_fact.rs"]
+mod active_fact;
+
+#[path = "engine_source_index/bootstrap_migration.rs"]
+mod bootstrap_migration;

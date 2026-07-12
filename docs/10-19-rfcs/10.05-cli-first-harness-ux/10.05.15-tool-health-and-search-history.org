@@ -1,7 +1,7 @@
 * Tool health and search history
 
 ASP must not rebuild Unix search tools or graph-turbo algorithms under
-different names.  Agents already understand =fd=, =rg=, =fzf=, and =eza=.
+different names.  Agents already understand =fd=, =rg=, =lexical=, and =eza=.
 Those tools are allowed in ordinary shell pipelines, and simple pipelines
 should stay explicit:
 
@@ -22,7 +22,7 @@ The protocol responsibility is narrower and stricter:
 
 ** Required external tool health
 
-=fd=, =rg=, =fzf=, =eza=, and =graph-turbo= are required tools for ASP's
+=fd=, =rg=, =lexical=, =eza=, and =graph-turbo= are required tools for ASP's
 agent-facing search toolset.  =graph-turbo= is the ASP graph extension bin used
 by timeline/history audit.  ASP must not silently fall back to a native
 reimplementation.  If a tool is missing, the corresponding tool-assisted
@@ -36,10 +36,10 @@ asp doctor
 =asp tools doctor= prints one compact row per required tool:
 
 #+begin_src text
-[asp-tools] status=missing required=fd,rg,fzf,eza,graph-turbo root=.
+[asp-tools] status=missing required=fd,rg,lexical,eza,graph-turbo root=.
 |tool name=fd status=ok path=/opt/homebrew/bin/fd
 |tool name=rg status=ok path=/opt/homebrew/bin/rg
-|tool name=fzf status=missing
+|tool name=lexical status=missing
 |tool name=eza status=ok path=/opt/homebrew/bin/eza
 |tool name=graph-turbo status=ok path=/Users/me/.local/bin/graph-turbo
 |cmd doctor=asp tools doctor

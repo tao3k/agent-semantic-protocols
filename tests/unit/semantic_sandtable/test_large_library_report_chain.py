@@ -15,54 +15,6 @@ from tools.semantic_sandtable.large_library_report_chain import (
 _ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_large_library_report_chain_unblocks_tuning_with_ts_rust_depths() -> None:
-    report = build_large_library_report_chain(_ROOT)
-
-    _validate_schema(report)
-    by_language = {entry["language"]: entry for entry in report["languages"]}
-
-    assert report["optimizationGate"]["status"] == "pass"
-    assert report["findings"] == []
-    assert report["rollup"]["optimizationRunCount"] == 20
-    assert report["rollup"]["optimizationVariantRunCount"] == 100
-    assert report["optimizationBatch"]["runCount"] == 20
-    assert report["optimizationBatch"]["ablationVariantCount"] == 5
-    assert report["optimizationBatch"]["variantRunCount"] == 100
-    assert "no-local-evidence" in report["optimizationBatch"]["ablationVariants"]
-    assert report["optimizationBatch"]["aggregationAxes"] == [
-        "language",
-        "package",
-        "depthBucket",
-        "ablationVariant",
-    ]
-    assert "frontierFollowRate" in report["optimizationBatch"][
-        "requiredReceiptMetrics"
-    ]
-    assert "answerQualityJudgment" in report["optimizationBatch"][
-        "requiredAnswerMetrics"
-    ]
-    assert len(report["optimizationMatrix"]) == 20
-    assert _matrix_depth_counts(report) == {
-        "rust": {"deep": 10, "medium": 1, "strict": 2},
-        "typescript": {"deep": 4, "medium": 1, "strict": 2},
-    }
-    assert _matrix_targets_query_first_stage(report)
-    assert by_language["rust"]["deepQuestionCount"] >= 12
-    assert by_language["rust"]["depthBucketCounts"] == {
-        "deep": 10,
-        "medium": 1,
-        "strict": 2,
-    }
-    assert _finding_kinds(by_language["rust"]) == set()
-    assert by_language["typescript"]["deepQuestionCount"] == 7
-    assert by_language["typescript"]["depthBucketCounts"] == {
-        "deep": 4,
-        "medium": 1,
-        "strict": 2,
-    }
-    assert _finding_kinds(by_language["typescript"]) == set()
-
-
 def test_large_library_report_chain_can_pass_with_multi_depth_ts_rust_fixture(
     tmp_path: Path,
 ) -> None:
@@ -72,7 +24,11 @@ def test_large_library_report_chain_can_pass_with_multi_depth_ts_rust_fixture(
         path.write_text(json.dumps(_scenario(language)), encoding="utf-8")
         scenarios.append(path)
 
-    report = build_large_library_report_chain(tmp_path, scenarios)
+    report = build_large_library_report_chain(
+        tmp_path,
+        scenarios,
+        languages=("rust", "typescript"),
+    )
 
     _validate_schema(report)
     assert report["optimizationGate"]["status"] == "pass"
@@ -80,6 +36,24 @@ def test_large_library_report_chain_can_pass_with_multi_depth_ts_rust_fixture(
     assert report["rollup"]["optimizationRunCount"] == 6
     assert report["rollup"]["optimizationVariantRunCount"] == 30
     assert report["optimizationBatch"]["readyToCollectReceipts"] is True
+    assert report["benchmarkData"] == {
+        "scenarioCount": 2,
+        "searchCommandCount": 2,
+        "uniqueSearchCommandCount": 2,
+        "optimizationRunCount": 6,
+        "optimizationVariantRunCount": 30,
+        "ablationVariantCount": 5,
+        "coveredSearchMethods": ["search/lexical"],
+        "coveredSearchQueries": ["feature", "owner"],
+        "byLanguage": [
+            _expected_language_benchmark("rust"),
+            _expected_language_benchmark("typescript"),
+        ],
+    }
+    assert report["searchCommandSet"] == [
+        _expected_lexical_command_entry("rust"),
+        _expected_lexical_command_entry("typescript"),
+    ]
     assert report["findings"] == []
     assert all(entry["findings"] == [] for entry in report["languages"])
     assert _matrix_targets_query_first_stage(report)
@@ -107,7 +81,11 @@ def test_large_library_report_chain_blocks_ambient_asp_binary_fixture(
         path.write_text(json.dumps(scenario), encoding="utf-8")
         scenarios.append(path)
 
-    report = build_large_library_report_chain(tmp_path, scenarios)
+    report = build_large_library_report_chain(
+        tmp_path,
+        scenarios,
+        languages=("rust", "typescript"),
+    )
 
     _validate_schema(report)
     assert report["optimizationGate"]["status"] == "review"
@@ -145,8 +123,8 @@ def test_large_library_report_chain_cli_passes_fail_on_missing_when_ready(
     output = capsys.readouterr().out
     assert output.startswith("[large-library-report-chain] ")
     assert "gate=pass" in output
-    assert "runs=20" in output
-    assert "variantRuns=100" in output
+    assert "runs=26" in output
+    assert "variantRuns=130" in output
 
 
 def _scenario(language: str) -> dict[str, object]:
@@ -182,20 +160,27 @@ def _scenario(language: str) -> dict[str, object]:
         "steps": [
             {
                 "id": "query",
-                "command": [
-                    "rs-harness" if language == "rust" else "ts-harness",
-                    "search",
-                    "fzf",
-                    "--query-set",
-                    "feature",
-                    "--workspace",
-                    ".",
-                    "--view",
-                    "seeds",
-                ],
+                "command": _scenario_command(language),
             }
         ],
     }
+
+
+def _scenario_command(language: str) -> list[str]:
+    return [
+        "asp",
+        language,
+        "search",
+        "lexical",
+        "--query",
+        "feature",
+        "--query",
+        "owner",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds",
+    ]
 
 
 def _question(question_id: str, max_asp_commands: int) -> dict[str, object]:
@@ -235,6 +220,56 @@ def _finding_kinds(language_entry: dict[str, object]) -> set[str]:
         str(finding["kind"])
         for finding in language_entry["findings"]
         if isinstance(finding, dict)
+    }
+
+
+def _language_benchmark_counts(report: dict[str, object]) -> dict[str, tuple[int, ...]]:
+    return {
+        str(entry["language"]): (
+            int(entry["scenarioCount"]),
+            int(entry["searchCommandCount"]),
+            int(entry["uniqueSearchCommandCount"]),
+            int(entry["optimizationRunCount"]),
+            int(entry["optimizationVariantRunCount"]),
+        )
+        for entry in report["benchmarkData"]["byLanguage"]
+        if isinstance(entry, dict)
+    }
+
+
+def _assert_no_legacy_search_commands(report: dict[str, object]) -> None:
+    for entry in report["searchCommandSet"]:
+        assert isinstance(entry, dict)
+        assert entry["method"] != "search/lexical"
+        command = entry["command"]
+        assert isinstance(command, list)
+        assert command[:2] == ["asp", entry["language"]]
+        assert "--query-set" not in command
+
+
+def _expected_language_benchmark(language: str) -> dict[str, object]:
+    return {
+        "language": language,
+        "scenarioCount": 1,
+        "searchCommandCount": 1,
+        "uniqueSearchCommandCount": 1,
+        "optimizationRunCount": 3,
+        "optimizationVariantRunCount": 15,
+        "coveredSearchMethods": ["search/lexical"],
+        "coveredSearchQueries": ["feature", "owner"],
+    }
+
+
+def _expected_lexical_command_entry(language: str) -> dict[str, object]:
+    command = _scenario_command(language)
+    return {
+        "commandId": " ".join(command),
+        "language": language,
+        "method": "search/lexical",
+        "view": "lexical",
+        "queries": ["feature", "owner"],
+        "command": command,
+        "scenarioIds": [f"{language}.multi-depth"],
     }
 
 

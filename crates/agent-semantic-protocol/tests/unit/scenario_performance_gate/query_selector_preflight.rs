@@ -222,6 +222,25 @@ fn asp_rust_query_structural_selector_materialization_stays_inside_scenario_gate
         }\n",
     )
     .expect("write source");
+    let locator_root = temp_project_root("scenario-rust-query-structural-selector-shadow");
+    fs::create_dir_all(locator_root.join("src")).expect("create shadow source root");
+    fs::write(
+        locator_root.join("src/lib.rs"),
+        "pub fn main_asp_command_allowed() -> bool { false }\n",
+    )
+    .expect("write shadow source");
+    fs::create_dir_all(root.join("src/tree_sitter_query_projection"))
+        .expect("create canonical nested source root");
+    fs::write(
+        root.join("src/tree_sitter_query_projection/core.rs"),
+        "pub fn project_native_tree_sitter_query() -> bool { true }\n",
+    )
+    .expect("write canonical nested source");
+    fs::write(
+        locator_root.join("src/tree_sitter_query_projection.rs"),
+        "pub fn project_native_tree_sitter_query() -> bool { false }\n",
+    )
+    .expect("write shadow leaf source");
     let setup_elapsed = scenario_started_at.elapsed();
 
     let matrix: &[(&str, &str, bool, &str)] = &[
@@ -279,6 +298,53 @@ fn asp_rust_query_structural_selector_materialization_stays_inside_scenario_gate
             "{case} expected {expected:?}; rendered={rendered}"
         );
     }
+
+    let canonical_started_at = Instant::now();
+    let canonical_args = vec![
+        "query".to_string(),
+        "--selector".to_string(),
+        "rust://src/tree_sitter_query_projection/core.rs#item/function/project_native_tree_sitter_query"
+            .to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ];
+    let canonical = run_fast_owner_query_to_string("rust", &canonical_args, &root, &locator_root)
+        .and_then(|rendered| {
+            rendered.ok_or_else(|| "canonical selector was not handled".to_string())
+        })
+        .expect("canonical workspace selector must resolve");
+    max_case_elapsed = max_case_elapsed.max(canonical_started_at.elapsed());
+    output_bytes += canonical.len();
+    observed_routes.push("canonical-workspace-owner");
+    assert!(canonical.contains("true"), "{canonical}");
+    assert!(!canonical.contains("false"), "{canonical}");
+
+    let missing_leaf_started_at = Instant::now();
+    let missing_leaf_args = vec![
+        "query".to_string(),
+        "--selector".to_string(),
+        "rust://src/tree_sitter_query_projection.rs#item/function/project_native_tree_sitter_query"
+            .to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ];
+    let missing_leaf =
+        run_fast_owner_query_to_string("rust", &missing_leaf_args, &root, &locator_root)
+            .expect_err("missing workspace leaf must return a deterministic not-found error");
+    max_case_elapsed = max_case_elapsed.max(missing_leaf_started_at.elapsed());
+    observed_routes.push("missing-workspace-leaf");
+    assert!(missing_leaf.contains("state=not-found"), "{missing_leaf}");
+    assert!(
+        missing_leaf.contains("reason=owner-not-found"),
+        "{missing_leaf}"
+    );
+    assert!(
+        !missing_leaf.contains("project_native_tree_sitter_query() -> bool { false }"),
+        "{missing_leaf}"
+    );
+
     let elapsed_ms = max_case_elapsed.as_millis();
     assert!(
         elapsed_ms <= max_total_ms,
@@ -333,6 +399,72 @@ fn asp_rust_query_structural_selector_materialization_stays_inside_scenario_gate
     }
     assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["fallbackReason"], "none");
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(locator_root);
+}
+
+#[test]
+fn asp_rust_query_native_treesitter_query_uses_workspace_without_positional_root() {
+    let root = temp_project_root("scenario-rust-native-treesitter-query");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scenario-rust-native-treesitter-query\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write package anchor");
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn project_native_tree_sitter_query() -> bool { true }\n",
+    )
+    .expect("write source");
+
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("workspace root");
+    let mut install_command = asp_command(&root);
+    install_command.args([
+        "install",
+        "language",
+        "rust",
+        "--from-workspace",
+        "--project",
+    ]);
+    install_command.arg(workspace_root);
+    let install = install_command
+        .output()
+        .expect("install current wrapped rust provider");
+    assert!(
+        install.status.success(),
+        "rust provider install failed stderr={}",
+        String::from_utf8_lossy(&install.stderr)
+    );
+
+    let output = asp_command(&root)
+        .args([
+            "rust",
+            "query",
+            "--treesitter-query",
+            "((function_item name: (identifier) @name) (#eq? @name \"project_native_tree_sitter_query\"))",
+            "--selector",
+            "src/lib.rs",
+            "--workspace",
+            ".",
+        ])
+        .output()
+        .expect("run wrapped native tree-sitter query");
+    assert!(
+        output.status.success(),
+        "native tree-sitter query failed stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(
+        stdout.contains("project_native_tree_sitter_query"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("state=not-found"), "{stdout}");
+    assert!(!stdout.contains("provider-index-gap"), "{stdout}");
     let _ = fs::remove_dir_all(root);
 }
 

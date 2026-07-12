@@ -284,7 +284,7 @@ Where =method= is one of the shared agent-facing methods:
 #+begin_example
 search/workspace
 search/owner
-search/fzf
+search/lexical
 search/ingest
 query/owner-item
 query/direct-source-read
@@ -485,7 +485,7 @@ P4 checkpoint sample from the local workspace:
 |-------+---------------+--------|
 | byte transport bench | =cargo bench -p agent-semantic-provider-transport --bench transport_hot_path= | =transport_hot_path time: [135.25 ns 138.95 ns 143.60 ns]= |
 | exact direct read | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust query --from-hook direct-source-read --selector crates/agent-semantic-protocol/src/command/document_provider.rs:1-80 --code . >/tmp/asp-direct-read-smoke.out'= | =real 0.00=, stdout =1857= bytes |
-| Rust search wrapper | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust search fzf DocumentWalkConfig --view seeds crates/agent-semantic-protocol >/tmp/asp-rust-fzf-smoke.out'= | =real 0.01=, stdout =776= bytes |
+| Rust search wrapper | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust search lexical DocumentWalkConfig --view seeds crates/agent-semantic-protocol >/tmp/asp-rust-lexical-smoke.out'= | =real 0.01=, stdout =776= bytes |
 | configured document walk | =asp md query --term cached-secret-token --view metadata .= in a temp project with =[discovery] includeHiddenDirNames=[".cache"]= | =real 0.03=, stdout =135= bytes |
 
 Provider command latency regressions should be investigated at the transport
@@ -965,7 +965,7 @@ The client may optimize:
 The client must not optimize by:
 
 - treating cached lexical text as a semantic fact;
-- widening a miss into raw grep/fzf without an explicit provider =search fzf=
+- widening a miss into raw grep/lexical without an explicit provider =search lexical=
   or =search ingest= route;
 - inventing owner, symbol, test, policy, or graph facts from SQL row names;
 - accepting a cloud ranking result that lacks provider packet provenance;

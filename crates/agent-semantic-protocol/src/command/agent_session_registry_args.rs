@@ -256,8 +256,8 @@ fn guide_text_for(
     match command {
         SessionCommand::Bootstrap => Some(
             "asp agent session bootstrap guide\n\
-Run the resident ASP child lifecycle loop as a structured menu. The loop prints state and choices only; the agent chooses a menu option, performs the platform-native action, then reruns bootstrap until state=ready.\n\
-asp agent session bootstrap --name asp-explore --json",
+Run the resident ASP child lifecycle loop as a structured menu. The loop prints state and choices only; the agent chooses a menu option, performs the platform-native action, then reruns bootstrap until state=Ready.\n\
+asp agent session bootstrap --name asp-explore",
         ),
         SessionCommand::Register => guide.register(),
         SessionCommand::List => guide.list(),
@@ -292,26 +292,18 @@ asp agent session reconcile --json",
         ),
         SessionCommand::Resume => Some(
             "asp agent session resume guide\n\
-Action step flow for saved-session resume:\n\
-1. Shell action: resolve an already registered child or pass an explicit saved session id.\n\
-   asp agent session status --name <resident-name> --json\n\
-2. Shell action: resume that existing saved session.\n\
-   asp agent session resume --name <resident-name>\n\
+Resume is a saved-session operation, not the resident-child bootstrap workflow.\n\
 This does not create a resident ASP child session.\n\
 If no configured resident child is registered, use bootstrap flow instead:\n\
-asp agent session bootstrap --name asp-explore --json",
+asp agent session bootstrap --name asp-explore",
         ),
         SessionCommand::Fork => Some(
             "asp agent session fork guide\n\
-Action step flow for saved-session fork:\n\
-1. Shell action: resolve an already registered child or pass an explicit saved session id.\n\
-   asp agent session status --name <resident-name> --json\n\
-2. Shell action: fork that existing saved session.\n\
-   asp agent session fork --name <resident-name>\n\
+Fork is a saved-session operation, not the resident-child bootstrap workflow.\n\
 This does not create a resident ASP child session.\n\
 If no configured resident child is registered, do not use fork as bootstrap.\n\
 Use bootstrap flow instead:\n\
-asp agent session bootstrap --name asp-explore --json",
+asp agent session bootstrap --name asp-explore",
         ),
         SessionCommand::Archive => Some(
             "asp agent session archive guide\n\
@@ -333,9 +325,10 @@ asp agent session unarchive --name <resident-name>",
         ),
         SessionCommand::SwitchModel => Some(
             "asp agent session switch-model guide\n\
-Update the active platform model mapping after a capacity warning or explicit model switch.\n\
-For Codex sessions this writes ~/.agent-semantic-protocols/agents/config.toml and updates ASP-owned Codex agent projections.\n\
-asp agent session switch-model --model <model-id> --json",
+Configuration-layer child-session model switch only. This updates the expected model for ASP-owned subagent/child-session config and Codex agent projections; it never switches the main session model.\n\
+Use --name to switch one resident subagent child-session config, or omit --name to update all ASP-owned Codex subagent projections.\n\
+For a live resumed child mismatch, keep the main session model unchanged; the main agent must send a native message-agent follow-up to that existing child session and ask it to switch/confirm the configured child-session model.\n\
+asp agent session switch-model --name asp-explore --model <model-id>",
         ),
     }
     .filter(|value| !value.trim().is_empty())
@@ -389,7 +382,7 @@ fn default_agent_session_guide() -> agent_semantic_config::HookClientAgentSessio
     agent_semantic_config::HookClientAgentSessionGuideConfig::new(
         Some(
             "asp agent session register guide\n\
-Guide template failed to load. Run `asp sync` or install hooks, then enter `asp agent session bootstrap --name asp-explore --json`."
+Guide template failed to load. Run `asp sync` or install hooks, then enter `asp agent session bootstrap --name asp-explore`."
                 .to_string(),
         ),
         Some(
@@ -404,12 +397,12 @@ Show one registered child session by --name or --child-session-id."
         ),
         Some(
             "asp agent session reuse guide\n\
-Guide template failed to load. The legacy reuse guide is removed; enter `asp agent session bootstrap --name asp-explore --json`."
+Guide template failed to load. The legacy reuse guide is removed; enter `asp agent session bootstrap --name asp-explore`."
                 .to_string(),
         ),
         Some(
             "asp agent session status guide\n\
-Guide template failed to load. Enter `asp agent session bootstrap --name asp-explore --json` when the resident child is missing or non-routable."
+Guide template failed to load. Enter `asp agent session bootstrap --name asp-explore` when the resident child is missing or non-routable."
                 .to_string(),
         ),
     )
@@ -437,17 +430,17 @@ fn render_agent_session_guide(
 fn canonical_agent_session_register_guide(host: &AgentHostGuide) -> String {
     format!(
         "asp agent session register guide\n\
-Register is a low-level step owned by the resident-child interactive loop.\n\
+Register is a low-level state write owned by the resident-child interactive loop.\n\
 Detected host: {host_label}\n\
 Session env: {session_env}\n\
 Canonical loop entry:\n\
-   asp agent session bootstrap --name asp-explore --json\n\
-Use that loop after a hook deny. Choose exactly one typed menu option, perform the platform-native action for that choice, then re-enter the same loop until state=ready.\n\
-Only run register when a loop choice asks for durable registration and provides both childSessionId and agentMessageTargetId.\n\
+   asp agent session bootstrap --name asp-explore\n\
+After a hook deny, run only the loop entry. Choose exactly one number, perform the platform-native action for that choice, then re-enter the same loop until state=Ready.\n\
+The pane owns audit, recovery, cleanup, creation, model alignment, and durable registration. Only run register when a pane choice explicitly asks for it and provides both childSessionId and agentMessageTargetId.\n\
 Configured resident child action: {create_action}\n\
 Config source: {config_source}\n\
 Host projection: {host_projection}\n\
-Do not use register --guide, lifecycle audit, normal-thread reads, rollout scans, or generic subagent creation as independent fallback paths.",
+Do not run low-level session commands, thread reads, rollout scans, or generic subagent creation as independent fallback paths.",
         host_label = host.host_label,
         session_env = host.session_env,
         create_action = host.create_action,

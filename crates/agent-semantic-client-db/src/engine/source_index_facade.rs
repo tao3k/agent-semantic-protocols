@@ -1,5 +1,6 @@
 //! Source-index and structural-index DB Engine facade methods.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::{
@@ -16,7 +17,9 @@ use crate::source_index::{
 use crate::structural_index::ClientDbStructuralIndexImport;
 
 use super::facade::{ClientDbEngine, block_on_db_engine_async};
-use super::turso::{connect_turso_client_db, turso_table_exists};
+use super::turso::{
+    connect_turso_client_db_read_only, turso_table_column_exists, turso_table_exists,
+};
 use super::turso_evidence_graph::{
     TursoClientDbEvidenceGraphPersistReport, persist_turso_evidence_graph,
 };
@@ -29,6 +32,28 @@ use super::{
 };
 
 impl ClientDbEngine {
+    /// Read one owner's projection readiness and selector nodes from read-only Turso state.
+    pub fn lookup_graph_owner_read_model_from_project(
+        project_root: &Path,
+        owner_path: &str,
+        language_id: Option<&LanguageId>,
+        limit: u32,
+    ) -> Result<crate::engine::turso_evidence_graph::TursoClientDbGraphOwnerReadModel, String> {
+        let client_dir = project_client_cache_dir_read_only(project_root)?;
+        let db_path = Self::turso_path_for_client_dir(client_dir);
+        let owner_path = owner_path.to_string();
+        let language_id = language_id.cloned();
+        block_on_db_engine_async(async move {
+            crate::engine::turso_evidence_graph::lookup_turso_graph_owner_read_model(
+                &db_path,
+                &owner_path,
+                language_id.as_ref().map(LanguageId::as_str),
+                limit,
+            )
+            .await
+        })
+    }
+
     /// Lookup source-index candidates from one project's resolved DB Engine state.
     pub fn lookup_source_index_from_project(
         request: ClientDbSourceIndexProjectLookupRequest<'_>,
@@ -43,6 +68,28 @@ impl ClientDbEngine {
         })
     }
 
+    /// Read parser-owned selector nodes for one owner from a project's read-only DB state.
+    pub fn lookup_graph_owner_selectors_from_project(
+        project_root: &Path,
+        owner_path: &str,
+        language_id: Option<&LanguageId>,
+        limit: u32,
+    ) -> Result<Vec<super::TursoClientDbGraphEntity>, String> {
+        let client_dir = project_client_cache_dir_read_only(project_root)?;
+        let db_path = Self::turso_path_for_client_dir(client_dir);
+        let owner_path = owner_path.to_string();
+        let language_id = language_id.cloned();
+        block_on_db_engine_async(async move {
+            crate::engine::turso_evidence_graph::lookup_turso_graph_owner_selectors(
+                &db_path,
+                &owner_path,
+                language_id.as_ref().map(LanguageId::as_str),
+                limit,
+            )
+            .await
+        })
+    }
+
     /// Lookup source-index candidates through the active Turso read model.
     pub fn lookup_source_index_from_client_dir(
         request: ClientDbSourceIndexClientDirLookupRequest<'_>,
@@ -54,11 +101,22 @@ impl ClientDbEngine {
             .collect::<Vec<_>>()
             .join(" ");
         let db_path = Self::turso_path_for_client_dir(request.client_dir);
+        let lookup_scope = TursoSourceIndexLookupScope {
+            project_root: request
+                .indexed_project_root
+                .canonicalize()
+                .unwrap_or_else(|_| request.indexed_project_root.to_path_buf())
+                .display()
+                .to_string(),
+            schema_id: crate::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID.to_string(),
+            schema_version: crate::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION.to_string(),
+        };
         let language_id = request.language_id.cloned();
         let limit = request.limit;
         block_on_db_engine_async(async move {
             lookup_source_index_read_model_at_path(
                 db_path,
+                Some(lookup_scope),
                 query.as_str(),
                 language_id.as_ref(),
                 limit,
@@ -83,6 +141,7 @@ impl ClientDbEngine {
         }
         lookup_source_index_read_model_at_path(
             self.db_path().to_path_buf(),
+            None,
             query,
             language_id,
             limit,
@@ -99,8 +158,41 @@ impl ClientDbEngine {
     ) -> Result<ClientDbSourceIndexLookupResult, String> {
         lookup_source_index_read_model_at_path(
             Self::turso_path_for_client_dir(client_dir),
+            None,
             query,
             language_id,
+            limit,
+        )
+        .await
+    }
+
+    /// Read parser-owned selector nodes for one owner from an isolated client directory.
+    pub async fn lookup_graph_owner_selectors_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        owner_path: &str,
+        language_id: Option<&LanguageId>,
+        limit: u32,
+    ) -> Result<Vec<super::TursoClientDbGraphEntity>, String> {
+        crate::engine::turso_evidence_graph::lookup_turso_graph_owner_selectors(
+            &Self::turso_path_for_client_dir(client_dir),
+            owner_path,
+            language_id.map(LanguageId::as_str),
+            limit,
+        )
+        .await
+    }
+
+    /// Read one owner's projection readiness and selector nodes from an isolated client directory.
+    pub async fn lookup_graph_owner_read_model_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        owner_path: &str,
+        language_id: Option<&LanguageId>,
+        limit: u32,
+    ) -> Result<crate::engine::turso_evidence_graph::TursoClientDbGraphOwnerReadModel, String> {
+        crate::engine::turso_evidence_graph::lookup_turso_graph_owner_read_model(
+            &Self::turso_path_for_client_dir(client_dir),
+            owner_path,
+            language_id.map(LanguageId::as_str),
             limit,
         )
         .await
@@ -123,15 +215,35 @@ impl ClientDbEngine {
         db_engine_trace("source-index-refresh-read-model", trace_started);
         let graph = source_index_evidence_graph(import);
         db_engine_trace("source-index-graph-built", trace_started);
-        let graph_report = TursoClientDbEvidenceGraphPersistReport {
-            entity_count: graph.nodes.len(),
-            edge_count: graph.edges.len(),
-        };
+        let graph_report = super::persist_turso_evidence_graph(self.db_path(), &graph).await?;
         let search_document_count = refresh.owner_count as usize;
         Ok(source_index_read_model_report(
             graph_report,
             search_document_count,
         ))
+    }
+
+    /// Persist one parser-owned language projection through the Turso read model.
+    pub async fn persist_language_projection_read_model(
+        &self,
+        import: &ClientDbSourceIndexImport,
+        projection: &crate::ClientDbLanguageProjection,
+    ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
+        persist_language_projection_read_model_at_path(self.db_path(), import, projection).await
+    }
+
+    /// Persist one parser-owned language projection through an isolated client directory.
+    pub fn persist_language_projection_read_model_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        import: &ClientDbSourceIndexImport,
+        projection: &crate::ClientDbLanguageProjection,
+    ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
+        let db_path = Self::turso_path_for_client_dir(client_dir);
+        let import = import.clone();
+        let projection = projection.clone();
+        block_on_db_engine_async(async move {
+            persist_language_projection_read_model_at_path(&db_path, &import, &projection).await
+        })
     }
 
     /// Persist stable structural-index graph facts through the active DB Engine backend.
@@ -141,6 +253,36 @@ impl ClientDbEngine {
     ) -> Result<ClientDbEngineStructuralIndexReadModelReport, String> {
         persist_structural_index_read_model_at_path(self.db_path(), import).await
     }
+}
+
+async fn persist_language_projection_read_model_at_path(
+    db_path: &Path,
+    import: &ClientDbSourceIndexImport,
+    projection: &crate::ClientDbLanguageProjection,
+) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
+    let trace_started = std::time::Instant::now();
+    crate::engine::turso_bootstrap::bootstrap_turso_client_db(db_path).await?;
+    let refresh = refresh_turso_source_index_import(
+        db_path,
+        ClientDbSourceIndexRefreshRequest {
+            import: import.clone(),
+            file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
+        },
+    )
+    .await?;
+    db_engine_trace("language-projection-source-index-refreshed", trace_started);
+    let graph = crate::source_index::language_projection::language_projection_evidence_graph(
+        import, projection,
+    )?;
+    let graph_report = super::persist_turso_evidence_graph(db_path, &graph).await?;
+    db_engine_trace(
+        "language-projection-evidence-graph-persisted",
+        trace_started,
+    );
+    Ok(source_index_read_model_report(
+        graph_report,
+        refresh.owner_count as usize,
+    ))
 }
 
 fn db_engine_trace(stage: &str, started: std::time::Instant) {
@@ -265,6 +407,7 @@ fn structural_index_read_model_report(
 
 async fn lookup_source_index_read_model_at_path(
     db_path: PathBuf,
+    requested_scope: Option<TursoSourceIndexLookupScope>,
     query: &str,
     language_id: Option<&LanguageId>,
     limit: u32,
@@ -283,8 +426,15 @@ async fn lookup_source_index_read_model_at_path(
             Vec::new(),
         ));
     }
+    let _source_index_read_guard = match super::turso_source_index::turso_source_index_access_lock()
+        .clone()
+        .try_read_owned()
+    {
+        Ok(guard) => guard,
+        Err(_) => return Ok(source_index_busy_lookup_result(db_path)),
+    };
     let terms = source_index_read_model_terms(query);
-    let connection = match connect_turso_client_db(&db_path).await {
+    let connection = match connect_turso_client_db_read_only(&db_path).await {
         Ok(connection) => connection,
         Err(error) if is_turso_lock_error(&error) => {
             return Ok(source_index_busy_lookup_result(db_path));
@@ -299,28 +449,50 @@ async fn lookup_source_index_read_model_at_path(
         Err(error) => return Err(error),
     };
     if !tables_exist {
+        if turso_source_index_precanonical_storage_exists(&connection).await? {
+            return Ok(source_index_lookup_result(
+                db_path,
+                ClientDbSourceIndexLookupState::ColdRequired,
+                Vec::new(),
+            ));
+        }
         return Ok(source_index_lookup_result(
             db_path,
             ClientDbSourceIndexLookupState::EmptyIndex,
             Vec::new(),
         ));
     }
-    match super::turso_source_index::ensure_turso_source_index_selector_columns(&connection).await {
-        Ok(()) => {}
+    match turso_source_index_lookup_schema_current(&connection).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(source_index_lookup_result(
+                db_path,
+                ClientDbSourceIndexLookupState::ColdRequired,
+                Vec::new(),
+            ));
+        }
         Err(error) if is_turso_lock_error(&error) => {
             return Ok(source_index_busy_lookup_result(db_path));
         }
         Err(error) => return Err(error),
     }
-    match super::turso_source_index::ensure_turso_source_index_owner_columns(&connection).await {
-        Ok(()) => {}
+    let scope = match resolve_turso_source_index_lookup_scope(&connection, requested_scope).await {
+        Ok(Some(scope)) => scope,
+        Ok(None) => {
+            return Ok(source_index_lookup_result(
+                db_path,
+                ClientDbSourceIndexLookupState::EmptyIndex,
+                Vec::new(),
+            ));
+        }
         Err(error) if is_turso_lock_error(&error) => {
             return Ok(source_index_busy_lookup_result(db_path));
         }
         Err(error) => return Err(error),
-    }
+    };
     let candidates = match query_turso_source_index_candidates_with_connection(
         &connection,
+        &scope,
         query,
         language_id,
         limit,
@@ -334,7 +506,7 @@ async fn lookup_source_index_read_model_at_path(
         }
         Err(error) => return Err(error),
     };
-    let owner_rows_exist = match turso_source_index_owner_rows_exist(&connection).await {
+    let owner_rows_exist = match turso_source_index_owner_rows_exist(&connection, &scope).await {
         Ok(owner_rows_exist) => owner_rows_exist,
         Err(error) if is_turso_lock_error(&error) => {
             return Ok(source_index_busy_lookup_result(db_path));
@@ -360,9 +532,9 @@ async fn turso_source_index_lookup_tables_exist(
     connection: &turso::Connection,
 ) -> Result<bool, String> {
     for table_name in [
-        "asp_source_index_generation",
-        "asp_source_index_owner",
-        "asp_source_index_selector",
+        "asp_source_index_scope_v1",
+        "asp_source_index_owner_v1",
+        "asp_source_index_layout_v1",
     ] {
         if !turso_table_exists(connection, table_name).await? {
             return Ok(false);
@@ -371,13 +543,55 @@ async fn turso_source_index_lookup_tables_exist(
     Ok(true)
 }
 
+async fn turso_source_index_precanonical_storage_exists(
+    connection: &turso::Connection,
+) -> Result<bool, String> {
+    turso_table_exists(connection, "asp_source_index_generation").await
+}
+
+async fn turso_source_index_lookup_schema_current(
+    connection: &turso::Connection,
+) -> Result<bool, String> {
+    if !turso_table_exists(connection, "asp_source_index_token_owner_v1").await? {
+        return Ok(false);
+    }
+    for column in [
+        "file_hash",
+        "language_id",
+        "provider_id",
+        "source_kind",
+        "line_count",
+        "query_keys_json",
+        "selector_facts_json",
+        "selector_count",
+    ] {
+        if !turso_table_column_exists(connection, "asp_source_index_owner_v1", column).await? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 async fn turso_source_index_owner_rows_exist(
     connection: &turso::Connection,
+    scope: &TursoSourceIndexLookupScope,
 ) -> Result<bool, String> {
     let mut rows = run_turso_operation_with_lock_retry(
         || async {
             connection
-                .query("SELECT owner_path FROM asp_source_index_owner LIMIT 1", ())
+                .query(
+                    "SELECT owner_path
+                     FROM asp_source_index_owner_v1
+                     WHERE project_root = ?1
+                       AND schema_id = ?2
+                       AND schema_version = ?3
+                     LIMIT 1",
+                    (
+                        scope.project_root.as_str(),
+                        scope.schema_id.as_str(),
+                        scope.schema_version.as_str(),
+                    ),
+                )
                 .await
                 .map_err(|error| error.to_string())
         },
@@ -391,8 +605,159 @@ async fn turso_source_index_owner_rows_exist(
         .is_some())
 }
 
-async fn query_turso_source_index_candidates_with_connection(
+#[derive(Clone)]
+struct TursoSourceIndexLookupScope {
+    project_root: String,
+    schema_id: String,
+    schema_version: String,
+}
+
+#[derive(serde::Deserialize)]
+struct TursoSourceIndexCanonicalSelectorFact {
+    selector_id: String,
+    symbol: Option<String>,
+    kind: Option<String>,
+    source: String,
+    payload_kind: Option<String>,
+    payload_bounded: bool,
+    query_keys: Vec<String>,
+}
+
+fn decode_turso_source_index_canonical_selectors(
+    selector_facts_json: &str,
+) -> Result<
+    (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<ClientDbSourceIndexSelectorPayloadProof>,
+    ),
+    String,
+> {
+    let selector_facts =
+        serde_json::from_str::<Vec<TursoSourceIndexCanonicalSelectorFact>>(selector_facts_json)
+            .map_err(|error| {
+                format!("failed to decode Turso source-index canonical selectors: {error}")
+            })?;
+    let mut haystack = String::new();
+    let mut selector_symbol = None;
+    let mut selector_kind = None;
+    let mut selector_proof = None;
+    for selector in selector_facts {
+        if selector_proof.is_none()
+            && let Some(payload_kind) = selector
+                .payload_kind
+                .filter(|value| !value.trim().is_empty())
+        {
+            selector_symbol = selector.symbol.clone();
+            selector_kind = selector.kind.clone();
+            selector_proof = Some(ClientDbSourceIndexSelectorPayloadProof {
+                structural_selector: selector.selector_id.clone(),
+                payload_kind,
+                bounded: selector.payload_bounded,
+            });
+        }
+        haystack.push(' ');
+        haystack.push_str(&selector.selector_id);
+        haystack.push(' ');
+        haystack.push_str(selector.symbol.as_deref().unwrap_or_default());
+        haystack.push(' ');
+        haystack.push_str(selector.kind.as_deref().unwrap_or_default());
+        haystack.push(' ');
+        haystack.push_str(&selector.source);
+        haystack.push(' ');
+        haystack.push_str(
+            &serde_json::to_string(&selector.query_keys).map_err(|error| {
+                format!("failed to encode Turso source-index canonical selector keys: {error}")
+            })?,
+        );
+    }
+    Ok((haystack, selector_symbol, selector_kind, selector_proof))
+}
+
+async fn resolve_turso_source_index_lookup_scope(
     connection: &turso::Connection,
+    requested_scope: Option<TursoSourceIndexLookupScope>,
+) -> Result<Option<TursoSourceIndexLookupScope>, String> {
+    let mut rows = match requested_scope {
+        Some(scope) => {
+            run_turso_operation_with_lock_retry(
+                || async {
+                    connection
+                        .query(
+                            "SELECT project_root, schema_id, schema_version
+                         FROM asp_source_index_scope_v1
+                         WHERE project_root = ?1
+                           AND schema_id = ?2
+                           AND schema_version = ?3
+                         LIMIT 1",
+                            (
+                                scope.project_root.as_str(),
+                                scope.schema_id.as_str(),
+                                scope.schema_version.as_str(),
+                            ),
+                        )
+                        .await
+                        .map_err(|error| error.to_string())
+                },
+                "failed to resolve Turso source-index scope",
+            )
+            .await?
+        }
+        None => {
+            run_turso_operation_with_lock_retry(
+                || async {
+                    connection
+                        .query(
+                            "SELECT project_root, schema_id, schema_version
+                         FROM asp_source_index_scope_v1
+                         ORDER BY updated_at_ms DESC
+                         LIMIT 2",
+                            (),
+                        )
+                        .await
+                        .map_err(|error| error.to_string())
+                },
+                "failed to resolve unscoped Turso source-index scope",
+            )
+            .await?
+        }
+    };
+    let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Turso source-index scope: {error}"))?
+    else {
+        return Ok(None);
+    };
+    let scope = TursoSourceIndexLookupScope {
+        project_root: row
+            .get::<String>(0)
+            .map_err(|error| format!("failed to read Turso source-index project root: {error}"))?,
+        schema_id: row
+            .get::<String>(1)
+            .map_err(|error| format!("failed to read Turso source-index schema id: {error}"))?,
+        schema_version: row.get::<String>(2).map_err(|error| {
+            format!("failed to read Turso source-index schema version: {error}")
+        })?,
+    };
+    if rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to verify Turso source-index scope: {error}"))?
+        .is_some()
+    {
+        return Err(
+            "unscoped Turso source-index lookup is ambiguous; provide the indexed project root"
+                .to_string(),
+        );
+    }
+    Ok(Some(scope))
+}
+
+async fn query_turso_source_index_snapshot_candidates_with_connection(
+    connection: &turso::Connection,
+    scope: &TursoSourceIndexLookupScope,
     query: &str,
     language_id: Option<&LanguageId>,
     limit: u32,
@@ -401,203 +766,218 @@ async fn query_turso_source_index_candidates_with_connection(
     if limit == 0 || query.trim().is_empty() {
         return Ok(Vec::new());
     }
-    let mut generation_rows = run_turso_operation_with_lock_retry(
-        || async {
-            connection
-                .query(
-                    "SELECT generation_id
-                     FROM asp_source_index_generation
-                     ORDER BY updated_at_ms DESC
-                     LIMIT 1",
-                    (),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to query Turso source-index latest generation",
-    )
-    .await?;
-    let Some(generation_row) = generation_rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read Turso source-index latest generation: {error}"))?
-    else {
+    let term_tokens_json = serde_json::to_string(terms)
+        .map_err(|error| format!("failed to encode Turso source-index query terms: {error}"))?;
+    if terms.is_empty() {
         return Ok(Vec::new());
-    };
-    let generation_id = generation_row
-        .get::<String>(0)
-        .map_err(|error| format!("failed to read Turso source-index generation id: {error}"))?;
-    drop(generation_rows);
-
-    let mut selector_rows = run_turso_operation_with_lock_retry(
-        || async {
-            connection
-                .query(
-                    "SELECT owner_path, selector_id, COALESCE(symbol, ''), kind, COALESCE(source, ''), payload_kind, COALESCE(payload_bounded, 0), query_keys_json
-                     FROM asp_source_index_selector
-                     WHERE generation_id = ?1
-                     ORDER BY owner_path, selector_id",
-                    (generation_id.as_str(),),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to query Turso source-index selectors",
-    )
-    .await?;
-    let mut selector_haystacks = std::collections::BTreeMap::<String, String>::new();
-    let mut selector_proofs =
-        std::collections::BTreeMap::<String, ClientDbSourceIndexSelectorPayloadProof>::new();
-    while let Some(row) = selector_rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read Turso source-index selector row: {error}"))?
-    {
-        let owner_path = row.get::<String>(0).map_err(|error| {
-            format!("failed to read Turso source-index selector owner path: {error}")
-        })?;
-        let selector_id = row
-            .get::<String>(1)
-            .map_err(|error| format!("failed to read Turso source-index selector id: {error}"))?;
-        let symbol = row.get::<String>(2).map_err(|error| {
-            format!("failed to read Turso source-index selector symbol: {error}")
-        })?;
-        let kind = row
-            .get::<String>(3)
-            .map_err(|error| format!("failed to read Turso source-index selector kind: {error}"))?;
-        let source = row.get::<String>(4).map_err(|error| {
-            format!("failed to read Turso source-index selector source: {error}")
-        })?;
-        let payload_kind = row.get::<Option<String>>(5).map_err(|error| {
-            format!("failed to read Turso source-index selector payload kind: {error}")
-        })?;
-        let payload_bounded = row.get::<i64>(6).map_err(|error| {
-            format!("failed to read Turso source-index selector payload bound: {error}")
-        })? != 0;
-        let query_keys_json = row.get::<String>(7).map_err(|error| {
-            format!("failed to read Turso source-index selector query keys: {error}")
-        })?;
-        if let Some(payload_kind) = payload_kind.filter(|value| !value.trim().is_empty()) {
-            selector_proofs.entry(owner_path.clone()).or_insert(
-                ClientDbSourceIndexSelectorPayloadProof {
-                    structural_selector: selector_id.clone(),
-                    payload_kind,
-                    bounded: payload_bounded,
-                },
-            );
-        }
-        let haystack = selector_haystacks.entry(owner_path).or_default();
-        haystack.push(' ');
-        haystack.push_str(&selector_id);
-        haystack.push(' ');
-        haystack.push_str(&symbol);
-        haystack.push(' ');
-        haystack.push_str(&kind);
-        haystack.push(' ');
-        haystack.push_str(&source);
-        haystack.push(' ');
-        haystack.push_str(&query_keys_json);
     }
-    drop(selector_rows);
-
-    let mut rows = run_turso_operation_with_lock_retry(
-        || async {
-            connection
-                .query(
-                    "SELECT owner_path, language_id, provider_id, source_kind, line_count, query_keys_json
-                     FROM asp_source_index_owner
-                     WHERE generation_id = ?1
-                     ORDER BY owner_path",
-                    (generation_id.as_str(),),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to query Turso source-index owners",
-    )
-    .await?;
-
+    // Each requested token probes the `(scope, token, owner_path)` primary key
+    // directly. Avoid a Turso group/order aggregate over high-fanout postings;
+    // structured scoring below fuses the bounded per-token owner windows.
+    let candidate_limit = i64::from(limit);
+    if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
+        trace_turso_source_index_posting_projection(
+            connection,
+            scope,
+            term_tokens_json.as_str(),
+            terms.len(),
+        )
+        .await?;
+    }
+    let posting_lookup_started_at = std::time::Instant::now();
+    let mut fetched_owner_count = 0;
+    let mut seen_owner_paths = BTreeSet::new();
     let mut candidates = Vec::<(usize, ClientDbSourceIndexCandidate)>::new();
-    while let Some(row) = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read Turso source-index owner row: {error}"))?
-    {
-        let path = row
-            .get::<String>(0)
-            .map_err(|error| format!("failed to read Turso source-index owner path: {error}"))?;
-        let row_language_id = row.get::<Option<String>>(1).map_err(|error| {
-            format!("failed to read Turso source-index owner language id: {error}")
-        })?;
-        if let Some(language_id) = language_id
-            && row_language_id.as_deref() != Some(language_id.as_str())
-        {
-            continue;
-        }
-        let provider_id = row.get::<Option<String>>(2).map_err(|error| {
-            format!("failed to read Turso source-index owner provider id: {error}")
-        })?;
-        let source_kind = row.get::<String>(3).map_err(|error| {
-            format!("failed to read Turso source-index owner source kind: {error}")
-        })?;
-        let line_count = row
-            .get::<Option<i64>>(4)
-            .map_err(|error| format!("failed to read Turso source-index line count: {error}"))?
-            .and_then(|value| u32::try_from(value).ok());
-        let query_keys_json = row
-            .get::<String>(5)
-            .map_err(|error| format!("failed to read Turso source-index query keys: {error}"))?;
-        let query_keys = serde_json::from_str::<Vec<String>>(&query_keys_json)
-            .map_err(|error| format!("failed to decode Turso source-index query keys: {error}"))?;
-        let selector_haystack = selector_haystacks
-            .get(&path)
-            .map(String::as_str)
-            .unwrap_or_default();
-        let match_score = source_index_structured_candidate_score(
-            &path,
-            row_language_id.as_deref(),
-            provider_id.as_deref(),
-            &source_kind,
-            &query_keys,
-            selector_haystack,
-            terms,
-        );
-        if match_score == 0 {
-            continue;
-        }
-        let language_id = row_language_id.map(LanguageId::from);
-        let provider_id = provider_id.map(ProviderId::from);
-        if candidates.iter().any(|(_, candidate)| {
-            candidate.path == path
-                && candidate.language_id == language_id
-                && candidate.provider_id == provider_id
-        }) {
-            continue;
-        }
-        let selector_proof = selector_proofs.get(&path).cloned();
-        candidates.push((
-            match_score,
-            ClientDbSourceIndexCandidate {
-                path,
-                language_id,
-                provider_id,
-                source_kind: ClientDbSourceIndexSourceKind::Other("turso-source-index".to_string()),
-                line_count,
-                query_keys,
-                selector_proof,
+    for term in terms {
+        let mut rows = run_turso_operation_with_lock_retry(
+            || async {
+                connection
+                    .query(
+                        "SELECT owner.owner_path,
+                                owner.language_id,
+                                owner.provider_id,
+                                owner.source_kind,
+                                owner.line_count,
+                                owner.query_keys_json,
+                                owner.selector_facts_json
+                         FROM asp_source_index_token_owner_v1 AS indexed
+                         JOIN asp_source_index_owner_v1 AS owner
+                           ON owner.project_root = indexed.project_root
+                          AND owner.schema_id = indexed.schema_id
+                          AND owner.schema_version = indexed.schema_version
+                          AND owner.owner_path = indexed.owner_path
+                         WHERE indexed.project_root = ?1
+                           AND indexed.schema_id = ?2
+                           AND indexed.schema_version = ?3
+                           AND indexed.token = ?4
+                           AND (?5 IS NULL OR owner.language_id = ?5)
+                         ORDER BY indexed.owner_path
+                         LIMIT ?6",
+                        (
+                            scope.project_root.as_str(),
+                            scope.schema_id.as_str(),
+                            scope.schema_version.as_str(),
+                            term.as_str(),
+                            language_id.map(|value| value.as_str()),
+                            candidate_limit,
+                        ),
+                    )
+                    .await
+                    .map_err(|error| error.to_string())
             },
-        ));
+            "failed to query Turso source-index token postings",
+        )
+        .await?;
+        while let Some(row) = rows
+            .next()
+            .await
+            .map_err(|error| format!("failed to read Turso source-index snapshot owner: {error}"))?
+        {
+            fetched_owner_count += 1;
+            let path = row.get::<String>(0).map_err(|error| {
+                format!("failed to read Turso source-index owner path: {error}")
+            })?;
+            if !seen_owner_paths.insert(path.clone()) {
+                continue;
+            }
+            let row_language_id = row.get::<Option<String>>(1).map_err(|error| {
+                format!("failed to read Turso source-index owner language id: {error}")
+            })?;
+            let provider_id = row.get::<Option<String>>(2).map_err(|error| {
+                format!("failed to read Turso source-index owner provider id: {error}")
+            })?;
+            let source_kind = row.get::<String>(3).map_err(|error| {
+                format!("failed to read Turso source-index owner source kind: {error}")
+            })?;
+            let line_count = row
+                .get::<Option<i64>>(4)
+                .map_err(|error| format!("failed to read Turso source-index line count: {error}"))?
+                .and_then(|value| u32::try_from(value).ok());
+            let query_keys_json = row.get::<String>(5).map_err(|error| {
+                format!("failed to read Turso source-index query keys: {error}")
+            })?;
+            let selector_facts_json = row.get::<String>(6).map_err(|error| {
+                format!("failed to read Turso source-index canonical selectors: {error}")
+            })?;
+            let query_keys =
+                serde_json::from_str::<Vec<String>>(&query_keys_json).map_err(|error| {
+                    format!("failed to decode Turso source-index query keys: {error}")
+                })?;
+            let (selector_haystack, selector_symbol, selector_kind, selector_proof) =
+                decode_turso_source_index_canonical_selectors(&selector_facts_json)?;
+            let match_score = source_index_structured_candidate_score(
+                &path,
+                row_language_id.as_deref(),
+                provider_id.as_deref(),
+                &source_kind,
+                &query_keys,
+                &selector_haystack,
+                terms,
+            );
+            if match_score == 0 {
+                continue;
+            }
+            candidates.push((
+                match_score,
+                ClientDbSourceIndexCandidate {
+                    path,
+                    language_id: row_language_id.map(LanguageId::from),
+                    provider_id: provider_id.map(ProviderId::from),
+                    source_kind: ClientDbSourceIndexSourceKind::Other(
+                        "turso-source-index".to_string(),
+                    ),
+                    line_count,
+                    query_keys,
+                    selector_symbol,
+                    selector_kind,
+                    selector_proof,
+                },
+            ));
+        }
     }
     candidates.sort_by(|(left_score, left), (right_score, right)| {
         right_score
             .cmp(left_score)
             .then_with(|| left.path.cmp(&right.path))
     });
+    if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
+        eprintln!(
+            "[source-index-read-trace] stage=token-candidates fetchedOwners={fetched_owner_count} rankedOwners={} lookupMs={}",
+            candidates.len(),
+            posting_lookup_started_at.elapsed().as_millis(),
+        );
+    }
     Ok(candidates
         .into_iter()
         .map(|(_, candidate)| candidate)
         .take(limit as usize)
         .collect())
+}
+
+async fn trace_turso_source_index_posting_projection(
+    connection: &turso::Connection,
+    scope: &TursoSourceIndexLookupScope,
+    term_tokens_json: &str,
+    requested_term_count: usize,
+) -> Result<(), String> {
+    let mut rows = connection
+        .query(
+            "WITH requested_terms AS (
+                SELECT DISTINCT lower(value) AS token
+                FROM json_each(?4)
+             )
+             SELECT COUNT(*),
+                    COUNT(*)
+             FROM asp_source_index_token_owner_v1 AS indexed
+             JOIN requested_terms
+               ON requested_terms.token = indexed.token
+             WHERE indexed.project_root = ?1
+               AND indexed.schema_id = ?2
+               AND indexed.schema_version = ?3",
+            (
+                scope.project_root.as_str(),
+                scope.schema_id.as_str(),
+                scope.schema_version.as_str(),
+                term_tokens_json,
+            ),
+        )
+        .await
+        .map_err(|error| format!("failed to trace Turso source-index token projection: {error}"))?;
+    let Some(row) = rows.next().await.map_err(|error| {
+        format!("failed to read Turso source-index token projection trace: {error}")
+    })?
+    else {
+        return Ok(());
+    };
+    let token_count = row
+        .get::<i64>(0)
+        .map_err(|error| format!("failed to decode Turso source-index token trace: {error}"))?;
+    let owner_count = row
+        .get::<i64>(1)
+        .map_err(|error| format!("failed to decode Turso source-index owner trace: {error}"))?;
+    eprintln!(
+        "[source-index-read-trace] stage=posting-lookup requestedTerms={requested_term_count} matchedTokens={token_count} matchedPostings={owner_count}"
+    );
+    Ok(())
+}
+
+async fn query_turso_source_index_candidates_with_connection(
+    connection: &turso::Connection,
+    scope: &TursoSourceIndexLookupScope,
+    query: &str,
+    language_id: Option<&LanguageId>,
+    limit: u32,
+    terms: &[String],
+) -> Result<Vec<ClientDbSourceIndexCandidate>, String> {
+    query_turso_source_index_snapshot_candidates_with_connection(
+        connection,
+        scope,
+        query,
+        language_id,
+        limit,
+        terms,
+    )
+    .await
 }
 
 fn source_index_structured_candidate_score(

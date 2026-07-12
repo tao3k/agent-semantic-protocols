@@ -263,7 +263,7 @@ every name, attribute, call, and assignment expression.
 
 The compact renderer also now applies pipe-packet caps only to =text= and
 =ingest= lines.  JSON packets retain the complete owner, hit, and edge lists.
-For =search fzf=, compact hit selection keeps parser-visible source evidence
+For =search lexical=, compact hit selection keeps parser-visible source evidence
 before export-only evidence, so compression does not hide the source line an
 agent needs for disambiguation.
 

@@ -108,13 +108,11 @@ fn insert_asp_explore_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("requiredAction".to_string())
-        .or_insert_with(|| Value::String("send-to-asp-explore".to_string()));
+        .or_insert_with(|| Value::String("enter-asp-explore-choice-pane".to_string()));
     decision
         .fields
         .entry("nextAction".to_string())
-        .or_insert_with(|| {
-            Value::String("run-asp-command-in-registered-asp-explore-child".to_string())
-        });
+        .or_insert_with(|| Value::String("choose-one-bootstrap-pane-option".to_string()));
     decision
         .fields
         .entry("targetAgentName".to_string())
@@ -130,7 +128,7 @@ fn insert_asp_explore_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("completionReceipt".to_string())
-        .or_insert_with(|| Value::String("asp-explore-child-command".to_string()));
+        .or_insert_with(|| Value::String("asp-explore-choice-pane-receipt".to_string()));
 }
 
 /// Append one compact hook decision record to `events.jsonl`.

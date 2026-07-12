@@ -210,6 +210,148 @@ fn asp_agent_session_smoke_invalid_child_bootstrap_runs_one_step() {
 }
 
 #[test]
+fn asp_agent_session_bootstrap_create_choice_uses_concrete_codex_native_action() {
+    let root = temp_project_root("agent-command-session-bootstrap-create-choice");
+    let home = root.join("home");
+    let agents_dir = home.join(".codex").join("agents");
+    std::fs::create_dir_all(&agents_dir).expect("create codex agents dir");
+    std::fs::write(
+        agents_dir.join("asp-explorer.toml"),
+        "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nmodel_reasoning_effort = \"low\"\nsandbox_mode = \"read-only\"\nsession_lifetime = \"resident\"\n",
+    )
+    .expect("write asp explorer config");
+    let state_home = root.join(".asp-home");
+    let root_session_id = "codex-root-thread";
+
+    let bootstrap = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .args([
+            "agent",
+            "session",
+            "bootstrap",
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            root_session_id,
+        ])
+        .output()
+        .expect("run agent session bootstrap");
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&bootstrap.stdout),
+        String::from_utf8_lossy(&bootstrap.stderr)
+    );
+    assert!(bootstrap.status.success(), "{output}");
+    assert!(output.contains("pane: asp.session.create.v1"), "{output}");
+    assert!(
+        output.contains("1: create-managed-resident-child"),
+        "{output}"
+    );
+    assert!(
+        output.contains("Use the detected platform-native managed-agent creation surface"),
+        "{output}"
+    );
+    assert!(
+        output.contains("SubagentStart event owns registration and validation"),
+        "{output}"
+    );
+    assert!(
+        output.contains("platform-native-create: platform=codex managedAgentKind=asp_explorer"),
+        "{output}"
+    );
+    assert!(
+        output.contains("let SubagentStart capture the native identity"),
+        "{output}"
+    );
+    assert!(
+        output.contains(
+            "platform-native-create-blocker: if platform=codex cannot create managedAgentKind=asp_explorer or emits no SubagentStart event"
+        ),
+        "{output}"
+    );
+    assert!(
+        output.contains("lifecycle identity is captured by host hooks"),
+        "{output}"
+    );
+    assert!(!output.contains("codex-native-create:"), "{output}");
+    assert!(
+        output.contains("never pass child ids, message targets, model claims, or lifecycle status"),
+        "{output}"
+    );
+    assert!(!output.contains("receipt:"), "{output}");
+    assert!(!output.contains("receipt-root:"), "{output}");
+    assert!(!output.contains("--model <configuredModel>"), "{output}");
+    assert!(!output.contains("{platform}"), "{output}");
+    assert!(!output.contains("{managedAgentKind}"), "{output}");
+    assert!(!output.contains("{requiredTransport}"), "{output}");
+    assert!(!output.contains("--json"), "{output}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_agent_session_bootstrap_rejects_model_authored_native_receipts() {
+    let root = temp_project_root("agent-command-session-bootstrap-native-receipt");
+    let home = root.join("home");
+    let agents_dir = home.join(".codex").join("agents");
+    std::fs::create_dir_all(&agents_dir).expect("create codex agents dir");
+    std::fs::write(
+        agents_dir.join("asp-explorer.toml"),
+        "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nmodel_reasoning_effort = \"low\"\nsandbox_mode = \"read-only\"\nsession_lifetime = \"resident\"\n",
+    )
+    .expect("write asp explorer config");
+    let state_home = root.join(".asp-home");
+    let root_session_id = "codex-root-thread";
+    let child_session_id = "codex-child-thread";
+
+    let bootstrap = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .args([
+            "agent",
+            "session",
+            "bootstrap",
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            root_session_id,
+            "--child-session-id",
+            child_session_id,
+            "--message-target-id",
+            child_session_id,
+            "--roles",
+            "subagent,search",
+            "--model",
+            "gpt-5.4-mini",
+        ])
+        .output()
+        .expect("run agent session bootstrap with native receipt");
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&bootstrap.stdout),
+        String::from_utf8_lossy(&bootstrap.stderr)
+    );
+    assert!(!bootstrap.status.success(), "{output}");
+    assert!(
+        output.contains(
+            "does not accept child identity, message target, model, parent, or status receipts"
+        ),
+        "{output}"
+    );
+    assert!(
+        output.contains("let SubagentStart/SubagentStop update the registry"),
+        "{output}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn asp_agent_session_wraps_codex_saved_session_commands() {
     let root = temp_project_root("agent-command-session-codex-wrapper");
     let home = root.join("home");

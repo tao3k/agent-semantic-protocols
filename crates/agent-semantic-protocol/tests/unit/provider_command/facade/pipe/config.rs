@@ -9,7 +9,11 @@ fn asp_toml_search_ignore_dirs_apply_to_fast_discovery() {
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::create_dir_all(root.join("generated")).expect("create generated");
-    std::fs::write(root.join("src/lib.rs"), "pub fn cache_root() {}\n").expect("write source");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn cache_root() {}\npub fn helper() {}\n",
+    )
+    .expect("write source");
     std::fs::write(
         root.join("generated/lib.rs"),
         "pub fn cache_root_generated() {}\n",
@@ -30,7 +34,7 @@ fn asp_toml_search_ignore_dirs_apply_to_fast_discovery() {
             "rust",
             "search",
             "lexical",
-            "cache_root",
+            "cache_root|helper",
             "owner",
             "tests",
             "--workspace",
@@ -62,7 +66,11 @@ fn asp_toml_language_disabled_blocks_fast_discovery() {
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
-    std::fs::write(root.join("src/lib.rs"), "pub fn cache_root() {}\n").expect("write source");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn cache_root() {}\npub fn helper() {}\n",
+    )
+    .expect("write source");
     std::fs::write(root.join("asp.toml"), "[languages.rust]\nenabled = false\n")
         .expect("write asp.toml");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
@@ -75,7 +83,7 @@ fn asp_toml_language_disabled_blocks_fast_discovery() {
             "rust",
             "search",
             "lexical",
-            "cache_root",
+            "cache_root|helper",
             "owner",
             "tests",
             "--workspace",

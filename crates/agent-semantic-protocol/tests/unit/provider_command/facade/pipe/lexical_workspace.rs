@@ -34,7 +34,7 @@ fn lexical_accepts_workspace_and_trailing_scope_path() {
             "python",
             "search",
             "lexical",
-            "calibration",
+            "calibration|asp_graph_turbo",
             "--workspace",
             ".",
             "--view",
@@ -50,9 +50,11 @@ fn lexical_accepts_workspace_and_trailing_scope_path() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
+    assert!(stdout.starts_with("[graph-route]"), "{stdout}");
     assert!(
-        stdout.contains("packages/python/asp_graph_turbo/src/asp_graph_turbo/calibration.py"),
+        stdout.contains(
+            "owner=path(packages/python/asp_graph_turbo/src/asp_graph_turbo/calibration.py)"
+        ),
         "{stdout}"
     );
     assert!(!stdout.contains("tests/unit/noise.py"), "{stdout}");
@@ -149,10 +151,10 @@ fn workspace_asp_project_state_root_is_rejected_before_provider_spawn() {
         "ASP state root workspace should fail before provider spawn"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("ASP project state root"), "stderr={stderr}");
-    assert!(stderr.contains("projects/by-id"), "stderr={stderr}");
+    assert!(stderr.contains("owner=\"build-std.ss\""), "stderr={stderr}");
+    assert!(stderr.contains("reason=missing-owner"), "stderr={stderr}");
     assert!(
-        stderr.contains("real checkout workspace"),
+        stderr.contains("search owner requires a concrete source owner path"),
         "stderr={stderr}"
     );
     assert!(

@@ -114,6 +114,9 @@ pub fn render_owner_items_source_index_lookup_trace(
         ClientDbSourceIndexLookupState::EmptyIndex => {
             line.push_str(" reason=sourceIndex:empty-index next=asp_cache_source-index_refresh");
         }
+        ClientDbSourceIndexLookupState::ColdRequired => {
+            line.push_str(" reason=sourceIndex:cold-required next=asp_cache_source-index_rebuild");
+        }
         ClientDbSourceIndexLookupState::Busy => {
             line.push_str(" reason=sourceIndex:busy next=retry_source-index_lookup");
         }

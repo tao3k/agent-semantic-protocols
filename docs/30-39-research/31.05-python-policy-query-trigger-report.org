@@ -52,8 +52,8 @@ The agent searched for =PY-PROJ-R001= and =src layout=, then queried layout
 helpers:
 
 #+begin_src shell
-py-harness search fzf "PY-PROJ-R001" owner tests --view seeds languages/python-lang-project-harness
-py-harness search fzf "src layout" owner tests --view seeds languages/python-lang-project-harness
+py-harness search lexical "PY-PROJ-R001" owner tests --view seeds languages/python-lang-project-harness
+py-harness search lexical "src layout" owner tests --view seeds languages/python-lang-project-harness
 py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _uses_src_layout languages/python-lang-project-harness
 py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _is_packaged_project languages/python-lang-project-harness
 py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _src_parent_for_package languages/python-lang-project-harness
@@ -77,8 +77,8 @@ through owner item query.
 The same pattern happened for =PY-AGENT-R008=:
 
 #+begin_src shell
-py-harness search fzf "PY-AGENT-R008" owner tests --view seeds languages/python-lang-project-harness
-py-harness search fzf "broad mixed surface" owner tests --view seeds languages/python-lang-project-harness
+py-harness search lexical "PY-AGENT-R008" owner tests --view seeds languages/python-lang-project-harness
+py-harness search lexical "broad mixed surface" owner tests --view seeds languages/python-lang-project-harness
 py-harness search owner src/python_lang_project_harness/_agent_policy_catalog.py items --query PY_AGENT_R008 languages/python-lang-project-harness
 py-harness search owner src/python_lang_project_harness/_agent_reasoning_tree.py items --query _branch_needs_owner_map languages/python-lang-project-harness
 #+end_src
@@ -117,7 +117,7 @@ Policy catalogs expose rule ids through data structures.  Owner item query only
 sees Python parser declarations.  Therefore =PY_PROJ_R001= and
 =PY_AGENT_R008= miss as item queries and fall back to generic helper functions.
 
-This causes the agent to do the right high-level action, =search fzf <rule-id>
+This causes the agent to do the right high-level action, =search lexical <rule-id>
 owner tests=, then lose precision when it tries to inspect the selected owner.
 
 ** Broad test queries render too much code
@@ -287,7 +287,7 @@ PY-PROJ-R001 aliases=src-layout,packaged-project-layout
 PY-AGENT-R008 aliases=branch-owner-map,mixed-surface-branch
 #+end_src
 
-Aliases should appear in compact =search fzf= and future =search policy=
+Aliases should appear in compact =search lexical= and future =search policy=
 output.  Agents should be able to search policy concepts without guessing
 private helper names such as =_branch_needs_owner_map=.
 

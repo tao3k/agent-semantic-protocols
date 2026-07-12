@@ -10,7 +10,7 @@ Alias-only compact graph lines are too ambiguous for an agent protocol:
 
 #+begin_src text
 O=owner:src/.../model.py!owner
-Q=query:Path!fzf
+Q=query:Path!lexical
 D=dependency:pytest!deps
 #+end_src
 
@@ -86,7 +86,7 @@ Examples:
 
 #+begin_src text
 O=owner:path(src/python_lang_project_harness/verification/model.py)!owner
-Q=query:term(Path)!fzf
+Q=query:term(Path)!lexical
 D=dependency:pkg(pytest)!deps
 T=test:path(tests/verification/test_model.py)!tests
 I=item:symbol(ModelPathPolicy)@src/.../model.py:40:88!code

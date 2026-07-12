@@ -30,7 +30,7 @@
           "decision": "deny",
           "reasonKind": "bulk-source-dump",
           "languageIds.0": "python",
-          "routes.0.providerId": "py-harness",
+          "routes.0.providerId": "asp python",
           "routes.0.kind": "query"
         },
         "stdoutJsonContains": {

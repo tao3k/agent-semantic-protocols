@@ -30,7 +30,7 @@ provider execution:
 - broad =asp fd -query ...= rejects with =noOutput reason=query-too-broad=
 - broad =asp rg -query ...= rejects unless native filters or narrow scopes are present
 - broad =search pipe= rejects before finder/provider fact collection
-- broad =search fzf= rejects before finder/provider fact collection
+- broad =search lexical= rejects before finder/provider fact collection
 - providers without =searchCapabilities.semanticFacts= are not invoked for semantic-facts
 - provider fact collection receives a bounded candidate list
 - blocked receipts include one granular =asp fd -query 'path-or-symbol|error-code' --workspace <scope>= example

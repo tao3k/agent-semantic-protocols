@@ -266,11 +266,11 @@ def _promotion_lines(value: object) -> tuple[str, ...]:
         f"policy={value['policy']} promotable={value['promotableSearches']} "
         f"groups={value['candidateGroupCount']} actions={value['actionCount']} "
         f"replacement={value['replacement']}",
-        *(_fzf_action_line(action) for action in value.get("actions", [])),
+        *(_lexical_action_line(action) for action in value.get("actions", [])),
     )
 
 
-def _fzf_action_line(action: dict[str, object]) -> str:
+def _lexical_action_line(action: dict[str, object]) -> str:
     root = f" root={action['projectRootArg']}" if action.get("projectRootArg") else ""
     return (
         "[graph-turbo-typed-frontier-action] "

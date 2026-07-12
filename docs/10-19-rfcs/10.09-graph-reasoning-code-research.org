@@ -184,14 +184,14 @@ The prime output should be graph-rendered with RFC 006 line protocol:
 legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 aliases=G:search,O:owner,Q:query,D:dependency,T:test,F:finding
 O=owner:path(src/python_lang_project_harness/verification/model.py)!owner
-Q=query:term(Path)!fzf
+Q=query:term(Path)!lexical
 D=dependency:pkg(pytest)!deps
 T=test:path(tests/verification/test_model.py)!tests
 G>{O:selects,Q:matches,D:uses,T:covers}
 O>{Q:contains,D:uses,T:covered_by}
-rank=O,Q,T,D frontier=O.owner,Q.fzf,T.tests,D.deps
+rank=O,Q,T,D frontier=O.owner,Q.lexical,T.tests,D.deps
 entries=owner-query(O,Q=>items+tests+dependency-usage),query-deps(Q,D=>owners+imports+usage-tests),owner-tests(O=>covering-tests+test-entrypoints+fixtures)
-avoid=raw-read,full-json,broad-fzf
+avoid=raw-read,full-json,broad-lexical
 omit=items,blocks,code,full-test-list
 #+end_src
 
@@ -269,7 +269,7 @@ returns graph facts:
 legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 aliases=G:search,O:owner,Q:query,D:dependency,I:item,T:test
 O=owner:path(src/.../model.py)!owner
-Q=query:term(Path)!fzf
+Q=query:term(Path)!lexical
 D=dependency:pkg(pytest)!deps
 I=item:symbol(ModelPathPolicy)@src/.../model.py:40:88!code
 T=test:path(tests/verification/test_model.py)!tests
@@ -404,7 +404,7 @@ Compare =owner-rank-frontier=, =hybrid-lexical-structural-rank=, and
 Prime should emit anti-actions:
 
 #+begin_src text
-avoid=raw-read,full-json,broad-fzf
+avoid=raw-read,full-json,broad-lexical
 #+end_src
 
 The goal is to reduce the common loop:

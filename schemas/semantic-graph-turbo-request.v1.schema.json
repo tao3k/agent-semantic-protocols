@@ -239,6 +239,9 @@
       },
       "uniqueItems": true
     },
+    "route": {
+      "$ref": "#/$defs/graphRoute"
+    },
     "requestId": {
       "type": "string",
       "minLength": 1
@@ -609,6 +612,179 @@
               "risk"
             ]
           }
+        }
+      }
+    },
+    "graphRoute": {
+      "description": "Compact GraphRouter decision selected from the EvidenceGraph. It is the prompt-facing route receipt source; full graph nodes and edges remain debug evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version",
+        "algorithm",
+        "relation",
+        "routeKind",
+        "queryCount",
+        "coveredQueryCount",
+        "owner",
+        "nextAction",
+        "avoid"
+      ],
+      "properties": {
+        "kind": {
+          "const": "graph-route"
+        },
+        "version": {
+          "const": "lexical-route-v1"
+        },
+        "algorithm": {
+          "const": "graph-owner-rank-v1"
+        },
+        "relation": {
+          "enum": [
+            "cohesive",
+            "query-bundle-required"
+          ]
+        },
+        "routeKind": {
+          "enum": [
+            "owner",
+            "owner-item",
+            "owner-test",
+            "owner-deps"
+          ]
+        },
+        "queryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coveredQueryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "owner": {
+          "$ref": "#/$defs/graphRouteOwner"
+        },
+        "nextAction": {
+          "$ref": "#/$defs/graphRouteNextAction"
+        },
+        "avoid": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "frontier-dump",
+              "source-body",
+              "line-selector"
+            ]
+          }
+        }
+      }
+    },
+    "graphRouteOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "matchedQueryAxes",
+        "score",
+        "localHits",
+        "symbols"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+        },
+        "matchedQueryAxes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "score": {
+          "$ref": "#/$defs/graphRouteOwnerScore"
+        },
+        "localHits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "graphRouteOwnerScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "queryAxisCount",
+        "packageQueryAxisCount",
+        "topologyQueryAxisCount",
+        "localHits",
+        "symbolCount"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryAxisCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "packageQueryAxisCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "topologyQueryAxisCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "localHits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "symbolCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "graphRouteNextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "languageId",
+        "ownerPath",
+        "query"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "search-owner-items"
+          ]
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

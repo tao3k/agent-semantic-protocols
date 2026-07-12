@@ -28,6 +28,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
         &agent_semantic_client_db::TursoClientDbGraphEntity {
             id: "selector:rust://src/lib.rs#item/struct/TursoFixture".to_string(),
             kind: "selector".to_string(),
+            semantic_kind: Some("struct".to_string()),
             label: "TursoFixture".to_string(),
             selector: Some("rust://src/lib.rs#item/struct/TursoFixture".to_string()),
             path: Some("src/lib.rs".to_string()),
@@ -44,6 +45,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
             .expect("list Turso graph entities");
     assert_eq!(graph_entities.len(), 1);
     assert_eq!(graph_entities[0].kind, "selector");
+    assert_eq!(graph_entities[0].semantic_kind.as_deref(), Some("struct"));
     assert_eq!(graph_entities[0].label, "TursoFixture");
     assert_eq!(graph_entities[0].language_id.as_deref(), Some("rust"));
     assert_eq!(graph_entities[0].provider_id.as_deref(), Some("rs-harness"));
@@ -60,6 +62,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
             agent_semantic_client_db::ClientDbEvidenceGraphNode {
                 id: "source-owner:generation-fixture:src/lib.rs".to_string(),
                 kind: "source-owner",
+                semantic_kind: None,
                 label: "src/lib.rs".to_string(),
                 path: Some("src/lib.rs".to_string()),
                 selector: None,
@@ -70,6 +73,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
             agent_semantic_client_db::ClientDbEvidenceGraphNode {
                 id: "selector:rust://src/lib.rs#item/struct/TursoFixture".to_string(),
                 kind: "selector",
+                semantic_kind: Some("struct".to_string()),
                 label: "TursoFixture".to_string(),
                 path: Some("src/lib.rs".to_string()),
                 selector: Some("rust://src/lib.rs#item/struct/TursoFixture".to_string()),

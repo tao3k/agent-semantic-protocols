@@ -252,3 +252,85 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
     polluted["evidence"][0]["commandLog"] = serde_json::json!(["asp rg ..."]);
     assert!(!agent_semantic_search::search_subagent_graph_route_receipt_is_compact(&polluted));
 }
+
+#[test]
+fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
+    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let lookup = SearchPipeSourceIndexLookup {
+        state: "busy".to_string(),
+        candidates: Vec::new(),
+    };
+    let owners: Vec<PathBuf> = Vec::new();
+    let ignore_dirs: Vec<String> = Vec::new();
+    let include_hidden_dirs: Vec<String> = Vec::new();
+
+    let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
+        language_id: "rust",
+        project_root,
+        locator_root: project_root,
+        query: "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match",
+        owners: &owners,
+        ignore_dirs: &ignore_dirs,
+        include_hidden_dirs: &include_hidden_dirs,
+        require_multi_clause: false,
+        limit: 5,
+        source_index_lookup: Some(&lookup),
+    })
+    .expect("busy source-index should short-circuit without overlay");
+
+    assert_eq!(acquisition.candidate_sources, vec!["source-index"]);
+    assert!(acquisition.candidates.is_empty());
+    assert!(
+        acquisition
+            .source_trace
+            .iter()
+            .any(|trace| trace.source == "sourceIndex" && trace.status == "busy")
+    );
+    assert!(
+        acquisition
+            .source_trace
+            .iter()
+            .any(|trace| trace.source == "search-overlay" && trace.status == "skipped")
+    );
+}
+
+#[test]
+fn search_flow_cold_required_source_index_returns_overlay_skipped() {
+    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let lookup = SearchPipeSourceIndexLookup {
+        state: "cold-required".to_string(),
+        candidates: Vec::new(),
+    };
+    let owners: Vec<PathBuf> = Vec::new();
+    let ignore_dirs: Vec<String> = Vec::new();
+    let include_hidden_dirs: Vec<String> = Vec::new();
+
+    let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
+        language_id: "rust",
+        project_root,
+        locator_root: project_root,
+        query: "source-index schema requires explicit rebuild",
+        owners: &owners,
+        ignore_dirs: &ignore_dirs,
+        include_hidden_dirs: &include_hidden_dirs,
+        require_multi_clause: false,
+        limit: 5,
+        source_index_lookup: Some(&lookup),
+    })
+    .expect("cold-required source-index should short-circuit without overlay");
+
+    assert_eq!(acquisition.candidate_sources, vec!["source-index"]);
+    assert!(acquisition.candidates.is_empty());
+    assert!(
+        acquisition
+            .source_trace
+            .iter()
+            .any(|trace| trace.source == "sourceIndex" && trace.status == "cold-required")
+    );
+    assert!(
+        acquisition
+            .source_trace
+            .iter()
+            .any(|trace| trace.source == "search-overlay" && trace.status == "skipped")
+    );
+}

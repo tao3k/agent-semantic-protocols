@@ -71,6 +71,30 @@ This is a code reasoning graph, not a visual graph.  The provider should
 compress repeated syntax, but it must not compress away relation labels,
 rank order, next actions, locators, or omission reasons.
 
+** Materialized selectors and graph-only evidence
+
+An EvidenceGraph node identity is not automatically an executable source
+selector. Providers may emit graph-only nodes for call sites, relations,
+observations, errors, and other parser facts that do not have an independently
+materializable query item. Those nodes retain their typed graph identity and
+relations, but they MUST NOT be rendered as =readSelector= values or embedded
+in an exact =query --selector= action.
+
+Every compact graph route separates graph evidence from reading capability:
+
+- =evidenceSelector= identifies a graph node and may be non-executable.
+- =readSelector= is optional and is present only for a parser-owned item
+  accepted by the provider's exact query reader.
+- =enclosingReadSelector= connects graph-only evidence to its smallest
+  enclosing materialized item when that relation is known.
+
+The recommended exact read action may use only =readSelector= or
+=enclosingReadSelector=. If neither exists, GraphRoute must recommend bounded
+owner/item expansion rather than manufacture a selector. This is a shared
+invariant: every selector carried by a recommended exact-read command must
+execute through that provider's exact query surface. A scenario gate must
+exercise the invariant across every registered language provider.
+
 * Research line and invariants
 
 This RFC is the protocol surface for the research line:
@@ -856,6 +880,83 @@ and field-name deduplication saves more tokens than the lost line anchors cost.
 
 * Search interface mapping
 
+** Read-only source-index storage boundary
+
+Agent-facing source-index lookup, search, and inspection are strict read-only
+operations. They MUST open the Turso client database through a read-only
+connection and MUST NOT require write permission on the client directory or
+database file. A successful read path creates or mutates no database, WAL,
+shared-memory, lock, manifest, layout, or cache-generation file.
+
+The read path MUST NOT bootstrap tables or migrate columns. Schema convergence
+belongs to explicit write-intent bootstrap, refresh, import, and rebuild
+operations. If a historical source-index schema lacks a required table or
+column, lookup returns the structured =cold-required= state with an explicit
+=asp cache source-index rebuild --workspace <root>= next action. It does not
+run =ALTER TABLE=, classify the condition as =busy=, or escape into a broad
+finder/provider fallback.
+
+The performance and recovery gate executes lookup while filesystem writes to
+the resolved client directory are denied. The gate requires a bounded lookup
+receipt, zero provider processes, zero native finder processes, and an
+unchanged client-directory snapshot before and after the command. Lock-pressure
+tests remain separate: =busy= is reserved for a real Turso lock conflict, while
+=cold-required= means the persisted read model needs an explicit write-side
+rebuild.
+
+** Exact structural selector boundary
+
+An exact code read is a parser-owned operation, not a file, line-range, or
+source-locator read. Every provider MUST classify the input before dispatch:
+
+- a =ready= receipt contains one parser-owned structural selector and its
+  identity;
+- a =selector-not-materialized= receipt is returned when a query only has a
+  file path, line range, source locator hint, project root, or an otherwise
+  non-structural identity; and
+- a =projection-stale= receipt is returned when a previously materialized
+  selector cannot be justified by the current projection.
+- a =provider-index-gap= receipt is returned when the provider cannot
+  materialize a structural selector for a known owner at all.
+
+The exact-read route MUST NOT fall through from either non-ready state to a
+legacy =read-selector=, direct-file, source-window, or line-range route. Those
+inputs are display hints only. A provider may expose a separately named
+explicit direct-read command when the public product needs one, but it is not
+part of exact selector query semantics and must not be selected automatically.
+
+All providers emit the versioned =semantic-exact-selector-receipt.v1= contract.
+The receipt carries the structural selector, its language/dialect identity,
+status, reason code, and a bounded next action. It gives the main agent an
+honest recovery choice rather than silently reading a broad source body.
+
+A =provider-index-gap= is an explicit repair obligation, not a reason to
+permit arbitrary raw reads or revive legacy routing. Its receipt names the
+provider owner and directs the main agent to repair that provider's selector
+projection through the managed ASP workflow. The hook must recognize this
+receipt and offer that bounded repair action; repeatedly sending the agent
+through resident-child bootstrap without a new actionable step is invalid.
+
+** Incremental selector projection cache
+
+Selector projection is incrementally reusable only through one canonical cache
+identity: schema version, provider ABI, selector dialect, normalized workspace
+anchor, package/module graph digest, and source digest. Relative workspace
+paths such as =./gerbil-scheme= MUST NOT be part of the identity. Provider
+projection caches and compiled package caches may store different payloads, but
+they MUST derive their identity from this same record.
+
+On an ABI, anchor, module-graph, source, or selector-dialect mismatch, the
+provider returns =projection-stale= and rebuilds only affected modules through
+an explicit write-intent route. It does not consume a historical artifact or
+fall back to a line/file read. A cache artifact is reusable only when it has a
+complete structural-selector projection marker for the requested module.
+
+Conformance scenarios cover a stale relative-root artifact, workspace anchor
+change, missing structural projection, warm selector hit, and one-module
+incremental rebuild. Every scenario asserts zero legacy read-selector,
+source-window, provider, and native-finder fallback for exact reads.
+
 Graph is a feature of the whole search interface.  The provider should compute
 schema-backed graph nodes, edges, rank, and next actions whenever the selected
 search surface can justify them.
@@ -1104,7 +1205,7 @@ matches=, =owner->field contains=, =field->type has_type=,
 =field->collection collection_of=, =type->collection collection_of=, and
 =field->hot contains=.  This lets graph turbo project field-level selectors for
 questions such as =Vec collection fields= or =Effect concurrency Stream Scope=
-without requiring the agent to run a second owner search, broad fzf, or
+without requiring the agent to run a second owner search, broad lexical, or
 tree-sitter guide probe after the ranked frontier has selected the evidence
 boundary.
 For Rust, these data-shape facts are provider-owned parser facts produced by
@@ -1311,16 +1412,16 @@ Completed:
   compact graph text is only a render/debug projection.
 - [X] =semantic-content-compaction.v1= separates content payload compaction
   from graph/frontier/action protocol output.
-- [X] Rust =search fzf --query-set ... --view seeds= renders graph-frontier
+- [X] Rust =search lexical --query-set ... --view seeds= renders graph-frontier
   output instead of retired =|seed= / =|synthesis= rows.
 - [X] Rust =--view seeds= renders compact graph output from the search packet
   instead of post-processing =|seed= rows as an independent prompt protocol.
 - [X] Rust =--json --view seeds= preserves the search packet as the
   validation/source-of-truth shape.
-- [X] Focused Rust tests cover policy, query, fzf scoped search, dependency
+- [X] Focused Rust tests cover policy, query, lexical scoped search, dependency
   flow, and public large-library prime/dependency graph seed flows.
 - [X] Rust prompt-facing seed views for prime, owner, policy, query, ingest,
-  fzf, and fzf query-set assert graph output instead of retired =|seed= /
+  lexical, and lexical query-set assert graph output instead of retired =|seed= /
   =|synthesis= rows.
 - [X] TypeScript and Python =--view seeds= render the schema-owned
   =aliases=...= legend, =G>{...}= root edges, aliases, and
@@ -1423,7 +1524,7 @@ Completed:
   patterns instead of only aggregate counts.  Current local artifacts produce
   778 inferred microbursts, 353 fanout bursts, 951 inferred subagent starts,
   0 soft-overrun microbursts, and 98 repeated searches.  The current top repeat
-  group is Rust =search/prime= over =src/lib.rs=, followed by Python =search/fzf=
+  group is Rust =search/prime= over =src/lib.rs=, followed by Python =search/lexical=
   over =src/python_lang_project_harness/__init__.py= and Rust owner searches
   for classifier/provider owners.
 - [X] Timeline output now classifies repeat and fanout evidence into balanced
@@ -1433,7 +1534,7 @@ Completed:
   mixed fanout targets point to round planning/profile routing, and wide
   owner-item query fanout points to batched owner item frontiers.
 - [X] Timeline optimization rows now carry action-ready routing fields, not
-  only diagnostic labels.  Repeat-fzf and repeat-owner rows include
+  only diagnostic labels.  Repeat-lexical and repeat-owner rows include
   =profile=owner-query= plus an executable =preferredCommand= that promotes
   path-like fuzzy targets and repeated owner searches to
   =search owner <path> items --view seeds <project-root>=.  Mixed fanout rows
@@ -1498,19 +1599,19 @@ Completed:
   5 calls / 4 repeats, and Python
   =languages/python-lang-project-harness/src/python_lang_parser/_ast_names.py=
   with 5 calls / 4 repeats.
-- [X] The local client cache probe now performs safe fresh-fzf reuse for
-  repeated =search fzf <query> --workspace . --view seeds= requests.  Exact
+- [X] The local client cache probe now performs safe fresh-lexical reuse for
+  repeated =search lexical <query> --workspace . --view seeds= requests.  Exact
   request-fingerprint replay still wins; when that misses, the probe scans the
   recent same provider/project typed-frontier search generations newest-first and only
   reuses one if source file hashes are fresh and the cached =search/*.json=
   packet carries the same =query= as the current request.  This prevents
   accidentally replaying a different fuzzy query while still suppressing
   repeated provider spawns for equivalent fuzzy searches.
-- [X] Real CLI validation covers the fresh-fzf latest-unrelated case.  First,
-  =search fzf "cache replay proof 20260606 fresh fzf" owner tests --workspace . --view seeds=
+- [X] Real CLI validation covers the fresh-lexical latest-unrelated case.  First,
+  =search lexical "cache replay proof 20260606 fresh lexical" owner tests --workspace . --view seeds=
   wrote a native miss with =providerProcessesSpawned=1=, =elapsedMs=6577=,
   and 1226-byte stdout.  Then an unrelated newer
-  =search fzf "unrelated proof 20260606 fresh fzf" owner tests --workspace . --view seeds=
+  =search lexical "unrelated proof 20260606 fresh lexical" owner tests --workspace . --view seeds=
   generation wrote another native miss with =providerProcessesSpawned=1=.
   Finally, running the original query with =tests owner= changed the exact
   request fingerprint, skipped the unrelated latest generation through packet
@@ -1621,7 +1722,7 @@ Completed:
   The fixture
   =sandtables/fixtures/asp/graph-turbo-real-trigger-metrics.json= records a
   2026-06-07 run of
-  =asp rust search fzf graph_turbo owner tests .= hitting the default
+  =asp rust search lexical graph_turbo owner tests .= hitting the default
   graph-turbo compact path: ~commandCount=1~, ~resultBytes=1181~,
   ~latencyMs=811~, ~repeatedTriggerPatterns=0~, ~missingFacts=0~, and
   ~confusingNextActions=0~.  Request JSON size remains a debugging/schema
@@ -1660,7 +1761,31 @@ and materialize an executable `asp <language> search owner <path> items --query
 owner-items hint without a materialized command, but it must not rank a
 package-level scoped-rg action ahead of an exact finder-confirmed path.
 * Provider/ASP Topology Boundary
-Language providers provide lightweight interface facts; ASP owns heavyweight derived topology artifacts. A provider dependency seed may expose manifest dependency facts, lockfile/version facts, package roots, source roots, and typed follow-up actions, but graph-turbo must build and cache reasoning trees, source symbol indexes, dependency source indexes, documentation indexes, and route-selection state inside ASP from those provider facts. Normal =search= stdout should expose only the next-action facts useful to the agent; developer/history and sandtable analyzers may persist the heavier ASP topology/index receipts for quality and latency analysis.
+Language harnesses own native parsing and publish query-free, shared-schema
+projection artifacts; ASP imports their normalized facts and owns heavyweight
+derived topology artifacts.  A projection may expose parser-owned manifest,
+dependency, package-root, source-root, owner, selector, and typed relation
+facts, but it MUST NOT receive a user query, candidate list, rank, view, next
+action, or search command.  ASP must build and cache reasoning trees, source
+symbol indexes, dependency source indexes, documentation indexes, and
+route-selection state from the imported facts.  Normal =search= stdout exposes
+only the next-action facts useful to the agent; developer/history and sandtable
+analyzers may persist the heavier ASP topology/index receipts for quality and
+latency analysis.  A warm search reads Turso and the ASP acceleration model
+only; it never invokes a harness parser or provider search command.
+
+An owner-item route records language/path admission before graph construction.
+=owner-language-mismatch= is terminal evidence, not a low-confidence
+candidate: its compact packet gives the requested language, canonical path
+class, and the next valid language route. GraphRoute must not turn it into a
+provider retry, broad lexical fallback, or cold-index request. The ASP facade
+performs canonical-path, registered-extension, and bounded query-set validation
+before allocating owner-item evidence; it does not activate the harness parser
+for an admission check.
+The packet uses the =semantic-owner-item-evidence.v2= =admission= node. It
+contains only route-relevant facts: status, requested language, owner extension,
+declared provider extensions, and an optional suggested language. It does not
+contain source text, candidate lists, confidence values, or a retry transcript.
 * Skeleton-first action frontier
 Compact graph action facts must distinguish non-code structural projections from
 exact code transport.  Owner-local item hits should project an =item-skeleton=

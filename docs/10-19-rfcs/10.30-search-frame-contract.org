@@ -130,7 +130,7 @@ Implemented or partially implemented:
   surfaces.
 - Search package scenario monitoring exists for unit and integration surfaces.
 - Document lexical overlay has a package-local warm-path scenario.
-- Protocol scenario performance gates already name query/search/deps/fd/fzf/
+- Protocol scenario performance gates already name query/search/deps/fd/lexical/
   owner/pipe/rg/source-index/provider-facts policy ids.
 - RFC 10.05 already states that search flow is evidence-state driven and that
   =prime= and =pipe= are not mandatory preludes.

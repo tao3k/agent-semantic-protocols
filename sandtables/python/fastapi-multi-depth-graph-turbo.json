@@ -1,0 +1,198 @@
+{
+  "id": "python.fastapi-multi-depth-graph-turbo",
+  "language": "python",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "workdir": {
+    "env": "SANDTABLE_PY_FASTAPI_ROOT",
+    "candidates": [
+      "~/ghq/github.com/fastapi/fastapi",
+      "~/src/fastapi",
+      "~/work/fastapi"
+    ]
+  },
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "python",
+      "name": "FastAPI",
+      "package": "fastapi",
+      "repository": "fastapi/fastapi",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Trace lifespan behavior through lexical owner evidence before choosing a selector.",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "lifespan",
+          "owner"
+        ]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Locate APIRouter API usage through the same bounded lexical query.",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "APIRouter"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Identify dependency-solving owners without broad source reads.",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "solve_dependencies"
+        ]
+      }
+    ],
+    "deepQuestionCases": [
+      {
+        "id": "lifespan-owner-strict",
+        "question": "Which owner should be inspected first for FastAPI lifespan behavior?",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "lifespan",
+          "owner"
+        ],
+        "audit": {
+          "maxAspCommands": 3,
+          "maxSearchCommands": 1,
+          "maxQueryCommands": 1,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": true,
+          "requiresTokenCost": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands"
+          ]
+        }
+      },
+      {
+        "id": "lifespan-owner-medium",
+        "question": "How should owner and test evidence be narrowed for FastAPI lifespan behavior?",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "lifespan",
+          "owner"
+        ],
+        "audit": {
+          "maxAspCommands": 6,
+          "maxSearchCommands": 2,
+          "maxQueryCommands": 2,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": false,
+          "requiresTokenCost": false
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands"
+          ]
+        }
+      },
+      {
+        "id": "lifespan-owner-deep",
+        "question": "Which parser-owned selector resolves FastAPI lifespan behavior after routing through owners and tests?",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "lifespan",
+          "owner"
+        ],
+        "audit": {
+          "maxAspCommands": 8,
+          "maxSearchCommands": 3,
+          "maxQueryCommands": 3,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": false,
+          "requiresTokenCost": false
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands"
+          ]
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "lexical-query",
+      "command": [
+        "asp",
+        "python",
+        "search",
+        "lexical",
+        "--query",
+        "lifespan",
+        "--query",
+        "APIRouter",
+        "--query",
+        "solve_dependencies",
+        "--query",
+        "owner",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-lexical]",
+          "lifespan",
+          "APIRouter",
+          "solve_dependencies",
+          "owner"
+        ],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
+      }
+    }
+  ]
+}

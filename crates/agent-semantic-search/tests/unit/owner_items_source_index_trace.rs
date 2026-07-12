@@ -85,6 +85,20 @@ fn owner_items_source_index_lookup_trace_names_missing_db() {
 }
 
 #[test]
+fn owner_items_source_index_lookup_trace_names_cold_required_rebuild() {
+    let lookup = ClientDbSourceIndexLookupResult {
+        db_path: PathBuf::from("client.turso"),
+        state: ClientDbSourceIndexLookupState::ColdRequired,
+        candidates: Vec::new(),
+    };
+    let line = render_owner_items_source_index_lookup_trace("src/lib.rs", &lookup);
+
+    assert!(line.contains("status=cold-required"));
+    assert!(line.contains("reason=sourceIndex:cold-required"));
+    assert!(line.contains("next=asp_cache_source-index_rebuild"));
+}
+
+#[test]
 fn owner_items_source_index_lookup_trace_projects_hit_path() {
     let lookup = ClientDbSourceIndexLookupResult {
         db_path: PathBuf::from("client.turso"),

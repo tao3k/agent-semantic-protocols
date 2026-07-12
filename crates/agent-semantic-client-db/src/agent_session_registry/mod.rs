@@ -4,7 +4,10 @@ mod bootstrap;
 mod core;
 mod interactive_loop;
 mod lifecycle;
+mod record;
 mod types;
+
+pub use types::{AgentSessionModelObservationRef, AgentSessionModelObservationSource};
 
 pub use interactive_loop::{
     AgentSessionHostRequirement, AgentSessionInteractiveChoice, AgentSessionInteractiveMenu,

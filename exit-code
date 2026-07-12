@@ -1,0 +1,4 @@
+[graph-route] profile=owner-query alg=typed-ppr-diverse relation=cohesive route=owner-item covered=2/8 budget=10
+owner=path(src/testing/performance.ss) score=25601 hits=1 symbols=benchmark-receipt-pass
+next=asp gerbil-scheme search owner 'src/testing/performance.ss' items --query 'testing-receipt-exit-code|testing-exit-code|command-exit-code|receipt-' --workspace <root> --view seeds
+avoid=frontier-dump,source-body,line-selector

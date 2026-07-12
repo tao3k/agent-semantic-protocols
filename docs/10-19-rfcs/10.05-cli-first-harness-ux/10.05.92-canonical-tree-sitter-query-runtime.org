@@ -1,0 +1,99 @@
+#+title: Canonical Tree-sitter Query Runtime
+#+property: header-args :eval never
+
+* Decision
+
+=asp <language> query --treesitter-query= is a real Tree-sitter query
+surface. It must execute the submitted or catalog query through the language
+grammar, =tree_sitter::Query=, and =tree_sitter::QueryCursor=. A syntax
+projection is a rendering adapter; it is not an execution engine.
+
+This applies to inline queries and embedded query catalogs equally. The
+runtime accepts the canonical query source, parses each selected source file
+with the provider grammar, obtains structural candidates from =QueryCursor=,
+and then renders the compact ASP evidence projection from those candidates.
+
+* Predicate Contract
+
+Tree-sitter structural matching alone is insufficient for ASP's public
+contract. The provider-owned evaluator receives each =QueryCursor= match, its
+capture names, and source bytes. It evaluates the standard text predicates
+=#eq?=, =#not-eq?=, =#match?=, =#not-match?=, and =#any-of?=.
+
+An unsupported predicate is a query capability result, not an empty search:
+
+| Condition | matchStatus | Result |
+|-
+| supported query with no candidates | =miss= | empty compact receipt |
+| supported query with candidates | =hit= | compact graph projection |
+| unsupported node or predicate | =unsupported= | named unsupported capability |
+| malformed Tree-sitter query | =invalid= | compiler diagnostic |
+
+The runtime must never convert unsupported predicates into =miss=. It must
+also never silently replace a Tree-sitter query with a =syn=, regex, lexical,
+or source-index approximation.
+
+* Packet Contract
+
+The provider emits =agent.semantic-protocols.semantic-tree-sitter-query= v1,
+defined in =schemas/semantic-tree-sitter-query.v1.schema.json=. The packet
+keeps language-neutral execution facts under =execution=, including =engine=,
+=predicateEvaluator=, =matchStatus=, and any unsupported predicate names.
+Provider-specific AST facts remain in =matches= and =nativeFactRefs=.
+
+=--json= serializes this packet for debug and automation outside an agent
+platform. The default agent-facing output remains the compact evidence graph;
+it must expose the same status without leaking source bodies.
+
+* Boundary
+
+The default compact graph is evidence-only: identifier captures may render their
+identifier, while every other capture and owner value renders a grammar-node
+label.  Raw node text is retained outside the default renderer only for an
+explicit, exact code read.
+
+Tree-sitter query results are dynamic code evidence, not DB cache rows.  A query
+always executes the configured current provider; a replay packet is admissible
+only when it carries the canonical QueryCursor execution receipt.
+
+Normal agent invocations use the installed ASP-home artifact directly.  They do
+not wrap =direnv exec .=: environment activation latency is outside the search
+algorithm and must be measured separately from provider startup and QueryCursor
+execution.
+
+The query runtime owns parsing, query compilation, candidate enumeration, and
+predicate evaluation. The projection layer owns only stable capture/item
+normalization and compact graph rendering. Search routing, dynamic overlays,
+and source-index databases are not query-execution fallbacks for this command.
+
+* Runtime Ownership
+
+The canonical runtime lives in a lower
+=agent-semantic-tree-sitter-runtime= crate with no dependency on a language
+Harness or on build-policy crates. Its dependency direction is:
+
+#+begin_example
+rust-lang-project-harness ─┐
+                            ├─> agent-semantic-tree-sitter-runtime
+agent-semantic-tree-sitter ─┘
+#+end_example
+
+The Harness supplies its grammar and projects runtime matches into its compact
+packet. The catalog crate may re-export the runtime API, but a build-policy
+dependency from the catalog crate back to a Harness must never make the
+Harness depend on the catalog crate. This keeps query execution reusable
+without a Cargo cycle.
+
+* Scenarios And Performance Gate
+
+The Rust Harness scenario package must run the public CLI against a bounded
+fixture and cover both =#eq?= and =#match?=. The scenario asserts the
+canonical runtime evidence, a hit for each supported predicate, and an
+=unsupported= result for a deliberately unsupported predicate.
+
+The benchmark receipt records selected file count, parsed file count, query
+compile count, cursor-match count, and elapsed milliseconds. Its gate rejects
+re-entry to the =syn= projection path and any source-index, overlay, or broad
+finder invocation. The first implementation establishes the measured
+baseline; subsequent changes may tighten, but must not weaken, the recorded
+hot-path gate without an RFC revision.

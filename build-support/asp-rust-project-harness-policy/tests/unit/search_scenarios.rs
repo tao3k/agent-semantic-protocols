@@ -11,7 +11,7 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
     let package = asp_search_scenario_package();
 
     assert_eq!(package.package_name, ASP_SEARCH_SCENARIO_PACKAGE_NAME);
-    assert_eq!(package.scenarios.len(), 6);
+    assert_eq!(package.scenarios.len(), 10);
 
     let names = package
         .scenarios
@@ -21,11 +21,21 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
     assert!(names.contains(&SEARCH_PACKAGE_LINEAR_PERFORMANCE_SCENARIO_ID));
     assert!(names.contains(&LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID));
     assert!(names.contains(&SEARCH_SOURCE_INDEX_OWNER_ITEM_GRAPH_CHAIN_SCENARIO_ID));
+    assert!(names.contains(
+        &asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_BUSY_MISS_SCENARIO_ID
+    ));
+    assert!(names.contains(
+        &asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_COLD_REQUIRED_SCENARIO_ID
+    ));
+    assert!(names.contains(
+        &asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID
+    ));
     assert!(names.contains(&SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID));
     assert!(names.contains(&SEARCH_SUBAGENT_COMPACT_RECEIPT_SCENARIO_ID));
     assert!(names.contains(
         &asp_rust_project_harness_policy::search_scenarios::SEARCH_DEGRADED_ROUTE_BOUNDED_SCENARIO_ID
     ));
+    assert!(names.contains(&"tree-sitter-querycursor-native-hot-path"));
 
     let lexical = package
         .scenarios
@@ -77,6 +87,105 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
             "--test",
             "unit_test",
             "search_flow_source_index_owner_item_graph_chain_is_executable",
+            "--",
+            "--nocapture",
+        ]
+    );
+
+    let busy_miss = package
+        .scenarios
+        .iter()
+        .find(|scenario| {
+            scenario.name
+                == asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_BUSY_MISS_SCENARIO_ID
+        })
+        .expect("source-index busy miss scenario is registered");
+    assert_eq!(
+        busy_miss.fixture_root,
+        "crates/agent-semantic-search/tests/unit/scenarios/search_source_index_busy_miss_overlay_skipped"
+    );
+    assert!(busy_miss.tags.contains(&"source-index"));
+    assert!(busy_miss.tags.contains(&"busy"));
+    assert!(busy_miss.tags.contains(&"overlay"));
+    assert_eq!(busy_miss.commands[0].label, "busy-miss-overlay-skipped");
+    assert_eq!(
+        busy_miss.commands[0].argv,
+        &[
+            "cargo",
+            "test",
+            "-p",
+            "agent-semantic-search",
+            "--test",
+            "unit_test",
+            "search_flow_busy_source_index_miss_returns_overlay_skipped",
+            "--",
+            "--nocapture",
+        ]
+    );
+
+    let cold_required = package
+        .scenarios
+        .iter()
+        .find(|scenario| {
+            scenario.name
+                == asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_COLD_REQUIRED_SCENARIO_ID
+        })
+        .expect("source-index cold-required scenario is registered");
+    assert_eq!(
+        cold_required.fixture_root,
+        "crates/agent-semantic-search/tests/unit/scenarios/search_source_index_cold_required_overlay_skipped"
+    );
+    assert!(cold_required.tags.contains(&"source-index"));
+    assert!(cold_required.tags.contains(&"cold-required"));
+    assert!(cold_required.tags.contains(&"overlay"));
+    assert_eq!(
+        cold_required.commands[0].label,
+        "cold-required-overlay-skipped"
+    );
+    assert_eq!(
+        cold_required.commands[0].argv,
+        &[
+            "cargo",
+            "test",
+            "-p",
+            "agent-semantic-search",
+            "--test",
+            "unit_test",
+            "search_flow_cold_required_source_index_returns_overlay_skipped",
+            "--",
+            "--nocapture",
+        ]
+    );
+
+    let read_only_client_db = package
+        .scenarios
+        .iter()
+        .find(|scenario| {
+            scenario.name
+                == asp_rust_project_harness_policy::search_scenarios::SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID
+        })
+        .expect("read-only source-index scenario is registered");
+    assert_eq!(
+        read_only_client_db.fixture_root,
+        "crates/agent-semantic-client-db/tests/unit/scenarios/search_source_index_read_only_client_db"
+    );
+    assert!(read_only_client_db.tags.contains(&"source-index"));
+    assert!(read_only_client_db.tags.contains(&"read-only"));
+    assert!(read_only_client_db.tags.contains(&"turso"));
+    assert_eq!(
+        read_only_client_db.commands[0].label,
+        "read-only-client-db-zero-write"
+    );
+    assert_eq!(
+        read_only_client_db.commands[0].argv,
+        &[
+            "cargo",
+            "test",
+            "-p",
+            "agent-semantic-client-db",
+            "--test",
+            "unit_test",
+            "db_engine_source_index_lookup_succeeds_without_client_dir_write_permission",
             "--",
             "--nocapture",
         ]
@@ -164,5 +273,23 @@ fn asp_search_scenario_package_exposes_search_performance_gates() {
             "--",
             "--nocapture",
         ]
+    );
+
+    let tree_sitter = package
+        .scenarios
+        .iter()
+        .find(|scenario| scenario.name == "tree-sitter-querycursor-native-hot-path")
+        .expect("canonical Tree-sitter QueryCursor scenario is registered");
+    assert_eq!(
+        tree_sitter.fixture_root,
+        "languages/rust-lang-project-harness/tests/unit/cli/query/catalog"
+    );
+    assert!(tree_sitter.tags.contains(&"tree-sitter"));
+    assert!(tree_sitter.tags.contains(&"native-runtime"));
+    assert_eq!(tree_sitter.commands.len(), 2);
+    assert_eq!(tree_sitter.commands[0].label, "querycursor-packet-hot-path");
+    assert_eq!(
+        tree_sitter.commands[1].label,
+        "querycursor-predicate-contract"
     );
 }

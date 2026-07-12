@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 
 use super::client_backend_worker::run_client_backend_on_worker;
 use super::gerbil_check_cache::try_replay_gerbil_check_cache;
+use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
 use super::provider_process::{
-    provider_invocation_with_profile, provider_invocations, run_guide_command,
-    run_owner_items_provider_command, run_provider_command,
+    provider_invocation_with_profile, provider_invocations, run_guide_command, run_provider_command,
 };
 use super::provider_roots::{
     activation_project_root, client_backend_cache_home, effective_project_root_and_args,
@@ -42,6 +42,7 @@ const SUPPORTED_COMMANDS: &[&str] = &[
     "cache",
     "info",
     "bench",
+    "projection",
     "ast-patch",
     "evidence",
 ];
@@ -468,9 +469,20 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         println!("{}", guide_usage(language_id));
         return Ok(());
     }
+    if try_run_gerbil_deps_index_command(language_id, &command_args)? {
+        return Ok(());
+    }
     if run_asp_fast_search_meta_command(language_id, &command_args) {
         return Ok(());
     }
+    if let Some(result) = run_pre_activation_dynamic_rust_owner_items_search(
+        language_id,
+        &command_args,
+        &invocation_root,
+    )? {
+        return result;
+    }
+    run_pre_activation_search_command_preflight(language_id, &command_args, &invocation_root)?;
     reject_search_file_workspace(&command_args, &invocation_root)?;
     validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
     reject_manifest_source_selector_query_code(language_id, &command_args)?;
@@ -526,6 +538,13 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 }
             )
         })?;
+    run_activated_owner_language_preflight(
+        language_id,
+        &provider_args,
+        &project_root,
+        &provider.source_extensions,
+        &runtime,
+    )?;
     reject_registered_source_selector_query(language_id, &command_args, provider)?;
 
     if !is_provider_owned_structural_code_query(language_id, &provider_args)
@@ -540,6 +559,30 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
 
     let cache_home = client_backend_cache_home(&activation_root, &project_root)?;
+    if let Some(request) =
+        super::language_projection_import::LanguageProjectionImportRequest::parse(&provider_args)?
+    {
+        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+        let invocation = provider_invocation_with_profile(
+            &runtime_profiles,
+            provider,
+            &request.provider_args(&project_root),
+            &project_root,
+            &config,
+        )?;
+        let output = super::provider_process::run_provider_command_with_stdin(
+            language_id,
+            provider,
+            &invocation,
+            &project_root,
+            &cache_home,
+            Vec::new(),
+        )?;
+        if !output.status.success() {
+            return Err(request.provider_failure(output.status.code(), output.stderr.as_ref()));
+        }
+        return request.import_output(language_id, &project_root, output.stdout.as_ref());
+    }
     if is_search_dependency_seed(&provider_args) {
         if !provider.search_capabilities.dependency_topology {
             return run_search_dependency_seed_command(
@@ -567,8 +610,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         );
     }
     if is_asp_fast_search(&provider_args) {
-        let provider_context_allowed = !document_owner_items_search
-            || !provider_invokes_asp_facade(language_id, provider, &config);
+        let provider_context_allowed = (!document_owner_items_search
+            || !provider_invokes_asp_facade(language_id, provider, &config))
+            && !(language_id == "gerbil-scheme"
+                && search_owner_items_owner_path(&provider_args).is_some());
         if provider_context_allowed && fast_search_needs_provider_context(&provider_args, provider)
         {
             let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
@@ -602,29 +647,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 frontier_receipt: frontier_receipt.as_ref(),
             },
         );
-    }
-    if frontier_receipt.is_none()
-        && language_id == "gerbil-scheme"
-        && let Some(owner_path) = search_owner_items_owner_path(&provider_args)
-    {
-        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-        for invocation in provider_invocations(
-            provider,
-            &provider_args,
-            &project_root,
-            &runtime_profiles,
-            &config,
-        )? {
-            run_owner_items_provider_command(
-                language_id,
-                provider,
-                &invocation,
-                &project_root,
-                &cache_home,
-                owner_path,
-            )?;
-        }
-        return Ok(());
     }
     if frontier_receipt
         .as_ref()
@@ -730,6 +752,107 @@ fn run_pre_activation_fast_owner_query(
     Ok(None)
 }
 
+fn run_pre_activation_dynamic_rust_owner_items_search(
+    language_id: &str,
+    command_args: &[String],
+    invocation_root: &Path,
+) -> Result<Option<Result<(), String>>, String> {
+    if language_id != "rust"
+        || !is_asp_fast_search(command_args)
+        || search_owner_items_owner_path(command_args).is_none()
+    {
+        return Ok(None);
+    }
+    let (project_root, provider_args) = effective_project_root_and_args(
+        language_id,
+        command_args,
+        invocation_root,
+        invocation_root,
+    )?;
+    let config = AspConfig::load(invocation_root, &project_root);
+    if !config.language_enabled(language_id) {
+        return Ok(Some(Err(format!(
+            "language `{language_id}` is disabled by asp.toml"
+        ))));
+    }
+    if super::search_pipe_owner_items_fast::run_pre_activation_dynamic_rust_owner_items_search(
+        &provider_args,
+        &project_root,
+        invocation_root,
+    )? {
+        return Ok(Some(Ok(())));
+    }
+    Ok(None)
+}
+
+fn run_pre_activation_search_command_preflight(
+    language_id: &str,
+    command_args: &[String],
+    invocation_root: &Path,
+) -> Result<(), String> {
+    let outcome =
+        agent_semantic_search::search_command_preflight::preflight_search_command_args_at_invocation_root(
+        language_id,
+        command_args,
+        invocation_root,
+    );
+    match outcome {
+        agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::Rejected(
+            error,
+        ) => Err(error),
+        agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::Passed
+        | agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::NotApplicable => {
+            Ok(())
+        }
+    }
+}
+
+fn run_activated_owner_language_preflight(
+    language_id: &str,
+    command_args: &[String],
+    project_root: &Path,
+    expected_extensions: &[String],
+    runtime: &HookRuntime,
+) -> Result<(), String> {
+    let suggested_language = command_args
+        .get(2)
+        .and_then(|owner| Path::new(owner).extension())
+        .and_then(|extension| extension.to_str())
+        .and_then(|extension| {
+            let mut matches = runtime
+                .providers
+                .iter()
+                .filter(|provider| {
+                    agent_semantic_search::search_command_preflight::source_extension_is_declared(
+                        extension,
+                        &provider.source_extensions,
+                    )
+                })
+                .map(|provider| provider.language_id.as_str());
+            let language = matches.next()?;
+            matches.next().is_none().then_some(language)
+        });
+    let outcome = agent_semantic_search::search_command_preflight::
+        preflight_search_command_args_with_owner_language_admission(
+            language_id,
+            command_args,
+            project_root,
+            agent_semantic_search::search_command_preflight::OwnerItemsLanguageAdmission::new(
+                expected_extensions,
+                suggested_language,
+            ),
+        );
+    match outcome {
+        agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::Rejected(
+            error,
+        ) => Err(error),
+        agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::Passed
+        | agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::NotApplicable => {
+            Ok(())
+        }
+    }
+}
+
 const FRONTIER_RECEIPT_FACT_FLAGS: &[(&str, &str)] = &[
     ("--frontier-receipt-follow-node", "--follow-node"),
     ("--frontier-receipt-read-selector", "--read-selector"),
@@ -786,6 +909,9 @@ fn take_frontier_receipt_request(
                 return Err(format!("{public_flag} may be passed only once"));
             }
             if value.is_empty() {
+                if public_flag == "--view" && args.iter().any(|arg| arg == "lexical") {
+                    return Err("search lexical --view requires seeds".to_string());
+                }
                 return Err(format!("{public_flag} requires a value"));
             }
             seen_fact_flags.push(public_flag);
@@ -880,7 +1006,11 @@ fn fast_search_needs_provider_context(
     args: &[String],
     provider: &agent_semantic_hook::ActivatedProvider,
 ) -> bool {
-    if matches!(args.get(1).map(String::as_str), Some("pipe" | "lexical")) {
+    if matches!(args.get(1).map(String::as_str), Some("lexical")) {
+        return provider.search_capabilities.dependency_topology
+            && fast_search_requests_dependency_topology(args);
+    }
+    if matches!(args.get(1).map(String::as_str), Some("pipe")) {
         if provider.search_capabilities.dependency_topology
             && fast_search_requests_dependency_topology(args)
         {
@@ -975,7 +1105,7 @@ fn is_guide_help(args: &[String]) -> bool {
 
 fn provider_usage() -> String {
     format!(
-        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ...\nsearch: pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime\nsearch deps: current manifest dependency topology and dependency-owned next actions",
+        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|projection|agent doctor|ast-patch|evidence> ...\nprojection: import --owner <relative-owner-path> --workspace <root>\nsearch: pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime\nsearch deps: current manifest dependency topology and dependency-owned next actions",
         registered_language_facades_line()
     )
 }

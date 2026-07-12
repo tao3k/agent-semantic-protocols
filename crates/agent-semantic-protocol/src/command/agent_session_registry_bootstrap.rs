@@ -9,6 +9,8 @@ use agent_semantic_client_db::agent_session_registry::{
 use super::agent_session_registry_args::SessionArgs;
 use super::agent_session_registry_state::{project_session_scope_id, resolved_root_session_id};
 
+use agent_semantic_client_db::agent_session_registry::AgentSessionHostRequirement;
+
 pub(super) fn bootstrap_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
@@ -18,17 +20,34 @@ pub(super) fn bootstrap_session(
     registry.refresh_expired_sessions()?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let name = args.name.as_deref().unwrap_or("asp-explore");
+    let now = unix_timestamp()?;
+    if args.child_session_id.is_some()
+        || args.message_target_id.is_some()
+        || args.parent_session_id.is_some()
+        || args.model.is_some()
+        || args.status.is_some()
+    {
+        return Err(
+            "agent session bootstrap does not accept child identity, message target, model, parent, or status receipts; use the host-native create/resume/stop action and let SubagentStart/SubagentStop update the registry"
+                .to_string(),
+        );
+    }
     let mut record = if let Some(root_session_id) = root_session_id.as_deref() {
         registry.lookup_session(AgentSessionLookupRequest {
             project_id: &project_id,
-            session_id: args.child_session_id.as_deref(),
+            session_id: None,
             root_session_id: Some(root_session_id),
             name: Some(name),
         })?
     } else {
         None
     };
-    let now = unix_timestamp()?;
+    if record
+        .as_ref()
+        .is_some_and(|session| matches!(session.status.as_str(), "archived" | "closed"))
+    {
+        record = None;
+    }
     let mut rollout_history_status = "not-needed";
     let mut rollout_history_action = "none";
     let registry_routable = record
@@ -61,6 +80,13 @@ pub(super) fn bootstrap_session(
                 .map_or(name, |session| session.name.as_str()),
             record.as_ref().map_or("", |session| session.role.as_str()),
         )?;
+    let expected_reasoning_effort =
+        super::agent_session_registry_validation::expected_reasoning_effort_for_session_profile(
+            record
+                .as_ref()
+                .map_or(name, |session| session.name.as_str()),
+            record.as_ref().map_or("", |session| session.role.as_str()),
+        )?;
     let platform =
         crate::command::agent_session_registry::active_platform().unwrap_or("{platform}");
     let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
@@ -69,6 +95,7 @@ pub(super) fn bootstrap_session(
         root_session_id: root_session_id.as_deref(),
         record: record.as_ref(),
         expected_model: expected_model.as_deref(),
+        expected_reasoning_effort: expected_reasoning_effort.as_deref(),
         rollout_history_status: Some(rollout_history_status),
         rollout_history_action: Some(rollout_history_action),
         now,
@@ -94,21 +121,38 @@ fn print_bootstrap_menu(menu: &AgentSessionInteractiveMenu<'_>) {
     );
     println!("state: {state}");
     println!("target: {}", menu.name);
+    if let Some(root_session_id) = menu.root_session_id {
+        println!("root-session: {root_session_id}");
+    }
     println!("why: {}", latest_trace_result(menu));
     println!(
         "must: do not run denied ASP reasoning/search in the main agent; choose one number and use native transport"
     );
     println!(
-        "transport: native.{}.{} using required outputs {}",
-        menu.host_requirement.platform,
-        menu.host_requirement.required_transport,
-        comma_join(menu.host_requirement.required_outputs)
+        "transport: native.{}.{}; lifecycle identity is captured by host hooks",
+        menu.host_requirement.platform, menu.host_requirement.required_transport
     );
-    println!(
-        "target-id: agentMessageTargetId is the host-native message address; use a distinct target id when the host returns one, or the host single agent id only after native message-agent send accepts it; never derive it from a normal thread id or rollout path"
-    );
+    let has_create_choice = menu
+        .choices
+        .iter()
+        .any(|choice| choice.id == "create-managed-resident-child");
+    if has_create_choice {
+        println!(
+            "platform-native-create: platform={} managedAgentKind={} action={}",
+            menu.host_requirement.platform,
+            menu.host_requirement.managed_agent_kind,
+            platform_native_create_action(&menu.host_requirement)
+        );
+        println!(
+            "platform-native-create-blocker: if platform={} cannot create managedAgentKind={} or emits no SubagentStart event, choose report-host-managed-agent-lifecycle-unavailable; do not create fallback agents or normal threads",
+            menu.host_requirement.platform, menu.host_requirement.managed_agent_kind
+        );
+    }
     if let Some(expected_model) = menu.expected_model {
         println!("model: expected {expected_model}");
+    }
+    if let Some(expected_reasoning_effort) = menu.expected_reasoning_effort {
+        println!("reasoning: expected {expected_reasoning_effort}");
     }
     if let Some(status) = menu.rollout_history_status {
         println!(
@@ -126,6 +170,14 @@ fn print_bootstrap_menu(menu: &AgentSessionInteractiveMenu<'_>) {
             session.model.unwrap_or("unknown"),
             session.message_target_status
         );
+        if let Some(source) = session.model_observation_source {
+            println!(
+                "model-observation: source={} observedAt={} evidence={}",
+                source,
+                session.model_observed_at.unwrap_or_default(),
+                session.model_evidence_ref.unwrap_or("none")
+            );
+        }
     } else {
         println!(
             "session: none; choose Create only after rollout audit found no reusable ASP-managed resident child"
@@ -146,6 +198,22 @@ fn print_bootstrap_menu(menu: &AgentSessionInteractiveMenu<'_>) {
     println!(
         "select: return exactly one number, such as \"1\"; perform its do action through native transport; return expect; re-enter the loop at after."
     );
+    println!(
+        "lifecycle: after native create, resume, or stop, re-enter this pane; never pass child ids, message targets, model claims, or lifecycle status as command flags."
+    );
+}
+
+fn platform_native_create_action(requirement: &AgentSessionHostRequirement<'_>) -> String {
+    match requirement.platform {
+        "codex" => format!(
+            "ask Codex to start the configured managed agent profile `{}` through its native collaboration surface; let Codex resolve that profile from synchronized agent configuration and let SubagentStart capture the native identity",
+            requirement.managed_agent_kind
+        ),
+        _ => format!(
+            "use the detected platform's managed-agent creation action for {}; let the platform lifecycle-start event capture native identity",
+            requirement.managed_agent_kind
+        ),
+    }
 }
 
 fn latest_trace_result(menu: &AgentSessionInteractiveMenu<'_>) -> String {
@@ -155,14 +223,6 @@ fn latest_trace_result(menu: &AgentSessionInteractiveMenu<'_>) -> String {
         .or(menu.rollout_history_status)
         .unwrap_or("loop state requires action")
         .to_string()
-}
-
-fn comma_join(values: &[&str]) -> String {
-    if values.is_empty() {
-        "none".to_string()
-    } else {
-        values.join(",")
-    }
 }
 
 fn required_inputs_phrase(values: &[&str]) -> String {

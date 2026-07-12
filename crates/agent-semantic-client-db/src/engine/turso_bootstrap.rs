@@ -26,6 +26,17 @@ pub async fn bootstrap_turso_client_db(
     Ok(turso_bootstrap_report(db_path))
 }
 
+/// Bootstrap only the base state required by source-index v1 persistence.
+pub async fn bootstrap_turso_source_index_db(
+    db_path: &Path,
+) -> Result<TursoClientDbEngineReport, String> {
+    let turso_path = prepare_turso_client_db_path(db_path)?;
+    let _operation_lock = acquire_turso_operation_lock(&turso_path, "source-index-bootstrap")?;
+    let connection = connect_turso_client_db(&turso_path).await?;
+    bootstrap_turso_schema_version(&connection).await?;
+    Ok(turso_bootstrap_report(db_path))
+}
+
 /// Bootstrap graph, search-document, overlay, and route receipt tables.
 pub(super) async fn bootstrap_turso_client_search_schema(
     connection: &turso::Connection,
@@ -34,6 +45,7 @@ pub(super) async fn bootstrap_turso_client_search_schema(
         "CREATE TABLE IF NOT EXISTS asp_graph_entity (
             id TEXT PRIMARY KEY,
             kind TEXT NOT NULL,
+            semantic_kind TEXT,
             label TEXT NOT NULL,
             selector TEXT,
             path TEXT,
@@ -93,6 +105,7 @@ pub(super) async fn bootstrap_turso_client_search_schema(
     for statement in [
         "CREATE INDEX IF NOT EXISTS asp_graph_entity_kind_idx ON asp_graph_entity(kind)",
         "CREATE INDEX IF NOT EXISTS asp_graph_entity_language_idx ON asp_graph_entity(kind, language_id)",
+        "CREATE INDEX IF NOT EXISTS asp_graph_entity_owner_selector_idx ON asp_graph_entity(kind, path, language_id)",
         "CREATE INDEX IF NOT EXISTS asp_graph_edge_kind_idx ON asp_graph_edge(kind)",
         "CREATE INDEX IF NOT EXISTS asp_graph_edge_to_idx ON asp_graph_edge(to_id)",
         "CREATE INDEX IF NOT EXISTS asp_search_document_entity_idx ON asp_search_document(entity_id)",
@@ -115,6 +128,7 @@ pub(super) async fn bootstrap_turso_client_search_schema(
 async fn ensure_turso_graph_entity_columns(connection: &turso::Connection) -> Result<(), String> {
     for (column, definition) in [
         ("selector", "TEXT"),
+        ("semantic_kind", "TEXT"),
         ("path", "TEXT"),
         ("language_id", "TEXT"),
         ("provider_id", "TEXT"),

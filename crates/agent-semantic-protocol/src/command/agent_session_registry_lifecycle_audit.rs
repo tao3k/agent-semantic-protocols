@@ -177,11 +177,12 @@ pub(super) fn lifecycle_audit_report(
 
     let missing_registered_rollout_sessions: Vec<serde_json::Value> = sessions
         .iter()
+        .filter(|session| session.status != "archived")
         .filter(|session| !rollout_session_ids.contains(&session.session_id))
         .map(lifecycle_registry_session_entry)
         .collect();
 
-    Ok(serde_json::json!({
+    let mut report = serde_json::json!({
         "owner": "rust",
         "action": "agent-session-lifecycle-audit",
         "dbPath": registry.db_path(),
@@ -208,7 +209,20 @@ pub(super) fn lifecycle_audit_report(
         "rolloutOnlySessions": rollout_only_sessions,
         "missingRegisteredRolloutSessions": missing_registered_rollout_sessions,
         "missingRolloutBySession": missing_rollout_by_session,
-    }))
+    });
+    let report_object = report
+        .as_object_mut()
+        .expect("lifecycle audit report must be a JSON object");
+    if missing_registered_rollout_sessions.is_empty() {
+        report_object.remove("missingRegisteredRolloutSessions");
+    }
+    if missing_rollout_by_session
+        .as_object()
+        .is_some_and(|entries| entries.is_empty())
+    {
+        report_object.remove("missingRolloutBySession");
+    }
+    Ok(report)
 }
 
 fn lifecycle_rollout_only_status<'a>(

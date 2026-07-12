@@ -170,15 +170,145 @@ pub(super) fn turso_bootstrap_report(db_path: &Path) -> TursoClientDbEngineRepor
     report
 }
 
+async fn open_turso_client_db_read_only(turso_path: PathBuf) -> Result<turso::Connection, String> {
+    let io: std::sync::Arc<dyn turso::core::IO> = std::sync::Arc::new(
+        turso::core::PlatformIO::new()
+            .map_err(|error| format!("failed to create Turso read-only IO: {error}"))?,
+    );
+    let path = turso_path.to_string_lossy().into_owned();
+    let file = io
+        .open_file(&path, turso::core::OpenFlags::ReadOnly, true)
+        .map_err(|error| format!("failed to open Turso client DB read-only: {error}"))?;
+    let db_file: std::sync::Arc<dyn turso::core::DatabaseStorage> =
+        std::sync::Arc::new(turso::core::storage::database::DatabaseFile::new(file));
+    let connection_config = turso_sdk_kit::rsapi::TursoDatabaseConfig {
+        path: path.clone(),
+        experimental_features: Some("index_method".to_string()),
+        async_io: true,
+        encryption: None,
+        vfs: None,
+        io: Some(io.clone()),
+        db_file: Some(db_file.clone()),
+    };
+    let database = turso::core::Database::open_with_flags(
+        io,
+        &path,
+        db_file,
+        turso::core::OpenFlags::ReadOnly,
+        turso::core::DatabaseOpts::new().with_index_method(true),
+        None,
+        None,
+    )
+    .map_err(|error| format!("failed to initialize Turso client DB read-only: {error}"))?;
+    let connection = database
+        .connect()
+        .map_err(|error| format!("failed to connect Turso client DB read-only: {error}"))?;
+    Ok(turso::Connection::create(
+        turso_sdk_kit::rsapi::TursoConnection::new(&connection_config, connection),
+        None,
+    ))
+}
+
 fn turso_builder(turso_path: &Path) -> turso::Builder {
     turso::Builder::new_local(turso_path.to_string_lossy().as_ref())
         .experimental_index_method(TURSO_CLIENT_DB_INDEX_METHOD)
         .experimental_multiprocess_wal(TURSO_CLIENT_DB_MULTIPROCESS_WAL)
 }
 
-pub(super) async fn connect_turso_client_db(db_path: &Path) -> Result<turso::Connection, String> {
+/// A connection paired with the shared database authority that created it.
+pub(super) struct TursoConnectionLease {
+    _database: std::sync::Arc<turso::Database>,
+    connection: turso::Connection,
+}
+
+impl std::ops::Deref for TursoConnectionLease {
+    type Target = turso::Connection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connection
+    }
+}
+
+impl std::ops::DerefMut for TursoConnectionLease {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.connection
+    }
+}
+
+type TursoDatabasePool =
+    std::collections::BTreeMap<std::path::PathBuf, std::sync::Weak<turso::Database>>;
+
+fn turso_database_pool() -> &'static tokio::sync::Mutex<TursoDatabasePool> {
+    static POOL: std::sync::OnceLock<tokio::sync::Mutex<TursoDatabasePool>> =
+        std::sync::OnceLock::new();
+    POOL.get_or_init(|| tokio::sync::Mutex::new(TursoDatabasePool::new()))
+}
+
+async fn shared_turso_database(
+    turso_path: &Path,
+) -> Result<std::sync::Arc<turso::Database>, String> {
+    let mut pool = turso_database_pool().lock().await;
+    pool.retain(|_, database| database.strong_count() > 0);
+    if let Some(database) = pool.get(turso_path).and_then(std::sync::Weak::upgrade) {
+        return Ok(database);
+    }
+    let database = std::sync::Arc::new(build_turso_database_with_lock_retry(turso_path).await?);
+    pool.insert(
+        turso_path.to_path_buf(),
+        std::sync::Arc::downgrade(&database),
+    );
+    Ok(database)
+}
+
+async fn build_turso_database_with_lock_retry(
+    turso_path: &Path,
+) -> Result<turso::Database, String> {
+    let mut last_lock_error = None;
+    for attempt in 0..TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS {
+        match turso_builder(turso_path).build().await {
+            Ok(database) => return Ok(database),
+            Err(error) => {
+                let message = format!("failed to open Turso client DB: {error}");
+                if !is_turso_lock_error(&message) {
+                    return Err(message);
+                }
+                last_lock_error = Some(message);
+            }
+        }
+        tokio::time::sleep(turso_lock_retry_delay(attempt)).await;
+    }
+    Err(format!(
+        "{} after {} retry attempts",
+        last_lock_error.unwrap_or_else(|| format!(
+            "failed to open Turso client DB: lock persisted for {}",
+            turso_path.display()
+        )),
+        TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS
+    ))
+}
+
+pub(super) async fn connect_turso_client_db(
+    db_path: &Path,
+) -> Result<TursoConnectionLease, String> {
     let turso_path = db_path.with_file_name(TURSO_CLIENT_DB_FILE);
-    connect_turso_client_db_file(
+    let database = shared_turso_database(&turso_path).await?;
+    let connection = database
+        .connect()
+        .map_err(|error| format!("failed to connect Turso client DB: {error}"))?;
+    connection
+        .busy_timeout(Duration::from_millis(TURSO_CLIENT_DB_BUSY_TIMEOUT_MS))
+        .map_err(|error| format!("failed to configure Turso client DB busy timeout: {error}"))?;
+    Ok(TursoConnectionLease {
+        _database: database,
+        connection,
+    })
+}
+
+pub(super) async fn connect_turso_client_db_read_only(
+    db_path: &Path,
+) -> Result<turso::Connection, String> {
+    let turso_path = db_path.with_file_name(TURSO_CLIENT_DB_FILE);
+    connect_turso_client_db_read_only_file(
         &turso_path,
         TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS,
         TURSO_CLIENT_DB_BUSY_TIMEOUT_MS,
@@ -186,33 +316,42 @@ pub(super) async fn connect_turso_client_db(db_path: &Path) -> Result<turso::Con
     .await
 }
 
-async fn connect_turso_client_db_file(
+async fn connect_turso_client_db_read_only_file(
     turso_path: &Path,
     retry_attempts: usize,
     busy_timeout_ms: u64,
 ) -> Result<turso::Connection, String> {
+    connect_turso_client_db_file_with_opener(
+        turso_path,
+        retry_attempts,
+        busy_timeout_ms,
+        open_turso_client_db_read_only,
+    )
+    .await
+}
+
+async fn connect_turso_client_db_file_with_opener<F, Fut>(
+    turso_path: &Path,
+    retry_attempts: usize,
+    busy_timeout_ms: u64,
+    open: F,
+) -> Result<turso::Connection, String>
+where
+    F: Fn(PathBuf) -> Fut,
+    Fut: std::future::Future<Output = Result<turso::Connection, String>>,
+{
     let mut last_lock_error = None;
     for attempt in 0..retry_attempts {
-        match turso_builder(turso_path).build().await {
-            Ok(database) => match database.connect() {
-                Ok(connection) => {
-                    connection
-                        .busy_timeout(Duration::from_millis(busy_timeout_ms))
-                        .map_err(|error| {
-                            format!("failed to configure Turso client DB busy timeout: {error}")
-                        })?;
-                    return Ok(connection);
-                }
-                Err(error) => {
-                    let message = format!("failed to connect Turso client DB: {error}");
-                    if !is_turso_lock_error(&message) {
-                        return Err(message);
-                    }
-                    last_lock_error = Some(message);
-                }
-            },
-            Err(error) => {
-                let message = format!("failed to open Turso client DB: {error}");
+        match open(turso_path.to_path_buf()).await {
+            Ok(connection) => {
+                connection
+                    .busy_timeout(Duration::from_millis(busy_timeout_ms))
+                    .map_err(|error| {
+                        format!("failed to configure Turso client DB busy timeout: {error}")
+                    })?;
+                return Ok(connection);
+            }
+            Err(message) => {
                 if !is_turso_lock_error(&message) {
                     return Err(message);
                 }

@@ -53,19 +53,6 @@ pub(super) fn owner_items_query_terms(
     {
         push_owner_items_query_term(&mut query_terms, (*term).to_string());
     }
-    for symbol in candidate_symbols
-        .iter()
-        .filter(|symbol| owner_path_axis_term(owner, symbol))
-    {
-        push_owner_items_query_term(&mut query_terms, (*symbol).clone());
-    }
-    for term in semantic_terms
-        .iter()
-        .filter(|term| owner_path_axis_term(owner, term))
-    {
-        push_owner_items_query_term(&mut query_terms, (*term).to_string());
-    }
-
     let query_terms = query_terms.into_iter().take(6).collect::<Vec<_>>();
     (!query_terms.is_empty()).then_some(query_terms)
 }

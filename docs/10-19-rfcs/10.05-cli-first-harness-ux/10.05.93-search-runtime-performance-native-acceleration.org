@@ -1,0 +1,377 @@
+* Shared search runtime performance and Native acceleration
+
+This module records the performance diagnosis, target architecture, and the
+admission boundary for Native acceleration across language search providers.
+It is a living RFC surface: benchmark receipts update the evidence, while the
+ownership boundaries and performance requirements remain normative.
+
+** Current decision
+
+Native acceleration is not the default implementation strategy for language
+harnesses.  The shared Rust search runtime must first own query validation,
+scope, planning, indexing, ranking, output budgets, and hard deadlines.
+Language harnesses publish parser-owned, query-free projection artifacts through
+a bounded adapter contract; they do not reproduce the shared search pipeline.
+
+The first Native optimization target is therefore a shared Rust read model,
+not a C FFI implementation in every language directory.  A C ABI remains an
+optional final-stage adapter for an acceleration or import kernel whose
+release-mode profile proves that it, rather than orchestration or index access,
+dominates the end-to-end latency.  It is never a replacement for a harness
+native parser.
+
+** 2026-07-10 audit snapshot
+
+The following measurements were taken from the real CLI and current workspace.
+Internal phase timings come from search receipts; command timings come from
+=/usr/bin/time= or scenario output.
+
+| Route | Observed result | Interpretation |
+|-------+-----------------+----------------|
+| Invalid =search owner .= | about 10 ms | Rust preflight rejects before provider activation. |
+| Exact Rust owner plus symbol | about 60 ms | Dynamic owner-items returns a structural selector. |
+| Gerbil owner-items provider failure | about 110 ms | Failure is bounded and does not fall back. |
+| =search pipe= after a warm miss | =search-overlay= 10,851 ms; render 831 ms | Shared search acquisition dominates; no provider process was started. |
+| Scoped =asp rg= query overlay | 16,364 ms for 256 candidates | Candidate acquisition is outside the required latency envelope. |
+| Single-file, single-symbol =asp rg= | exceeded 5 seconds and reproduced at a 30-second sampling window | Reducing filesystem scope does not remove the hot-path cost. |
+| Search preflight unit tests | 11 tests in 0.01 seconds | Query validation itself is not the bottleneck. |
+| Cross-CLI preflight scenario | one scenario in about 2.10 seconds | Unit timing alone does not represent the installed CLI path. |
+
+The sampled single-file query spent its execution in this stack:
+
+#+begin_example
+collect_query_candidate_collection
+  -> lookup_query_wrapper_source_index
+  -> lookup_source_index_read_model
+  -> query_turso_source_index_snapshot_candidates_with_connection
+  -> turso Rows::next
+  -> BTreeCursor::seek / move_to
+#+end_example
+
+The same sample reported no language provider process and no native finder
+process.  This evidence excludes language-provider C FFI as the primary repair
+for the observed latency.
+
+The audited installation also exposed a release-provenance failure:
+=${HOME}/.local/bin/asp= and =target/debug/asp= had the same digest and 106 MB
+size, while the older release artifact was 25 MB.  A release refresh was
+blocked by repository policy/build failures.  Installation must fail closed
+instead of substituting a debug artifact when a current release artifact is
+unavailable.
+
+** Root causes to remove
+
+1. Query grammar and guidance can disagree.  An exact owner item query such as
+   =run_language_command= resolves, while a guided alternative form such as
+   =run_language_command|preflight|provider= can miss and recommend a much more
+   expensive lexical route.  The shared query parser must either implement the
+   advertised alternative semantics or reject the form before search begins.
+2. Planner recommendations can route a low-quality or missed structural query
+   into an unbounded lexical/query-overlay path.  A miss must not silently buy
+   a workspace scan.
+3. The Turso durable source index is used directly as a hot search read model.
+   Snapshot candidate lookup performs metadata checks and a term/owner query
+   before ranking, and the sampled query remains inside Turso B-tree traversal.
+4. The lexical/query-overlay path lacks an effective wall-clock deadline at
+   the public command boundary.
+5. Build and installation provenance do not currently guarantee that the
+   installed CLI is a current release artifact.
+6. Existing fast unit gates do not cover the real binary, realistic index
+   sizes, WAL state, cold/warm behavior, fallback state, or output volume.
+
+** Target architecture
+
+#+begin_example
+ASP shared Rust search runtime
+  query grammar and preflight
+  scope, budgets, planner, and deadlines
+  incremental structural index
+  ranking and compact rendering
+  durable-state adapter
+    Turso generations, recovery, and evidence
+  acceleration read model
+    immutable or memory-mapped token/owner/selector facts
+  language artifact importer
+    shared-schema validation and generation import
+language harnesses
+  native parser -> query-free L0/L1/L2 projection artifacts
+#+end_example
+
+The durable database remains the owner of generations, recovery, provenance,
+and canonical persisted facts.  The query hot path uses a compact read model
+derived from the current generation.  A generation mismatch or missing read
+model returns a typed =cold-index-required= or =index-busy= state; it does not
+trigger an implicit full-workspace scan.
+
+The acceleration read model should support artifact-digest incremental import
+and reuse, token-to-owner postings, owner-to-selector lookup, bounded intersections, and
+deterministic ranking inputs.  Candidate implementations include Rust =fst=,
+Roaring bitmaps, or an immutable memory-mapped layout.  The selected format is
+an implementation detail behind the shared search contract.
+
+** Owner-language admission
+Before ASP resolves a provider or starts an out-of-process language binary, the
+parent proves that an owner path belongs to the requested language and declared
+workspace. A =.org= owner sent to =gerbil-scheme=, a missing owner, or an owner
+outside the workspace returns =owner-language-mismatch= with the requested
+language, path class, and suggested route. It starts no provider, refreshes no
+index, and never falls back to lexical or full-workspace collection. The compact
+form is the =admission= node in =semantic-owner-item-evidence.v2=: it records
+=status=, =requestedLanguage=, the owner extension, declared provider
+extensions, and an optional suggested language. =owner-language-mismatch= is a
+terminal route state, not empty evidence.
+
+The Rust search facade repeats the cheap boundary: canonicalize a regular owner
+path, require a registered language extension, and reject invalid owners before
+search planning. Owner-item terms are a bounded structured set; pipe-delimited
+input must not become an open-ended provider regex. This second admission check
+prevents a parent dispatch regression from becoming an unbounded provider
+allocation.
+The owner-item command materializes direct declaration and selector evidence;
+it does not recursively construct call facts and apply a limit afterward. Call
+evidence is an explicit evidence/search route, so an item selector query cannot
+turn a bounded result request into an unbounded syntax walk.
+
+** Language adapter levels
+
+| Level | Responsibility | Required runtime cost |
+|-------+----------------+-----------------------|
+| L0 | File identity, bounded lexical tokens, and source-kind facts. | Harness artifact publication; no language process on indexed reads. |
+| L1 | AST owners, symbols, item kinds, dependencies, and structural selectors. | Native harness projection publication; never a search fallback. |
+| L2 | Optional type, macro-expansion, compiler, or language-server facts. | Explicit harness projection lifecycle; never a warm-read activation. |
+
+A new language may ship L0 or L1 without implementing a complete provider CLI.
+The harness publishes the shared projection schema; the Rust runtime owns
+search-query parsing, fallback policy, ranking, receipts, and rendering.  This
+is the primary way to reduce the cost of adding complex language support.
+
+** Harness projection, ASP import, and search separation
+
+Language parsing and searching are separate planes.  Every
+=languages/*-language-project-harness= is the sole owner of its native parser,
+AST, structural selector dialect, module semantics, and parser-owned language
+projection.  A harness may share its grammar and AST foundation internally
+between parser-facing commands, but it does not implement search planning,
+query composition, ranking, EvidenceGraph, GraphRoute, source-index lifecycle,
+or a language-local search CLI for ASP.
+
+The parser-facing projection is a query-free artifact governed by a shared
+schema.  It carries only parser-owned language facts: language and parser ABI,
+selector dialect, source paths, owners, exact selectors, and typed semantic
+relations.  It MUST NOT carry a user query, candidate list, view, rank, next
+action, rendered search result, source digest, workspace identity, import
+generation, or artifact identity.  Rust consumes this artifact as data; it
+does not accept a source snapshot, define a language parser request, construct
+an AST, or infer language semantics from source text.
+
+ASP Rust owns the generic lifecycle every harness can share: shared-schema
+validation and decoding, normalized workspace anchor and source-digest
+calculation, artifact identity comparison, parser-ABI reuse, incremental
+generation selection, transactional import, durable Turso storage, and
+construction of the immutable acceleration read model.  This lifecycle manages
+normalized facts, not language parsing.  A changed or absent projection is
+=projection-stale= or =cold-required=; an agent-facing search miss never starts
+a parser, rebuilds a projection, or invokes a provider search command.
+
+Turso stores the canonical normalized copy of harness artifacts.  A warm
+=asp <language> search= reads only the current generation and its acceleration
+read model.  It performs token postings, bounded intersections, ranking,
+EvidenceGraph construction, GraphRoute selection, and rendering with
+=providerProcessCount=0= and no native finder or language-parser process.  The
+only parser-facing read is an exact structural =query --code= request: the
+facade forwards an already-materialized selector to the harness and consumes
+the parser-owned exact-selector receipt.  That request is not a search fallback
+and receives no query-set or graph-routing arguments.
+
+=gslph fmt <path>= is an independent formatting command.  Its implementation
+and cache are private to formatting and MUST NOT share ASP artifacts, Turso
+state, source-index generations, lifecycle caches, or implicit import side
+effects.  The historical =gslph source-index refresh= command is removed rather
+than folded into =fmt=.  The only permitted common implementation is the
+harness-internal grammar/AST foundation; command adapters, cache namespaces,
+and artifact lifecycles remain separate.
+
+This division is a cross-language requirement, not a Gerbil exception.  It
+lets every registered harness retain native semantic authority while ASP
+provides one high-concurrency, read-only search and graph runtime.
+
+** EvidenceGraph owner-item route
+An owner-item search is an EvidenceGraph route, not a source-text or selector-string route. Given a language, normalized owner path, and bounded query terms, ASP reads only matching =selector= nodes and typed edges from the current Turso generation. The node carries the parser-owned symbol, kind, exact selector, path, and normalized query keys. Ranking consumes those structured fields; it MUST NOT recover a symbol or kind by splitting a selector string, inspecting source text, or invoking a language provider.
+
+The result is compact graph evidence: exact selector identities plus their owner and typed relation context. Source-index postings remain useful for broad owner discovery, but they are not an owner-item answer. A source-index candidate without a bounded parser selector is not eligible for this route. The GraphRoute chooses the next exact =query --code= or a typed graph-neighbor route such as dependency or test evidence.
+
+Projection publication is an explicit ASP lifecycle action. It may invoke the registered harness's bounded, query-free projection adapter for one admitted owner, then validates, digests, imports, and persists the result. A normal search never invokes that adapter. If its generation is missing, stale, or busy, it returns the corresponding typed state with =providerProcessCount=0= and an ASP projection-import action; it never falls through to a provider =search= or =semantic-facts= command.
+
+The canonical lifecycle action is =asp <language> projection import --owner <relative-owner-path> --workspace <root>=. It invokes exactly one registered harness adapter as =projection <owner> --workspace <root> --json=, accepts only the shared query-free projection schema, and imports it through the common ASP lifecycle. The receipt reports =status=imported|reused=, =parserProcessCount=1=, and persisted graph counts. The action rejects absolute or parent-traversal owners, query and ranking flags, language-mismatched projection payloads, and projection payloads which do not contain the requested owner source. It is the sole parser-process exception; it does not expose a generic provider-command forwarding surface.
+
+** Native role and boundary
+
+Native has three legitimate roles:
+
+1. The shared Rust acceleration read model used by all languages.
+2. Shared-schema validation, normalized-fact import, and immutable read-model
+   construction for artifacts already produced by language harnesses.
+3. An optional batch C ABI for a proven acceleration or import kernel when no
+   safe Rust implementation meets the measured target.
+
+Native does not own language parsing, ASTs, selector dialects, parser requests,
+the public search contract, agent guidance, fallback policy, provider registry,
+or language-specific output format.  It consumes normalized artifacts and
+returns shared search state or a typed failure.  Per-symbol FFI calls, hidden
+workspace scans, and Native-only query semantics are not allowed.
+
+** C ABI admission gate
+
+A C ABI implementation may be proposed only when all of the following are
+true:
+
+1. The command runs as a current release artifact and passes the real CLI
+   benchmark matrix.
+2. Query preflight, read-model access, fallback deadlines, and output budgets
+   already satisfy their gates.
+3. A release-mode profile shows one acceleration/import kernel consuming more than
+   40 percent of end-to-end p95 latency and at least 50 ms per representative
+   batch.
+4. The interface is deterministic, batch-oriented, ownership-safe, and does
+   not expose language runtime objects across the ABI.
+5. macOS and Linux release packaging, ABI versioning, failure isolation, and
+   memory-safety tests are defined before adoption.
+6. The same normalized fact contract remains available to non-Native adapters.
+
+Failing any gate keeps the implementation in Rust or in the existing language
+adapter.  C FFI is a measured final compression step, never a fallback for an
+unbounded shared search path.
+
+** Performance requirements
+
+All timing gates execute the real current release binary.  Debug binaries may
+be used for development diagnostics but never satisfy or populate these
+receipts.
+
+| Query class | Required p95 | Additional invariant |
+|-------------+--------------+----------------------|
+| Invalid or over-broad query | <= 20 ms | No database or provider activation. |
+| Exact owner/item, warm | <= 20 ms | No lexical fallback. |
+| Exact owner/item, cold | <= 75 ms | Return =cold-required= or =projection-stale=; no parser. |
+| Indexed symbol/search, warm | <= 30 ms | No provider process. |
+| Indexed symbol/search, cold | <= 100 ms | Bounded read-model load or typed cold state; no parser. |
+| Incremental one-file artifact import | <= 50 ms | No source-language parse or unrelated import. |
+| Any implicit fallback attempt | <= 200 ms hard deadline | Return one focused =nextCommand= after the deadline. |
+
+Performance tests must also bound candidate count, provider process count,
+native finder process count, output bytes, peak RSS, index state, and fallback
+state.  A fast empty result from a broken index is not a passing benchmark.
+Parser projection publication is a separate harness performance contract.  It
+may measure native parsing and its own cache, but it must never be charged to
+an agent-facing search receipt or used as a search fallback.
+
+** Scenario matrix
+
+The maintained scenario matrix covers:
+
+- invalid, structurally valid, exact-hit, exact-miss, busy-index, stale-index,
+  and cold-index states;
+- one-file, 1,000-file, and 10,000-file projects;
+- empty, small, and checkpoint-pending WAL states;
+- cold process, warm filesystem cache, and warm read-model execution;
+- the registered-language harness artifact matrix, including one native parser
+  projection import and one zero-process warm read per registered language;
+- exact owner, symbol, dependency, lexical, broad-query rejection, and
+  owner-language-mismatch-before-provider routes.
+
+Every scenario records one machine-readable phase receipt with these fields:
+
+#+begin_example
+schemaId
+scenarioId
+commit
+artifactProfile
+artifactDigest
+artifactImportMs
+datasetId
+fileCount
+indexGeneration
+indexState
+walBytes
+queryClass
+preflightMs
+readModelMs
+providerMs
+rankMs
+renderMs
+totalMs
+p50Ms
+p95Ms
+maxMs
+candidateCount
+providerProcessCount
+parserProcessCount
+nativeFinderProcessCount
+fallbackState
+outputBytes
+peakRssBytes
+#+end_example
+
+Receipts are compared by scenario identity.  A regression fails when a hard
+limit is crossed, a route changes without an RFC update, or latency improves by
+returning less evidence than the scenario contract requires.
+
+** Improvement order
+
+The implementation and tracking order is normative:
+
+1. Make release provenance explicit and prohibit debug artifact installation.
+2. Enforce query grammar, broad-query rejection, and public wall-clock budgets.
+3. Remove structural-miss-to-unbounded-lexical fallback.
+4. Build the shared generation-bound acceleration read model.
+5. Move languages to the L0/L1/L2 query-free projection artifact contract.
+6. Re-profile release scenarios and evaluate the C ABI admission gate.
+
+The next Native decision occurs only after steps 1 through 5 have fresh
+scenario receipts.  Until then, the recorded decision is =shared-rust-read-model=
+and the C ABI status is =not-admitted=.
+
+** Implementation receipts
+
+*** 2026-07-10: hot-path ownership correction
+
+- =asp --version --profile= and =asp --version --require-release= define the
+  artifact-profile check.  The canonical installer validates the release
+  artifact before and after copying it, and performance entry points reject a
+  non-release artifact.  The current release built in 174.42 seconds, installed
+  through =just agent-tools-install-protocol=, reported =profile=release=, and
+  matched the installed binary digest.
+- Dynamic owner-item source matching now uses the shared query grammar, so
+  =a|b|c= alternatives no longer become one impossible literal phrase.
+- The interactive source-index adapter no longer invokes the Turso snapshot
+  read model after a fast index miss.  Turso remains durable state; the planner
+  receives the miss and selects a bounded backend.
+- A single-file, single-symbol =asp rg= probe changed from exceeding a 5-second
+  timeout to 190 ms cold and 40 ms warm in the debug diagnostic build.  Its
+  query-overlay collection changed from no result at 5 seconds to 107 ms cold
+  and 35 ms warm.  The installed release subsequently completed the same route
+  in 20 ms with 13 ms query-overlay collection.
+- Concept-only bundles with at least four terms and no structural anchor are
+  rejected before index lookup or overlay acquisition.  Short all-generic
+  queries are rejected by the same shared budget implementation.  A path,
+  digit, hyphen, or underscore term supplies a structural anchor.
+- The previously orphaned =search_query_budget.rs= tests are now registered in
+  the canonical =agent-semantic-search= unit suite.  Shared budget tests pass
+  5/5; source-index query-gate entry tests pass 2/2; preflight tests pass 11/11;
+  dynamic owner grammar tests pass 2/2.
+- The installed release rejects the representative concept-only =search pipe=
+  query in 10 ms with =query-needs-specific-anchor= and does not activate the
+  source index, search overlay, or a language provider.
+
+- The checked-in release CLI scenario is owned by
+  =tests/unit/test_python_harness_query_search_perf.py=; timing and subprocess
+  mechanics stay in its Python support module instead of =Justfile=.  It
+  accepts only =ASP_BIN= or =$HOME/.local/bin/asp=, because =uv run= prepends
+  the repository =.bin= directory and had selected a stale development binary
+  through =PATH=.  The focused canonical-release test completed in 0.24
+  seconds; its enforced warm phase ceilings are 50 ms for concept-only
+  preflight and 100 ms for single-file =asp rg=, with a 1-second subprocess
+  escape hatch.
+
+The remaining closure for this receipt is a cancellable 200 ms product boundary
+for any specific query that still reaches a bounded cold backend.

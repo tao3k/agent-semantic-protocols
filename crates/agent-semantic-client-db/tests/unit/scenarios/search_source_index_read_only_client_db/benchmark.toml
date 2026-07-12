@@ -1,0 +1,19 @@
+[benchmark]
+id = "search-source-index-read-only-client-db-zero-write"
+scenario = "search-source-index-read-only-client-db-zero-write"
+timer_unit = "milliseconds"
+target_p95_ms = 20
+max_total_ms = 100
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+max_overlay_collection_count = 0
+
+[gate]
+policy = "SEARCH-AGENT-ASP-SOURCE-INDEX-READ-ONLY-001"
+require_source_index_hit = true
+require_client_directory_snapshot_unchanged = true
+forbid_schema_bootstrap = true
+forbid_schema_migration = true
+forbid_provider_startup = true
+forbid_native_finder_fallback = true
+forbid_overlay_collection = true

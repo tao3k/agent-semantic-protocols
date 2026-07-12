@@ -73,7 +73,7 @@ pub(crate) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     for expected in [
         "search pipe requires at least two query clauses",
-        "use search lexical for plain text search",
+        "search lexical --query <seed> --query <seed> for QueryBundle search",
         "search owner <path> items --query <terms>",
     ] {
         assert!(

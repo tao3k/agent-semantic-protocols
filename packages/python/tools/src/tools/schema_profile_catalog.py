@@ -61,6 +61,8 @@ def schema_profile_contract_errors(
 _CORE_QUERY_SCHEMAS = (
     "semantic-search-packet.v1.schema.json",
     "semantic-query-packet.v1.schema.json",
+    "semantic-exact-selector-receipt.v1.schema.json",
+    "semantic-owner-item-evidence.v2.schema.json",
     "semantic-content-compaction.v1.schema.json",
     "semantic-read-packet.v1.schema.json",
     "semantic-source-location.v1.schema.json",
@@ -79,6 +81,7 @@ _CORE_QUERY_SCHEMAS = (
     "semantic-type-surface.v1.schema.json",
     "semantic-handle.v1.schema.json",
     "semantic-language-registry.v1.schema.json",
+    "semantic-language-projection.v1.schema.json",
 )
 
 _AGENT_REASONING_SCHEMAS = (
@@ -153,9 +156,11 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
             "semantic-invariant-candidate.v1.schema.json",
             "semantic-language-evidence.v1.schema.json",
             "semantic-language-registry.v1.schema.json",
-            "semantic-native-syntax-fact-index.v1.schema.json",
-            "semantic-query-packet.v1.schema.json",
-            "semantic-read-packet.v1.schema.json",
+            "semantic-language-projection.v1.schema.json",
+        "semantic-native-syntax-fact-index.v1.schema.json",
+        "semantic-query-packet.v1.schema.json",
+        "semantic-exact-selector-receipt.v1.schema.json",
+        "semantic-read-packet.v1.schema.json",
             "semantic-runtime-source-acquisition.v1.schema.json",
             "semantic-search-packet.v1.schema.json",
             "semantic-source-location.v1.schema.json",

@@ -26,7 +26,7 @@
         "json-schema"
       ],
       "command": [
-        "ts-harness",
+        "asp typescript",
         "agent",
         "doctor",
         "--json",
@@ -37,8 +37,8 @@
         "stdoutJsonEquals": {
           "registryId": "agent.semantic-protocols.semantic-language-registry",
           "languages.0.languageId": "typescript",
-          "languages.0.providerId": "ts-harness",
-          "languages.0.binary": "ts-harness"
+          "languages.0.providerId": "asp typescript",
+          "languages.0.binary": "asp typescript"
         },
         "maxStdoutLinesWarn": 12,
         "maxStdoutBytesWarn": 20000,
@@ -54,7 +54,7 @@
         "performance"
       ],
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "prime",
         "--json",
@@ -66,7 +66,7 @@
         "stdoutJsonEquals": {
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
           "languageId": "typescript",
-          "providerId": "ts-harness",
+          "providerId": "asp typescript",
           "method": "search/prime",
           "searchSynthesis.algorithm": "owner-rank-frontier",
           "searchSynthesis.scope": "prime"
@@ -93,7 +93,7 @@
         "performance"
       ],
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "dependency",
         "typescript",
@@ -106,7 +106,7 @@
         "stdoutJsonEquals": {
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
           "languageId": "typescript",
-          "providerId": "ts-harness",
+          "providerId": "asp typescript",
           "method": "search/dependency",
           "query": "typescript"
         },
@@ -118,7 +118,7 @@
     {
       "id": "workspace",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "workspace",
         "--workspace",
@@ -137,7 +137,7 @@
     {
       "id": "prime",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "prime",
         "--view",
@@ -167,9 +167,9 @@
     {
       "id": "text-owner-tests-pipe",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
-        "fzf",
+        "lexical",
         "--query-set",
         "SemanticSearchOwnerFallback",
         "--query-set",
@@ -189,9 +189,9 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf]",
+          "[search-lexical]",
           "querySet=2",
-          "selector=fuzzy-set",
+          "selector=lexical-set",
           "view=hits",
           "alg=query-set-owner-resolution",
           "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
@@ -212,7 +212,7 @@
     {
       "id": "owner-from-pipe",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "owner",
         "{tsOwner}",
@@ -243,7 +243,7 @@
       "id": "rg-to-ingest",
       "stdin": "src/cli/semantic-search/owner-fallback.ts:11:export interface SemanticSearchOwnerFallback {\ntests/unit/cli_semantic_search.test.ts:1:SemanticSearchOwnerFallback\n",
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "ingest",
         "--view",

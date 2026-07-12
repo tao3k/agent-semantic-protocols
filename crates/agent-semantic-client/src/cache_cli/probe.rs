@@ -16,8 +16,7 @@ use crate::cache_cli::request::{
     request_export_method, request_lookup_fingerprint, selected_provider_for_request,
 };
 use crate::cache_replay::{
-    ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay,
-    load_syntax_query_rows_replay_session, search_lexical_generation_matches_request,
+    ProviderCacheReplay, load_replay_artifact, search_lexical_generation_matches_request,
 };
 
 const FRESH_LEXICAL_CANDIDATE_LIMIT: u32 = 20;
@@ -136,32 +135,6 @@ pub(crate) fn provider_cache_probe(
                 export_method,
                 request,
             )
-        })
-        .or_else(|| {
-            let provider = selected_provider?;
-            let export_method = export_method.as_ref()?;
-            if db_report.status != ClientDbStatus::Present
-                || export_method.as_str() != "query/tree-sitter"
-            {
-                return None;
-            }
-            if let Some(db_session) = db_session.as_ref() {
-                load_syntax_query_rows_replay_session(
-                    db_session,
-                    &provider.language_id,
-                    &provider.provider_id,
-                    project_root,
-                    request,
-                )
-            } else {
-                load_syntax_query_rows_replay(
-                    cache_root,
-                    &provider.language_id,
-                    &provider.provider_id,
-                    project_root,
-                    request,
-                )
-            }
         });
     let cache_status = if replay.is_some() {
         CacheStatus::Hit

@@ -269,7 +269,7 @@ pub(super) fn write_guide_provider(bin_dir: &Path, binary: &str) {
     write_provider_script(
         bin_dir,
         binary,
-        "#!/bin/sh\nprintf '[agent-guide] language=rust provider=rs-harness\\n'\nprintf '|cmd lexical=rs-harness search lexical <query> owner tests --workspace . --view seeds\\n'\nprintf \"|cmd ingest=rg -n '<query>' src tests | rs-harness search ingest --workspace .\\n\"\nprintf '|cmd ast-patch=rs-harness ast-patch dry-run --packet <semantic-ast-patch.json|-> --workspace .\\n'\nprintf '|cmd evidence=rs-harness evidence graph --review-packet-json <path> --json --workspace .\\n'\nprintf '|rule hook setup/runtime is owned by agent-semantic-hook\\n'\n",
+        "#!/bin/sh\nprintf '[agent-guide] language=rust provider=rs-harness\\n'\nprintf '|cmd lexical=rs-harness search lexical --query <seed> --query <seed> owner tests --workspace . --view seeds\\n'\nprintf \"|cmd ingest=rg -n '<query>' src tests | rs-harness search ingest --workspace .\\n\"\nprintf '|cmd ast-patch=rs-harness ast-patch dry-run --packet <semantic-ast-patch.json|-> --workspace .\\n'\nprintf '|cmd evidence=rs-harness evidence graph --review-packet-json <path> --json --workspace .\\n'\nprintf '|rule hook setup/runtime is owned by agent-semantic-hook\\n'\n",
     );
 }
 

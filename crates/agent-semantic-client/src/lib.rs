@@ -11,7 +11,7 @@ mod compact_mode;
 mod native_prime;
 mod provider_method;
 mod search_history;
-mod source_index;
+pub mod source_index;
 mod syntax_query_preflight;
 mod syntax_receipt;
 #[cfg(test)]

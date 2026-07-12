@@ -722,7 +722,7 @@ next actions.
 Exact source-file raw search such as =rg -n Foo src/model.ts= is still raw
 source exploration.  It should be denied with the same provider-owned guide
 instead of being treated as a safe exception; use =search owner= or a scoped
-=search fzf= packet when the owner is already known.
+=search lexical= packet when the owner is already known.
 
 Semantic search JSON is not the agent-facing exploration surface.  A
 provider-binary =search ... --json= command is allowed only when the caller is a
@@ -918,18 +918,18 @@ Output-mode denial example:
   "languageIds": ["typescript"],
   "subject": {
     "toolName": "Bash",
-    "command": "asp typescript search fzf location.path owner tests --json ."
+    "command": "asp typescript search lexical location.path owner tests --json ."
   },
   "routes": [
     {
       "languageId": "typescript",
       "providerId": "ts-harness",
       "binary": "asp",
-      "kind": "fzf",
-      "argv": ["asp", "typescript", "search", "fzf", "location.path", "owner", "tests", "--view", "seeds", "."]
+      "kind": "lexical",
+      "argv": ["asp", "typescript", "search", "lexical", "location.path", "owner", "tests", "--view", "seeds", "."]
     }
   ],
-  "message": "agent-search-json denied; route: asp typescript search fzf location.path owner tests --workspace . --view seeds"
+  "message": "agent-search-json denied; route: asp typescript search lexical location.path owner tests --workspace . --view seeds"
 }
 #+end_src
 

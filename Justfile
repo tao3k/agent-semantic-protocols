@@ -86,6 +86,10 @@ agent-hooks-smoke-codex:
         "Run exactly this shell command and do nothing else: sed -n '1,8p' languages/typescript-lang-project-harness/tests/unit/cli.test.ts" >"${out}" 2>&1 || true; \
       if rg -q "Command blocked by PreToolUse hook: bulk-source-dump denied|permissionDecision.*deny" "${out}"; then \
         echo "[agent-hooks-smoke-codex] blocked"; \
+      elif rg -q '"type":"command_execution"' "${out}"; then \
+        echo "[agent-hooks-smoke-codex] unsupported-surface=command_execution; PreToolUse only intercepts Bash, apply_patch, and MCP tools"; \
+        rm -f "${out}"; \
+        exit 2; \
       else \
         cat "${out}"; \
         rm -f "${out}"; \
@@ -122,9 +126,11 @@ agent-tools-install-protocol bin_dir="":
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
+      target/release/asp --version --require-release >/dev/null; \
       install -m 755 target/release/asp "${bin_dir}/asp"; \
       rm -f "${bin_dir}/semantic-agent-protocol"; \
       test -x "${bin_dir}/asp"; \
+      "${bin_dir}/asp" --version --require-release >/dev/null; \
       "${bin_dir}/asp" guide >/dev/null
 
 # Install the debug protocol binary into a local bin dir and prewarm it.
@@ -187,7 +193,12 @@ agent-tools-install-julia bin_dir="":
     @just agent-tools-install-jl "{{bin_dir}}"
 
 agent-tools-install-jl bin_dir="":
-    @just agent-tools-install-language julia "{{bin_dir}}"
+    @package_dir="$PWD/{{julia_harness_project}}"; \
+      direnv exec . env \
+        ASP_JULIA_BUILD_DIR="${package_dir}/build/juliac-asp-local" \
+        ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
+        "${package_dir}/juliac/build_provider.sh"; \
+      direnv exec . just _agent-tools-run-asp "{{bin_dir}}" install language julia --from-workspace --project .
 
 # Install only the Gerbil Scheme standalone binary.
 agent-tools-install-gerbil bin_dir="":
@@ -199,23 +210,21 @@ agent-tools-build-gerbil bin_dir="":
       bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       package_dir="${repo_root}/{{gerbil_harness_project}}"; \
-      package_bin="${package_dir}/.bin"; \
       root_bin="${repo_root}/.bin"; \
-      launcher="${package_bin}/gslph"; \
-      cores="${GERBIL_BUILD_CORES:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)}"; \
       cd "${package_dir}"; \
-      if [ ! -x "${launcher}" ] || find src/cli-launcher.ss src/cli-dev-linker.ss src/search-light-launcher.ss src/constants.ss src/commands/search-prime-light.ss build.ss gerbil.pkg version.ss -type f -newer "${launcher}" 2>/dev/null | grep -q .; then \
-        rm -f "${launcher}" "${package_bin}/gslph__exe".*; \
-        GERBIL_PATH="${package_dir}/.gerbil" GERBIL_BUILD_CORES="${cores}" ./build.ss compile --binary --optimized; \
+      if [ "$(uname -s)" = "Darwin" ]; then \
+        env SDKROOT= CC="$(xcrun --find clang)" gxpkg env gxi src/build.ss compile; \
       else \
-        echo "[agent-tools-build-gerbil] ${launcher} is up to date"; \
+        gxpkg env gxi src/build.ss compile; \
       fi; \
+      launcher="${package_dir}/.gerbil/bin/gslph"; \
       test -x "${launcher}"; \
       mkdir -p "${root_bin}" "${bin_dir}"; \
       if [ ! "${launcher}" -ef "${root_bin}/gslph" ]; then install -m 755 "${launcher}" "${root_bin}/gslph"; fi; \
       if [ ! "${launcher}" -ef "${bin_dir}/gslph" ]; then install -m 755 "${launcher}" "${bin_dir}/gslph"; fi; \
       test -x "${root_bin}/gslph"; \
-      test -x "${bin_dir}/gslph"
+      test -x "${bin_dir}/gslph"; \
+      "${bin_dir}/gslph" --help >/dev/null
 
 agent-tools-install-gx bin_dir="":
     @just agent-tools-build-gerbil "{{bin_dir}}"
@@ -236,6 +245,12 @@ agent-hooks-doctor-julia:
 
 check-sandtables:
     uv run --project packages/python python -m tools sandtable
+
+benchmark-large-library-search-runtime:
+    direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-corpus-root .data
+
+benchmark-large-library-search-runtime-baseline:
+    receipt="$PWD/.cache/large-library-runtime-search.v1.receipt.json"; mkdir -p "$(dirname "$receipt")"; set +e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --json --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-corpus-root .data > "$receipt"; runtime_status=$?; set -e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable.large_library_runtime_baseline --baseline benchmarks/large-library-runtime-search.v1.baseline.json --receipt "$receipt"; baseline_status=$?; test "$runtime_status" -eq 0; test "$baseline_status" -eq 0
 
 check-graph-turbo-focused:
     uv run --project packages/python/asp_graph_turbo --frozen pytest \
@@ -339,6 +354,16 @@ check-gerbil-owner-items-fast-path:
             f"[gerbil-owner-items-fast] missing executable {asp_bin}; "
             "run `just agent-tools-install-protocol .bin`"
         )
+
+    profile = subprocess.run(
+        [str(asp_bin), "--version", "--require-release"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+    )
+    if profile.returncode != 0:
+        sys.stderr.write(profile.stderr)
+        raise SystemExit(profile.returncode)
 
     command = [
         str(asp_bin),

@@ -54,7 +54,7 @@ fn parse_search_suggest_args(args: &[String]) -> Result<SearchSuggestArgs, Strin
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| "search suggest --view requires commands".to_string())?
                     .clone();
                 index += 2;
             }

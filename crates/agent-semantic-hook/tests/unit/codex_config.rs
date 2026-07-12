@@ -1,6 +1,5 @@
 use agent_semantic_hook::{
     ROOT_BLOCK_BEGIN, claude_hook_block, codex_hook_block, merge_claude_settings,
-    merge_codex_asp_explorer_role_config,
 };
 use std::path::Path;
 
@@ -25,31 +24,6 @@ fn codex_hook_matcher_omits_apply_patch_surfaces_by_default() {
 }
 
 #[test]
-fn codex_plugin_role_merge_registers_asp_explorer_without_hook_block() {
-    let existing = r#"[features]
-hooks = true
-unified_exec = true
-
-[marketplaces.asp-project]
-source_type = "local"
-source = "."
-"#;
-
-    let merged = merge_codex_asp_explorer_role_config(existing).expect("merge role config");
-
-    toml::from_str::<toml::Value>(&merged).expect("merged Codex config is valid TOML");
-    assert!(!merged.contains(ROOT_BLOCK_BEGIN), "{merged}");
-    assert!(merged.contains("[agents.asp_explorer]"));
-    assert!(merged.contains("config_file = \"agents/asp-explorer.toml\""));
-    assert!(merged.contains("[marketplaces.asp-project]"));
-    assert!(merged.contains("source = \".\""));
-
-    let merged_again =
-        merge_codex_asp_explorer_role_config(&merged).expect("merge existing role config");
-    assert_eq!(merged_again, merged);
-}
-
-#[test]
 fn codex_hook_merge_replaces_legacy_bare_asp_explorer_role() {
     let existing = r#"[features]
 hooks = true
@@ -62,7 +36,7 @@ nickname_candidates = ["ASP selector"]
 
 [marketplaces.asp-project]
 source_type = "local"
-source = "."
+source = "/tmp/asp-project"
 "#;
 
     let merged =
@@ -72,10 +46,10 @@ source = "."
     assert!(merged.contains(ROOT_BLOCK_BEGIN), "{merged}");
     assert_eq!(
         merged.matches("[agents.asp_explorer]").count(),
-        1,
+        0,
         "{merged}"
     );
-    assert!(merged.contains("config_file = \"agents/asp-explorer.toml\""));
+    assert!(!merged.contains("config_file = \"agents/asp-explorer.toml\""));
     assert!(!merged.contains("agents/legacy.toml"));
     assert!(merged.contains("[marketplaces.asp-project]"));
     assert!(merged.contains("[[hooks.pre_tool_use]]"), "{merged}");
@@ -83,6 +57,33 @@ source = "."
     assert!(merged.contains("[[hooks.permission_request]]"), "{merged}");
     assert!(!merged.contains("[[hooks.PreToolUse]]"), "{merged}");
     assert!(!merged.contains("[[hooks.SessionStart]]"), "{merged}");
+}
+
+#[test]
+fn codex_hook_trust_cleanup_removes_orphan_state_tables() {
+    let existing = r#"[features]
+plugins = true
+
+[hooks.state."/tmp/project/.codex/config.toml:pre_tool_use:0:0"]
+status = "approved"
+hash = "legacy"
+
+# END agent-semantic-protocol trusted hook state
+
+[plugins."asp-codex-plugin@asp-project"]
+enabled = true
+"#;
+
+    let cleaned = agent_semantic_hook::remove_codex_global_hook_trust_config(
+        existing,
+        std::path::Path::new("/tmp/project/.codex/config.toml"),
+    );
+
+    toml::from_str::<toml::Value>(&cleaned).expect("cleaned Codex config is valid TOML");
+    assert!(!cleaned.contains("[hooks.state."));
+    assert!(!cleaned.contains("legacy"));
+    assert!(!cleaned.contains("# END agent-semantic-protocol trusted hook state"));
+    assert!(cleaned.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
 }
 
 #[test]

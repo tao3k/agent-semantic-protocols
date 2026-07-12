@@ -85,7 +85,7 @@ class SemanticSearchPacketGraphRuntimeSchemaTests(unittest.TestCase):
         self.assertEqual([], self.validation_errors(packet))
 
     def test_search_synthesis_accepts_agent_facing_graph_scopes(self) -> None:
-        for scope in ("policy", "query", "query-set", "fzf", "tests", "ingest"):
+        for scope in ("policy", "query", "query-set", "lexical", "tests", "ingest"):
             with self.subTest(scope=scope):
                 packet = semantic_search_graph_runtime_minimal_packet()
                 packet["searchSynthesis"] = {

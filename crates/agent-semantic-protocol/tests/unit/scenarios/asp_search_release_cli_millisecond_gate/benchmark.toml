@@ -1,0 +1,17 @@
+snapshot = "test_release_search_cli_millisecond_gate"
+target_total = "50ms"
+max_total = "150ms"
+observed_total = "30ms"
+regression_budget = "50ms"
+memory_budget_bytes = 67108864
+observed_memory_bytes = 0
+route_source = "release-cli-search"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "This gate measures the installed release CLI after warm page-in. Query preflight has a 50ms phase ceiling and single-file rg has a 100ms phase ceiling; debug test binaries are not accepted."
+
+[observed_timings]
+query_preflight = "10ms"
+single_file_rg = "20ms"
+provider_process_count = "0us"

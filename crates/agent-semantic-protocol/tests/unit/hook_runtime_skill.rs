@@ -198,8 +198,10 @@ fn install_plugin_skill_writes_only_codex_plugin_skill() {
         codex_plugin_cache_skill_path(&root).with_file_name("SKILL.contract.org");
     write_stale_contract(&plugin_contract_path);
 
+    let _global_scope = crate::hook_runtime_skill::hook_runtime_skill::PluginSkillScope::Global;
     let installed = install_agent_semantic_protocols_plugin_skill(
         &root,
+        crate::hook_runtime_skill::hook_runtime_skill::PluginSkillScope::Project,
         &test_activation(),
         &test_runtime_profiles(),
     )

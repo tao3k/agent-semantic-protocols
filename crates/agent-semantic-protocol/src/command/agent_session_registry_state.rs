@@ -37,9 +37,7 @@ pub(crate) fn current_registered_session(
     };
     registry.refresh_expired_sessions()?;
     let now = agent_session_unix_timestamp()?;
-    if !record.is_routable_at(now)
-        || !session_record_validation_allows_routing(&registry, &record, now)?
-    {
+    if !record.is_routable_at(now) {
         return Ok(None);
     }
     Ok(Some(record))
@@ -53,18 +51,27 @@ pub(crate) fn current_root_session_id() -> Option<String> {
     current_agent_runtime_root_session_id()
 }
 
-pub(crate) fn asp_explore_session_for_current_root(
+pub(crate) fn current_agent_session_id() -> Option<String> {
+    non_empty_session_env("CODEX_THREAD_ID")
+        .or_else(|| non_empty_session_env("CLAUDE_SESSION_ID"))
+        .or_else(|| current_agent_runtime_session().map(|session| session.id))
+}
+
+fn non_empty_session_env(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+}
+
+pub(crate) fn registered_resident_session_for_root(
     project_root: &Path,
+    root_session_id: &str,
     session_name: &str,
 ) -> Result<Option<AgentSessionRecord>, String> {
     let Some(registry) = open_existing_registry(project_root)? else {
         return Ok(None);
     };
-    registry.refresh_expired_sessions()?;
     let project_id = project_session_scope_id(&registry, project_root)?;
-    let Some(root_session_id) = current_recall_session_id(&registry)? else {
-        return Ok(None);
-    };
     let Some(record) = registry.session_by_name(&project_id, &root_session_id, session_name)?
     else {
         return Ok(None);
@@ -75,25 +82,6 @@ pub(crate) fn asp_explore_session_for_current_root(
     {
         return Ok(None);
     }
-    Ok(Some(record))
-}
-
-pub(crate) fn asp_explore_session_record_for_current_root(
-    project_root: &Path,
-    session_name: &str,
-) -> Result<Option<AgentSessionRecord>, String> {
-    let Some(registry) = open_existing_registry(project_root)? else {
-        return Ok(None);
-    };
-    registry.refresh_expired_sessions()?;
-    let project_id = project_session_scope_id(&registry, project_root)?;
-    let Some(root_session_id) = current_recall_session_id(&registry)? else {
-        return Ok(None);
-    };
-    let Some(record) = registry.session_by_name(&project_id, &root_session_id, session_name)?
-    else {
-        return Ok(None);
-    };
     Ok(Some(record))
 }
 

@@ -125,24 +125,32 @@ fn missing_home_local_binary_reports_install_language_without_runtime_profile_fa
 }
 
 #[test]
-fn home_local_binary_takes_precedence_over_activation_and_runtime_profile_argv() {
-    let home = install_home_provider("activation-prefix", "rs-harness", "");
-    let mut provider = provider("rust", "rs-harness");
-    provider.runtime_command_argv = Some(vec!["/opt/homebrew/bin/rs-harness".to_string()]);
-    provider.runtime_profile_status = Some(RuntimeProfileStatus::Available);
-    let backend = LocalNativeCliBackend::new(snapshot(vec![provider]));
-    let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"))
-        .with_language("rust")
-        .with_forwarded_args(vec![
-            "workspace".to_string(),
-            "--view".to_string(),
-            "seeds".to_string(),
-        ]);
+fn home_local_binary_is_canonical_for_every_external_provider() {
+    for (language_id, binary) in [
+        ("rust", "rs-harness"),
+        ("typescript", "ts-harness"),
+        ("python", "py-harness"),
+        ("julia", "asp-julia-harness"),
+        ("gerbil-scheme", "gslph"),
+    ] {
+        let home = install_home_provider(language_id, binary, "");
+        let mut provider = provider(language_id, binary);
+        provider.runtime_command_argv = Some(vec![format!("/opt/homebrew/bin/{binary}")]);
+        provider.runtime_profile_status = Some(RuntimeProfileStatus::Available);
+        let backend = LocalNativeCliBackend::new(snapshot(vec![provider]));
+        let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"))
+            .with_language(language_id)
+            .with_forwarded_args(vec![
+                "workspace".to_string(),
+                "--view".to_string(),
+                "seeds".to_string(),
+            ]);
 
-    let command = backend.prepare(&request).expect("prepare command");
+        let command = backend.prepare(&request).expect("prepare command");
 
-    assert_eq!(command.program, home.provider_path.to_string_lossy());
-    assert_eq!(command.args, vec!["search", "workspace", "--view", "seeds"]);
+        assert_eq!(command.program, home.provider_path.to_string_lossy());
+        assert_eq!(command.args, vec!["search", "workspace", "--view", "seeds"]);
+    }
 }
 
 #[test]

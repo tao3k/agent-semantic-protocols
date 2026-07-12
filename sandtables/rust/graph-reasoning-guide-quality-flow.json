@@ -135,7 +135,7 @@
           "[search-prime]",
           "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
-          "avoid=raw-read,full-json,broad-fzf"
+          "avoid=raw-read,full-json,broad-lexical"
         ],
         "stdoutNotContains": [
           "profiles=",

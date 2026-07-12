@@ -37,6 +37,9 @@ use super::search_suggest::{
     is_search_suggest, is_unsupported_search_pipeline_command,
     reject_unsupported_search_pipeline_command, run_search_suggest_command,
 };
+use agent_semantic_search::search_command_preflight::{
+    SearchCommandPreflightOutcome, preflight_search_command_args,
+};
 
 pub(super) struct FastSearchContext<'a> {
     pub(super) language_id: &'a str,
@@ -117,6 +120,11 @@ pub(super) fn run_asp_fast_search_command(
         );
     }
     if is_search_owner_items_query(args) {
+        match preflight_search_command_args(context.language_id, args, context.project_root) {
+            SearchCommandPreflightOutcome::Rejected(error) => return Err(error),
+            SearchCommandPreflightOutcome::Passed
+            | SearchCommandPreflightOutcome::NotApplicable => {}
+        }
         return run_search_owner_items_query_command(
             args,
             SearchOwnerItemsFastContext {
@@ -148,12 +156,19 @@ fn is_search_ingest(args: &[String]) -> bool {
 fn is_search_lexical(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
         && matches!(args.get(1).map(String::as_str), Some("lexical"))
-        && args.get(2).is_some_and(|query| !query.starts_with('-'))
+        && has_search_lexical_query(args)
         && has_supported_fast_search_view(args)
         && !args.iter().any(|arg| arg == "--json")
         && !args
             .iter()
             .any(|arg| matches!(arg.as_str(), "--query-set" | "--owner" | "--dependency"))
+}
+
+fn has_search_lexical_query(args: &[String]) -> bool {
+    args.get(2).is_some_and(|query| !query.starts_with('-'))
+        || args
+            .windows(2)
+            .any(|window| window[0] == "--query" && !window[1].trim().is_empty())
 }
 
 fn is_search_failure(args: &[String]) -> bool {
@@ -646,7 +661,7 @@ fn run_search_lexical_command(
     let pipe_args = parse_lexical_args(args)?;
     if !matches!(pipe_args.view.as_str(), "seeds" | "graph-turbo-request") {
         return Err(
-            "search lexical supports --view seeds or --view graph-turbo-request".to_string(),
+            "search lexical supports --view seeds; GraphRouter is selected by the built-in route wrapper".to_string(),
         );
     }
     if let Some(block) = search_query_budget_block(&pipe_args.query, &pipe_args.owners, false) {

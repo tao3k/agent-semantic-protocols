@@ -135,7 +135,7 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
     );
     let stdout = String::from_utf8(seeds_output.stdout).expect("stdout");
     assert!(
-        stdout.contains("seedPlanDetail=quality=review queryOwnerSeedCount=2 selectedSeedCount=3"),
+        stdout.contains("seedPlanDetail=quality=review queryOwnerSeedCount=2 selectedSeedCount=8"),
         "{stdout}"
     );
     assert!(

@@ -199,6 +199,11 @@ pub(super) fn render_graph_turbo_packet(packet_bytes: &[u8]) -> Result<Option<Ve
 }
 
 pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Vec<u8>, String> {
+    if let Some(route) = packet.get("route")
+        && let Some(output) = render_graph_route_compact(packet, route)
+    {
+        return Ok(output.into_bytes());
+    }
     let nodes = packet
         .pointer("/graph/nodes")
         .and_then(Value::as_array)
@@ -253,6 +258,78 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
         output.push('\n');
     }
     Ok(output.into_bytes())
+}
+
+fn render_graph_route_compact(packet: &Value, route: &Value) -> Option<String> {
+    let profile = compact_json_str(packet.get("profile")).unwrap_or("owner-query");
+    let algorithm = compact_json_str(packet.get("algorithm")).unwrap_or("typed-ppr-diverse");
+    let relation = compact_json_str(route.get("relation")).unwrap_or("cohesive");
+    let route_kind = compact_json_str(route.get("routeKind")).unwrap_or("owner");
+    let covered = route
+        .get("coveredQueryCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let query_count = route.get("queryCount").and_then(Value::as_u64).unwrap_or(0);
+    let budget = packet.get("budget").and_then(Value::as_u64).unwrap_or(10);
+    let owner_path = route
+        .pointer("/owner/path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())?;
+    let score = route
+        .pointer("/owner/score/total")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let hits = route
+        .pointer("/owner/localHits")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let symbols = route
+        .pointer("/owner/symbols")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(compact_token)
+        .collect::<Vec<_>>();
+    let language_id = route
+        .pointer("/nextAction/languageId")
+        .and_then(Value::as_str)
+        .unwrap_or("rust");
+    let query = route
+        .pointer("/nextAction/query")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let avoid = route
+        .get("avoid")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    let mut output = String::new();
+    output.push_str(&format!(
+        "[graph-route] profile={profile} alg={algorithm} relation={relation} route={route_kind} covered={covered}/{query_count} budget={budget}\n"
+    ));
+    output.push_str(&format!(
+        "owner=path({}) score={score} hits={hits} symbols={}\n",
+        compact_token(owner_path),
+        if symbols.is_empty() {
+            "-".to_string()
+        } else {
+            symbols.join(",")
+        }
+    ));
+    output.push_str(&format!(
+        "next=asp {language_id} search owner {} items --query {} --workspace <root> --view seeds\n",
+        shell_quote(owner_path),
+        shell_quote(query)
+    ));
+    if !avoid.is_empty() {
+        output.push_str("avoid=");
+        output.push_str(&avoid.join(","));
+        output.push('\n');
+    }
+    Some(output)
 }
 
 fn compact_ranked_node_kinds(
@@ -494,6 +571,10 @@ fn compact_token(value: &str) -> String {
             }
         })
         .collect()
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub(super) struct GraphTurboReceiptCapture<'a> {

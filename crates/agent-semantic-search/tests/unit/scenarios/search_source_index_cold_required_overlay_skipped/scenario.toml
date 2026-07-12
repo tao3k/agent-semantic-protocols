@@ -1,0 +1,27 @@
+[scenario]
+id = "search-source-index-cold-required-overlay-skipped"
+title = "Cold-required source-index lookup skips search overlay"
+package = "agent-semantic-search"
+phase = "warm-recovery"
+intent = "a historical source-index schema must return a bounded rebuild receipt without starting overlay search"
+
+[source_index]
+state = "cold-required"
+candidate_count = 0
+decision = "cold-required"
+next_action = "asp cache source-index rebuild --workspace <root>"
+
+[search_frame]
+route = "source-index-cold-required"
+state = "rebuild-required"
+candidate_sources = ["source-index"]
+must_skip_overlay = true
+
+[evidence_graph]
+required_traces = ["sourceIndex:cold-required", "search-overlay:skipped"]
+forbidden_fields = ["body", "code", "displayLineRange", "lineRange", "sourceBody"]
+
+[performance]
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+max_overlay_collection_count = 0

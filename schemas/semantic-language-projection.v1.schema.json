@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-language-projection.v1.schema.json",
+  "title": "Semantic Language Projection",
+  "description": "Query-free, parser-owned projection artifact published by a language harness for ASP lifecycle import.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "harness",
+    "sources",
+    "owners",
+    "items",
+    "relations"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-language-projection"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.language-projection"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "$ref": "#/$defs/languageId"
+    },
+    "harness": {
+      "$ref": "#/$defs/harness"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "owners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/owner"
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relation"
+      }
+    }
+  },
+  "$defs": {
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "harness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "harnessId",
+        "parserAbi",
+        "selectorDialect"
+      ],
+      "properties": {
+        "harnessId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "parserAbi": {
+          "$ref": "#/$defs/identifier"
+        },
+        "selectorDialect": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceId",
+        "path",
+        "sourceKind"
+      ],
+      "properties": {
+        "sourceId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "path": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+        },
+        "sourceKind": {
+          "enum": [
+            "source",
+            "test",
+            "fixture",
+            "config",
+            "generated"
+          ]
+        }
+      }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerId",
+        "sourceId"
+      ],
+      "properties": {
+        "ownerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/identifier"
+        },
+      "kind": {
+        "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemId",
+        "ownerId",
+        "kind",
+        "name",
+        "selector"
+      ],
+      "properties": {
+        "itemId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "ownerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "selector": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "nodeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "source",
+            "owner",
+            "item",
+            "external"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "kind",
+        "to"
+      ],
+      "properties": {
+      "from": {
+        "$ref": "#/$defs/nodeRef"
+      },
+      "kind": {
+        "enum": ["contains", "depends-on", "tests", "references"]
+        },
+        "to": {
+          "$ref": "#/$defs/nodeRef"
+        }
+      }
+    }
+  }
+}

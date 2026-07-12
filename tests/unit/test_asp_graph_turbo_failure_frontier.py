@@ -85,12 +85,12 @@ def test_failure_frontier_profile_ranks_hot_blocks_and_renders_search_failure() 
     assert "\nexplain=" not in compact
     assert "\nmetrics=" not in compact
     assert "\nomit=full-source,unrelated-functions,wide-windows\n" in compact
-    assert "\navoid=manual-window-scan,duplicate-read,raw-read,broad-fzf\n" in compact
+    assert "\navoid=manual-window-scan,duplicate-read,raw-read,broad-lexical\n" in compact
     assert packet["profile"] == "failure-frontier"
     assert packet["omit"] == ["full-source", "unrelated-functions", "wide-windows"]
     assert packet["avoid"] == [
         "manual-window-scan",
         "duplicate-read",
         "raw-read",
-        "broad-fzf",
+        "broad-lexical",
     ]

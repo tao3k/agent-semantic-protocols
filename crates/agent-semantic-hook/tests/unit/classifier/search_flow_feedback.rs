@@ -13,7 +13,6 @@ use std::{
 use super::{command, provider, provider_routes, registry};
 
 mod after_pipe;
-mod budget;
 mod document;
 mod invalid_facade;
 
@@ -141,48 +140,7 @@ fn stop_hook_allows_after_search_pipe_runs() {
 }
 
 #[test]
-fn pre_tool_denies_repeated_prime_before_pipe() {
-    let project_root = temp_project_root("asp-hook-repeat-prime");
-    append_hook_event_state(
-        &project_root,
-        &allowed_command_decision(
-            "claude",
-            "pre-tool",
-            "session-effect",
-            "transcript-effect.jsonl",
-            "asp typescript search prime --workspace . --view seeds",
-        ),
-    )
-    .expect("write prime event");
-    let runtime = runtime_for_project(&project_root);
-
-    let decision = classify_hook(
-        &runtime,
-        "claude",
-        "pre-tool",
-        &json!({
-            "hook_event_name": "PreToolUse",
-            "session_id": "session-effect",
-            "transcript_path": "transcript-effect.jsonl",
-            "tool_name": "Bash",
-            "tool_input": {
-                "command": "cd /repo && asp typescript search prime --workspace . --view seeds 2>&1 | head -100"
-            }
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.fields["hookFeedback"], "repeat-prime-before-pipe");
-    assert!(
-        decision.message.contains(pipe_command()),
-        "{}",
-        decision.message
-    );
-    let _ = fs::remove_dir_all(project_root);
-}
-
-#[test]
-fn pre_tool_denies_direct_read_before_pipe() {
+fn pre_tool_allows_explicit_read_before_pipe() {
     let project_root = temp_project_root("asp-hook-read-before-pipe");
     append_hook_event_state(
         &project_root,
@@ -212,15 +170,8 @@ fn pre_tool_denies_direct_read_before_pipe() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.fields["hookFeedback"], "read-before-pipe");
-    assert!(
-        decision.message.contains(
-            "Do not repeat `search prime`. Do not read source or code before exact parser-owned identity or a route frontier justifies it."
-        ),
-        "{}",
-        decision.message
-    );
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(decision.routes.is_empty());
     let _ = fs::remove_dir_all(project_root);
 }
 
@@ -271,10 +222,6 @@ fn pre_tool_allows_asp_binary_probe_without_treating_asp_as_facade() {
     assert_eq!(decision.decision, DecisionKind::Allow);
     assert!(!decision.fields.contains_key("hookFeedback"));
     let _ = fs::remove_dir_all(project_root);
-}
-
-fn pipe_command() -> &'static str {
-    "asp typescript search pipe '<question-or-feature-term>' --workspace . --view seeds"
 }
 
 fn runtime_for_project(project_root: &std::path::Path) -> HookRuntime {

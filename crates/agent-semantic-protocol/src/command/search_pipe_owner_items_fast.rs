@@ -47,12 +47,12 @@ struct OwnerItemsSearchState<'a> {
 }
 
 impl<'a> OwnerItemsSearchState<'a> {
-    fn new(args: &'a [String], context: SearchOwnerItemsFastContext<'a>, owner: &'a Path) -> Self {
-        let owner_project_root = language_owner_items_workspace_root(
-            context.project_root,
-            context.locator_root,
-            search_owner_items_workspace(args).as_deref(),
-        );
+    fn new(
+        args: &'a [String],
+        context: SearchOwnerItemsFastContext<'a>,
+        owner: &'a Path,
+        owner_project_root: PathBuf,
+    ) -> Self {
         Self {
             args,
             language_id: context.language_id,
@@ -78,28 +78,14 @@ impl<'a> OwnerItemsSearchState<'a> {
                 return Ok(true);
             }
         }
-        let Some(collector) = dynamic_owner_item_collector(self.language_id) else {
-            return Ok(false);
-        };
-        let owner_path = language_owner_source_path(&self.owner_project_root, self.owner);
-        let dynamic_items = collector(&owner_path)?;
-        if dynamic_items.is_empty() {
-            return Ok(false);
-        }
-        let request = DynamicOwnerItemsRequest {
-            language: DynamicSearchLanguage::new(self.language_id),
-            roots: DynamicSearchRoots::new(&self.owner_project_root, self.locator_root),
-            owner: DynamicOwnerPath::new(self.owner),
-            query: DynamicOwnerQuery::new(&owner_query_args.query),
-            items: &dynamic_items,
-        };
-        let output = if owner_query_args.view == "hits" {
-            render_dynamic_owner_items_code(request)
-        } else {
-            render_dynamic_owner_items_frontier(request)
-        };
-        print!("{output}");
-        Ok(true)
+        try_render_dynamic_owner_items(
+            self.language_id,
+            &self.owner_project_root,
+            self.locator_root,
+            self.owner,
+            &owner_query_args.query,
+            &owner_query_args.view,
+        )
     }
 
     fn try_provider(&self) -> Result<LanguageOwnerItemsAttempt, String> {
@@ -122,6 +108,40 @@ fn emit_source_index_trace(_state: &OwnerItemsSearchState<'_>) -> Result<(), Str
     Ok(())
 }
 
+pub(super) fn run_pre_activation_dynamic_rust_owner_items_search(
+    args: &[String],
+    project_root: &Path,
+    locator_root: &Path,
+) -> Result<bool, String> {
+    if !matches!(
+        (
+            args.first().map(String::as_str),
+            args.get(1).map(String::as_str),
+            args.get(3).map(String::as_str),
+        ),
+        (Some("search"), Some("owner"), Some("items"))
+    ) {
+        return Ok(false);
+    }
+    let owner_query_args = parse_search_owner_items_query_args(args)?;
+    if !matches!(owner_query_args.view.as_str(), "seeds" | "hits") {
+        return Ok(false);
+    }
+    let owner_project_root = language_owner_items_workspace_root(
+        project_root,
+        locator_root,
+        search_owner_items_workspace(args).as_deref(),
+    );
+    try_render_dynamic_owner_items(
+        "rust",
+        &owner_project_root,
+        locator_root,
+        &owner_query_args.owner,
+        &owner_query_args.query,
+        &owner_query_args.view,
+    )
+}
+
 pub(super) fn run_search_owner_items_query_command(
     args: &[String],
     context: SearchOwnerItemsFastContext<'_>,
@@ -133,8 +153,25 @@ pub(super) fn run_search_owner_items_query_command(
             "search owner items fast path supports --view seeds or --view hits".to_string(),
         );
     }
-    let state = OwnerItemsSearchState::new(args, context, &owner_query_args.owner);
+    let owner_project_root = language_owner_items_workspace_root(
+        context.project_root,
+        context.locator_root,
+        search_owner_items_workspace(args).as_deref(),
+    );
+    let state =
+        OwnerItemsSearchState::new(args, context, &owner_query_args.owner, owner_project_root);
     emit_source_index_trace(&state)?;
+    if state.language_id == "gerbil-scheme" {
+        print!(
+            "{}",
+            super::gerbil_graph_owner_items::render_gerbil_graph_owner_items(
+                &state.owner_project_root,
+                state.owner,
+                &owner_query_args.query,
+            )?
+        );
+        return Ok(());
+    }
     if state.try_dynamic_owner_items(&owner_query_args)? {
         return Ok(());
     }
@@ -166,6 +203,38 @@ fn dynamic_owner_item_collector(language_id: &str) -> Option<DynamicOwnerItemCol
         "org" => Some(collect_dynamic_org_owner_items),
         _ => None,
     }
+}
+
+fn try_render_dynamic_owner_items(
+    language_id: &str,
+    project_root: &Path,
+    locator_root: &Path,
+    owner: &Path,
+    query: &str,
+    view: &str,
+) -> Result<bool, String> {
+    let Some(collector) = dynamic_owner_item_collector(language_id) else {
+        return Ok(false);
+    };
+    let owner_path = language_owner_source_path(project_root, owner);
+    let dynamic_items = collector(&owner_path)?;
+    if dynamic_items.is_empty() {
+        return Ok(false);
+    }
+    let request = DynamicOwnerItemsRequest {
+        language: DynamicSearchLanguage::new(language_id),
+        roots: DynamicSearchRoots::new(project_root, locator_root),
+        owner: DynamicOwnerPath::new(owner),
+        query: DynamicOwnerQuery::new(query),
+        items: &dynamic_items,
+    };
+    let output = if view == "hits" {
+        render_dynamic_owner_items_code(request)
+    } else {
+        render_dynamic_owner_items_frontier(request)
+    };
+    print!("{output}");
+    Ok(true)
 }
 
 fn collect_dynamic_rust_owner_items(owner_path: &Path) -> Result<Vec<DynamicOwnerItem>, String> {

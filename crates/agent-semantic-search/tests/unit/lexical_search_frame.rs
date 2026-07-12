@@ -15,7 +15,7 @@ const LEXICAL_FRAME_SCENARIO_ROOT: &str =
     "tests/unit/scenarios/lexical_search_frame_graph_router_warm_path";
 
 #[test]
-fn lexical_search_frame_prefers_warm_overlay_before_cold_scan() {
+fn lexical_search_frame_requires_query_bundle_before_warm_acquisition() {
     let terms = vec!["render_dynamic_owner_items_frontier".to_string()];
     let warm = vec![LexicalSearchFrameCandidate {
         path: "crates/agent-semantic-search/src/dynamic_search/owner_items/core.rs".to_string(),
@@ -34,18 +34,79 @@ fn lexical_search_frame_prefers_warm_overlay_before_cold_scan() {
 
     assert_eq!(
         route.acquisition_route,
-        LexicalAcquisitionRoute::WarmOverlay
+        LexicalAcquisitionRoute::QueryBundleRequired
     );
-    assert_eq!(route.evidence_state, LexicalEvidenceState::ItemReady);
-    assert_eq!(route.fallback_reason, "none");
+    assert_eq!(route.evidence_state, LexicalEvidenceState::Degraded);
+    assert_eq!(route.fallback_reason, "query-bundle-required");
     assert_eq!(route.provider_process_count, 0);
     assert_eq!(route.native_finder_process_count, 0);
-    assert!(route.render_receipt().contains("graphRouter=lexical-v1"));
+    assert_eq!(route.selected_candidate_count, 0);
+    assert_eq!(
+        route.query_relation,
+        agent_semantic_search::LexicalQueryRelation::QueryBundleRequired
+    );
+    assert!(
+        route
+            .render_receipt()
+            .contains("acquisitionRoute=query-bundle-required")
+    );
+}
+
+#[test]
+fn lexical_search_frame_routes_multi_seed_bundle_by_cohesive_owner() {
+    let terms = vec![
+        "manifest_path".to_string(),
+        "try_map_resources".to_string(),
+        "plugin_root".to_string(),
+    ];
+    let warm = vec![
+        LexicalSearchFrameCandidate {
+            path: "plugin/src/provider.rs".to_string(),
+            symbol: "manifest_path".to_string(),
+            source: "turso-overlay".to_string(),
+        },
+        LexicalSearchFrameCandidate {
+            path: "plugin/src/provider.rs".to_string(),
+            symbol: "try_map_resources".to_string(),
+            source: "turso-overlay".to_string(),
+        },
+        LexicalSearchFrameCandidate {
+            path: "plugin/src/provider.rs".to_string(),
+            symbol: "plugin_root".to_string(),
+            source: "turso-overlay".to_string(),
+        },
+        LexicalSearchFrameCandidate {
+            path: "plugin/src/manifest.rs".to_string(),
+            symbol: "manifest_path".to_string(),
+            source: "turso-overlay".to_string(),
+        },
+    ];
+
+    let route = plan_lexical_search_frame(LexicalSearchFrameRequest {
+        terms: &terms,
+        warm_candidates: &warm,
+        session_candidates: &[],
+        owner_candidates: &[],
+        provider_owner_item_available: false,
+        cold_scan_allowed: true,
+    });
+
+    assert_eq!(
+        route.query_relation,
+        agent_semantic_search::LexicalQueryRelation::Cohesive
+    );
+    assert_eq!(route.query_bundle_count, 3);
+    assert_eq!(route.covered_seed_count, 3);
+    assert_eq!(route.cohesive_owner_count, 1);
+    assert!(route.render_receipt().contains("queryBundle=3"));
+    assert!(route.render_receipt().contains("queryRelation=cohesive"));
+    assert!(route.render_receipt().contains("coveredSeeds=3"));
+    assert!(route.render_receipt().contains("cohesiveOwnerCount=1"));
 }
 
 #[test]
 fn lexical_search_frame_marks_degraded_finder_as_last_resort() {
-    let terms = vec!["missing".to_string()];
+    let terms = vec!["missing".to_string(), "owner".to_string()];
     let route = plan_lexical_search_frame(LexicalSearchFrameRequest {
         terms: &terms,
         warm_candidates: &[],
@@ -66,7 +127,7 @@ fn lexical_search_frame_marks_degraded_finder_as_last_resort() {
 
 #[test]
 fn lexical_search_frame_uses_owner_evidence_before_cold_scan() {
-    let terms = vec!["DynamicOwnerItem".to_string()];
+    let terms = vec!["DynamicOwnerItem".to_string(), "owner_items".to_string()];
     let owners = vec![LexicalSearchFrameCandidate {
         path: "crates/agent-semantic-search/src/dynamic_search/owner_items/core.rs".to_string(),
         symbol: String::new(),
@@ -117,12 +178,22 @@ fn lexical_search_frame_warm_path_stays_inside_scenario_gate() {
         );
     }
 
-    let terms = vec!["render_dynamic_owner_items_frontier".to_string()];
-    let warm = vec![LexicalSearchFrameCandidate {
-        path: "crates/agent-semantic-search/src/dynamic_search/owner_items/core.rs".to_string(),
-        symbol: "render_dynamic_owner_items_frontier".to_string(),
-        source: "turso-overlay".to_string(),
-    }];
+    let terms = vec![
+        "render_dynamic_owner_items_frontier".to_string(),
+        "DynamicOwnerItem".to_string(),
+    ];
+    let warm = vec![
+        LexicalSearchFrameCandidate {
+            path: "crates/agent-semantic-search/src/dynamic_search/owner_items/core.rs".to_string(),
+            symbol: "render_dynamic_owner_items_frontier".to_string(),
+            source: "turso-overlay".to_string(),
+        },
+        LexicalSearchFrameCandidate {
+            path: "crates/agent-semantic-search/src/dynamic_search/owner_items/core.rs".to_string(),
+            symbol: "DynamicOwnerItem".to_string(),
+            source: "turso-overlay".to_string(),
+        },
+    ];
 
     let started = Instant::now();
     for _ in 0..3 {
@@ -162,6 +233,7 @@ fn lexical_search_frame_trace_skips_overlay_when_source_index_is_selector_ready(
             query_keys: vec![
                 "agent-semantic-search".to_string(),
                 "LexicalSearchFrameRequest".to_string(),
+                "plan_lexical_search_frame".to_string(),
             ],
             selector_proof: Some(SearchPipeSelectorPayloadProof {
                 structural_selector:
@@ -180,7 +252,7 @@ fn lexical_search_frame_trace_skips_overlay_when_source_index_is_selector_ready(
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "LexicalSearchFrameRequest",
+        query: "LexicalSearchFrameRequest plan_lexical_search_frame",
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
@@ -216,7 +288,10 @@ fn lexical_search_frame_uses_source_index_owner_evidence_before_overlay() {
             provider_id: Some("rs-harness".to_string()),
             source_kind: "source".to_string(),
             line_count: Some(120),
-            query_keys: vec!["LexicalSearchFrameRequest".to_string()],
+            query_keys: vec![
+                "LexicalSearchFrameRequest".to_string(),
+                "plan_lexical_search_frame".to_string(),
+            ],
             selector_proof: None,
         }],
     };
@@ -228,7 +303,7 @@ fn lexical_search_frame_uses_source_index_owner_evidence_before_overlay() {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "LexicalSearchFrameRequest",
+        query: "LexicalSearchFrameRequest plan_lexical_search_frame",
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,

@@ -298,7 +298,7 @@ def test_pipe_flow_records_failure_frontier_precision_and_memory() -> None:
             "frontierActions=C1.query-code(selector=src/cache_cli/writeback.rs:10:24,owner=src/cache_cli/writeback.rs,symbol=write_prompt_output_artifact,source=H,language=rust)!query-code",
             "queryProfiles=failure-frontier(F=>failure-facts+owners+hot-blocks)",
             "omit=full-source,unrelated-functions,wide-windows",
-            "avoid=manual-window-scan,duplicate-read,raw-read,broad-fzf",
+            "avoid=manual-window-scan,duplicate-read,raw-read,broad-lexical",
         ]
     )
     messages = [

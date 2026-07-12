@@ -657,11 +657,7 @@ fn resolve_native_path(project_root: &Path, raw: &str) -> PathBuf {
     if path.is_absolute() {
         return path;
     }
-    let cwd_relative = std::env::current_dir()
-        .ok()
-        .map(|cwd| cwd.join(&path))
-        .filter(|candidate| candidate.exists());
-    cwd_relative.unwrap_or_else(|| project_root.join(path))
+    project_root.join(path)
 }
 
 fn ignored_by_config(path: &Path, project_root: &Path, config: SearchOverlayConfig<'_>) -> bool {

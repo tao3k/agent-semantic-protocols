@@ -270,8 +270,10 @@ fn language_owner_items_missing_owner_errors_without_provider_fallback() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("requires an existing owner path")
-            && stderr.contains("no provider executed"),
+        stderr.contains("reason=missing-owner")
+            && stderr.contains(
+                "search owner requires a concrete source owner path; workspace roots and directories are search scopes, not owners"
+            ),
         "{stderr}"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);

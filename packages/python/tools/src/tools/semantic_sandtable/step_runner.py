@@ -68,7 +68,11 @@ def _run_valid_step(
     if isinstance(execution, StepResult):
         return execution
     command, step_env = execution
-    command = _workspace_dev_command(repo_root, command)
+    command = _workspace_dev_command(
+        repo_root,
+        command,
+        benchmark_binary=step_env.get("ASP_BENCHMARK_BIN"),
+    )
     stdin = resolve_stdin(step, workdir, scenario_id, step_env, captures)
     if isinstance(stdin, StepResult):
         return stdin

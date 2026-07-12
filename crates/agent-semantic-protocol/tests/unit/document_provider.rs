@@ -45,7 +45,7 @@ fn markdown_query_no_hit_returns_recovery_actions() {
     );
     assert!(
         stdout.contains(
-            "|next search-lexical=\"asp md search lexical py-harness --workspace . --view seeds\""
+            "|next search-lexical=\"asp md search lexical --query py-harness --query '<related-seed>' --workspace . --view seeds\""
         ),
         "{stdout}"
     );

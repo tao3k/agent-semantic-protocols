@@ -11,7 +11,7 @@ prelude before every read or edit. If the user prompt, hook recovery route,
 prior search packet, failure transcript, or CLI diagnostic already provides an
 exact owner, selector, symbol, dependency, or bounded =recommendedNext= action,
 the agent should start with that provider-owned =query=, =search owner=,
-=search fzf=, =asp fd=, =asp rg=, guide, or dependency route. =search prime=
+=search lexical=, =asp fd=, =asp rg=, guide, or dependency route. =search prime=
 is the topology and owner-map entrypoint for an unknown workspace or language
 surface. =search pipe= is the query-set refinement surface for ambiguous or
 multi-axis frontiers after =prime= or another packet has shown that a narrower
@@ -227,14 +227,14 @@ Org task hierarchies.  =search toc --json= emits the normal
 =semantic-document-search-packet.v1= shape with =method=search/toc= and
 =view=toc=, while compact output stays optimized for prompt navigation.
 
-=search fzf <term...> --view toc= is the document keyword-to-outline
+=search lexical <term...> --view toc= is the document keyword-to-outline
 composition view.  It uses the same provider-owned document walk as =search
-toc=, applies fzf-style keyword discovery to document facts, then renders the
+toc=, applies lexical-style keyword discovery to document facts, then renders the
 TOC only for documents that contain all supplied keywords somewhere in that
 document.  The keywords are document-level selectors for this view, not a
 request to dump matching paragraphs.  Compact output must stay heading-only
 and include selector-query next actions; =--json= emits the same document
-search packet family with =method=search/fzf-toc= and =view=fzf-toc=.  A
+search packet family with =method=search/lexical-toc= and =view=lexical-toc=.  A
 trailing positional =toc= may select the same view for shell-friendly command
 composition, but =--view toc= is the canonical spelling.
 
@@ -252,13 +252,13 @@ graph-turbo-request= emits the
 same graph request boundary used by source-language pipe, with action frontier
 typed facts carrying =capabilityId=query= and =projection=content= rather than
 materialized shell =command=/=argv= fields.  Document-native
-=search toc= and =search fzf ... --view toc= remain separate outline surfaces
+=search toc= and =search lexical ... --view toc= remain separate outline surfaces
 and must not be swallowed by the pipe chain.
 
 Document query no-hit metadata/frontier output is still a protocol surface.  A
 query with =hit=0= must not stop at a count-only receipt.  It must state that
 combined terms/kinds/fields are an intersection, then return bounded next
-actions such as =search fzf= for one term, a single-term =query --term= retry,
+actions such as =search lexical= for one term, a single-term =query --term= retry,
 =query guide=, and the selector requirement for =query --selector ... --content=.
 These rows are agent-facing recovery guidance; they must not include raw source
 snippets or pretend that document recovery can run without a selector.
@@ -318,19 +318,19 @@ Common views:
 <lang-harness> search import <root>
 <lang-harness> search pattern <recipe>
 <lang-harness> search tests <owner-or-path>
-<lang-harness> search fzf <query>
+<lang-harness> search lexical <query>
 #+end_src
 
-=search fzf= is the preferred agent-facing lexical candidate command.  The
-name is intentional: LLMs already know =fzf= means fuzzy filtering/ranking over
+=search lexical= is the preferred agent-facing lexical candidate command.  The
+name is intentional: LLMs already know =lexical= means fuzzy filtering/ranking over
 a candidate stream, so the command communicates the search behavior better than
 a provider-invented =text= abstraction.  The provider still owns the pipeline:
-=rg= or an equivalent scanner builds bounded candidates, =fzf= or an
+=rg= or an equivalent scanner builds bounded candidates, =lexical= or an
 equivalent scorer ranks them headlessly, then the provider groups by owner,
 deduplicates, caps, and renders compact seeds.
 
 Search wrapper grammar owns query-shape admission before any finder backend is
-invoked.  The shared =asp fd=, =asp rg=, =search pipe=, and =search fzf=
+invoked.  The shared =asp fd=, =asp rg=, =search pipe=, and =search lexical=
 surfaces must reject workspace-wide or package-wide generic phrases when the
 query has no path, selector, symbol, error-code, or other specific axis and no
 explicit native/backend filter.  This is a protocol boundary, not an =rg=
@@ -351,30 +351,30 @@ provide backend-native filters after the wrapper boundary, such as =--
 they are not permission to emit unbounded stdout.
 
 Do not expose the old text-named compatibility view.  Exact lexical matching,
-fixed-string matching, and fuzzy matching are modes of =search fzf= or provider
-finder pipelines, not separate public views.  =search fzf= is not a language
+fixed-string matching, and fuzzy matching are modes of =search lexical= or provider
+finder pipelines, not separate public views.  =search lexical= is not a language
 query: code-shaped questions, known owners, symbols, declarations, parser
 items, and hook read reroutes should use top-level =query= first.
 
-Agent-facing =search fzf= grammar keeps search composition, workspace
-selection, and fzf-native options separate:
+Agent-facing =search lexical= grammar keeps search composition, workspace
+selection, and lexical-native options separate:
 
 #+begin_src text
-<lang-harness> search fzf <query> [owner|tests|items|...] [--scope <path-or-kind>] \
+<lang-harness> search lexical <query> [owner|tests|items|...] [--scope <path-or-kind>] \
   [--pipe <surface>] [--view seeds|hits|graph|both] [PROJECT_ROOT] \
-  [--fzf-arg <fzf-option> ...]
-<lang-harness> search fzf <query> [search-options...] [PROJECT_ROOT] --fzf <fzf-options...>
+  [--lexical-arg <lexical-option> ...]
+<lang-harness> search lexical <query> [search-options...] [PROJECT_ROOT] --lexical <lexical-options...>
 #+end_src
 
 =--scope=, =--pipe=, =--view=, =--query-set=, and =--workspace= belong to the
-harness search grammar.  Positional paths in =search fzf= are search scopes,
+harness search grammar.  Positional paths in =search lexical= are search scopes,
 not project roots; they resolve under the selected workspace unless they are
-absolute paths.  =--fzf-arg <value>= passes one provider-approved fzf-native
-option without changing grammar ownership.  =--fzf= is a boundary marker: it
-must be the last harness option and all following tokens are fzf-native
-options, so agents should place =--workspace <workspace-root>= before =--fzf=
+absolute paths.  =--lexical-arg <value>= passes one provider-approved lexical-native
+option without changing grammar ownership.  =--lexical= is a boundary marker: it
+must be the last harness option and all following tokens are lexical-native
+options, so agents should place =--workspace <workspace-root>= before =--lexical=
 or omit it and let the provider use the invocation workspace.
-Providers must reject interactive or shell-shaped fzf options on agent paths
+Providers must reject interactive or shell-shaped lexical options on agent paths
 and record accepted/rejected options in the search packet =finder= field.
 
 An explicit =--workspace <workspace-root>= selects the target project root for
@@ -384,18 +384,18 @@ from the invocation workspace; only source resolution, selector reads, cache
 keys, and provider working directory move to the selected project root.
 Positional =PROJECT_ROOT= inference remains activation-workspace bounded so
 accidental trailing paths cannot silently escape the active project.
-Path scopes passed to =search fzf= are search scopes, not extra project roots.
+Path scopes passed to =search lexical= are search scopes, not extra project roots.
 Providers must normalize them against the discovered project/package root and
 its ancestors.  For example, when the package root is =crates/demo= inside a
-workspace, =search fzf run owner crates/demo/tests .= must scope to package-local
+workspace, =search lexical run owner crates/demo/tests .= must scope to package-local
 =tests= instead of resolving =crates/demo/crates/demo/tests=.
 
 In fuzzy mode, a plain query containing multiple whitespace-separated tokens may
 be promoted to the same homogeneous query-set machinery as explicit
 =--query-set= terms.  The provider must mark the output with =querySet=N= and a
-query-set selector so agents can see that the single fzf phrase was decomposed
+query-set selector so agents can see that the single lexical phrase was decomposed
 into bounded same-axis lexical terms.  Exact mode keeps the query as one literal
-fzf pattern.
+lexical pattern.
 
 =search owner= resolves semantic owners first, then parser-visible modules,
 then existing project paths.  A parser-visible module that is not a reasoning
@@ -461,7 +461,7 @@ drain APIs.  These facts should point agents toward local =search deps
 <crate>::<capability>= queries and engineering follow-up, rather than treating a
 used dependency as already operationalized.
 
-Language-specific structural facts may participate in =search fzf= ranking when
+Language-specific structural facts may participate in =search lexical= ranking when
 they are parser-owned and projected through the shared packet.  For Gerbil this
 means a query may match fact families such as macro definitions, binding
 surfaces, POO forms (=defclass=, =defgeneric=, =defmethod=, =defprotocol=),
@@ -488,6 +488,12 @@ on every agent edit. If a dynamic overlay later uses Turso internals, it must do
 so as a session-scoped overlay with explicit provenance, not by mutating the
 stable generation index.
 ** Dynamic owner-items use the shared owner-items interface
+For a non-empty owner-items query, the emitted frontier is the minimal matching AST cut. If a matching =impl=, class, module, or other container strictly contains a matching child item, =items= emits only the more-specific child. Containers remain valid results when they are themselves the narrowest matching fact, but =items= must not flatten an ancestor and its matching descendant into peer evidence. This is an AST projection rule, not post-render deduplication: each parser node is projected once and parent/child containment decides the frontier before ranking or rendering.
+
+An explicit owner path is sufficient authority for this projection. Source-index, FTS, and cross-owner candidate routes may provide cache health or broader discovery elsewhere, but they must not inject competing owner-item candidates into =search owner <path> items=. The selected language harness parse is the sole fact source for that command.
+
+For a Rust owner whose path is explicit, this parser-owned projection runs before generic search preflight, activation runtime, provider, cache, or database setup. The command still honors the lightweight language-enabled configuration check. Only a missing owner, an empty local AST projection, or a language without a native projection may continue into the normal activated provider route.
+
 =search owner <path> items --workspace . --view seeds= is valid without =--query=. Empty query means "enumerate bounded owner-local structural anchors" for the selected owner. This surface is dynamic dirty-code search, not a durable DB indexing request. The command facade should use a =languages/*-harness= owner-items interface, then let Rust orchestrate caching, overlay merge, ranking, timeout control, and compact rendering around that interface.
 
 This interface is an orchestrator/render boundary, not a fallback parser and not a place to encode language grammar. Complete item semantics come from =languages/*-harness= command-line interfaces and their schemas/artifacts. For =search owner <path> items --view seeds= the language harness contract is intentionally narrow: parse the selected owner file, project owner-local parser facts, and return the shared owner-items packet. It must not need workspace traversal, dependency fan-out, cross-owner ranking, DB refresh, or graph expansion for this command. ASP owns those heavier workflows when the agent asks for broader search, and it can call the same single-owner harness interface many times through batch/warm/overlay policy.
@@ -572,11 +578,11 @@ asp <language> query --selector <parser-owned-uri-or-handle> --workspace <worksp
 The language provider owns parser/AST lookup, exact item matching, multi-term
 query expressions, hook reroute normalization, and compact code rendering.
 Workspace-wide lexical or fuzzy discovery is not a =query --names-only= mode:
-agents and hooks must use =search fzf <term> owner tests --view seeds=, adding
+agents and hooks must use =search lexical <term> owner tests --view seeds=, adding
 =--workspace <workspace-root>= only when the invocation workspace is not the
 desired root.  Providers should reject
 =query --term <term> --names-only= without an owner selector and print the
-explicit =search fzf= route instead of silently rerouting it.
+explicit =search lexical= route instead of silently rerouting it.
 
 Owner-local item discovery is also provider-owned when a manifest declares
 =searchCapabilities.ownerItems=true=. The ASP facade may delegate
@@ -1103,7 +1109,7 @@ inventories should use =next=revise-query= unless the provider has a
 high-confidence parser-owned replacement item.
 Names-only is explicitly owner-local.  Combining =--names-only= with only
 =--term= or =--query= at workspace scope is ambiguous and must fail fast; the
-widening command for that situation is =search fzf=.
+widening command for that situation is =search lexical=.
 
 When an owner-local item query misses, the provider should emit bounded
 parser-owned candidates if they can be inferred from the selected owner's item
@@ -1125,7 +1131,7 @@ string such as =Start with `asp <language> guide --workspace .`= must be passed 
 single-quoted argv literal:
 
 #+begin_src shell
-asp rust search fzf --query-set 'Start with `asp <language> guide --workspace .`' owner tests --workspace . --view seeds
+asp rust search lexical --query-set 'Start with `asp <language> guide --workspace .`' owner tests --workspace . --view seeds
 #+end_src
 
 If the query text itself contains single quotes, the agent should narrow the
@@ -1145,7 +1151,7 @@ cost behind search-packet fields.
 Julia search uses the shared search packet for search JSON through the facade:
 
 #+begin_src shell
-asp julia search fzf run owner tests --view seeds --json languages/JuliaLangProjectHarness.jl
+asp julia search lexical run owner tests --view seeds --json languages/JuliaLangProjectHarness.jl
 #+end_src
 
 The hook wildcard form uses the same packet class when a client needs a cached
@@ -1232,7 +1238,7 @@ for code-shaped input where the language parser can prove intent before text
 search: =pub use rules=, =fn format_field=, =struct PacketCollections=,
 =#[cfg(test)]=, =import {Foo}=, =def run=, and equivalent language-native
 forms.  Future syntax-intent variants must live under =query= rather than
-=search fzf=.  Providers must route these inputs through a Native Syntax Fact
+=search lexical=.  Providers must route these inputs through a Native Syntax Fact
 Index instead of treating them as plain text.  The compact packet should expose
 the normalized intent and facts:
 
@@ -1266,36 +1272,36 @@ portable items such as =owner=, =module=, =function=, =method=, =struct=,
 stay in =languageKind=, while provider detail, parser text, tags, and
 language-only fields stay under =fields=.
 
-=search fzf= covers fuzzy lexical candidates: source text, owner paths, string
+=search lexical= covers fuzzy lexical candidates: source text, owner paths, string
 literals, comments, docs, schema files, generated artifacts, config keys,
 error messages, and other surfaces where parser-native facts are unavailable or
-insufficient.  The default pipeline is =rg+fzf=: =rg= or an equivalent scanner
-builds candidates, then =fzf= or an equivalent headless scorer filters/ranks
+insufficient.  The default pipeline is =rg+lexical=: =rg= or an equivalent scanner
+builds candidates, then =lexical= or an equivalent headless scorer filters/ranks
 them.  The provider, not the backend, owns project scope, path filtering, owner
 grouping, per-term fairness, deduplication, ranking integration, and compact
 packet rendering.
 
-If the query is code-shaped, =search fzf= must not execute the native syntax
+If the query is code-shaped, =search lexical= must not execute the native syntax
 API on behalf of the caller.  It should return a visible =next=query= action so
 the agent retries through the explicit parser-native API.  If text lies outside
 the provider's local index, the provider may return =next=ingest:<query>= and
 the agent must route external candidates through =search ingest=.
 
 Hook wildcard direct-read recovery uses the =query= surface as the wrapper
-entrypoint, not raw =search fzf=.  When =query --selector= carries
+entrypoint, not raw =search lexical=.  When =query --selector= carries
 a broad selector and a code-shaped term such as =ClientReceipt {=, the provider
 must normalize syntax delimiters out of the lexical fallback term set before
 rendering a compact frontier.  The delimiter remains provider-owned query
 context; it must not become an independent fuzzy term or cause prompt-facing
 =|seed= rows to reappear.
 
-=search fzf= must remain lexical/fuzzy search.  It may support match modes
+=search lexical= must remain lexical/fuzzy search.  It may support match modes
 such as =literal=, =fixed=, =regex=, =word=, =case-folded=, and =fuzzy=, and
-backends/pipelines such as =rg=, =rg+fzf=, =ugrep=, or a provider-maintained
+backends/pipelines such as =rg=, =rg+lexical=, =ugrep=, or a provider-maintained
 trigram/indexed lexical engine.  Backend selection should be visible in packets
 through runtime cost/provenance fields, but it should not change the semantic
 contract: parser-owned extraction is still =query=, and lexical candidate
-expansion is still =search fzf= or =search ingest=.
+expansion is still =search lexical= or =search ingest=.
 
 =ast-grep= is not the fuzzy text backend for this lane.  It is a structural
 search/rewrite engine: useful behind =search pattern= recipes or provider-owned
@@ -1303,21 +1309,21 @@ native-fact builders, but not a replacement for =rg= plus approximate lexical
 matching.  Agents should never be asked to author raw =ast-grep= DSL as a
 general search fallback.
 
-*** Roadmap: agent-facing fzf lexical search
+*** Roadmap: agent-facing lexical lexical search
 
 The lexical-search roadmap is intentionally separate from =query=:
 
-1. =search fzf= becomes the preferred public lexical/fuzzy search view for
+1. =search lexical= becomes the preferred public lexical/fuzzy search view for
    agents.  The command name matches the mental model LLMs already have:
    fuzzy filtering over a candidate list.
-2. The first =search fzf= backend should be =rg+fzf=.  =rg= owns fast source
-   scanning, ignore/glob semantics, and structured hit provenance; =fzf= owns
+2. The first =search lexical= backend should be =rg+lexical=.  =rg= owns fast source
+   scanning, ignore/glob semantics, and structured hit provenance; =lexical= owns
    fuzzy ranking over candidate lines, paths, or owner labels.  Agent-facing
    runs must use non-interactive filtering/scoring, not a terminal picker.
    Human-facing diagnostics may optionally expose an interactive preview later.
 3. =ugrep= or a provider-owned lexical index remains a later alternative when
    fuzzy matching, Boolean combinations, case folding, or cold large-workspace
-   pruning cannot be expressed efficiently as =rg+fzf=.
+   pruning cannot be expressed efficiently as =rg+lexical=.
 4. Shared schemas should add backend provenance only after the RFC is stable:
    =textBackend=, =matchMode=, =sourceSearchPasses=, =candidateFileBasis=,
    =fuzzyFilter=, =queryTerms=, and bounded runtime cost.  These fields explain
@@ -1325,12 +1331,12 @@ The lexical-search roadmap is intentionally separate from =query=:
    facts.
 5. Provider guides should teach the decision ladder:
    =query= for parser-owned extraction, =search owner/tests/deps= for
-   structured discovery, =search fzf= for broad lexical/fuzzy candidates, and
+   structured discovery, =search lexical= for broad lexical/fuzzy candidates, and
    =search ingest= for externally generated candidate streams.
 
 This keeps the competitive advantage clear: native syntax parsing plus
 first-class =query= gives precise code slices and read locators with fewer
-tokens and less semantic drift.  =search fzf= is the widening tool, not the
+tokens and less semantic drift.  =search lexical= is the widening tool, not the
 authority layer.
 
 *** Shared finder tools schema
@@ -1340,11 +1346,11 @@ for provider-approved lexical and structural finder pipelines.  It is not a
 new command surface and it does not expose raw shell argv to agents.  It
 describes:
 
-- the approved tool catalog, such as =rg=, =fzf=, =fd=, =ast-grep=,
+- the approved tool catalog, such as =rg=, =lexical=, =fd=, =ast-grep=,
   =ugrep=, or a provider index
 - tool roles, such as source scan, fuzzy filter, path list, structural recipe,
   candidate normalization, or scoring
-- approved pipelines, such as =fzf-rg-lines=, =text-rg-json=, or
+- approved pipelines, such as =lexical-rg-lines=, =text-rg-json=, or
   =pattern-ast-grep-recipe=
 - provenance fields that search packets can later embed, such as
   =finderPipelineId=, =matchMode=, =candidateBasis=, =sourceSearchPasses=,
@@ -1353,31 +1359,31 @@ describes:
 The first target pipeline is:
 
 #+begin_src text
-search fzf <query>
+search lexical <query>
   -> provider-owned rg candidate scan
-  -> provider-owned fzf headless filter/rank
+  -> provider-owned lexical headless filter/rank
   -> provider normalize
   -> owner/test seeds
 #+end_src
 
-=rg= owns fast lexical candidate generation.  =fzf= owns fuzzy filtering and
+=rg= owns fast lexical candidate generation.  =lexical= owns fuzzy filtering and
 ranking over candidate lines, paths, or owner labels.  The language provider
 owns the semantic boundary after that: path normalization, owner resolution,
 nearest-item resolution, test frontier selection, deduplication, caps, and
 packet rendering.
 
 Agents do not choose the =rg= command, stage order, or a shell pipe shape.
-Agents may request provider-approved fzf match options only through
-=--fzf-arg= or the terminal =--fzf= boundary.  The provider owns validation,
+Agents may request provider-approved lexical match options only through
+=--lexical-arg= or the terminal =--lexical= boundary.  The provider owns validation,
 normalization, defaulting, and provenance; unsupported options are rejected
 with a compact error or recorded as rejected finder arguments in JSON.
 
-=search fzf= may reuse the same finder schema with
-=surface=search-fzf=, but the preferred agent-facing surface is
-=surface=search-fzf= and view =fzf=.
+=search lexical= may reuse the same finder schema with
+=surface=search-lexical=, but the preferred agent-facing surface is
+=surface=search-lexical= and view =lexical=.
 
 Agent-facing finder runs must be headless and provider-owned.  Human-facing
-diagnostics may later expose interactive =fzf= preview, but that is outside
+diagnostics may later expose interactive =lexical= preview, but that is outside
 the agent protocol path.
 
 Finder no-hit output is a protocol receipt, not a low-quality graph frontier.
@@ -1418,7 +1424,7 @@ facts are absent, incomplete, or intentionally recipe-scoped:
   languages, as long as the synthesis preserves source/provenance boundaries
 
 In short: native harness =query= is the precision layer; =ast-grep= is a
-structural adapter and recipe runner; =rg+fzf= is the lexical fuzzy candidate
+structural adapter and recipe runner; =rg+lexical= is the lexical fuzzy candidate
 pipeline.
 
 ** Source owner context is provider query transport, not root read transport
@@ -1449,7 +1455,7 @@ src/lib.rs:10:20=, and cross-language direct reads on the same semantic
 transport.
 
 Broad selector reads should instead route to provider =query --from-hook=,
-=query --term ...=, =search fzf ... owner tests=, or =search ingest ...=
+=query --term ...=, =search lexical ... owner tests=, or =search ingest ...=
 depending on the evidence already available.  The provider owns the parser
 facts, frontier selection, owner item projection, and broad discovery; the hook
 only classifies and routes.
@@ -1890,7 +1896,7 @@ follow-ups, not code or full item lists:
 legend: ID=kind:role(value)!next; profiles P(args); frontier ID.next
 profiles=owner-items(O,Q),owner-tests(O,T),query-deps(Q,D)
 omit=items,blocks,code,full-test-list
-avoid=raw-read,full-json,broad-fzf
+avoid=raw-read,full-json,broad-lexical
 #+end_src
 
 =--treesitter-query= is precise syntax locate/capture/frontier.  Adding
@@ -2071,17 +2077,17 @@ repository still carries the active schema it advertises and validates in CI.
 
 For example, a TypeScript provider can advertise
 =languageId=typescript namespace=typescript name=parser-visible-source-text-search=
-for =search/fzf= while also advertising TypeScript-scoped
+for =search/lexical= while also advertising TypeScript-scoped
 =ingestRequiredFor= records for docs text, schema JSON, generated artifacts,
 and other non-parser text.  Agents should use that registry fact before reading
 packet notes or running external search.
 
 Minimal multi-pipe support is also registry-described.  A provider advertises
-=acceptedPipes= on the source method, for example TypeScript =search/fzf=
+=acceptedPipes= on the source method, for example TypeScript =search/lexical=
 can advertise =owner,tests= and accept:
 
 #+begin_src shell
-ts-harness search fzf OrderStatus owner tests .
+ts-harness search lexical OrderStatus owner tests .
 #+end_src
 
 The output remains one final packet; intermediate pipe packets are not rendered.
@@ -2100,7 +2106,7 @@ namespace       = agent.semantic-protocols.languages.<languageId>.<providerId>
 method          = search/workspace | search/prime | search/dependency | search/deps | ...
 view            = workspace | prime | owner | dependency | deps | symbol |
                   callsite | import | cfg | patterns | pattern | docs |
-                  api | public-external-types | policy | tests | fzf |
+                  api | public-external-types | policy | tests | lexical |
                   reasoning | env | runtime-source | lang | std |
                   capability | extension | compare | text | ingest
 #+end_src
@@ -2292,6 +2298,27 @@ TOML syntax, =benchmark.ss= is the Gerbil syntax, and both carry policy ids
 governed by =schemas/semantic-agent-policy-id.v1.schema.json= using
 =<LANGUAGE>-AGENT-<TAGS>-<NUMBER>=.
 * Hot-path scenario receipt gate
+
+** Metadata-only view dispatch
+
+Views whose evidence is fully available from the provider registry, language
+manifest, or project metadata are a distinct hot-path class. They MUST produce
+the existing =semantic-search-packet= v1 shape without materializing a full
+semantic report, parser owner graph, source index, or database migration. This
+includes =env=, =runtime-source=, =lang=, =std=, =capability=, =extension=,
+=pattern=, and =compare= where the selected provider declares their facts as
+metadata-only.
+
+The authoritative command remains =asp <language> search <view>=. Fast-path
+dispatch is an internal provider implementation detail: it may not change the
+language id, provider id, method, packet schema, render mode, or next-action
+contract. A metadata-only packet reports only its declared facts and must not
+claim parser-derived owners, imports, exports, or source evidence.
+
+Large-library performance scenarios MUST execute these commands through the
+=asp <language>= wrapper and retain one receipt per command. The gate must
+reject a metadata-only view that falls through to whole-project semantic report
+construction, rather than compensating by loosening the command budget.
 Search/query changes that affect Rust-owned fast routing must be representable by =schemas/semantic-hot-path-performance-gate.v1.schema.json=. This is part of the shared search/query contract, not a private test detail.
 
 Scenario gates must record the command, phase, provider process count and elapsed time, native finder process count and elapsed time, render duration, and stdout bytes. Index-backed fields such as SourceIndex, FactIndex, DependencyIndex, and GraphTurbo duration should be added to the same receipt as those subsystems become active.

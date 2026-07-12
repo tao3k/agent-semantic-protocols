@@ -14,7 +14,9 @@ sha2 = { workspace = true }
 fs2 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 turso = { workspace = true }
+turso_sdk_kit = "=0.7.0-pre.18"
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
+which = { workspace = true }
 
 [[bench]]
 name = "turso_cache_hot_path"

@@ -23,6 +23,7 @@ pub const TURSO_EDGE_TABLE: &str = "asp_graph_edge";
 pub struct TursoClientDbGraphEntity {
     pub id: String,
     pub kind: String,
+    pub semantic_kind: Option<String>,
     pub label: String,
     pub selector: Option<String>,
     pub path: Option<String>,
@@ -83,10 +84,11 @@ pub async fn persist_turso_evidence_graph(
         || async {
             connection
                 .prepare_cached(
-                    "INSERT INTO asp_graph_entity (id, kind, label, selector, path, language_id, provider_id, query_keys_json)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    "INSERT INTO asp_graph_entity (id, kind, semantic_kind, label, selector, path, language_id, provider_id, query_keys_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                      ON CONFLICT(id) DO UPDATE SET
                         kind = excluded.kind,
+                        semantic_kind = excluded.semantic_kind,
                         label = excluded.label,
                         selector = excluded.selector,
                         path = excluded.path,
@@ -133,6 +135,7 @@ pub async fn persist_turso_evidence_graph(
             (
                 entity.id.as_str(),
                 entity.kind.as_str(),
+                entity.semantic_kind.as_deref(),
                 entity.label.as_str(),
                 entity.selector.as_deref(),
                 entity.path.as_deref(),
@@ -220,10 +223,11 @@ async fn upsert_turso_graph_entity_with_connection(
         || async {
             connection
                 .execute(
-                    "INSERT INTO asp_graph_entity (id, kind, label, selector, path, language_id, provider_id, query_keys_json)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    "INSERT INTO asp_graph_entity (id, kind, semantic_kind, label, selector, path, language_id, provider_id, query_keys_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                      ON CONFLICT(id) DO UPDATE SET
                         kind = excluded.kind,
+                        semantic_kind = excluded.semantic_kind,
                         label = excluded.label,
                         selector = excluded.selector,
                         path = excluded.path,
@@ -233,6 +237,7 @@ async fn upsert_turso_graph_entity_with_connection(
                     (
                         entity.id.as_str(),
                         entity.kind.as_str(),
+                        entity.semantic_kind.as_deref(),
                         entity.label.as_str(),
                         entity.selector.as_deref(),
                         entity.path.as_deref(),
@@ -285,7 +290,7 @@ pub async fn list_turso_graph_entities(
     let connection = connect_turso_client_db(db_path).await?;
     let (sql, parameter): (&str, Option<&str>) = if let Some(kind) = kind {
         (
-            "SELECT id, kind, label, selector, path, language_id, provider_id, query_keys_json
+            "SELECT id, kind, semantic_kind, label, selector, path, language_id, provider_id, query_keys_json
              FROM asp_graph_entity
              WHERE kind = ?1
              ORDER BY id
@@ -294,7 +299,7 @@ pub async fn list_turso_graph_entities(
         )
     } else {
         (
-            "SELECT id, kind, label, selector, path, language_id, provider_id, query_keys_json
+            "SELECT id, kind, semantic_kind, label, selector, path, language_id, provider_id, query_keys_json
              FROM asp_graph_entity
              ORDER BY id
              LIMIT ?1",
@@ -331,7 +336,7 @@ pub async fn list_turso_graph_entities(
         .map_err(|error| format!("failed to read Turso graph entity row: {error}"))?
     {
         let query_keys_json = row
-            .get::<String>(7)
+            .get::<String>(8)
             .map_err(|error| format!("failed to read Turso graph query keys: {error}"))?;
         let query_keys = serde_json::from_str::<Vec<String>>(&query_keys_json)
             .map_err(|error| format!("failed to decode Turso graph query keys: {error}"))?;
@@ -342,25 +347,134 @@ pub async fn list_turso_graph_entities(
             kind: row
                 .get::<String>(1)
                 .map_err(|error| format!("failed to read Turso graph entity kind: {error}"))?,
+            semantic_kind: row.get::<Option<String>>(2).map_err(|error| {
+                format!("failed to read Turso graph entity semantic kind: {error}")
+            })?,
             label: row
-                .get::<String>(2)
+                .get::<String>(3)
                 .map_err(|error| format!("failed to read Turso graph entity label: {error}"))?,
             selector: row
-                .get::<Option<String>>(3)
+                .get::<Option<String>>(4)
                 .map_err(|error| format!("failed to read Turso graph entity selector: {error}"))?,
             path: row
-                .get::<Option<String>>(4)
+                .get::<Option<String>>(5)
                 .map_err(|error| format!("failed to read Turso graph entity path: {error}"))?,
-            language_id: row.get::<Option<String>>(5).map_err(|error| {
+            language_id: row.get::<Option<String>>(6).map_err(|error| {
                 format!("failed to read Turso graph entity language id: {error}")
             })?,
-            provider_id: row.get::<Option<String>>(6).map_err(|error| {
+            provider_id: row.get::<Option<String>>(7).map_err(|error| {
                 format!("failed to read Turso graph entity provider id: {error}")
             })?,
             query_keys,
         });
     }
     Ok(entities)
+}
+
+/// One owner-local graph read model from a single Turso query.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TursoClientDbGraphOwnerReadModel {
+    /// Whether parser-owned graph facts have been materialized for this owner.
+    pub projection_ready: bool,
+    /// Exact parser-owned selector nodes available to the owner-item route.
+    pub selector_nodes: Vec<TursoClientDbGraphEntity>,
+}
+
+/// Read parser-owned selector nodes for one admitted owner from Turso.
+pub async fn lookup_turso_graph_owner_selectors(
+    db_path: &Path,
+    owner_path: &str,
+    language_id: Option<&str>,
+    limit: u32,
+) -> Result<Vec<TursoClientDbGraphEntity>, String> {
+    Ok(
+        lookup_turso_graph_owner_read_model(db_path, owner_path, language_id, limit)
+            .await?
+            .selector_nodes,
+    )
+}
+
+/// Read owner readiness and parser-owned selector nodes with one Turso connection.
+pub async fn lookup_turso_graph_owner_read_model(
+    db_path: &Path,
+    owner_path: &str,
+    language_id: Option<&str>,
+    limit: u32,
+) -> Result<TursoClientDbGraphOwnerReadModel, String> {
+    if limit == 0 || owner_path.trim().is_empty() {
+        return Ok(TursoClientDbGraphOwnerReadModel {
+            projection_ready: false,
+            selector_nodes: Vec::new(),
+        });
+    }
+    let connection = connect_turso_client_db(db_path).await?;
+    let mut rows = run_turso_operation_with_lock_retry(
+        || async {
+            connection
+                .query(
+                    "SELECT id, kind, semantic_kind, label, selector, path, language_id, provider_id, query_keys_json
+                     FROM asp_graph_entity
+                     WHERE path = ?1
+                       AND (?2 IS NULL OR language_id = ?2)
+                     ORDER BY CASE WHEN kind = 'selector' THEN 1 ELSE 0 END, id
+                     LIMIT ?3",
+                    (owner_path, language_id, limit),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to query Turso graph owner selectors",
+    )
+    .await?;
+    let mut projection_ready = false;
+    let mut selector_nodes = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Turso graph owner selector row: {error}"))?
+    {
+        let query_keys_json = row
+            .get::<String>(8)
+            .map_err(|error| format!("failed to read Turso graph query keys: {error}"))?;
+        let query_keys = serde_json::from_str::<Vec<String>>(&query_keys_json)
+            .map_err(|error| format!("failed to decode Turso graph query keys: {error}"))?;
+        let entity = TursoClientDbGraphEntity {
+            id: row
+                .get::<String>(0)
+                .map_err(|error| format!("failed to read Turso graph entity id: {error}"))?,
+            kind: row
+                .get::<String>(1)
+                .map_err(|error| format!("failed to read Turso graph entity kind: {error}"))?,
+            semantic_kind: row.get::<Option<String>>(2).map_err(|error| {
+                format!("failed to read Turso graph entity semantic kind: {error}")
+            })?,
+            label: row
+                .get::<String>(3)
+                .map_err(|error| format!("failed to read Turso graph entity label: {error}"))?,
+            selector: row
+                .get::<Option<String>>(4)
+                .map_err(|error| format!("failed to read Turso graph entity selector: {error}"))?,
+            path: row
+                .get::<Option<String>>(5)
+                .map_err(|error| format!("failed to read Turso graph entity path: {error}"))?,
+            language_id: row.get::<Option<String>>(6).map_err(|error| {
+                format!("failed to read Turso graph entity language id: {error}")
+            })?,
+            provider_id: row.get::<Option<String>>(7).map_err(|error| {
+                format!("failed to read Turso graph entity provider id: {error}")
+            })?,
+            query_keys,
+        };
+        if entity.kind == "selector" {
+            selector_nodes.push(entity);
+        } else {
+            projection_ready = true;
+        }
+    }
+    Ok(TursoClientDbGraphOwnerReadModel {
+        projection_ready,
+        selector_nodes,
+    })
 }
 
 /// List EvidenceGraph edges from the Turso DB Engine file.
@@ -440,6 +554,7 @@ impl From<&ClientDbEvidenceGraphNode> for TursoClientDbGraphEntity {
         Self {
             id: node.id.clone(),
             kind: node.kind.to_string(),
+            semantic_kind: node.semantic_kind.clone(),
             label: node.label.clone(),
             selector: node.selector.clone(),
             path: node.path.clone(),

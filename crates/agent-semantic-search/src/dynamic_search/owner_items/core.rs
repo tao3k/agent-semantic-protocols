@@ -11,6 +11,7 @@ use crate::dynamic_overlay::{
 };
 use crate::dynamic_search::owner_item_parts::render::{display_path, render_code, render_frontier};
 use crate::dynamic_search::owner_item_parts::search::OwnerItemMatch;
+use crate::search_query_budget::search_query_terms;
 
 /// Language facade selected by the caller.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -200,7 +201,7 @@ fn overlay_owner_item_matches(
     if matches.is_empty() {
         return owner_local_source_matches(owner_path, items, query);
     }
-    matches
+    most_specific_owner_item_matches(matches)
 }
 
 fn owner_local_source_matches(
@@ -208,17 +209,17 @@ fn owner_local_source_matches(
     items: &[DynamicOwnerItem],
     query: &str,
 ) -> Vec<OwnerItemMatch> {
-    let query = query.trim();
-    if query.is_empty() {
+    let query_terms = search_query_terms(query);
+    if query_terms.is_empty() {
         return Vec::new();
     }
     let Ok(source) = fs::read_to_string(owner_path) else {
         return Vec::new();
     };
-    let query = query.to_ascii_lowercase();
     let mut matches = Vec::new();
     for (line_index, line) in source.lines().enumerate() {
-        if !line.to_ascii_lowercase().contains(&query) {
+        let line = line.to_ascii_lowercase();
+        if !query_terms.iter().any(|term| line.contains(term)) {
             continue;
         }
         let line_number = line_index + 1;
@@ -243,7 +244,24 @@ fn owner_local_source_matches(
             });
         }
     }
+    most_specific_owner_item_matches(matches)
+}
+
+fn most_specific_owner_item_matches(matches: Vec<OwnerItemMatch>) -> Vec<OwnerItemMatch> {
     matches
+        .iter()
+        .enumerate()
+        .filter_map(|(candidate_index, candidate)| {
+            let contains_more_specific_match =
+                matches.iter().enumerate().any(|(other_index, other)| {
+                    candidate_index != other_index
+                        && candidate.start <= other.start
+                        && candidate.end >= other.end
+                        && (candidate.start < other.start || candidate.end > other.end)
+                });
+            (!contains_more_specific_match).then(|| candidate.clone())
+        })
+        .collect()
 }
 
 struct OwnerItemInput<'a> {

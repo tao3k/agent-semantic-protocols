@@ -88,7 +88,7 @@ def _large_library_scenario() -> dict[str, object]:
                 "command": [
                     "py-harness",
                     "search",
-                    "fzf",
+                    "lexical",
                     "--query-set",
                     "Feature",
                     "--query-set",

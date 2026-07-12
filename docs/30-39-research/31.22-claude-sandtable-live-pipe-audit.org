@@ -92,7 +92,7 @@ pipeFlow.searchCommands=12
 pipeFlow.queryCommands=5
 pipeFlow.directReadCommands=2
 pipeFlow.searchPrimeCommands=2
-pipeFlow.searchFzfCommands=7
+pipeFlow.searchLexicalCommands=7
 pipeFlow.searchReasoningCommands=1
 pipeFlow.querySelectorCommands=2
 pipeFlow.repeatedCommands=2
@@ -100,7 +100,7 @@ pipeFlow.complexPipeFlow=true
 #+end_example
 
 The good news is that the agent did trigger a complex ASP flow.  The bad news
-is that it repeated =search prime= and =search fzf=, and spent far more than the
+is that it repeated =search prime= and =search lexical=, and spent far more than the
 expected search budget.
 
 ** Prompt 2: collection metadata feature
@@ -123,7 +123,7 @@ pipeFlow.searchCommands=7
 pipeFlow.queryCommands=8
 pipeFlow.directReadCommands=0
 pipeFlow.searchPrimeCommands=1
-pipeFlow.searchFzfCommands=0
+pipeFlow.searchLexicalCommands=0
 pipeFlow.searchReasoningCommands=5
 pipeFlow.querySelectorCommands=4
 pipeFlow.treesitterQueryCommands=7
@@ -166,12 +166,12 @@ must treat token cost as a first-class budget, not only elapsed time.
 ** 31.22-B The agent can trigger ASP but still wastes search stages
 
 The first prompt proves that "uses ASP" is not sufficient.  It ran a complex
-flow but still repeated =search prime= and ran seven =search fzf= commands.
+flow but still repeated =search prime= and ran seven =search lexical= commands.
 
 The desired flow is not:
 
 #+begin_example
-prime -> fzf -> fzf -> fzf -> reasoning -> owner -> query -> more query
+prime -> lexical -> lexical -> lexical -> reasoning -> owner -> query -> more query
 #+end_example
 
 The desired flow is:
@@ -206,7 +206,7 @@ through repeated text searches and tree-sitter probes.
 
 The prompt asks the agent to use =SKILL.md= and ASP search/query.  That works at
 a coarse level, but the agent still has to choose among =search prime=,
-=search fzf=, =search reasoning=, =query guide treesitter=, and selector reads.
+=search lexical=, =search reasoning=, =query guide treesitter=, and selector reads.
 
 This suggests the live prompt should not carry the whole burden.  The provider
 needs an agent-facing pipe command or graph frontier that encodes the intended
@@ -226,7 +226,7 @@ After applying selector-first projection in both =asp-graph-turbo= and ASP
 =pipePlan=, the single-prompt Tokio live run passed within the existing budget:
 
 #+begin_example
-elapsedMs=58813 asp=4 search=3 querySelector=1 reasoning=1 repeated=0 fzf=0
+elapsedMs=58813 asp=4 search=3 querySelector=1 reasoning=1 repeated=0 lexical=0
 totalTokens=334897 costUsd=0.399453 stdoutBytes=59831
 #+end_example
 
@@ -241,7 +241,7 @@ asp rust search reasoning owner-query --owner stress-test/examples/simple_echo_t
 
 This validates the ordering fix: the agent crossed into the exact selector
 before branch reasoning, did not repeat prime or pipe, and did not fall back to
-=search fzf=.  The remaining research problem is evidence quality for Tokio
+=search lexical=.  The remaining research problem is evidence quality for Tokio
 itself: the selected branch is executable but still not the ideal
 field/type/collection owner for the question.
 
@@ -261,7 +261,7 @@ scenario passed.  The measured flow was:
 - query selector commands: 1;
 - repeated commands: 0;
 - guide commands: 0;
-- search-fzf commands: 0;
+- search-lexical commands: 0;
 - token cost: 133,906 total tokens, 0.271866 USD.
 
 The executed stages were exactly prime, pipe, and one selector query against
@@ -488,7 +488,7 @@ It removed repeated commands but still timed out:
 | 16 | 11 | 3 | 5 | 0 | 120010 | timeout |
 
 The agent followed three projected branches once each, then continued with
-extra owner/fzf searches because the branch quality was weak.  The top branches
+extra owner/lexical searches because the branch quality was weak.  The top branches
 were lexical =Vec= matches in =tokio/src/fs/*= rather than parser-semantic
 collection-field owners.  This is the current root cause: =repeat=false= fixed
 branch replay, but the branch top 3 must be owned by =asp-graph-turbo= sparse
@@ -502,13 +502,13 @@ boundary with a better live shape:
 Report:
 =.cache/agent-semantic-protocol/sandtable-reports/tokio-claude-single-prompt-graph-turbo-top3.json=
 
-| elapsedMs | asp | search | reasoning | querySelector | repeated | fzf | directRead | stdoutBytes | totalTokens | costUsd  | status |
+| elapsedMs | asp | search | reasoning | querySelector | repeated | lexical | directRead | stdoutBytes | totalTokens | costUsd  | status |
 |     70387 |   8 |      5 |         3 |             3 |        0 |   0 |          0 |       74396 |      333340 | 0.434496 | fail   |
 
 The failure is a budget failure, not a timeout:
 =pipeFlow searchCommands=5 exceeds maxSearchCommands=4=.  Compared with the
 previous 120 second timeout run, the agent no longer repeats branches and no
-longer falls back to =search fzf=.  It executes =prime=, =pipe=, three
+longer falls back to =search lexical=.  It executes =prime=, =pipe=, three
 =reasoning owner-query= branches, and three selector reads in 70 seconds.
 
 The remaining root cause is semantic quality of the selected branches.  The
@@ -529,7 +529,7 @@ changed the projected branch set to the intended token spread:
 | R3/S3  | vec        | stress-test/examples/simple_echo_tcp.rs |
 
 The first valid live run with the corrected runtime path completed in 55.5s
-with =repeatedCommands=0=, =searchFzfCommands=0=, and =searchPipeCommands=2=.
+with =repeatedCommands=0=, =searchLexicalCommands=0=, and =searchPipeCommands=2=.
 It failed only because the agent issued a second rewritten =search pipe= after
 the projected branches:
 
@@ -555,7 +555,7 @@ The query coverage policy then surfaced =matched=vec,collection,fields= and
 Report:
 =.cache/agent-semantic-protocol/sandtable-reports/tokio-claude-single-prompt-query-coverage-policy.json=
 
-This prevented a second pipe, but not post-projection owner/fzf/tree-sitter
+This prevented a second pipe, but not post-projection owner/lexical/tree-sitter
 probing.  The current root cause is now clear: the graph is still lexical
 line-hit based.  To answer this prompt within the command budget, the Rust
 provider must add parser-owned field/type/collection nodes and edges so
@@ -609,7 +609,7 @@ For Rust this can start with parser-owned facts from the Rust harness:
 | =selector.field= | =path:start-end= |
 | =selector.owner= | =path:start-end= |
 
-This should reduce the need for repeated =fzf= and broad tree-sitter query
+This should reduce the need for repeated =lexical= and broad tree-sitter query
 attempts.
 
 ** 31.22-B Search pipe as a provider-owned frontier
@@ -625,10 +625,10 @@ or an equivalent reasoning profile.  The output should contain:
 - interpreted axes, such as =field-type=, =owner=, =tests=, =deps=;
 - ranked next commands;
 - query profiles to run, with complete argv;
-- avoid rules, especially =repeat-prime=, =broad-fzf=, and =raw-read=;
+- avoid rules, especially =repeat-prime=, =broad-lexical=, and =raw-read=;
 - a stop condition for when enough selectors have been found.
 
-This is not a replacement for =search fzf= or =query=.  It is a typed planner
+This is not a replacement for =search lexical= or =query=.  It is a typed planner
 frontier that should call those surfaces in a bounded order.
 
 ** 31.22-C Token-cost budgets in sandtable reports
@@ -727,7 +727,7 @@ rather than repeated exploratory search.
 The latest root cause is that the graph-turbo request was still mostly lexical:
 it could rank lines that mention =Vec=, =collection=, or =fields=, but it did
 not give the agent an explicit =field -> type -> collection -> hot= graph path.
-That left the model to recover structure with extra owner search, fzf, or
+That left the model to recover structure with extra owner search, lexical, or
 tree-sitter guide probes after =search pipe= had already selected branches.
 
 The optimization landed in three layers:
@@ -783,7 +783,7 @@ After provider-owned field facts, nested graph weighting, and =contextLocator=
 projection, the next live run reached the intended selector-first shape with
 only three ASP commands: =search prime=, =search pipe 'Vec scalar collection
 fields'=, and =query --selector tokio/src/io/blocking.rs:15:35 --workspace . --code=.  The
-run had =searchReasoningCommands=0=, =searchFzfCommands=0=,
+run had =searchReasoningCommands=0=, =searchLexicalCommands=0=,
 =repeatedCommands=0=, =directReadCommands=0=, =elapsedMs=72742=,
 =totalTokens=158851=, and =costUsd=0.346455=.  It was marked failed only
 because the sandtable contract still treated =search-reasoning= as a required
@@ -799,7 +799,7 @@ facade.  The run executed six ASP commands: one document metadata query, one
 =search prime=, one =search pipe=, and three exact =query --selector ... --code=
 reads for =tokio/src/io/blocking.rs:15:35=, =tokio/src/runtime/dump.rs:15:35=,
 and =tokio/src/runtime/io/registration_set.rs:21:41=.  It still had
-=searchReasoningCommands=0=, =searchFzfCommands=0=, =repeatedCommands=0=, and
+=searchReasoningCommands=0=, =searchLexicalCommands=0=, =repeatedCommands=0=, and
 =directReadCommands=0=, with =elapsedMs=86577=, =totalTokens=188119=, and
 =costUsd=0.373619=.  The scenario was marked failed only because the step-level
 =expect.pipeFlow.requiredStages= still contained the obsolete
@@ -809,7 +809,7 @@ expectation is now synchronized with the deep-question contract so optional
 reasoning does not regress into a required gate.
 
 The next cost problem is not search drift; it is default fanout.  The live agent
-correctly avoided =fzf=, duplicate pipe, reasoning, and raw reads, but it still
+correctly avoided =lexical=, duplicate pipe, reasoning, and raw reads, but it still
 read all three projected selectors.  That proves top-three graph projection is
 useful as a conditional frontier, yet too expensive as the default read plan.
 The follow-up optimization changes prompt-visible command projection so
@@ -821,7 +821,7 @@ expectation now budgets only the primary Rust selector read.
 The primary-only live rerun passed the scenario and validated that behavior:
 the agent executed four ASP commands, with =searchPrimeCommands=1=,
 =searchPipeCommands=1=, =querySelectorCommands=1=, =searchReasoningCommands=0=,
-=searchFzfCommands=0=, =repeatedCommands=0=, and =directReadCommands=0=.  The
+=searchLexicalCommands=0=, =repeatedCommands=0=, and =directReadCommands=0=.  The
 only selector read was =tokio/src/io/blocking.rs:15:35=.  The remaining waste
 is a post-selector =asp rust guide --workspace . | head -80= command, not search fanout.
 The next contract change therefore tracks =guideCommands= explicitly and sets
@@ -837,7 +837,7 @@ exactly three ASP commands:
 
 The observed counters were =aspCommands=3=, =searchCommands=2=,
 =queryCommands=1=, =querySelectorCommands=1=, =guideCommands=0=,
-=searchReasoningCommands=0=, =searchFzfCommands=0=, =repeatedCommands=0=, and
+=searchReasoningCommands=0=, =searchLexicalCommands=0=, =repeatedCommands=0=, and
 =directReadCommands=0=.  =stdoutBytes=54541=, =elapsedMs=74642=,
 =totalTokens=282929=, and =costUsd=0.386753=.  The remaining high token count is
 mostly Claude SDK cache-read/input cost and compact output volume, not wasted
@@ -871,7 +871,7 @@ executed exactly:
 
 The observed counters were =aspCommands=3=, =searchCommands=2=,
 =queryCommands=1=, =querySelectorCommands=1=, =guideCommands=0=,
-=searchReasoningCommands=0=, =searchFzfCommands=0=, =repeatedCommands=0=,
+=searchReasoningCommands=0=, =searchLexicalCommands=0=, =repeatedCommands=0=,
 =readLoopDuplicateSelectors=0=, =readLoopAdjacentRangeWindows=0=, and
 =readLoopSameOwnerScans=0=.  =stdoutBytes=33979=, =elapsedMs=38481=,
 =totalTokens=135494=, and =costUsd=0.274538=.  The remaining cost driver is now
@@ -1468,7 +1468,7 @@ The observed waste pattern was concrete: Claude ran an invalid
 =asp typescript search prime --workspace . --view seeds once= command, then =--help=, then
 prime and pipe variants without =--view seeds=.  The scenario prompt now lists
 the first two shell commands as standalone command blocks, explicitly says not
-to type the word =once=, and forbids =--help=/guide/reasoning/fzf/variant
+to type the word =once=, and forbids =--help=/guide/reasoning/lexical/variant
 commands in the hard-limit run.
 
 The repaired live rerun passed:
@@ -1500,7 +1500,7 @@ proved the intended behavior:
 
 #+begin_example
 queryCoverage=matched=effect,concurrency,fiber,queue,stream,scope missing=- source=ranked-frontier
-frontier=Q.fzf,I.syntax,F.code,H.code,I2.syntax,F2.code,F3.code,F4.code,I3.syntax,Y.evidence
+frontier=Q.lexical,I.syntax,F.code,H.code,I2.syntax,F2.code,F3.code,F4.code,I3.syntax,Y.evidence
 #+end_example
 
 After syncing =target/debug/asp= into =.bin/asp=, the hook/runtime entrypoint

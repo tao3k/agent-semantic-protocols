@@ -164,7 +164,7 @@ direnv exec . rs-harness query --from-hook direct-source-read \
 #+end_src
 
 #+begin_example
-[search-fzf] q=read-plan,direct-source-read,windowSet querySet=3 selector=fuzzy-set mode=fuzzy backend=provider pkg=crates/semantic-agent-hook own=20
+[search-lexical] q=read-plan,direct-source-read,windowSet querySet=3 selector=lexical-set mode=fuzzy backend=provider pkg=crates/semantic-agent-hook own=20
 |seed owner:src/classifier.rs
 |seed tests:tests/unit/cli/query/hook/mod.rs,tests/unit/cli/query/hook/range.rs,tests/unit/cli/search/views.rs
 #+end_example

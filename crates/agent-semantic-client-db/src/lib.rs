@@ -3,6 +3,10 @@
 //! DB Engine facade and control adapters for `agent-semantic-client`.
 
 pub mod agent_session_registry;
+pub use agent_session_registry::{
+    AgentSessionModelObservationRef, AgentSessionModelObservationSource,
+};
+mod dependency_index;
 pub mod engine;
 mod evidence_graph;
 mod source_index;
@@ -17,6 +21,12 @@ pub use agent_session_registry::{
     AgentSessionRecord, AgentSessionRegisterRequest, AgentSessionRegistry,
     AgentSessionToolEventRequest, agent_session_normalized_metadata_json,
     agent_session_status_is_routable, agent_session_unix_timestamp,
+};
+pub use dependency_index::{
+    DEFAULT_GERBIL_DEPS_SEARCH_LIMIT, GerbilDepsQueryRequest, GerbilDepsQueryResult,
+    GerbilDepsSearchRequest, GerbilDepsSearchResult, gerbil_deps_minimal_import,
+    gerbil_deps_query_export, gerbil_deps_query_terms, gerbil_deps_search_exports,
+    gerbil_deps_selector_for, gerbil_deps_validate_module_id, gerbil_deps_validate_symbol,
 };
 pub use engine::{
     ClientDbBackend, ClientDbEngine, ClientDbEngineDurability, ClientDbEngineFeatures,
@@ -38,10 +48,17 @@ pub use evidence_graph::{
     source_index_evidence_graph, structural_index_evidence_graph,
 };
 pub use source_index::{
+    CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_ID, CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_VERSION,
+    CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_ID, CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_VERSION,
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CLIENT_DB_SOURCE_INDEX_SCOPE_DIR_EVIDENCE_PREFIX,
     CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH,
-    CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDbSourceIndexCandidate,
+    CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256, ClientDbLanguageProjection,
+    ClientDbLanguageProjectionHarness, ClientDbLanguageProjectionImportRequest,
+    ClientDbLanguageProjectionItem, ClientDbLanguageProjectionNodeKind,
+    ClientDbLanguageProjectionNodeRef, ClientDbLanguageProjectionOwner,
+    ClientDbLanguageProjectionRelation, ClientDbLanguageProjectionSource,
+    ClientDbLanguageProjectionSourceKind, ClientDbSourceIndexCandidate,
     ClientDbSourceIndexCandidateLookup, ClientDbSourceIndexCandidateLookupResult,
     ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexImport,
     ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
@@ -55,7 +72,8 @@ pub use source_index::{
     assemble_source_index_import, build_source_index_import, client_db_source_index_file_count,
     client_db_source_index_generation_id, client_db_source_index_registry_evidence_hash,
     client_db_source_index_scope_dir_evidence_hash, source_index_file_hashes,
-    source_index_import_with_file_hashes, source_index_relative_path, source_index_scope_dirs,
+    source_index_import_from_language_projection, source_index_import_with_file_hashes,
+    source_index_relative_path, source_index_scope_dirs,
 };
 pub use structural_index::{
     ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,

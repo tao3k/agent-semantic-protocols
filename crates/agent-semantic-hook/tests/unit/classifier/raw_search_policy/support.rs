@@ -51,40 +51,6 @@ pub(super) fn assert_raw_search_denied(command: &str, provider_id: &str) {
     );
 }
 
-pub(super) fn assert_direct_read_denied(command: &str, provider_id: &str) {
-    let decision = classify_hook(
-        &polyglot_registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": command}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
-    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_agent_facade_decision(&decision, command);
-    assert_eq!(decision.routes[0].provider_id, provider_id, "{command}");
-}
-
-pub(super) fn assert_content_dump_denied(command: &str, provider_id: &str) {
-    let decision = classify_hook(
-        &polyglot_registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": command}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
-    assert_eq!(decision.reason_kind, ReasonKind::BulkSourceDump);
-    assert_agent_facade_decision(&decision, command);
-    assert_eq!(decision.routes[0].provider_id, provider_id, "{command}");
-}
-
 fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
     assert!(
         decision.message.starts_with(&format!(
@@ -191,32 +157,6 @@ pub(super) fn polyglot_registry() -> HookRuntime {
         project_root: ".".to_string(),
         providers: vec![typescript_provider(), rust_provider(), python_provider()],
     }
-}
-
-pub(super) fn document_registry() -> HookRuntime {
-    HookRuntime {
-        project_root: ".".to_string(),
-        providers: vec![markdown_provider()],
-    }
-}
-
-pub(super) fn markdown_provider() -> ActivatedProvider {
-    provider(
-        "md",
-        "orgize",
-        "asp",
-        "agent.semantic-protocols.languages.md.orgize",
-        &[".md", ".markdown"],
-        &[],
-        &["."],
-        &[".git"],
-        provider_routes(
-            "asp",
-            Some(command(&[
-                "asp", "md", "query", "--term", "{query}", "--view", "metadata", ".",
-            ])),
-        ),
-    )
 }
 
 pub(super) fn typescript_provider() -> ActivatedProvider {

@@ -10,8 +10,9 @@ pub(super) fn command_requires_resident_child(
             return false;
         }
         match classify_main_session_asp_command(&tokens, index) {
-            MainSessionAspCommandClass::Precise => false,
-            MainSessionAspCommandClass::Reasoning => true,
+            MainSessionAspCommandClass::ControlPlane
+            | MainSessionAspCommandClass::ExactEvidenceRead => false,
+            MainSessionAspCommandClass::ReasoningFlow => true,
             MainSessionAspCommandClass::Unknown => !main_asp_command_allowed(&tokens, index),
         }
     })
@@ -19,8 +20,9 @@ pub(super) fn command_requires_resident_child(
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum MainSessionAspCommandClass {
-    Precise,
-    Reasoning,
+    ControlPlane,
+    ExactEvidenceRead,
+    ReasoningFlow,
     Unknown,
 }
 
@@ -32,44 +34,37 @@ pub(super) fn classify_main_session_asp_command(
         return MainSessionAspCommandClass::Unknown;
     };
     if first.eq_ignore_ascii_case("agent") {
-        return MainSessionAspCommandClass::Precise;
+        return MainSessionAspCommandClass::ControlPlane;
     }
-    if first.eq_ignore_ascii_case("search") {
-        return classify_search_command(tokens, asp_index + 2);
-    }
-    if first.eq_ignore_ascii_case("rg") {
-        return MainSessionAspCommandClass::Reasoning;
+    if first.eq_ignore_ascii_case("search")
+        || first.eq_ignore_ascii_case("query")
+        || first.eq_ignore_ascii_case("rg")
+        || first.eq_ignore_ascii_case("fd")
+    {
+        return MainSessionAspCommandClass::ReasoningFlow;
     }
     let Some(second) = tokens.get(asp_index + 2).map(|token| token.as_str()) else {
         return MainSessionAspCommandClass::Unknown;
     };
-    if second.eq_ignore_ascii_case("search") {
-        return classify_search_command(tokens, asp_index + 3);
+    if second.eq_ignore_ascii_case("search")
+        || second.eq_ignore_ascii_case("rg")
+        || second.eq_ignore_ascii_case("fd")
+        || second.eq_ignore_ascii_case("elements-query")
+    {
+        return MainSessionAspCommandClass::ReasoningFlow;
     }
-    if second.eq_ignore_ascii_case("rg") {
-        return MainSessionAspCommandClass::Reasoning;
+    if second.eq_ignore_ascii_case("contract")
+        && matches!(
+            tokens.get(asp_index + 3).map(String::as_str),
+            Some("trace" | "query-surface")
+        )
+    {
+        return MainSessionAspCommandClass::ReasoningFlow;
     }
     if !second.eq_ignore_ascii_case("query") {
         return MainSessionAspCommandClass::Unknown;
     }
     classify_query_command(tokens, asp_index + 3)
-}
-
-fn classify_search_command(
-    tokens: &[String],
-    search_args_start: usize,
-) -> MainSessionAspCommandClass {
-    if tokens
-        .get(search_args_start)
-        .is_some_and(|token| token.eq_ignore_ascii_case("owner"))
-        && tokens
-            .get(search_args_start + 2)
-            .is_some_and(|token| token.eq_ignore_ascii_case("items"))
-    {
-        return MainSessionAspCommandClass::Precise;
-    }
-
-    MainSessionAspCommandClass::Reasoning
 }
 
 fn classify_query_command(
@@ -81,20 +76,18 @@ fn classify_query_command(
         .skip(query_args_start)
         .any(|token| token == "--term" || token == "-t")
     {
-        return MainSessionAspCommandClass::Reasoning;
+        return MainSessionAspCommandClass::ReasoningFlow;
     }
-    let code_projection = tokens
+    let bounded_projection = tokens
         .iter()
         .skip(query_args_start)
-        .any(|token| token == "--code");
+        .any(|token| token == "--code" || token == "--names-only");
     let selector = selector_arg(tokens, query_args_start);
-    match (selector, code_projection) {
+    match (selector, bounded_projection) {
         (Some(selector), true) if is_exact_parser_owned_item_selector(selector) => {
-            MainSessionAspCommandClass::Precise
+            MainSessionAspCommandClass::ExactEvidenceRead
         }
-        (Some(_), true) => MainSessionAspCommandClass::Reasoning,
-        (Some(_), false) => MainSessionAspCommandClass::Precise,
-        (None, _) => MainSessionAspCommandClass::Reasoning,
+        _ => MainSessionAspCommandClass::ReasoningFlow,
     }
 }
 

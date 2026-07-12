@@ -197,7 +197,7 @@ remains a low-priority exact-window fallback, not the normal discovery or public
 recovery route: it is acceptable only after =search pipe= or equivalent
 parser-owned frontier output, with an exact bounded selector, and with a span
 small enough for the current policy threshold.  Discovery should route through
-=search prime=, =search fzf=, =search owner ... items=, normal =query
+=search prime=, =search lexical=, =search owner ... items=, normal =query
 --names-only=, or =query --treesitter-query= locator/frontier output.  Wide or
 unbounded source recovery should return read-plan or syntax frontier refs before
 any inline code.  The graph-turbo history audit must keep

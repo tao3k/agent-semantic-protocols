@@ -1,11 +1,10 @@
 use super::{
     run_doctor, run_doctor_with_env, stderr, stdout, temp_project_root, write_activation,
-    write_client_config, write_codex_home_project_trust, write_codex_project_plugin_config,
-    write_executable,
+    write_client_config, write_codex_project_plugin_config, write_executable,
 };
 
 #[test]
-fn doctor_reports_missing_client_hook_config() {
+fn doctor_uses_default_client_hook_config_when_override_is_absent() {
     let root = temp_project_root("doctor-missing-config");
     let activation_path = write_activation(&root);
 
@@ -15,7 +14,9 @@ fn doctor_reports_missing_client_hook_config() {
     let stdout = stdout(&output);
     assert!(stdout.contains("clientConfig="));
     assert!(stdout.contains(".agent-semantic-protocols/hooks/config.toml"));
-    assert!(stdout.contains("clientConfigStatus=missing"));
+    assert!(stdout.contains("clientConfigStatus=default"));
+    assert!(stdout.contains("classifierProbe=deny"));
+    assert!(!stdout.contains("client-config-missing"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -49,7 +50,6 @@ fn doctor_treats_project_plugin_hooks_as_hook_present() {
     let root = temp_project_root("doctor-project-plugin-hook-present");
     let activation_path = write_activation(&root);
     write_codex_project_plugin_config(&root);
-    write_codex_home_project_trust(&root);
     write_client_config(
         &root,
         r#"
@@ -70,22 +70,34 @@ tool = "Bash"
     assert!(stdout.contains("hook=true"), "{stdout}");
     assert!(stdout.contains("hookMode=codex-plugin"), "{stdout}");
     assert!(stdout.contains("pluginHook=true"), "{stdout}");
-    assert!(stdout.contains("trust=true"), "{stdout}");
-    assert!(stdout.contains("projectTrust=true"), "{stdout}");
-    assert!(stdout.contains("hookStateTrust=true"), "{stdout}");
+    assert!(stdout.contains("trust=false"), "{stdout}");
+    assert!(stdout.contains("projectTrust=false"), "{stdout}");
+    assert!(stdout.contains("hookStateTrust=false"), "{stdout}");
     assert!(stdout.contains("trustMissing=0"), "{stdout}");
     assert!(stdout.contains("enforcement=unproven"), "{stdout}");
+    assert!(
+        stdout.contains("backgroundThreadHook=host-surface-unproven"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("hostSurface=codex_app.create_thread"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("verificationHint=native-thread-required"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("enforcementReason=codex-exec-probe-disabled"),
         "{stdout}"
     );
     assert!(!stdout.contains("project-hook-missing"), "{stdout}");
-    assert!(!stdout.contains("|trust missing="), "{stdout}");
+    assert!(stdout.contains("|trust project=untrusted"), "{stdout}");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn codex_plugin_hooks_use_project_direnv_and_bounded_timeout() {
+fn codex_plugin_hooks_use_global_asp_and_bounded_timeout() {
     let hooks: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../asp-codex-plugin/hooks/hooks.json"
     ))
@@ -109,13 +121,17 @@ fn codex_plugin_hooks_use_project_direnv_and_bounded_timeout() {
             .as_str()
             .unwrap_or_else(|| panic!("{event} command string"));
         assert!(
-            command.starts_with("direnv exec . asp hook "),
-            "{event} command must use project direnv: {command}"
+            command.starts_with("asp hook "),
+            "{event} command must use global asp: {command}"
+        );
+        assert!(
+            !command.contains("direnv exec"),
+            "{event} command must not wrap through project direnv: {command}"
         );
         assert_eq!(
             command_hook["timeout"].as_i64(),
             Some(5),
-            "{event} hook timeout must cover project direnv startup"
+            "{event} hook timeout must stay bounded"
         );
     }
 }

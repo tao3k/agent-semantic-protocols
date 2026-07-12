@@ -1,6 +1,9 @@
 //! DB Engine-owned source index refresh and lookup facade.
 
 mod api;
+mod projection;
+
+pub use projection::{LanguageProjectionImportReport, import_language_projection};
 pub use api::rebuild_source_index;
 mod collect;
 mod config;

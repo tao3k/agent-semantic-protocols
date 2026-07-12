@@ -17,6 +17,11 @@ pub struct AgentSessionInteractiveMenu<'a> {
     #[serde(rename = "expectedModel", skip_serializing_if = "Option::is_none")]
     pub expected_model: Option<&'a str>,
     #[serde(
+        rename = "expectedReasoningEffort",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub expected_reasoning_effort: Option<&'a str>,
+    #[serde(
         rename = "rolloutHistoryStatus",
         skip_serializing_if = "Option::is_none"
     )]
@@ -43,6 +48,15 @@ pub struct AgentSessionInteractiveSession<'a> {
     pub role: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<&'a str>,
+    #[serde(
+        rename = "modelObservationSource",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub model_observation_source: Option<&'a str>,
+    #[serde(rename = "modelObservedAt", skip_serializing_if = "Option::is_none")]
+    pub model_observed_at: Option<i64>,
+    #[serde(rename = "modelEvidenceRef", skip_serializing_if = "Option::is_none")]
+    pub model_evidence_ref: Option<&'a str>,
     #[serde(rename = "messageTargetStatus")]
     pub message_target_status: &'a str,
     #[serde(rename = "messageTargetId", skip_serializing_if = "Option::is_none")]
@@ -79,6 +93,7 @@ pub struct ResidentChildBootstrapMenuInput<'a> {
     pub root_session_id: Option<&'a str>,
     pub record: Option<&'a AgentSessionRecord>,
     pub expected_model: Option<&'a str>,
+    pub expected_reasoning_effort: Option<&'a str>,
     pub rollout_history_status: Option<&'a str>,
     pub rollout_history_action: Option<&'a str>,
     pub now: i64,
@@ -101,6 +116,7 @@ pub fn resident_child_bootstrap_menu<'a>(
         name: input.name,
         root_session_id: input.root_session_id,
         expected_model: input.expected_model,
+        expected_reasoning_effort: input.expected_reasoning_effort,
         rollout_history_status: input.rollout_history_status,
         rollout_history_action: input.rollout_history_action,
         session: input.record.map(interactive_session_record),
@@ -160,16 +176,16 @@ fn resident_child_state_and_choices<'a>(
                 AgentSessionInteractiveChoice {
                     id: "create-managed-resident-child",
                     label: "Create the configured ASP resident child.",
-                    platform_action: "Use the {platform} native subagent creation surface, not a shell command: create the configured {managedAgentKind} resident child with the configured model, then capture the returned childSessionId and agentMessageTargetId.",
-                    next_state: AgentSessionLoopState::Register,
-                    required_inputs: &["configuredModel", "childSessionId", "agentMessageTargetId"],
+                    platform_action: "Use the detected platform-native managed-agent creation surface, not a shell command. Create the configured managed resident child once; do not create generic fallback agents or normal threads. Immediately re-enter this pane after the native create call returns; do not wait for SubagentStart as a child message. The pane observes host registration. If it still reports Create for this root, choose report-host-managed-agent-lifecycle-unavailable instead of creating a duplicate. Do not copy child ids, message targets, or model claims into this pane.",
+                    next_state: AgentSessionLoopState::Audit,
+                    required_inputs: &[],
                 },
                 AgentSessionInteractiveChoice {
-                    id: "report-host-managed-agent-target-unavailable",
-                    label: "Report that the host cannot create the managed ASP resident child.",
-                    platform_action: "If {platform} exposes only native built-in agent types such as generic/default/explorer/worker, or returns only a normal thread id without agentMessageTargetId, report bootstrapBlocked=host-managed-agent-target-unavailable and do not create or register a generic replacement.",
+                    id: "report-host-managed-agent-lifecycle-unavailable",
+                    label: "Report that the host cannot start the managed ASP lifecycle.",
+                    platform_action: "If the host cannot create the configured managed agent type, or native creation emits no SubagentStart event, report bootstrapBlocked=host-managed-agent-lifecycle-unavailable. Do not create or register a generic replacement.",
                     next_state: AgentSessionLoopState::Create,
-                    required_inputs: &["hostAgentTypesObserved"],
+                    required_inputs: &["hostLifecycleGapObserved"],
                 },
             ],
             vec![
@@ -184,6 +200,37 @@ fn resident_child_state_and_choices<'a>(
             ],
         );
     };
+    if record.message_target_id().is_none() {
+        return (
+            AgentSessionLoopState::Recover,
+            vec![
+                AgentSessionInteractiveChoice {
+                    id: "resume-managed-child-for-native-start",
+                    label: "Resume the configured resident child through the native managed profile.",
+                    platform_action: "Use the host-native resume action once for this existing managed child, then immediately re-enter this pane. Do not wait for SubagentStart as a child message. The pane observes whether the host event refreshed child identity, message target, type, and model atomically. Do not verify or register a target through child text or command flags.",
+                    next_state: AgentSessionLoopState::Audit,
+                    required_inputs: &[],
+                },
+                AgentSessionInteractiveChoice {
+                    id: "cleanup-unrecoverable-child",
+                    label: "Close the child if its native message target cannot be verified.",
+                    platform_action: "Use the host-native close/archive action for the existing ASP-managed child. A close request whose previous status is running is not completion: wait for terminal host status or the SubagentStop receipt before re-entering this loop. Do not delete registry state manually.",
+                    next_state: AgentSessionLoopState::Cleanup,
+                    required_inputs: &["nativeStopReceipt"],
+                },
+            ],
+            vec![
+                AgentSessionLoopTraceStep {
+                    state: AgentSessionLoopState::Classify,
+                    result: "registered-child-needs-recovery",
+                },
+                AgentSessionLoopTraceStep {
+                    state: AgentSessionLoopState::Recover,
+                    result: "native-message-target-unverified",
+                },
+            ],
+        );
+    }
     if matches!(
         record.status.as_str(),
         "archived" | "closed" | "deleted" | "expired" | "invalid" | "missing" | "orphan-risk"
@@ -195,9 +242,9 @@ fn resident_child_state_and_choices<'a>(
                 AgentSessionInteractiveChoice {
                     id: "close-stale-resident-child",
                     label: "Close or archive the stale ASP resident child with the host native action.",
-                    platform_action: "Use the {platform} native close/archive action for the existing ASP-managed child; do not create a generic replacement before cleanup.",
-                    next_state: AgentSessionLoopState::Audit,
-                    required_inputs: &["childSessionId"],
+                    platform_action: "Use the host-native close/archive action for the existing ASP-managed child. Wait for terminal host status or the SubagentStop receipt; previous_status=running only confirms the request. Do not create a replacement or re-enter Audit before shutdown completes.",
+                    next_state: AgentSessionLoopState::Cleanup,
+                    required_inputs: &["nativeStopReceipt"],
                 },
                 AgentSessionInteractiveChoice {
                     id: "audit-after-cleanup",
@@ -213,57 +260,33 @@ fn resident_child_state_and_choices<'a>(
             }],
         );
     }
-    if record.message_target_id().is_none() {
-        return (
-            AgentSessionLoopState::Recover,
-            vec![
-                AgentSessionInteractiveChoice {
-                    id: "recover-native-message-target",
-                    label: "Recover the native message target for this resident child.",
-                    platform_action: "Use {platform} native agent messaging metadata for this existing child; agentMessageTargetId must be the host {requiredTransport} target. If the host exposes one single agent id and native send accepts it, register that id as agentMessageTargetId; never derive it from a normal thread id or rollout path.",
-                    next_state: AgentSessionLoopState::Register,
-                    required_inputs: &["agentMessageTargetId"],
-                },
-                AgentSessionInteractiveChoice {
-                    id: "cleanup-unrecoverable-child",
-                    label: "Close the child if its native message target cannot be recovered.",
-                    platform_action: "Use the {platform} native close/archive action for the existing ASP-managed child, then re-enter this loop for Audit and Classify.",
-                    next_state: AgentSessionLoopState::Cleanup,
-                    required_inputs: &["childSessionId"],
-                },
-            ],
-            vec![
-                AgentSessionLoopTraceStep {
-                    state: AgentSessionLoopState::Classify,
-                    result: "registered-child-needs-recovery",
-                },
-                AgentSessionLoopTraceStep {
-                    state: AgentSessionLoopState::Recover,
-                    result: "native-message-target-missing",
-                },
-            ],
-        );
-    }
-    let model_mismatch = expected_model
-        .filter(|model| !model.trim().is_empty())
-        .is_some_and(|expected| record.model() != Some(expected));
-    if record.model().is_none() || model_mismatch {
+    let observed_model = record.model().filter(|model| {
+        let normalized = model.trim();
+        !normalized.is_empty() && !normalized.eq_ignore_ascii_case("unknown")
+    });
+    let expected_model = expected_model.filter(|model| !model.trim().is_empty());
+    let model_unverified = expected_model.is_some() && observed_model.is_none();
+    let model_mismatch = observed_model
+        .is_some_and(|actual| expected_model.is_some_and(|expected| actual != expected));
+    if (model_unverified || model_mismatch)
+        && !(record.is_routable_at(now) && record.message_target_id().is_some())
+    {
         return (
             AgentSessionLoopState::Validate,
             vec![
                 AgentSessionInteractiveChoice {
-                    id: "confirm-configured-model",
-                    label: "Confirm or switch the resident child to the configured model.",
-                    platform_action: "Send a {platform} native {requiredTransport} follow-up to the existing child asking it to confirm or switch to the configured ASP model, then re-enter this loop.",
-                    next_state: AgentSessionLoopState::Validate,
-                    required_inputs: &["agentMessageTargetId", "configuredModel"],
+                    id: "resume-managed-child-for-native-profile-observation",
+                    label: "Resume the resident child through its configured managed profile.",
+                    platform_action: "Use the host-native resume action once and immediately re-enter this pane. Do not wait for SubagentStart as a child message. Only the host event observed by this pane may update the model and message target. Do not ask the child to describe or switch its own model.",
+                    next_state: AgentSessionLoopState::Audit,
+                    required_inputs: &[],
                 },
                 AgentSessionInteractiveChoice {
-                    id: "register-observed-model",
-                    label: "Register the observed model after native confirmation.",
-                    platform_action: "Update the same registry row with the model reported by the resident child; do not create a replacement only for model confirmation.",
-                    next_state: AgentSessionLoopState::Validate,
-                    required_inputs: &["childSessionId", "agentMessageTargetId", "observedModel"],
+                    id: "stop-mismatched-managed-child",
+                    label: "Stop the mismatched managed child before creating another.",
+                    platform_action: "Use the host-native stop action and wait until terminal host status or the SubagentStop receipt. previous_status=running is not shutdown completion. Re-enter only after the event retires this child route; do not delete registry state manually.",
+                    next_state: AgentSessionLoopState::Cleanup,
+                    required_inputs: &["nativeStopReceipt"],
                 },
             ],
             vec![
@@ -280,13 +303,22 @@ fn resident_child_state_and_choices<'a>(
     }
     (
         AgentSessionLoopState::Ready,
-        vec![AgentSessionInteractiveChoice {
-            id: "send-denied-asp-command",
-            label: "Send the denied ASP command to the resident child.",
-            platform_action: "{platform} native {requiredTransport} send to the registered agentMessageTargetId; wait for a compact [asp-search-subagent] receipt.",
-            next_state: AgentSessionLoopState::WaitReceipt,
-            required_inputs: &["deniedAspCommand"],
-        }],
+        vec![
+            AgentSessionInteractiveChoice {
+                id: "send-denied-asp-command",
+                label: "Send the denied ASP command to the resident child.",
+                platform_action: "Use host-native message-agent send to the registered agentMessageTargetId; wait for a compact [asp-search-subagent] receipt.",
+                next_state: AgentSessionLoopState::WaitReceipt,
+                required_inputs: &["deniedAspCommand"],
+            },
+            AgentSessionInteractiveChoice {
+                id: "record-native-child-retirement",
+                label: "Retire the completed resident child before the next loop.",
+                platform_action: "Use the host-native stop or archive action, then wait for terminal host status or the SubagentStop receipt. previous_status=running means shutdown was requested, not completed. Re-enter only after the event retires the matching route; do not return child identity or status as pane flags.",
+                next_state: AgentSessionLoopState::Cleanup,
+                required_inputs: &["nativeStopReceipt"],
+            },
+        ],
         vec![
             AgentSessionLoopTraceStep {
                 state: AgentSessionLoopState::Classify,
@@ -294,7 +326,11 @@ fn resident_child_state_and_choices<'a>(
             },
             AgentSessionLoopTraceStep {
                 state: AgentSessionLoopState::Validate,
-                result: "role-nickname-model-target-pass",
+                result: if observed_model.is_none() {
+                    "profile-observation-pending"
+                } else {
+                    "role-nickname-model-target-pass"
+                },
             },
             AgentSessionLoopTraceStep {
                 state: AgentSessionLoopState::Ready,
@@ -310,6 +346,9 @@ fn interactive_session_record(record: &AgentSessionRecord) -> AgentSessionIntera
         status: &record.status,
         role: &record.role,
         model: record.model(),
+        model_observation_source: record.model_observation_source.as_deref(),
+        model_observed_at: record.model_observed_at,
+        model_evidence_ref: record.model_evidence_ref.as_deref(),
         message_target_status: if record.message_target_id().is_some() {
             "ready"
         } else {

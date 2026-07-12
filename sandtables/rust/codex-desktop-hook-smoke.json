@@ -1,7 +1,7 @@
 {
   "id": "rust.codex-desktop-hook-smoke",
   "language": "rust",
-  "title": "Codex Desktop tool payloads route real Rust workspace reads through rs-harness policy",
+  "title": "Codex Desktop tool payloads route real Rust workspace reads through asp rust policy",
   "coverage": [
     "desktop-hooks",
     "codex-hooks",
@@ -41,7 +41,7 @@
         "stdoutContains": [
           "\\\"reasonKind\\\":\\\"direct-source-read\\\"",
           "\\\"paths\\\":[\\\"src/lib.rs\\\"]",
-          "\\\"providerId\\\":\\\"rs-harness\\\""
+          "\\\"providerId\\\":\\\"asp rust\\\""
         ],
         "stdoutNotContains": [
           "pub mod",
@@ -219,7 +219,7 @@
         "stdoutJsonEquals": {
           "decision": "deny",
           "reasonKind": "raw-broad-search",
-          "routes.0.kind": "fzf"
+          "routes.0.kind": "lexical"
         },
         "maxElapsedMsWarn": 6500
       }

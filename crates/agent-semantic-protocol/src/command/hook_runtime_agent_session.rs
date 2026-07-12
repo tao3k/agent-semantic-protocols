@@ -26,6 +26,7 @@ use hook_runtime_agent_session_command::{
 use hook_runtime_agent_session_rollout_topology::{
     nested_resident_child_decision, register_required_resident_child_decision,
 };
+pub(super) use hook_runtime_agent_session_session_start::session_matches_resident_agent;
 use hook_runtime_agent_session_session_start::{
     classify_session_start_bootstrap, main_session_route_context,
 };
@@ -58,11 +59,11 @@ impl AspSessionPolicy {
         self.enabled
     }
 
-    fn resident_child_name(&self) -> &str {
+    pub(super) fn resident_child_name(&self) -> &str {
         &self.resident_child_name
     }
 
-    fn resident_agent_role(&self) -> &str {
+    pub(super) fn resident_agent_role(&self) -> &str {
         &self.resident_agent_role
     }
 
@@ -74,8 +75,11 @@ impl AspSessionPolicy {
         match hook_runtime_agent_session_command::classify_main_session_asp_command(
             tokens, asp_index,
         ) {
-            hook_runtime_agent_session_command::MainSessionAspCommandClass::Precise => true,
-            hook_runtime_agent_session_command::MainSessionAspCommandClass::Reasoning => false,
+            hook_runtime_agent_session_command::MainSessionAspCommandClass::ControlPlane
+            | hook_runtime_agent_session_command::MainSessionAspCommandClass::ExactEvidenceRead => {
+                true
+            }
+            hook_runtime_agent_session_command::MainSessionAspCommandClass::ReasoningFlow => false,
             hook_runtime_agent_session_command::MainSessionAspCommandClass::Unknown => self
                 .main_allowed_asp_command_prefixes
                 .iter()
@@ -261,7 +265,7 @@ pub(super) fn classify_main_session_asp_exploration(
         return Ok(None);
     }
     match event {
-        "session-start" => classify_session_start_bootstrap(
+        "session-start" | "subagent-start" => classify_session_start_bootstrap(
             project_root,
             platform,
             event,
@@ -483,13 +487,13 @@ fn missing_resident_asp_explore_decision(
     fields.insert(
         "agentSessionBootstrapGuideCommand".to_string(),
         serde_json::Value::String(format!(
-            "asp agent session bootstrap --name {resident_child_name} --json"
+            "asp agent session bootstrap --name {resident_child_name}"
         )),
     );
     fields.insert(
         "agentSessionBootstrapCommand".to_string(),
         serde_json::Value::String(format!(
-            "asp agent session bootstrap --name {resident_child_name} --json"
+            "asp agent session bootstrap --name {resident_child_name}"
         )),
     );
     if let Some(root_session_id) = root_session_id.as_ref() {
@@ -498,10 +502,9 @@ fn missing_resident_asp_explore_decision(
             serde_json::Value::String(root_session_id.clone()),
         );
     }
-    let bootstrap_command =
-        format!("asp agent session bootstrap --name {resident_child_name} --json");
+    let bootstrap_command = format!("asp agent session bootstrap --name {resident_child_name}");
     let message = format!(
-        "ASP resident child lifecycle is required.\nRun `{bootstrap_command}` and choose one structured menu option. Re-enter the same loop until state=ready; do not use guide fallback or normal-thread reads."
+        "ASP resident child lifecycle is required.\nRun `{bootstrap_command}` and choose one structured menu option. Re-enter the same loop until state=Ready; do not use guide fallback or normal-thread reads."
     );
     HookDecision {
         schema_id: HOOK_DECISION_SCHEMA_ID,
@@ -540,12 +543,12 @@ fn main_session_asp_exploration_decision(
     };
     let message = if let Some(session) = explore_session {
         format!(
-            "ASP denied main-session ASP exploration (`{command_label}`). Reuse or resume the registered resident {resident_child_name} child session `{}`; do not spawn another {resident_child_name} session, and do not close it after the result. Before treating a wait timeout as failure, run `asp agent session status --name {resident_child_name} --json` and use registry plus artifact activity evidence. If host status is unavailable, resume or send follow-up to the same session id before considering replacement. Only create a replacement when the host reports the child session is deleted or unrecoverable.\nCommand: {command}",
+            "ASP denied main-session ASP exploration (`{command_label}`). Use the resident-child interactive pane for registered resident {resident_child_name} child session `{}`. Do not spawn another {resident_child_name} session outside the pane. Run `asp agent session bootstrap --name {resident_child_name}`, choose one number, perform that native platform action, and re-enter the pane until state=Ready.\nCommand: {command}",
             session.session_id
         )
     } else {
         format!(
-            "ASP denied main-session ASP exploration (`{command_label}`). No registered and profile-valid {resident_child_name} child is available. If you are already inside the intended child, run `asp agent session register --name {resident_child_name} --role asp-explore`; ASP infers root/parent from the Codex rollout. Otherwise create the resident child by selecting the configured Codex agent `{}` and register the returned child id with `asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role asp-explore`. If registration fails validation, close/delete that child and create a fresh child from the configured agent. Retry only after registration succeeds.\nCommand: {command}",
+            "ASP denied main-session ASP exploration (`{command_label}`). No registered and profile-valid {resident_child_name} child is available. Run the resident-child interactive pane: `asp agent session bootstrap --name {resident_child_name}`. Choose one number, perform that native platform action, and re-enter the same pane until state=Ready. The pane owns audit, recovery, cleanup, creation, model alignment, and registration for configured agent `{}`.\nCommand: {command}",
             asp_session_policy.resident_codex_agent_name()
         )
     };
@@ -845,13 +848,9 @@ fn agent_session_route_fields(
             serde_json::Value::String("resident".to_string()),
         ),
         (
-            "agentSessionStatusCheck".to_string(),
-            serde_json::Value::String("asp-session-status-command".to_string()),
-        ),
-        (
-            "agentSessionStatusCommand".to_string(),
+            "agentSessionLoopCommand".to_string(),
             serde_json::Value::String(format!(
-                "asp agent session status --name {resident_child_name} --json"
+                "asp agent session bootstrap --name {resident_child_name}"
             )),
         ),
         (
@@ -883,18 +882,6 @@ fn agent_session_route_fields(
                 "one-active-resident-child-per-root-session-and-name".to_string(),
             ),
         ),
-        (
-            "agentSessionLookupCommand".to_string(),
-            serde_json::Value::String(format!(
-                "asp agent session resume --name {resident_child_name} --json"
-            )),
-        ),
-        (
-            "agentSessionRegisterCommandTemplate".to_string(),
-            serde_json::Value::String(format!(
-                "asp agent session register --name {resident_child_name} --child-session-id <child-session-id> --role {resident_role}"
-            )),
-        ),
     ]);
     append_agent_session_recovery_action_fields(
         &mut fields,
@@ -913,19 +900,19 @@ fn append_agent_session_recovery_action_fields(
 ) {
     let (required_action, next_action, completion_receipt) = match action {
         "start-resident-child" => (
-            format!("start-{resident_child_name}-child"),
-            "run-asp-agent-session-bootstrap-loop".to_string(),
+            format!("enter-{resident_child_name}-choice-pane"),
+            "choose-one-bootstrap-pane-option".to_string(),
             format!("{resident_child_name}-choice-pane-receipt"),
         ),
         "reuse-resident-child" | "resume-resident-child" => (
-            format!("send-to-{resident_child_name}"),
-            format!("run-asp-command-in-registered-{resident_child_name}-child"),
+            format!("use-existing-{resident_child_name}-through-pane"),
+            "enter-bootstrap-pane-if-transport-is-not-ready".to_string(),
             format!("{resident_child_name}-child-command"),
         ),
         _ => (
-            format!("query-{resident_child_name}-status"),
-            "run-asp-agent-session-status".to_string(),
-            format!("{resident_child_name}-status-receipt"),
+            format!("enter-{resident_child_name}-choice-pane"),
+            "choose-one-bootstrap-pane-option".to_string(),
+            format!("{resident_child_name}-choice-pane-receipt"),
         ),
     };
 

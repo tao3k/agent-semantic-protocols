@@ -31,9 +31,16 @@ def resolve_step_command(
     return command
 
 
-def workspace_dev_command(repo_root: Path, command: list[str]) -> list[str]:
+def workspace_dev_command(
+    repo_root: Path,
+    command: list[str],
+    *,
+    benchmark_binary: str | None = None,
+) -> list[str]:
     if command[0] != "asp":
         return command
+    if benchmark_binary:
+        return [benchmark_binary, *command[1:]]
     if protocol_bin := _workspace_protocol_bin(repo_root):
         rewritten = [str(protocol_bin), *command[1:]]
         return _append_default_hook_activation(repo_root, command, rewritten)

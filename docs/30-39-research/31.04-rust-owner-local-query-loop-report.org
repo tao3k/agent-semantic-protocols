@@ -358,7 +358,7 @@ py-harness query src/python_lang_project_harness/_semantic_language.py \
 #+end_src
 
 This is the cross-language contract that prevents agents from falling back to a
-chain of broad =search fzf= probes followed by whole-file reads.  A provider
+chain of broad =search lexical= probes followed by whole-file reads.  A provider
 can now answer the narrow question:
 
 #+begin_src text

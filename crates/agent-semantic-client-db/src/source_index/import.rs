@@ -3,13 +3,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
-use agent_semantic_client_core::ClientCacheFileHash;
+use agent_semantic_client_core::{ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion};
 use sha2::{Digest, Sha256};
 
+use super::language_projection::{
+    ClientDbLanguageProjectionImportRequest, language_projection_source_index_rows,
+};
 use super::text::{source_line_count, source_query_keys};
 use super::types::client_db_source_index_registry_evidence_hash;
 use super::types::{
+    CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION,
     ClientDbSourceIndexImport, ClientDbSourceIndexImportAssemblyRequest,
     ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest, ClientDbSourceIndexOwner,
     ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexScopeFile,
@@ -31,6 +36,29 @@ pub fn assemble_source_index_import(
     source_index_import_with_file_hashes(request, file_hashes)
 }
 
+/// Import parser-owned language projection rows without projecting raw source text.
+pub fn source_index_import_from_language_projection(
+    request: ClientDbLanguageProjectionImportRequest,
+) -> Result<ClientDbSourceIndexImport, String> {
+    let rows = language_projection_source_index_rows(&request.projection, &request.project_root)?;
+    let file_hashes = source_index_file_hashes(
+        &request.project_root,
+        &rows.scope_files,
+        request.previous_file_hashes.as_deref(),
+        &request.registry_fingerprint,
+        std::iter::empty(),
+    )?;
+    Ok(ClientDbSourceIndexImport {
+        generation_id: request.generation_id,
+        project_root: request.project_root,
+        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+        file_hashes,
+        owners: rows.owners,
+        selectors: rows.selectors,
+    })
+}
+
 /// Return source-index file and scope evidence hashes without assembling rows.
 pub fn source_index_file_hashes<'a>(
     project_root: &Path,
@@ -45,9 +73,18 @@ pub fn source_index_file_hashes<'a>(
             .map(|file_hash| (file_hash.path.as_str(), file_hash))
             .collect::<BTreeMap<_, _>>()
     });
+    let force_content_hash =
+        previous_file_hashes.is_some() && source_index_tracked_worktree_is_dirty(project_root);
     let mut file_hashes = files
         .iter()
-        .map(|file| source_index_file_hash(project_root, file, previous_by_path.as_ref()))
+        .map(|file| {
+            source_index_file_hash(
+                project_root,
+                file,
+                previous_by_path.as_ref(),
+                force_content_hash,
+            )
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let _ = extra_scope_dirs;
     file_hashes.extend(source_scope_evidence_hashes(registry_fingerprint));
@@ -59,12 +96,19 @@ pub fn source_index_import_with_file_hashes(
     request: ClientDbSourceIndexImportAssemblyRequest,
     file_hashes: Vec<ClientCacheFileHash>,
 ) -> Result<ClientDbSourceIndexImport, String> {
+    let cold_assembly_started = std::time::Instant::now();
     let file_hash_by_path = file_hashes
         .iter()
         .map(|file_hash| (file_hash.path.as_str(), file_hash))
         .collect::<BTreeMap<_, _>>();
     let mut import_files = Vec::with_capacity(request.files.len());
-    for file in &request.files {
+    for (file_index, file) in request.files.iter().enumerate() {
+        ensure_source_index_cold_assembly_budget(
+            cold_assembly_started,
+            "file-read",
+            file_index,
+            request.files.len(),
+        )?;
         let relative_path = source_index_relative_path(&request.project_root, &file.path);
         let Some(file_hash) = file_hash_by_path.get(relative_path.as_str()) else {
             return Err(format!("missing source index hash for {relative_path}"));
@@ -89,20 +133,32 @@ pub fn source_index_import_with_file_hashes(
             selectors: file.selector_receipts.clone(),
         });
     }
-    build_source_index_import(ClientDbSourceIndexImportRequest {
-        generation_id: request.generation_id,
-        project_root: request.project_root,
-        schema_id: request.schema_id,
-        schema_version: request.schema_version,
-        selector_source: request.selector_source,
-        file_hashes,
-        files: import_files,
-    })
+    build_source_index_import_from_started(
+        ClientDbSourceIndexImportRequest {
+            generation_id: request.generation_id,
+            project_root: request.project_root,
+            schema_id: request.schema_id,
+            schema_version: request.schema_version,
+            selector_source: request.selector_source,
+            file_hashes,
+            files: import_files,
+        },
+        cold_assembly_started,
+    )
 }
 
 /// Build the DB-owned source-index import packet from collected file facts.
 pub fn build_source_index_import(
     request: ClientDbSourceIndexImportRequest,
+) -> Result<ClientDbSourceIndexImport, String> {
+    build_source_index_import_from_started(request, std::time::Instant::now())
+}
+
+const SOURCE_INDEX_COLD_ASSEMBLY_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn build_source_index_import_from_started(
+    request: ClientDbSourceIndexImportRequest,
+    cold_assembly_started: std::time::Instant,
 ) -> Result<ClientDbSourceIndexImport, String> {
     let file_hash_by_path = request
         .file_hashes
@@ -111,7 +167,13 @@ pub fn build_source_index_import(
         .collect::<BTreeMap<_, _>>();
     let mut owners = Vec::with_capacity(request.files.len());
     let mut selectors = Vec::with_capacity(request.files.len());
-    for file in &request.files {
+    for (file_index, file) in request.files.iter().enumerate() {
+        ensure_source_index_cold_assembly_budget(
+            cold_assembly_started,
+            "owner-selector-assembly",
+            file_index,
+            request.files.len(),
+        )?;
         let Some(file_hash) = file_hash_by_path.get(file.relative_path.as_str()) else {
             return Err(format!(
                 "missing source index hash for {}",
@@ -171,6 +233,24 @@ pub fn build_source_index_import(
     })
 }
 
+fn ensure_source_index_cold_assembly_budget(
+    started: std::time::Instant,
+    stage: &str,
+    processed_files: usize,
+    total_files: usize,
+) -> Result<(), String> {
+    let elapsed = started.elapsed();
+    if elapsed < SOURCE_INDEX_COLD_ASSEMBLY_BUDGET {
+        return Ok(());
+    }
+
+    Err(format!(
+        "source-index cold assembly budget exhausted: stage={stage} budgetMs={} elapsedMs={} processedFiles={processed_files} totalFiles={total_files}",
+        SOURCE_INDEX_COLD_ASSEMBLY_BUDGET.as_millis(),
+        elapsed.as_millis(),
+    ))
+}
+
 fn file_symbol(relative_path: &str) -> Option<String> {
     let file_name = relative_path.rsplit('/').next()?;
     let stem = file_name
@@ -218,15 +298,25 @@ pub fn source_index_scope_dirs(
 }
 
 fn source_scope_evidence_hashes(registry_fingerprint: &str) -> Vec<ClientCacheFileHash> {
-    vec![client_db_source_index_registry_evidence_hash(
-        registry_fingerprint,
-    )]
+    vec![
+        client_db_source_index_registry_evidence_hash(registry_fingerprint),
+        ClientCacheFileHash {
+            path: "@scope/source-index-layout/term-projection-v1".to_string(),
+            sha256: format!(
+                "{:x}",
+                Sha256::digest(b"asp-source-index-term-projection-layout-v1")
+            ),
+            byte_len: 0,
+            mtime_ms: 0,
+        },
+    ]
 }
 
 fn source_index_file_hash(
     project_root: &Path,
     file: &ClientDbSourceIndexScopeFile,
     previous_by_path: Option<&BTreeMap<&str, &ClientCacheFileHash>>,
+    force_content_hash: bool,
 ) -> Result<ClientCacheFileHash, String> {
     let metadata = fs::metadata(&file.path).map_err(|error| {
         format!(
@@ -236,7 +326,9 @@ fn source_index_file_hash(
     })?;
     let mtime_ms = metadata_mtime_ms(&metadata, &file.path)?;
     let relative_path = source_index_relative_path(project_root, &file.path);
-    if let Some(previous) = previous_by_path.and_then(|hashes| hashes.get(relative_path.as_str()))
+    if !force_content_hash
+        && let Some(previous) =
+            previous_by_path.and_then(|hashes| hashes.get(relative_path.as_str()))
         && previous.byte_len == metadata.len()
         && previous.mtime_ms == mtime_ms
     {
@@ -254,6 +346,24 @@ fn source_index_file_hash(
         byte_len: metadata.len(),
         mtime_ms,
     })
+}
+
+fn source_index_tracked_worktree_is_dirty(project_root: &Path) -> bool {
+    let Some(git_root) = project_root
+        .ancestors()
+        .find(|candidate| candidate.join(".git").exists())
+    else {
+        return false;
+    };
+    let Ok(output) = Command::new("git")
+        .arg("-C")
+        .arg(git_root)
+        .args(["diff", "--quiet", "HEAD", "--"])
+        .output()
+    else {
+        return true;
+    };
+    !output.status.success()
 }
 
 fn metadata_mtime_ms(metadata: &fs::Metadata, path: &Path) -> Result<u64, String> {

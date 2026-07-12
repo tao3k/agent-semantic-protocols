@@ -393,7 +393,7 @@ surface:
   agent-facing =asp= routes and that deny messages do not contain stale
   =*-harness agent guide= commands.
 - RFC 005 no longer contains the old text-named search view as an agent-facing
-  command literal; =search fzf= remains the lexical/fuzzy public surface.
+  command literal; =search lexical= remains the lexical/fuzzy public surface.
 
 Runtime smoke evidence:
 

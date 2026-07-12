@@ -30,10 +30,13 @@ mod agent_session_registry_state;
 mod agent_session_registry_tool_event;
 #[path = "agent_session_registry_validation.rs"]
 mod agent_session_registry_validation;
+pub(crate) use agent_session_registry_validation::expected_model_for_session_profile;
 
 use agent_semantic_client_db::AgentSessionRegistry;
 use agent_semantic_config::codex_agent_projection::{
+    update_asp_codex_agent_source_and_symlink_projection,
     update_asp_codex_agent_sources_and_symlink_projections, write_codex_dynamic_model,
+    write_codex_dynamic_model_for_session,
 };
 use agent_semantic_runtime::AgentSessionValidationReport as SessionValidationReport;
 use agent_session_registry_args::{
@@ -48,9 +51,8 @@ use agent_session_registry_state::open_or_create_default_registry;
 use std::{env, path::PathBuf};
 
 pub(crate) use agent_session_registry_state::{
-    asp_explore_session_for_current_root, asp_explore_session_record_for_current_root,
-    current_registered_session, current_root_session_id, has_current_agent_session,
-    registered_root_session_id,
+    current_agent_session_id, current_registered_session, current_root_session_id,
+    has_current_agent_session, registered_resident_session_for_root, registered_root_session_id,
 };
 pub(crate) use agent_session_registry_tool_event::record_current_session_tool_event;
 
@@ -169,18 +171,31 @@ pub(crate) fn active_platform() -> Option<&'static str> {
 
 fn switch_codex_model(model: &str, args: &SessionArgs) -> Result<(), String> {
     let agents_config_path = asp_agents_config_path()?;
-    write_codex_dynamic_model(&agents_config_path, model)?;
-
     let mut updated_agent_configs = Vec::new();
     let asp_agents_dir = agents_config_path
         .parent()
         .ok_or_else(|| format!("{} has no parent directory", agents_config_path.display()))?;
-    update_asp_codex_agent_sources_and_symlink_projections(
-        asp_agents_dir,
-        &codex_home().join("agents"),
-        model,
-        &mut updated_agent_configs,
-    )?;
+    let codex_agents_dir = codex_home().join("agents");
+    let switch_scope = if let Some(name) = args.name.as_deref() {
+        let target = write_codex_dynamic_model_for_session(&agents_config_path, name, model)?;
+        update_asp_codex_agent_source_and_symlink_projection(
+            asp_agents_dir,
+            &codex_agents_dir,
+            &target,
+            model,
+            &mut updated_agent_configs,
+        )?;
+        format!("session:{}", target.session_name)
+    } else {
+        write_codex_dynamic_model(&agents_config_path, model)?;
+        update_asp_codex_agent_sources_and_symlink_projections(
+            asp_agents_dir,
+            &codex_agents_dir,
+            model,
+            &mut updated_agent_configs,
+        )?;
+        "all-codex-asp-agents".to_string()
+    };
 
     if args.json {
         println!(
@@ -188,14 +203,19 @@ fn switch_codex_model(model: &str, args: &SessionArgs) -> Result<(), String> {
             serde_json::json!({
                 "status": "switched",
                 "platform": "codex",
+                "scope": switch_scope,
                 "model": model,
                 "configPath": agents_config_path,
                 "updatedAgentConfigs": updated_agent_configs,
+                "semantics": "configuration-layer",
+                "mainSessionModel": "unchanged",
+                "childSessionModel": "configured expected model for the selected ASP-managed subagent child session",
+                "liveChildSwitch": "send a native message-agent follow-up to the existing child session; this command does not change the main session model or a running child turn",
             })
         );
     } else {
         println!(
-            "switched codex model to {model}; config={}; updatedAgentConfigs={}",
+            "switched codex child-session config model for {switch_scope} to {model}; main session model unchanged; config={}; updatedAgentConfigs={}; running child sessions still require a native message-agent follow-up",
             agents_config_path.display(),
             updated_agent_configs.len()
         );

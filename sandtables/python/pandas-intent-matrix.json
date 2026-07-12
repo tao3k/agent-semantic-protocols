@@ -105,12 +105,14 @@
         "asp",
         "python",
         "search",
-        "fzf",
-        "--query-set",
+        "lexical",
+        "--query",
         "groupby",
-        "--query-set",
+        "--query",
         "DataFrameGroupBy",
+        "--query",
         "owner",
+        "--query",
         "tests",
         "--package",
         "core/groupby",
@@ -122,7 +124,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf]",
+          "[search-lexical]",
           "querySet=2",
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
@@ -137,10 +139,12 @@
         "asp",
         "python",
         "search",
-        "fzf",
-        "--query-set",
+        "lexical",
+        "--query",
         "BlockManager",
+        "--query",
         "owner",
+        "--query",
         "tests",
         "--package",
         "core/internals",
@@ -152,7 +156,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-fzf]",
+          "[search-lexical]",
           "querySet=1",
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],

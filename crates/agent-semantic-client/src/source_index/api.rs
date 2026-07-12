@@ -1,7 +1,8 @@
 //! Public refresh API for the DB Engine source index.
 
-use std::collections::BTreeSet;
-use std::path::Path;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Instant;
 
 use agent_semantic_client_core::{
@@ -11,8 +12,9 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::ClientDbEngineWriteSession;
 use agent_semantic_client_db::{
     ClientDbEngine, ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexRefreshRequest,
-    client_db_source_index_file_count, client_db_source_index_generation_id,
-    source_index_file_hashes, source_index_import_with_file_hashes,
+    ClientDbSourceIndexScopeFile, client_db_source_index_file_count,
+    client_db_source_index_generation_id, source_index_file_hashes,
+    source_index_import_with_file_hashes,
 };
 use agent_semantic_runtime::{collect_runtime_source_index_files, runtime_source_index_context};
 
@@ -28,14 +30,19 @@ pub fn refresh_source_index(
     project_root: &Path,
 ) -> Result<Option<SourceIndexRefreshReport>, String> {
     let trace_started = Instant::now();
-    let context = SourceIndexRefreshContext::resolve(project_root)?;
+    let mut context = SourceIndexRefreshContext::resolve(project_root)?;
     source_index_trace("context-resolved", trace_started);
+    let dirty_paths = source_index_tracked_worktree_dirty_paths(project_root);
+    let tracked_worktree_dirty = dirty_paths.as_ref().map_or(true, |paths| !paths.is_empty());
+    if tracked_worktree_dirty {
+        source_index_trace("tracked-worktree-dirty", trace_started);
+    }
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
     source_index_trace("provider-registry-loaded", trace_started);
     let registry = snapshot.evidence(project_root);
     let previous_file_hashes = context.latest_file_hashes(project_root)?;
     source_index_trace("previous-file-hashes-loaded", trace_started);
-    {
+    if !tracked_worktree_dirty {
         if let Some(report) = try_reuse_source_index_scope(
             &context,
             SourceIndexScopeReuse {
@@ -47,9 +54,31 @@ pub fn refresh_source_index(
             source_index_trace("scope-reused", trace_started);
             return Ok(Some(report));
         }
+    } else if let Some(dirty_paths) = dirty_paths.as_ref() {
+        if let Some(report) = try_reuse_dirty_source_index_scope(
+            &context,
+            SourceIndexScopeReuse {
+                index_root: project_root,
+                previous_file_hashes: previous_file_hashes.as_deref(),
+                registry: &registry,
+            },
+            dirty_paths,
+        )? {
+            source_index_trace("dirty-scope-reused", trace_started);
+            return Ok(Some(report));
+        }
     }
     source_index_trace("scope-reuse-missed", trace_started);
-    Ok(None)
+    let files = collect_source_index_files(project_root, &snapshot)?;
+    source_index_trace("dirty-scope-files-collected", trace_started);
+    let report = context.refresh_generation(SourceIndexGenerationRefresh {
+        index_root: project_root,
+        files: &files,
+        previous_file_hashes: previous_file_hashes.as_deref(),
+        registry: &registry,
+    })?;
+    source_index_trace("dirty-generation-refreshed", trace_started);
+    Ok(Some(report))
 }
 
 /// Rebuild the DB Engine source index for a project without storing raw source.
@@ -219,6 +248,17 @@ impl SourceIndexRefreshContext {
         )
     }
 
+    fn latest_scope_files(
+        &self,
+        index_root: &Path,
+    ) -> Result<Option<Vec<ClientDbSourceIndexScopeFile>>, String> {
+        self.db_session.latest_source_index_scope_files(
+            index_root,
+            &self.schema_id,
+            &self.schema_version,
+        )
+    }
+
     fn refresh_generation(
         &mut self,
         request: SourceIndexGenerationRefresh<'_>,
@@ -327,6 +367,129 @@ fn try_reuse_source_index_scope(
         .map(|stats| source_index_refresh_report(&context.db_path, stats, file_count, true)))
 }
 
+fn try_reuse_dirty_source_index_scope(
+    context: &SourceIndexRefreshContext,
+    scope: SourceIndexScopeReuse<'_>,
+    dirty_paths: &BTreeSet<PathBuf>,
+) -> Result<Option<SourceIndexRefreshReport>, String> {
+    let Some(previous_file_hashes) = scope.previous_file_hashes else {
+        return Ok(None);
+    };
+    if dirty_paths.is_empty() {
+        return Ok(None);
+    }
+    let Some(scope_files) = context.latest_scope_files(scope.index_root)? else {
+        return Ok(None);
+    };
+    let scope_files_by_relative_path = scope_files
+        .into_iter()
+        .filter_map(|file| {
+            let relative_path = file
+                .path
+                .strip_prefix(scope.index_root)
+                .ok()
+                .map(Path::to_path_buf)?;
+            Some((relative_path, file))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let indexed_extensions = scope_files_by_relative_path
+        .keys()
+        .filter_map(|path| path.extension()?.to_str().map(str::to_owned))
+        .collect::<BTreeSet<_>>();
+    let mut dirty_scope_files = Vec::with_capacity(dirty_paths.len());
+    for dirty_path in dirty_paths {
+        let source_path = scope.index_root.join(dirty_path);
+        match scope_files_by_relative_path.get(dirty_path) {
+            Some(scope_file) if source_path.is_file() => dirty_scope_files.push(scope_file.clone()),
+            Some(_) => return Ok(None),
+            None if source_path.is_file()
+                && source_index_path_matches_indexed_extension(dirty_path, &indexed_extensions) =>
+            {
+                return Ok(None);
+            }
+            None => {}
+        }
+    }
+    let dirty_hashes = source_index_file_hashes(
+        scope.index_root,
+        &dirty_scope_files,
+        Some(previous_file_hashes),
+        &scope.registry.fingerprint,
+        scope.registry.scope_dirs.iter().map(String::as_str),
+    )?;
+    let previous_by_path = previous_file_hashes
+        .iter()
+        .map(|file_hash| (file_hash.path.as_str(), file_hash))
+        .collect::<BTreeMap<_, _>>();
+    let dirty_paths_match_previous = dirty_hashes
+        .iter()
+        .filter(|file_hash| !file_hash.path.as_str().starts_with("@scope/"))
+        .all(|file_hash| {
+            previous_by_path
+                .get(file_hash.path.as_str())
+                .is_some_and(|previous| previous.sha256 == file_hash.sha256)
+        });
+    if !dirty_paths_match_previous {
+        return Ok(None);
+    }
+    try_reuse_source_index_scope(context, scope)
+}
+
+fn source_index_tracked_worktree_dirty_paths(project_root: &Path) -> Option<BTreeSet<PathBuf>> {
+    let git_root = source_index_git_root(project_root)?;
+    let project_root = project_root.canonicalize().ok()?;
+    let project_relative_path = project_root.strip_prefix(&git_root).ok()?.to_path_buf();
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&git_root)
+        .args(["diff", "--name-only", "-z", "HEAD", "--"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(
+        output
+            .stdout
+            .split(|byte| *byte == b'\0')
+            .filter(|path| !path.is_empty())
+            .filter_map(|path| {
+                let path = PathBuf::from(String::from_utf8(path.to_vec()).ok()?);
+                if project_relative_path.as_os_str().is_empty() {
+                    Some(path)
+                } else {
+                    path.strip_prefix(&project_relative_path)
+                        .ok()
+                        .map(Path::to_path_buf)
+                }
+            })
+            .collect(),
+    )
+}
+
+fn source_index_git_root(project_root: &Path) -> Option<PathBuf> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let git_root = String::from_utf8(output.stdout).ok()?;
+    PathBuf::from(git_root.trim()).canonicalize().ok()
+}
+
+fn source_index_path_matches_indexed_extension(
+    path: &Path,
+    indexed_extensions: &BTreeSet<String>,
+) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| indexed_extensions.contains(extension))
+}
+
 fn source_index_previous_file_hash_count(previous_file_hashes: &[ClientCacheFileHash]) -> usize {
     previous_file_hashes
         .iter()
@@ -361,4 +524,8 @@ fn source_index_refresh_report(
         reused_generation,
     )
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/source_index_api.rs"]
+mod source_index_api_tests;
 use sha2::{Digest, Sha256};

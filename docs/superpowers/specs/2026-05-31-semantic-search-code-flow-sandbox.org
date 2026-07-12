@@ -33,7 +33,7 @@ The desired flow is:
 * Initial Probe
 
 #+begin_src shell
-node dist/src/cli/main.js search fzf parserOwner .
+node dist/src/cli/main.js search lexical parserOwner .
 #+end_src
 
 Before source-text search, the result was a miss:
@@ -69,7 +69,7 @@ avoidable round for parser-visible TypeScript source.
 * Implemented Improvement
 
 The TypeScript provider now adds bounded parser-visible source-text hits to
-=search fzf=:
+=search lexical=:
 
 #+begin_src text
 kind=text
@@ -99,7 +99,7 @@ independently navigable through =search owner=.
 * Follow-Up Probe
 
 #+begin_src shell
-node dist/src/cli/main.js search fzf parserOwner .
+node dist/src/cli/main.js search lexical parserOwner .
 #+end_src
 
 Observed:
@@ -144,7 +144,7 @@ Observed:
 #+end_src
 
 #+begin_src shell
-node dist/src/cli/main.js search fzf semantic-search-packet .
+node dist/src/cli/main.js search lexical semantic-search-packet .
 #+end_src
 
 Observed:
@@ -164,7 +164,7 @@ Observed:
 [search-code-flow]
 1. ts-harness search workspace .
 2. ts-harness search prime .
-3. ts-harness search fzf <implementation-term> .
+3. ts-harness search lexical <implementation-term> .
 4. ts-harness search owner <top-owner> .
 5. ts-harness search tests <top-owner> .
 6. parser-visible modules should stay inside search owner; only path-only files go to ingest

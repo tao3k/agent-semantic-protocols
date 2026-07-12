@@ -135,8 +135,8 @@ fn provider_language_facades_forward_language_like_provider_args() {
             "search",
             "lexical",
             "--query",
-            "--language",
             "owner",
+            "--query",
             "tests",
             "--workspace",
             ".",
@@ -151,23 +151,11 @@ fn provider_language_facades_forward_language_like_provider_args() {
         "stderr={stderr}\nstdout={}",
         String::from_utf8_lossy(&output.stdout)
     );
-    assert!(
-        !stderr.contains("--language has been removed"),
-        "provider args were intercepted by the client parser: {stderr}"
-    );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    for expected in [
-        "search",
-        "lexical",
-        "--query",
-        "--language",
-        "owner",
-        "tests",
-        "--view",
-        "seeds",
-    ] {
-        assert!(stdout.contains(expected), "missing {expected}: {stdout}");
-    }
+    assert!(stdout.contains("[graph-frontier]"), "{stdout}");
+    assert!(stdout.contains("profile=owner-query"), "{stdout}");
+    assert!(stdout.contains("alg=typed-ppr-diverse"), "{stdout}");
+    assert!(stdout.contains("has_provider_root"), "{stdout}");
     let output = asp_command(&root)
         .args(["check", "--language", "rust", "."])
         .output()
@@ -189,6 +177,8 @@ fn provider_language_facades_forward_language_like_provider_args() {
             "lexical",
             "--query",
             "owner",
+            "--query",
+            "tests",
             "--workspace",
             ".",
             "--view",
@@ -202,6 +192,8 @@ fn provider_language_facades_forward_language_like_provider_args() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("jl args=[search][lexical]"), "{stdout}");
+    assert!(stdout.contains("[graph-frontier]"), "{stdout}");
+    assert!(stdout.contains("profile=owner-query"), "{stdout}");
+    assert!(stdout.contains("alg=typed-ppr-diverse"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

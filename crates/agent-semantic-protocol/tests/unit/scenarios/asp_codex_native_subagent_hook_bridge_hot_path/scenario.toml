@@ -1,0 +1,17 @@
+id = "asp-codex-native-subagent-hook-bridge-hot-path"
+title = "Codex native SubagentStart and SubagentStop bridge stays on the lifecycle hot path"
+policy_ids = [
+  "RUST-AGENT-ASP-PERF-CODEX-NATIVE-SUBAGENT-HOOK-001",
+]
+agent_goal = "Project Codex native lifecycle identity directly into the ASP resident registry without rollout scans, model-authored id receipts, duplicate children, or provider/search work."
+reference_repositories = [
+  "agent-semantic-protocols",
+]
+reference_patterns = [
+  "codex-subagent-start",
+  "codex-subagent-stop",
+  "native-message-target",
+  "resident-session-atomic-claim",
+]
+inputs = "inputs"
+expected = "expected"

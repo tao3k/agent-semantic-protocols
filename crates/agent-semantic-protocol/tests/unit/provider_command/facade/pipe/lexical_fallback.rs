@@ -47,11 +47,12 @@ fn lexical_fallback_collector_matches_multiple_terms_without_search_overlay() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.starts_with("[graph-frontier] profile=owner-query"),
+        stdout.starts_with("[graph-route] profile=owner-query"),
         "{stdout}"
     );
-    assert!(stdout.contains("item:symbol(cache_root)"), "{stdout}");
-    assert!(stdout.contains("item:symbol(providerneedle)"), "{stdout}");
+    assert!(stdout.contains("owner=path(src/cache_root.rs)"), "{stdout}");
+    assert!(stdout.contains("symbols=cache_root"), "{stdout}");
+    assert!(stdout.contains("providerneedle"), "{stdout}");
     assert!(!stdout.contains(".txt"), "{stdout}");
     assert!(
         !marker.exists(),

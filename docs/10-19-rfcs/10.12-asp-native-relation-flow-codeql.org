@@ -264,7 +264,7 @@ specific high-value evidence request.  It must not run during ordinary
 Recent local evidence from this repository shows why:
 
 #+begin_src text
-native search fzf owner/tests     0.6s-2.7s
+native search lexical owner/tests     0.6s-2.7s
 CodeQL bounded evidence, warm     ~8s
 CodeQL database create, cold      40s-50s
 #+end_src

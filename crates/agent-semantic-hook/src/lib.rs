@@ -5,10 +5,14 @@
 mod activation_store;
 mod classifier;
 mod codex_config;
+mod codex_plugin_trust;
 pub use codex_config::codex_hook_block_with_binary;
+pub use codex_plugin_trust::install_codex_user_plugin_trust_state;
+pub use codex_plugin_trust::{CodexPluginTrustStatus, codex_user_plugin_trust_state_status};
 mod codex_global_config;
 pub use codex_global_config::{
     codex_global_hook_block_with_binary, merge_codex_global_hook_trust_config,
+    remove_codex_global_hook_trust_config,
 };
 mod codex_project_trust;
 mod codex_trust;
@@ -45,8 +49,8 @@ pub use classifier::{
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
     codex_user_trust_state_status, default_claude_settings_path, install_codex_user_trust_state,
-    merge_claude_settings, merge_codex_asp_explorer_role_config, merge_codex_config,
-    remove_codex_managed_hook_config, validate_claude_settings_json, validate_codex_config_toml,
+    merge_claude_settings, merge_codex_config, remove_codex_managed_hook_config,
+    validate_claude_settings_json, validate_codex_config_toml,
 };
 pub use codex_project_trust::install_codex_user_project_trust;
 pub use dev_context::{ActiveContextRecord, record_active_context};

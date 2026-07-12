@@ -34,7 +34,7 @@ Sandtable coverage for this contract SHOULD validate four paths:
   routing does not create a plan artifact.
 - Search/query packets validate =routeGraph= and typed =actionFrontier= fields.
 - Known owner, symbol, selector, dependency, and failure evidence skip broader
-  =prime/fzf/raw-read= routes unless the packet records why the narrow route is
+  =prime/lexical/raw-read= routes unless the packet records why the narrow route is
   insufficient.
 - Committed route fixtures contain only project-relative paths so they can be
   uploaded to GitHub without host-local absolute paths.

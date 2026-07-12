@@ -1,0 +1,106 @@
+#+TITLE: Exact Selector Projection Repair
+#+OPTIONS: toc:2 num:nil
+
+* Decision
+
+Exact code retrieval is a parser projection, not a file-read convenience. A
+provider may return source code only after it has materialized a
+language-owned structural selector. Owner paths, source locators, line
+ranges, workspace roots, and cache-local paths are search evidence, never
+implicit read selectors.
+
+A failure to materialize a selector has one of two explicit outcomes:
+
+- =selector-not-materialized= for a non-structural request; and
+- =provider-index-gap= when a known provider owner cannot produce its parser
+  selector.
+
+Neither outcome may enter a =read-selector=, exact-source, or file-window
+fallback. An explicitly named direct-read command, if retained at all, is a
+separate user-facing capability and is not part of query recovery.
+
+A structural selector must resolve through a canonical workspace path that
+exists; locator or shadow fallbacks are not permitted, and any non-existent
+canonical path must produce a deterministic not-found result. The rendered
+owner and structural selector must identify that same canonical workspace path.
+
+* Cache Identity
+
+The selector projection cache identity is the tuple:
+
+#+begin_example
+schema version
+provider ABI
+selector dialect
+normalized workspace anchor
+package/module graph digest
+source digest
+#+end_example
+
+The build option cache is a separate cache and additionally includes a build
+options ABI. It must retain compiler options as individual list elements until
+the final =gsc= argv boundary. A cached aggregate string is invalid when that
+ABI changes.
+
+A cache mismatch returns =projection-stale= and names only the affected
+modules for rebuild. It must not reuse a relative checkout such as
+=./gerbil-scheme= as an identity and must not silently consult an old compiled
+provider.
+
+* Rejected Alternatives
+
+- Reintroducing file/range reads after an exact selector miss: it hides parser
+  defects, produces stale code, and gives the main agent unbounded text.
+- One global cache key: it cannot distinguish a source edit, an ABI change,
+  and a package graph change.
+- Clearing all caches on every miss: it abandons the incremental warm path and
+  does not establish correctness.
+
+* Required Scenarios
+
+- A source edit invalidates only the affected module projection and a warm
+  unchanged query reports scope reuse.
+- A provider ABI or selector dialect change rejects the old projection without
+  invoking a legacy read path.
+- A cached compiler option payload with an older options ABI is recomputed;
+  every =-cc-options= pair reaches =gsc= as one option/value pair.
+- Each registered language rejects a file, range, root, and source locator in
+  exact-code mode with the shared receipt schema.
+- A known owner without a structural selector reports =provider-index-gap= and
+  offers provider repair, not raw source access.
+
+* Provider Rollout
+
+- Rust: =structural_selector= must be the sole exact-code gate. The hook's
+  direct-read route may surface a repair receipt but must not become a file
+  reader.
+- TypeScript: remove range and source-window rendering from exact-query
+  fallback. Keep it only behind an explicitly named direct-read surface, if
+  that surface remains supported.
+- Python: the current rejection guards are the reference behavior; emit the
+  shared receipt rather than a provider-private message when the schema is
+  consumed by an agent-facing command.
+- Julia: implement the provider-owned selector generator and its first
+  conformance scenario before offering exact-code mode.
+- Gerbil: make =gerbil-scheme://<owner>#item/<kind>/<name>= a parser-owned
+  selector accepted by the query predicate, materialize it through
+  =selector-from= and =item-structural-selector=, and remove the automatic
+  =read-selector= and launcher direct-source branches from exact mode.
+
+Every provider must prove the same four negative cases: file path, line range,
+workspace root, and source locator. A provider that cannot materialize an item
+reports =provider-index-gap= with its owner identity; it does not substitute a
+path/line read.
+
+* Repair Authorization
+
+An active registered ASP Explorer child is sufficient evidence to route a
+bounded provider repair. If the host does not expose the child's model or
+reasoning profile, that is a warning for model administration, not a lifecycle
+invalidity and not a reason to return the parent to a bootstrap loop.
+
+For =provider-index-gap= only, the parent may perform one read-only,
+owner-bounded repair read after the child has returned the owner identity. The
+hook records that read against the receipt and rejects broad paths, ranges, and
+unrelated files. This exception exists to repair a broken parser projection;
+it must never become a general raw-read fallback.

@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use super::hook_runtime::{run_codex_plugin_install_args, run_hook_runtime_args};
 use super::install_provider_archive::{
     asset_name, binary_file_name, checksum_for_archive, download_release_archive,
-    install_archive_binary, install_executable_entrypoint, path_segment, release_asset_url,
-    sha256_file,
+    install_archive_binary, install_executable_entrypoint, install_linked_entrypoint, path_segment,
+    release_asset_url, sha256_file,
 };
-use super::install_provider_release::ProviderReleaseSpec;
+use super::install_provider_release::{ProviderReleaseSpec, WorkspaceInstallMode};
 use super::install_provider_target::{
     ProviderBinaryInstallTarget, home_dir, resolve_provider_binary_install_target,
 };
@@ -40,6 +40,9 @@ struct PinnedLanguageReleaseEntry {
     archive_prefix: Option<String>,
     archive_binary: Option<String>,
     require_native_binary: Option<bool>,
+    workspace_binary: Option<String>,
+    #[serde(default)]
+    workspace_install: WorkspaceInstallMode,
     supported_targets: Vec<String>,
 }
 
@@ -126,12 +129,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         home_dir().as_deref(),
     )?;
     if install_args.from_workspace {
-        return install_workspace_provider_binary(
-            &spec,
-            &project_root,
-            &provider_binary,
-            &install_target,
-        );
+        return install_workspace_provider_binary(&spec, &project_root, &install_target);
     }
     let provider_lock_dir = ensure_project_provider_lock_dir(&install_args.project_root)?;
     let provider_package_dir = provider_lock_dir
@@ -149,13 +147,19 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             archive_path.display()
         ));
     }
-    let installed = install_archive_binary(
+    let installed_entrypoint = install_archive_binary(
         &archive_path,
         &spec,
         &target,
         &install_target.path,
         &provider_package_dir,
     )?;
+    let state = project_runtime_state(&project_root)?;
+    let runtime_artifact = state.runtime_bin_dir.join(&spec.binary);
+    if installed_entrypoint != runtime_artifact {
+        install_executable_entrypoint(&installed_entrypoint, &runtime_artifact)?;
+    }
+    let installed = runtime_artifact;
     let lock_path = provider_lock_dir.join(format!("{}.lock.toml", spec.language_id));
     write_provider_lock(
         &lock_path,
@@ -172,7 +176,6 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             source: archive_source,
         },
     )?;
-    let state = project_runtime_state(&project_root)?;
     let org_state_sync = org_capture::run_org_state_sync(&project_root)?;
     println!(
         "[asp-install] provider={} language={} rev={} target={} binary={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
@@ -250,33 +253,55 @@ fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
 fn install_workspace_provider_binary(
     spec: &ProviderReleaseSpec,
     project_root: &Path,
-    provider_binary: &str,
     install_target: &ProviderBinaryInstallTarget,
 ) -> Result<(), String> {
-    let workspace_binary = project_root.join(".bin").join(provider_binary);
+    let workspace_binary = spec.workspace_binary.as_ref().map_or_else(
+        || Err(format!(
+            "provider {} has no configured workspace artifact; add workspaceBinary to its pinned release entry before using --from-workspace",
+            spec.language_id
+        )),
+        |path| Ok(project_root.join(path)),
+    )?;
     if !workspace_binary.is_file() {
         return Err(format!(
-            "workspace provider binary is missing at {}; build or refresh languages before running `asp install language {} --from-workspace`",
+            "configured workspace provider artifact is missing at {}; build the provider before running `asp install language {} --from-workspace`",
             workspace_binary.display(),
             spec.language_id
         ));
     }
-    install_executable_entrypoint(&workspace_binary, &install_target.path)?;
     let state = project_runtime_state(project_root)?;
+    let runtime_artifact = state.runtime_bin_dir.join(&spec.binary);
+    install_workspace_entrypoint(spec, &workspace_binary, &runtime_artifact)?;
+    if install_target.path != runtime_artifact {
+        install_workspace_entrypoint(spec, &workspace_binary, &install_target.path)?;
+    }
     let org_state_sync = org_capture::run_org_state_sync(project_root)?;
     println!(
-        "[asp-install] provider={} language={} source=workspace-bin binary={} workspaceBin={} installedPath={} installTargetSource={} runtimeBinDir={} orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} source=workspace-artifact workspaceInstall={} binary={} workspaceArtifact={} installedPath={} runtimeArtifact={} installTargetSource={} runtimeBinDir={} orgState={} orgStateSync={}",
         spec.provider_id,
         spec.language_id,
+        spec.workspace_install.as_str(),
         spec.binary,
         workspace_binary.display(),
         install_target.path.display(),
+        runtime_artifact.display(),
         install_target.source,
         state.runtime_bin_dir.display(),
         state.protocol_home.join("org").display(),
         org_state_sync.status,
     );
     Ok(())
+}
+
+fn install_workspace_entrypoint(
+    spec: &ProviderReleaseSpec,
+    source: &Path,
+    target: &Path,
+) -> Result<(), String> {
+    match spec.workspace_install {
+        WorkspaceInstallMode::Copy => install_executable_entrypoint(source, target),
+        WorkspaceInstallMode::Symlink => install_linked_entrypoint(source, target),
+    }
 }
 
 fn required_value<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str, String> {
@@ -309,6 +334,8 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
         archive_prefix: entry.archive_prefix.unwrap_or_else(|| entry.binary.clone()),
         archive_binary: entry.archive_binary.unwrap_or_else(|| entry.binary.clone()),
         require_native_binary: entry.require_native_binary.unwrap_or(false),
+        workspace_binary: entry.workspace_binary,
+        workspace_install: entry.workspace_install,
         binary: entry.binary,
         supported_targets: entry.supported_targets,
     })
@@ -381,7 +408,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>] [--from-workspace]\n       language provider releases are pinned by asp by default; --from-workspace refreshes $HOME/.local/bin from <project>/.bin/<provider-binary>; install target priority: .agents/asp.toml [languages.<language>].bin, SEMANTIC_AGENT_BIN_DIR, $HOME/.local/bin, PATH".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>] [--from-workspace]\n       language provider releases are pinned by asp by default; --from-workspace deploys the configured workspace artifact to the ASP runtime home and its canonical $HOME/.local/bin entrypoint".to_string()
 }
 
 fn install_hook_usage() -> String {

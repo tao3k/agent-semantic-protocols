@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
 from .constants import COVERAGE_POLICY_PATH
 from .coverage import coverage_report
 from .large_library_report_chain import build_large_library_report_chain
+from .large_library_benchmark_report import benchmark_snapshot
+from .large_library_runtime_benchmark import run_large_library_runtime_benchmark
 from .large_library_optimization_analysis_cli import (
     add_large_library_optimization_analysis_arguments,
     handle_large_library_optimization_analysis_args,
@@ -139,6 +142,10 @@ def _handle_direct_commands(repo_root: Path, args: argparse.Namespace) -> int | 
         return _compare_receipts(repo_root, args)
     if args.receipt:
         return _validate_receipts(repo_root, args)
+    if args.large_library_benchmark_report:
+        return _large_library_benchmark_report(repo_root, args)
+    if args.large_library_runtime_benchmark:
+        return _large_library_runtime_benchmark(repo_root, args)
     return None
 
 
@@ -162,6 +169,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_large_library_variant_result_arguments(parser)
     add_large_library_variant_batch_arguments(parser)
     _add_failure_frontier_arguments(parser)
+    _add_large_library_benchmark_arguments(parser)
     _add_coverage_arguments(parser)
     return parser
 
@@ -267,6 +275,48 @@ def _add_coverage_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_large_library_benchmark_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--large-library-benchmark-report",
+        action="store_true",
+        help=(
+            "Emit a deterministic large-library benchmark snapshot "
+            "including benchmarkData and searchCommandSet."
+        ),
+    )
+    parser.add_argument(
+        "--large-library-benchmark-languages",
+        default="julia,python,rust,typescript",
+        help=(
+            "Comma-separated language list for benchmark snapshot. "
+            "Defaults to julia,python,rust,typescript."
+        ),
+    )
+    parser.add_argument(
+        "--large-library-runtime-benchmark",
+        action="store_true",
+        help=(
+            "Execute every live registered search method against local large-library corpora "
+            "with a verified release ASP binary."
+        ),
+    )
+    parser.add_argument(
+        "--large-library-runtime-corpus-root",
+        default=".data",
+        help="Directory containing the 14 named large-library checkouts.",
+    )
+    parser.add_argument(
+        "--large-library-runtime-asp-bin",
+        default=None,
+        help="Release ASP binary. Defaults to target/release/asp.",
+    )
+    parser.add_argument(
+        "--large-library-runtime-languages",
+        default="julia,python,rust,typescript",
+        help="Comma-separated runtime benchmark language list.",
+    )
+
+
 def _compare_receipts(repo_root: Path, args: argparse.Namespace) -> int:
     baseline, candidate = args.compare_receipts
     comparison = compare_failure_frontier_receipt_paths(
@@ -347,6 +397,78 @@ def _large_library_report_chain(
     if args.fail_on_missing and report["optimizationGate"]["status"] != "pass":
         return 1
     return 0
+
+
+def _large_library_benchmark_report(
+    repo_root: Path,
+    args: argparse.Namespace,
+) -> int:
+    language_values = args.large_library_benchmark_languages.strip()
+    languages = tuple(
+        item.strip() for item in language_values.split(",") if item.strip()
+    )
+    snapshot = benchmark_snapshot(repo_root=repo_root, languages=languages or None)
+    if args.json:
+        emit_json(snapshot)
+    else:
+        emit(
+            "large-library-benchmark-report "
+            f"scenarios={snapshot['benchmarkData']['scenarioCount']} "
+            f"searchCommands={snapshot['benchmarkData']['searchCommandCount']} "
+            f"uniqueSearchCommands={snapshot['benchmarkData']['uniqueSearchCommandCount']} "
+            f"runs={snapshot['benchmarkData']['optimizationRunCount']} "
+            f"variantRuns={snapshot['benchmarkData']['optimizationVariantRunCount']} "
+            f"methods={','.join(snapshot['benchmarkData']['coveredSearchMethods'])}"
+        )
+        emit(f"searchCommandSet={len(snapshot['searchCommandSet'])} entries")
+    return 0
+
+
+def _large_library_runtime_benchmark(repo_root: Path, args: argparse.Namespace) -> int:
+    languages = tuple(
+        item.strip()
+        for item in args.large_library_runtime_languages.split(",")
+        if item.strip()
+    )
+    corpus_root = resolve_path(repo_root, args.large_library_runtime_corpus_root)
+    asp_binary = resolve_path(
+        repo_root,
+        args.large_library_runtime_asp_bin or "target/release/asp",
+    )
+    if corpus_root is None or asp_binary is None:
+        emit("[large-library-runtime-benchmark] invalid corpus or ASP binary path", file=sys.stderr)
+        return 1
+    try:
+        receipt = run_large_library_runtime_benchmark(
+            repo_root,
+            asp_binary=asp_binary,
+            corpus_root=corpus_root,
+            languages=languages,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        emit(f"[large-library-runtime-benchmark] {error}", file=sys.stderr)
+        return 1
+    if args.json:
+        emit_json(receipt)
+    else:
+        summary = receipt["summary"]
+        coverage = receipt["commandCoverage"]
+        emit(
+            "[large-library-runtime-benchmark] "
+            f"status={receipt['status']} "
+            f"corpora={len(receipt['corpora'])} "
+            f"missing={len(receipt['missingCorpora'])} "
+            f"commands={coverage['runtimeSearchCommandCount']}/"
+            f"{coverage['targetSearchCommandCount']} "
+            f"maxElapsedMs={summary['maxElapsedMs']}"
+        )
+        for missing in receipt["missingCorpora"]:
+            emit(
+                "|missing "
+                f"language={missing['language']} "
+                f"repository={missing['repository']} path={missing['path']}"
+            )
+    return 0 if receipt["status"] == "pass" else 1
 
 
 def _print_large_library_report_chain(report: dict[str, object]) -> None:

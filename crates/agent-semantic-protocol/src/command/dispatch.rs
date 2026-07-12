@@ -17,9 +17,9 @@ use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
 use super::install_provider::run_install_command;
 use super::paths::run_paths_command;
-use super::protocol_version_line;
 use super::provider::run_language_command;
 use super::root_language_facade::run_root_language_facade;
+use super::run_protocol_version_command;
 use super::search_query_wrapper::{is_query_wrapper, run_query_wrapper_command};
 use super::source_access::run_source_access_command;
 use super::sync::run_sync_command;
@@ -33,10 +33,7 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
             println!("{}", usage());
             Ok(())
         }
-        Some("version" | "--version" | "-V") => {
-            println!("{}", protocol_version_line());
-            Ok(())
-        }
+        Some("--version" | "-V") => run_protocol_version_command(&args[1..]),
         Some("guide" | "providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap") => {
             run_client_command(args)
         }

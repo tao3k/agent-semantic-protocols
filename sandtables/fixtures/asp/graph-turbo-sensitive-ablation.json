@@ -22,7 +22,7 @@
         "kind": "query",
         "role": "term",
         "value": "calibration",
-        "action": "fzf"
+        "action": "lexical"
       },
       {
         "id": "field:seen",

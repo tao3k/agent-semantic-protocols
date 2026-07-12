@@ -203,21 +203,6 @@ pub(crate) fn semantic_shell_tokens(command: &str) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn looks_like_command_transcript(command: &str) -> bool {
-    command
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .any(|line| {
-            line == "$"
-                || line.starts_with("$ ")
-                || line.starts_with("Ran ")
-                || line.starts_with("Running ")
-                || line.starts_with("Searched ")
-                || line.starts_with("Read ")
-        })
-}
-
 pub(super) fn command_name(command: &str) -> &str {
     command.rsplit('/').next().unwrap_or(command)
 }

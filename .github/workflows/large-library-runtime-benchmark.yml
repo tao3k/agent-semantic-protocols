@@ -1,0 +1,119 @@
+name: Large Library Runtime Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: large-library-runtime-benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: V1 Search Runtime Matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout provider catalog submodules
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule update --init --depth 1 \
+            languages/rust-lang-project-harness \
+            languages/typescript-lang-project-harness \
+            languages/python-lang-project-harness \
+            languages/JuliaLangProjectHarness.jl
+
+      - name: Install Nix for the project direnv environment
+        uses: cachix/install-nix-action@v31
+
+      - name: Install direnv
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes direnv
+          direnv allow "$GITHUB_WORKSPACE"
+          direnv exec . true
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: languages/typescript-lang-project-harness/package-lock.json
+
+      - name: Set up Python and uv
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.12"
+
+      - name: Build V1 provider artifacts through direnv
+        shell: bash
+        run: |
+          set -euo pipefail
+          direnv exec . cargo build --release --bin asp
+          direnv exec . cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --release --features cli --bin rs-harness
+          direnv exec . npm --prefix languages/typescript-lang-project-harness ci
+          direnv exec . npm --prefix languages/typescript-lang-project-harness run build
+          direnv exec . uv sync --project languages/python-lang-project-harness --frozen
+          direnv exec . env \
+            JULIA_DEPOT_PATH="$PWD/.cache/julia-depot:$HOME/.julia" \
+            ASP_JULIA_BUILD_DIR="$PWD/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local" \
+            ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
+            languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh
+
+      - name: Enforce V1 1193-owner Turso cold-write gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          direnv exec . cargo test --release \
+            -p agent-semantic-client-db \
+            source_index_1193_owner_cold_write_stays_inside_v1_gate \
+            -- --test-threads=1
+
+      - name: Materialize pinned large-library corpora
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .data
+          jq -r '.corpora[] | [.repository, .revision, .directory] | @tsv' \
+            benchmarks/large-library-runtime-search.v1.baseline.json | \
+            while IFS=$'\t' read -r repository revision directory; do
+              git clone --filter=blob:none "https://github.com/${repository}.git" ".data/${directory}"
+              git -C ".data/${directory}" checkout --detach "$revision"
+            done
+
+      - name: Run V1 14-corpus search command matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          direnv exec . env UV_CACHE_DIR="$PWD/.cache/uv" \
+            just benchmark-large-library-search-runtime-baseline
+
+      - name: Upload benchmark receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: large-library-runtime-search-v1-${{ github.run_id }}
+          path: .cache/large-library-runtime-search.v1.receipt.json
+          if-no-files-found: warn

@@ -38,7 +38,7 @@ Scenario benchmark metadata must make timer units explicit in field names. Gates
 ** Routing principle
 
 Search is not a mandatory pipeline. Before =search prime=, =search pipe=,
-=search fzf=, or =query --code=, the agent or runner derives an
+=search lexical=, or =query --code=, the agent or runner derives an
 =evidenceState=:
 
 | Evidence anchor | Expected route consequence |
@@ -74,7 +74,7 @@ Initial monitor patterns:
 | Pattern | Risk |
 |---------+------|
 | known owner or selector followed by =search prime= | unnecessary-prime |
-| repeated =prime=, =fzf=, or broad =rg= after a frontier exists | repeated-broad-search |
+| repeated =prime=, =lexical=, or broad =rg= after a frontier exists | repeated-broad-search |
 | =.syntax= action materialized as =--code= | syntax-as-code |
 | =path:start:end= used as executable selector identity | executable-line-range |
 | =sourceLocatorHint= used as identity instead of display hint | hint-as-selector |
@@ -112,7 +112,7 @@ stratify route quality with 0-4 scores:
 | Score | Meaning |
 |-------+---------|
 | =routeFaithfulness= | Route follows the user's actual evidence and intent. |
-| =routeEfficiency= | Route avoids unnecessary prime/fzf/raw search loops. |
+| =routeEfficiency= | Route avoids unnecessary prime/lexical/raw search loops. |
 | =semanticPrecision= | Route uses parser-owned selectors, owners, and topology. |
 | =fallbackDiscipline= | Fallbacks are bounded and justified. |
 | =verificationHonesty= | Claims match available packet/test evidence. |
@@ -168,7 +168,7 @@ Additional live-session feedback labels:
 | misunderstanding | wrong route for known evidence |
 | omission | missing selector, projection, or verification evidence |
 | overaction | unnecessary broad search, raw read, or edit |
-| inefficiency | repeated prime/fzf/rg or token-heavy route |
+| inefficiency | repeated prime/lexical/rg or token-heavy route |
 | execution-error | invalid command, unsupported selector, or failed fallback |
 | communication | route claim not grounded in evidence |
 

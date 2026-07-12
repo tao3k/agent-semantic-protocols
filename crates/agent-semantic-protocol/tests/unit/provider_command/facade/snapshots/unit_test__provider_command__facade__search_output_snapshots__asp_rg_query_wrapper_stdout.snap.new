@@ -1,0 +1,10 @@
+---
+source: crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs
+assertion_line: 44
+expression: normalize_search_output(&stdout)
+---
+[search-rg] view=seeds querySet=6 source=query-overlay ranker=graph-turbo:owner-query
+query=Fiber|Queue + stale|refresh|turso|cache
+noOutput reason=query-needs-specific-anchor sourceTrace=query-overlay:empty[blocked=true;collectMs=<ms>;elapsedMs=<ms>;genericTerms=fiber|queue|stale|refresh|turso|cache;qualityMs=<ms>;reason=query-needs-specific-anchor;termCount=6]
+nextCommand=asp fd -query 'Fiber|Queue|stale|refresh|turso|cache' --workspace src
+avoid=repeat-flat-rg,workspace-wide-rg,manual-window-scan,raw-read

@@ -55,7 +55,7 @@ def _initial_pipe_flow_stats(
         "directReadRiskCommands": 0,
         "searchPipeCommands": 0,
         "searchPrimeCommands": 0,
-        "searchFzfCommands": 0,
+        "searchLexicalCommands": 0,
         "searchReasoningCommands": 0,
         "searchFailureCommands": 0,
         "querySelectorCommands": 0,
@@ -275,8 +275,8 @@ def _classify_asp_command(command: str, stats: dict[str, Any]) -> None:
             stats["searchPipeCommands"] += 1
         elif profile == "prime":
             stats["searchPrimeCommands"] += 1
-        elif profile == "fzf":
-            stats["searchFzfCommands"] += 1
+        elif profile == "lexical":
+            stats["searchLexicalCommands"] += 1
         elif profile == "reasoning":
             stats["searchReasoningCommands"] += 1
         elif profile == "failure":

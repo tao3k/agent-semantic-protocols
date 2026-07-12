@@ -1,0 +1,14 @@
+id = "asp-gerbil-deps-active-gxi-stdlib-hot-path"
+title = "ASP gerbil-scheme deps gerbil indexes active gxi standard library without provider spawn"
+policy_ids = ["GERBIL-SCHEME-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-DEPS-STDLIB-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-DEPS-001"]
+agent_goal = "When an agent asks for a Gerbil standard-library export, ASP must use the Rust-owned DB dependency index against the active gxi installation, skip workspace seed collection, skip gslph provider startup, and return a compact import plus selectors."
+reference_repositories = ["tao3k/agent-semantic-protocols", "mighty-gerbils/gerbil"]
+reference_patterns = [
+  "asp gerbil-scheme search deps gerbil :std/srfi/13 items --query string-prefix",
+  "[gerbil-deps] namespace=gerbil authority=active-gxi",
+  "|use import=\"(import (only-in :std/srfi/13 string-prefix? string-prefix-ci?))\"",
+  "selector=gerbil:/std/srfi/13#export/string-prefix?",
+]
+inputs = "Fake active gxi prefix with v0.18.2/src/std/srfi/13.ss and local srfi-13.scm include."
+expected = "The command returns only the string-prefix predicate export family, reports route_source=gerbil-deps-index, spawns zero providers, performs zero workspace scans, and has fallback_reason=none."
+command = "asp gerbil-scheme search deps gerbil :std/srfi/13 items --query string-prefix"

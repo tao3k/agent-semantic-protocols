@@ -119,12 +119,12 @@
         ],
         "forbiddenFirstRoutes": [
           "search-prime",
-          "workspace-wide-fzf",
+          "workspace-wide-lexical",
           "full-file-read"
         ],
         "requiredRejectedRoutes": [
           "search-prime",
-          "workspace-wide-fzf",
+          "workspace-wide-lexical",
           "line-selector-code"
         ],
         "recommendedNext": "scoped-rg",
@@ -173,7 +173,7 @@
         "recommendedNext": "scoped-rg:compiler/rustc_borrowck",
         "avoid": [
           "search-prime",
-          "workspace-wide-fzf",
+          "workspace-wide-lexical",
           "line-selector-code"
         ]
       }

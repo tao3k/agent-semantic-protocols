@@ -305,6 +305,58 @@ pub(super) fn install_executable_entrypoint(source: &Path, target: &Path) -> Res
     copy_executable(source, target)
 }
 
+/// Install a workspace entrypoint without severing its adjacent module graph.
+pub(super) fn install_linked_entrypoint(source: &Path, target: &Path) -> Result<(), String> {
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    let temporary = target.with_extension("link-tmp");
+    if fs::symlink_metadata(&temporary).is_ok() {
+        fs::remove_file(&temporary)
+            .map_err(|error| format!("failed to remove {}: {error}", temporary.display()))?;
+    }
+    create_file_symlink(source, &temporary)?;
+    fs::rename(&temporary, target).map_err(|error| {
+        format!(
+            "failed to move workspace symlink {} to {}: {error}",
+            temporary.display(),
+            target.display()
+        )
+    })
+}
+
+#[cfg(unix)]
+fn create_file_symlink(source: &Path, target: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(source, target).map_err(|error| {
+        format!(
+            "failed to symlink workspace entrypoint {} to {}: {error}",
+            source.display(),
+            target.display()
+        )
+    })
+}
+
+#[cfg(windows)]
+fn create_file_symlink(source: &Path, target: &Path) -> Result<(), String> {
+    std::os::windows::fs::symlink_file(source, target).map_err(|error| {
+        format!(
+            "failed to symlink workspace entrypoint {} to {}: {error}",
+            source.display(),
+            target.display()
+        )
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn create_file_symlink(source: &Path, target: &Path) -> Result<(), String> {
+    Err(format!(
+        "workspace entrypoint symlinks are unsupported on this platform: {} -> {}",
+        source.display(),
+        target.display()
+    ))
+}
+
 pub(super) fn path_segment(value: &str) -> String {
     value
         .chars()

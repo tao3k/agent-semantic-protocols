@@ -8,6 +8,10 @@
 :ID: 10.05.90-gerbil-scheme-style-conventions
 :END:
 
+The executable rule matrix, structural quality facts, and acceptance gates are
+owned by =10.05.91-gerbil-scheme-code-quality-contract.org=. This document
+keeps the reference observations and agent-facing rationale.
+
 The Gerbil Scheme harness should learn from the official =gerbil-utils=
 project without copying its code.  The useful contract is not a set of inline
 snippets; it is a set of structural expectations that the provider can expose as
@@ -233,19 +237,19 @@ indexing.
 | No runtime effects at source top level | =GERBIL-SCHEME-AGENT-R005= warns on executable calls at =src/*.ss= top level |
 | Macro capability governance | =GERBIL-SCHEME-CHECKER-W002= permits harness-owned macros but requires POO =macro-governance= policy, explanation, and witness for generated or agent-authored macro forms |
 
-- POO protocol and generic dispatch maps to =GERBIL-SCHEME-AGENT-R008=:
+- POO protocol and generic dispatch maps to =GERBIL-SCHEME-AGENT-POLICY-008=:
   method/generic shape requires protocol or class evidence.
 
-- Higher-order data transforms map to =GERBIL-SCHEME-AGENT-R009=: pure data
+- Higher-order data transforms map to =GERBIL-SCHEME-AGENT-POLICY-009=: pure data
   transforms should prefer functional forms over manual loops.
 
-- Macro transformer edits map to =GERBIL-SCHEME-AGENT-R011=: agent-authored
+- Macro transformer edits map to =GERBIL-SCHEME-AGENT-POLICY-011=: agent-authored
   macro edits require runtime-source witness evidence.
 
-- Protocol implementations map to =GERBIL-SCHEME-AGENT-R012=: protocol-shaped
+- Protocol implementations map to =GERBIL-SCHEME-AGENT-POLICY-012=: protocol-shaped
   owners require declared protocol evidence.
 
-- Typed combinator style maps to =GERBIL-SCHEME-AGENT-R013=: runtime source
+- Typed combinator style maps to =GERBIL-SCHEME-AGENT-POLICY-013=: runtime source
 
   owners with definitions should carry concise =;;; := signature comments near
   compact helper or transform definitions.
@@ -271,7 +275,7 @@ single focused exemplar first, for example =asp gerbil-scheme guide --code
 poo-policy=.  Style guidance for concise typed comments plus small composable
 functions may use =asp gerbil-scheme guide --code --topic
 typed-combinator-style --intent style=.  Finding-driven repair may use =asp
-gerbil-scheme guide --code --rule GERBIL-SCHEME-AGENT-R009 --intent repair=,
+gerbil-scheme guide --code --rule GERBIL-SCHEME-AGENT-POLICY-009 --intent repair=,
 and macro governance review may use =asp gerbil-scheme guide --code --topic
 macro-runtime-source --intent witness=.  The rendered excerpt should be small
 enough to copy the pattern

@@ -63,7 +63,7 @@ class LineProtocolLocationTextPathTests(unittest.TestCase):
                                     "python",
                                     "-c",
                                     (
-                                        "print('[search-fzf]')\n"
+                                        "print('[search-lexical]')\n"
                                         "print('|hit src/a.ts:42:17 owner=src/a.ts kind=text')"
                                     ),
                                 ],

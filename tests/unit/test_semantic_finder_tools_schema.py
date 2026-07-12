@@ -47,15 +47,15 @@ def _valid_catalog() -> dict:
                 "agentCallable": False,
             },
             {
-                "toolId": "fzf",
-                "displayName": "fzf",
+                "toolId": "lexical",
+                "displayName": "lexical",
                 "roles": ["fuzzy-filter"],
                 "boundary": "fuzzy-filter",
                 "inputFormats": ["rg-n", "path-list", "owner-labels"],
                 "outputFormats": ["line-list"],
                 "supports": {
                     "headless": True,
-                    "interactive": True,
+                    "interactive": False,
                     "json": False,
                     "fuzzy": True,
                     "regex": False,
@@ -85,10 +85,10 @@ def _valid_catalog() -> dict:
         ],
         "pipelines": [
             {
-                "pipelineId": "fzf-rg-lines",
-                "surface": "search-fzf",
+                "pipelineId": "lexical-rg-lines",
+                "surface": "search-lexical",
                 "purpose": "fuzzy-lexical-candidates",
-                "defaultFor": ["fzf"],
+                "defaultFor": ["lexical"],
                 "stages": [
                     {
                         "stageId": "rg-source-scan",
@@ -101,8 +101,8 @@ def _valid_catalog() -> dict:
                         "agentAuthoredArgsAllowed": False,
                     },
                     {
-                        "stageId": "fzf-rank",
-                        "toolId": "fzf",
+                        "stageId": "lexical-rank",
+                        "toolId": "lexical",
                         "role": "fuzzy-filter",
                         "mode": "fuzzy",
                         "inputFormat": "rg-n",
@@ -145,15 +145,15 @@ def _valid_catalog() -> dict:
         ],
         "provenanceSamples": [
             {
-                "pipelineId": "fzf-rg-lines",
-                "backend": "rg+fzf",
+                "pipelineId": "lexical-rg-lines",
+                "backend": "rg+lexical",
                 "matchMode": "fuzzy",
                 "candidateBasis": "source-lines",
                 "sourceSearchPasses": 1,
                 "inputCandidates": 420,
                 "selectedCandidates": 24,
                 "fuzzyFilter": {
-                    "toolId": "fzf",
+                    "toolId": "lexical",
                     "query": "rawsearch",
                     "scoreBasis": "rank",
                 },
@@ -169,8 +169,8 @@ def _valid_catalog() -> dict:
                         "elapsedMs": 12,
                     },
                     {
-                        "stageId": "fzf-rank",
-                        "toolId": "fzf",
+                        "stageId": "lexical-rank",
+                        "toolId": "lexical",
                         "role": "fuzzy-filter",
                         "inputFormat": "rg-n",
                         "outputFormat": "line-list",
@@ -192,13 +192,13 @@ class SemanticFinderToolsSchemaTests(unittest.TestCase):
         errors = sorted(self.validator.iter_errors(document), key=lambda error: list(error.path))
         self.assertEqual([], errors)
 
-    def test_rg_fzf_and_ast_grep_catalog_validates(self) -> None:
+    def test_rg_lexical_and_ast_grep_catalog_validates(self) -> None:
         self._assert_valid(_valid_catalog())
 
-    def test_fzf_stage_must_be_headless_provider_owned_filter(self) -> None:
+    def test_lexical_stage_must_be_headless_provider_owned_filter(self) -> None:
         document = _valid_catalog()
-        fzf_stage = document["pipelines"][0]["stages"][1]
-        fzf_stage["agentAuthoredArgsAllowed"] = True
+        lexical_stage = document["pipelines"][0]["stages"][1]
+        lexical_stage["agentAuthoredArgsAllowed"] = True
 
         errors = sorted(self.validator.iter_errors(document), key=lambda error: list(error.path))
 

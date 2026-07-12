@@ -167,7 +167,7 @@ direnv exec . julia --project=languages/JuliaLangProjectHarness.jl -e 'using Pkg
 direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide languages/JuliaLangProjectHarness.jl
 direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search prime --view seeds languages/JuliaLangProjectHarness.jl
 direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search fzf run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search lexical run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
 printf 'src/cli.jl:1\n' | direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search ingest owner tests --view seeds languages/JuliaLangProjectHarness.jl
 direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl check --changed languages/JuliaLangProjectHarness.jl
 #+end_src

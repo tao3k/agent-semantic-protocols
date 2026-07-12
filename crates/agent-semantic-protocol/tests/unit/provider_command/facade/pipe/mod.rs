@@ -207,6 +207,43 @@ fn assert_graph_turbo_seed_plan_contract(payload: &Value, seed_ids: &[Value]) {
             .is_some_and(|actions| !actions.is_empty()),
         "seedPlan.recommendedActions must name at least one analyzer action: {payload}"
     );
+    if payload.get("route").is_some() {
+        assert_graph_turbo_route_contract(payload);
+    }
+}
+
+fn assert_graph_turbo_route_contract(payload: &Value) {
+    let route = payload["route"].as_object().expect("route object");
+    assert_eq!(payload["route"]["kind"], "graph-route");
+    assert_eq!(payload["route"]["version"], "lexical-route-v1");
+    assert_eq!(payload["route"]["algorithm"], "graph-owner-rank-v1");
+    assert!(
+        payload["route"]["relation"]
+            .as_str()
+            .is_some_and(|relation| matches!(relation, "cohesive" | "query-bundle-required")),
+        "route relation must be explicit: {route:?}"
+    );
+    let covered = payload["route"]["coveredQueryCount"]
+        .as_u64()
+        .expect("coveredQueryCount");
+    let query_count = payload["route"]["queryCount"].as_u64().expect("queryCount");
+    assert!(
+        covered <= query_count,
+        "route coverage must not exceed query count: {route:?}"
+    );
+    for pointer in [
+        "/route/owner/path",
+        "/route/owner/score/total",
+        "/route/nextAction/kind",
+        "/route/nextAction/languageId",
+        "/route/nextAction/ownerPath",
+        "/route/nextAction/query",
+    ] {
+        assert!(
+            payload.pointer(pointer).is_some(),
+            "route missing {pointer}: {route:?}"
+        );
+    }
 }
 
 fn assert_graph_turbo_request_matches_shared_schema(payload: &Value) {

@@ -1,0 +1,196 @@
+{
+  "id": "julia.dataframes-multi-depth-graph-turbo",
+  "language": "julia",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "workdir": {
+    "env": "SANDTABLE_JULIA_DATAFRAMES_ROOT",
+    "candidates": [
+      "~/.julia/packages/DataFrames/*"
+    ]
+  },
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "julia",
+      "name": "DataFrames.jl",
+      "package": "DataFrames",
+      "repository": "JuliaData/DataFrames.jl",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Trace grouped data behavior through lexical owner evidence before choosing a selector.",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "groupby",
+          "owner"
+        ]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Locate DataFrame API usage through the same bounded lexical query.",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "DataFrame"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Identify transform owners without broad source reads.",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "transform"
+        ]
+      }
+    ],
+    "deepQuestionCases": [
+      {
+        "id": "groupby-owner-strict",
+        "question": "Which owner should be inspected first for DataFrames groupby behavior?",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "groupby",
+          "owner"
+        ],
+        "audit": {
+          "maxAspCommands": 3,
+          "maxSearchCommands": 1,
+          "maxQueryCommands": 1,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": true,
+          "requiresTokenCost": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands"
+          ]
+        }
+      },
+      {
+        "id": "groupby-owner-medium",
+        "question": "How should owner and test evidence be narrowed for DataFrames groupby behavior?",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "groupby",
+          "owner"
+        ],
+        "audit": {
+          "maxAspCommands": 6,
+          "maxSearchCommands": 2,
+          "maxQueryCommands": 2,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": false,
+          "requiresTokenCost": false
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands"
+          ]
+        }
+      },
+      {
+        "id": "groupby-owner-deep",
+        "question": "Which parser-owned selector resolves DataFrames groupby behavior after routing through owners and tests?",
+        "stepIds": [
+          "lexical-query"
+        ],
+        "queryTerms": [
+          "groupby",
+          "owner"
+        ],
+        "audit": {
+          "maxAspCommands": 8,
+          "maxSearchCommands": 3,
+          "maxQueryCommands": 3,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": false,
+          "requiresTokenCost": false
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands"
+          ]
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "lexical-query",
+      "command": [
+        "asp",
+        "julia",
+        "search",
+        "lexical",
+        "--query",
+        "groupby",
+        "--query",
+        "DataFrame",
+        "--query",
+        "transform",
+        "--query",
+        "owner",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-lexical]",
+          "groupby",
+          "DataFrame",
+          "transform",
+          "owner"
+        ],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMs": 5000,
+        "maxElapsedMsWarn": 4500
+      }
+    }
+  ]
+}

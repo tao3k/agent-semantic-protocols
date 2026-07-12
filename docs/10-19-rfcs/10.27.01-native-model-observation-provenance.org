@@ -1,0 +1,70 @@
+#+TITLE: 10.27.01 Native Model Observation Provenance
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+This document extends RFC 10.27 and defines the durable model-observation
+contract for managed child sessions.
+
+* Problem
+
+The registry previously stored configured expectation, CLI request, and host
+observation in one optional =model= field. Registration could therefore persist
+an empty or untrusted model, while a later status validation could observe the
+real model without reconciling the durable row. The row remained invalid even
+after the host evidence became available.
+
+* Contract
+
+- Configuration supplies the expected child model only.
+- CLI =--model= and child natural-language acknowledgements are not host facts.
+- Only typed native =SubagentStart= and Codex rollout observations may populate
+  the durable observed model.
+- Each observation stores model, closed-catalog source, observation timestamp,
+  and native evidence reference.
+- Registration merges observations monotonically. Missing or older evidence
+  cannot erase or replace a newer trusted observation.
+- All reads use one canonical SQL projection owned by the row mapper.
+
+* Late Observation Reconciliation
+
+When status validation discovers a trusted rollout observation after initial
+registration, it writes the observation through the atomic registration path.
+An =invalid=, =pending-target=, or =idle= row becomes =active= only when the
+native message target exists and the complete managed profile validates.
+=archived= and =closed= rows are never revived by reconciliation.
+
+* Required Scenarios
+
+1. A caller-supplied model cannot become a host observation.
+2. A native =SubagentStart= observation survives process restart.
+3. A late rollout observation repairs a recoverable invalid row.
+4. An older observation cannot overwrite a newer observation.
+5. A registration without an observation cannot erase existing provenance.
+6. All lookup variants decode the same canonical projection.
+7. Reconciliation remains within the session-status millisecond performance
+   gate and does not scan unrelated rollouts.
+
+* Recovery Safety
+
+The canonical installer command must remain executable when a debug global ASP
+binary is detected. The pre-tool hook must not deny the exact release recovery
+command it presents to the agent; otherwise deployment enters a self-locking
+state and cannot republish the fixed plugin.
+
+* Native Action Loop Semantics
+
+Native lifecycle hook receipts are control-plane observations. They are not
+ordinary child messages. After native create or resume returns, the parent MUST
+immediately re-enter the interactive pane; it MUST NOT wait for =SubagentStart=
+through message-agent. The pane then observes whether registration occurred.
+
+If re-entry still reports =Create= for the same root, the parent selects the
+host-lifecycle-unavailable choice. It does not issue a second create. This
+prevents a missing hook event from producing duplicate resident children.
+
+The canonical Codex plugin installer is global by default. It installs the
+global marketplace/cache and writes only the project enablement entry locally.
+During migration it removes only ASP's legacy
+=.codex/plugins/cache/asp-project= directory and leaves other project plugins
+untouched.

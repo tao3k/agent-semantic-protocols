@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/gerbil-scheme-harness-bench.v1.schema.json",
+  "title": "Gerbil Scheme harness benchmark packet",
+  "type": "object",
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "mode",
+    "status",
+    "iterations",
+    "totalMs",
+    "corpusCollected",
+    "files",
+    "definitions",
+    "findings",
+    "performanceFindings",
+    "slowestBenchmark",
+    "benchmarks"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.gerbil-scheme-harness-bench"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "const": "gerbil-scheme"
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": ["hot", "full"]
+    },
+    "status": {
+      "enum": ["pass", "fail"]
+    },
+    "iterations": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "totalMs": {
+      "type": "number",
+      "minimum": 0
+    },
+    "corpusCollected": {
+      "type": "boolean"
+    },
+    "files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "definitions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "performanceFindings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "slowestBenchmark": {
+      "type": "object"
+    },
+    "benchmarks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "hot"
+          }
+        },
+        "required": ["mode"]
+      },
+      "then": {
+        "properties": {
+          "corpusCollected": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "full"
+          }
+        },
+        "required": ["mode"]
+      },
+      "then": {
+        "properties": {
+          "corpusCollected": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "full"
+          },
+          "status": {
+            "const": "pass"
+          }
+        },
+        "required": ["mode", "status"]
+      },
+      "then": {
+        "properties": {
+          "files": {
+            "minimum": 1
+          },
+          "definitions": {
+            "minimum": 1
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

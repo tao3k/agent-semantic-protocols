@@ -24,10 +24,10 @@ from .large_library_intent_matrix_support import (
 
 _PROTOCOL_REPO_ROOT = Path(__file__).resolve().parents[3]
 _REQUIRED_SEARCH_SUBCOMMANDS_BY_LANGUAGE = {
-    "julia": {"deps", "fzf", "owner", "prime"},
-    "python": {"deps", "fzf", "owner", "prime"},
-    "rust": {"deps", "fzf", "owner", "prime"},
-    "typescript": {"deps", "fzf", "owner", "prime"},
+    "julia": {"deps", "lexical", "owner", "prime"},
+    "python": {"deps", "lexical", "owner", "prime"},
+    "rust": {"deps", "lexical", "owner", "prime"},
+    "typescript": {"deps", "lexical", "owner", "prime"},
 }
 
 

@@ -1,0 +1,26 @@
+[scenario]
+id = "search-source-index-busy-miss-overlay-skipped"
+title = "Busy source-index miss skips search overlay"
+package = "agent-semantic-search"
+phase = "warm-recovery"
+intent = "source-index busy heartbeat should return bounded empty evidence without starting overlay search"
+
+[source_index]
+state = "busy"
+candidate_count = 0
+decision = "busy"
+
+[search_frame]
+route = "source-index-busy"
+state = "needs-wait"
+candidate_sources = ["source-index"]
+must_skip_overlay = true
+
+[evidence_graph]
+required_traces = ["sourceIndex:busy", "search-overlay:skipped"]
+forbidden_fields = ["body", "code", "displayLineRange", "lineRange", "sourceBody"]
+
+[performance]
+max_provider_process_count = 0
+max_native_finder_process_count = 0
+max_overlay_collection_count = 0

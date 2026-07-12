@@ -151,7 +151,7 @@ named import matches are marked possible.
 =py-harness search deps <package[@version][::api]>= now emits the same flow
 shape as the TypeScript lane: dependency, public-external-types, api, text, and
 tests next actions when the requested dependency version is current.
-=py-harness search fzf <query> owner tests= searches parser-visible owner
+=py-harness search lexical <query> owner tests= searches parser-visible owner
 paths, namespaces, public exports, symbols, and source text, then keeps matched
 owners plus importing tests in one packet.  =py-harness search ingest= detects
 =rg -n=, vimgrep, plain path-list, and NUL path-list stdin and maps hits back to

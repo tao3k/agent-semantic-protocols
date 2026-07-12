@@ -21,7 +21,7 @@ pub(crate) fn run_asp_fast_owner_query_to_string(
     let Some(request) = OwnerQueryRequest::parse(language_id, args)? else {
         return Ok(None);
     };
-    let Some(path) = resolve_owner_path(project_root, locator_root, &request.owner_path) else {
+    let Some(path) = resolve_owner_path(project_root, &request.owner_path) else {
         if owner_path_is_file_like(&request.owner_path) {
             return Ok(Some(format_unresolved_owner_query(&request)?));
         }

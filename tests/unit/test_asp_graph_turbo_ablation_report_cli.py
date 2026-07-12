@@ -285,7 +285,7 @@ def _query_first_stage_nodes() -> list[dict[str, object]]:
             "kind": "query",
             "role": "term",
             "value": "asp_graph_turbo queryClauses typed graph request",
-            "action": "fzf",
+            "action": "lexical",
         },
         {
             "id": "owner:packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",

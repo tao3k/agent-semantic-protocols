@@ -21,8 +21,8 @@ def semantic_tree_sitter_query_packet() -> dict[str, Any]:
         "projectRoot": ".",
         "grammarId": "tree-sitter-rust",
         "grammarProfileVersion": "2026-06-04.v1",
-        "sourceAuthority": "native-parser-adapter",
-        "adapterMode": "native-projection",
+        "sourceAuthority": "native-parser",
+        "adapterMode": "tree-sitter-querycursor",
         "compatibilityLevel": "native-only",
         "query": {
             "input": "calls",
@@ -37,7 +37,7 @@ def semantic_tree_sitter_query_packet() -> dict[str, Any]:
                 "catalogCanonical": True,
                 "catalogEmbedded": True,
                 "compilerBoundary": "asp-tree-sitter-runtime",
-                "providerRuntimeCompiled": False,
+                "providerRuntimeCompiled": True,
                 "predicates": [
                     {
                         "op": "match",
@@ -57,7 +57,19 @@ def semantic_tree_sitter_query_packet() -> dict[str, Any]:
                 ],
             },
         },
+        "execution": {
+            "engine": "tree-sitter-querycursor",
+            "predicateEvaluator": "asp-tree-sitter-predicate-v1",
+            "matchStatus": "miss",
+            "unsupportedPredicates": [],
+            "selectedFileCount": 1,
+            "parsedFileCount": 1,
+            "queryCompileCount": 1,
+            "cursorMatchCount": 0,
+            "elapsedMs": 0,
+        },
         "matches": [],
+        "nativeFactRefs": [],
         "truncated": False,
         "cache": {
             "cacheStatus": "miss",
@@ -92,6 +104,9 @@ def test_accepts_codeql_as_optional_execution_backend() -> None:
     packet["sourceAuthority"] = "codeql"
     packet["adapterMode"] = "codeql-query"
     packet["compatibilityLevel"] = "approximate"
+    packet["execution"]["engine"] = "codeql"
+    packet["execution"]["predicateEvaluator"] = "codeql"
+    packet["execution"]["queryCompileCount"] = 0
     packet["query"]["fields"]["flowScope"] = "local"
     packet["query"]["fields"]["frontierKind"] = "source-sink-path"
 

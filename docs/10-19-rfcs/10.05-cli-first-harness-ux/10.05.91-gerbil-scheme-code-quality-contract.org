@@ -1,0 +1,138 @@
+* Gerbil Scheme code quality contract
+:PROPERTIES:
+:ID: 10.05.91-gerbil-scheme-code-quality-contract
+:END:
+
+This document is the executable companion to
+=10.05.90-gerbil-scheme-style-conventions.org=. The style document records
+reference observations and agent guidance. This document owns the facts,
+policy identities, scenarios, graph relations, and acceptance gates required
+before that guidance can be enforced.
+
+* Contract boundary
+A normative Scheme quality rule must close this route:
+
+#+begin_src text
+canonical policy handle
+  -> parser-owned fact
+  -> policy implementation owner
+  -> violating scenario + valid counterexample
+  -> self-apply witness
+  -> semantic handle relations
+#+end_src
+
+Prose without this closure is research guidance. It must not become a finding
+through raw text matching or an LLM style classifier.
+
+The canonical agent-policy id form is
+=GERBIL-SCHEME-AGENT-POLICY-NNN=. Short forms such as
+=GERBIL-SCHEME-AGENT-R011= are not public aliases.
+
+* Rule matrix
+| Canonical handle | Required parser evidence | Policy owner | Required scenario closure |
+|------------------+--------------------------+--------------+---------------------------|
+| =GERBIL-SCHEME-MOD-R006= | project source paths and parser-owned =gerbil.pkg= test-root override | =+modularity-test-directory-rule+= | non-native test root; valid explained override; placeholder override remains active |
+| =GERBIL-SCHEME-AGENT-POLICY-008= | POO generic, method, protocol, and class form facts | agent policy model plus POO policy implementation | generic without protocol evidence; generic with protocol evidence |
+| =GERBIL-SCHEME-AGENT-POLICY-009= | definition and call facts for pure transforms and manual accumulation | agent policy model plus functional-transform policy | manual transform candidate; higher-order transform; stateful-loop counterexample |
+| =GERBIL-SCHEME-AGENT-POLICY-011= | macro form, runtime-source witness, and package macro-governance facts | agent policy model plus macro-protocol policy | missing runtime witness; valid expansion or roundtrip witness |
+| =GERBIL-SCHEME-AGENT-POLICY-012= | protocol-shaped owner and declared protocol facts | agent policy model plus POO policy implementation | missing protocol declaration; declared protocol owner |
+| =GERBIL-SCHEME-AGENT-POLICY-013= | adjacent source-comment and definition facts | agent policy model plus typed-combinator policy | missing signature; concise signature; non-runtime-owner counterexample |
+
+Every row must be emitted as a semantic handle with =id=, =kind=, =source=,
+=ownerPath=, =implementationOwnerPath=, =testPaths=, and =relations=. A provider
+must not advertise a row until its implementation and scenario relations are
+materialized.
+
+* Structural quality facts
+"AI-generated style" is not a fact. The provider exposes the specific native
+syntax structures that make code difficult to maintain.
+
+| Fact | Parser-owned proof | Policy use |
+|------+--------------------+------------|
+| =vague-owner= / =vague-definition= | owner segment and definition identity | warn with a domain-name repair route |
+| =forwarding-definition= | one-call body, parameter passthrough, no validation or transformation | report consolidation candidates; permit API, phase, and contract boundaries |
+| =normalized-form-fingerprint= | alpha-normalized native syntax form | group duplicate definitions without comparing raw source text |
+| =owner-complexity= | top-level forms, exports, branch depth, and call fan-out | rank modularization candidates; do not fail on file length alone |
+| =inline-control-flow-complexity= | anonymous branch and continuation nesting inside one parser item | route to named-helper guidance and an owner-local test |
+| =broad-runtime-import= | =moduleImportFacts= modifier and imported symbols | require a precise =only-in= boundary after owner usage is known |
+
+Candidate facts remain warnings until a scenario proves both a violating
+fixture and a valid counterexample.
+
+* Agent route
+1. Resolve the owner and parser item before reading source.
+2. Query the canonical policy handle and follow its evidence relations.
+3. Read the exact implementation owner and the smallest native scenario needed
+   to validate the change.
+4. Use one source-backed =guide --code= exemplar only when the evidence route
+   does not already determine the repair shape.
+
+Project-local =gerbil.pkg= policy may select =enabled-rules= or
+=disabled-rules=, but every override remains parser-owned and visible in
+search packets and scenario receipts.
+
+* Acceptance gates
+- Every normative rule has one canonical handle, one implementation owner, one
+  violating scenario, one valid counterexample, and one self-apply witness.
+- =policy-scenario-suite= callers declare scenario ids that map back to the
+  canonical handle. An empty or unreferenced registry entry is a failure.
+- Hot/interface benchmark packets distinguish corpus metrics that were not
+  collected from a measured zero. Full-project benchmarks fail with a
+  structured =empty-project-corpus= finding when no files or definitions were
+  indexed.
+- Performance packets name time units explicitly. Percentile gates use fields
+  such as =p95Ms= rather than unitless =p95=.
+- =check=, =search=, =guide=, =info.agentSteering=, JSON packets, and compact
+  receipts use the same handles and relation names.
+
+* Development and installed runtime precedence
+At the release-option boundary, Darwin's only exception is omission of =-static=; every other supported target keeps the upstream static option. Host toolchain isolation is separate: the root recipe may resolve Xcode SDK and driver values only after detecting Darwin, and non-Darwin builds must never invoke =xcrun=.
+
+The repository must not generate or ship a shell launcher for =gslph=. The
+package-local development binary remains =.bin/gslph=. Installation is owned by
+the root =Justfile=, but the recipe is only an environment and distribution
+boundary: it binds the package-local Gerbil roots and dynamically resolved
+platform toolchain values to one =build.ss= command. On macOS, =SDKROOT=, the
+Clang executable, and the Xcode =gcc= driver directory come from =xcrun=. The
+recipe may prepend that directory and set =CC= for this command only. It must
+not export or persist those values, replace the caller's complete =PATH=, or
+encode a package-manager installation prefix.
+
+The Scheme build API delegates the release executable to the upstream command
+=gxc -exe -o <binary>=. Project GSC option pairs are projected through the
+native =-gsc-option= interface. Platforms with a supported fully static userland
+may add =-static=. Darwin must not add it: macOS has no GNU-style static CRT, and
+the native release route uses the Xcode LLVM driver instead. The build API must
+not implement a second GSC link pipeline, own =__exe.c=/=__exe.o= intermediates,
+or recover a toolchain failure with a project-specific compiler wrapper. Only a
+successfully produced standalone binary may be distributed to the repository
+and user bin directories.
+
+The required scenarios prove both boundaries. The development recipe executes a
+newly exported workspace binding under the local Gerbil root. The install recipe
+executes the installed standalone binary from a foreign working directory and
+with an unrelated =GERBIL_PATH=. A passing source import is not enough: the same
+binary used by ASP must pass. Build receipts must distinguish fresh Gerbil
+interface/generated Scheme artifacts from stale dynamically loaded objects;
+artifact visibility gaps are reported as =unmaterialized-artifact= rather than
+inferred as source defects.
+
+Search evidence has a separate boundary. Parser owner discovery may expose an
+import or definition identity while exact item materialization is still absent,
+and generated =.gerbil= artifacts are not source-index owners. These states must
+remain explicit evidence gaps; neither raw source fallback nor process-command
+misclassification may be used to infer a source defect.
+
+* Self-hosting build and testing framework
+The package must consume its own declarative building and testing interfaces. The repository-root =build.ss= is a Stage-0 bootstrap only: it resolves the package root, establishes source visibility, and transfers control to one Stage-1 entrypoint. It must not own package build requests, test-suite selection, gxtest invocation, or command-specific =load= plus =eval= adapters.
+
+Stage-1 owns the project manifest and command dispatch. Its building owner explicitly imports =src/building/declarative.ss= and declares the package request through =define-std-build= or =std-build=. Its testing owner explicitly imports =src/testing/build.ss= and =src/testing/build-runner.ss=, constructs the project =testing-build=, and delegates execution to =testing-build-main=. Native compilation and installation remain behind =src/build-api/native-build.ss=, but that API must consume the same declarative request instead of rebuilding the builder/profile/request chain privately.
+
+Self-hosting must remain valid without pre-existing package artifacts. The clean-bootstrap scenario runs with an empty =GERBIL_PATH= and the package root as source load path, proves that Stage-1 framework imports resolve, and then exercises the public =build.ss= command. CLI-equivalence scenarios preserve every command and option exposed by the previous multicall entrypoint. Parser evidence must expose the Stage-1 import and call edges; a search result that emits a top-form selector which exact query cannot materialize is recorded as an =unmaterialized-selector= provider defect, never recovered through raw source reads.
+* Landing order
+1. Make benchmark corpus applicability and full-mode emptiness observable.
+2. Materialize canonical policy handles and scenario relations in search.
+3. Add parser facts and positive/counterexample scenarios one fact family at a
+   time.
+4. Run self-apply, rank the highest-impact owners, and refactor only after the
+   evidence route is stable.

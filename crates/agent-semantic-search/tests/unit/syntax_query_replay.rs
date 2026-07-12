@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use crate::{
+use agent_semantic_search::syntax_query_replay::{
     SyntaxQueryReplayCapture, SyntaxQueryRowsReplay, render_semantic_tree_sitter_query_rows_stdout,
     render_semantic_tree_sitter_query_stdout,
 };
@@ -53,6 +53,43 @@ fn semantic_tree_sitter_query_replay_renders_frontier_graph_output() {
     .expect("syntax replay stdout");
 
     assert_eq!(output, expected_frontier_stdout("unknown"));
+}
+
+#[test]
+fn semantic_tree_sitter_query_replay_hides_structural_capture_text() {
+    let output = render_semantic_tree_sitter_query_stdout(&json!({
+        "schemaId": "agent.semantic-protocols.semantic-tree-sitter-query",
+        "languageId": "rust",
+        "execution": {
+            "engine": "tree-sitter-querycursor",
+            "elapsedMs": 7
+        },
+        "query": {
+            "compiledSource": "((struct_expression) @node)",
+            "fields": {
+                "captures": ["node"],
+                "nodeTypes": ["struct_expression"]
+            }
+        },
+        "matches": [{
+            "range": {"path": "src/lib.rs", "lineRange": "3:3"},
+            "captures": [{
+                "name": "node",
+                "nodeType": "struct_expression",
+                "range": {"path": "src/lib.rs", "lineRange": "3:3"},
+                "text": "Config { value: 1 }"
+            }]
+        }]
+    }))
+    .expect("syntax replay stdout");
+
+    assert!(output.contains("mode=tree-sitter-querycursor"), "{output}");
+    assert!(output.contains("elapsedMs=7"), "{output}");
+    assert!(
+        output.contains("capture:node(<struct_expression>)"),
+        "{output}"
+    );
+    assert!(!output.contains("Config { value: 1 }"), "{output}");
 }
 
 #[test]
@@ -116,7 +153,7 @@ fn semantic_tree_sitter_query_row_replay_renders_same_compact_surface() {
 
 fn expected_frontier_stdout(language: &str) -> String {
     format!(
-        "[query-treesitter] root=. lang={language} pattern=function_item/name capture=function.name alg=syntax-capture-frontier\n\
+        "[query-treesitter] root=. lang={language} pattern=function_item/name capture=function.name mode=unknown alg=syntax-capture-frontier elapsedMs=unknown\n\
 legend: aliases ID:kind; node ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
 aliases=G:query,Q:tsquery,C:capture,I:item,O:owner\n\n\
 Q=tsquery:pattern(function_item/name)!query\n\

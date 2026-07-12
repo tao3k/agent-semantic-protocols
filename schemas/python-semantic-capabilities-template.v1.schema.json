@@ -82,8 +82,8 @@
             "owner-path-text-search",
             "export-text-search",
             "parser-visible-source-text-search",
-            "finder-fuzzy-candidate-search",
-            "parser-visible-source-fuzzy-search",
+            "lexical-candidate-search",
+            "parser-visible-source-lexical-search",
             "external-candidate-ingest",
             "stdin-shape-detection",
             "owner-grouped-ingest"

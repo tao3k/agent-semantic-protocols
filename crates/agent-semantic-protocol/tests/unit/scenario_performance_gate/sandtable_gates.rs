@@ -27,6 +27,7 @@ pub(super) fn language_harnesses_have_shared_scenario_benchmark_schema_coverage(
     for schema_path in [
         SHARED_SCENARIO_BENCHMARK_SCHEMA,
         SHARED_AGENT_POLICY_ID_SCHEMA,
+        "schemas/gerbil-scheme-harness-bench.v1.schema.json",
     ] {
         assert!(
             repo_root.join(schema_path).is_file(),

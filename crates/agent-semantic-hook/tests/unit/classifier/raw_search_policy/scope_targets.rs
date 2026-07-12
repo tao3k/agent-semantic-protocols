@@ -129,23 +129,6 @@ fn git_diff_patch_review_commands_are_allowed() {
 }
 
 #[test]
-fn git_diff_patch_review_does_not_hide_later_source_dump() {
-    let decision = classify_hook(
-        &polyglot_registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "git diff -- languages/python-lang-project-harness/src/python_lang_project_harness/_python_compact.py | cat languages/python-lang-project-harness/src/python_lang_project_harness/_python_compact.py"}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::BulkSourceDump);
-    assert_eq!(decision.language_ids, vec!["python".to_string()]);
-}
-
-#[test]
 fn broad_raw_search_routes_to_lexical_frontier_when_supported() {
     let decision = classify_hook(
         &polyglot_registry(),
@@ -193,7 +176,7 @@ fn fd_extension_source_path_listing_routes_to_ingest() {
 }
 
 #[test]
-fn action_policy_can_allow_raw_search_without_allowing_direct_reads() {
+fn action_policy_allows_raw_search_and_explicit_reads() {
     let mut registry = crate::classifier::registry();
     registry.providers[0].policy.raw_source_search = ActionPolicy::Allow;
 
@@ -217,6 +200,6 @@ fn action_policy_can_allow_raw_search_without_allowing_direct_reads() {
     );
 
     assert_eq!(search_decision.decision, DecisionKind::Allow);
-    assert_eq!(read_decision.decision, DecisionKind::Deny);
-    assert_eq!(read_decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(read_decision.decision, DecisionKind::Allow);
+    assert_eq!(read_decision.reason_kind, ReasonKind::None);
 }

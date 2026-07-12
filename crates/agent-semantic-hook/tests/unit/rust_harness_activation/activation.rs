@@ -63,7 +63,7 @@ fn rust_harness_activation_uses_provider_identity() {
 }
 
 #[test]
-fn rust_harness_activation_routes_direct_reads_to_provider_query() {
+fn rust_harness_activation_allows_explicit_reads() {
     let decision = classify_hook(
         &rust_harness_activation(),
         "codex",
@@ -74,26 +74,9 @@ fn rust_harness_activation_routes_direct_reads_to_provider_query() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
-    assert_eq!(decision.routes[0].provider_id, "rs-harness");
-    assert_eq!(decision.routes[0].binary, "asp");
-    assert_eq!(
-        decision.routes[0].argv,
-        [
-            "asp",
-            "rust",
-            "search",
-            "owner",
-            "src/lib.rs",
-            "items",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds",
-        ]
-    );
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.reason_kind, ReasonKind::None);
+    assert!(decision.routes.is_empty());
 }
 
 #[test]

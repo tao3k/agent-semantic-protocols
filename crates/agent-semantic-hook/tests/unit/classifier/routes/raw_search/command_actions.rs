@@ -166,47 +166,6 @@ fn codex_listfiles_core_shape_preserves_cmd() {
 }
 
 #[test]
-fn codex_read_core_shape_preserves_cmd() {
-    let decision = classify_hook(
-        &registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "toolName": "command_execution",
-            "tool_name": "command_execution",
-            "toolInput": {
-                "item": {
-                    "action": {
-                        "type": "read",
-                        "cmd": "sed -n '1,40p' crates/agent-semantic-hook/src/tool_action.rs",
-                        "name": "tool_action.rs",
-                        "path": "crates/agent-semantic-hook/src/tool_action.rs"
-                    }
-                }
-            },
-            "tool_input": {
-                "item": {
-                    "action": {
-                        "type": "read",
-                        "cmd": "sed -n '1,40p' crates/agent-semantic-hook/src/tool_action.rs",
-                        "name": "tool_action.rs",
-                        "path": "crates/agent-semantic-hook/src/tool_action.rs"
-                    }
-                }
-            }
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
-    assert_eq!(
-        decision.subject.command.as_deref(),
-        Some("sed -n '1,40p' crates/agent-semantic-hook/src/tool_action.rs")
-    );
-}
-
-#[test]
 fn codex_listfiles_non_source_path_is_allowed() {
     let decision = classify_hook(
         &registry(),

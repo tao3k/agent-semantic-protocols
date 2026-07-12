@@ -17,6 +17,18 @@ pub const LEXICAL_SEARCH_FRAME_GRAPH_ROUTER_WARM_PATH_SCENARIO_ID: &str =
 pub const SEARCH_SOURCE_INDEX_OWNER_ITEM_GRAPH_CHAIN_SCENARIO_ID: &str =
     "search-source-index-owner-item-graph-chain";
 
+/// Busy source-index miss route must not fall through to search overlay.
+pub const SEARCH_SOURCE_INDEX_BUSY_MISS_SCENARIO_ID: &str =
+    "search-source-index-busy-miss-overlay-skipped";
+
+/// Cold source-index schemas require an explicit rebuild and must not fall through to overlay.
+pub const SEARCH_SOURCE_INDEX_COLD_REQUIRED_SCENARIO_ID: &str =
+    "search-source-index-cold-required-overlay-skipped";
+
+/// Read-only source-index lookup must work while the client directory rejects writes.
+pub const SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID: &str =
+    "search-source-index-read-only-client-db-zero-write";
+
 /// GraphRouter next-action policy for selector-ready evidence.
 pub const SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID: &str =
     "search-graph-router-next-exact-action";
@@ -99,6 +111,75 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                 ],
             ),
             crate::asp_rust_project_harness_scenario!(
+                name: SEARCH_SOURCE_INDEX_BUSY_MISS_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Busy source-index misses return immediately and skip search overlay fallback.",
+                fixture_root: "crates/agent-semantic-search/tests/unit/scenarios/search_source_index_busy_miss_overlay_skipped",
+                tags: ["search", "source-index", "performance", "busy", "overlay"],
+                commands: [
+                    {
+                        label: "busy-miss-overlay-skipped",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-search",
+                            "--test",
+                            "unit_test",
+                            "search_flow_busy_source_index_miss_returns_overlay_skipped",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: SEARCH_SOURCE_INDEX_COLD_REQUIRED_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Cold source-index schemas require rebuild and skip search overlay fallback.",
+                fixture_root: "crates/agent-semantic-search/tests/unit/scenarios/search_source_index_cold_required_overlay_skipped",
+                tags: ["search", "source-index", "performance", "cold-required", "overlay"],
+                commands: [
+                    {
+                        label: "cold-required-overlay-skipped",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-search",
+                            "--test",
+                            "unit_test",
+                            "search_flow_cold_required_source_index_returns_overlay_skipped",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Source-index lookup stays bounded and produces no client-directory writes.",
+                fixture_root: "crates/agent-semantic-client-db/tests/unit/scenarios/search_source_index_read_only_client_db",
+                tags: ["search", "source-index", "performance", "read-only", "turso"],
+                commands: [
+                    {
+                        label: "read-only-client-db-zero-write",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client-db",
+                            "--test",
+                            "unit_test",
+                            "db_engine_source_index_lookup_succeeds_without_client_dir_write_permission",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
                 name: SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID,
                 package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
                 description: "GraphRouter chooses exact selector actions and rejects seed escape after selector-ready evidence.",
@@ -161,6 +242,47 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                             "--test",
                             "unit_test",
                             "search_flow_degraded_source_index_miss_uses_bounded_receipt_reason",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: "tree-sitter-querycursor-native-hot-path",
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Canonical Tree-sitter QueryCursor execution keeps predicate semantics and bounded native hot-path metrics visible.",
+                fixture_root: "languages/rust-lang-project-harness/tests/unit/cli/query/catalog",
+                tags: ["search", "query", "tree-sitter", "performance", "native-runtime"],
+                commands: [
+                    {
+                        label: "querycursor-packet-hot-path",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "--manifest-path",
+                            "languages/rust-lang-project-harness/Cargo.toml",
+                            "--features",
+                            "cli",
+                            "--test",
+                            "unit_test",
+                            "tree_sitter_query_json_projects_matches_and_native_enrichment",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                    {
+                        label: "querycursor-predicate-contract",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "--manifest-path",
+                            "languages/rust-lang-project-harness/Cargo.toml",
+                            "--features",
+                            "cli",
+                            "--test",
+                            "unit_test",
+                            "cli::query::catalog::stdout::predicates",
                             "--",
                             "--nocapture",
                         ]

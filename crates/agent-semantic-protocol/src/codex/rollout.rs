@@ -141,6 +141,85 @@ pub(crate) fn fast_rollout_path_for_session_id(session_id: &str) -> Option<PathB
     fast_rollout_path_for_session_id_in(&codex_sessions_dir, session_id)
 }
 
+#[derive(Clone, Debug)]
+pub(crate) enum CodexRolloutSessionLiveness {
+    Resumable(CodexRolloutSessionActivity),
+    Active(CodexRolloutSessionActivity),
+    Unknown(CodexRolloutSessionActivity),
+    Missing,
+    Unavailable(String),
+}
+
+/// Resolve one known session through its UUID-v7 date bucket, then parse its
+/// recent JSONL events. A non-terminal tail is deliberately conservative: it
+/// never authorizes replacement creation.
+pub(crate) fn rollout_session_liveness_for_session_id(
+    session_id: &str,
+) -> CodexRolloutSessionLiveness {
+    let Some(path) = fast_rollout_path_for_session_id(session_id) else {
+        return CodexRolloutSessionLiveness::Missing;
+    };
+    rollout_session_liveness_at_path(&path)
+}
+
+#[cfg(test)]
+pub(crate) fn rollout_session_liveness_for_session_id_in(
+    codex_sessions_dir: &Path,
+    session_id: &str,
+) -> CodexRolloutSessionLiveness {
+    let Some(path) = fast_rollout_path_for_session_id_in(codex_sessions_dir, session_id) else {
+        return CodexRolloutSessionLiveness::Missing;
+    };
+    rollout_session_liveness_at_path(&path)
+}
+
+fn rollout_session_liveness_at_path(path: &Path) -> CodexRolloutSessionLiveness {
+    let activity = match rollout_session_activity(path) {
+        Ok(activity) => activity,
+        Err(error) => return CodexRolloutSessionLiveness::Unavailable(error),
+    };
+    if activity.turn_complete_resumable {
+        CodexRolloutSessionLiveness::Resumable(activity)
+    } else if activity.turn_running_or_active {
+        CodexRolloutSessionLiveness::Active(activity)
+    } else {
+        CodexRolloutSessionLiveness::Unknown(activity)
+    }
+}
+
+fn rollout_session_activity(path: &Path) -> Result<CodexRolloutSessionActivity, String> {
+    use std::io::{Read as _, Seek as _, SeekFrom};
+
+    const ACTIVITY_TAIL_BYTES: u64 = 64 * 1024;
+
+    let mut file = std::fs::File::open(path)
+        .map_err(|error| format!("failed to open rollout {}: {error}", path.display()))?;
+    let len = file
+        .metadata()
+        .map_err(|error| format!("failed to stat rollout {}: {error}", path.display()))?
+        .len();
+    let start = len.saturating_sub(ACTIVITY_TAIL_BYTES);
+    file.seek(SeekFrom::Start(start))
+        .map_err(|error| format!("failed to seek rollout {}: {error}", path.display()))?;
+    let mut tail = String::new();
+    file.read_to_string(&mut tail)
+        .map_err(|error| format!("failed to read rollout {}: {error}", path.display()))?;
+    if start > 0
+        && let Some(index) = tail.find('\n')
+    {
+        tail = tail[index + 1..].to_string();
+    }
+
+    let mut state = CodexRolloutSessionActivityState::default();
+    for line in tail.lines().filter(|line| !line.trim().is_empty()) {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        state.observe_event(&value, line.len() + 1);
+    }
+    Ok(state.finish())
+}
+
 pub(crate) fn fast_rollout_path_for_session_id_in(
     codex_sessions_dir: &Path,
     session_id: &str,

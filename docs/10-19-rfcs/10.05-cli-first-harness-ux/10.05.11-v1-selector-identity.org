@@ -1,0 +1,60 @@
+#+TITLE: RFC 10.05.11 -- Stable V1 Selector Identity
+#+DATE: 2026-07-12
+#+STATUS: accepted
+
+* Decision
+
+The public selector protocol remains =v1=.  No caller must migrate to a new
+selector grammar.  Providers may add receipt metadata, but they must continue
+to accept every supported v1 selector form.
+
+* Problem
+
+Provider indexes can emit a v1 structural selector that the corresponding
+query resolver cannot consume.  This is an identity drift between an emitted
+display/category selector and an index-owned item identity.  A no-hit is
+terminal; it must not cause source rescans, index refreshes, or retention of
+failed parse state.
+
+* V1 receipt extension
+
+Exact-selector receipts may add optional fields:
+
+- =resolution= with =exact=, =alias=, =identity_drift=, or =not_found=
+- =canonicalIdentity= as a provider-owned opaque identity
+- =indexGeneration= for the immutable index snapshot
+- =selectorAliases= as a bounded repair aid
+
+The original v1 =selector= remains the public request key.  Existing v1
+consumers may ignore these additive fields.
+
+* Provider rule
+
+Each index generation owns an exact-selector table and a bounded alias table.
+Query normalizes the v1 selector, resolves it in the selected generation, and
+then performs the bounded read.  An unresolvable selector returns a structured
+v1 terminal receipt.  It never implicitly rebuilds an index, broadens to a
+workspace scan, or guesses a nearby item.
+
+Export selectors are valid v1 aliases only when the provider can map them to
+the canonical exported binding in the same generation.  Gerbil's
+=#item/export/<name>= projection is the reference regression fixture.
+
+* Resource rule
+
+No-hit, error, cancellation, and success share one cleanup boundary.  Provider
+implementations must release transient syntax trees, source snapshots, ports,
+FFI handles, subprocesses, and callback registrations.  Negative caching uses
+=(normalized-v1-selector, index-generation)=, is capacity bounded, and is
+dropped when the generation retires.
+
+* Acceptance gates
+
+1. Every emitted v1 selector round-trips in its emitting generation.
+2. Accepted aliases resolve to the same canonical identity.
+3. Invalid and stale selectors return terminal v1 receipts without changing
+   the index generation.
+4. Repeated invalid selector queries converge in retained memory, parser
+   roots, open handles, subprocesses, and negative-cache entries.
+5. Rust, TypeScript, Python, Julia, Gerbil Scheme, Org, and Markdown validate
+   the same receipt shape for their supported fixture categories.

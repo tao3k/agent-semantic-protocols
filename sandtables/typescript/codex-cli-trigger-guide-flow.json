@@ -24,7 +24,7 @@
   },
   "evidence": {
     "source": "recorded-replay",
-    "intent": "Codex CLI explores TypeScript SDK behavior and must be guided into compact ts-harness search before reading or requesting JSON",
+    "intent": "Codex CLI explores TypeScript SDK behavior and must be guided into compact asp typescript search before reading or requesting JSON",
     "recordedAt": "2026-06-01",
     "receiptPath": "sandtables/receipts/typescript/codex-cli-trigger-guide-flow.receipt.json",
     "editBoundary": "before-edit",
@@ -44,7 +44,7 @@
       {
         "kind": "safe-search",
         "severity": "info",
-        "message": "safe ts-harness prime search is allowed and then replayed as the search-flow boundary"
+        "message": "safe asp typescript prime search is allowed and then replayed as the search-flow boundary"
       }
     ]
   },
@@ -71,24 +71,24 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"ts-harness search fzf buildSemanticSearchPacket owner tests --json .\"}}",
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"asp typescript search lexical buildSemanticSearchPacket owner tests --json .\"}}",
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {
           "decision": "deny",
           "reasonKind": "agent-search-json",
           "languageIds.0": "typescript",
-          "routes.0.kind": "fzf",
-          "routes.0.providerId": "ts-harness"
+          "routes.0.kind": "lexical",
+          "routes.0.providerId": "asp typescript"
         },
         "guideQuality": {
           "reasonKind": "agent-search-json",
           "languageId": "typescript",
-          "routeKind": "fzf",
+          "routeKind": "lexical",
           "commandContains": [
-            "ts-harness",
+            "asp typescript",
             "search",
-            "fzf",
+            "lexical",
             "--view",
             "seeds"
           ],
@@ -124,7 +124,7 @@
           "reasonKind": "direct-source-read",
           "languageIds.0": "typescript",
           "routes.0.kind": "query",
-          "routes.0.providerId": "ts-harness"
+          "routes.0.providerId": "asp typescript"
         },
         "guideQuality": {
           "reasonKind": "direct-source-read",
@@ -163,7 +163,7 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"ts-harness search prime --view seeds sdk/typescript\"}}",
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"asp typescript search prime --view seeds sdk/typescript\"}}",
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {
@@ -181,7 +181,7 @@
         "performance"
       ],
       "command": [
-        "ts-harness",
+        "asp typescript",
         "search",
         "prime",
         "--view",

@@ -950,6 +950,81 @@ Agents should use it to decide whether to optimize provider startup,
 precompute/cache guide output, split a slow provider into the all-providers
 gate, or investigate a regression in graph/analyze.
 
+** Large-library runtime search gate
+For descriptors that accept a provider-owned stdin scope, the runtime invocation
+MUST declare and apply that scope rather than falling back to a project-wide
+scan. Semantic-fact providers use the corpus owner as their bounded source
+envelope. Any package or test projection added to that packet MUST bound file
+selection before parsing and use stack-safe traversal, so project metadata
+cannot dominate a query-scoped fact request.
+
+Workspace routing is package/import topology work. It MUST NOT invoke native
+syntax enrichment or policy-rule evaluation merely to render a workspace
+router; those costs belong to owner, API, and policy views that expose the
+corresponding facts.
+
+
+The large-library matrix identifies real corpora and their semantic benchmark
+inputs; it is not the command authority. The Python-owned runtime gate resolves
+the live provider registry for every corpus and invokes each registered
+=search/*= descriptor as =asp <language> search ...=. A descriptor carries a
+provider-owned =benchmarkInvocation= argument template relative to that public
+facade, optional stdin template, JSON expectation, and latency ceiling. Its
+only substitutions are named corpus facts such as ={workspace}=, ={owner}=,
+={query}=, and ={dependency}=.
+
+For an exact owner selector, =search/query= and =search/owner ... items= parse
+the selected owner instead of rebuilding a workspace index; a missing owner is
+an empty exact scope, and wildcard selectors remain the explicit project-wide
+form. A descriptor with =acceptsStdin=true= must use its
+=stdinTemplate= to pass the corpus owner locator whenever its provider can
+scope fact collection that way. This makes the measured command set reflect
+the semantic request rather than an accidental whole-repository scan.
+
+Because the receipt is a machine contract, this automation sets
+=ASP_NO_AGENT_PLATFORM=1= for only its child facade commands. Interactive
+agent commands keep compact output; the provider registry does not need a
+second JSON route. Before executing the matrix, the gate installs each
+provider from the workspace through its pinned deployment mode. Self-contained
+artifacts are copied, while a module-graph artifact such as the TypeScript ESM
+entrypoint is atomically symlinked to its built workspace path. This preserves
+relative module resolution without a per-command wrapper process; pinned
+release archives remain copied, self-contained artifacts. The runtime receipt
+contains one =workspaceDeployments= record per selected language before
+=agent doctor= is called. A failed deployment invalidates the matrix rather
+than measuring a stale home-runtime provider.
+
+Every pinned provider entry must declare the actual built workspace artifact
+used by =--from-workspace=. The gate has no generic =.bin= fallback: Python
+uses its language-harness virtualenv entrypoint, native providers use their
+compiled executable, and module-graph providers declare a symlink install
+mode. This makes a missing artifact a build/deployment failure at the boundary,
+not a later misleading search measurement.
+
+Every facade command runs in a gate-owned process group. A timeout must
+terminate the complete group and drain its pipes before the next measured
+command begins; leaving a provider child alive contaminates the shared machine
+and makes later timing rows invalid. The step receipt records whether timeout
+cleanup terminated the tree, so a performance failure remains distinguishable
+from runner lifecycle failure.
+
+The descriptor ceiling is forwarded as =ASP_PROVIDER_TIMEOUT_MS=. The direct
+provider facade and the client-backend facade share the same transport parser
+for that setting, so transport terminates its independently grouped provider
+before the runner's outer containment timeout. The runner retains descendant
+group cleanup only for failed transport containment, never as the normal
+latency mechanism.
+
+The gate warms each corpus, then records every registry-derived command with
+the checkout revision and release-binary provenance. It rejects missing corpus
+facts, unknown placeholders, private provider launchers, empty or explicit
+error output, malformed expected JSON, a command over its declared ceiling, or
+any missing registered method. Static coverage still proves that no
+=search/lexical= descriptor remains, but stale scenario command strings cannot
+create compatibility for a route the current parser no longer accepts. This
+keeps deterministic contract coverage in normal CI while reserving the full
+14-repository execution for its dedicated performance gate.
+
 ** Provider knowledge-axis close-loop gate
 
 The provider knowledge-axis gate verifies the agent-facing namespace contract

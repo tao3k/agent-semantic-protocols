@@ -227,6 +227,14 @@ fn classify_tool_actions(
         event,
         payload,
     } = request;
+    if actions.iter().any(|action| {
+        action
+            .command_tokens()
+            .as_deref()
+            .is_some_and(|tokens| action_is_known_asp_command(registry, action, tokens))
+    }) {
+        return None;
+    }
     if let Some(decision) = actions
         .iter()
         .find_map(|action| config.classify(registry, platform, event, action))

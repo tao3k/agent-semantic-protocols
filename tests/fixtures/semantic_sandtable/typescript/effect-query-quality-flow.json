@@ -228,7 +228,7 @@
           "subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.owner-items,A2.rg-query,A3.treesitter-query maxCommands=8 maxTurns=1 receipt=search-subagent(role,evidence,missing,next,risk) reason=query-selector-low-confidence",
           "llmHint=after-fd-query-combine-owner-candidates-with-declaration-names-before-rg-query",
         "omit=source,full-candidate-list,raw-finder-output,long-field-signatures",
-          "avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,direct-source-read,raw-read"
+          "avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read"
         ],
         "stdoutNotContains": [
           "export interface Service",
@@ -237,7 +237,7 @@
           "frontierActions=",
           "A1=fd-query",
           "queryCoverage=matched=effect,concurrency,fiber,queue,stream,scope",
-          "frontier=Q.fzf",
+          "frontier=Q.lexical",
           "packages/ai/google/src/Generated.ts",
           "nextCommand=asp typescript query --selector packages/ai/ai/src/EmbeddingModel.ts",
           "embedMany: (input:",

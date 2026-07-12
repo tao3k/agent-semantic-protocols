@@ -226,11 +226,11 @@ test, is constrained by this policy, and is cited by this decision."
 
 ** Bottom line
 The fair verdict is:
-* FTS/BM25, Tantivy, and fzf
-The practical answer is not to replace =fzf= everywhere. ASP should add an indexed lexical-search backend, with =tantivy= as the strongest Rust-native candidate, while keeping =fzf= as an interactive / fallback candidate selector.
+* FTS/BM25, Tantivy, and lexical
+The practical answer is not to replace =lexical= everywhere. ASP should add an indexed lexical-search backend, with =tantivy= as the strongest Rust-native candidate, while keeping =lexical= as an interactive / fallback candidate selector.
 
 The gap is architectural:
-- =fzf= is a fuzzy candidate selector over an already-collected candidate set. It is useful for small lists, interactive narrowing, cache replay matching, and fallback ranking when no durable index exists. It does not give ASP a persistent inverted index, IDF weighting, field boosts, document-length normalization, identifier-aware tokenization, or stable query statistics.
+- =lexical= is a fuzzy candidate selector over an already-collected candidate set. It is useful for small lists, interactive narrowing, cache replay matching, and fallback ranking when no durable index exists. It does not give ASP a persistent inverted index, IDF weighting, field boosts, document-length normalization, identifier-aware tokenization, or stable query statistics.
 - FTS/BM25 is a retrieval layer over indexed documents. It can rank by term rarity, document length, field importance, and structured query terms. That is better for agent intent such as "find the owner of async cache replay", "where is provider command selection indexed", or "search camelCase identifier fragments across symbols and docs".
 - camelCase / identifier splitting is critical for code search. Queries such as =provider command selection= should match =ProviderCommandSelection=, =provider_command_selection=, path segments, headings, and symbol qualified names without requiring the agent to guess the exact spelling.
 - =tantivy= is appropriate when ASP wants a Rust-native, embedded Lucene-style index over provider-owned entity documents. It should index selectors, symbol names, qualified names, doc comments, Org headings, dependency names, package paths, error names, route names, and short snippets. It should not become parser authority.
@@ -249,12 +249,12 @@ selector | entity id | dependency id | artifact id | receipt id
 Line ranges may remain display hints only.
 
 ASP should therefore introduce a =TextSearchBackend= / =LexicalSearchBackend= seam before depending on =tantivy= directly from public search code:
-- baseline backend: current scanner / candidate collection / =fzf= compatible ranking;
+- baseline backend: current scanner / candidate collection / =lexical= compatible ranking;
 - experiment backend: =tantivy= index over DB Engine entity documents;
 - future backend: Turso / Turso FTS backend if the DB Engine makes that cheaper;
 - common output: selector-first candidate packets with field-hit metadata, score, generation id, and index freshness.
 
-The adoption test should be empirical. Do not remove =fzf= until =tantivy= wins these measurements on real ASP workflows:
+The adoption test should be empirical. Do not remove =lexical= until =tantivy= wins these measurements on real ASP workflows:
 - fewer commands to reach edit-ready evidence;
 - better recall@k and MRR / nDCG for identifier, dependency, API, Org-heading, and doc-comment queries;
 - lower broad-read count and lower repeated-search count;
@@ -267,7 +267,7 @@ Decision:
 #+begin_src text
 prefer Turso-backed FTS as the ASP DB Engine lexical-search experiment;
 use a Turso/Tantivy-derived hot search backend for dynamic overlays;
-deprecate fzf as a search/ranking backend once the new backend proves parity;
+deprecate lexical as a search/ranking backend once the new backend proves parity;
 promote indexed lexical search only after recall/latency/turn-count receipts prove it.
 #+end_src
 
@@ -556,7 +556,7 @@ same field-weight contract
 same selector-first result packet
 #+end_src
 
-Under this design =fzf= is not an agent-facing search backend. Human-only interactive UI affordances must stay outside the shared ASP search contract. Agent-facing ASP search converges on the Turso/Tantivy lexical backend plus Python graph fusion.
+Under this design =lexical= is not an agent-facing search backend. Human-only interactive UI affordances must stay outside the shared ASP search contract. Agent-facing ASP search converges on the Turso/Tantivy lexical backend plus Python graph fusion.
 
 * Paper reread: tree-sitter as coarse structure, native parser as proof
 The Codebase-Memory paper's strongest lesson is not that tree-sitter is more semantically precise than native provider parsers. It is the opposite: tree-sitter is useful because it is a portable, fast, error-tolerant, cross-language structural substrate that can cheaply materialize a broad graph before the agent asks a question.

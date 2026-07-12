@@ -125,7 +125,7 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                 "id": "query-set-compact-frontier",
                                 "command": _cargo_run_command(
                                     "search",
-                                    "fzf",
+                                    "lexical",
                                     "--query-set",
                                     "DecisionRouteKind::Read",
                                     "--query-set",
@@ -138,12 +138,12 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                 ),
                                 "expect": {
                                     "stdoutContains": [
-                                        "[search-fzf]",
+                                        "[search-lexical]",
                                         "querySet=3",
                                         "aliases: graph:{G=search",
-                                        "Q=query:term(DecisionRouteKind::Read,window_set,direct-source-read)!fzf",
+                                        "Q=query:term(DecisionRouteKind::Read,window_set,direct-source-read)!lexical",
                                         "G>{Q:matches",
-                                        "frontier=Q.fzf",
+                                        "frontier=Q.lexical",
                                         "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
                                     ],
                                 },

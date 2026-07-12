@@ -53,11 +53,11 @@ def minimal_provider_manifest() -> dict[str, object]:
                     "seeds",
                 ]
             },
-            "fzf": {
+            "lexical": {
                 "argv": [
                     "ts-harness",
                     "search",
-                    "fzf",
+                    "lexical",
                     "{query}",
                     "owner",
                     "tests",
@@ -190,12 +190,12 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
     def test_provider_manifest_rejects_retired_text_route(self) -> None:
         manifest = minimal_provider_manifest()
         routes = copy.deepcopy(manifest["routes"])
-        routes["text"] = routes["fzf"]
-        del routes["fzf"]
+        routes["text"] = routes["lexical"]
+        del routes["lexical"]
         manifest["routes"] = routes
 
         errors = self.manifest_errors(manifest)
-        self.assertTrue(any("'fzf' is a required property" in message for message in errors))
+        self.assertTrue(any("'lexical' is a required property" in message for message in errors))
         self.assertTrue(
             any("Additional properties are not allowed" in message for message in errors)
         )

@@ -113,6 +113,7 @@ fn rust_search_facade_uses_explicit_workspace_for_graph_backend() {
             "search",
             "lexical",
             "source_index_fixture",
+            "project_marker",
             "--workspace",
             "rust-provider",
             "--view",
@@ -243,6 +244,8 @@ fn rust_search_facade_does_not_treat_positional_path_as_project_root() {
             "rust",
             "search",
             "lexical",
+            "source_index_fixture",
+            "outside",
             outside_root.to_str().expect("outside root utf8"),
             "--workspace",
             ".",
@@ -258,7 +261,7 @@ fn rust_search_facade_does_not_treat_positional_path_as_project_root() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
+    assert!(stdout.starts_with("[graph-route]"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(outside_root);
 }

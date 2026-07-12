@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "direnv exec . asp hook session-start --client codex",
+            "command": "asp hook session-start --client codex",
             "timeout": 5,
             "statusMessage": "Loading Agent Semantic Protocol activation"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "direnv exec . asp hook user-prompt --client codex",
+            "command": "asp hook user-prompt --client codex",
             "timeout": 5,
             "statusMessage": "Planning Agent Semantic Protocol search flow"
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "direnv exec . asp hook pre-tool --client codex",
+            "command": "asp hook pre-tool --client codex",
             "timeout": 5,
             "statusMessage": "Checking Agent Semantic Protocol search policy"
           }
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "direnv exec . asp hook permission-request --client codex",
+            "command": "asp hook permission-request --client codex",
             "timeout": 5,
             "statusMessage": "Checking Agent Semantic Protocol approval policy"
           }
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "direnv exec . asp hook post-tool --client codex",
+            "command": "asp hook post-tool --client codex",
             "timeout": 5,
             "statusMessage": "Updating Agent Semantic Protocol search state"
           }
@@ -66,11 +66,10 @@
     ],
     "SubagentStart": [
       {
-        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
         "hooks": [
           {
             "type": "command",
-            "command": "direnv exec . asp hook subagent-start --client codex",
+            "command": "asp hook subagent-start --client codex",
             "timeout": 5,
             "statusMessage": "Preparing Agent Semantic Protocol subagent context"
           }
@@ -79,11 +78,10 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
         "hooks": [
           {
             "type": "command",
-            "command": "direnv exec . asp hook subagent-stop --client codex",
+            "command": "asp hook subagent-stop --client codex",
             "timeout": 5,
             "statusMessage": "Checking Agent Semantic Protocol subagent evidence"
           }
@@ -95,7 +93,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "direnv exec . asp hook stop --client codex",
+            "command": "asp hook stop --client codex",
             "timeout": 5,
             "statusMessage": "Checking Agent Semantic Protocol changed files"
           }

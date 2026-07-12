@@ -242,8 +242,9 @@ pub(super) fn format_unresolved_owner_query(request: &OwnerQueryRequest) -> Resu
     if item_query.is_code_projection() {
         let display_path = request.owner_path.to_string_lossy().replace('\\', "/");
         return Err(format!(
-            "stale-index exact selector resolved no code payload: ownerPath={display_path} itemQuery={} state=stale-index recommendedNext=asp {} search owner {display_path} items --workspace . --view seeds",
+            "exact selector matched no owner item: ownerPath={display_path} itemQuery={} selectorKind={} state=not-found reason=owner-not-found recommendedNext=asp {} search owner {display_path} items --workspace . --view seeds",
             item_query.term(),
+            item_query.kind().unwrap_or("item"),
             request.language_id
         ));
     }

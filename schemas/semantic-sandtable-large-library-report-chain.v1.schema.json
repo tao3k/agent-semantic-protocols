@@ -10,6 +10,8 @@
     "packetKind",
     "languages",
     "rollup",
+    "benchmarkData",
+    "searchCommandSet",
     "optimizationBatch",
     "optimizationMatrix",
     "findings",
@@ -47,14 +49,38 @@
         "aspBinaryFreshnessRiskScenarioCount"
       ],
       "properties": {
-        "languageCount": {"type": "integer", "minimum": 0},
-        "scenarioCount": {"type": "integer", "minimum": 0},
-        "libraryCount": {"type": "integer", "minimum": 0},
-        "deepQuestionCount": {"type": "integer", "minimum": 0},
-        "readyLanguageCount": {"type": "integer", "minimum": 0},
-        "optimizationRunCount": {"type": "integer", "minimum": 0},
-        "optimizationVariantRunCount": {"type": "integer", "minimum": 0},
-        "findingCount": {"type": "integer", "minimum": 0},
+        "languageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scenarioCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "libraryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deepQuestionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyLanguageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationVariantRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "findingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "aspBinaryFreshnessRiskCommandCount": {
           "type": "integer",
           "minimum": 0
@@ -83,11 +109,35 @@
     "optimizationGate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "reason", "blockingFindingCount"],
+      "required": [
+        "status",
+        "reason",
+        "blockingFindingCount"
+      ],
       "properties": {
-        "status": {"enum": ["pass", "review"]},
-        "reason": {"type": "string", "minLength": 1},
-        "blockingFindingCount": {"type": "integer", "minimum": 0}
+        "status": {
+          "enum": [
+            "pass",
+            "review"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blockingFindingCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "benchmarkData": {
+      "$ref": "#/$defs/benchmarkData"
+    },
+    "searchCommandSet": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/searchCommandEntry"
       }
     }
   },
@@ -108,44 +158,94 @@
         "reportChainReady"
       ],
       "properties": {
-        "language": {"type": "string", "minLength": 1},
-        "scenarioCount": {"type": "integer", "minimum": 0},
-        "libraryCount": {"type": "integer", "minimum": 0},
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenarioCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "libraryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "libraries": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
-        "deepQuestionCount": {"type": "integer", "minimum": 0},
-        "liveDeepQuestionCount": {"type": "integer", "minimum": 0},
+        "deepQuestionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "liveDeepQuestionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "depthBucketCounts": {
           "type": "object",
-          "additionalProperties": {"type": "integer", "minimum": 0}
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
         "requiredSignalCounts": {
           "type": "object",
-          "additionalProperties": {"type": "integer", "minimum": 0}
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
-        "aspBinaryProvenance": {"$ref": "#/$defs/aspBinaryProvenance"},
+        "aspBinaryProvenance": {
+          "$ref": "#/$defs/aspBinaryProvenance"
+        },
         "aspBinaryFreshnessRiskScenarioCount": {
           "type": "integer",
           "minimum": 0
         },
         "findings": {
           "type": "array",
-          "items": {"$ref": "#/$defs/finding"}
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
         },
-        "reportChainReady": {"type": "boolean"}
+        "reportChainReady": {
+          "type": "boolean"
+        }
       }
     },
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["language", "kind", "severity", "message"],
+      "required": [
+        "language",
+        "kind",
+        "severity",
+        "message"
+      ],
       "properties": {
-        "language": {"type": "string", "minLength": 1},
-        "kind": {"type": "string", "minLength": 1},
-        "severity": {"enum": ["info", "warning", "error"]},
-        "message": {"type": "string", "minLength": 1}
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "aspBinaryProvenance": {
@@ -159,16 +259,31 @@
         "tokens"
       ],
       "properties": {
-        "commandCount": {"type": "integer", "minimum": 0},
-        "workspaceBinaryCommands": {"type": "integer", "minimum": 0},
-        "freshnessRiskCommands": {"type": "integer", "minimum": 0},
+        "commandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workspaceBinaryCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "freshnessRiskCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
         "kindCounts": {
           "type": "object",
-          "additionalProperties": {"type": "integer", "minimum": 0}
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
         "tokens": {
           "type": "object",
-          "additionalProperties": {"type": "integer", "minimum": 0}
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       }
     },
@@ -188,22 +303,37 @@
         "requiredAnswerMetrics"
       ],
       "properties": {
-        "targetGraphPhase": {"const": "query-first-stage"},
-        "nextStage": {"const": "collect-receipts"},
-        "readyToCollectReceipts": {"type": "boolean"},
-        "runCount": {"type": "integer", "minimum": 0},
-        "ablationVariantCount": {"type": "integer", "minimum": 0},
-        "variantRunCount": {"type": "integer", "minimum": 0},
+        "targetGraphPhase": {
+          "const": "query-first-stage"
+        },
+        "nextStage": {
+          "const": "collect-receipts"
+        },
+        "readyToCollectReceipts": {
+          "type": "boolean"
+        },
+        "runCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ablationVariantCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "variantRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "ablationVariants": {
           "type": "array",
           "items": {
             "enum": [
               "no-query-seed-prior",
-            "no-package-cohesion",
-            "no-query-clause-coverage",
-            "no-local-evidence",
-            "no-topology-membership"
-          ]
+              "no-package-cohesion",
+              "no-query-clause-coverage",
+              "no-local-evidence",
+              "no-topology-membership"
+            ]
           }
         },
         "aggregationAxes": {
@@ -219,11 +349,17 @@
         },
         "requiredReceiptMetrics": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "requiredAnswerMetrics": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -249,18 +385,55 @@
         "ablationVariants"
       ],
       "properties": {
-        "runId": {"type": "string", "minLength": 1},
-        "language": {"type": "string", "minLength": 1},
-        "scenarioId": {"type": "string", "minLength": 1},
-        "scenarioPath": {"type": "string", "minLength": 1},
-        "package": {"type": "string", "minLength": 1},
-        "repository": {"type": "string", "minLength": 1},
-        "questionId": {"type": "string", "minLength": 1},
-        "depthBucket": {"enum": ["strict", "medium", "deep"]},
-        "fixtureTier": {"type": "string", "minLength": 1},
-        "live": {"type": "boolean"},
-        "promptOnly": {"type": "boolean"},
-        "maxAspCommands": {"type": "integer", "minimum": 1},
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenarioPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "questionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depthBucket": {
+          "enum": [
+            "strict",
+            "medium",
+            "deep"
+          ]
+        },
+        "fixtureTier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "live": {
+          "type": "boolean"
+        },
+        "promptOnly": {
+          "type": "boolean"
+        },
+        "maxAspCommands": {
+          "type": "integer",
+          "minimum": 1
+        },
         "requiredSignals": {
           "type": "array",
           "items": {
@@ -275,20 +448,180 @@
         },
         "requiredStages": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
-        "targetGraphPhase": {"const": "query-first-stage"},
+        "targetGraphPhase": {
+          "const": "query-first-stage"
+        },
         "ablationVariants": {
           "type": "array",
           "minItems": 3,
           "items": {
             "enum": [
               "no-query-seed-prior",
-            "no-package-cohesion",
-            "no-query-clause-coverage",
-            "no-local-evidence",
-            "no-topology-membership"
-          ]
+              "no-package-cohesion",
+              "no-query-clause-coverage",
+              "no-local-evidence",
+              "no-topology-membership"
+            ]
+          }
+        }
+      }
+    },
+    "benchmarkData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioCount",
+        "searchCommandCount",
+        "uniqueSearchCommandCount",
+        "optimizationRunCount",
+        "optimizationVariantRunCount",
+        "ablationVariantCount",
+        "coveredSearchMethods",
+        "coveredSearchQueries",
+        "byLanguage"
+      ],
+      "properties": {
+        "scenarioCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "searchCommandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueSearchCommandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationVariantRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ablationVariantCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coveredSearchMethods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "coveredSearchQueries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "byLanguage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/benchmarkLanguageEntry"
+          }
+        }
+      }
+    },
+    "benchmarkLanguageEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "scenarioCount",
+        "searchCommandCount",
+        "uniqueSearchCommandCount",
+        "optimizationRunCount",
+        "optimizationVariantRunCount",
+        "coveredSearchMethods",
+        "coveredSearchQueries"
+      ],
+      "properties": {
+        "language": {
+          "type": "string"
+        },
+        "scenarioCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "searchCommandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueSearchCommandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationVariantRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coveredSearchMethods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "coveredSearchQueries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "searchCommandEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId",
+        "language",
+        "method",
+        "view",
+        "queries",
+        "command",
+        "scenarioIds"
+      ],
+      "properties": {
+        "commandId": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scenarioIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       }

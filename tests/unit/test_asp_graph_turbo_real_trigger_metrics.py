@@ -20,12 +20,12 @@ _REAL_TRIGGER_FIXTURE = (
 
 def sample_record_args() -> dict[str, object]:
     return {
-        "scenario": "rust-fzf-request-rank",
+        "scenario": "rust-lexical-request-rank",
         "source": "live-cli",
         "measured_at": "2026-06-07T00:47:40Z",
         "profile": "owner-query",
         "commands": (
-            "asp rust search fzf --view graph-turbo-request",
+            "asp rust search lexical --view graph-turbo-request",
             "graph-turbo rank --format compact",
         ),
         "command_count": 2,
@@ -44,7 +44,7 @@ def test_real_trigger_record_renders_all_rfc_metrics() -> None:
     text = render_real_trigger_metrics(record)
 
     assert text.startswith(
-        "[graph-turbo-real-trigger] scenario=rust-fzf-request-rank"
+        "[graph-turbo-real-trigger] scenario=rust-lexical-request-rank"
     )
     assert "commandCount=2" in text
     assert "packetBytes=4960" in text
@@ -75,11 +75,11 @@ def test_real_trigger_fixture_records_live_graph_turbo_metrics() -> None:
     packet = json.loads(_REAL_TRIGGER_FIXTURE.read_text(encoding="utf-8"))
 
     assert packet["schemaId"] == REAL_TRIGGER_METRICS_SCHEMA_ID
-    assert packet["scenario"] == "rust-fzf-default-rank"
+    assert packet["scenario"] == "rust-lexical-default-rank"
     assert packet["source"] == "live-cli"
     assert packet["profile"] == "owner-query"
     assert packet["algorithm"] == "typed-ppr-diverse"
-    assert packet["commands"] == ["asp rust search fzf graph_turbo owner tests ."]
+    assert packet["commands"] == ["asp rust search lexical graph_turbo owner tests ."]
     assert packet["metrics"]["commandCount"] == len(packet["commands"]) == 1
     assert packet["metrics"]["packetBytes"] >= 0
     assert packet["metrics"]["resultBytes"] > 0
@@ -96,7 +96,7 @@ def test_metrics_cli_emits_json(capsys) -> None:
         main(
             [
                 "--scenario",
-                "rust-fzf-request-rank",
+                "rust-lexical-request-rank",
                 "--source",
                 "live-cli",
                 "--measured-at",
@@ -104,7 +104,7 @@ def test_metrics_cli_emits_json(capsys) -> None:
                 "--profile",
                 "owner-query",
                 "--command",
-                "asp rust search fzf --view graph-turbo-request",
+                "asp rust search lexical --view graph-turbo-request",
                 "--command",
                 "graph-turbo rank --format compact",
                 "--command-count",
@@ -132,7 +132,7 @@ def test_metrics_cli_emits_json(capsys) -> None:
 
     assert packet["schemaId"] == REAL_TRIGGER_METRICS_SCHEMA_ID
     assert packet["commands"] == [
-        "asp rust search fzf --view graph-turbo-request",
+        "asp rust search lexical --view graph-turbo-request",
         "graph-turbo rank --format compact",
     ]
 
@@ -142,13 +142,13 @@ def test_metrics_cli_rejects_command_count_drift(capsys) -> None:
         main(
             [
                 "--scenario",
-                "rust-fzf-request-rank",
+                "rust-lexical-request-rank",
                 "--measured-at",
                 "2026-06-07T00:47:40Z",
                 "--profile",
                 "owner-query",
                 "--command",
-                "asp rust search fzf --view graph-turbo-request",
+                "asp rust search lexical --view graph-turbo-request",
                 "--command-count",
                 "2",
                 "--packet-bytes",

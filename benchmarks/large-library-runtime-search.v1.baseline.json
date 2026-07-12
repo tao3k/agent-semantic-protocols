@@ -1,0 +1,262 @@
+{
+  "schemaId": "agent.semantic-protocols.large-library-runtime-search-baseline",
+  "schemaVersion": "1",
+  "recordedAt": "2026-07-11",
+  "command": "just benchmark-large-library-search-runtime",
+  "budget": {
+    "maxCommandElapsedMs": 15000,
+    "requireWorkspaceDeployment": true,
+    "requireCompleteRegisteredSearchCoverage": true
+  },
+  "commandCoverage": {
+    "registeredSearchMethodCount": 32,
+    "runtimeSearchCommandCount": 331,
+    "targetSearchCommandCount": 331
+  },
+  "workspaceDeployments": [
+    {
+      "language": "julia",
+      "elapsedMs": 149
+    },
+    {
+      "language": "python",
+      "elapsedMs": 130
+    },
+    {
+      "language": "rust",
+      "elapsedMs": 92
+    },
+    {
+      "language": "typescript",
+      "elapsedMs": 134
+    }
+  ],
+  "corpora": [
+    {
+      "scenarioId": "julia.flux-intent-matrix",
+      "language": "julia",
+      "repository": "FluxML/Flux.jl",
+      "revision": "4d504e095adbb4ec0c110598cb17376be3b7d60e",
+      "directory": "julia-flux"
+    },
+    {
+      "scenarioId": "julia.dataframes-intent-matrix",
+      "language": "julia",
+      "repository": "JuliaData/DataFrames.jl",
+      "revision": "3b23b4ab612e09bf850bbff87aa392d310dbfffa",
+      "directory": "julia-dataframes"
+    },
+    {
+      "scenarioId": "julia.makie-intent-matrix",
+      "language": "julia",
+      "repository": "MakieOrg/Makie.jl",
+      "revision": "f34d62d4fbe49ed9604e7571f22ae78f31cd7083",
+      "directory": "julia-makie"
+    },
+    {
+      "scenarioId": "python.rich-intent-matrix",
+      "language": "python",
+      "repository": "Textualize/rich",
+      "revision": "9d8f9a372cc5916fd4781fec207ced7ddac2f08f",
+      "directory": "python-rich"
+    },
+    {
+      "scenarioId": "python.fastapi-intent-matrix",
+      "language": "python",
+      "repository": "fastapi/fastapi",
+      "revision": "7cb06f360dd44efac059848df1a9beee7643b018",
+      "directory": "python-fastapi"
+    },
+    {
+      "scenarioId": "python.pandas-intent-matrix",
+      "language": "python",
+      "repository": "pandas-dev/pandas",
+      "revision": "b009277235e6909cb276899a0218327cd3f407bb",
+      "directory": "python-pandas"
+    },
+    {
+      "scenarioId": "rust.ignore-intent-matrix",
+      "language": "rust",
+      "repository": "BurntSushi/ripgrep",
+      "revision": "d5b85d44057ff729a89be9c6549958c45d95aa99",
+      "directory": "rust-ripgrep"
+    },
+    {
+      "scenarioId": "rust.bytes-intent-matrix",
+      "language": "rust",
+      "repository": "tokio-rs/bytes",
+      "revision": "76c0fbb54ed4336caf9d2311658a2f4a5627c21d",
+      "directory": "rust-bytes"
+    },
+    {
+      "scenarioId": "rust.tokio-intent-matrix",
+      "language": "rust",
+      "repository": "tokio-rs/tokio",
+      "revision": "46c830117b82fb806f6a164fcda25050846cf5f9",
+      "directory": "rust-tokio"
+    },
+    {
+      "scenarioId": "typescript.effect-claude-concurrency-flow",
+      "language": "typescript",
+      "repository": "Effect-TS/effect",
+      "revision": "d24511fee929d4cb98ab2a86387de4ea290f11ff",
+      "directory": "typescript-effect"
+    },
+    {
+      "scenarioId": "typescript.typescript-intent-matrix",
+      "language": "typescript",
+      "repository": "microsoft/TypeScript",
+      "revision": "637d5746b70257028fb95aad32ddec6b26ab0a14",
+      "directory": "typescript-typescript"
+    },
+    {
+      "scenarioId": "typescript.playwright-intent-matrix",
+      "language": "typescript",
+      "repository": "microsoft/playwright",
+      "revision": "d448aac01df83188a4a7ce0d23fee1fe9fccd82f",
+      "directory": "typescript-playwright"
+    },
+    {
+      "scenarioId": "typescript.vite-intent-matrix",
+      "language": "typescript",
+      "repository": "vitejs/vite",
+      "revision": "c961cae2868cc1521457ec60583867f0440e6949",
+      "directory": "typescript-vite"
+    },
+    {
+      "scenarioId": "typescript.vue-runtime-scheduler-real-trigger-flow",
+      "language": "typescript",
+      "repository": "vuejs/core",
+      "revision": "c0606e91798c8dca4f33d101e1dd836d672592c1",
+      "directory": "typescript-vue"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "julia.dataframes-intent-matrix",
+      "commands": 18,
+      "maxElapsedMs": 6475,
+      "observationsMs": [
+        3503,
+        6475
+      ]
+    },
+    {
+      "id": "julia.flux-intent-matrix",
+      "commands": 18,
+      "maxElapsedMs": 2751,
+      "observationsMs": [
+        1687,
+        2751
+      ]
+    },
+    {
+      "id": "julia.makie-intent-matrix",
+      "commands": 18,
+      "maxElapsedMs": 2615,
+      "observationsMs": [
+        1869,
+        2615
+      ]
+    },
+    {
+      "id": "python.fastapi-intent-matrix",
+      "commands": 25,
+      "maxElapsedMs": 1468,
+      "observationsMs": [
+        1245,
+        1468
+      ]
+    },
+    {
+      "id": "python.pandas-intent-matrix",
+      "commands": 25,
+      "maxElapsedMs": 8034,
+      "observationsMs": [
+        6564,
+        8034
+      ]
+    },
+    {
+      "id": "python.rich-intent-matrix",
+      "commands": 25,
+      "maxElapsedMs": 503,
+      "observationsMs": [
+        390,
+        503
+      ]
+    },
+    {
+      "id": "rust.bytes-intent-matrix",
+      "commands": 24,
+      "maxElapsedMs": 406,
+      "observationsMs": [
+        226,
+        406
+      ]
+    },
+    {
+      "id": "rust.ignore-intent-matrix",
+      "commands": 24,
+      "maxElapsedMs": 945,
+      "observationsMs": [
+        891,
+        945
+      ]
+    },
+    {
+      "id": "rust.tokio-intent-matrix",
+      "commands": 24,
+      "maxElapsedMs": 3964,
+      "observationsMs": [
+        3126,
+        3964
+      ]
+    },
+    {
+      "id": "typescript.effect-claude-concurrency-flow",
+      "commands": 26,
+      "maxElapsedMs": 4776,
+      "observationsMs": [
+        4318,
+        4776
+      ]
+    },
+    {
+      "id": "typescript.playwright-intent-matrix",
+      "commands": 26,
+      "maxElapsedMs": 7038,
+      "observationsMs": [
+        7038,
+        3433
+      ]
+    },
+    {
+      "id": "typescript.typescript-intent-matrix",
+      "commands": 26,
+      "maxElapsedMs": 13806,
+      "observationsMs": [
+        13806,
+        12174
+      ]
+    },
+    {
+      "id": "typescript.vite-intent-matrix",
+      "commands": 26,
+      "maxElapsedMs": 3217,
+      "observationsMs": [
+        3217,
+        1481
+      ]
+    },
+    {
+      "id": "typescript.vue-runtime-scheduler-real-trigger-flow",
+      "commands": 26,
+      "maxElapsedMs": 2075,
+      "observationsMs": [
+        2075,
+        2035
+      ]
+    }
+  ]
+}

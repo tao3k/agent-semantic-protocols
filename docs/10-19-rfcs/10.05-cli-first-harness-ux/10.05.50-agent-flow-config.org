@@ -10,7 +10,7 @@ The agent should follow this order:
 5. search callsite  → find owner-level import/reexport sites
 6. search import    → inspect import/reexport owner edges
 7. search tests     → locate tests importing the edited owner
-8. search fzf       → find broader symbol/path candidates
+8. search lexical       → find broader symbol/path candidates
 9. search ingest    → normalize external candidate streams when needed
 10. edit            → apply change
 11. check           → verify change against policy
@@ -37,7 +37,7 @@ ts-harness search symbol OrderStatus .
 ts-harness search callsite OrderStatus .
 ts-harness search import ./order .
 ts-harness search tests src/domain/order.ts .
-ts-harness search fzf OrderStatus .
+ts-harness search lexical OrderStatus .
 ts-harness search owner src/domain/order.ts .
 rg -n "\bOrderStatus\b" src tests | ts-harness search ingest .
 #+end_src
@@ -49,7 +49,7 @@ The agent sees:
 |hit path=package.json line=7 column=5 owner=. kind=dependency score=10 reason=manifest-package-exact packageRoot=react source=dependencies versionRange=^19.0.0
 |hit path=src/ui/order-view.ts line=1 owner=src/ui/order-view.ts kind=dependency reason=package-root-exact packageRoot=react moduleSpecifier=react
 
-[search-fzf] q=OrderStatus own=3 hit=3 view=hits
+[search-lexical] q=OrderStatus own=3 hit=3 view=hits
 |hit path=src/domain/order.ts owner=src/domain/order.ts kind=export score=3 reason=export-name symbol=OrderStatus
 |hit path=src/api/orders.ts owner=src/api/orders.ts kind=path score=2 reason=path
 |next owner:src/domain/order.ts,owner:src/api/orders.ts
@@ -285,6 +285,31 @@ ts-harness-agent-bundle
 No MCP config.  No conversational-tool discovery.  The only advertised
 capability registry is the deterministic semantic-language registry returned by
 =<lang-harness> agent doctor --json=.
+
+* Main-session command intent
+
+The hook classifies ASP evidence commands before it decides a lane. Command
+spelling alone is not sufficient: a parser-owned selector read and a broad
+query command have different cost, ambiguity, and recovery rules.
+
+| Intent | Command shape | Main-session behavior |
+|-
+| =control-plane= | =asp agent session ...= and other configured lifecycle controls | Allow |
+| =exact-evidence-read= | =asp <language> query --selector <parser-owned item selector> --code= or =--names-only= | Allow |
+| =reasoning-flow= | =search prime=, =search pipe=, =search owner=, =rg=, =fd=, =query --term=, a file selector, or any selector that is not parser-owned | Deny and enter the resident =asp-explore= interactive loop |
+| =unknown= | Any command outside the explicit classes | Apply the configured control-plane allowlist; otherwise deny |
+
+=search owner <owner> items= remains a reasoning-flow command even when the
+owner path is known. It materializes/ranks candidates and is the mechanism
+that discovers an exact selector; it is not an exact read. Likewise, a
+=query= command is exact only when its selector already identifies one
+parser-owned item and its projection is bounded. A term query, file selector,
+or default/broad projection must route to =asp-explore=.
+
+The denial contains one action only: enter =asp agent session bootstrap --name
+asp-explore=, choose a pane number, and continue until the resident child is
+ready. The pane owns create/resume/recover decisions. The hook does not
+suggest alternative shell search tools or command-specific fallbacks.
 
 * Failure mode reference
 

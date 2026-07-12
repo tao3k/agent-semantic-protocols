@@ -1,0 +1,2 @@
+present = "rust://crate/src/lib.rs#item/method/persist_source_index_read_model"
+absent = "rust://crate/src/lib.rs#item/impl/ClientDbEngine"

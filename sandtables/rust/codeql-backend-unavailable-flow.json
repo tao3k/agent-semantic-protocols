@@ -61,7 +61,7 @@
         "stdoutJsonEquals": {
           "schemaId": "agent.semantic-protocols.semantic-codeql-evidence",
           "languageId": "rust",
-          "providerId": "rs-harness",
+          "providerId": "asp rust",
           "projectRootPolicy": "blocked",
           "omissions.0.kind": "backend-unavailable",
           "omissions.0.fields.executionBackend": "codeql"

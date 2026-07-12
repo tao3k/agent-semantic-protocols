@@ -520,7 +520,7 @@ fn parent_action_is_safe(value: &str) -> bool {
         && (normalized.contains(" owner ")
             || normalized.contains(" pipe ")
             || normalized.contains(" deps ")
-            || normalized.contains(" fzf "))
+            || normalized.contains(" lexical "))
 }
 
 fn is_decimal(value: &str) -> bool {

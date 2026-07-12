@@ -10,6 +10,8 @@ mod db_engine;
 mod db_engine_provider_command;
 #[path = "unit/db/engine_source_index.rs"]
 mod db_engine_source_index;
+#[path = "unit/db/gerbil_dependency_index.rs"]
+mod db_gerbil_dependency_index;
 #[path = "unit/env.rs"]
 mod env;
 #[path = "unit/db/source_index_lookup_migration.rs"]

@@ -183,7 +183,7 @@ fn parse_query_wrapper_args(
             "--view" => {
                 view = args
                     .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
+                    .ok_or_else(|| "asp query-wrapper --view requires seeds".to_string())?
                     .clone();
                 index += 2;
             }

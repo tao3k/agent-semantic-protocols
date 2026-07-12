@@ -13,7 +13,7 @@ from .large_library_optimization_matrix import (
 from .scenario_io import discover_scenarios, load_scenario
 from .utils import dict_value, list_value, require_str, string_list
 
-DEFAULT_LANGUAGES = ("rust", "typescript")
+DEFAULT_LANGUAGES = ("julia", "python", "rust", "typescript")
 REQUIRED_DEPTH_BUCKETS = ("strict", "medium", "deep")
 
 
@@ -38,12 +38,15 @@ def build_large_library_report_chain(
     language_entries = _with_language_findings(language_entries, findings)
     matrix = optimization_matrix(scenarios)
     batch = optimization_batch(matrix)
+    command_set = _search_command_set(scenarios)
     return {
         "schemaId": "agent.semantic-protocols.semantic-sandtable-large-library-report-chain",
         "schemaVersion": "1",
         "packetKind": "large-library-report-chain",
         "languages": language_entries,
         "rollup": _rollup(language_entries, findings, matrix, batch),
+        "benchmarkData": _benchmark_data(scenarios, matrix, batch, command_set),
+        "searchCommandSet": command_set,
         "optimizationBatch": batch,
         "optimizationMatrix": matrix,
         "findings": findings,
@@ -83,6 +86,7 @@ def _scenario_entry(repo_root: Path, path: Path) -> dict[str, Any] | None:
         "fixtureTier": evidence.get("fixtureTier") or "live",
         "intentKinds": sorted(_intent_kinds(evidence)),
         "deepQuestions": deep_questions,
+        "searchCommands": _scenario_search_commands(scenario),
         "live": "liveAgent" in scenario,
         "promptOnly": "prompt-only" in string_list(scenario.get("tags", [])),
     }
@@ -90,6 +94,185 @@ def _scenario_entry(repo_root: Path, path: Path) -> dict[str, Any] | None:
     if binary_provenance:
         entry["aspBinaryProvenance"] = binary_provenance
     return entry
+
+
+def _benchmark_data(
+    scenarios: list[dict[str, Any]],
+    optimization_matrix: list[dict[str, Any]],
+    optimization_batch: dict[str, Any],
+    search_command_set: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "scenarioCount": len(scenarios),
+        "searchCommandCount": sum(
+            len(list_value(scenario.get("searchCommands"))) for scenario in scenarios
+        ),
+        "uniqueSearchCommandCount": len(search_command_set),
+        "optimizationRunCount": len(optimization_matrix),
+        "optimizationVariantRunCount": int(optimization_batch["variantRunCount"]),
+        "ablationVariantCount": int(optimization_batch["ablationVariantCount"]),
+        "coveredSearchMethods": _covered_search_methods(search_command_set),
+        "coveredSearchQueries": _covered_search_queries(search_command_set),
+        "byLanguage": _benchmark_data_by_language(
+            scenarios,
+            optimization_matrix,
+            optimization_batch,
+            search_command_set,
+        ),
+    }
+
+
+def _benchmark_data_by_language(
+    scenarios: list[dict[str, Any]],
+    optimization_matrix: list[dict[str, Any]],
+    optimization_batch: dict[str, Any],
+    search_command_set: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    languages = sorted({str(scenario["language"]) for scenario in scenarios})
+    ablation_count = int(optimization_batch["ablationVariantCount"])
+    return [
+        _language_benchmark_data(
+            language,
+            scenarios,
+            optimization_matrix,
+            search_command_set,
+            ablation_count,
+        )
+        for language in languages
+    ]
+
+
+def _language_benchmark_data(
+    language: str,
+    scenarios: list[dict[str, Any]],
+    optimization_matrix: list[dict[str, Any]],
+    search_command_set: list[dict[str, Any]],
+    ablation_count: int,
+) -> dict[str, Any]:
+    language_scenarios = [
+        scenario for scenario in scenarios if scenario["language"] == language
+    ]
+    language_commands = [
+        command for command in search_command_set if command["language"] == language
+    ]
+    run_count = sum(1 for run in optimization_matrix if run["language"] == language)
+    return {
+        "language": language,
+        "scenarioCount": len(language_scenarios),
+        "searchCommandCount": sum(
+            len(list_value(scenario.get("searchCommands")))
+            for scenario in language_scenarios
+        ),
+        "uniqueSearchCommandCount": len(language_commands),
+        "optimizationRunCount": run_count,
+        "optimizationVariantRunCount": run_count * ablation_count,
+        "coveredSearchMethods": _covered_search_methods(language_commands),
+        "coveredSearchQueries": _covered_search_queries(language_commands),
+    }
+
+
+def _search_command_set(scenarios: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_command_id: dict[str, dict[str, Any]] = {}
+    for scenario in scenarios:
+        for command in list_value(scenario.get("searchCommands")):
+            if not isinstance(command, dict):
+                continue
+            command_id = str(command["commandId"])
+            entry = by_command_id.setdefault(
+                command_id,
+                {**command, "scenarioIds": []},
+            )
+            entry["scenarioIds"].append(str(scenario["scenarioId"]))
+    return sorted(
+        by_command_id.values(),
+        key=lambda entry: (
+            str(entry["language"]),
+            str(entry["method"]),
+            str(entry["commandId"]),
+        ),
+    )
+
+
+def _scenario_search_commands(scenario: dict[str, Any]) -> list[dict[str, Any]]:
+    language = require_str(scenario, "language", "unknown")
+    commands: list[dict[str, Any]] = []
+    for step in list_value(scenario.get("steps")):
+        command = string_list(dict_value(step).get("command"))
+        entry = _search_command_entry(command, language)
+        if entry is not None:
+            commands.append(entry)
+    return commands
+
+
+def _search_command_entry(
+    command: list[str], fallback_language: str
+) -> dict[str, Any] | None:
+    if not command or "search" not in command:
+        return None
+    search_index = command.index("search")
+    view = _search_command_view(command, search_index)
+    if view is None:
+        return None
+    return {
+        "commandId": " ".join(command),
+        "language": _search_command_language(command, fallback_language),
+        "method": f"search/{view}",
+        "view": view,
+        "queries": _search_command_queries(command, search_index),
+        "command": command,
+    }
+
+
+def _search_command_language(command: list[str], fallback_language: str) -> str:
+    if len(command) >= 3 and command[0] == "asp":
+        return command[1]
+    return fallback_language
+
+
+def _search_command_view(command: list[str], search_index: int) -> str | None:
+    view_index = search_index + 1
+    if view_index >= len(command):
+        return None
+    view = command[view_index]
+    return view if view and not view.startswith("-") else None
+
+
+def _search_command_queries(command: list[str], search_index: int) -> list[str]:
+    option_queries = _query_option_values(command)
+    if option_queries:
+        return option_queries
+    return _positional_query_values(command[search_index + 2 :])
+
+
+def _query_option_values(command: list[str]) -> list[str]:
+    queries: list[str] = []
+    for index, token in enumerate(command[:-1]):
+        if token in {"--query", "--query-set"}:
+            queries.append(command[index + 1])
+    return list(dict.fromkeys(queries))
+
+
+def _positional_query_values(tokens: list[str]) -> list[str]:
+    queries: list[str] = []
+    for token in tokens:
+        if token.startswith("-"):
+            break
+        queries.append(token)
+    return list(dict.fromkeys(queries))
+
+
+def _covered_search_methods(search_command_set: list[dict[str, Any]]) -> list[str]:
+    return sorted({str(command["method"]) for command in search_command_set})
+
+
+def _covered_search_queries(search_command_set: list[dict[str, Any]]) -> list[str]:
+    return sorted(
+        {
+            str(query)
+            for command in search_command_set
+            for query in list_value(command.get("queries"))
+        }
+    )
 
 
 def _deep_question_entry(question: dict[str, Any]) -> dict[str, Any]:
@@ -206,7 +389,7 @@ def _findings(language_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     language,
                     "report-chain-not-ready",
                     "warning",
-                    "collect TS/Rust multi-depth evidence before algorithm tuning",
+                    "collect multi-depth registered-language evidence before algorithm tuning",
                 )
             )
         binary_risk_commands = _binary_freshness_risk_commands(
@@ -408,9 +591,9 @@ def _optimization_gate(findings: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "status": "pass" if not blocking else "review",
         "reason": (
-            "report chain has multi-depth TS/Rust evidence"
+            "report chain has multi-depth registered-language evidence"
             if not blocking
-            else "collect multi-depth TS/Rust report-chain evidence before tuning"
+            else "collect multi-depth registered-language report-chain evidence before tuning"
         ),
         "blockingFindingCount": len(blocking),
     }

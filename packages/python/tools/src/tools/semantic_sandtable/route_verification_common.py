@@ -22,7 +22,7 @@ SAFE_ID_RE = re.compile(r"[^a-z0-9_-]+")
 ROUTE_IDS = {
     "prime",
     "pipe",
-    "fzf",
+    "lexical",
     "fd-query",
     "rg-query",
     "owner-items",

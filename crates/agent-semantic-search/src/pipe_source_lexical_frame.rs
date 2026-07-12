@@ -84,7 +84,7 @@ fn source_index_owner_candidates(
 
 fn lexical_search_frame_terms(query: &str) -> Vec<String> {
     query
-        .split_whitespace()
+        .split(|character: char| character == '|' || character.is_whitespace())
         .map(str::trim)
         .filter(|term| !term.is_empty())
         .map(ToString::to_string)

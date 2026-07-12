@@ -1,0 +1,10 @@
+id = "asp-search-release-cli-millisecond-gate"
+title = "Canonical release search paths remain millisecond scale"
+policy_ids = ["RUST-AGENT-ASP-SEARCH-RELEASE-CLI-MILLISECOND-001"]
+agent_goal = "Guard the installed release artifact against broad-query and single-file search latency regressions on the real CLI boundary."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = ["check-search-release-performance", "--version --require-release", "source=blocked ranker=query-budget"]
+inputs = "The canonical release ASP binary, one concept-only search pipe query, and one single-file rg query."
+expected = "The concept-only query is rejected before DB/provider work, the file-scoped rg query completes through the bounded search path, and both remain millisecond scale."
+harness = "pytest"
+test = "test_release_search_cli_millisecond_gate"

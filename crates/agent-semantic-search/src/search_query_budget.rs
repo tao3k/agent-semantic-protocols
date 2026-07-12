@@ -34,6 +34,9 @@ pub fn search_terms_budget_block(
         .filter(|term| generic_search_term(term))
         .cloned()
         .collect::<Vec<_>>();
+    let all_generic = terms.len() >= 2 && generic_terms.len() == terms.len();
+    let lacks_specific_anchor =
+        terms.len() >= 4 && !terms.iter().any(|term| specific_search_term(term));
     let too_many_terms = terms.len() >= 10 && generic_terms.len() >= 5;
     let generic_dominated =
         terms.len() >= 5 && generic_terms.len() >= 5 && generic_terms.len() * 2 >= terms.len();
@@ -42,11 +45,17 @@ pub fn search_terms_budget_block(
     } else {
         generic_terms
     };
-    (too_many_terms || generic_dominated).then_some(SearchQueryBudgetBlock {
-        reason: "query-too-broad",
-        generic_terms: displayed_generic_terms,
-        term_count: terms.len(),
-    })
+    (all_generic || lacks_specific_anchor || too_many_terms || generic_dominated).then_some(
+        SearchQueryBudgetBlock {
+            reason: if lacks_specific_anchor && !all_generic {
+                "query-needs-specific-anchor"
+            } else {
+                "query-too-broad"
+            },
+            generic_terms: displayed_generic_terms,
+            term_count: terms.len(),
+        },
+    )
 }
 
 #[must_use]

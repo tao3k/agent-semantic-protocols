@@ -12,7 +12,7 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode,
-    run_provider_process as run_transport_process,
+    provider_process_limits_from_environment, run_provider_process as run_transport_process,
 };
 use bytes::{Bytes, BytesMut};
 
@@ -80,7 +80,7 @@ impl LocalNativeCliBackend {
         forwarded_args: Vec<String>,
     ) -> Result<LocalNativeCommand, String> {
         let project_root = provider_process_cwd(&request.project_root)?;
-        let mut invocation = Self::provider_command_prefix(provider, &project_root)?;
+        let mut invocation = Self::provider_command_prefix(provider)?;
         Self::push_method(&mut invocation, &request.method)?;
         let forwarded_args = append_syntax_query_plan_args(
             &request.method,
@@ -142,24 +142,8 @@ impl LocalNativeCliBackend {
         Ok(path.to_string_lossy().to_string())
     }
 
-    fn provider_command_prefix(
-        provider: &ResolvedProvider,
-        project_root: &std::path::Path,
-    ) -> Result<Vec<String>, String> {
-        let prefix =
-            if let Some(binary) = Self::provider_binary_on_path(&provider.binary, project_root) {
-                vec![binary]
-            } else if let Ok(binary) = Self::home_local_provider_binary(provider) {
-                vec![binary]
-            } else if let Some(argv) = provider.runtime_command_argv.as_ref()
-                && !argv.is_empty()
-            {
-                argv.clone()
-            } else if !provider.provider_command_prefix.is_empty() {
-                provider.provider_command_prefix.clone()
-            } else {
-                vec![Self::home_local_provider_binary(provider)?]
-            };
+    fn provider_command_prefix(provider: &ResolvedProvider) -> Result<Vec<String>, String> {
+        let prefix = vec![Self::home_local_provider_binary(provider)?];
         Ok(Self::provider_command_prefix_with_facade_language(
             provider, prefix,
         ))
@@ -173,6 +157,13 @@ impl LocalNativeCliBackend {
             prefix.insert(1, provider.language_id.to_string());
         }
         prefix
+    }
+
+    fn same_binary_path(left: &str, right: &Path) -> bool {
+        let left = Path::new(left);
+        let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
+        let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
+        left == right
     }
 
     fn provider_command_prefix_needs_facade_language(
@@ -197,46 +188,6 @@ impl LocalNativeCliBackend {
         Path::new(program)
             .file_name()
             .is_some_and(|name| name.to_string_lossy() == "asp")
-    }
-
-    fn same_binary_path(left: &str, right: &Path) -> bool {
-        let left = Path::new(left);
-        let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
-        let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
-        left == right
-    }
-
-    fn provider_binary_on_path(binary: &str, project_root: &std::path::Path) -> Option<String> {
-        let path = Path::new(binary);
-        let project_root = project_root
-            .canonicalize()
-            .unwrap_or_else(|_| project_root.to_path_buf());
-        if path.components().count() > 1 {
-            let candidate = if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                project_root.join(path)
-            };
-            return candidate.is_file().then(|| {
-                candidate
-                    .canonicalize()
-                    .unwrap_or(candidate)
-                    .to_string_lossy()
-                    .to_string()
-            });
-        }
-        env::var_os("PATH").and_then(|path| {
-            env::split_paths(&path).find_map(|entry| {
-                let candidate = entry.join(binary);
-                let resolved = candidate.canonicalize().unwrap_or(candidate);
-                if !resolved.starts_with(&project_root) {
-                    return None;
-                }
-                resolved
-                    .is_file()
-                    .then(|| resolved.to_string_lossy().to_string())
-            })
-        })
     }
 
     fn forwarded_arg_sets(request: &ClientRequest) -> Vec<Vec<String>> {
@@ -291,7 +242,7 @@ impl LocalNativeCliBackend {
     }
 
     pub fn execute(&self, request: &ClientRequest) -> Result<LocalNativeOutput, String> {
-        self.execute_with_limits(request, ProviderProcessLimits::default())
+        self.execute_with_limits(request, provider_process_limits_from_environment()?)
     }
 
     pub fn execute_with_limits(

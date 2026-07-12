@@ -64,22 +64,6 @@ pub(crate) fn asp_julia_owner_items_cold_functional_path_stays_inside_scenario_g
     });
 }
 
-pub(crate) fn asp_gerbil_scheme_owner_items_cold_functional_path_stays_inside_scenario_gate() {
-    assert_owner_items_cold_functional_path(OwnerItemsColdFunctionalScenario {
-        scenario_dir: "asp_gerbil_scheme_owner_items_cold_functional_path",
-        scenario_id: "asp-gerbil-scheme-owner-items-cold-functional-path",
-        language_id: "gerbil-scheme",
-        binary: "gslph",
-        owner_path: "src/model.ss",
-        package_anchor_path: "gerbil.pkg",
-        package_anchor_text: "(package: scenario-gerbil-owner-items-cold-functional)\n",
-        source_text: "(def (dynamic-owner-item-index) #t)\n",
-        query: "dynamic-owner-item-index",
-        alg: "gslph-owner-items",
-        item_symbol: "dynamic-owner-item-index",
-    });
-}
-
 pub(super) struct OwnerItemsColdFunctionalScenario {
     pub(crate) scenario_dir: &'static str,
     pub(crate) scenario_id: &'static str,

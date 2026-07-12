@@ -27,25 +27,18 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     };
     let config = fs::read_to_string(&config_path).unwrap_or_default();
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
-    let hook_config = if client_config_path.is_file() {
-        Some(
-            load_client_config_for_project(&client_config_path, &project_root).map_err(
-                |error| {
-                    format!(
-                        "invalid client hook config {}: {error}",
-                        display_path(&project_root, &client_config_path)
-                    )
-                },
-            )?,
-        )
-    } else {
-        None
-    };
-    let client_config_status = if hook_config.is_some() {
+    let client_config_status = if client_config_path.is_file() {
         "ok"
     } else {
-        "missing"
+        "default"
     };
+    let hook_config =
+        load_client_config_for_project(&client_config_path, &project_root).map_err(|error| {
+            format!(
+                "invalid effective client hook config {}: {error}",
+                display_path(&project_root, &client_config_path)
+            )
+        })?;
     let legacy_root_hook = if client == "claude" {
         config.contains("asp hook") && config.contains("--client claude")
     } else {
@@ -53,8 +46,15 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     };
     let project_plugin_hook =
         client == "codex" && codex_project_plugin_hooks_present(&project_root);
-    let root_hook = legacy_root_hook || project_plugin_hook;
-    let hook_mode = hook_mode_label(client, legacy_root_hook, project_plugin_hook);
+    let global_plugin_hook = client == "codex" && codex_global_plugin_hooks_present();
+    let plugin_hook = project_plugin_hook || global_plugin_hook;
+    let root_hook = legacy_root_hook || plugin_hook;
+    let hook_mode = hook_mode_label(
+        client,
+        legacy_root_hook,
+        project_plugin_hook,
+        global_plugin_hook,
+    );
     let hook_binary_path = protocol_binary_on_path();
     let hook_binary = hook_binary_path.is_some();
     let hook_binary_path = hook_binary_path
@@ -71,27 +71,23 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         None
     };
     let (classifier_probe, classifier_reason) = if client == "codex" {
-        if let Some(hook_config) = hook_config.as_ref() {
-            let probe_payload = serde_json::json!({
-                "tool_name": "functions.exec_command",
-                "tool_input": {
-                    "cmd": "sed -n '1,120p' src/lib.rs"
-                }
-            });
-            let decision = classify_hook_with_config(HookClassificationRequest {
-                registry: &runtime,
-                config: hook_config,
-                platform: client,
-                event: "PreToolUse",
-                payload: &probe_payload,
-            });
-            (
-                decision_kind_label(decision.decision),
-                reason_kind_label(decision.reason_kind),
-            )
-        } else {
-            ("unavailable", "client-config-missing")
-        }
+        let probe_payload = serde_json::json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {
+                "cmd": "sed -n '1,120p' src/lib.rs"
+            }
+        });
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &runtime,
+            config: &hook_config,
+            platform: client,
+            event: "PreToolUse",
+            payload: &probe_payload,
+        });
+        (
+            decision_kind_label(decision.decision),
+            reason_kind_label(decision.reason_kind),
+        )
     } else {
         ("not-applicable", "non-codex-client")
     };
@@ -100,19 +96,38 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     } else {
         None
     };
-    let plugin_only_hook = project_plugin_hook && !legacy_root_hook;
+    let plugin_trust_status = if client == "codex" && plugin_hook {
+        let plugin_hooks_json_path = if global_plugin_hook {
+            codex_global_plugin_hooks_json_path()
+        } else {
+            codex_project_plugin_hooks_json_path(&project_root)
+        };
+        plugin_hooks_json_path.ok().and_then(|path| {
+            agent_semantic_hook::codex_user_plugin_trust_state_status(
+                &path,
+                &codex_plugin_hook_key_source(),
+            )
+            .ok()
+        })
+    } else {
+        None
+    };
+    let plugin_only_hook = plugin_hook && !legacy_root_hook;
+    let project_trust = trust_status
+        .as_ref()
+        .is_some_and(|status| status.project_trusted);
+    let plugin_hook_state_trust = plugin_trust_status
+        .as_ref()
+        .is_some_and(|status| status.hook_state_trusted);
     let trust = trust_status.as_ref().is_some_and(|status| {
         if plugin_only_hook {
-            status.project_trusted
+            status.project_trusted && plugin_hook_state_trust
         } else {
             status.trusted
         }
     });
-    let project_trust = trust_status
-        .as_ref()
-        .is_some_and(|status| status.project_trusted);
     let hook_state_trust = if plugin_only_hook {
-        project_trust
+        plugin_hook_state_trust
     } else {
         trust_status
             .as_ref()
@@ -122,7 +137,10 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         .as_ref()
         .map(|status| {
             if plugin_only_hook {
-                0
+                plugin_trust_status
+                    .as_ref()
+                    .map(|status| status.missing_events.len())
+                    .unwrap_or(0)
             } else {
                 status.missing_events.len()
             }
@@ -132,18 +150,41 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         .as_ref()
         .map(|status| {
             if plugin_only_hook {
-                0
+                plugin_trust_status
+                    .as_ref()
+                    .map(|status| status.stale_events.len())
+                    .unwrap_or(0)
             } else {
                 status.stale_events.len()
             }
         })
         .unwrap_or(0);
-    let trust_config = trust_status
+    let trust_config = if plugin_only_hook {
+        plugin_trust_status
+            .as_ref()
+            .map(|status| status.trust_config_path.display().to_string())
+    } else {
+        trust_status
+            .as_ref()
+            .map(|status| status.trust_config_path.display().to_string())
+    }
+    .unwrap_or_else(|| "unavailable".to_string());
+    let enforcement_status = enforcement
         .as_ref()
-        .map(|status| status.trust_config_path.display().to_string())
-        .unwrap_or_else(|| "unavailable".to_string());
+        .map(|report| report.status)
+        .unwrap_or("not-applicable");
+    let doctor_status = if client == "codex" && enforcement_status != "ok" {
+        "warning"
+    } else {
+        "ok"
+    };
+    let background_thread_hook = if client == "codex" {
+        "host-surface-unproven"
+    } else {
+        "not-applicable"
+    };
     println!(
-        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
+        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
@@ -151,7 +192,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         client_config_status,
         root_hook,
         hook_mode,
-        project_plugin_hook,
+        plugin_hook,
         trust,
         project_trust,
         hook_state_trust,
@@ -162,10 +203,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         hook_binary_path,
         classifier_probe,
         classifier_reason,
-        enforcement
-            .as_ref()
-            .map(|report| report.status)
-            .unwrap_or("not-applicable"),
+        enforcement_status,
         enforcement
             .as_ref()
             .map(|report| report.probe)
@@ -174,6 +212,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
             .as_ref()
             .map(|report| report.reason)
             .unwrap_or("non-codex-client"),
+        background_thread_hook,
         HOOK_PROTOCOL_ID,
     );
     if let Some(report) = enforcement.as_ref()
@@ -192,12 +231,13 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     }
     if client == "codex" && root_hook {
         println!(
-            "|codex-app projectConfig={} hookMode={} pluginHook={} projectTrust={} hookStateTrust={} reloadHint=restart-open-codex-app-thread-after-install",
+            "|codex-app projectConfig={} hookMode={} pluginHook={} projectTrust={} hookStateTrust={} backgroundThreadHook={} hostSurface=codex_app.create_thread verificationHint=native-thread-required reloadHint=restart-native-codex-thread-after-plugin-install",
             display_path(&project_root, &config_path),
             hook_mode,
-            project_plugin_hook,
+            plugin_hook,
             project_trust,
             hook_state_trust,
+            background_thread_hook,
         );
     }
     if let Some(status) = trust_status.as_ref()
@@ -266,6 +306,7 @@ fn hook_mode_label(
     client: &str,
     legacy_root_hook: bool,
     project_plugin_hook: bool,
+    global_plugin_hook: bool,
 ) -> &'static str {
     if client != "codex" {
         return if legacy_root_hook {
@@ -274,11 +315,13 @@ fn hook_mode_label(
             "missing"
         };
     }
-    match (legacy_root_hook, project_plugin_hook) {
-        (true, true) => "mixed",
-        (true, false) => "project-config",
-        (false, true) => "codex-plugin",
-        (false, false) => "missing",
+    match (legacy_root_hook, project_plugin_hook, global_plugin_hook) {
+        (true, true, _) | (true, _, true) => "mixed",
+        (true, false, false) => "project-config",
+        (false, true, true) => "codex-plugin-project+global",
+        (false, true, false) => "codex-plugin-project",
+        (false, false, true) => "codex-plugin-global",
+        (false, false, false) => "missing",
     }
 }
 
@@ -311,3 +354,8 @@ fn runtime_profile_status_label(status: RuntimeProviderHealthStatus) -> &'static
         RuntimeProviderHealthStatus::Unexecutable => "unexecutable",
     }
 }
+use super::hook_runtime_codex_plugin::codex_project_plugin_hooks_json_path;
+use super::hook_runtime_codex_plugin_identity::{
+    codex_global_plugin_hooks_json_path, codex_plugin_hook_key_source,
+};
+use crate::command::hook_runtime::hook_runtime_codex_plugin::codex_global_plugin_hooks_present;

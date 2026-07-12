@@ -320,19 +320,17 @@ pub struct SourceAccessDecision {
     pub notes: Vec<String>,
 }
 
-/// Named input for a hard deny of direct filesystem source reads.
+/// Named input for an explicitly requested filesystem source read.
 #[derive(Debug)]
-pub struct SourceAccessHardFsDenyInput {
-    /// Language id for the denied source path.
+pub struct SourceAccessExplicitReadInput {
+    /// Language id for the requested source path.
     pub language_id: String,
-    /// Provider that should handle the semantic query route.
+    /// Provider that owns the source path.
     pub provider_id: SourceAccessProviderId,
     /// Filesystem RPC method that attempted the read.
     pub rpc_method: String,
-    /// Source path that was denied.
+    /// Source path requested by the developer.
     pub path: String,
-    /// Replacement provider command argv.
-    pub route_argv: Vec<String>,
 }
 
 /// Named input for source-like shell output suppression.
@@ -366,8 +364,8 @@ pub struct SourceAccessProviderCapabilityAllowInput {
 }
 
 impl SourceAccessDecision {
-    /// Builds a hard-deny packet for direct filesystem source reads.
-    pub fn hard_fs_deny(input: SourceAccessHardFsDenyInput) -> Self {
+    /// Builds an allow packet for an explicitly requested filesystem source read.
+    pub fn explicit_read_allow(input: SourceAccessExplicitReadInput) -> Self {
         let language_id = input.language_id;
         let provider_id = input.provider_id;
         let path = input.path;
@@ -379,12 +377,12 @@ impl SourceAccessDecision {
             client: SourceAccessClient::Codex,
             boundary: SourceAccessBoundary::CodexFsApi,
             operation: SourceAccessOperation::ReadFile,
-            enforcement: SourceAccessEnforcement::Hard,
-            decision: SourceAccessDecisionKind::Deny,
-            reason_kind: SourceAccessReasonKind::DirectSourceRead,
-            source_bytes_returned: false,
-            model_visible_bytes_returned: false,
-            authorization: Some(SourceAccessAuthorization::None),
+            enforcement: SourceAccessEnforcement::NotEnforced,
+            decision: SourceAccessDecisionKind::Allow,
+            reason_kind: SourceAccessReasonKind::None,
+            source_bytes_returned: true,
+            model_visible_bytes_returned: true,
+            authorization: Some(SourceAccessAuthorization::UserApproved),
             language_ids: vec![language_id.clone()],
             provider_id: Some(provider_id.clone()),
             subject: SourceAccessSubject {
@@ -392,14 +390,8 @@ impl SourceAccessDecision {
                 paths: vec![path.clone()],
                 ..SourceAccessSubject::default()
             },
-            routes: vec![SourceAccessRoute {
-                language_id,
-                provider_id,
-                binary: "asp".to_string(),
-                kind: SourceAccessRouteKind::Query,
-                argv: input.route_argv,
-            }],
-            message: format!("direct-source-read denied; use provider query for {path}"),
+            routes: Vec::new(),
+            message: format!("explicit source read allowed for {path}"),
             notes: Vec::new(),
         }
     }
@@ -491,25 +483,12 @@ pub fn codex_fs_read_file_decision(
     .next()?;
     let language_id = matched.provider.language_id.clone();
     let provider_id = matched.provider.provider_id.clone();
-    let route_argv = vec![
-        "asp".to_string(),
-        language_id.clone(),
-        "search".to_string(),
-        "owner".to_string(),
-        path.to_string(),
-        "items".to_string(),
-        "--workspace".to_string(),
-        ".".to_string(),
-        "--view".to_string(),
-        "seeds".to_string(),
-    ];
-    Some(SourceAccessDecision::hard_fs_deny(
-        SourceAccessHardFsDenyInput {
+    Some(SourceAccessDecision::explicit_read_allow(
+        SourceAccessExplicitReadInput {
             language_id,
             provider_id: SourceAccessProviderId(provider_id),
             rpc_method: rpc_method.into(),
             path: path.to_string(),
-            route_argv,
         },
     ))
 }

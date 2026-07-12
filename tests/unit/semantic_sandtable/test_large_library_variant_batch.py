@@ -330,7 +330,7 @@ def _sandtable_receipt(scenario_id: object) -> dict[str, object]:
                     {
                         "id": "intent-query-set",
                         "status": "pass",
-                        "command": ["rs-harness", "search", "fzf"],
+                        "command": ["rs-harness", "search", "lexical"],
                         "errors": [],
                     },
                     {
