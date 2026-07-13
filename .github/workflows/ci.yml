@@ -295,6 +295,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          npm install --global @openai/codex@0.144.1
+          codex --version
           mkdir -p "$HOME/.local/bin"
           install -m 755 target/debug/asp "$HOME/.local/bin/asp"
           export PATH="$HOME/.local/bin:$PATH"
