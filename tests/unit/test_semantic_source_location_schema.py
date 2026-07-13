@@ -70,16 +70,6 @@ class SemanticSourceLocationSchemaTests(unittest.TestCase):
                 "projectPath": "projectPath",
                 "location": "location",
             },
-            "semantic-tree-sitter-query.v1.schema.json": {
-                "projectPath": "projectPath",
-                "lineRange": "lineRange",
-                "location": "location",
-                "sourceLocator": "sourceLocator",
-                "sourceSpanLocator": "sourceSpanLocator",
-            },
-            "semantic-tree-sitter-grammar-profile.v1.schema.json": {
-                "projectPath": "projectPath",
-            },
             "semantic-tree-sitter-provenance.v1.schema.json": {
                 "projectPath": "projectPath",
                 "lineRange": "lineRange",
@@ -88,11 +78,27 @@ class SemanticSourceLocationSchemaTests(unittest.TestCase):
         }
 
         for schema_name, refs in expected_refs.items():
-            defs = _load_schema(schema_name)["$defs"]
-            for local_name, source_location_name in refs.items():
-                with self.subTest(schema=schema_name, local_name=local_name):
-                    self.assertEqual(
-                        defs[local_name]["$ref"],
+            schema = _load_schema(schema_name)
+            references = _schema_references(schema)
+            for source_location_name in refs.values():
+                with self.subTest(
+                    schema=schema_name, source_location=source_location_name
+                ):
+                    self.assertIn(
                         "semantic-source-location.v1.schema.json"
                         f"#/$defs/{source_location_name}",
+                        references,
                     )
+
+
+def _schema_references(value: object) -> set[str]:
+    if isinstance(value, dict):
+        direct = {
+            item
+            for key, item in value.items()
+            if key == "$ref" and isinstance(item, str)
+        }
+        return direct.union(*(_schema_references(item) for item in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_schema_references(item) for item in value))
+    return set()

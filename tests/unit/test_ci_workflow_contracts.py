@@ -61,7 +61,9 @@ LANGUAGE_RELEASE_WORKFLOWS = {
 
 def test_language_release_workflows_are_project_owned_and_publish_assets() -> None:
     for language_path, contract in LANGUAGE_RELEASE_WORKFLOWS.items():
-        workflow_path = REPO_ROOT / language_path / ".github" / "workflows" / "release.yml"
+        workflow_path = (
+            REPO_ROOT / language_path / ".github" / "workflows" / "release.yml"
+        )
         assert workflow_path.exists(), language_path
 
         workflow = workflow_path.read_text(encoding="utf-8")
@@ -76,7 +78,9 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
         assert '- "v*"' in workflow
         assert "permissions:\n  contents: write" in workflow
         assert f"BINARY: {contract['binary']}" in workflow
-        assert "github.event.release.tag_name || inputs.tag || github.ref_name" in workflow
+        assert (
+            "github.event.release.tag_name || inputs.tag || github.ref_name" in workflow
+        )
         assert "- name: Ensure release tag" in workflow
         assert "if: github.event_name == 'workflow_dispatch'" in workflow
         assert "release tag must start with v" in workflow
@@ -90,7 +94,7 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
         if "x86_64-pc-windows-msvc" in contract["targets"]:
             assert "- name: Enable Windows long paths" in workflow
             assert "git config --global core.longpaths true" in workflow
-            assert 'CARGO_NET_GIT_FETCH_WITH_CLI=true' in workflow
+            assert "CARGO_NET_GIT_FETCH_WITH_CLI=true" in workflow
             build_step = workflow.split("- name: Build release binary", 1)[1]
             build_step = build_step.split("- name: Package provider binary", 1)[0]
             assert "shell: bash" in build_step
@@ -99,8 +103,7 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
             assert target in workflow, f"{language_path} missing {target}"
 
         assert (
-            f"- os: {contract['darwin_os']}\n"
-            "            target: aarch64-apple-darwin"
+            f"- os: {contract['darwin_os']}\n            target: aarch64-apple-darwin"
         ) in workflow
 
         if language_path == "languages/gerbil-scheme-language-project-harness":
@@ -116,7 +119,9 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
 def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
-    rust_checkout_step = workflow.split("- name: Checkout provider catalog submodules", 1)[1]
+    rust_checkout_step = workflow.split(
+        "- name: Checkout provider catalog submodules", 1
+    )[1]
     rust_checkout_step = rust_checkout_step.split("- name: Setup Rust", 1)[0]
     schema_checkout_step = workflow.split("- name: Checkout provider submodules", 1)[1]
     schema_checkout_step = schema_checkout_step.split("- name: Install uv", 1)[0]
@@ -129,7 +134,7 @@ def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
 def test_tree_sitter_contract_gate_uses_packaged_cli() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
-    assert 'tools/run-tree-sitter-query-contracts.sh' not in workflow
+    assert "tools/run-tree-sitter-query-contracts.sh" not in workflow
     assert (
         "uv run --project packages/python --frozen python -m tools "
         "tree-sitter validate contracts"
@@ -163,7 +168,10 @@ def test_language_evidence_setup_installs_release_asp_binary() -> None:
 
     assert "just agent-tools-install-protocol .bin" in setup
     assert "target/debug/asp" not in setup
-    assert "cargo build -q --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp" not in setup
+    assert (
+        "cargo build -q --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp"
+        not in setup
+    )
 
 
 def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
@@ -180,7 +188,9 @@ def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
     assert "run \\`just agent-tools-install-protocol ${bin_dir}\\`" in runner
 
 
-def test_gerbil_owner_items_fast_path_gate_uses_rust_inline_and_millisecond_budget() -> None:
+def test_gerbil_owner_items_fast_path_gate_uses_rust_inline_and_millisecond_budget() -> (
+    None
+):
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
     provider_gate_root = justfile.split("provider-gate-root:", 1)[1]
@@ -229,15 +239,11 @@ def test_gerbil_just_build_scans_only_launcher_build_inputs() -> None:
     target = justfile.split('agent-tools-build-gerbil bin_dir="":', 1)[1]
     target = target.split('agent-tools-install-gx bin_dir="":', 1)[0]
 
-    assert 'launcher="${package_bin}/gslph"' in target
-    assert (
-        "find src/cli-launcher.ss src/cli-dev-linker.ss "
-        "src/search-light-launcher.ss src/constants.ss "
-        "src/commands/search-prime-light.ss build.ss gerbil.pkg version.ss"
-    ) in target
-    assert 'GERBIL_BUILD_CORES="${cores}" ./build.ss compile --binary --optimized' in target
-    assert "find src build.ss gerbil.pkg version.ss" not in justfile
-    assert "[agent-tools-build-gerbil] ${launcher} is up to date" in target
+    assert 'launcher="${package_dir}/.gerbil/bin/gslph"' in target
+    assert "gxpkg env gxi src/build.ss compile" in target
+    assert 'install -m 755 "${launcher}" "${root_bin}/gslph"' in target
+    assert 'install -m 755 "${launcher}" "${bin_dir}/gslph"' in target
+    assert '"${bin_dir}/gslph" --help >/dev/null' in target
 
 
 def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> None:
@@ -245,9 +251,9 @@ def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> No
 
     install_julia = justfile.split('agent-tools-install-jl bin_dir="":', 1)[1]
     install_julia = install_julia.split("agent-hooks-doctor-providers:", 1)[0]
-    assert "agent-tools-install-language julia" in install_julia
-    assert "juliac/build_provider.sh" not in install_julia
-    assert 'install -m 755 "{{julia_compiled_harness}}"' not in install_julia
+    assert "juliac/build_provider.sh" in install_julia
+    assert "ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0" in install_julia
+    assert "install language julia --from-workspace --project ." in install_julia
 
     all_smoke = justfile.split("check-language-evidence-smoke-all-setup:", 1)[1]
     all_smoke = all_smoke.split("provider-gate:", 1)[0]
@@ -257,5 +263,7 @@ def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> No
     assert "ASP_LANGUAGE_EVIDENCE_MAX_COMMAND_SECONDS_JULIA=2" in all_smoke
 
     provider_gate_julia = justfile.split("provider-gate-julia:", 1)[1]
-    provider_gate_julia = provider_gate_julia.split("provider-gate-semantic-facts-setup:", 1)[0]
+    provider_gate_julia = provider_gate_julia.split(
+        "provider-gate-semantic-facts-setup:", 1
+    )[0]
     assert "just check-language-evidence-smoke-all" in provider_gate_julia
