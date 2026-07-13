@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use agent_semantic_client_db::{
-    agent_session_unix_timestamp, AgentSessionLookupRequest, AgentSessionRegistry,
+    AgentSessionLookupRequest, AgentSessionRegistry, agent_session_unix_timestamp,
 };
 
 use super::agent_session_registry_args::SessionArgs;

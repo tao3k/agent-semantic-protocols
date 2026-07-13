@@ -336,10 +336,10 @@ pub(crate) fn language_projection_evidence_graph(
         graph
             .nodes
             .push(crate::evidence_graph::ClientDbEvidenceGraphNode {
-            id: node_id,
-            kind: "source-file",
-            semantic_kind: None,
-            label: source.path.clone(),
+                id: node_id,
+                kind: "source-file",
+                semantic_kind: None,
+                label: source.path.clone(),
                 path: Some(source.path.clone()),
                 selector: None,
                 query_keys: language_projection_graph_query_keys([source.path.as_str()]),
@@ -373,10 +373,10 @@ pub(crate) fn language_projection_evidence_graph(
         graph
             .nodes
             .push(crate::evidence_graph::ClientDbEvidenceGraphNode {
-            id: node_id,
-            kind: "source-owner",
-            semantic_kind: owner.kind.clone(),
-            label: owner.name.clone().unwrap_or_else(|| source_path.clone()),
+                id: node_id,
+                kind: "source-owner",
+                semantic_kind: owner.kind.clone(),
+                label: owner.name.clone().unwrap_or_else(|| source_path.clone()),
                 path: Some(source_path.clone()),
                 selector: None,
                 query_keys: language_projection_graph_query_keys(
@@ -412,10 +412,10 @@ pub(crate) fn language_projection_evidence_graph(
         graph
             .nodes
             .push(crate::evidence_graph::ClientDbEvidenceGraphNode {
-            id: node_id,
-            kind: "selector",
-            semantic_kind: Some(item.kind.clone()),
-            label: item.name.clone(),
+                id: node_id,
+                kind: "selector",
+                semantic_kind: Some(item.kind.clone()),
+                label: item.name.clone(),
                 path: Some(source_path.clone()),
                 selector: Some(item.selector.clone()),
                 query_keys: language_projection_graph_query_keys([
@@ -482,10 +482,10 @@ fn language_projection_relation_node_id(
     graph
         .nodes
         .push(crate::evidence_graph::ClientDbEvidenceGraphNode {
-        id: node_id.clone(),
-        kind: "external",
-        semantic_kind: None,
-        label: node.id.clone(),
+            id: node_id.clone(),
+            kind: "external",
+            semantic_kind: None,
+            label: node.id.clone(),
             path: None,
             selector: None,
             query_keys: Vec::new(),

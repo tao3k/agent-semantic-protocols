@@ -3,8 +3,8 @@
 mod api;
 mod projection;
 
-pub use projection::{LanguageProjectionImportReport, import_language_projection};
 pub use api::rebuild_source_index;
+pub use projection::{LanguageProjectionImportReport, import_language_projection};
 mod collect;
 mod config;
 mod lookup;

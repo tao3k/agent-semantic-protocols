@@ -6,13 +6,10 @@ use std::time::{Duration, Instant};
 
 use orgize::document::DocumentLanguage;
 
-use crate::pipe_candidates::{
-    SearchPipePathCandidateRequest, collect_search_pipe_path_candidates,
-};
+use crate::pipe_candidates::{SearchPipePathCandidateRequest, collect_search_pipe_path_candidates};
 use crate::{
     DocumentSearchCandidate, DocumentSearchCandidateRequest, SearchPipeCandidate,
-    SearchPipeCandidateRequest,
-    collect_document_search_candidates, collect_search_pipe_candidates,
+    SearchPipeCandidateRequest, collect_document_search_candidates, collect_search_pipe_candidates,
     search_query_terms, search_terms_budget_block,
 };
 

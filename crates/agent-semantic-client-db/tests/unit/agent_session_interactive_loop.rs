@@ -1,6 +1,6 @@
 use agent_semantic_client_db::agent_session_registry::{
-    resident_child_bootstrap_menu, AgentSessionLoopState, AgentSessionRecord,
-    ResidentChildBootstrapMenuInput,
+    AgentSessionLoopState, AgentSessionRecord, ResidentChildBootstrapMenuInput,
+    resident_child_bootstrap_menu,
 };
 
 fn active_record(model: Option<&str>, message_target_id: Option<&str>) -> AgentSessionRecord {
@@ -82,33 +82,46 @@ fn checked_rollout_miss_offers_managed_create_or_host_blocker() {
     assert_eq!(menu.choices[0].id, "create-managed-resident-child");
     assert_eq!(menu.choices[0].next_state, AgentSessionLoopState::Audit);
     assert!(menu.choices[0].required_inputs.is_empty());
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("Immediately re-enter this pane"));
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("do not wait for SubagentStart as a child message"));
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("instead of creating a duplicate"));
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("detected platform-native managed-agent creation surface"));
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("do not create generic fallback agents or normal threads"));
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("Do not copy child ids, message targets, or model claims"));
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("Immediately re-enter this pane")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("do not wait for SubagentStart as a child message")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("instead of creating a duplicate")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("detected platform-native managed-agent creation surface")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("do not create generic fallback agents or normal threads")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("Do not copy child ids, message targets, or model claims")
+    );
     assert_eq!(
         menu.choices[1].id,
         "report-host-managed-agent-lifecycle-unavailable"
     );
     assert_eq!(menu.choices[1].next_state, AgentSessionLoopState::Create);
-    assert!(menu
-        .host_requirement
-        .blocked_when
-        .contains(&"native-built-in-agent-type-only"));
+    assert!(
+        menu.host_requirement
+            .blocked_when
+            .contains(&"native-built-in-agent-type-only")
+    );
     assert_eq!(
         menu.trace.iter().map(|step| step.state).collect::<Vec<_>>(),
         vec![
@@ -167,12 +180,16 @@ fn model_mismatch_requires_validation_choice() {
 
     assert_eq!(menu.state, AgentSessionLoopState::Ready);
     assert_eq!(menu.choices[0].id, "send-denied-asp-command");
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("host-native message-agent send"));
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("registered agentMessageTargetId"));
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("host-native message-agent send")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("registered agentMessageTargetId")
+    );
     assert_eq!(
         menu.choices[0].next_state,
         AgentSessionLoopState::WaitReceipt
@@ -207,15 +224,21 @@ fn missing_message_target_can_recover_host_single_agent_id() {
 
     assert_eq!(menu.state, AgentSessionLoopState::Recover);
     assert_eq!(menu.choices[0].id, "resume-managed-child-for-native-start");
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("immediately re-enter this pane"));
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("Do not wait for SubagentStart as a child message"));
-    assert!(menu.choices[0]
-        .platform_action
-        .contains("Do not verify or register a target through child text"));
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("immediately re-enter this pane")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("Do not wait for SubagentStart as a child message")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("Do not verify or register a target through child text")
+    );
     assert_eq!(menu.trace[1].result, "native-message-target-unverified");
 }
 
@@ -244,9 +267,11 @@ fn aligned_routable_record_is_ready() {
     assert_eq!(menu.choices[1].id, "record-native-child-retirement");
     assert_eq!(menu.choices[1].next_state, AgentSessionLoopState::Cleanup);
     assert_eq!(menu.choices[1].required_inputs, &["nativeStopReceipt"]);
-    assert!(menu.choices[1]
-        .platform_action
-        .contains("previous_status=running means shutdown was requested, not completed"));
+    assert!(
+        menu.choices[1]
+            .platform_action
+            .contains("previous_status=running means shutdown was requested, not completed")
+    );
     assert_eq!(
         menu.trace.iter().map(|step| step.state).collect::<Vec<_>>(),
         vec![

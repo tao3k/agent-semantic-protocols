@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use crate::dynamic_overlay::DynamicOverlayLane;
 use crate::{
-    DynamicSearchCandidate, DynamicSearchRootCandidateRequest,
-    SearchOverlayCollectionRequest, SearchOverlayConfig, SearchOverlaySurface,
+    DynamicSearchCandidate, DynamicSearchRootCandidateRequest, SearchOverlayCollectionRequest,
+    SearchOverlayConfig, SearchOverlaySurface,
     collect_dynamic_lexical_overlay_candidates_from_roots, collect_search_overlay_candidates,
     language_file_spec, language_neutral_search_file_spec,
 };

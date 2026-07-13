@@ -73,7 +73,9 @@ fn graph_owner_items_rank_parser_identity_without_selector_parsing() {
             owner_path: "src/runtime.ss".to_string(),
             symbol: "render_dynamic_owner_items_frontier".to_string(),
             semantic_kind: GraphSemanticKind::new("function").expect("semantic kind"),
-            selector: "gerbil-scheme://src/runtime.ss#item/function/render_dynamic_owner_items_frontier".to_string(),
+            selector:
+                "gerbil-scheme://src/runtime.ss#item/function/render_dynamic_owner_items_frontier"
+                    .to_string(),
         }])
     );
 }
