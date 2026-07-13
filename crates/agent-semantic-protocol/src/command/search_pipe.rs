@@ -380,7 +380,7 @@ fn print_search_query_budget_block(
     println!(
         "refineHint=use path-or-symbol terms first; example: asp fd -query 'path-or-symbol|error-code' --workspace <scope>"
     );
-    println!("avoid=repeat-search-pipe,broad-lexical,raw-rg,workspace-wide-rg");
+    println!("avoid=repeat-search-pipe,broad-lexical,raw-read,raw-rg,workspace-wide-rg");
 }
 
 fn search_budget_next_command(query: &str, workspace: Option<&Path>, scopes: &[PathBuf]) -> String {
