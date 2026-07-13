@@ -569,6 +569,7 @@ fn search_pipe_broad_query_blocks_before_backend_collection() {
         stdout.contains("queryBudget:blocked[") && stdout.contains("reason=query-too-broad"),
         "stdout={stdout}"
     );
+    assert!(stdout.contains("queryQuality=blocked"), "stdout={stdout}");
     assert!(
         stdout.contains(
             "nextCommand=asp fd -query 'gerbil-utils|list.ss|typed-combinator-style|r013'"

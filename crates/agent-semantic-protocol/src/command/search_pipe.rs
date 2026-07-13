@@ -353,6 +353,7 @@ fn print_search_query_budget_block(
 ) {
     println!("[{surface}] lang={language_id} view=seeds source=blocked ranker=query-budget");
     println!("query={query}");
+    println!("queryQuality=blocked");
     if let Some(workspace) = workspace {
         println!("workspace={}", workspace.display());
     }

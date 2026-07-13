@@ -173,6 +173,10 @@ pub(crate) fn rollout_session_liveness_for_session_id_in(
     rollout_session_liveness_at_path(&path)
 }
 
+#[cfg(test)]
+#[path = "../../tests/unit/codex/rollout_liveness.rs"]
+mod rollout_liveness_tests;
+
 fn rollout_session_liveness_at_path(path: &Path) -> CodexRolloutSessionLiveness {
     let activity = match rollout_session_activity(path) {
         Ok(activity) => activity,
