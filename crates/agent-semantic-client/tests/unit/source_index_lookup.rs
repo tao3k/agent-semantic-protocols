@@ -34,6 +34,8 @@ fn query_wrapper_source_index_lookup_projection_preserves_client_fields() {
                 source_kind: ClientDbSourceIndexSourceKind::File,
                 line_count: Some(12),
                 query_keys: vec!["query_wrapper_source_index".to_string()],
+                selector_kind: None,
+                selector_symbol: None,
                 selector_proof: None,
             }],
         });
@@ -67,6 +69,8 @@ fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
                 source_kind: ClientDbSourceIndexSourceKind::File,
                 line_count: Some(12),
                 query_keys: vec!["owner".to_string()],
+                selector_kind: None,
+                selector_symbol: None,
                 selector_proof: Some(ClientDbSourceIndexSelectorPayloadProof {
                     structural_selector: "rust://src/lib.rs#item/function/owner".to_string(),
                     payload_kind: "code".to_string(),

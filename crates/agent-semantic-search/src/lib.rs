@@ -27,6 +27,7 @@ mod pipe_source;
 mod pipe_source_index_projection;
 mod pipe_source_lexical_frame;
 pub use pipe_source::SearchPipeSelectorPayloadProof;
+mod graph_owner_item_route;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
 mod query_packet_replay;
@@ -45,7 +46,6 @@ mod search_pipe_query_pack;
 mod search_query_budget;
 mod search_subagent_receipt;
 mod source_index_lookup;
-mod graph_owner_item_route;
 
 pub use graph_owner_item_route::{
     GraphOwnerItemEvidence, GraphOwnerItemRenderRequest, GraphOwnerItemRoute,
