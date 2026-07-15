@@ -58,6 +58,18 @@ pub struct AgentSessionValidationReport {
     /// Actual model.
     #[serde(rename = "actualModel", skip_serializing_if = "Option::is_none")]
     pub actual_model: Option<String>,
+    /// Expected model reasoning effort.
+    #[serde(
+        rename = "expectedReasoningEffort",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub expected_reasoning_effort: Option<String>,
+    /// Actual model reasoning effort from rollout metadata.
+    #[serde(
+        rename = "actualReasoningEffort",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub actual_reasoning_effort: Option<String>,
     /// Expected sandbox policy.
     #[serde(rename = "expectedSandbox", skip_serializing_if = "Option::is_none")]
     pub expected_sandbox: Option<String>,

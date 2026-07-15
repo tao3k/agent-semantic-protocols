@@ -119,12 +119,13 @@ fn codex_subagent_start_claims_native_child_without_thread_env() {
             "agent_id": child_session_id,
             "agent_type": "asp_explorer",
             "model": "gpt-5.4-mini",
+            "reasoning_effort": "low",
             "permission_mode": "default",
         }),
         &[("CODEX_THREAD_ID", "")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(decision["decision"].as_str(), Some("allow"));
     let report = show_agent_session_json(&root, child_session_id);
     let session = &report["sessions"][0];
     assert_eq!(session["rootSessionId"].as_str(), Some(root_session_id));
@@ -142,6 +143,7 @@ fn codex_subagent_start_claims_native_child_without_thread_env() {
             "agent_id": child_session_id,
             "agent_type": "asp_explorer",
             "model": "gpt-5.4-mini",
+            "reasoning_effort": "low",
             "permission_mode": "default",
         }),
         &[("CODEX_THREAD_ID", "")],
@@ -173,6 +175,7 @@ fn codex_subagent_start_rejects_duplicate_native_child_without_replacing_owner()
             "agent_id": "019f126d-0000-7000-8000-000000000234",
             "agent_type": "asp_explorer",
             "model": "gpt-5.4-mini",
+            "reasoning_effort": "low",
             "permission_mode": "default",
         }),
         &[("CODEX_THREAD_ID", "")],
@@ -350,10 +353,29 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
     );
 
     assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(decision["reasonKind"].as_str(), Some("raw-broad-search"));
+    assert_eq!(
+        decision["reasonKind"].as_str(),
+        Some("asp-reasoning-routed")
+    );
     assert_eq!(
         decision["fields"]["agentSessionRoute"].as_str(),
         Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["residentChildName"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["residentCodexAgentName"].as_str(),
+        Some("asp_explorer")
+    );
+    assert_eq!(
+        decision["fields"]["targetAgentName"].as_str(),
+        Some("asp_explorer")
+    );
+    assert_eq!(
+        decision["fields"]["targetAgentRole"].as_str(),
+        Some("asp_explorer")
     );
     assert_eq!(
         decision["fields"]["residentCodexAgentName"].as_str(),
@@ -393,11 +415,11 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
     );
     assert_eq!(
         decision["fields"]["targetAgentName"].as_str(),
-        Some("asp-explore")
+        Some("asp_explorer")
     );
     assert_eq!(
         decision["fields"]["targetAgentRole"].as_str(),
-        Some("asp-explore")
+        Some("asp_explorer")
     );
     assert_eq!(
         decision["fields"]["forbiddenUntilResolved"].as_str(),
@@ -453,7 +475,10 @@ fn codex_main_session_denies_env_prefixed_asp_query_when_asp_explore_registered(
     );
 
     assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(decision["reasonKind"].as_str(), Some("raw-broad-search"));
+    assert_eq!(
+        decision["reasonKind"].as_str(),
+        Some("asp-reasoning-routed")
+    );
     assert_eq!(
         decision["fields"]["agentSessionRoute"].as_str(),
         Some("asp-explore")
@@ -528,7 +553,7 @@ fn codex_main_session_denies_registered_language_reasoning_query_and_search() {
         );
         assert_eq!(
             decision["reasonKind"].as_str(),
-            Some("raw-broad-search"),
+            Some("asp-reasoning-routed"),
             "command={command} decision={decision}"
         );
         assert!(
@@ -595,7 +620,10 @@ fn codex_main_session_denies_reasoning_search_pipe_when_asp_explore_registered()
     );
 
     assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(decision["reasonKind"].as_str(), Some("raw-broad-search"));
+    assert_eq!(
+        decision["reasonKind"].as_str(),
+        Some("asp-reasoning-routed")
+    );
     assert_eq!(
         decision["fields"]["agentSessionRoute"].as_str(),
         Some("asp-explore")
@@ -633,7 +661,7 @@ fn codex_installed_hook_full_resident_child_lifecycle_scenario() {
 
     let main_query = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        codex_asp_query_payload("asp rust search lexical resident owner --view seeds"),
         &[("CODEX_THREAD_ID", root_session_id)],
     );
     assert_eq!(main_query["decision"].as_str(), Some("deny"));
@@ -648,7 +676,7 @@ fn codex_installed_hook_full_resident_child_lifecycle_scenario() {
 
     let child_query = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        codex_asp_query_payload("asp rust search lexical resident owner --view seeds"),
         &[("CODEX_THREAD_ID", child_session_id)],
     );
     assert_eq!(child_query["decision"].as_str(), Some("allow"));
@@ -663,7 +691,7 @@ fn codex_installed_hook_full_resident_child_lifecycle_scenario() {
         json!({
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp rust query src/lib.rs --workspace . --code"
+                "command": "asp rust search lexical resident owner --view seeds"
             },
             "tool_result": {
                 "evidenceRef": "asp-evidence:full-lifecycle"
@@ -681,7 +709,7 @@ fn codex_installed_hook_full_resident_child_lifecycle_scenario() {
     );
     assert_eq!(
         session["lastCommand"].as_str(),
-        Some("asp rust query src/lib.rs --workspace . --code")
+        Some("asp rust search lexical resident owner --view seeds")
     );
 }
 
@@ -903,11 +931,11 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
     );
     assert_eq!(
         decision["fields"]["targetAgentName"].as_str(),
-        Some("asp-explore")
+        Some("asp_explorer")
     );
     assert_eq!(
         decision["fields"]["targetAgentRole"].as_str(),
-        Some("asp-explore")
+        Some("asp_explorer")
     );
     assert_eq!(
         decision["fields"]["forbiddenUntilResolved"].as_str(),
@@ -985,6 +1013,20 @@ fn codex_session_start_bootstraps_missing_asp_explore() {
     assert!(message.contains("asp-explore"));
 }
 
+#[path = "codex_session/payload_identity.rs"]
+mod payload_identity;
+
+#[path = "codex_session/profile_path.rs"]
+mod profile_path;
+
+#[path = "codex_session/runtime_drift.rs"]
+mod runtime_drift;
+
+#[path = "codex_session/inline_parser_fallback.rs"]
+mod inline_parser_fallback;
+#[path = "codex_session/resident_child_deny.rs"]
+mod resident_child_deny;
+
 #[test]
 fn codex_subagent_stop_archives_registered_asp_explore() {
     let root = claude_fixture();
@@ -1045,6 +1087,19 @@ fn codex_native_custom_subagent_is_outside_asp_lifecycle_management() {
         &[("CODEX_THREAD_ID", root_session_id)],
     );
     assert_eq!(start["decision"].as_str(), Some("allow"));
+    assert_eq!(
+        start["fields"]["agentSessionAction"].as_str(),
+        Some("ignore-unmanaged-native-subagent")
+    );
+    assert_eq!(
+        start["fields"]["agentSessionObservedAgentType"].as_str(),
+        Some("explorer")
+    );
+    assert_eq!(
+        start["fields"]["agentSessionExpectedAgentType"].as_str(),
+        Some("asp_explorer")
+    );
+    assert!(start["fields"].get("bootstrapBlocked").is_none());
 
     let stop = run_codex_hook_decision_with_env(
         &root,
@@ -1063,43 +1118,6 @@ fn codex_native_custom_subagent_is_outside_asp_lifecycle_management() {
 
     let report = show_agent_session_json(&root, resident_child_id);
     assert_eq!(report["sessions"][0]["status"].as_str(), Some("active"));
-}
-
-#[test]
-fn codex_native_asp_subagent_model_mismatch_is_rejected_before_registration() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-    let root_session_id = "019f126d-0000-7000-8000-000000000062";
-    let child_session_id = "019f126d-0000-7000-8000-000000000162";
-
-    let decision = run_codex_hook_decision_with_env(
-        &root,
-        "subagent-start",
-        json!({
-            "hook_event_name": "SubagentStart",
-            "session_id": root_session_id,
-            "agent_id": child_session_id,
-            "agent_type": "asp_explorer",
-            "model": "gpt-5.5",
-            "permission_mode": "default",
-        }),
-        &[("CODEX_THREAD_ID", root_session_id)],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["observedModel"].as_str(),
-        Some("gpt-5.5")
-    );
-    assert_eq!(
-        decision["fields"]["expectedModel"].as_str(),
-        Some("gpt-5.4-mini")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionRejectedChildAction"].as_str(),
-        Some("stop-native-subagent")
-    );
 }
 
 #[test]

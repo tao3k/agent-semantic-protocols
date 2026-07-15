@@ -1,16 +1,22 @@
 //! PATH-visible `asp` binary installation helpers.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process;
+
+use sha2::{Digest, Sha256};
 
 const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";
 const SEMANTIC_AGENT_BIN_DIR_ENV: &str = "SEMANTIC_AGENT_BIN_DIR";
 
 pub(crate) struct ProtocolBinaryInstall {
     pub(crate) path: PathBuf,
+    pub(crate) paths: Vec<PathBuf>,
     pub(crate) status: &'static str,
+    pub(crate) artifact_digest: String,
 }
 
 pub(crate) fn ensure_protocol_binary_installed_for_path() -> Result<ProtocolBinaryInstall, String> {
@@ -33,19 +39,12 @@ pub(crate) fn ensure_protocol_binary_installed_for_path() -> Result<ProtocolBina
             .map_err(|error| format!("failed to create {}: {error}", bin_dir.display()))?;
         require_path_contains_dir(&bin_dir)?;
         let target = bin_dir.join(SEMANTIC_AGENT_PROTOCOL_BIN);
-        let status = install_protocol_binary(&current_exe, &target)?;
-        return Ok(ProtocolBinaryInstall {
-            path: target,
-            status,
-        });
+        return install_protocol_binary_targets(&current_exe, &[target]);
     }
 
-    if let Some(existing) = protocol_binary_on_path() {
-        let status = install_protocol_binary(&current_exe, &existing)?;
-        return Ok(ProtocolBinaryInstall {
-            path: existing,
-            status,
-        });
+    let existing = protocol_binaries_on_path();
+    if !existing.is_empty() {
+        return install_protocol_binary_targets(&current_exe, &existing);
     }
 
     let target_dir = first_writable_path_dir().ok_or_else(|| {
@@ -54,18 +53,50 @@ pub(crate) fn ensure_protocol_binary_installed_for_path() -> Result<ProtocolBina
         )
     })?;
     let target = target_dir.join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let status = install_protocol_binary(&current_exe, &target)?;
-    Ok(ProtocolBinaryInstall {
-        path: target,
-        status,
-    })
+    install_protocol_binary_targets(&current_exe, &[target])
 }
 
 pub(crate) fn protocol_binary_on_path() -> Option<PathBuf> {
-    path_dirs().into_iter().find_map(|dir| {
-        let candidate = dir.join(SEMANTIC_AGENT_PROTOCOL_BIN);
-        candidate.is_file().then_some(candidate)
+    protocol_binaries_on_path().into_iter().next()
+}
+
+fn protocol_binaries_on_path() -> Vec<PathBuf> {
+    let mut seen = BTreeSet::new();
+    path_dirs()
+        .into_iter()
+        .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
+        .filter(|candidate| candidate.is_file() && seen.insert(candidate.clone()))
+        .collect()
+}
+
+pub(crate) fn install_protocol_binary_targets(
+    source: &Path,
+    targets: &[PathBuf],
+) -> Result<ProtocolBinaryInstall, String> {
+    let path = targets
+        .first()
+        .cloned()
+        .ok_or_else(|| "protocol binary installation requires at least one target".to_string())?;
+    let mut status = "already-present";
+    for target in targets {
+        status = merge_install_status(status, install_protocol_binary(source, target)?);
+    }
+    Ok(ProtocolBinaryInstall {
+        path,
+        paths: targets.to_vec(),
+        status,
+        artifact_digest: sha256_file(source)?,
     })
+}
+
+fn merge_install_status(current: &'static str, next: &'static str) -> &'static str {
+    if current == "updated" || next == "updated" {
+        "updated"
+    } else if current == "installed" || next == "installed" {
+        "installed"
+    } else {
+        "already-present"
+    }
 }
 
 pub(crate) fn install_protocol_binary(
@@ -84,33 +115,124 @@ pub(crate) fn install_protocol_binary(
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
+    let digest = sha256_file(source)?;
+    let artifact = versioned_protocol_binary_path(target, &digest)?;
+    stage_versioned_protocol_binary(source, &artifact)?;
     let temp = temporary_protocol_binary_path(target);
     if temp.exists() {
         fs::remove_file(&temp)
             .map_err(|error| format!("failed to remove stale {}: {error}", temp.display()))?;
     }
-    fs::copy(source, &temp).map_err(|error| {
+    stage_active_protocol_entry(&artifact, &temp)?;
+    atomic_replace_protocol_entry(&temp, target)?;
+    Ok(status)
+}
+
+fn versioned_protocol_binary_path(target: &Path, digest: &str) -> Result<PathBuf, String> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("protocol binary target has no parent: {}", target.display()))?;
+    let digest = digest
+        .strip_prefix("sha256:")
+        .ok_or_else(|| format!("invalid protocol artifact digest: {digest}"))?;
+    Ok(parent
+        .join(".asp-versions")
+        .join(digest)
+        .join(SEMANTIC_AGENT_PROTOCOL_BIN))
+}
+
+fn stage_versioned_protocol_binary(source: &Path, artifact: &Path) -> Result<(), String> {
+    if artifact.is_file() {
+        return Ok(());
+    }
+    let parent = artifact
+        .parent()
+        .ok_or_else(|| format!("protocol artifact has no parent: {}", artifact.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    let staged = artifact.with_extension(format!("stage-{}", process::id()));
+    if staged.exists() {
+        fs::remove_file(&staged)
+            .map_err(|error| format!("failed to remove stale {}: {error}", staged.display()))?;
+    }
+    fs::copy(source, &staged).map_err(|error| {
         format!(
-            "failed to stage {SEMANTIC_AGENT_PROTOCOL_BIN} at {}: {error}",
-            temp.display()
+            "failed to stage {SEMANTIC_AGENT_PROTOCOL_BIN} artifact at {}: {error}",
+            staged.display()
         )
     })?;
     let permissions = fs::metadata(source)
         .map_err(|error| format!("failed to inspect {}: {error}", source.display()))?
         .permissions();
-    fs::set_permissions(&temp, permissions)
-        .map_err(|error| format!("failed to chmod {}: {error}", temp.display()))?;
-    if target.exists() {
-        fs::remove_file(target)
-            .map_err(|error| format!("failed to replace {}: {error}", target.display()))?;
-    }
-    fs::rename(&temp, target).map_err(|error| {
+    fs::set_permissions(&staged, permissions)
+        .map_err(|error| format!("failed to chmod {}: {error}", staged.display()))?;
+    fs::rename(&staged, artifact).map_err(|error| {
         format!(
-            "failed to install {SEMANTIC_AGENT_PROTOCOL_BIN} to {}: {error}",
-            target.display()
+            "failed to publish versioned protocol artifact {}: {error}",
+            artifact.display()
         )
-    })?;
-    Ok(status)
+    })
+}
+
+#[cfg(unix)]
+fn stage_active_protocol_entry(artifact: &Path, staged_entry: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(artifact, staged_entry).map_err(|error| {
+        format!(
+            "failed to stage protocol binary link {} -> {}: {error}",
+            staged_entry.display(),
+            artifact.display()
+        )
+    })
+}
+
+#[cfg(not(unix))]
+fn stage_active_protocol_entry(artifact: &Path, staged_entry: &Path) -> Result<(), String> {
+    fs::copy(artifact, staged_entry)
+        .map(|_| ())
+        .map_err(|error| {
+            format!(
+                "failed to stage protocol binary entry {}: {error}",
+                staged_entry.display()
+            )
+        })
+}
+
+fn atomic_replace_protocol_entry(staged_entry: &Path, target: &Path) -> Result<(), String> {
+    match fs::rename(staged_entry, target) {
+        Ok(()) => Ok(()),
+        #[cfg(not(unix))]
+        Err(_) if target.exists() => {
+            fs::remove_file(target)
+                .map_err(|error| format!("failed to replace {}: {error}", target.display()))?;
+            fs::rename(staged_entry, target).map_err(|error| {
+                format!(
+                    "failed to install {SEMANTIC_AGENT_PROTOCOL_BIN} to {}: {error}",
+                    target.display()
+                )
+            })
+        }
+        Err(error) => Err(format!(
+            "failed to atomically install {SEMANTIC_AGENT_PROTOCOL_BIN} to {}: {error}",
+            target.display()
+        )),
+    }
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("failed to open {} for sha256: {error}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("failed to read {} for sha256: {error}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
 fn temporary_protocol_binary_path(target: &Path) -> PathBuf {

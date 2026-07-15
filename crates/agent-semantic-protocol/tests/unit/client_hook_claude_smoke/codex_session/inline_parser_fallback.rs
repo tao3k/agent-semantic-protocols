@@ -1,0 +1,92 @@
+use super::{
+    claude_fixture, codex_asp_query_payload, install_codex_hooks,
+    run_codex_pre_tool_decision_with_env,
+};
+
+const ROOT_SESSION_ID: &str = "019f5c84-0000-7000-8000-000000000301";
+
+#[test]
+fn explicit_inline_fallback_allows_exact_parser_owned_search_without_resident() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload(
+            "ASP_INLINE_PARSER_FALLBACK=1 direnv exec . asp rust search lexical lifecycle owner tests --workspace . --view seeds",
+        ),
+        &[("CODEX_THREAD_ID", ROOT_SESSION_ID)],
+    );
+
+    assert_eq!(decision["decision"], "allow", "{decision}");
+    assert_eq!(decision["reasonKind"], "none");
+    assert_eq!(
+        decision["fields"]["agentSessionAction"],
+        "inline-parser-fallback"
+    );
+    assert_eq!(decision["fields"]["executionLane"], "asp-explore");
+    assert_eq!(decision["fields"]["executionTransport"], "current-session");
+    assert_eq!(
+        decision["fields"]["executionReceiptKind"],
+        "asp-search-subagent"
+    );
+    assert_eq!(decision["fields"]["residentChild"], false);
+    assert_eq!(decision["fields"]["degraded"], true);
+    assert_eq!(decision["fields"]["aspCommandIntent"], "reasoning");
+    assert_eq!(decision["fields"]["languageId"], "rust");
+    assert!(
+        decision["fields"]["executionCommandDigest"]
+            .as_str()
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    assert!(decision["fields"].get("forbiddenUntilResolved").is_none());
+    assert!(decision["fields"].get("agentSessionLoopCommand").is_none());
+}
+
+#[test]
+fn parser_owned_search_without_inline_opt_in_remains_denied() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload(
+            "direnv exec . asp rust search lexical lifecycle owner tests --workspace . --view seeds",
+        ),
+        &[("CODEX_THREAD_ID", ROOT_SESSION_ID)],
+    );
+
+    assert_eq!(decision["decision"], "deny", "{decision}");
+    assert_eq!(decision["reasonKind"], "asp-reasoning-routed");
+    assert_eq!(decision["fields"]["inlineParserFallbackAvailable"], true);
+    assert_eq!(
+        decision["fields"]["inlineParserFallbackOptIn"],
+        "ASP_INLINE_PARSER_FALLBACK=1"
+    );
+    assert_eq!(
+        decision["fields"]["inlineParserFallbackPolicy"],
+        "exact-parser-owned-command-only"
+    );
+}
+
+#[test]
+fn inline_fallback_opt_in_never_authorizes_raw_shell_search() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        codex_asp_query_payload("ASP_INLINE_PARSER_FALLBACK=1 rg -n lifecycle crates"),
+        &[("CODEX_THREAD_ID", ROOT_SESSION_ID)],
+    );
+
+    assert_eq!(decision["decision"], "deny", "{decision}");
+    assert_ne!(
+        decision["fields"]["agentSessionAction"],
+        "inline-parser-fallback"
+    );
+    assert_ne!(decision["reasonKind"], "none");
+}

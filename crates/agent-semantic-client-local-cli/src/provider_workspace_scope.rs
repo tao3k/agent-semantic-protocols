@@ -116,6 +116,7 @@ fn workspace_scope_provider_limits() -> ProviderProcessLimits {
         timeout: Some(Duration::from_millis(WORKSPACE_SCOPE_PROVIDER_TIMEOUT_MS)),
         max_stdout_bytes: Some(WORKSPACE_SCOPE_MAX_STDOUT_BYTES),
         max_stderr_bytes: Some(WORKSPACE_SCOPE_MAX_STDERR_BYTES),
+        memory_limit_bytes: Some(1024 * 1024 * 1024),
     }
 }
 

@@ -1,27 +1,34 @@
 //! Command token helpers for agent-session hook routing.
 
+use agent_semantic_config::HookClientAspCommandIntentPolicyConfig;
+use agent_semantic_hook::{
+    AspLanguageCommandIntent, asp_invocation_indices,
+    classify_asp_language_command_tokens_with_policy, semantic_shell_tokens,
+};
+
 pub(super) fn command_requires_resident_child(
     command: &str,
-    main_asp_command_allowed: impl Fn(&[String], usize) -> bool,
+    intent_policy: &HookClientAspCommandIntentPolicyConfig,
 ) -> bool {
-    let tokens = shell_like_tokens(command);
-    tokens.iter().enumerate().any(|(index, token)| {
-        if !is_asp_binary_token(token) {
-            return false;
-        }
-        match classify_main_session_asp_command(&tokens, index) {
+    let tokens = semantic_shell_tokens(command);
+    asp_invocation_indices(&tokens).into_iter().any(
+        |index| match classify_main_session_asp_command(&tokens, index, intent_policy) {
             MainSessionAspCommandClass::ControlPlane
-            | MainSessionAspCommandClass::ExactEvidenceRead => false,
+            | MainSessionAspCommandClass::ExactEvidenceRead
+            | MainSessionAspCommandClass::DirectReadFallback
+            | MainSessionAspCommandClass::InvalidEvidence => false,
             MainSessionAspCommandClass::ReasoningFlow => true,
-            MainSessionAspCommandClass::Unknown => !main_asp_command_allowed(&tokens, index),
-        }
-    })
+            MainSessionAspCommandClass::Unknown => false,
+        },
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum MainSessionAspCommandClass {
     ControlPlane,
     ExactEvidenceRead,
+    DirectReadFallback,
+    InvalidEvidence,
     ReasoningFlow,
     Unknown,
 }
@@ -29,97 +36,48 @@ pub(super) enum MainSessionAspCommandClass {
 pub(super) fn classify_main_session_asp_command(
     tokens: &[String],
     asp_index: usize,
+    intent_policy: &HookClientAspCommandIntentPolicyConfig,
 ) -> MainSessionAspCommandClass {
     let Some(first) = tokens.get(asp_index + 1).map(|token| token.as_str()) else {
         return MainSessionAspCommandClass::Unknown;
     };
-    if first.eq_ignore_ascii_case("agent") {
+    if let Some(command) =
+        classify_asp_language_command_tokens_with_policy(&tokens[asp_index..], intent_policy)
+    {
+        return match command.intent {
+            AspLanguageCommandIntent::ExactEvidence => {
+                MainSessionAspCommandClass::ExactEvidenceRead
+            }
+            AspLanguageCommandIntent::Reasoning => MainSessionAspCommandClass::ReasoningFlow,
+            AspLanguageCommandIntent::DirectReadFallback => {
+                MainSessionAspCommandClass::DirectReadFallback
+            }
+            AspLanguageCommandIntent::InvalidEvidence => {
+                MainSessionAspCommandClass::InvalidEvidence
+            }
+        };
+    }
+    if intent_policy
+        .control_plane
+        .root_commands
+        .iter()
+        .any(|command| first.eq_ignore_ascii_case(command))
+    {
         return MainSessionAspCommandClass::ControlPlane;
     }
-    if first.eq_ignore_ascii_case("search")
-        || first.eq_ignore_ascii_case("query")
-        || first.eq_ignore_ascii_case("rg")
-        || first.eq_ignore_ascii_case("fd")
-    {
-        return MainSessionAspCommandClass::ReasoningFlow;
-    }
-    let Some(second) = tokens.get(asp_index + 2).map(|token| token.as_str()) else {
-        return MainSessionAspCommandClass::Unknown;
-    };
-    if second.eq_ignore_ascii_case("search")
-        || second.eq_ignore_ascii_case("rg")
-        || second.eq_ignore_ascii_case("fd")
-        || second.eq_ignore_ascii_case("elements-query")
-    {
-        return MainSessionAspCommandClass::ReasoningFlow;
-    }
-    if second.eq_ignore_ascii_case("contract")
-        && matches!(
-            tokens.get(asp_index + 3).map(String::as_str),
-            Some("trace" | "query-surface")
-        )
-    {
-        return MainSessionAspCommandClass::ReasoningFlow;
-    }
-    if !second.eq_ignore_ascii_case("query") {
-        return MainSessionAspCommandClass::Unknown;
-    }
-    classify_query_command(tokens, asp_index + 3)
-}
-
-fn classify_query_command(
-    tokens: &[String],
-    query_args_start: usize,
-) -> MainSessionAspCommandClass {
-    if tokens
+    if intent_policy
+        .reasoning
+        .root_commands
         .iter()
-        .skip(query_args_start)
-        .any(|token| token == "--term" || token == "-t")
+        .any(|command| first.eq_ignore_ascii_case(command))
     {
         return MainSessionAspCommandClass::ReasoningFlow;
     }
-    let bounded_projection = tokens
-        .iter()
-        .skip(query_args_start)
-        .any(|token| token == "--code" || token == "--names-only");
-    let selector = selector_arg(tokens, query_args_start);
-    match (selector, bounded_projection) {
-        (Some(selector), true) if is_exact_parser_owned_item_selector(selector) => {
-            MainSessionAspCommandClass::ExactEvidenceRead
-        }
-        _ => MainSessionAspCommandClass::ReasoningFlow,
-    }
-}
-
-fn selector_arg(tokens: &[String], query_args_start: usize) -> Option<&str> {
-    let mut index = query_args_start;
-    while index < tokens.len() {
-        let token = tokens[index].as_str();
-        if token == "--selector" {
-            return tokens.get(index + 1).map(String::as_str);
-        }
-        if token.starts_with('-') {
-            index += if flag_takes_value(token) { 2 } else { 1 };
-            continue;
-        }
-        return Some(token);
-    }
-    None
-}
-
-fn flag_takes_value(token: &str) -> bool {
-    matches!(
-        token,
-        "--workspace" | "--view" | "--format" | "--limit" | "--lang" | "--language"
-    )
-}
-
-fn is_exact_parser_owned_item_selector(selector: &str) -> bool {
-    selector.contains("://") && selector.contains("#item/")
+    MainSessionAspCommandClass::Unknown
 }
 
 pub(super) fn command_contains_asp_binary(command: &str) -> bool {
-    shell_like_tokens(command)
+    semantic_shell_tokens(command)
         .iter()
         .any(|token| is_asp_binary_token(token))
 }
@@ -207,7 +165,9 @@ fn is_env_assignment_token(token: &str) -> bool {
 }
 
 pub(super) fn is_asp_binary_token(token: &str) -> bool {
-    token.rsplit('/').next() == Some("asp")
+    token == "asp"
+        || token.rsplit('/').next() == Some("asp")
+        || token.rsplit('\\').next() == Some("asp.exe")
 }
 
 pub(super) fn shell_like_tokens(command: &str) -> Vec<String> {

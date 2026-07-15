@@ -363,6 +363,12 @@ pub struct ClientDbSourceIndexRefreshReport {
     pub file_count: u32,
     pub owner_count: u32,
     pub selector_count: u32,
+    /// Owners whose canonical rows were inserted or replaced by this refresh.
+    pub changed_owner_count: u32,
+    /// Owners removed from the canonical snapshot by this refresh.
+    pub removed_owner_count: u32,
+    /// Token-owner postings written after the changed-owner projection refresh.
+    pub posting_write_count: u32,
 }
 
 /// Source-index refresh result projected with the concrete DB path.

@@ -4,7 +4,7 @@ use super::agent_session_registry_rollout_activity::RolloutActivityReport;
 use serde::Serialize;
 use std::path::Path;
 
-use agent_semantic_client_db::AgentSessionRecord;
+use agent_semantic_client_db::{AgentSessionRecord, agent_session_message_target_is_live_bound};
 use agent_semantic_runtime::{AgentSessionValidationReport, CodexRolloutSessionIndex};
 
 #[derive(Serialize)]
@@ -430,15 +430,24 @@ fn hydrate_status_message_target_fields(report: &mut SessionStatusReport) {
         return;
     };
 
-    if let Some(target_id) = session
+    let persisted_target_id = session
         .message_target_id()
         .filter(|target_id| !target_id.trim().is_empty())
-    {
+        .map(str::to_string);
+    let live_binding = report
+        .root_session_id
+        .as_deref()
+        .is_some_and(|root| agent_session_message_target_is_live_bound(session, root));
+    if live_binding {
+        let target_id = persisted_target_id
+            .as_deref()
+            .expect("live binding requires a non-empty target id");
         if report.message_target_status.is_none() {
             report.message_target_status = Some("ready".to_string());
         }
         if report.message_target_result_source.is_none() {
-            report.message_target_result_source = Some("registry-message-target-id".to_string());
+            report.message_target_result_source =
+                Some("fresh-subagent-start-same-root-binding".to_string());
         }
         if report.message_agent_target_id.is_none() {
             report.message_agent_target_id = Some(target_id.to_string());
@@ -448,26 +457,20 @@ fn hydrate_status_message_target_fields(report: &mut SessionStatusReport) {
         }
     } else {
         if report.message_target_status.is_none() {
-            report.message_target_status = Some("missing".to_string());
+            report.message_target_status = Some("unbound".to_string());
         }
         if report.message_target_result_source.is_none() {
-            report.message_target_result_source =
-                Some("registry-message-target-id-missing".to_string());
+            report.message_target_result_source = Some(if persisted_target_id.is_some() {
+                "persisted-message-target-without-live-attestation".to_string()
+            } else {
+                "live-message-target-binding-missing".to_string()
+            });
         }
         report.message_agent_target_id = None;
         report.message_agent_target_id_equals_child = Some(false);
         report.routable = false;
         report.next_action =
-            "register-existing-child-with-native-message-target-or-create-managed-child"
-                .to_string();
-        if let Some(required_model) = report.required_model.as_deref() {
-            let name = report.name.as_deref().unwrap_or("asp-explore");
-            report.model_alignment_action =
-                Some("parent-register-native-message-target-before-model-follow-up".to_string());
-            report.model_alignment_message = Some(format!(
-                "The resident child is lifecycle-valid but has no native message-agent target. The parent must register the existing child with its native Codex message target or create a managed ASP child with model override {required_model} and light/low reasoning, then rerun asp agent session status --name {name}."
-            ));
-        }
+            "reenter-bootstrap-for-host-tree-target-rebind-or-typed-replacement".to_string();
     }
     downgrade_unverified_message_route(report);
 }

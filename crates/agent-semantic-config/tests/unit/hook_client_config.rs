@@ -2,9 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientResidentAgentConfig,
-    default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
-    load_asp_project_config_file, load_hook_client_config_file,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientExecutionTransport,
+    HookClientResidentAgentConfig, default_hook_client_config_template,
+    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
+    load_hook_client_config_file,
 };
 
 fn resident_agent<'a>(
@@ -123,12 +124,18 @@ fn default_template_round_trips_through_config_parser() {
             "org capture"
         ]
     );
-    let asp_testing = resident_agent(&config, "asp-testing");
-    assert!(asp_testing.enabled);
-    assert_eq!(asp_testing.name, "asp-testing");
-    assert_eq!(asp_testing.codex_agent_name, "asp_testing");
+    assert_eq!(config.agents.resident_agents.len(), 1);
+    assert!(config.execution_lanes.testing.enabled);
     assert_eq!(
-        asp_testing.command_prefixes,
+        config.execution_lanes.testing.transport,
+        HookClientExecutionTransport::CurrentSession
+    );
+    assert_eq!(
+        config.execution_lanes.testing.receipt_kind,
+        "asp-testing-execution-v1"
+    );
+    assert_eq!(
+        config.execution_lanes.testing.command_prefixes,
         [
             "cargo test",
             "cargo check",
@@ -139,6 +146,69 @@ fn default_template_round_trips_through_config_parser() {
         ]
     );
     assert!(config.rules.is_empty());
+    assert_eq!(
+        config.asp_command_intent_policy.control_plane.root_commands,
+        [
+            "guide",
+            "providers",
+            "tools",
+            "wrap",
+            "cache",
+            "cloud",
+            "hook",
+            "agent",
+            "install",
+            "sync",
+            "paths",
+            "healthcheck",
+            "source-access",
+            "ast-patch",
+            "graph",
+        ]
+    );
+    assert_eq!(
+        config.asp_command_intent_policy.reasoning.root_commands,
+        ["fd", "rg"]
+    );
+    assert_eq!(
+        config.asp_command_intent_policy.reasoning.search_routes,
+        [
+            "prime",
+            "pipe",
+            "owner",
+            "lexical",
+            "deps",
+            "dependency",
+            "failure",
+            "reasoning",
+            "ingest",
+            "guide",
+        ]
+    );
+    assert_eq!(
+        config.asp_command_intent_policy.reasoning.query_flags,
+        ["--term"]
+    );
+    assert_eq!(
+        config
+            .asp_command_intent_policy
+            .exact_evidence
+            .selector_kinds,
+        ["item"]
+    );
+    assert_eq!(
+        config
+            .asp_command_intent_policy
+            .direct_read_fallback
+            .from_hook_values,
+        ["direct-source-read"]
+    );
+    assert!(
+        config
+            .asp_command_intent_policy
+            .invalid_evidence
+            .reject_cross_language_selector
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -283,13 +353,10 @@ fn template_source_extensions_do_not_generate_user_rules() {
     let root = temp_root("hook-client-template-extensions");
     let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
-    fs::write(
-        &config_path,
-        default_hook_client_config_template_for_source_extensions([
-            ".ss", "ss", "*.scm", "**/*.sld", "", "  ",
-        ]),
-    )
-    .expect("write config");
+    let rendered = default_hook_client_config_template_for_source_extensions([
+        ".ss", "ss", "*.scm", "**/*.sld", "", "  ",
+    ]);
+    fs::write(&config_path, rendered).expect("write config");
 
     let config = load_hook_client_config_file(&config_path).expect("load config");
     assert!(config.rules.is_empty());

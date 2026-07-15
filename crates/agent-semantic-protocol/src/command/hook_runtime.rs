@@ -2,12 +2,18 @@
 
 #[path = "hook_runtime_agent_session.rs"]
 mod hook_runtime_agent_session;
+#[path = "hook_runtime_agent_session_drift.rs"]
+mod hook_runtime_agent_session_drift;
 #[path = "hook_runtime_codex_plugin.rs"]
 mod hook_runtime_codex_plugin;
 #[path = "hook_runtime_codex_plugin_identity.rs"]
 mod hook_runtime_codex_plugin_identity;
+#[path = "hook_runtime_config_recovery.rs"]
+mod hook_runtime_config_recovery;
 #[path = "hook_runtime_doctor.rs"]
 mod hook_runtime_doctor;
+#[path = "hook_runtime_install.rs"]
+mod hook_runtime_install;
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
 #[path = "hook_runtime_stdin.rs"]
@@ -16,44 +22,35 @@ mod hook_runtime_stdin;
 mod hook_runtime_subagent;
 
 use super::{
-    codex_enforcement_report, ensure_protocol_binary_installed_for_path,
-    payload_indicates_subagent_context, protocol_binary_on_path, run_org_state_sync,
+    codex_enforcement_report, payload_indicates_subagent_context, protocol_binary_on_path,
 };
 use agent_semantic_client_db::{AgentSessionLookupRequest, AgentSessionRegistry};
 use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
     HookClassificationRequest, HookDecision, ReasonKind, append_hook_event_state,
-    apply_repeated_deny_replay, classify_hook_with_config, claude_hook_block,
-    default_activation_path, default_claude_settings_path, default_client_config_path,
-    discover_activation_path, has_recorded_subagent_context, load_activation, load_client_config,
-    load_client_config_for_project, load_or_refresh_default_activation, merge_claude_settings,
-    parse_payload, record_active_context, remove_incompatible_hook_event_state,
-    render_platform_response, runtime_profiles_for_activation, subagent_deny_message,
-    validate_claude_settings_json,
+    apply_repeated_deny_replay, classify_hook_with_config, default_activation_path,
+    default_client_config_path, discover_activation_path, has_recorded_subagent_context,
+    load_activation, load_client_config_for_project, parse_payload, record_active_context,
+    render_platform_response, subagent_deny_message,
 };
-use agent_semantic_runtime::{project_activation_path, project_runtime_state, project_state_paths};
+use agent_semantic_runtime::project_state_paths;
 use hook_runtime_agent_session::{
     classify_activation_failure_main_session_asp, classify_main_session_asp_exploration,
-    load_asp_session_policy,
+    default_asp_session_policy, load_asp_session_policy,
 };
-use hook_runtime_codex_plugin::{
-    CodexPluginScope, codex_plugin_scope_arg, codex_project_plugin_cache_skill_path,
-    codex_project_plugin_hooks_present, install_codex_plugin_hooks,
-    sync_codex_project_plugin_cache,
+use hook_runtime_codex_plugin::codex_project_plugin_hooks_present;
+use hook_runtime_config_recovery::{
+    annotate_hook_config_fallback, annotate_target_agent_auto_sync,
 };
 use hook_runtime_doctor::run_doctor;
-use hook_runtime_skill::{
-    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_plugin_skill,
-    install_agent_semantic_protocols_skill,
-};
+pub(super) use hook_runtime_install::run_codex_plugin_install_args;
+use hook_runtime_install::run_install;
 use hook_runtime_stdin::read_hook_stdin_bounded;
-use hook_runtime_subagent::{install_claude_resident_agents, subagent_model_arg};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 
 pub(super) fn run_hook_runtime_args<I, S>(args: I) -> Result<(), String>
 where
@@ -152,20 +149,6 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
-    let hook_config = match load_client_config_for_project(&config_path, &project_root) {
-        Ok(config) => config,
-        Err(error) => {
-            emit_hook_config_load_failure(client, event, emit, &config_path, &error)?;
-            return Ok(());
-        }
-    };
-    let asp_session_policy = match load_asp_session_policy(&config_path) {
-        Ok(config) => config,
-        Err(error) => {
-            emit_hook_config_load_failure(client, event, emit, &config_path, &error)?;
-            return Ok(());
-        }
-    };
     let payload = match parse_payload(&stdin) {
         Ok(payload) => payload,
         Err(error) => {
@@ -176,6 +159,71 @@ fn run_hook(args: &[String]) -> Result<(), String> {
                 &format!("invalid hook payload JSON: {error:?}"),
             )?;
             return Ok(());
+        }
+    };
+    let mut hook_config_result = load_client_config_for_project(&config_path, &project_root);
+    let mut asp_session_policy_result = load_asp_session_policy(&config_path);
+    let mut hook_config_repair_reasons = Vec::new();
+    if let Err(error) = hook_config_result.as_ref() {
+        hook_config_repair_reasons.push(error.clone());
+    }
+    if let Err(error) = asp_session_policy_result.as_ref()
+        && !hook_config_repair_reasons.contains(error)
+    {
+        hook_config_repair_reasons.push(error.clone());
+    }
+    if asp_session_policy_result
+        .as_ref()
+        .is_ok_and(|policy| policy.uses_builtin_resident_fallback())
+    {
+        hook_config_repair_reasons
+            .push("agents.residentAgents is missing lifecycle=asp-command".to_string());
+    }
+    let needs_auto_sync = hook_config_result.is_err()
+        || asp_session_policy_result.is_err()
+        || asp_session_policy_result
+            .as_ref()
+            .is_ok_and(|policy| policy.uses_builtin_resident_fallback());
+    let mut hook_config_auto_sync = None;
+    if needs_auto_sync {
+        hook_config_auto_sync = Some(match super::sync::sync_agent_configuration() {
+            Ok(sync) => format!(
+                "completed:hookConfig={};agentConfigs={};codexAgentRegistry={}",
+                sync.hook_config_status, sync.projected, sync.codex_registry_entries
+            ),
+            Err(error) => format!("failed:{error}"),
+        });
+        hook_config_result = load_client_config_for_project(&config_path, &project_root);
+        asp_session_policy_result = load_asp_session_policy(&config_path);
+    }
+
+    let mut hook_config_load_errors = Vec::new();
+    let hook_config = match hook_config_result {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!(
+                "[agent-semantic-hook] config failed to load; continuing with built-in policy: {}: {error}",
+                config_path.display()
+            );
+            hook_config_load_errors.push(error);
+            agent_semantic_hook::ClientHookConfig::default()
+        }
+    };
+    let asp_session_policy = match asp_session_policy_result {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!(
+                "[agent-semantic-hook] ASP session policy failed to load; continuing with built-in route: {}: {error}",
+                config_path.display()
+            );
+            if !hook_config_load_errors.contains(&error) {
+                hook_config_load_errors.push(error);
+            }
+            default_asp_session_policy().map_err(|fallback_error| {
+                format!(
+                    "failed to load built-in ASP session policy after config failure: {fallback_error}"
+                )
+            })?
         }
     };
     let mut decision = if let Some(read_only_decision) = classify_read_only_resident_receipt(
@@ -213,6 +261,41 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         })
     };
     decision.event = event.to_string();
+    if !hook_config_load_errors.is_empty() || hook_config_auto_sync.is_some() {
+        annotate_hook_config_fallback(
+            &mut decision,
+            &config_path,
+            hook_config_load_errors.as_slice(),
+            hook_config_repair_reasons.as_slice(),
+            hook_config_auto_sync.as_deref(),
+        );
+    }
+    if matches!(event, "subagent-start" | "subagent-stop") {
+        let mut payload_keys = payload
+            .as_object()
+            .map(|object| object.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        payload_keys.sort();
+        decision.fields.insert(
+            "hookPayloadKeys".to_string(),
+            serde_json::json!(payload_keys),
+        );
+        for (payload_key, field_key) in [
+            ("agent_id", "hookObservedChildId"),
+            ("session_id", "hookObservedRootSessionId"),
+            ("agent_type", "hookObservedAgentType"),
+            ("model", "hookObservedModel"),
+            ("reasoning_effort", "hookObservedReasoningEffort"),
+            ("permission_mode", "hookObservedPermissionMode"),
+        ] {
+            if let Some(value) = payload.get(payload_key).and_then(serde_json::Value::as_str) {
+                decision.fields.insert(
+                    field_key.to_string(),
+                    serde_json::Value::String(value.to_string()),
+                );
+            }
+        }
+    }
     if event == "subagent-stop" {
         if let Some(session_id) =
             archive_stopped_managed_child(client, &project_root, &payload, &asp_session_policy)?
@@ -238,6 +321,30 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     annotate_source_access_compact_templates(&mut decision, &hook_config);
     if let Err(error) = apply_repeated_deny_replay(&project_root, &mut decision) {
         eprintln!("[agent-semantic-hook] failed to inspect hook replay state: {error}");
+    }
+    if client == "codex" {
+        if let Some(target_agent_name) = decision
+            .fields
+            .get("targetAgentName")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+        {
+            annotate_target_agent_auto_sync(&mut decision, &target_agent_name);
+        }
+    }
+    if let Err(error) = enforce_resident_child_deny_contract(
+        &project_root,
+        &asp_session_policy,
+        &payload,
+        &mut decision,
+    ) {
+        eprintln!("[agent-semantic-hook] failed to enforce resident child deny contract: {error}");
+    }
+    if let Err(error) = hook_runtime_agent_session_drift::soften_drifted_resident_route(
+        &project_root,
+        &mut decision,
+    ) {
+        eprintln!("[agent-semantic-hook] failed to apply resident drift soft policy: {error}");
     }
     record_active_context(ActiveContextRecord {
         activation_path: &activation_path,
@@ -511,6 +618,159 @@ fn annotate_source_access_compact_templates(
         });
 }
 
+fn enforce_resident_child_deny_contract(
+    project_root: &Path,
+    asp_session_policy: &hook_runtime_agent_session::AspSessionPolicy,
+    payload: &serde_json::Value,
+    decision: &mut HookDecision,
+) -> Result<(), String> {
+    if decision.decision != DecisionKind::Deny {
+        return Ok(());
+    }
+    for (decision_field, payload_fields) in [
+        ("codexHookAgentId", ["agent_id", "agentId"]),
+        ("codexHookAgentType", ["agent_type", "agentType"]),
+    ] {
+        if let Some(value) = payload_fields
+            .iter()
+            .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str))
+        {
+            decision.fields.insert(
+                decision_field.to_string(),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
+    }
+    let identity_proof = hook_runtime_agent_session::current_session_resident_child_identity_proof(
+        project_root,
+        asp_session_policy,
+        payload,
+    )?;
+    let current_session_id = std::env::var("CODEX_THREAD_ID")
+        .ok()
+        .filter(|session_id| !session_id.trim().is_empty());
+    let root_session_id = decision
+        .fields
+        .get("sessionId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|session_id| !session_id.trim().is_empty());
+    let codex_subagent_session = identity_proof.is_none()
+        && current_session_id
+            .as_deref()
+            .zip(root_session_id)
+            .is_some_and(|(current, root)| current != root);
+    if identity_proof.is_none() && !codex_subagent_session {
+        return Ok(());
+    }
+    let serialized_reason_kind = serde_json::to_value(&*decision).ok().and_then(|value| {
+        value
+            .get("reasonKind")
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned)
+    });
+    let parser_owned_stage = decision
+        .fields
+        .get("blockedAspStage")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|stage| matches!(stage, "search" | "query"))
+        || decision
+            .fields
+            .get("aspCommandRoute")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|route| route.starts_with("search") || route.starts_with("query"));
+    let resident_parser_owned_search = identity_proof.is_some()
+        && serialized_reason_kind.as_deref() == Some("asp-reasoning-routed")
+        && parser_owned_stage;
+    for field in [
+        "requiredAction",
+        "nextAction",
+        "agentSessionLoopCommand",
+        "agentSessionBootstrap",
+        "agentSessionBootstrapGuideCommand",
+        "agentSessionBootstrapCommand",
+    ] {
+        decision.fields.remove(field);
+    }
+    decision
+        .fields
+        .insert("subagentContext".to_string(), serde_json::Value::Bool(true));
+    let reason = serde_json::to_value(decision.reason_kind)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "source-access".to_string());
+    let recovery_ref = decision
+        .fields
+        .get("recoveryRef")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("resident-child-direct-route");
+    let resident_child_name = asp_session_policy.resident_child_name();
+    let compact_message = decision
+        .fields
+        .get("sourceAccessCompactSubagentMessage")
+        .and_then(serde_json::Value::as_str)
+        .map(|template| {
+            template
+                .replace("{{reason}}", &reason)
+                .replace("{{recoveryRef}}", recovery_ref)
+                .replace("{{residentChildName}}", resident_child_name)
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "ASP denied source access (`{reason}`) inside {resident_child_name}. Use parser-owned ASP query/search and return one compact `[asp-search-subagent]` receipt; do not return source bodies."
+            )
+        });
+    decision.fields.insert(
+        "registeredResidentChild".to_string(),
+        serde_json::Value::Bool(matches!(
+            identity_proof,
+            Some(
+                crate::command::ResidentChildIdentityProof::RegistryExact
+                    | crate::command::ResidentChildIdentityProof::CodexTranscriptRegistryExact
+            )
+        )),
+    );
+    if let Some(identity_proof) = identity_proof {
+        decision.fields.insert(
+            "residentChildIdentityProof".to_string(),
+            serde_json::Value::String(
+                match identity_proof {
+                    crate::command::ResidentChildIdentityProof::CodexHookPayload => {
+                        "codex-hook-payload"
+                    }
+                    crate::command::ResidentChildIdentityProof::RegistryExact => "registry-exact",
+                    crate::command::ResidentChildIdentityProof::CodexTranscriptRegistryExact => {
+                        "codex-transcript-registry-exact"
+                    }
+                    crate::command::ResidentChildIdentityProof::CodexRolloutMetadata => {
+                        "codex-rollout-metadata"
+                    }
+                }
+                .to_string(),
+            ),
+        );
+    } else {
+        decision.fields.insert(
+            "subagentIdentityProof".to_string(),
+            serde_json::Value::String("codex-root-current-session-mismatch".to_string()),
+        );
+    }
+    if resident_parser_owned_search {
+        decision.decision = DecisionKind::Allow;
+        decision.fields.insert(
+            "residentChildParserOwnedAspCommand".to_string(),
+            serde_json::Value::Bool(true),
+        );
+        decision.message =
+            "Registered resident child may execute this parser-owned ASP search/query directly."
+                .to_string();
+        return Ok(());
+    }
+    decision.message = compact_message;
+    Ok(())
+}
+
 fn insert_template_field(decision: &mut HookDecision, field: &str, value: Option<&str>) {
     if decision.fields.contains_key(field) {
         return;
@@ -750,37 +1010,6 @@ fn is_source_path(path: &str) -> bool {
     )
 }
 
-fn emit_hook_config_load_failure(
-    client: &str,
-    event: &str,
-    emit: &str,
-    config_path: &Path,
-    error: &str,
-) -> Result<(), String> {
-    eprintln!(
-        "[agent-semantic-hook] blocking hook event because config failed to load: {}: {error}",
-        config_path.display()
-    );
-    let decision = HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: client.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Block,
-        reason_kind: ReasonKind::None,
-        language_ids: Vec::new(),
-        subject: DecisionSubject::default(),
-        routes: Vec::new(),
-        message: format!(
-            "Semantic hook config could not be loaded; blocking tool use until it is repaired: {error}"
-        ),
-        fields: std::collections::BTreeMap::new(),
-    };
-    emit_decision(emit, &decision)
-}
-
 fn emit_hook_runtime_failure(
     client: &str,
     event: &str,
@@ -803,192 +1032,6 @@ fn emit_hook_runtime_failure(
         fields: std::collections::BTreeMap::new(),
     };
     emit_decision(emit, &decision)
-}
-
-fn run_install(args: &[String]) -> Result<(), String> {
-    let client = flag_value(args, "--client").unwrap_or("codex");
-    if client == "codex" {
-        return Err(
-            "Codex plugin installation uses `asp install plugin --codex [PROJECT_ROOT]`; direct hook configuration is not a Codex surface."
-                .to_string(),
-        );
-    }
-    run_install_for_client(client, args, "agent-install")
-}
-
-pub(super) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
-    if optional_flag_value(args, "--client")?.is_some() {
-        return Err(
-            "asp install plugin --codex does not accept --client; use `asp install plugin --codex [PROJECT_ROOT]`"
-                .to_string(),
-        );
-    }
-    let mut global_args = args.to_vec();
-    if !global_args
-        .iter()
-        .any(|arg| matches!(arg.as_str(), "--global" | "--global-plugin"))
-    {
-        global_args.push("--global".to_string());
-    }
-    run_install_for_client("codex", &global_args, "plugin-install")
-}
-
-fn run_install_for_client(
-    client: &str,
-    args: &[String],
-    receipt_label: &str,
-) -> Result<(), String> {
-    let mut timings = InstallTimings::new();
-    ensure_supported_client(client)?;
-    let codex_plugin_scope = codex_plugin_scope_arg(args, client)?;
-    let subagent_model =
-        subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
-    let project_root = project_root_arg(args)?;
-    timings.mark("args");
-    let runtime_state = project_runtime_state(&project_root)?;
-    timings.mark("runtime-state");
-    let org_state_sync = run_org_state_sync(&project_root)?;
-    timings.mark("org-state");
-    let binary_install = ensure_protocol_binary_installed_for_path()?;
-    timings.mark("binary");
-    let activation_path = project_activation_path(&project_root)?;
-    let activation_sync = load_or_refresh_default_activation(&activation_path, &project_root)?;
-    let activation_status = activation_sync.status;
-    let activation = activation_sync.activation;
-    timings.mark("activation");
-    let runtime_profiles = runtime_profiles_for_activation(&project_root, &activation)?;
-    timings.mark("runtime-profiles");
-    remove_incompatible_hook_event_state(&project_root)?;
-    timings.mark("event-state");
-    let client_config_path = default_client_config_path(&project_root.to_string_lossy());
-    if client_config_path.is_file() {
-        load_client_config(&client_config_path)
-            .map_err(|error| format!("invalid user hook config: {error}"))?;
-    }
-    timings.mark("user-config");
-    let (config_path, extra_config_receipt) = match client {
-        "codex" => install_codex_plugin_hooks(&project_root, codex_plugin_scope, &subagent_model)?,
-        "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
-        _ => unreachable!("client support checked before install"),
-    };
-    timings.mark("project-hooks");
-    let agent_config_path = install_agent_semantic_protocols_agent_config(&project_root)?;
-    timings.mark("agent-config");
-    let installed_skill = Some(match client {
-        "codex" => install_agent_semantic_protocols_plugin_skill(
-            &project_root,
-            match codex_plugin_scope {
-                CodexPluginScope::Project => hook_runtime_skill::PluginSkillScope::Project,
-                CodexPluginScope::Global => hook_runtime_skill::PluginSkillScope::Global,
-            },
-            &activation,
-            &runtime_profiles,
-        )?,
-        "claude" => {
-            install_agent_semantic_protocols_skill(&project_root, &activation, &runtime_profiles)?
-        }
-        _ => unreachable!("client support checked before install"),
-    });
-    timings.mark("skill");
-    let plugin_cache_path =
-        if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
-            sync_codex_project_plugin_cache(&project_root)?
-        } else {
-            None
-        };
-    if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
-        let legacy_project_cache = project_root.join(".codex/plugins/cache/asp-project");
-        if legacy_project_cache.exists() {
-            std::fs::remove_dir_all(&legacy_project_cache).map_err(|error| {
-                format!(
-                    "failed to remove legacy Codex project plugin cache {}: {error}",
-                    legacy_project_cache.display()
-                )
-            })?;
-        }
-    }
-    timings.mark("plugin-cache");
-    let project_skill_receipt = installed_skill
-        .as_ref()
-        .and_then(|installed_skill| installed_skill.skill_path.as_ref())
-        .map(|skill_path| format!(" skill={}", display_path(&project_root, skill_path)))
-        .unwrap_or_default();
-    let plugin_skill_path =
-        if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
-            Some(codex_project_plugin_cache_skill_path(&project_root)?)
-        } else {
-            installed_skill
-                .as_ref()
-                .and_then(|installed_skill| installed_skill.plugin_skill_path.clone())
-        };
-    let plugin_skill_receipt = plugin_skill_path
-        .as_ref()
-        .map(|skill_path| format!(" pluginSkill={}", display_path(&project_root, skill_path),))
-        .unwrap_or_default();
-    let plugin_cache_receipt = plugin_cache_path
-        .as_ref()
-        .map(|cache_path| format!(" pluginCache={}", display_path(&project_root, cache_path)))
-        .unwrap_or_default();
-    let user_config_receipt = if client_config_path.is_file() {
-        format!(
-            " userConfig={} userConfigStatus=present",
-            display_path(&project_root, &client_config_path)
-        )
-    } else {
-        " userConfigStatus=missing".to_string()
-    };
-    println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} agentConfig={} orgState={} orgStateSync={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} mode=updated",
-        display_path(&project_root, &activation_path),
-        activation_status,
-        user_config_receipt,
-        display_path(&project_root, &agent_config_path),
-        display_path(&project_root, &runtime_state.protocol_home.join("org")),
-        org_state_sync.status,
-        display_path(&project_root, &config_path),
-        extra_config_receipt,
-        project_skill_receipt,
-        plugin_skill_receipt,
-        plugin_cache_receipt,
-        binary_install.path.display(),
-        binary_install.status,
-    );
-    Ok(())
-}
-
-struct InstallTimings {
-    start: Option<Instant>,
-    last: Option<Instant>,
-}
-
-impl InstallTimings {
-    fn new() -> Self {
-        if env::var_os("ASP_HOOK_INSTALL_TIMINGS").is_some() {
-            let now = Instant::now();
-            Self {
-                start: Some(now),
-                last: Some(now),
-            }
-        } else {
-            Self {
-                start: None,
-                last: None,
-            }
-        }
-    }
-
-    fn mark(&mut self, label: &str) {
-        let (Some(start), Some(last)) = (self.start, self.last) else {
-            return;
-        };
-        let now = Instant::now();
-        eprintln!(
-            "[agent-install-timing] step={label} stepMs={:.3} totalMs={:.3}",
-            (now - last).as_secs_f64() * 1000.0,
-            (now - start).as_secs_f64() * 1000.0,
-        );
-        self.last = Some(now);
-    }
 }
 
 fn activation_relative_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
@@ -1029,32 +1072,6 @@ fn activation_root_is_global_hook_state(activation_path: &Path, activation_root:
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name == "hooks")
         })
-}
-
-fn install_claude_project_hooks(
-    project_root: &Path,
-    subagent_model: &str,
-) -> Result<(PathBuf, String), String> {
-    let settings_path = default_claude_settings_path(&project_root.to_string_lossy());
-    if let Some(parent) = settings_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    let existing = fs::read_to_string(&settings_path).unwrap_or_default();
-    if settings_path.is_file() {
-        validate_claude_settings_json(&existing)
-            .map_err(|error| format!("refusing to write invalid Claude settings JSON: {error}"))?;
-    }
-    let merged = merge_claude_settings(&existing, &claude_hook_block(project_root))?;
-    validate_claude_settings_json(&merged)
-        .map_err(|error| format!("refusing to write invalid Claude settings JSON: {error}"))?;
-    fs::write(&settings_path, merged.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", settings_path.display()))?;
-    let subagent_path = install_claude_resident_agents(project_root, subagent_model)?;
-    Ok((
-        settings_path,
-        format!(" subagent={}", display_path(project_root, &subagent_path)),
-    ))
 }
 
 fn project_root_arg(args: &[String]) -> Result<PathBuf, String> {

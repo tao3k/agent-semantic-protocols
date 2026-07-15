@@ -116,7 +116,22 @@ pub(super) fn classify_direct_read_action(
         })
     }
 
-    if action.operation == OperationIntent::DirectoryRead {
+    let reads_directory = action.operation == OperationIntent::DirectoryRead
+        || (action.operation == OperationIntent::DirectRead
+            && action.paths.iter().any(|path| {
+                let path = std::path::Path::new(path);
+                if path.is_absolute() {
+                    return path.is_dir();
+                }
+                std::path::Path::new(&registry.project_root)
+                    .join(path)
+                    .is_dir()
+                    || std::env::current_dir()
+                        .map(|current_dir| current_dir.join(path).is_dir())
+                        .unwrap_or(false)
+            }));
+
+    if reads_directory {
         let providers = registry
             .providers
             .iter()
@@ -156,7 +171,24 @@ pub(super) fn classify_direct_read_action(
         ));
     }
 
-    None
+    if action.operation != OperationIntent::DirectRead {
+        return None;
+    }
+
+    let matches =
+        collect_direct_source_read_matches(registry, action.paths.iter().map(String::as_str));
+    if matches.is_empty() {
+        return None;
+    }
+
+    Some(direct_source_read_decision(
+        platform,
+        event,
+        action,
+        matches,
+        semantic_ast_patch_enabled,
+        recovery_prompt,
+    ))
 }
 
 pub(super) struct SourceReadCommandRequest<'a> {
@@ -177,14 +209,34 @@ pub(super) fn classify_source_read_command(
     if intent == CommandIntent::VcsDiffReview {
         return None;
     }
-    if matches!(
-        intent,
-        CommandIntent::DirectRead | CommandIntent::ContentDump
-    ) {
-        return None;
+    if intent == CommandIntent::DirectRead {
+        let matches = collect_direct_source_read_matches(
+            request.registry,
+            request.action.paths.iter().map(String::as_str),
+        );
+        if !matches.is_empty() {
+            return Some(direct_source_read_decision(
+                request.platform,
+                request.event,
+                request.action,
+                matches,
+                request.semantic_ast_patch_enabled,
+                request.recovery_prompt,
+            ));
+        }
     }
     let mut inline_source_read_paths =
         inline_source_read::source_read_paths(request.command, request.tokens);
+    if intent == CommandIntent::ContentDump {
+        for path in &request.action.paths {
+            if !inline_source_read_paths
+                .iter()
+                .any(|candidate| candidate == path)
+            {
+                inline_source_read_paths.push(path.clone());
+            }
+        }
+    }
     append_selector_base_paths_for_ranges(&mut inline_source_read_paths);
     if !inline_source_read_paths.is_empty() {
         let matches = collect_content_dump_matches(
@@ -273,6 +325,49 @@ fn content_dump_decision(
 }
 
 type DirectReadMatch<'provider> = SourceSelectorMatch<'provider>;
+
+fn direct_source_read_decision(
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    matches: Vec<DirectReadMatch<'_>>,
+    semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
+) -> HookDecision {
+    let routes = direct_read_routes(&matches);
+    let providers = providers_from_matches(&matches);
+    let message = source_access_recovery_message(
+        platform,
+        "direct-source-read",
+        &providers,
+        &routes,
+        semantic_ast_patch_enabled,
+        recovery_prompt,
+    );
+    deny_for_action(
+        platform,
+        event,
+        ReasonKind::DirectSourceRead,
+        action,
+        direct_read_language_ids(&matches),
+        subject_for_action(action),
+        routes,
+        message,
+    )
+}
+
+fn collect_direct_source_read_matches<'provider, I, S>(
+    registry: &'provider HookRuntime,
+    paths: I,
+) -> Vec<DirectReadMatch<'provider>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    collect_source_selector_matches(registry, paths, |provider| {
+        provider.policy.blocks_direct_source_read()
+    })
+}
 
 fn collect_content_dump_matches<'provider, I, S>(
     registry: &'provider HookRuntime,

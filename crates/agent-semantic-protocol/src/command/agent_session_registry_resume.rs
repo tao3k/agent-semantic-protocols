@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use agent_semantic_client_db::{
-    AgentSessionLookupRequest, AgentSessionRegistry, agent_session_unix_timestamp,
+    AgentSessionLookupRequest, AgentSessionRegistry, agent_session_message_target_is_live_bound,
+    agent_session_unix_timestamp,
 };
 
 use super::agent_session_registry_args::SessionArgs;
@@ -28,18 +29,12 @@ pub(super) fn resume_session(
             && root_session_id.as_deref() == Some(session.root_session_id.as_str())
             && name.as_deref() == Some(session.name.as_str())
     });
-    let initial_registry_routable = record
-        .as_ref()
-        .map(|session| {
-            !matches!(session.status.as_str(), "archived" | "closed") && session.is_routable_at(now)
-        })
-        .unwrap_or(false);
     let lookup_name = name
         .as_deref()
         .or_else(|| record.as_ref().map(|session| session.name.as_str()));
     let mut rollout_history_status = "not-needed";
     let mut rollout_history_action = "none";
-    if !initial_registry_routable && !archived_same_root_resume_candidate {
+    if record.is_none() && !archived_same_root_resume_candidate {
         let preflight =
             super::agent_session_registry_profile::adopt_reusable_rollout_session_before_create(
                 registry,
@@ -63,20 +58,30 @@ pub(super) fn resume_session(
     let registry_routable = record
         .as_ref()
         .map(|session| {
-            !matches!(session.status.as_str(), "archived" | "closed") && session.is_routable_at(now)
+            !matches!(session.status.as_str(), "archived" | "closed")
+                && session.is_routable_at(now)
+                && root_session_id
+                    .as_deref()
+                    .is_some_and(|root| agent_session_message_target_is_live_bound(session, root))
         })
         .unwrap_or(false);
     let message_target_id = record
         .as_ref()
-        .and_then(|session| session.message_target_id())
+        .and_then(|session| {
+            root_session_id.as_deref().and_then(|root| {
+                agent_session_message_target_is_live_bound(session, root)
+                    .then(|| session.message_target_id())
+                    .flatten()
+            })
+        })
         .filter(|target_id| !target_id.trim().is_empty())
         .unwrap_or("");
     let message_target_ready = registry_routable && !message_target_id.is_empty();
     let routable = message_target_ready;
     let next_action = if archived_same_root_resume_candidate {
         "resume-archived-same-root-child-with-native-host"
-    } else if registry_routable && !message_target_ready {
-        "register-existing-child-with-native-message-target-or-create-managed-child"
+    } else if record.is_some() && !message_target_ready {
+        "rebind-existing-child-target-with-native-same-child-resume"
     } else if registry_routable {
         if rollout_history_status == "adopted-reusable-rollout" {
             rollout_history_action
@@ -84,7 +89,7 @@ pub(super) fn resume_session(
             "send-follow-up-to-registered-message-target"
         }
     } else if record.is_some() {
-        "create-resident-child-after-rollout-history-miss"
+        "reenter-bootstrap-for-host-tree-and-typed-spawn-audit"
     } else {
         rollout_history_action
     };
@@ -137,12 +142,17 @@ pub(super) fn resume_session(
         .unwrap_or(model);
     let model_alignment_action = if archived_same_root_resume_candidate {
         "parent-resume-existing-archived-child-with-native-host"
-    } else if registry_routable && !message_target_ready && !required_model.is_empty() {
-        "parent-register-native-message-target-before-model-follow-up"
-    } else if registry_routable && !required_model.is_empty() {
-        "parent-send-native-message-same-child-with-required-child-session-model"
-    } else if !required_model.is_empty() {
-        "parent-create-resident-child-with-required-model-and-revalidate"
+    } else if record.is_some() && !required_model.is_empty() && actual_model.is_empty() {
+        "resume-existing-child-for-runtime-observation"
+    } else if !required_model.is_empty()
+        && !actual_model.is_empty()
+        && required_model != actual_model
+    {
+        "reenter-bootstrap-for-capability-gated-typed-replacement"
+    } else if record.is_some() && !message_target_ready {
+        "rebind-existing-child-target-with-native-same-child-resume"
+    } else if record.is_none() && !required_model.is_empty() {
+        "reenter-bootstrap-for-host-tree-and-typed-spawn-audit"
     } else {
         "none"
     };
@@ -150,17 +160,24 @@ pub(super) fn resume_session(
         format!(
             "The configured resident child {session_id} is archived for this root. The parent must use the host-native resume action for this same child, then rerun asp agent session status --name {resolved_name}. Session-start owns reactivation after the host resume; do not create or register a replacement."
         )
-    } else if registry_routable && !message_target_ready && !required_model.is_empty() {
+    } else if record.is_some() && !required_model.is_empty() && actual_model.is_empty() {
         format!(
-            "The resident child is lifecycle-valid but has no native message-agent target. The parent must register the existing child with its native Codex message target or create a managed ASP child with model override {required_model} and light/low reasoning, then rerun asp agent session status --name {resolved_name}."
+            "Resume the same canonical resident child once to obtain a fresh SubagentStart model observation for required model {required_model}; missing observation is not model drift. Then rerun asp agent session bootstrap --name {resolved_name}."
         )
-    } else if registry_routable && !required_model.is_empty() {
+    } else if !required_model.is_empty()
+        && !actual_model.is_empty()
+        && required_model != actual_model
+    {
         format!(
-            "Keep the main session model unchanged. The parent must send a native message-agent follow-up to this same child session requesting child-session model {required_model} with low/light reasoning, wait for a compact receipt, then rerun asp agent session status --name {resolved_name}."
+            "Observed model {actual_model} does not match required model {required_model}. Do not ask the child to switch itself and do not create a generic replacement. Re-enter asp agent session bootstrap --name {resolved_name} so live host observations can authorize exactly one registered-profile replacement."
         )
-    } else if !required_model.is_empty() {
+    } else if record.is_some() && !message_target_ready {
         format!(
-            "No routable resident child is available. The parent must create the resident ASP child with model override {required_model} and light/low reasoning, register it as {resolved_name}, wait for the child receipt, then rerun asp agent session status --name {resolved_name}."
+            "The persisted session is not a live native message target. Resume the same canonical host child if it exists, then rerun asp agent session bootstrap --name {resolved_name}; do not create from the registry row alone."
+        )
+    } else if record.is_none() && !required_model.is_empty() {
+        format!(
+            "No registry row exists. Re-enter asp agent session bootstrap --name {resolved_name} to audit the live host tree and typed-spawn schema. Registry absence alone does not authorize Create."
         )
     } else {
         "none".to_string()

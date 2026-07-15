@@ -103,6 +103,8 @@ fn validate_session_profile_with_rollout_lookup(
             actual_role: None,
             expected_model: None,
             actual_model: None,
+            expected_reasoning_effort: None,
+            actual_reasoning_effort: None,
             expected_sandbox: None,
             actual_sandbox: None,
         });
@@ -125,6 +127,8 @@ fn validate_session_profile_with_rollout_lookup(
                 actual_role: None,
                 expected_model: None,
                 actual_model: None,
+                expected_reasoning_effort: None,
+                actual_reasoning_effort: None,
                 expected_sandbox: None,
                 actual_sandbox: None,
             });
@@ -151,6 +155,8 @@ fn validate_session_profile_with_rollout_lookup(
             actual_role: None,
             expected_model: Some(expected.model),
             actual_model: None,
+            expected_reasoning_effort: expected.reasoning_effort,
+            actual_reasoning_effort: None,
             expected_sandbox: Some(expected.sandbox),
             actual_sandbox: None,
         });
@@ -159,6 +165,7 @@ fn validate_session_profile_with_rollout_lookup(
         .model
         .clone()
         .or(metadata.collaboration_model.clone());
+    let actual_reasoning_effort = metadata.reasoning_effort.clone();
     let expected_agent_path = normalized_path_string(&expected.config_path);
     let actual_agent_path = metadata
         .agent_path
@@ -194,12 +201,18 @@ fn validate_session_profile_with_rollout_lookup(
                 .unwrap_or_else(|| "<missing>".to_string())
         ));
     }
+    let canonical_agent_path_matches = actual_agent_path
+        .as_deref()
+        .is_some_and(|path| canonical_host_agent_identity_path_matches(path, &expected.role));
+    let exact_role_matches = metadata.agent_role.as_deref().is_some_and(|role| {
+        normalize_agent_identity(role) == normalize_agent_identity(&expected.role)
+    });
     match metadata.agent_role.as_deref() {
-        Some(actual_role) if actual_role == expected.role => {}
-        Some("default") => {
+        Some(_) if exact_role_matches => {}
+        Some("default") if canonical_agent_path_matches => {
             let role_fallback_reason = format!(
-                "agentRole default accepted as Codex host role fallback for expected {}",
-                expected.role
+                "agentRole default accepted only because canonical host agent path proves {}",
+                expected.role,
             );
             pass_reason = Some(match pass_reason.take() {
                 Some(existing) => format!("{existing}; {role_fallback_reason}"),
@@ -212,6 +225,16 @@ fn validate_session_profile_with_rollout_lookup(
                 expected.role, actual_role
             ));
         }
+        None if canonical_agent_path_matches => {
+            let role_fallback_reason = format!(
+                "agentRole missing accepted only because parent-owned canonical host agent path proves {}",
+                expected.role,
+            );
+            pass_reason = Some(match pass_reason.take() {
+                Some(existing) => format!("{existing}; {role_fallback_reason}"),
+                None => role_fallback_reason,
+            });
+        }
         None => {
             failures.push(format!(
                 "agentRole expected {} got <missing>",
@@ -220,14 +243,15 @@ fn validate_session_profile_with_rollout_lookup(
         }
     }
     match actual_agent_path.as_deref() {
-        Some(actual_agent_path) if actual_agent_path == expected_agent_path => {}
+        Some(actual_agent_path)
+            if actual_agent_path == expected_agent_path || canonical_agent_path_matches => {}
         Some(actual_agent_path) => {
             failures.push(format!(
                 "agentPath expected {} got {}",
                 expected_agent_path, actual_agent_path
             ));
         }
-        None => {
+        None if exact_role_matches => {
             let missing_agent_path_reason = format!(
                 "agentPath missing in rollout; validating against expected config {} by role/model/root/parent",
                 expected_agent_path
@@ -237,6 +261,10 @@ fn validate_session_profile_with_rollout_lookup(
                 None => missing_agent_path_reason,
             });
         }
+        None => failures.push(format!(
+            "agentPath missing and agentRole does not prove expected managed profile {}",
+            expected.role
+        )),
     }
     match actual_model.as_deref() {
         Some(actual_model) if actual_model == expected.model => {}
@@ -256,14 +284,50 @@ fn validate_session_profile_with_rollout_lookup(
                     .unwrap_or_else(|| "unset".to_string())
             ));
         }
-        Some(actual_model) => failures.push(format!(
-            "child-session model mismatch: host observed {actual_model}, configured managed-child profile requires {}. requiredAction=resume-configured-managed-child-profile; modelSource=configured-agent-profile; liveSwitchTransport=not-applicable; messageAgentModelInstruction=forbidden",
-            expected.model
-        )),
-        None => failures.push(format!(
-            "child-session model missing from host observation; configured managed-child profile requires {}. requiredAction=resume-configured-managed-child-profile; modelSource=configured-agent-profile; messageAgentModelInstruction=forbidden",
-            expected.model
-        )),
+        Some(actual_model) => {
+            let runtime_observation = format!(
+                "child-session runtime model drift observed: host observed {actual_model}, configured managed-child profile expects {}. identity remains adoptable for same-child repair; requiredAction=main-agent-followup-existing-child-with-natural-language-runtime-switch; runtimeEvidence=fresh-host-observation",
+                expected.model
+            );
+            pass_reason = Some(match pass_reason.take() {
+                Some(existing) => format!("{existing}; {runtime_observation}"),
+                None => runtime_observation,
+            });
+        }
+        None => {
+            let runtime_observation = format!(
+                "child-session runtime model observation is missing; configured managed-child profile expects {}. identity remains adoptable for same-child repair; requiredAction=main-agent-followup-existing-child-with-natural-language-runtime-switch; runtimeEvidence=fresh-host-observation",
+                expected.model
+            );
+            pass_reason = Some(match pass_reason.take() {
+                Some(existing) => format!("{existing}; {runtime_observation}"),
+                None => runtime_observation,
+            });
+        }
+    }
+    if let Some(expected_reasoning_effort) = expected.reasoning_effort.as_deref() {
+        match actual_reasoning_effort.as_deref() {
+            Some(actual_reasoning_effort)
+                if actual_reasoning_effort == expected_reasoning_effort => {}
+            Some(actual_reasoning_effort) => {
+                let runtime_observation = format!(
+                    "child-session runtime reasoning drift observed: host observed {actual_reasoning_effort}, configured managed-child profile expects {expected_reasoning_effort}. identity remains adoptable for same-child repair; requiredAction=main-agent-followup-existing-child-with-natural-language-runtime-switch; runtimeEvidence=fresh-host-observation"
+                );
+                pass_reason = Some(match pass_reason.take() {
+                    Some(existing) => format!("{existing}; {runtime_observation}"),
+                    None => runtime_observation,
+                });
+            }
+            None => {
+                let runtime_observation = format!(
+                    "child-session runtime reasoning observation is missing; configured managed-child profile expects {expected_reasoning_effort}. identity remains adoptable for same-child repair; requiredAction=main-agent-followup-existing-child-with-natural-language-runtime-switch; runtimeEvidence=fresh-host-observation"
+                );
+                pass_reason = Some(match pass_reason.take() {
+                    Some(existing) => format!("{existing}; {runtime_observation}"),
+                    None => runtime_observation,
+                });
+            }
+        }
     }
     if let Some(reason) =
         sandbox_policy_mismatch_reason(&expected.sandbox, metadata.sandbox_policy.as_deref())
@@ -308,6 +372,8 @@ fn validate_session_profile_with_rollout_lookup(
         actual_role: metadata.agent_role,
         expected_model: Some(expected.model),
         actual_model,
+        expected_reasoning_effort: expected.reasoning_effort,
+        actual_reasoning_effort,
         expected_sandbox: Some(expected.sandbox),
         actual_sandbox: metadata.sandbox_policy,
     })
@@ -350,13 +416,13 @@ impl ValidatedAgentKind {
 }
 
 fn validated_agent_kind(name: &str, role: &str) -> Option<ValidatedAgentKind> {
-    [name, role].into_iter().find_map(
-        |value| match normalize_agent_session_label(value).as_str() {
+    [name, role]
+        .into_iter()
+        .find_map(|value| match normalize_agent_identity(value).as_str() {
             "asp_explore" | "asp_explorer" => Some(ValidatedAgentKind::AspExplore),
             "asp_testing" => Some(ValidatedAgentKind::AspTesting),
             _ => None,
-        },
-    )
+        })
 }
 
 pub(crate) fn rollout_metadata_matches_managed_agent_profile(
@@ -372,35 +438,52 @@ pub(crate) fn rollout_metadata_matches_managed_agent_profile(
         .as_ref()
         .map(|profile| profile.role.as_str())
         .unwrap_or_else(|| kind.default_role());
-    let expected_sandbox = expected
-        .as_ref()
-        .map(|profile| profile.sandbox.as_str())
-        .unwrap_or("read-only");
-    let Some(agent_role) = metadata.agent_role.as_deref() else {
-        return false;
-    };
-    let role_matches = normalize_agent_session_label(agent_role)
-        == normalize_agent_session_label(expected_role)
-        || normalize_agent_session_label(agent_role)
-            == normalize_agent_session_label(kind.default_role());
-    let nickname_matches = metadata
-        .agent_nickname
+    let expected_identity = normalize_agent_identity(expected_role);
+    let configured_role_matches = metadata.agent_role.as_deref().is_some_and(|agent_role| {
+        let actual_identity = normalize_agent_identity(agent_role);
+        actual_identity == expected_identity
+            || actual_identity == normalize_agent_identity(kind.default_role())
+    });
+    let canonical_agent_path_matches = metadata
+        .agent_path
         .as_deref()
-        .map(|nickname| nickname.trim().to_ascii_lowercase().starts_with("asp "))
-        .unwrap_or(false);
-    let sandbox_matches = metadata
-        .sandbox_policy
-        .as_deref()
-        .map(|sandbox| {
-            normalize_agent_session_label(sandbox)
-                == normalize_agent_session_label(expected_sandbox)
-        })
-        .unwrap_or(false);
-    role_matches && nickname_matches && sandbox_matches
+        .is_some_and(|path| canonical_host_agent_identity_path_matches(path, expected_role));
+    let direct_child = metadata.thread_source.as_deref() == Some("subagent")
+        && metadata.spawn_depth == Some(1)
+        && metadata.root_session_id.is_some()
+        && metadata.root_session_id == metadata.parent_thread_id;
+    direct_child && (configured_role_matches || canonical_agent_path_matches)
 }
 
-fn normalize_agent_session_label(value: &str) -> String {
-    value.trim().replace('-', "_")
+fn normalize_agent_identity(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+fn canonical_host_agent_identity_path_matches(path: &str, expected_role: &str) -> bool {
+    path.rsplit(['/', '\\'])
+        .find(|segment| !segment.is_empty())
+        .is_some_and(|segment| {
+            let profile_stem = segment.strip_suffix(".toml").unwrap_or(segment);
+            let profile_identity = normalize_agent_identity(profile_stem);
+            let profile_identity = profile_identity
+                .strip_suffix("_codex")
+                .unwrap_or(&profile_identity);
+            profile_identity == normalize_agent_identity(expected_role)
+        })
 }
 
 fn sandbox_policy_mismatch_reason(expected: &str, actual: Option<&str>) -> Option<String> {
@@ -458,7 +541,7 @@ pub(crate) fn expected_model_for_session_profile(
     Ok(Some(load_expected_agent_profile(agent_kind)?.model))
 }
 
-pub(super) fn expected_reasoning_effort_for_session_profile(
+pub(crate) fn expected_reasoning_effort_for_session_profile(
     name: &str,
     role: &str,
 ) -> Result<Option<String>, String> {

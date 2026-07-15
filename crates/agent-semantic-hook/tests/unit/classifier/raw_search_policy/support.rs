@@ -123,6 +123,7 @@ fn reason_kind_label(reason_kind: ReasonKind) -> &'static str {
         ReasonKind::DirectSourceRead => "direct-source-read",
         ReasonKind::BulkSourceDump => "bulk-source-dump",
         ReasonKind::RawBroadSearch => "raw-broad-search",
+        ReasonKind::AspReasoningRouted => "asp-reasoning-routed",
         ReasonKind::SourceDirectoryEnumeration => "source-directory-enumeration",
         ReasonKind::AgentSearchJson => "agent-search-json",
         ReasonKind::SemanticAstPatchRequired => "semantic-ast-patch-required",

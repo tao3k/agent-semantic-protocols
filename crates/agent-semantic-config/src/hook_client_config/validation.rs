@@ -5,9 +5,10 @@ use std::collections::HashSet;
 use super::model::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
-    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig, HookClientConfigFile,
-    HookClientRecoveryPromptConfig, HookClientResidentAgentConfig, HookClientRuleConfig,
-    HookClientRuleMatchConfig, HookClientRuleRouteConfig,
+    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig,
+    HookClientAspCommandIntentPolicyConfig, HookClientConfigFile, HookClientRecoveryPromptConfig,
+    HookClientResidentAgentConfig, HookClientRuleConfig, HookClientRuleMatchConfig,
+    HookClientRuleRouteConfig,
 };
 
 pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
@@ -17,8 +18,77 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_agent_session_guide(&config.agent_session_guide)?;
     validate_agent_session_messages(&config.agent_session_messages)?;
     validate_resident_agents(&config.agents.resident_agents)?;
+    validate_execution_lanes(&config.execution_lanes)?;
+    validate_asp_command_intent_policy(&config.asp_command_intent_policy)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules)
+}
+
+fn validate_execution_lanes(
+    lanes: &super::model::HookClientExecutionLanesConfig,
+) -> Result<(), String> {
+    let testing = &lanes.testing;
+    validate_optional_non_empty(
+        "executionLanes.testing.receiptKind",
+        Some(testing.receipt_kind.as_str()),
+    )?;
+    if testing.enabled && testing.command_prefixes.is_empty() {
+        return Err(
+            "executionLanes.testing.commandPrefixes must not be empty when enabled".to_string(),
+        );
+    }
+    validate_non_empty_values(
+        "executionLanes.testing.commandPrefixes[]",
+        &testing.command_prefixes,
+    )?;
+    validate_unique_values(
+        "executionLanes.testing.commandPrefixes[]",
+        &testing.command_prefixes,
+    )
+}
+
+fn validate_asp_command_intent_policy(
+    policy: &HookClientAspCommandIntentPolicyConfig,
+) -> Result<(), String> {
+    for (label, values) in [
+        (
+            "aspCommandIntentPolicy.controlPlane.rootCommands[]",
+            &policy.control_plane.root_commands,
+        ),
+        (
+            "aspCommandIntentPolicy.reasoning.rootCommands[]",
+            &policy.reasoning.root_commands,
+        ),
+        (
+            "aspCommandIntentPolicy.reasoning.searchRoutes[]",
+            &policy.reasoning.search_routes,
+        ),
+        (
+            "aspCommandIntentPolicy.reasoning.queryFlags[]",
+            &policy.reasoning.query_flags,
+        ),
+        (
+            "aspCommandIntentPolicy.exactEvidence.queryProjectionFlags[]",
+            &policy.exact_evidence.query_projection_flags,
+        ),
+        (
+            "aspCommandIntentPolicy.exactEvidence.queryProjectionViews[]",
+            &policy.exact_evidence.query_projection_views,
+        ),
+        (
+            "aspCommandIntentPolicy.exactEvidence.selectorKinds[]",
+            &policy.exact_evidence.selector_kinds,
+        ),
+        (
+            "aspCommandIntentPolicy.directReadFallback.fromHookValues[]",
+            &policy.direct_read_fallback.from_hook_values,
+        ),
+    ] {
+        if values.iter().any(|value| value.trim().is_empty()) {
+            return Err(format!("{label} must not contain empty values"));
+        }
+    }
+    Ok(())
 }
 
 fn validate_recovery_prompt(config: &HookClientRecoveryPromptConfig) -> Result<(), String> {

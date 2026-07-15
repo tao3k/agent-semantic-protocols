@@ -701,7 +701,8 @@ hook response. It standardizes normalized event names, deny/context decisions,
 language/provider routes, and state updates while provider repositories own only
 their provider manifests. Config-derived decisions use `fields.configRuleId` to
 identify the matching typed rule without parsing the message. Action-derived
-decisions may also include `fields.toolSurface` and `fields.operationIntent` so
+decisions may also include `fields.toolSurface`, `fields.operationIntent`,
+`fields.aspCommandIntent`, and `fields.aspCommandRoute` so
 black-box tests can distinguish the client surface from the provider route.
 
 `semantic-source-access-decision.v1.schema.json` is the Codex-internal

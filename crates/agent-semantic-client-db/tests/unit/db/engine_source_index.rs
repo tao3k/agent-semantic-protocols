@@ -753,14 +753,25 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
         completed_lookup_count.load(Ordering::Relaxed) >= 8,
         "pressure test should complete concurrent lookup attempts"
     );
-    let final_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        "source_index_pressure_fixture",
-        Some(&rust_language_id),
-        8,
-    )
-    .await
-    .expect("final pressure lookup should not fail");
+    let final_lookup_deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let final_lookup = loop {
+        let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+            &client_dir,
+            "source_index_pressure_fixture",
+            Some(&rust_language_id),
+            8,
+        )
+        .await
+        .expect("final pressure lookup should not fail");
+        if lookup.state != ClientDbSourceIndexLookupState::Busy {
+            break lookup;
+        }
+        assert!(
+            std::time::Instant::now() < final_lookup_deadline,
+            "final pressure lookup remained busy past the test deadline"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
     assert_eq!(final_lookup.state, ClientDbSourceIndexLookupState::Hit);
     assert!(
         busy_lookup_count.load(Ordering::Relaxed) <= completed_lookup_count.load(Ordering::Relaxed),

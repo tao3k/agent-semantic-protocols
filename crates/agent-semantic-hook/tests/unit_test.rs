@@ -5,6 +5,8 @@ mod classifier;
 
 #[path = "unit/client_hook_config.rs"]
 mod client_hook_config;
+#[path = "unit/client_hook_config_asp_command_intent.rs"]
+mod client_hook_config_asp_command_intent;
 
 #[path = "unit/codex_config.rs"]
 mod codex_config;
@@ -18,6 +20,8 @@ mod command_shell;
 
 #[path = "unit/event_state.rs"]
 mod event_state;
+#[path = "unit/event_state_subagent_model_drift.rs"]
+mod event_state_subagent_model_drift;
 
 #[path = "unit/provider_manifest/mod.rs"]
 mod provider_manifest;

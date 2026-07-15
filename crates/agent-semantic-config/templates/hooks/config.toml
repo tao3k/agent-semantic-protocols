@@ -6,6 +6,74 @@ schemaVersion = "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@"
 protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 
+# Parser-owned `asp <language>` command intent taxonomy. These entries drive
+# runtime matching; they are not documentation-only command examples.
+[aspCommandIntentPolicy.controlPlane]
+rootCommands = [
+  "guide",
+  "providers",
+  "tools",
+  "wrap",
+  "cache",
+  "cloud",
+  "hook",
+  "agent",
+  "install",
+  "sync",
+  "paths",
+  "healthcheck",
+  "source-access",
+  "ast-patch",
+  "graph",
+]
+
+[aspCommandIntentPolicy.reasoning]
+rootCommands = ["fd", "rg"]
+guideCommand = true
+searchRoutes = [
+  "prime",
+  "pipe",
+  "owner",
+  "lexical",
+  "deps",
+  "dependency",
+  "failure",
+  "reasoning",
+  "ingest",
+  "guide",
+]
+queryFlags = ["--term"]
+unprojectedQuery = true
+
+[aspCommandIntentPolicy.exactEvidence]
+queryProjectionFlags = ["--code", "--content", "--names-only"]
+queryProjectionViews = ["metadata"]
+selectorKinds = ["item"]
+requireSameLanguage = true
+
+[aspCommandIntentPolicy.directReadFallback]
+fromHookValues = ["direct-source-read"]
+
+[aspCommandIntentPolicy.invalidEvidence]
+rejectProjectedQueryWithoutExactSelector = true
+rejectCrossLanguageSelector = true
+
+# Deterministic testing/build work is not a reasoning-agent lifecycle.  The
+# hook permits only these exact token prefixes and emits a command-digest
+# receipt for each current-session execution.
+[executionLanes.testing]
+enabled = true
+transport = "current-session"
+receiptKind = "asp-testing-execution-v1"
+commandPrefixes = [
+  "cargo test",
+  "cargo check",
+  "cargo build",
+  "pytest",
+  "uv run pytest",
+  "just test",
+]
+
 [[agents.residentAgents]]
 enabled = true
 name = "asp-explore"
@@ -22,24 +90,6 @@ mainAllowedAspCommandPrefixes = [
   "agent session",
   "org recall",
   "org capture",
-]
-
-[[agents.residentAgents]]
-enabled = true
-name = "asp-testing"
-role = "asp_testing"
-roles = ["subagent", "testing", "build"]
-permissions = ["workspace-write"]
-codexAgentName = "asp_testing"
-lifecycle = "testing-command"
-sessionLifetime = "resident"
-commandPrefixes = [
-  "cargo test",
-  "cargo check",
-  "cargo build",
-  "pytest",
-  "uv run pytest",
-  "just test",
 ]
 
 [agentSessionGuide]
@@ -112,20 +162,6 @@ Run the resident-child choice pane and choose one number. Keep re-entering the s
 The pane owns audit, recovery, cleanup, creation, model alignment, and registration.
 Do not run low-level session commands or create generic subagents outside the pane.
 After state=Ready, send the blocked ASP command to the registered message-agent target and wait for its compact receipt.
-Command: {{command}}
-"""
-testingWithChild = """
-ASP denied main-session test/build command.
-Route this test/build command to resident {{residentChildName}} child session `{{childSessionId}}`.
-Main agent should keep judgment, edits, and checkpoints; run large tests/builds in the testing child.
-Command: {{command}}
-"""
-testingWithoutChild = """
-ASP denied main-session test/build command.
-Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
-   asp agent session bootstrap --name {{residentChildName}}
-The pane owns creation, validation, model alignment, registration, and cleanup for the testing child.
-Main agent should keep judgment, edits, and checkpoints; run large tests/builds in the testing child.
 Command: {{command}}
 """
 binaryGateWithChild = """

@@ -77,7 +77,7 @@ pub(super) fn register_required_resident_child_decision(
 ) -> HookDecision {
     let resident_child_name = asp_session_policy.resident_child_name();
     let mut fields = agent_session_route_fields("register-existing-child", resident_child_name);
-    append_resident_agent_fields(&mut fields, asp_session_policy);
+    append_resident_agent_fields(&mut fields, platform, asp_session_policy);
     append_rollout_topology_fields(&mut fields, topology);
     fields.insert(
         "agentSessionBootstrap".to_string(),
@@ -128,7 +128,7 @@ pub(super) fn nested_resident_child_decision(
     let resident_child_name = asp_session_policy.resident_child_name();
     let mut fields =
         agent_session_route_fields("nested-resident-child-denied", resident_child_name);
-    append_resident_agent_fields(&mut fields, asp_session_policy);
+    append_resident_agent_fields(&mut fields, platform, asp_session_policy);
     append_rollout_topology_fields(&mut fields, topology);
     fields.insert(
         "agentSessionBootstrap".to_string(),

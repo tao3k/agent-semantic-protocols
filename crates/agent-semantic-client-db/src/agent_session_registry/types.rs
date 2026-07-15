@@ -91,6 +91,50 @@ impl AgentSessionRecord {
     }
 }
 
+/// Return whether the current root has a trusted live collaboration binding.
+///
+/// A persisted target id is identity data, not proof that the current host
+/// collaboration runtime can resolve it. The binding is trusted only when the
+/// same-root native `SubagentStart` hook recorded the target atomically.
+#[must_use]
+pub fn agent_session_message_target_is_live_bound(
+    record: &AgentSessionRecord,
+    current_root_session_id: &str,
+) -> bool {
+    let Some(message_target_id) = record
+        .message_target_id()
+        .filter(|target| !target.trim().is_empty())
+    else {
+        return false;
+    };
+    if record.root_session_id() != current_root_session_id
+        || record.parent_session_id() != Some(current_root_session_id)
+    {
+        return false;
+    }
+    let Ok(metadata) = serde_json::from_str::<serde_json::Value>(record.metadata_json()) else {
+        return false;
+    };
+    let Some(binding) = metadata.get("messageTargetBinding") else {
+        return false;
+    };
+    matches!(
+        binding.get("source").and_then(serde_json::Value::as_str),
+        Some("codex.subagent-start" | "native-collaboration-list-agents")
+    ) && binding
+        .get("boundRootSessionId")
+        .and_then(serde_json::Value::as_str)
+        == Some(current_root_session_id)
+        && binding
+            .get("childSessionId")
+            .and_then(serde_json::Value::as_str)
+            == Some(record.session_id())
+        && binding
+            .get("messageTargetId")
+            .and_then(serde_json::Value::as_str)
+            == Some(message_target_id)
+}
+
 /// Trusted native-host observation of a child session model profile.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AgentSessionModelObservationRef<'a> {

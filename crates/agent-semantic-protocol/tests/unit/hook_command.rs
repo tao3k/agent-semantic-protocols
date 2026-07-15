@@ -27,11 +27,19 @@ const _: fn() -> Option<std::path::PathBuf> = protocol_binary::protocol_binary_o
 fn protocol_binary_install_fields_are_contract_visible() {
     let install = protocol_binary::ProtocolBinaryInstall {
         path: std::path::PathBuf::from("asp"),
+        paths: vec![std::path::PathBuf::from("asp")],
         status: "found",
+        artifact_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .to_string(),
     };
 
     assert_eq!(install.path, std::path::PathBuf::from("asp"));
+    assert_eq!(install.paths, vec![std::path::PathBuf::from("asp")]);
     assert_eq!(install.status, "found");
+    assert_eq!(
+        install.artifact_digest,
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
 }
 
 fn args(values: &[&str]) -> Vec<String> {
@@ -274,6 +282,42 @@ fn protocol_binary_install_replaces_existing_target_file() {
     );
     #[cfg(unix)]
     assert_ne!(old_inode, target_inode(&target));
+    #[cfg(unix)]
+    assert!(
+        std::fs::symlink_metadata(&target)
+            .expect("target symlink metadata")
+            .file_type()
+            .is_symlink()
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn protocol_binary_install_updates_every_active_path_entry() {
+    let root = temp_project_root("protocol-binary-multiple-active-paths");
+    let source = root.join("source-asp");
+    let first = root.join("first").join("asp");
+    let second = root.join("second").join("asp");
+    std::fs::create_dir_all(first.parent().expect("first parent")).expect("first dir");
+    std::fs::create_dir_all(second.parent().expect("second parent")).expect("second dir");
+    std::fs::write(&source, "new asp").expect("write source");
+    std::fs::write(&first, "old first").expect("write first target");
+    std::fs::write(&second, "old second").expect("write second target");
+
+    let install =
+        protocol_binary::install_protocol_binary_targets(&source, &[first.clone(), second.clone()])
+            .expect("install all active targets");
+
+    assert_eq!(install.status, "updated");
+    assert_eq!(install.paths, vec![first.clone(), second.clone()]);
+    assert_eq!(
+        std::fs::read_to_string(first).expect("read first"),
+        "new asp"
+    );
+    assert_eq!(
+        std::fs::read_to_string(second).expect("read second"),
+        "new asp"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -19,7 +19,11 @@ fn wrapper_raw_search_routes_to_provider_query_when_supported() {
             "pre-tool",
             &json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": command } }),
         );
-        assert_eq!(decision.decision, DecisionKind::Allow, "{command}");
-        assert_eq!(decision.reason_kind, ReasonKind::None, "{command}");
+        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
+        assert_eq!(
+            decision.reason_kind,
+            ReasonKind::RawBroadSearch,
+            "{command}"
+        );
     }
 }

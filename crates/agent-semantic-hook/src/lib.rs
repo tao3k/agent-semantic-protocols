@@ -17,8 +17,14 @@ pub use codex_global_config::{
 mod codex_project_trust;
 mod codex_trust;
 mod command;
+pub use command::{
+    AspLanguageCommand, AspLanguageCommandIntent, asp_invocation_indices,
+    classify_asp_language_command_tokens, classify_asp_language_command_tokens_with_policy,
+    semantic_shell_tokens,
+};
 mod event_replay;
 mod event_state;
+mod event_state_subagent_model_drift;
 mod executable;
 mod hook_config;
 mod hook_config_agent_org;
@@ -57,6 +63,14 @@ pub use dev_context::{ActiveContextRecord, record_active_context};
 pub use event_state::{
     append_hook_event_state, apply_repeated_deny_replay, has_recorded_subagent_context,
     remove_incompatible_hook_event_state,
+};
+pub use event_state_subagent_model_drift::{
+    SubagentModelDriftObservation, SubagentProfileDriftObservation,
+    SubagentRuntimeDriftObservation, SubagentRuntimeRebindObservation,
+    SubagentRuntimeRebindVerifiedObservation, UnmanagedSubagentStartObservation,
+    latest_subagent_model_drift, latest_subagent_profile_drift, latest_subagent_runtime_drift,
+    latest_subagent_runtime_rebind_observation, latest_subagent_runtime_rebind_verified,
+    latest_unmanaged_subagent_start,
 };
 pub use hook_config::{
     AspSessionPolicy, ClientHookConfig, default_client_config_path, default_client_config_template,

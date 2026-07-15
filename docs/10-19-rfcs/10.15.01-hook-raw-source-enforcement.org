@@ -1,0 +1,53 @@
+#+TITLE: Hook Raw Source Enforcement
+#+STATUS: Draft
+#+PARENT: 10.15-agent-hook-interception-protocol.org
+
+* Problem
+
+Hook trust proves that a client may load a hook; it does not prove that broad
+source access is classified or denied.  A raw search without a language suffix
+or provider-specific selector must not fall through to allow merely because no
+single provider can be selected.
+
+* Normative contract
+
+- An exact source file path is a locator, not evidence.  Agent-originated
+  filesystem Read actions for activated provider source files must obey the
+  provider =directSourceRead= policy and must be denied when that policy
+  blocks, even when the path names one file exactly.
+- Shell commands that expose exact source-file contents must obey the provider
+  =bulkSourceDump= policy.  Exact =cat=, =sed=, =head=, and equivalent content
+  dumps must not bypass the policy merely because they target one file.
+- Precise model-visible source evidence is provider-authorized only after a
+  parser-owned selector is known and the provider query projects it through
+  =asp <language> query --selector <selector> --workspace <root> --code= (or
+  =--content= for document providers).
+- Explicit user-approved filesystem access is a separate control-plane
+  capability expressed through =asp source-access read-file --activation
+  <activation.json> <path>=.  It is not inferred from an environment variable
+  or from path exactness.
+- A direct Read action whose target resolves to a directory is source-directory
+  enumeration and must be denied before the client reads it.
+- Workspace-wide raw searches and source listings are broad source access even
+  when they omit a language selector.
+- Generic source roots such as =src=, =crates=, =tests=, or a nested occurrence
+  of an activated provider source root must fan out to matching providers and
+  must not fall through to allow.
+- A universal scope such as an implicit workspace or =**/*= must fan out to all
+  activated providers whose policy blocks raw source search.
+- Explicit non-source scopes may remain allowed when every matched provider
+  policy permits raw search.
+- Ingest pipes remain the explicit escape hatch for provider-owned evidence.
+
+* Verification
+
+The client-hook suite must cover both classifier payloads and the installed
+Codex hook surface for:
+
+1. workspace-wide =rg=/=fd= searches without language selectors;
+2. =rg --files= and =find= over provider source directories;
+3. exact =.rs=, =.ts=, and =.tsx= file Read actions, including policy allow
+   overrides and exact provider-query recovery routes;
+4. directory Read actions with and without a trailing slash;
+5. reasoning ASP commands, invalid facades, control-plane commands, and testing
+   lanes as independent controls.

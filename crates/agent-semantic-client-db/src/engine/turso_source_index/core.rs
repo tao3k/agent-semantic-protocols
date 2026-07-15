@@ -172,7 +172,7 @@ pub async fn refresh_turso_source_index_import(
     db_path: &Path,
     request: ClientDbSourceIndexRefreshRequest,
 ) -> Result<ClientDbSourceIndexRefreshReport, String> {
-    let _source_index_write_guard = turso_source_index_access_lock().clone().write_owned().await;
+    let _source_index_write_guard = turso_source_index_access_lock(db_path).write_owned().await;
     let trace_started = std::time::Instant::now();
     let import = request.import;
     if import.file_hashes.is_empty() {
@@ -209,7 +209,9 @@ pub async fn refresh_turso_source_index_import(
         return Ok(refresh);
     }
     source_index_db_trace("reuse-probe-missed", trace_started);
-    write_turso_source_index_rows(&connection, &import, &project_root, &file_hashes_json).await?;
+    let write_stats =
+        write_turso_source_index_rows(&connection, &import, &project_root, &file_hashes_json)
+            .await?;
     source_index_db_trace("rows-written", trace_started);
     let (owner_count, selector_count) = turso_source_index_scope_row_counts(
         &connection,
@@ -236,6 +238,9 @@ pub async fn refresh_turso_source_index_import(
         file_count: request.file_count,
         owner_count,
         selector_count,
+        changed_owner_count: write_stats.changed_owner_count,
+        removed_owner_count: write_stats.removed_owner_count,
+        posting_write_count: write_stats.posting_write_count,
     })
 }
 
@@ -568,6 +573,9 @@ async fn reusable_turso_source_index_generation(
         file_count,
         owner_count,
         selector_count,
+        changed_owner_count: 0,
+        removed_owner_count: 0,
+        posting_write_count: 0,
     }))
 }
 
@@ -617,9 +625,28 @@ async fn turso_source_index_scope_row_counts(
     Ok((owner_count, selector_count))
 }
 
-pub(in crate::engine) fn turso_source_index_access_lock()
--> &'static std::sync::Arc<tokio::sync::RwLock<()>> {
-    static LOCK: std::sync::OnceLock<std::sync::Arc<tokio::sync::RwLock<()>>> =
-        std::sync::OnceLock::new();
-    LOCK.get_or_init(|| std::sync::Arc::new(tokio::sync::RwLock::new(())))
+pub(in crate::engine) fn turso_source_index_access_lock(
+    db_path: &std::path::Path,
+) -> std::sync::Arc<tokio::sync::RwLock<()>> {
+    type LockRegistry =
+        std::collections::HashMap<std::path::PathBuf, std::sync::Weak<tokio::sync::RwLock<()>>>;
+    static LOCKS: std::sync::OnceLock<std::sync::Mutex<LockRegistry>> = std::sync::OnceLock::new();
+    let lock_path = std::fs::canonicalize(db_path).unwrap_or_else(|_| {
+        db_path
+            .parent()
+            .and_then(|parent| std::fs::canonicalize(parent).ok())
+            .and_then(|parent| db_path.file_name().map(|name| parent.join(name)))
+            .unwrap_or_else(|| db_path.to_path_buf())
+    });
+    let locks = LOCKS.get_or_init(|| std::sync::Mutex::new(LockRegistry::new()));
+    let mut locks = locks
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    locks.retain(|_, lock| lock.strong_count() > 0);
+    if let Some(lock) = locks.get(&lock_path).and_then(std::sync::Weak::upgrade) {
+        return lock;
+    }
+    let lock = std::sync::Arc::new(tokio::sync::RwLock::new(()));
+    locks.insert(lock_path, std::sync::Arc::downgrade(&lock));
+    lock
 }

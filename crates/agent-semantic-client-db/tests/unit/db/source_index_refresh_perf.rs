@@ -4,8 +4,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
 use agent_semantic_client_db::{
-    ClientDbEngine, ClientDbSourceIndexImport, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSelector,
+    ClientDbEngine, ClientDbSourceIndexImport, ClientDbSourceIndexLookupState,
+    ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSelector,
     client_db_source_index_generation_id,
 };
 
@@ -14,11 +14,22 @@ const SOURCE_INDEX_HASH_REUSE_GATE: Duration = Duration::from_millis(25);
 #[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE: Duration = Duration::from_secs(1);
 #[cfg(not(debug_assertions))]
+const SOURCE_INDEX_1193_OWNER_ONE_PERCENT_REFRESH_GATE: Duration = Duration::from_millis(500);
+#[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_HIGH_FANOUT_COLD_LOOKUP_GATE: Duration = Duration::from_millis(400);
+
+static SOURCE_INDEX_REFRESH_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn source_index_refresh_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    SOURCE_INDEX_REFRESH_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 #[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
+    let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-1193-owner-cold-write");
     let client_dir = root.join("client");
     let project_root = root.join("project");
@@ -36,6 +47,9 @@ async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
     assert!(!refresh.reused_generation, "cold import must publish rows");
     assert_eq!(refresh.owner_count, 1_193);
     assert_eq!(refresh.selector_count, 1_193);
+    assert_eq!(refresh.changed_owner_count, 1_193);
+    assert_eq!(refresh.removed_owner_count, 0);
+    assert_eq!(refresh.posting_write_count, 20_281);
     assert!(
         elapsed < SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE,
         "1193-owner source-index cold write exceeded V1 DB gate: elapsed={elapsed:?} gate={SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE:?}"
@@ -46,7 +60,64 @@ async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
 
 #[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "current_thread")]
+async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
+    let _test_guard = source_index_refresh_test_guard();
+    let root = temp_project_root("source-index-1193-owner-one-percent-refresh");
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&client_dir).expect("create client dir");
+    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
+
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        large_refresh_request(&project_root, 1_193),
+    )
+    .expect("write initial 1193-owner source-index snapshot");
+
+    let mut changed_request = large_refresh_request(&project_root, 1_193);
+    for (index, file_hash) in changed_request
+        .import
+        .file_hashes
+        .iter_mut()
+        .take(12)
+        .enumerate()
+    {
+        file_hash.sha256 = format!("{:064x}", u64::MAX - index as u64);
+    }
+
+    let started_at = Instant::now();
+    let refresh =
+        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
+            .expect("refresh one-percent changed source-index snapshot");
+    let elapsed = started_at.elapsed();
+
+    assert!(
+        !refresh.reused_generation,
+        "changed import must publish rows"
+    );
+    assert_eq!(refresh.owner_count, 1_193);
+    assert_eq!(refresh.selector_count, 1_193);
+    assert_eq!(
+        refresh.changed_owner_count, 12,
+        "the one-percent scenario must serialize only its 12 changed owners"
+    );
+    assert_eq!(refresh.removed_owner_count, 0);
+    assert_eq!(
+        refresh.posting_write_count, 204,
+        "12 changed owners with 17 canonical terms each must rebuild only 204 postings"
+    );
+    assert!(
+        elapsed < SOURCE_INDEX_1193_OWNER_ONE_PERCENT_REFRESH_GATE,
+        "1193-owner one-percent refresh exceeded V1 DB gate: elapsed={elapsed:?} gate={SOURCE_INDEX_1193_OWNER_ONE_PERCENT_REFRESH_GATE:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(not(debug_assertions))]
+#[tokio::test(flavor = "current_thread")]
 async fn source_index_1193_owner_high_fanout_lookup_stays_inside_v1_gate() {
+    let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-1193-owner-high-fanout-lookup");
     let client_dir = root.join("client");
     let project_root = root.join("project");
@@ -84,6 +155,7 @@ async fn source_index_1193_owner_high_fanout_lookup_stays_inside_v1_gate() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_refresh_reuse_stays_on_structured_turso_path() {
+    let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-refresh-reuse-perf");
     let client_dir = root.join("client");
     let project_root = root.join("project");
@@ -113,7 +185,140 @@ async fn source_index_refresh_reuse_stays_on_structured_turso_path() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
+    let _test_guard = source_index_refresh_test_guard();
+    let root = temp_project_root("source-index-incremental-prune");
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&client_dir).expect("create client dir");
+    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
+
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        large_refresh_request(&project_root, 2),
+    )
+    .expect("write initial two-owner source-index snapshot");
+
+    let mut pruned_request = large_refresh_request(&project_root, 2);
+    pruned_request.file_count = 1;
+    pruned_request.import.file_hashes.pop();
+    pruned_request.import.owners.pop();
+    pruned_request.import.selectors.pop();
+    let pruned =
+        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, pruned_request)
+            .expect("publish pruned source-index snapshot");
+    assert!(!pruned.reused_generation);
+    assert_eq!(pruned.owner_count, 1);
+    assert_eq!(pruned.selector_count, 1);
+    assert_eq!(pruned.changed_owner_count, 0);
+    assert_eq!(pruned.removed_owner_count, 1);
+    assert_eq!(pruned.posting_write_count, 0);
+
+    let rust_language_id = LanguageId::from("rust");
+    let lookup_deadline = Instant::now() + Duration::from_secs(15);
+    let lookup = loop {
+        let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+            &client_dir,
+            "source_index_large_owner_1",
+            Some(&rust_language_id),
+            8,
+        )
+        .await
+        .expect("lookup removed source-index owner");
+        if lookup.state != ClientDbSourceIndexLookupState::Busy {
+            break lookup;
+        }
+        assert!(
+            Instant::now() < lookup_deadline,
+            "removed-owner lookup remained busy past the test deadline"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+    assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Miss);
+    assert!(lookup.candidates.is_empty(), "lookup={lookup:?}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "explicit source-index memory-bound gate with a 300-owner fixture"]
+async fn source_index_lookup_bounds_query_bytes_terms_and_candidate_limit() {
+    let _test_guard = source_index_refresh_test_guard();
+    let root = temp_project_root("source-index-lookup-memory-bounds");
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&client_dir).expect("create client dir");
+    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
+
+    let mut request = large_refresh_request(&project_root, 300);
+    for owner in &mut request.import.owners {
+        owner.query_keys.push("shared_lookup_token".into());
+    }
+    for selector in &mut request.import.selectors {
+        selector.query_keys.push("shared_lookup_token".into());
+    }
+    ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request)
+        .expect("write source-index memory-bound fixture");
+
+    let rust_language_id = LanguageId::from("rust");
+    let lookup_deadline = Instant::now() + Duration::from_secs(15);
+    let bounded = loop {
+        let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+            &client_dir,
+            "shared_lookup_token",
+            Some(&rust_language_id),
+            u32::MAX,
+        )
+        .await
+        .expect("lookup with oversized candidate request");
+        if lookup.state != ClientDbSourceIndexLookupState::Busy {
+            break lookup;
+        }
+        assert!(
+            Instant::now() < lookup_deadline,
+            "source-index candidate lookup remained busy past the test deadline"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+    assert_eq!(bounded.state, ClientDbSourceIndexLookupState::Hit);
+    assert_eq!(bounded.candidates.len(), 256);
+
+    let term_bounded_query = (0..32)
+        .map(|index| format!("absent_term_{index}"))
+        .chain(std::iter::once("shared_lookup_token".to_string()))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let term_bounded = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        &term_bounded_query,
+        Some(&rust_language_id),
+        8,
+    )
+    .await
+    .expect("lookup with excess source-index terms");
+    assert_eq!(term_bounded.state, ClientDbSourceIndexLookupState::Miss);
+    assert!(term_bounded.candidates.is_empty());
+
+    let oversized_query = "x".repeat(16 * 1024 + 1);
+    let error = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        &oversized_query,
+        Some(&rust_language_id),
+        8,
+    )
+    .await
+    .expect_err("oversized source-index query should fail before token projection");
+    assert!(
+        error.contains("source-index query exceeds byte budget"),
+        "error={error}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn source_index_failed_cold_write_rolls_back_visible_rows() {
+    let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-refresh-rollback");
     let client_dir = root.join("client");
     let project_root = root.join("project");
@@ -280,6 +485,7 @@ fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() 
 
 #[test]
 fn source_index_refresh_rewrites_canonical_snapshot_after_file_hash_changes() {
+    let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-refresh-republish-historical-hash");
     let client_dir = root.join("client");
     let project_root = root.join("project");
@@ -349,7 +555,6 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
     }
 }
 
-#[cfg(not(debug_assertions))]
 fn large_refresh_request(
     project_root: &Path,
     owner_count: u32,

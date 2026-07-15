@@ -23,7 +23,7 @@ pub(in crate::command) fn classify_activation_failure_main_session_asp(
     if commands.is_empty() {
         return Ok(None);
     }
-    let mut context = main_session_route_context(project_root, asp_session_policy)?;
+    let mut context = main_session_route_context(project_root, asp_session_policy, payload)?;
     let unusable_explore_session = matches!(
         context
             .active_explore_session
@@ -54,9 +54,7 @@ pub(in crate::command) fn classify_activation_failure_main_session_asp(
         return Ok(None);
     }
     let requires_resident_child = commands.iter().any(|command| {
-        command_requires_resident_child(command, |tokens, index| {
-            asp_session_policy.main_asp_command_allowed(tokens, index)
-        })
+        command_requires_resident_child(command, asp_session_policy.command_intent_policy())
     });
     if context.active_explore_session.is_none() && requires_resident_child {
         if let Some(topology) = context.current_nested_resident_child(asp_session_policy) {
@@ -90,7 +88,7 @@ pub(in crate::command) fn classify_activation_failure_main_session_asp(
         )));
     }
     if let Some((command, invocation)) =
-        first_restricted_main_session_asp_command(&commands, asp_session_policy)
+        first_restricted_main_session_asp_command(&commands, None, asp_session_policy)
     {
         return Ok(Some(main_session_restricted_asp_command_decision(
             platform,

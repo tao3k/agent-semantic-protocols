@@ -954,7 +954,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         best_elapsed.as_millis()
     );
 
-    assert_eq!(best_denied, iterations / 4);
+    assert_eq!(best_denied, iterations / 2);
     assert!(
         best_elapsed < Duration::from_millis(5_000),
         "configurable hook classification regressed: {best_elapsed:?} for {iterations} iterations"
@@ -1098,4 +1098,27 @@ commandAny = ["rg"]
         artifacts_path.display().to_string().replace('\\', "\\\\"),
         entry_skill_path.display().to_string().replace('\\', "\\\\")
     )
+}
+
+#[test]
+fn missing_resident_agent_route_uses_builtin_search_profile_without_load_failure() {
+    let root = temp_root("missing-resident-agent-route");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+[agents]
+residentAgents = []
+"#,
+    )
+    .expect("write hook config without resident route");
+
+    let config = load_client_config(&config_path).expect("load with built-in resident fallback");
+
+    assert_eq!(config.resident_asp_explore_child_name(), "asp-explore");
+    assert_eq!(
+        config.resident_asp_explore_codex_agent_name(),
+        "asp_explorer"
+    );
+    let _ = fs::remove_dir_all(root);
 }

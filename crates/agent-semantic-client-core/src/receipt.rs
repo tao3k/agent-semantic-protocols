@@ -61,6 +61,18 @@ pub struct ProviderCommandReceipt {
     pub stderr_truncated: bool,
     #[serde(skip_serializing_if = "is_false")]
     pub timed_out: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_signal: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_limit_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub memory_limit_enforced: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub memory_limit_exceeded: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub abnormal_termination: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub termination_reason: Option<String>,
     pub elapsed_ms: ElapsedMillis,
 }
 

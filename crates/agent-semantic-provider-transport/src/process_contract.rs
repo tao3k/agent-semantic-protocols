@@ -89,6 +89,8 @@ pub struct ProviderProcessLimits {
     pub max_stdout_bytes: Option<usize>,
     /// Maximum stderr bytes retained in memory.
     pub max_stderr_bytes: Option<usize>,
+    /// Maximum provider address-space bytes on supported platforms.
+    pub memory_limit_bytes: Option<u64>,
 }
 
 /// Structured receipt for provider process execution.
@@ -114,6 +116,18 @@ pub struct ProviderProcessReceipt {
     pub stderr_truncated: bool,
     /// Whether the process exceeded its timeout.
     pub timed_out: bool,
+    /// Whether the parent observed the provider above its memory ceiling.
+    pub memory_limit_exceeded: bool,
+    /// Unix signal that terminated the provider, when available.
+    pub exit_signal: Option<i32>,
+    /// Configured provider memory ceiling.
+    pub memory_limit_bytes: Option<u64>,
+    /// Whether the current platform applied the memory ceiling.
+    pub memory_limit_enforced: bool,
+    /// Whether the provider failed through timeout, signal, or non-zero exit.
+    pub abnormal_termination: bool,
+    /// Stable termination classification for client receipts and diagnostics.
+    pub termination_reason: String,
 }
 
 /// Transport-level failure while running an external provider process.
@@ -154,6 +168,13 @@ pub enum ProviderProcessError {
     Timeout {
         /// Configured timeout.
         timeout: Duration,
+        /// Partial receipt built from retained output.
+        receipt: ProviderProcessReceipt,
+    },
+    /// The provider exceeded its configured memory ceiling and was killed.
+    MemoryLimit {
+        /// Configured byte ceiling.
+        limit_bytes: u64,
         /// Partial receipt built from retained output.
         receipt: ProviderProcessReceipt,
     },
@@ -206,6 +227,14 @@ impl fmt::Display for ProviderProcessError {
                 "provider process timed out after {timeout:?}; stdoutBytes={} stderrBytes={}",
                 receipt.stdout_bytes, receipt.stderr_bytes
             ),
+            Self::MemoryLimit {
+                limit_bytes,
+                receipt,
+            } => write!(
+                formatter,
+                "provider process exceeded memory limit {limit_bytes} bytes; stdoutBytes={} stderrBytes={}",
+                receipt.stdout_bytes, receipt.stderr_bytes
+            ),
         }
     }
 }
@@ -226,7 +255,8 @@ impl Error for ProviderProcessError {
             Self::CaptureStdout
             | Self::CaptureStderr
             | Self::CaptureStdin
-            | Self::Timeout { .. } => None,
+            | Self::Timeout { .. }
+            | Self::MemoryLimit { .. } => None,
         }
     }
 }

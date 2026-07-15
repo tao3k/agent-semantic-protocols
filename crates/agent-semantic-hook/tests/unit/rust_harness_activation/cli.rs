@@ -45,7 +45,7 @@ fn cli_doctor_accepts_root_owned_rust_activation() {
 }
 
 #[test]
-fn cli_doctor_reports_allow_for_codex_exec_command_source_dump() {
+fn cli_doctor_reports_deny_for_codex_exec_command_source_dump() {
     let root = temp_project_root("doctor-classifier-probe");
     let activation_path = write_root_owned_rust_activation(&root);
     write_default_client_hook_config(&root);
@@ -68,8 +68,8 @@ fn cli_doctor_reports_allow_for_codex_exec_command_source_dump() {
             || stdout.contains("[agent-doctor] status=warning")
     );
     assert!(stdout.contains("clientConfigStatus=ok"));
-    assert!(stdout.contains("classifierProbe=allow"));
-    assert!(stdout.contains("classifierReason=none"));
+    assert!(stdout.contains("classifierProbe=deny"));
+    assert!(stdout.contains("classifierReason=bulk-source-dump"));
     assert!(stdout.contains("enforcement="), "{stdout}");
     assert!(stdout.contains("enforcementProbe="));
     assert!(stdout.contains("enforcementReason="));
@@ -77,7 +77,7 @@ fn cli_doctor_reports_allow_for_codex_exec_command_source_dump() {
 }
 
 #[test]
-fn cli_hook_emits_allow_for_explicit_read_schema_tests() {
+fn cli_hook_emits_deny_for_explicit_read_schema_tests() {
     let root = temp_project_root("hook-decision-activation");
     let activation_path = write_root_owned_rust_activation(&root);
     let mut child = asp_command()
@@ -107,8 +107,8 @@ fn cli_hook_emits_allow_for_explicit_read_schema_tests() {
 
     assert!(output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
-    assert_eq!(value["decision"], "allow");
-    assert_eq!(value["reasonKind"], "none");
+    assert_eq!(value["decision"], "deny");
+    assert_eq!(value["reasonKind"], "direct-source-read");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 

@@ -4,7 +4,7 @@ use serde_json::json;
 use super::registry_with_python;
 
 #[test]
-fn namespaced_python_explicit_read_is_allowed() {
+fn namespaced_python_explicit_read_routes_to_owner_frontier() {
     let decision = classify_hook(
         &registry_with_python(),
         "codex",
@@ -15,9 +15,11 @@ fn namespaced_python_explicit_read_is_allowed() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Allow);
-    assert_eq!(decision.reason_kind, ReasonKind::None);
-    assert!(decision.routes.is_empty());
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(decision.language_ids, ["python"]);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
+    assert_eq!(decision.routes[0].provider_id, "py-harness");
 }
 
 #[test]

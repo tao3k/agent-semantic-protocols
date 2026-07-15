@@ -63,7 +63,7 @@ fn rust_harness_activation_uses_provider_identity() {
 }
 
 #[test]
-fn rust_harness_activation_allows_explicit_reads() {
+fn rust_harness_activation_routes_explicit_reads_to_owner_frontier() {
     let decision = classify_hook(
         &rust_harness_activation(),
         "codex",
@@ -74,9 +74,11 @@ fn rust_harness_activation_allows_explicit_reads() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Allow);
-    assert_eq!(decision.reason_kind, ReasonKind::None);
-    assert!(decision.routes.is_empty());
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(decision.language_ids, ["rust"]);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
+    assert_eq!(decision.routes[0].provider_id, "rs-harness");
 }
 
 #[test]

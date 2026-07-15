@@ -5,15 +5,114 @@ use serde_json::json;
 
 use super::support::{assert_allowed, polyglot_registry, rust_registry};
 
+use crate::classifier::raw_search_policy::support::assert_raw_search_denied;
+
 #[test]
-fn workspace_wide_raw_search_without_language_selector_is_allowed() {
+fn workspace_wide_raw_search_without_language_selector_is_denied() {
     for command in [
         "rg -n WorkflowExecution",
         "rg -n WorkflowExecution src",
         "fd WorkflowExecution",
         "fd -t f WorkflowExecution src",
     ] {
-        assert_allowed(command);
+        assert_raw_search_denied(command, "ts-harness");
+    }
+}
+
+#[test]
+fn direct_read_of_real_source_directory_is_denied() {
+    let source_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "Read",
+            "tool_input": {"path": source_dir}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
+}
+
+#[test]
+fn direct_read_of_exact_source_file_is_denied_and_routes_to_provider_query() {
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "Read",
+            "tool_input": {"path": "src/cli/agent-hooks.ts"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(decision.language_ids, vec!["typescript".to_string()]);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
+    assert_eq!(
+        decision.routes[0].argv,
+        vec![
+            "asp",
+            "typescript",
+            "search",
+            "owner",
+            "src/cli/agent-hooks.ts",
+            "items",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ]
+    );
+}
+
+#[test]
+fn direct_read_of_exact_rust_source_file_is_denied() {
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "Read",
+            "tool_input": {"path": "crates/agent-semantic-hook/src/hook_config/core.rs"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(decision.language_ids, vec!["rust".to_string()]);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
+}
+
+#[test]
+fn exact_shell_source_dump_is_denied() {
+    for (command, reason_kind) in [
+        ("cat src/cli/agent-hooks.ts", ReasonKind::BulkSourceDump),
+        (
+            "sed -n '1,40p' src/cli/agent-hooks.ts",
+            ReasonKind::BulkSourceDump,
+        ),
+        (
+            "head -n 40 src/cli/agent-hooks.ts",
+            ReasonKind::BulkSourceDump,
+        ),
+    ] {
+        let decision = classify_hook(
+            &polyglot_registry(),
+            "codex",
+            "pre-tool",
+            &json!({
+                "tool_name": "functions.exec_command",
+                "tool_input": {"cmd": command}
+            }),
+        );
+
+        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
+        assert_eq!(decision.reason_kind, reason_kind, "{command}");
+        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     }
 }
 
@@ -45,14 +144,10 @@ fn broad_rust_raw_search_with_filters_routes_to_ingest() {
 }
 
 #[test]
-fn raw_search_globs_without_suffix_are_not_language_evidence() {
-    for command in [
-        "rg --files -g 'docs/**'",
-        "rg --files -g 'crates/**'",
-        "rg --files -g '**/*'",
-    ] {
-        assert_allowed(command);
-    }
+fn raw_search_globs_without_suffix_respect_provider_source_roots() {
+    assert_allowed("rg --files -g 'docs/**'");
+    assert_raw_search_denied("rg --files -g 'crates/**'", "rs-harness");
+    assert_raw_search_denied("rg --files -g '**/*'", "ts-harness");
 }
 
 #[test]
@@ -179,6 +274,8 @@ fn fd_extension_source_path_listing_routes_to_ingest() {
 fn action_policy_allows_raw_search_and_explicit_reads() {
     let mut registry = crate::classifier::registry();
     registry.providers[0].policy.raw_source_search = ActionPolicy::Allow;
+    registry.providers[0].policy.direct_source_read = ActionPolicy::Allow;
+    registry.providers[0].policy.bulk_source_dump = ActionPolicy::Allow;
 
     let search_decision = classify_hook(
         &registry,
@@ -198,8 +295,19 @@ fn action_policy_allows_raw_search_and_explicit_reads() {
             "tool_input": {"path": "src/cli/agent-hooks.ts"}
         }),
     );
+    let dump_decision = classify_hook(
+        &registry,
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "sed -n '1,40p' src/cli/agent-hooks.ts"}
+        }),
+    );
 
     assert_eq!(search_decision.decision, DecisionKind::Allow);
     assert_eq!(read_decision.decision, DecisionKind::Allow);
     assert_eq!(read_decision.reason_kind, ReasonKind::None);
+    assert_eq!(dump_decision.decision, DecisionKind::Allow);
+    assert_eq!(dump_decision.reason_kind, ReasonKind::None);
 }

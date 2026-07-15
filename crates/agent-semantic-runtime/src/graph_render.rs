@@ -99,6 +99,7 @@ fn run_graph_render_process(
             max_stdout_bytes: Some(max_stdout_bytes as usize + 1),
             max_stderr_bytes: Some(64 * 1024),
             timeout: None,
+            memory_limit_bytes: Some(1024 * 1024 * 1024),
         },
     }) {
         Ok(output) => output,

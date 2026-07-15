@@ -146,6 +146,21 @@ mod unix {
             .expect("write codex agent config");
         std::fs::write(&claude_source, "---\nname: asp-explorer\n---\n")
             .expect("write claude agent config");
+        std::fs::write(
+            agents_dir.join("config.toml"),
+            r#"[agents.asp_explorer]
+host_agent_name = "asp_explorer"
+profile = "asp-explorer_codex.toml"
+projection = "asp-explorer.toml"
+"#,
+        )
+        .expect("write ASP agent registry");
+        std::fs::create_dir_all(&codex_home).expect("create Codex home");
+        std::fs::write(
+            codex_home.join("config.toml"),
+            "model = \"gpt-5.6\"\n\n[agents]\nmax_threads = 4\n\n[features]\nmulti_agent_v2 = true\nunified_exec = true\n",
+        )
+        .expect("write legacy Codex feature config");
 
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(&project)
@@ -168,6 +183,18 @@ mod unix {
             stdout.contains("agentConfigs=2"),
             "expected two projected agent configs, got {stdout}"
         );
+        assert!(
+            stdout.contains("codexAgentRegistry=1"),
+            "expected one Codex registry entry, got {stdout}"
+        );
+        assert!(
+            stdout.contains("codexSpawnAgentMetadata=visible-agent-type"),
+            "expected visible Codex agent_type projection, got {stdout}"
+        );
+        assert!(
+            stdout.contains("hookConfig=created"),
+            "expected global hook config creation, got {stdout}"
+        );
         assert_eq!(
             std::fs::read_link(codex_home.join("agents").join("asp-explorer.toml"))
                 .expect("codex agent symlink")
@@ -182,6 +209,125 @@ mod unix {
                 .expect("claude agent symlink"),
             claude_source.canonicalize().expect("claude source")
         );
+        let codex_config =
+            std::fs::read_to_string(codex_home.join("config.toml")).expect("Codex config");
+        assert!(codex_config.contains("# BEGIN ASP MANAGED CODEX AGENT REGISTRY"));
+        assert!(codex_config.contains("[features.multi_agent_v2]"));
+        assert!(codex_config.contains("enabled = true"));
+        assert!(codex_config.contains("hide_spawn_agent_metadata = false"));
+        assert!(codex_config.contains("tool_namespace = \"collaboration_v2\""));
+        assert!(!codex_config.contains("expose_spawn_agent_model_overrides"));
+        assert!(!codex_config.contains("multi_agent_v2 = true"));
+        assert!(!codex_config.contains("max_threads = 4"));
+        assert!(codex_config.contains("unified_exec = true"));
+        assert!(codex_config.contains("model = \"gpt-5.6\""));
+        assert!(codex_config.contains("[agents.asp_explorer]"));
+        assert!(codex_config.contains("config_file = \"agents/asp-explorer.toml\""));
+        let second_output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&project)
+            .env("ASP_ORG_REPO_URL", &source)
+            .env("ASP_STATE_HOME", &state_home)
+            .env("CODEX_HOME", &codex_home)
+            .env("CLAUDE_HOME", &claude_home)
+            .env("PRJ_CACHE_HOME", project.join(".cache"))
+            .args(["sync"])
+            .output()
+            .expect("rerun asp sync");
+        assert!(second_output.status.success());
+        assert_eq!(
+            std::fs::read_to_string(codex_home.join("config.toml"))
+                .expect("Codex config after second sync"),
+            codex_config,
+            "Codex config projection must be idempotent"
+        );
+        let config_with_hidden_metadata = codex_config.replace(
+            "hide_spawn_agent_metadata = false",
+            "hide_spawn_agent_metadata = true\nexpose_spawn_agent_model_overrides = true",
+        );
+        std::fs::write(codex_home.join("config.toml"), config_with_hidden_metadata)
+            .expect("write drifted Codex multi-agent v2 config");
+        let repair_output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&project)
+            .env("ASP_ORG_REPO_URL", &source)
+            .env("ASP_STATE_HOME", &state_home)
+            .env("CODEX_HOME", &codex_home)
+            .env("CLAUDE_HOME", &claude_home)
+            .env("PRJ_CACHE_HOME", project.join(".cache"))
+            .args(["sync"])
+            .output()
+            .expect("repair drifted Codex multi-agent v2 config");
+        assert!(repair_output.status.success());
+        let repaired_codex_config =
+            std::fs::read_to_string(codex_home.join("config.toml")).expect("repaired Codex config");
+        assert!(repaired_codex_config.contains("hide_spawn_agent_metadata = false"));
+        assert!(repaired_codex_config.contains("tool_namespace = \"collaboration_v2\""));
+        assert!(!repaired_codex_config.contains("expose_spawn_agent_model_overrides"));
+        let parsed_codex_config: toml::Value =
+            toml::from_str(&repaired_codex_config).expect("parse repaired Codex config");
+        assert_eq!(
+            parsed_codex_config["features"]["multi_agent_v2"]["hide_spawn_agent_metadata"]
+                .as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            parsed_codex_config["features"]["multi_agent_v2"]["tool_namespace"].as_str(),
+            Some("collaboration_v2")
+        );
+        let legacy_namespace_config = repaired_codex_config.replace(
+            "tool_namespace = \"collaboration_v2\"",
+            "tool_namespace = \"asp_collaboration\"",
+        );
+        std::fs::write(codex_home.join("config.toml"), legacy_namespace_config)
+            .expect("write legacy ASP namespace");
+        let migrate_namespace_output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&project)
+            .env("ASP_ORG_REPO_URL", &source)
+            .env("ASP_STATE_HOME", &state_home)
+            .env("CODEX_HOME", &codex_home)
+            .env("CLAUDE_HOME", &claude_home)
+            .env("PRJ_CACHE_HOME", project.join(".cache"))
+            .args(["sync"])
+            .output()
+            .expect("migrate legacy ASP namespace");
+        assert!(migrate_namespace_output.status.success());
+        let migrated_namespace_config = std::fs::read_to_string(codex_home.join("config.toml"))
+            .expect("migrated namespace config");
+        assert!(migrated_namespace_config.contains("tool_namespace = \"collaboration_v2\""));
+        assert!(!migrated_namespace_config.contains("tool_namespace = \"asp_collaboration\""));
+
+        let user_namespace_config = migrated_namespace_config.replace(
+            "tool_namespace = \"collaboration_v2\"",
+            "tool_namespace = \"my_collaboration_tools\"",
+        );
+        std::fs::write(codex_home.join("config.toml"), &user_namespace_config)
+            .expect("write user-owned namespace");
+        let preserve_namespace_output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&project)
+            .env("ASP_ORG_REPO_URL", &source)
+            .env("ASP_STATE_HOME", &state_home)
+            .env("CODEX_HOME", &codex_home)
+            .env("CLAUDE_HOME", &claude_home)
+            .env("PRJ_CACHE_HOME", project.join(".cache"))
+            .args(["sync"])
+            .output()
+            .expect("preserve user-owned namespace");
+        assert!(preserve_namespace_output.status.success());
+        assert_eq!(
+            std::fs::read_to_string(codex_home.join("config.toml"))
+                .expect("user-owned namespace config after sync"),
+            user_namespace_config,
+            "asp sync must not overwrite a user-owned tool namespace"
+        );
+        let hook_config = state_home.join("hooks").join("config.toml");
+        let hook_config = agent_semantic_config::load_hook_client_config_file(&hook_config)
+            .expect("load auto-synced hook config");
+        assert!(
+            hook_config
+                .agents
+                .resident_agents
+                .iter()
+                .any(|agent| agent.lifecycle == "asp-command")
+        );
 
         let _ = std::fs::remove_dir_all(source);
         let _ = std::fs::remove_dir_all(project);
@@ -195,6 +341,8 @@ mod unix {
             .current_dir(project)
             .env("ASP_ORG_REPO_URL", source)
             .env("ASP_STATE_HOME", state_home)
+            .env("CODEX_HOME", state_home.join("codex-home"))
+            .env("CLAUDE_HOME", state_home.join("claude-home"))
             .env("PRJ_CACHE_HOME", project.join(".cache"))
             .args(["sync"])
             .output()
@@ -214,6 +362,8 @@ mod unix {
             .env_remove("ASP_ORG_REPO_URL")
             .env("GIT_CONFIG_GLOBAL", git_config)
             .env("ASP_STATE_HOME", state_home)
+            .env("CODEX_HOME", state_home.join("codex-home"))
+            .env("CLAUDE_HOME", state_home.join("claude-home"))
             .env("PRJ_CACHE_HOME", project.join(".cache"))
             .args(["sync"])
             .output()

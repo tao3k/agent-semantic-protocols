@@ -7,11 +7,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[test]
 fn agent_session_resume_reports_missing_message_target_until_native_target_is_registered() {
     let state_root = temp_state_root("asp-resume-cli");
+    let codex_home = temp_state_root("asp-resume-cli-codex-home");
     let root_session_id = "019f3db5-0000-7000-8000-000000000001";
     let child_session_id = "019f3db5-0000-7000-8000-000000000002";
     let binary = env!("CARGO_BIN_EXE_asp");
 
     let register = Command::new(binary)
+        .env("CODEX_HOME", &codex_home)
         .args([
             "agent",
             "session",
@@ -35,6 +37,7 @@ fn agent_session_resume_reports_missing_message_target_until_native_target_is_re
     assert_success("register", &register);
 
     let resume = Command::new(binary)
+        .env("CODEX_HOME", &codex_home)
         .args([
             "agent",
             "session",
@@ -52,7 +55,7 @@ fn agent_session_resume_reports_missing_message_target_until_native_target_is_re
 
     let stdout = String::from_utf8_lossy(&resume.stdout);
     assert!(stdout.contains("[agent-session-resume]"), "{stdout}");
-    assert!(stdout.contains("registryRoutable=true"), "{stdout}");
+    assert!(stdout.contains("registryRoutable=false"), "{stdout}");
     assert!(stdout.contains("routable=false"), "{stdout}");
     assert!(
         stdout.contains("messageTargetStatus=\"missing\""),
@@ -64,9 +67,8 @@ fn agent_session_resume_reports_missing_message_target_until_native_target_is_re
     );
     assert!(stdout.contains("messageAgentTargetId=\"\""), "{stdout}");
     assert!(
-        stdout.contains(
-            "nextAction=\"register-existing-child-with-native-message-target-or-create-managed-child\""
-        ),
+        stdout
+            .contains("nextAction=\"rebind-existing-child-target-with-native-same-child-resume\""),
         "{stdout}"
     );
     assert!(
@@ -76,17 +78,20 @@ fn agent_session_resume_reports_missing_message_target_until_native_target_is_re
     assert!(!stdout.contains("rolloutActivityStatus=\"agent-active\""));
 
     let _ = fs::remove_dir_all(state_root);
+    let _ = fs::remove_dir_all(codex_home);
 }
 
 #[test]
-fn agent_session_resume_uses_registered_native_message_target() {
+fn agent_session_resume_rejects_manually_registered_message_target_as_live() {
     let state_root = temp_state_root("asp-resume-cli-target");
+    let codex_home = temp_state_root("asp-resume-cli-target-codex-home");
     let root_session_id = "019f3db5-0000-7000-8000-000000000011";
     let child_session_id = "019f3db5-0000-7000-8000-000000000012";
     let message_target_id = "native-message-agent-target-012";
     let binary = env!("CARGO_BIN_EXE_asp");
 
     let register = Command::new(binary)
+        .env("CODEX_HOME", &codex_home)
         .args([
             "agent",
             "session",
@@ -112,6 +117,7 @@ fn agent_session_resume_uses_registered_native_message_target() {
     assert_success("register", &register);
 
     let resume = Command::new(binary)
+        .env("CODEX_HOME", &codex_home)
         .args([
             "agent",
             "session",
@@ -129,23 +135,25 @@ fn agent_session_resume_uses_registered_native_message_target() {
 
     let stdout = String::from_utf8_lossy(&resume.stdout);
     assert!(stdout.contains("[agent-session-resume]"), "{stdout}");
-    assert!(stdout.contains("registryRoutable=true"), "{stdout}");
-    assert!(stdout.contains("routable=true"), "{stdout}");
-    assert!(stdout.contains("messageTargetStatus=\"ready\""), "{stdout}");
+    assert!(stdout.contains("registryRoutable=false"), "{stdout}");
+    assert!(stdout.contains("routable=false"), "{stdout}");
     assert!(
-        stdout.contains("messageTargetResultSource=\"registry-message-target-id\""),
+        stdout.contains("messageTargetStatus=\"missing\""),
         "{stdout}"
     );
     assert!(
-        stdout.contains("messageAgentTargetId=\"native-message-agent-target-012\""),
+        stdout.contains("messageTargetResultSource=\"registry-message-target-id-missing\""),
         "{stdout}"
     );
+    assert!(stdout.contains("messageAgentTargetId=\"\""), "{stdout}");
     assert!(
-        stdout.contains("nextAction=\"send-follow-up-to-registered-message-target\""),
+        stdout
+            .contains("nextAction=\"rebind-existing-child-target-with-native-same-child-resume\""),
         "{stdout}"
     );
 
     let resume_json = Command::new(binary)
+        .env("CODEX_HOME", &codex_home)
         .args([
             "agent",
             "session",
@@ -164,12 +172,10 @@ fn agent_session_resume_uses_registered_native_message_target() {
 
     let stdout = String::from_utf8_lossy(&resume_json.stdout);
     assert!(stdout.contains("[agent-session-resume]"), "{stdout}");
-    assert!(
-        stdout.contains("messageAgentTargetId=\"native-message-agent-target-012\""),
-        "{stdout}"
-    );
+    assert!(stdout.contains("messageAgentTargetId=\"\""), "{stdout}");
 
     let status = Command::new(binary)
+        .env("CODEX_HOME", &codex_home)
         .args([
             "agent",
             "session",
@@ -187,18 +193,21 @@ fn agent_session_resume_uses_registered_native_message_target() {
 
     let stdout = String::from_utf8_lossy(&status.stdout);
     assert!(stdout.contains("[agent-session-status]"), "{stdout}");
-    assert!(stdout.contains("routable=true"), "{stdout}");
-    assert!(stdout.contains("messageTargetStatus=\"ready\""), "{stdout}");
+    assert!(stdout.contains("routable=false"), "{stdout}");
     assert!(
-        stdout.contains("messageTargetResultSource=\"registry-message-target-id\""),
+        stdout.contains("messageTargetStatus=\"unbound\""),
         "{stdout}"
     );
     assert!(
-        stdout.contains("messageAgentTargetId=\"native-message-agent-target-012\""),
+        stdout.contains(
+            "messageTargetResultSource=\"persisted-message-target-without-live-attestation\""
+        ),
         "{stdout}"
     );
+    assert!(stdout.contains("messageAgentTargetId=\"\""), "{stdout}");
 
     let _ = fs::remove_dir_all(state_root);
+    let _ = fs::remove_dir_all(codex_home);
 }
 
 #[test]
@@ -235,11 +244,11 @@ fn agent_session_resume_missing_session_checks_rollout_history_before_create() {
     );
     assert!(
         stdout
-            .contains("rolloutHistoryAction=\"create-resident-child-after-rollout-history-miss\""),
+            .contains("rolloutHistoryAction=\"audit-host-agent-tree-after-rollout-history-miss\""),
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextAction=\"create-resident-child-after-rollout-history-miss\""),
+        stdout.contains("nextAction=\"audit-host-agent-tree-after-rollout-history-miss\""),
         "{stdout}"
     );
     assert!(
@@ -436,21 +445,19 @@ fn agent_session_resume_reports_required_model_alignment_for_asp_explore() {
 
     let stdout = String::from_utf8_lossy(&resume.stdout);
     assert!(stdout.contains("[agent-session-resume]"), "{stdout}");
-    assert!(stdout.contains("registryRoutable=true"), "{stdout}");
+    assert!(stdout.contains("registryRoutable=false"), "{stdout}");
     assert!(
         stdout.contains("requiredModel=\"gpt-5.4-mini\""),
         "{stdout}"
     );
     assert!(
         stdout.contains(
-            "modelAlignmentAction=\"parent-register-native-message-target-before-model-follow-up\""
+            "modelAlignmentAction=\"rebind-existing-child-target-with-native-same-child-resume\""
         ),
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "The resident child is lifecycle-valid but has no native message-agent target"
-        ),
+        stdout.contains("The persisted session is not a live native message target"),
         "{stdout}"
     );
 
@@ -475,22 +482,17 @@ fn agent_session_resume_reports_required_model_alignment_for_asp_explore() {
     let stdout = String::from_utf8_lossy(&status.stdout);
     assert!(stdout.contains("[agent-session-status]"), "{stdout}");
     assert!(
-        stdout.contains("messageTargetStatus=\"missing\""),
+        stdout.contains("messageTargetStatus=\"unbound\""),
         "{stdout}"
     );
     assert!(
-        stdout.contains("messageTargetResultSource=\"registry-message-target-id-missing\""),
+        stdout.contains("messageTargetResultSource=\"live-message-target-binding-missing\""),
         "{stdout}"
     );
-    assert!(
-        stdout.contains(
-            "modelAlignmentAction=\"parent-register-native-message-target-before-model-follow-up\""
-        ),
-        "{stdout}"
-    );
+    assert!(stdout.contains("modelAlignmentAction=\"none\""), "{stdout}");
     assert!(
         stdout.contains(
-            "nextAction=\"register-existing-child-with-native-message-target-or-create-managed-child\""
+            "nextAction=\"reenter-bootstrap-for-host-tree-target-rebind-or-typed-replacement\""
         ),
         "{stdout}"
     );

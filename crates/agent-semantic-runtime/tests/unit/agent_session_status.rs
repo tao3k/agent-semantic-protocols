@@ -129,6 +129,7 @@ fn codex_rollout_metadata_uses_latest_turn_context() {
         "type": "turn_context",
         "payload": {
             "model": "gpt-5.3-codex-spark",
+            "reasoning_effort": "medium",
             "sandbox_policy": {"type": "read-only"},
             "approval_policy": "never",
             "permission_profile": {"type": "disabled"}
@@ -138,6 +139,7 @@ fn codex_rollout_metadata_uses_latest_turn_context() {
         "type": "turn_context",
         "payload": {
             "model": "gpt-5.5",
+            "effort": "low",
             "sandbox_policy": {"type": "danger-full-access"},
             "approval_policy": "on-request",
             "permission_profile": {"type": "full"}
@@ -154,6 +156,7 @@ fn codex_rollout_metadata_uses_latest_turn_context() {
         .expect("metadata");
 
     assert_eq!(metadata.model.as_deref(), Some("gpt-5.5"));
+    assert_eq!(metadata.reasoning_effort.as_deref(), Some("low"));
     assert_eq!(
         metadata.sandbox_policy.as_deref(),
         Some("danger-full-access")
@@ -272,7 +275,8 @@ fn codex_rollout_session_index_lists_root_subagents_and_nested_depth() {
                         "parent_thread_id": root_session_id,
                         "depth": 1,
                         "agent_nickname": "ASP owner",
-                        "agent_role": "asp_explorer"
+                        "agent_role": "asp_explorer",
+                        "agent_path": "/Users/example/.codex/agents/asp-explorer.toml"
                     }
                 }
             }
@@ -282,6 +286,7 @@ fn codex_rollout_session_index_lists_root_subagents_and_nested_depth() {
         "type": "turn_context",
         "payload": {
             "model": "gpt-5.4-mini",
+            "reasoningEffort": "low",
             "sandbox_policy": {"type": "read-only"},
             "approval_policy": "never",
             "permission_profile": {"type": "disabled"}
@@ -374,8 +379,13 @@ fn codex_rollout_session_index_lists_root_subagents_and_nested_depth() {
     assert_eq!(child.parent_thread_id.as_deref(), Some(root_session_id));
     assert_eq!(child.thread_source.as_deref(), Some("subagent"));
     assert_eq!(child.agent_role.as_deref(), Some("asp_explorer"));
+    assert_eq!(
+        child.agent_path.as_deref(),
+        Some("/Users/example/.codex/agents/asp-explorer.toml")
+    );
     assert_eq!(child.spawn_depth, Some(1));
     assert_eq!(child.model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(child.reasoning_effort.as_deref(), Some("low"));
 
     let nested = index
         .records
@@ -421,6 +431,163 @@ fn codex_rollout_session_index_lists_root_subagents_and_nested_depth() {
         nested_activity.last_terminal_event.as_deref(),
         Some("event_msg:closed")
     );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn codex_rollout_index_joins_v2_parent_spawn_identity_into_sparse_child_metadata() {
+    let root_session_id = "019f1f1a-5389-7223-a150-77dcb5ea8dd5";
+    let child_session_id = "019f26e8-0dd6-71d3-8539-c362032b9e16";
+    let root = std::env::temp_dir().join(format!(
+        "asp-runtime-rollout-v2-spawn-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let _env = CodexHomeEnvGuard::set(&root);
+    let rollout_dir = root.join("sessions").join("2026").join("07").join("14");
+    fs::create_dir_all(&rollout_dir).expect("create rollout dir");
+
+    let root_rollout = rollout_dir.join(format!("rollout-root-{root_session_id}.jsonl"));
+    let root_session_meta = serde_json::json!({
+        "type": "session_meta",
+        "payload": {"id": root_session_id, "session_id": root_session_id}
+    });
+    let spawn_activity = serde_json::json!({
+        "type": "event_msg",
+        "payload": {
+            "type": "item_completed",
+            "item": {
+                "type": "SubAgentActivity",
+                "kind": "started",
+                "agent_thread_id": child_session_id,
+                "agent_path": "/root/asp_explorer"
+            }
+        }
+    });
+    let filler = serde_json::json!({
+        "type": "response_item",
+        "payload": {"type": "message", "role": "assistant", "content": []}
+    })
+    .to_string();
+    let before_spawn = std::iter::repeat_n(&filler, 512)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let after_spawn = std::iter::repeat_n(&filler, 8192)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(
+        &root_rollout,
+        format!("{root_session_meta}\n{before_spawn}\n{spawn_activity}\n{after_spawn}\n"),
+    )
+    .expect("write root rollout");
+
+    let child_rollout = rollout_dir.join(format!("rollout-child-{child_session_id}.jsonl"));
+    let child_session_meta = serde_json::json!({
+        "type": "session_meta",
+        "payload": {"id": child_session_id, "agent_role": "default"}
+    });
+    let child_turn = serde_json::json!({
+        "type": "turn_context",
+        "payload": {"model": "gpt-5.6-sol", "reasoning_effort": "xhigh"}
+    });
+    fs::write(
+        &child_rollout,
+        format!("{child_session_meta}\n{child_turn}\n"),
+    )
+    .expect("write child rollout");
+
+    let index = codex_rollout_session_index(root_session_id)
+        .expect("index lookup")
+        .expect("index");
+    let child = index
+        .records
+        .iter()
+        .find(|record| record.session_id == child_session_id)
+        .expect("joined child record");
+    assert_eq!(child.root_session_id.as_deref(), Some(root_session_id));
+    assert_eq!(child.parent_thread_id.as_deref(), Some(root_session_id));
+    assert_eq!(child.thread_source.as_deref(), Some("subagent"));
+    assert_eq!(child.spawn_depth, Some(1));
+    assert_eq!(child.agent_role.as_deref(), Some("default"));
+    assert_eq!(child.agent_path.as_deref(), Some("/root/asp_explorer"));
+    assert_eq!(child.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(child.reasoning_effort.as_deref(), Some("xhigh"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn codex_rollout_index_recovers_child_from_root_attributed_session_meta_without_spawn_edge() {
+    let root_session_id = "019f1f1a-5389-7223-a150-77dcb5ea8dd6";
+    let child_session_id = "019f26e8-0dd6-71d3-8539-c362032b9e17";
+    let root = std::env::temp_dir().join(format!(
+        "asp-runtime-rollout-root-attribution-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    let _env = CodexHomeEnvGuard::set(&root);
+    let rollout_dir = root.join("sessions").join("2026").join("07").join("14");
+    fs::create_dir_all(&rollout_dir).expect("create rollout dir");
+
+    let root_rollout = rollout_dir.join(format!("rollout-root-{root_session_id}.jsonl"));
+    fs::write(
+        &root_rollout,
+        format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "session_meta",
+                "payload": {"id": root_session_id, "session_id": root_session_id}
+            })
+        ),
+    )
+    .expect("write root rollout");
+
+    let child_rollout = rollout_dir.join(format!("rollout-child-{child_session_id}.jsonl"));
+    let child_session_meta = serde_json::json!({
+        "type": "session_meta",
+        "payload": {
+            "id": child_session_id,
+            "session_id": root_session_id,
+            "parent_thread_id": root_session_id,
+            "thread_source": "subagent",
+            "agent_role": "default",
+            "source": {
+                "subagent": {
+                    "thread_spawn": {
+                        "parent_thread_id": root_session_id,
+                        "depth": 1,
+                        "agent_path": "/root/asp_explorer"
+                    }
+                }
+            }
+        }
+    });
+    let child_turn = serde_json::json!({
+        "type": "turn_context",
+        "payload": {"model": "gpt-5.6-sol", "reasoning_effort": "xhigh"}
+    });
+    fs::write(
+        &child_rollout,
+        format!("{child_session_meta}\n{child_turn}\n"),
+    )
+    .expect("write child rollout");
+
+    let index = codex_rollout_session_index(root_session_id)
+        .expect("index lookup")
+        .expect("root-attributed child index");
+    let child = index
+        .records
+        .iter()
+        .find(|record| record.session_id == child_session_id)
+        .expect("root-attributed child record");
+    assert_eq!(child.parent_thread_id.as_deref(), Some(root_session_id));
+    assert_eq!(child.agent_role.as_deref(), Some("default"));
+    assert_eq!(child.agent_path.as_deref(), Some("/root/asp_explorer"));
+    assert_eq!(child.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(child.reasoning_effort.as_deref(), Some("xhigh"));
 
     let _ = fs::remove_dir_all(root);
 }

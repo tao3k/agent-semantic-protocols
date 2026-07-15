@@ -1,5 +1,7 @@
 use std::fs;
 
+#[cfg(target_os = "macos")]
+use crate::ProviderProcessError;
 use crate::{StdinMode, run_provider_process};
 
 use super::support::{script, spec, temp_dir};
@@ -78,5 +80,66 @@ fn passes_cwd_and_env() {
         "{stdout}"
     );
     assert!(stdout.contains("env=ok"), "{stdout}");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn records_signal_termination_with_memory_limit_context() {
+    let root = temp_dir("signal-memory-receipt");
+    let program = script(&root, "provider.sh", "#!/bin/sh\nkill -SEGV $$\n");
+    let mut process = spec(program, root.clone());
+    process.limits.memory_limit_bytes = Some(512 * 1024 * 1024);
+
+    let output = run_provider_process(process).expect("run provider");
+
+    assert!(!output.status.success());
+    assert_eq!(output.receipt.exit_signal, Some(libc::SIGSEGV));
+    assert_eq!(output.receipt.memory_limit_bytes, Some(512 * 1024 * 1024));
+    assert!(output.receipt.memory_limit_enforced);
+    assert!(output.receipt.abnormal_termination);
+    assert_eq!(output.receipt.termination_reason, "memory-limit-suspected");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn records_success_with_enforced_memory_limit() {
+    let root = temp_dir("success-memory-receipt");
+    let program = script(&root, "provider.sh", "#!/bin/sh\nprintf ok\n");
+    let mut process = spec(program, root.clone());
+    process.limits.memory_limit_bytes = Some(512 * 1024 * 1024);
+
+    let output = run_provider_process(process).expect("run provider");
+
+    assert!(output.status.success());
+    assert_eq!(output.receipt.termination_reason, "success");
+    assert!(!output.receipt.abnormal_termination);
+    assert!(output.receipt.memory_limit_enforced);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_parent_kills_provider_after_rss_limit() {
+    let root = temp_dir("macos-rss-limit");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\nexec /usr/bin/perl -e '$x = \"x\" x (128 * 1024 * 1024); sleep 2'\n",
+    );
+    let mut process = spec(program, root.clone());
+    process.limits.memory_limit_bytes = Some(32 * 1024 * 1024);
+
+    let error = run_provider_process(process).expect_err("memory limit must terminate provider");
+    let ProviderProcessError::MemoryLimit {
+        limit_bytes,
+        receipt,
+    } = error
+    else {
+        panic!("expected memory-limit receipt");
+    };
+    assert_eq!(limit_bytes, 32 * 1024 * 1024);
+    assert!(receipt.memory_limit_exceeded);
+    assert!(receipt.abnormal_termination);
+    assert_eq!(receipt.termination_reason, "memory-limit-exceeded");
     let _ = fs::remove_dir_all(root);
 }

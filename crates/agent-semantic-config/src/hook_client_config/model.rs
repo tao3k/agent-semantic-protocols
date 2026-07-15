@@ -69,7 +69,143 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub agents: HookClientAgentsConfig,
     #[serde(default)]
+    pub execution_lanes: HookClientExecutionLanesConfig,
+    #[serde(default)]
+    pub asp_command_intent_policy: HookClientAspCommandIntentPolicyConfig,
+    #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
+}
+
+/// Parser-owned policy for classifying public `asp <language>` commands.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAspCommandIntentPolicyConfig {
+    #[serde(default)]
+    pub control_plane: HookClientAspControlPlaneIntentConfig,
+    #[serde(default)]
+    pub reasoning: HookClientAspReasoningIntentConfig,
+    #[serde(default)]
+    pub exact_evidence: HookClientAspExactEvidenceIntentConfig,
+    #[serde(default)]
+    pub direct_read_fallback: HookClientAspDirectReadFallbackIntentConfig,
+    #[serde(default)]
+    pub invalid_evidence: HookClientAspInvalidEvidenceIntentConfig,
+}
+
+impl Default for HookClientAspCommandIntentPolicyConfig {
+    fn default() -> Self {
+        Self {
+            control_plane: HookClientAspControlPlaneIntentConfig::default(),
+            reasoning: HookClientAspReasoningIntentConfig::default(),
+            exact_evidence: HookClientAspExactEvidenceIntentConfig::default(),
+            direct_read_fallback: HookClientAspDirectReadFallbackIntentConfig::default(),
+            invalid_evidence: HookClientAspInvalidEvidenceIntentConfig::default(),
+        }
+    }
+}
+
+/// Root ASP commands that are operational control surfaces, not reasoning.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAspControlPlaneIntentConfig {
+    #[serde(default = "default_asp_control_plane_root_commands")]
+    pub root_commands: Vec<String>,
+}
+
+impl Default for HookClientAspControlPlaneIntentConfig {
+    fn default() -> Self {
+        Self {
+            root_commands: default_asp_control_plane_root_commands(),
+        }
+    }
+}
+
+/// Commands and routes that remain in the semantic reasoning lane.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAspReasoningIntentConfig {
+    #[serde(default = "default_asp_reasoning_root_commands")]
+    pub root_commands: Vec<String>,
+    #[serde(default = "default_asp_policy_true")]
+    pub guide_command: bool,
+    #[serde(default = "default_asp_reasoning_search_routes")]
+    pub search_routes: Vec<String>,
+    #[serde(default = "default_asp_reasoning_query_flags")]
+    pub query_flags: Vec<String>,
+    #[serde(default = "default_asp_policy_true")]
+    pub unprojected_query: bool,
+}
+
+impl Default for HookClientAspReasoningIntentConfig {
+    fn default() -> Self {
+        Self {
+            root_commands: default_asp_reasoning_root_commands(),
+            guide_command: true,
+            search_routes: default_asp_reasoning_search_routes(),
+            query_flags: default_asp_reasoning_query_flags(),
+            unprojected_query: true,
+        }
+    }
+}
+
+/// Projection and selector requirements for exact evidence reads.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAspExactEvidenceIntentConfig {
+    #[serde(default = "default_asp_exact_evidence_projection_flags")]
+    pub query_projection_flags: Vec<String>,
+    #[serde(default = "default_asp_exact_evidence_projection_views")]
+    pub query_projection_views: Vec<String>,
+    #[serde(default = "default_asp_exact_selector_kinds")]
+    pub selector_kinds: Vec<String>,
+    #[serde(default = "default_asp_policy_true")]
+    pub require_same_language: bool,
+}
+
+impl Default for HookClientAspExactEvidenceIntentConfig {
+    fn default() -> Self {
+        Self {
+            query_projection_flags: default_asp_exact_evidence_projection_flags(),
+            query_projection_views: default_asp_exact_evidence_projection_views(),
+            selector_kinds: default_asp_exact_selector_kinds(),
+            require_same_language: true,
+        }
+    }
+}
+
+/// Explicit hook provenance values that authorize a bounded direct-read fallback.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAspDirectReadFallbackIntentConfig {
+    #[serde(default = "default_asp_direct_read_from_hook_values")]
+    pub from_hook_values: Vec<String>,
+}
+
+impl Default for HookClientAspDirectReadFallbackIntentConfig {
+    fn default() -> Self {
+        Self {
+            from_hook_values: default_asp_direct_read_from_hook_values(),
+        }
+    }
+}
+
+/// Invalid evidence shapes that must be rejected rather than treated as reasoning.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAspInvalidEvidenceIntentConfig {
+    #[serde(default = "default_asp_policy_true")]
+    pub reject_projected_query_without_exact_selector: bool,
+    #[serde(default = "default_asp_policy_true")]
+    pub reject_cross_language_selector: bool,
+}
+
+impl Default for HookClientAspInvalidEvidenceIntentConfig {
+    fn default() -> Self {
+        Self {
+            reject_projected_query_without_exact_selector: true,
+            reject_cross_language_selector: true,
+        }
+    }
 }
 
 /// Optional hook recovery prompt template and per-client agent-flow fragments.
@@ -197,10 +333,6 @@ pub struct HookClientAgentSessionMessagesConfig {
     #[serde(default)]
     pub main_restricted_without_child: Option<String>,
     #[serde(default)]
-    pub testing_with_child: Option<String>,
-    #[serde(default)]
-    pub testing_without_child: Option<String>,
-    #[serde(default)]
     pub binary_gate_with_child: Option<String>,
     #[serde(default)]
     pub binary_gate_without_child: Option<String>,
@@ -222,6 +354,66 @@ pub struct HookClientAgentSessionMessagesConfig {
 pub struct HookClientAgentsConfig {
     #[serde(default = "default_resident_agent_configs")]
     pub resident_agents: Vec<HookClientResidentAgentConfig>,
+}
+
+/// Deterministic command-execution lanes that do not require a reasoning agent.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientExecutionLanesConfig {
+    #[serde(default)]
+    pub testing: HookClientExecutionLaneConfig,
+}
+
+impl Default for HookClientExecutionLanesConfig {
+    fn default() -> Self {
+        Self {
+            testing: HookClientExecutionLaneConfig::default(),
+        }
+    }
+}
+
+/// One parser-owned deterministic execution lane.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientExecutionLaneConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub transport: HookClientExecutionTransport,
+    #[serde(default = "default_asp_testing_command_prefixes")]
+    pub command_prefixes: Vec<String>,
+    #[serde(default = "default_execution_receipt_kind")]
+    pub receipt_kind: String,
+}
+
+impl Default for HookClientExecutionLaneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            transport: HookClientExecutionTransport::CurrentSession,
+            command_prefixes: default_asp_testing_command_prefixes(),
+            receipt_kind: default_execution_receipt_kind(),
+        }
+    }
+}
+
+/// Host transport used for one deterministic execution lane.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum HookClientExecutionTransport {
+    /// Execute the exact matched command in the current root session.
+    #[default]
+    CurrentSession,
+}
+
+impl HookClientExecutionTransport {
+    /// Stable configuration and receipt spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CurrentSession => "current-session",
+        }
+    }
 }
 
 /// One configured resident agent lane for hook routing.
@@ -256,32 +448,22 @@ impl Default for HookClientAgentsConfig {
 }
 
 fn default_resident_agent_configs() -> Vec<HookClientResidentAgentConfig> {
-    vec![
-        HookClientResidentAgentConfig {
-            enabled: true,
-            name: default_explore_resident_agent_name(),
-            role: default_explore_resident_agent_role(),
-            roles: default_explore_resident_agent_roles(),
-            permissions: default_explore_resident_agent_permissions(),
-            codex_agent_name: default_explore_resident_codex_agent_name(),
-            lifecycle: "asp-command".to_string(),
-            session_lifetime: "resident".to_string(),
-            main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
-            command_prefixes: Vec::new(),
-        },
-        HookClientResidentAgentConfig {
-            enabled: true,
-            name: default_testing_resident_agent_name(),
-            role: default_testing_resident_agent_role(),
-            roles: default_testing_resident_agent_roles(),
-            permissions: default_testing_resident_agent_permissions(),
-            codex_agent_name: default_testing_resident_codex_agent_name(),
-            lifecycle: "testing-command".to_string(),
-            session_lifetime: "resident".to_string(),
-            main_allowed_asp_command_prefixes: Vec::new(),
-            command_prefixes: default_asp_testing_command_prefixes(),
-        },
-    ]
+    vec![HookClientResidentAgentConfig {
+        enabled: true,
+        name: default_explore_resident_agent_name(),
+        role: default_explore_resident_agent_role(),
+        roles: default_explore_resident_agent_roles(),
+        permissions: default_explore_resident_agent_permissions(),
+        codex_agent_name: default_explore_resident_codex_agent_name(),
+        lifecycle: "asp-command".to_string(),
+        session_lifetime: "resident".to_string(),
+        main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
+        command_prefixes: Vec::new(),
+    }]
+}
+
+fn default_execution_receipt_kind() -> String {
+    "asp-testing-execution-v1".to_string()
 }
 
 /// Parsed ASP project config from `.agents/asp.toml`.
@@ -486,6 +668,81 @@ pub fn default_hook_client_config_template() -> String {
     default_hook_client_config_template_for_source_extensions(DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS)
 }
 
+fn default_asp_policy_true() -> bool {
+    true
+}
+
+fn default_asp_control_plane_root_commands() -> Vec<String> {
+    [
+        "guide",
+        "providers",
+        "tools",
+        "wrap",
+        "cache",
+        "cloud",
+        "hook",
+        "agent",
+        "install",
+        "sync",
+        "paths",
+        "healthcheck",
+        "source-access",
+        "ast-patch",
+        "graph",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+fn default_asp_reasoning_search_routes() -> Vec<String> {
+    [
+        "prime",
+        "pipe",
+        "owner",
+        "lexical",
+        "deps",
+        "dependency",
+        "failure",
+        "reasoning",
+        "ingest",
+        "guide",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+fn default_asp_reasoning_root_commands() -> Vec<String> {
+    ["fd", "rg"].into_iter().map(str::to_string).collect()
+}
+
+fn default_asp_reasoning_query_flags() -> Vec<String> {
+    ["--term"].into_iter().map(str::to_string).collect()
+}
+
+fn default_asp_exact_evidence_projection_flags() -> Vec<String> {
+    ["--code", "--content", "--names-only"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn default_asp_exact_evidence_projection_views() -> Vec<String> {
+    ["metadata"].into_iter().map(str::to_string).collect()
+}
+
+fn default_asp_exact_selector_kinds() -> Vec<String> {
+    ["item"].into_iter().map(str::to_string).collect()
+}
+
+fn default_asp_direct_read_from_hook_values() -> Vec<String> {
+    ["direct-source-read"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
 /// Parse the embedded default hook config template.
 pub fn default_hook_client_config_file() -> Result<HookClientConfigFile, String> {
     toml::from_str(&default_hook_client_config_template())
@@ -596,32 +853,6 @@ fn default_asp_session_policy_main_allowed_prefixes() -> Vec<String> {
     .into_iter()
     .map(str::to_string)
     .collect()
-}
-
-fn default_testing_resident_agent_name() -> String {
-    "asp-testing".to_string()
-}
-
-fn default_testing_resident_agent_role() -> String {
-    "asp_testing".to_string()
-}
-
-fn default_testing_resident_agent_roles() -> Vec<String> {
-    ["subagent", "testing", "build"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
-}
-
-fn default_testing_resident_agent_permissions() -> Vec<String> {
-    ["workspace-write"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
-}
-
-fn default_testing_resident_codex_agent_name() -> String {
-    "asp_testing".to_string()
 }
 
 fn default_asp_testing_command_prefixes() -> Vec<String> {

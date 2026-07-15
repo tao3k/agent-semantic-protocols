@@ -21,6 +21,12 @@
     "agentOrgArtifacts": {
       "$ref": "#/$defs/agentOrgArtifacts"
     },
+    "aspCommandIntentPolicy": {
+      "$ref": "#/$defs/aspCommandIntentPolicy"
+    },
+    "executionLanes": {
+      "$ref": "#/$defs/executionLanes"
+    },
     "rules": {
       "description": "Typed client-hook rules. Rule ids are runtime-validated as unique because config-derived decisions use fields.configRuleId as the machine receipt.",
       "type": "array",
@@ -66,6 +72,96 @@
         "enabled": {
           "type": "boolean"
         }
+      }
+    },
+    "aspCommandIntentPolicy": {
+      "description": "Parser-owned classification policy for public asp language commands.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "controlPlane": {
+          "$ref": "#/$defs/aspControlPlaneIntent"
+        },
+        "reasoning": {
+          "$ref": "#/$defs/aspReasoningIntent"
+        },
+        "exactEvidence": {
+          "$ref": "#/$defs/aspExactEvidenceIntent"
+        },
+        "directReadFallback": {
+          "$ref": "#/$defs/aspDirectReadFallbackIntent"
+        },
+        "invalidEvidence": {
+          "$ref": "#/$defs/aspInvalidEvidenceIntent"
+        }
+      }
+    },
+    "executionLanes": {
+      "description": "Deterministic command execution lanes that do not require a reasoning agent.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "testing": {"$ref": "#/$defs/executionLane"}
+      }
+    },
+    "executionLane": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "transport": {"const": "current-session"},
+        "commandPrefixes": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "receiptKind": {"type": "string", "minLength": 1}
+      }
+    },
+    "aspControlPlaneIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rootCommands": {"$ref": "#/$defs/nonEmptyStringArray"}
+      }
+    },
+    "aspReasoningIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rootCommands": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "guideCommand": {"type": "boolean"},
+        "searchRoutes": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "queryFlags": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "unprojectedQuery": {"type": "boolean"}
+      }
+    },
+    "aspExactEvidenceIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "queryProjectionFlags": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "queryProjectionViews": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "selectorKinds": {"$ref": "#/$defs/nonEmptyStringArray"},
+        "requireSameLanguage": {"type": "boolean"}
+      }
+    },
+    "aspDirectReadFallbackIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fromHookValues": {"$ref": "#/$defs/nonEmptyStringArray"}
+      }
+    },
+    "aspInvalidEvidenceIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rejectProjectedQueryWithoutExactSelector": {"type": "boolean"},
+        "rejectCrossLanguageSelector": {"type": "boolean"}
+      }
+    },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
       }
     },
     "agentOrgArtifacts": {
@@ -138,6 +234,7 @@
             "direct-source-read",
             "bulk-source-dump",
             "raw-broad-search",
+            "asp-reasoning-routed",
             "agent-search-json",
             "subagent-receipt-required"
           ]

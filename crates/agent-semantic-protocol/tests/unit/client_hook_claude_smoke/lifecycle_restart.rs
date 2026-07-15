@@ -98,6 +98,7 @@ fn codex_subagent_start_claims_a_new_child_only_after_explicit_archive() {
             "agent_id": archived_child_id,
             "agent_type": "asp_explorer",
             "model": "gpt-5.4-mini",
+            "reasoning_effort": "low",
             "permission_mode": "default",
         }),
         &[("CODEX_THREAD_ID", root_session_id)],
@@ -117,11 +118,16 @@ fn codex_subagent_start_claims_a_new_child_only_after_explicit_archive() {
             "agent_id": replacement_child_id,
             "agent_type": "asp_explorer",
             "model": "gpt-5.4-mini",
+            "reasoning_effort": "low",
             "permission_mode": "default",
         }),
         &[("CODEX_THREAD_ID", root_session_id)],
     );
     assert_eq!(start["decision"].as_str(), Some("allow"));
+    assert!(
+        start["fields"]["agentSessionAction"].is_null(),
+        "unexpected replacement SubagentStart decision: {start}"
+    );
     let report = show_agent_session_json(&root, replacement_child_id);
     assert_eq!(report["sessions"].as_array().map(Vec::len), Some(1));
     assert_eq!(

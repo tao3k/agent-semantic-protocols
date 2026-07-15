@@ -10,7 +10,6 @@ fn provider_output_filtering_is_allowed() {
         "py-harness search prime . | rg -g '*.py' Session",
         "env | rg PATH",
         "printenv | rg '^PATH='",
-        "fd -t f shell crates/agent-semantic-hook",
     ] {
         let decision = classify_hook(
             &registry(),
@@ -21,6 +20,18 @@ fn provider_output_filtering_is_allowed() {
         assert_eq!(decision.decision, DecisionKind::Allow, "{command}");
         assert_eq!(decision.reason_kind, ReasonKind::None, "{command}");
     }
+
+    let source_listing = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "fd -t f shell crates/agent-semantic-hook"}
+        }),
+    );
+    assert_eq!(source_listing.decision, DecisionKind::Deny);
+    assert_eq!(source_listing.reason_kind, ReasonKind::RawBroadSearch);
 }
 
 #[test]

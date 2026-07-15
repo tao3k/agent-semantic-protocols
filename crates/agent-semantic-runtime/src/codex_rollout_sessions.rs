@@ -335,7 +335,23 @@ where
         }
         Err(error) => return Err(error),
     };
+    let root_attributed_rollout_paths =
+        rg_rollout_paths_for_session_id(&sessions_dir, root_session_id)?;
+    rollout_paths.extend(root_attributed_rollout_paths.iter().cloned());
+    let trace_rollout_index = std::env::var_os("ASP_CODEX_ROLLOUT_INDEX_TRACE").is_some();
+    if trace_rollout_index {
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "trace": "codex-rollout-index-discovery",
+                "rootSessionId": root_session_id,
+                "rootAttributedPathCount": root_attributed_rollout_paths.len(),
+                "rootAttributedPaths": root_attributed_rollout_paths,
+            })
+        );
+    }
     let mut missing_rollout_by_session = BTreeMap::new();
+    let mut host_agent_path_by_session = BTreeMap::new();
     let mut pending_session_ids = child_session_ids.iter().cloned().collect::<Vec<_>>();
     let mut processed_session_ids = BTreeSet::new();
     let mut pending_spawn_rollout_paths = rollout_paths.clone();
@@ -371,9 +387,11 @@ where
         if !processed_spawn_rollout_paths.insert(rollout_path.clone()) {
             continue;
         }
+        let topology_lines = rollout_topology_lines(&rollout_path)?;
         let mut spawned_child_session_ids =
-            thread_spawn_child_session_ids_for_rollout(&rollout_path, root_session_id)?;
-        spawned_child_session_ids.extend(spawned_agent_ids_for_rollout(&rollout_path)?);
+            thread_spawn_child_session_ids_for_rollout(&topology_lines, root_session_id);
+        spawned_child_session_ids.extend(spawned_agent_ids_for_rollout(&topology_lines));
+        host_agent_path_by_session.extend(spawned_agent_paths_for_rollout(&topology_lines));
         for child_session_id in spawned_child_session_ids {
             if child_session_ids.insert(child_session_id.clone()) {
                 pending_session_ids.push(child_session_id);
@@ -402,14 +420,51 @@ where
     let mut scanned_rollout_count = 0_usize;
     let mut skipped_rollout_count = 0_usize;
     for rollout_path in rollout_paths {
-        let Some((metadata, activity)) = parse_rollout_file_at_path(&rollout_path)? else {
+        let Some((mut metadata, activity)) = parse_rollout_file_at_path(&rollout_path)? else {
             skipped_rollout_count += 1;
             continue;
         };
-        if metadata.root_session_id.as_deref() != Some(root_session_id)
-            && metadata.session_id != root_session_id
-            && metadata.parent_thread_id.as_deref() != Some(root_session_id)
-        {
+        if let Some(agent_path) = host_agent_path_by_session.get(&metadata.session_id) {
+            metadata
+                .agent_path
+                .get_or_insert_with(|| agent_path.clone());
+            metadata
+                .parent_thread_id
+                .get_or_insert_with(|| root_session_id.to_string());
+            metadata
+                .root_session_id
+                .get_or_insert_with(|| root_session_id.to_string());
+            if metadata.parent_thread_id.as_deref() == Some(root_session_id) {
+                metadata
+                    .thread_source
+                    .get_or_insert_with(|| "subagent".to_string());
+                metadata.spawn_depth.get_or_insert(1);
+            }
+        }
+        let root_attribution_matches = metadata.root_session_id.as_deref() == Some(root_session_id)
+            || metadata.session_id == root_session_id
+            || metadata.parent_thread_id.as_deref() == Some(root_session_id);
+        if trace_rollout_index {
+            eprintln!(
+                "{}",
+                serde_json::json!({
+                    "trace": "codex-rollout-index-candidate",
+                    "rootSessionId": root_session_id,
+                    "sessionId": metadata.session_id,
+                    "actualRootSessionId": metadata.root_session_id,
+                    "parentThreadId": metadata.parent_thread_id,
+                    "threadSource": metadata.thread_source,
+                    "agentRole": metadata.agent_role,
+                    "agentPath": metadata.agent_path,
+                    "spawnDepth": metadata.spawn_depth,
+                    "model": metadata.model,
+                    "reasoningEffort": metadata.reasoning_effort,
+                    "rootAttributionMatches": root_attribution_matches,
+                    "rolloutPath": metadata.rollout_path,
+                })
+            );
+        }
+        if !root_attribution_matches {
             skipped_rollout_count += 1;
             continue;
         }
@@ -435,10 +490,9 @@ where
 }
 
 fn thread_spawn_child_session_ids_for_rollout(
-    rollout_path: &Path,
+    lines: &[String],
     root_session_id: &str,
-) -> Result<Vec<String>, String> {
-    let lines = rollout_index_sample_lines(rollout_path)?;
+) -> Vec<String> {
     let mut child_session_ids = BTreeSet::new();
     for line in lines {
         if !line.contains("thread_spawn") {
@@ -467,16 +521,16 @@ fn thread_spawn_child_session_ids_for_rollout(
             child_session_ids.insert(child_session_id.to_string());
         }
     }
-    Ok(child_session_ids.into_iter().collect())
+    child_session_ids.into_iter().collect()
 }
 
-fn spawned_agent_ids_for_rollout(rollout_path: &Path) -> Result<Vec<String>, String> {
-    let lines = rollout_index_sample_lines(rollout_path)?;
+fn spawned_agent_ids_for_rollout(lines: &[String]) -> Vec<String> {
     let mut ids = BTreeSet::new();
     for line in lines {
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
+        collect_structured_subagent_spawn_evidence(&value, &mut ids, &mut BTreeMap::new());
         if value.get("type").and_then(Value::as_str) != Some("response_item") {
             continue;
         }
@@ -486,17 +540,225 @@ fn spawned_agent_ids_for_rollout(rollout_path: &Path) -> Result<Vec<String>, Str
         if payload.get("type").and_then(Value::as_str) != Some("function_call_output") {
             continue;
         }
-        let Some(output) = payload.get("output").and_then(Value::as_str) else {
+        let output_json = payload.get("output").and_then(|output| match output {
+            Value::String(output) => serde_json::from_str::<Value>(output).ok(),
+            Value::Object(_) => Some(output.clone()),
+            _ => None,
+        });
+        let Some(output_json) = output_json else {
             continue;
         };
-        let Ok(output_json) = serde_json::from_str::<Value>(output) else {
-            continue;
-        };
-        if let Some(agent_id) = output_json.get("agent_id").and_then(Value::as_str) {
-            ids.insert(agent_id.to_string());
+        if let Some(agent_id) = first_json_string(
+            &output_json,
+            &[
+                "/agent_id",
+                "/agentId",
+                "/agent_thread_id",
+                "/agentThreadId",
+            ],
+        ) {
+            ids.insert(agent_id);
         }
     }
-    Ok(ids.into_iter().collect())
+    ids.into_iter().collect()
+}
+
+fn spawned_agent_paths_for_rollout(lines: &[String]) -> BTreeMap<String, String> {
+    let mut task_name_by_call = BTreeMap::new();
+    let mut agent_path_by_session = BTreeMap::new();
+    for line in lines {
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        collect_structured_subagent_spawn_evidence(
+            &value,
+            &mut BTreeSet::new(),
+            &mut agent_path_by_session,
+        );
+        if value.get("type").and_then(Value::as_str) != Some("response_item") {
+            continue;
+        }
+        let Some(payload) = value.get("payload") else {
+            continue;
+        };
+        let payload_type = payload.get("type").and_then(Value::as_str);
+        if payload_type == Some("function_call") {
+            let tool_name = payload
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !tool_name.ends_with("spawn_agent") {
+                continue;
+            }
+            let Some(call_id) = first_json_string(payload, &["/call_id", "/callId", "/id"]) else {
+                continue;
+            };
+            let arguments = payload
+                .get("arguments")
+                .and_then(|arguments| match arguments {
+                    Value::String(arguments) => serde_json::from_str::<Value>(arguments).ok(),
+                    Value::Object(_) => Some(arguments.clone()),
+                    _ => None,
+                });
+            if let Some(task_name) = arguments.as_ref().and_then(|arguments| {
+                first_json_string(arguments, &["/task_name", "/taskName", "/name"])
+            }) {
+                task_name_by_call.insert(call_id, task_name);
+            }
+            continue;
+        }
+        if payload_type != Some("function_call_output") {
+            continue;
+        }
+        let Some(call_id) = first_json_string(payload, &["/call_id", "/callId", "/id"]) else {
+            continue;
+        };
+        let Some(task_name) = task_name_by_call.get(&call_id) else {
+            continue;
+        };
+        let output = payload.get("output").and_then(|output| match output {
+            Value::String(output) => serde_json::from_str::<Value>(output).ok(),
+            Value::Object(_) => Some(output.clone()),
+            _ => None,
+        });
+        let Some(output) = output else {
+            continue;
+        };
+        let Some(agent_id) = first_json_string(
+            &output,
+            &[
+                "/agent_id",
+                "/agentId",
+                "/agent_thread_id",
+                "/agentThreadId",
+            ],
+        ) else {
+            continue;
+        };
+        let agent_path = first_json_string(
+            &output,
+            &["/agent_path", "/agentPath", "/agent_name", "/agentName"],
+        )
+        .unwrap_or_else(|| format!("/root/{task_name}"));
+        agent_path_by_session.insert(agent_id, agent_path);
+    }
+    agent_path_by_session
+}
+
+fn rollout_topology_lines(rollout_path: &Path) -> Result<Vec<String>, String> {
+    let file = fs::File::open(rollout_path).map_err(|error| {
+        format!(
+            "failed to open Codex rollout topology {}: {error}",
+            rollout_path.display()
+        )
+    })?;
+    BufReader::new(file)
+        .lines()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            format!(
+                "failed to read Codex rollout topology {}: {error}",
+                rollout_path.display()
+            )
+        })
+}
+
+fn collect_structured_subagent_spawn_evidence(
+    value: &Value,
+    session_ids: &mut BTreeSet<String>,
+    agent_path_by_session: &mut BTreeMap<String, String>,
+) {
+    match value {
+        Value::Object(object) => {
+            let object_value = Value::Object(object.clone());
+            let activity_kind = first_json_string(&object_value, &["/kind", "/status"]);
+            let activity_session_id = first_json_string(
+                &object_value,
+                &[
+                    "/agent_thread_id",
+                    "/agentThreadId",
+                    "/agent_id",
+                    "/agentId",
+                ],
+            );
+            let activity_agent_path =
+                first_json_string(&object_value, &["/agent_path", "/agentPath"]);
+            if matches!(activity_kind.as_deref(), Some("started" | "interacted"))
+                && let (Some(session_id), Some(agent_path)) =
+                    (activity_session_id, activity_agent_path)
+                && agent_path.starts_with("/root/")
+            {
+                session_ids.insert(session_id.clone());
+                agent_path_by_session.insert(session_id, agent_path);
+            }
+
+            let tool = first_json_string(&object_value, &["/tool"]);
+            let status = first_json_string(&object_value, &["/status"]);
+            if tool.as_deref() == Some("spawn_agent") && status.as_deref() == Some("completed") {
+                if let Some(receiver_thread_ids) = object
+                    .get("receiver_thread_ids")
+                    .or_else(|| object.get("receiverThreadIds"))
+                    .and_then(Value::as_array)
+                {
+                    session_ids.extend(
+                        receiver_thread_ids
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_string),
+                    );
+                }
+                if let Some(receiver_agents) = object
+                    .get("receiver_agents")
+                    .or_else(|| object.get("receiverAgents"))
+                    .and_then(Value::as_array)
+                {
+                    for receiver in receiver_agents {
+                        let Some(session_id) = first_json_string(
+                            receiver,
+                            &[
+                                "/thread_id",
+                                "/threadId",
+                                "/agent_thread_id",
+                                "/agentThreadId",
+                            ],
+                        ) else {
+                            continue;
+                        };
+                        session_ids.insert(session_id.clone());
+                        let Some(agent_role) =
+                            first_json_string(receiver, &["/agent_role", "/agentRole"])
+                        else {
+                            continue;
+                        };
+                        if agent_role != "default" {
+                            agent_path_by_session
+                                .entry(session_id)
+                                .or_insert_with(|| format!("/root/{agent_role}"));
+                        }
+                    }
+                }
+            }
+            for child in object.values() {
+                if !child.is_string() {
+                    collect_structured_subagent_spawn_evidence(
+                        child,
+                        session_ids,
+                        agent_path_by_session,
+                    );
+                }
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                collect_structured_subagent_spawn_evidence(
+                    child,
+                    session_ids,
+                    agent_path_by_session,
+                );
+            }
+        }
+        _ => {}
+    }
 }
 
 fn parse_rollout_file_at_path(
@@ -701,6 +963,7 @@ fn parse_rollout_file(
                         .map(str::to_string),
                     model: None,
                     collaboration_model: None,
+                    reasoning_effort: None,
                     sandbox_policy: None,
                     approval_policy: None,
                     permission_profile: None,
@@ -717,6 +980,10 @@ fn parse_rollout_file(
                         .pointer("/collaboration_model")
                         .and_then(Value::as_str)
                         .map(str::to_string);
+                    existing.reasoning_effort = first_json_string(
+                        payload,
+                        &["/reasoning_effort", "/reasoningEffort", "/effort"],
+                    );
                     existing.sandbox_policy = payload
                         .pointer("/sandbox_policy/type")
                         .and_then(Value::as_str)

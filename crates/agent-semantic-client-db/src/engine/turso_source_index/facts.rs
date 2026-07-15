@@ -35,6 +35,19 @@ fn source_index_db_trace_row_counts(
     }
 }
 
+fn source_index_db_trace_membership_changes(
+    started: std::time::Instant,
+    changed_owner_count: usize,
+    removed_owner_count: usize,
+) {
+    if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
+        eprintln!(
+            "[source-index-db-trace] stage=snapshot-membership-joined elapsedMs={} changedOwners={changed_owner_count} removedOwners={removed_owner_count}",
+            started.elapsed().as_millis()
+        );
+    }
+}
+
 fn source_index_db_trace_posting_projection(started: std::time::Instant, posting_count: usize) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
         eprintln!(
@@ -200,10 +213,10 @@ async fn refresh_turso_source_index_posting_projection(
     Ok(posting_count as usize)
 }
 
-async fn rollback_turso_source_index_transaction(
+async fn rollback_turso_source_index_transaction<T>(
     connection: &turso::Connection,
     write_error: String,
-) -> Result<(), String> {
+) -> Result<T, String> {
     match execute_turso_statement_with_lock_retry(
         connection,
         "ROLLBACK",
@@ -216,11 +229,11 @@ async fn rollback_turso_source_index_transaction(
     }
 }
 
-async fn return_turso_source_index_write_failure(
+async fn return_turso_source_index_write_failure<T>(
     connection: &turso::Connection,
     transaction_started: bool,
     write_error: String,
-) -> Result<(), String> {
+) -> Result<T, String> {
     if transaction_started {
         rollback_turso_source_index_transaction(connection, write_error).await
     } else {
@@ -344,7 +357,8 @@ pub(super) async fn turso_source_index_projection_ready(
 
 fn turso_source_index_canonical_selectors_by_owner(
     import: &ClientDbSourceIndexImport,
-    membership: &std::collections::BTreeMap<String, String>,
+    membership: &std::collections::HashMap<&str, &str>,
+    changed_owner_paths: &std::collections::BTreeSet<&str>,
 ) -> Result<std::collections::BTreeMap<String, (String, i64, Vec<String>)>, String> {
     let mut selectors_by_owner = std::collections::BTreeMap::<
         String,
@@ -356,6 +370,9 @@ fn turso_source_index_canonical_selectors_by_owner(
             return Err(format!(
                 "source-index selector has no owner file hash: owner_path={owner_path}"
             ));
+        }
+        if !changed_owner_paths.contains(owner_path) {
+            continue;
         }
         let selector_id = selector.selector_id.as_str().to_string();
         selectors_by_owner
@@ -388,6 +405,7 @@ fn turso_source_index_canonical_selectors_by_owner(
     import
         .owners
         .iter()
+        .filter(|owner| changed_owner_paths.contains(owner.owner_path.as_str()))
         .map(|owner| {
             let selectors = selectors_by_owner
                 .remove(owner.owner_path.as_str())
@@ -443,8 +461,8 @@ fn turso_source_index_canonical_selectors_by_owner(
 
 fn turso_source_index_import_membership(
     import: &ClientDbSourceIndexImport,
-) -> Result<std::collections::BTreeMap<String, String>, String> {
-    let mut file_hashes_by_path = std::collections::BTreeMap::new();
+) -> Result<std::collections::HashMap<&str, &str>, String> {
+    let mut file_hashes_by_path = std::collections::HashMap::new();
     for file_hash in &import.file_hashes {
         if file_hashes_by_path
             .insert(file_hash.path.as_str(), file_hash.sha256.as_str())
@@ -457,13 +475,13 @@ fn turso_source_index_import_membership(
         }
     }
 
-    let mut membership = std::collections::BTreeMap::new();
+    let mut membership = std::collections::HashMap::new();
     for owner in &import.owners {
         let owner_path = owner.owner_path.as_str();
         let file_hash = file_hashes_by_path.get(owner_path).ok_or_else(|| {
             format!("source-index owner has no file hash: owner_path={owner_path}")
         })?;
-        membership.insert(owner_path.to_string(), (*file_hash).to_string());
+        membership.insert(owner_path, *file_hash);
     }
     Ok(membership)
 }
@@ -560,46 +578,115 @@ async fn retire_turso_source_index_precanonical_tables(
     Ok(())
 }
 
-async fn turso_source_index_snapshot_membership(
+async fn stage_turso_source_index_import_membership(
     connection: &turso::Connection,
-    project_root: &str,
-    schema_id: &str,
-    schema_version: &str,
-) -> Result<std::collections::BTreeMap<String, String>, String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    file_hashes_json: &str,
+) -> Result<(), String> {
+    execute_turso_statement_with_lock_retry(
+        connection,
+        "CREATE TEMP TABLE IF NOT EXISTS asp_source_index_incoming_membership_v1 (
+            owner_path TEXT NOT NULL PRIMARY KEY,
+            file_hash TEXT NOT NULL
+        )",
+        "failed to create Turso source-index incoming membership staging table",
+    )
+    .await?;
+    execute_turso_statement_with_lock_retry(
+        connection,
+        "DELETE FROM asp_source_index_incoming_membership_v1",
+        "failed to clear Turso source-index incoming membership staging table",
+    )
+    .await?;
+    execute_turso_operation_with_lock_retry(
         || async {
             connection
-                .query(
-                    "SELECT owner_path, file_hash
-                     FROM asp_source_index_owner_v1
-                     WHERE project_root = ?1
-                       AND schema_id = ?2
-                       AND schema_version = ?3",
-                    (project_root, schema_id, schema_version),
+                .execute(
+                    "INSERT INTO asp_source_index_incoming_membership_v1 (
+                        owner_path, file_hash
+                     )
+                     SELECT json_extract(value, '$.path'),
+                            json_extract(value, '$.sha256')
+                     FROM json_each(?1)",
+                    (file_hashes_json,),
                 )
                 .await
                 .map_err(|error| error.to_string())
         },
-        "failed to query Turso source-index snapshot membership",
+        "failed to stage Turso source-index incoming membership",
     )
     .await?;
-    let mut membership = std::collections::BTreeMap::new();
-    while let Some(row) = rows.next().await.map_err(|error| {
-        format!("failed to read Turso source-index snapshot membership: {error}")
-    })? {
+    Ok(())
+}
+
+async fn turso_source_index_membership_changes(
+    connection: &turso::Connection,
+    project_root: &str,
+    schema_id: &str,
+    schema_version: &str,
+    projection_ready: bool,
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let mut rows = run_turso_operation_with_lock_retry(
+        || async {
+            connection
+                .query(
+                    "SELECT incoming.owner_path, 0 AS removed
+                     FROM asp_source_index_incoming_membership_v1 AS incoming
+                     LEFT JOIN asp_source_index_owner_v1 AS owner
+                       ON owner.project_root = ?1
+                      AND owner.schema_id = ?2
+                      AND owner.schema_version = ?3
+                      AND owner.owner_path = incoming.owner_path
+                     WHERE ?4 = 0
+                        OR owner.owner_path IS NULL
+                        OR owner.file_hash <> incoming.file_hash
+                     UNION ALL
+                     SELECT owner.owner_path, 1 AS removed
+                     FROM asp_source_index_owner_v1 AS owner
+                     LEFT JOIN asp_source_index_incoming_membership_v1 AS incoming
+                       ON incoming.owner_path = owner.owner_path
+                     WHERE owner.project_root = ?1
+                       AND owner.schema_id = ?2
+                       AND owner.schema_version = ?3
+                       AND incoming.owner_path IS NULL",
+                    (
+                        project_root,
+                        schema_id,
+                        schema_version,
+                        i64::from(projection_ready),
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to query Turso source-index membership changes",
+    )
+    .await?;
+    let mut changed_owner_paths = Vec::new();
+    let mut removed_owner_paths = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Turso source-index membership changes: {error}"))?
+    {
         let owner_path = row.get::<String>(0).map_err(|error| {
-            format!("failed to decode Turso source-index snapshot owner path: {error}")
+            format!("failed to decode Turso source-index changed owner path: {error}")
         })?;
-        let file_hash = row.get::<String>(1).map_err(|error| {
-            format!("failed to decode Turso source-index snapshot file hash: {error}")
+        let removed = row.get::<i64>(1).map_err(|error| {
+            format!("failed to decode Turso source-index membership change kind: {error}")
         })?;
-        if membership.insert(owner_path.clone(), file_hash).is_some() {
-            return Err(format!(
-                "Turso source-index snapshot has duplicate owner path: owner_path={owner_path}"
-            ));
+        if removed == 0 {
+            changed_owner_paths.push(owner_path);
+        } else {
+            removed_owner_paths.push(owner_path);
         }
     }
-    Ok(membership)
+    Ok((changed_owner_paths, removed_owner_paths))
+}
+
+pub(super) struct TursoSourceIndexWriteStats {
+    pub(super) changed_owner_count: u32,
+    pub(super) removed_owner_count: u32,
+    pub(super) posting_write_count: u32,
 }
 
 pub(super) async fn write_turso_source_index_rows(
@@ -607,13 +694,11 @@ pub(super) async fn write_turso_source_index_rows(
     import: &ClientDbSourceIndexImport,
     project_root: &str,
     file_hashes_json: &str,
-) -> Result<(), String> {
+) -> Result<TursoSourceIndexWriteStats, String> {
     let cold_write_started = std::time::Instant::now();
     let transaction_started = std::sync::atomic::AtomicBool::new(false);
     validate_turso_source_index_selector_payload_proofs(import)?;
     let imported_membership = turso_source_index_import_membership(import)?;
-    let selectors_by_owner =
-        turso_source_index_canonical_selectors_by_owner(import, &imported_membership)?;
     let retire_precanonical_storage =
         turso_source_index_precanonical_storage_exists(connection).await?;
     let write_result = tokio::time::timeout(TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET, async {
@@ -625,13 +710,6 @@ pub(super) async fn write_turso_source_index_rows(
         .await?;
         transaction_started.store(true, std::sync::atomic::Ordering::Release);
 
-        let snapshot_membership = turso_source_index_snapshot_membership(
-            connection,
-            project_root,
-            import.schema_id.as_str(),
-            import.schema_version.as_str(),
-        )
-        .await?;
         let projection_ready = turso_source_index_projection_ready(
             connection,
             project_root,
@@ -639,19 +717,30 @@ pub(super) async fn write_turso_source_index_rows(
             import.schema_version.as_str(),
         )
         .await?;
-        source_index_db_trace("snapshot-membership-loaded", cold_write_started);
-        let changed_owner_paths = imported_membership
+        stage_turso_source_index_import_membership(connection, file_hashes_json).await?;
+        let (changed_owner_paths, removed_owner_paths) =
+            turso_source_index_membership_changes(
+                connection,
+                project_root,
+                import.schema_id.as_str(),
+                import.schema_version.as_str(),
+                projection_ready,
+            )
+            .await?;
+        let changed_owner_paths = changed_owner_paths
             .iter()
-            .filter_map(|(owner_path, file_hash)| {
-                (!projection_ready || snapshot_membership.get(owner_path) != Some(file_hash))
-                    .then_some(owner_path.as_str())
-            })
-            .collect::<std::collections::BTreeSet<_>>();
-        let removed_owner_paths = snapshot_membership
-            .keys()
-            .filter(|owner_path| !imported_membership.contains_key(owner_path.as_str()))
             .map(String::as_str)
-            .collect::<Vec<_>>();
+            .collect::<std::collections::BTreeSet<_>>();
+        source_index_db_trace_membership_changes(
+            cold_write_started,
+            changed_owner_paths.len(),
+            removed_owner_paths.len(),
+        );
+        let selectors_by_owner = turso_source_index_canonical_selectors_by_owner(
+            import,
+            &imported_membership,
+            &changed_owner_paths,
+        )?;
 
         let (changed_owner_rows, semantic_term_count) = {
             let mut written_owner_paths = std::collections::BTreeSet::new();
@@ -688,7 +777,7 @@ pub(super) async fn write_turso_source_index_rows(
                     format!("failed to encode Turso source-index owner terms: {error}")
                 })?;
                 rows.push(TursoSourceIndexOwnerRow {
-                    file_hash: file_hash.as_str().to_string(),
+                    file_hash: (*file_hash).to_string(),
                     owner_path: owner.owner_path.as_str().to_string(),
                     language_id: owner
                         .language_id
@@ -723,11 +812,9 @@ pub(super) async fn write_turso_source_index_rows(
         )
         .await?;
         source_index_db_trace("snapshot-owner-rows-written", cold_write_started);
-        let removed_owner_paths_json =
-            serde_json::to_string(&removed_owner_paths.iter().copied().collect::<Vec<_>>())
-                .map_err(|error| {
-                    format!("failed to encode Turso source-index removed owners: {error}")
-                })?;
+        let removed_owner_paths_json = serde_json::to_string(&removed_owner_paths).map_err(
+            |error| format!("failed to encode Turso source-index removed owners: {error}"),
+        )?;
         execute_turso_operation_with_lock_retry(
             || async {
                 connection
@@ -758,7 +845,7 @@ pub(super) async fn write_turso_source_index_rows(
         projection_owner_paths.extend(
             removed_owner_paths
                 .iter()
-                .map(|owner_path| (*owner_path).to_string()),
+                .cloned(),
         );
         projection_owner_paths.sort();
         projection_owner_paths.dedup();
@@ -854,12 +941,16 @@ pub(super) async fn write_turso_source_index_rows(
             retire_turso_source_index_precanonical_tables(connection).await?;
         }
         source_index_db_trace("snapshot-scope-published", cold_write_started);
-        Ok(())
+        Ok(TursoSourceIndexWriteStats {
+            changed_owner_count: changed_owner_paths.len().min(u32::MAX as usize) as u32,
+            removed_owner_count: removed_owner_paths.len().min(u32::MAX as usize) as u32,
+            posting_write_count: posting_count.min(u32::MAX as usize) as u32,
+        })
     })
     .await;
 
     match write_result {
-        Ok(Ok(())) => {
+        Ok(Ok(stats)) => {
             let commit_result = execute_turso_statement_with_lock_retry(
                 connection,
                 "COMMIT",
@@ -887,7 +978,7 @@ pub(super) async fn write_turso_source_index_rows(
                 .is_some()
             {}
             source_index_db_trace("wal-checkpoint-completed", cold_write_started);
-            Ok(())
+            Ok(stats)
         }
         Ok(Err(error)) => {
             return_turso_source_index_write_failure(

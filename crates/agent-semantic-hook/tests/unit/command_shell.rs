@@ -35,6 +35,18 @@ fn bash_ast_tokens_preserve_pipeline_separator() {
 }
 
 #[test]
+fn bash_ast_tokens_preserve_standalone_env_pipeline_stage() {
+    assert_eq!(
+        semantic_shell_tokens("env | rg PATH"),
+        vec!["env", "|", "rg", "PATH"]
+    );
+    assert_eq!(
+        semantic_shell_tokens("printenv | rg '^PATH='"),
+        vec!["printenv", "|", "rg", "^PATH="]
+    );
+}
+
+#[test]
 fn bash_ast_tokens_surface_nl_sed_python_source_dump_pipeline() {
     assert_eq!(
         semantic_shell_tokens(

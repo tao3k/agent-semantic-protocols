@@ -1,6 +1,8 @@
-//! Append-only hook event state written by `asp hook`.
+//! Append-only hook event state persisted by `asp hook`.
 
-use crate::command::semantic_shell_tokens;
+use crate::command::{
+    AspLanguageCommandIntent, classify_asp_language_command_tokens, semantic_shell_tokens,
+};
 use fs2::FileExt;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -34,6 +36,7 @@ const HOOK_EVENT_STATE_MAX_BYTES: u64 = HOOK_EVENT_STATE_TAIL_BYTES * 4;
 pub(crate) struct SearchPipeFeedback {
     pub(crate) language_id: String,
     pub(crate) saw_pipe: bool,
+    pub(crate) pipe_command_tokens: Vec<Vec<String>>,
 }
 
 /// ASP command stage that matters for prompt search-flow feedback.
@@ -116,11 +119,21 @@ fn insert_asp_explore_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("targetAgentName".to_string())
-        .or_insert_with(|| Value::String("asp-explore".to_string()));
+        .or_insert_with(|| Value::String("asp_explorer".to_string()));
     decision
         .fields
         .entry("targetAgentRole".to_string())
-        .or_insert_with(|| Value::String("asp-explore".to_string()));
+        .or_insert_with(|| Value::String("asp_explorer".to_string()));
+    decision
+        .fields
+        .entry("targetAgentSelectionSource".to_string())
+        .or_insert_with(|| Value::String("hook-deny-intent".to_string()));
+    decision
+        .fields
+        .entry("targetAgentRegistrySource".to_string())
+        .or_insert_with(|| {
+            Value::String("~/.agent-semantic-protocols/agents/config.toml".to_string())
+        });
     decision
         .fields
         .entry("forbiddenUntilResolved".to_string())
@@ -291,6 +304,7 @@ pub(crate) fn prompt_search_flow_after_prime(
     let lines = read_hook_event_state_tail(&state_path)?;
     let mut prime_language_id = None;
     let mut saw_pipe = false;
+    let mut pipe_command_tokens = Vec::new();
     for line in lines.iter().rev() {
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -310,6 +324,7 @@ pub(crate) fn prompt_search_flow_after_prime(
         match asp_search_stage(command) {
             Some(AspSearchCommandStage::Pipe(language_id)) => {
                 saw_pipe = true;
+                pipe_command_tokens.push(semantic_shell_tokens(command));
                 prime_language_id.get_or_insert(language_id);
             }
             Some(AspSearchCommandStage::Prime(language_id)) => {
@@ -321,6 +336,7 @@ pub(crate) fn prompt_search_flow_after_prime(
     Ok(prime_language_id.map(|language_id| SearchPipeFeedback {
         language_id,
         saw_pipe,
+        pipe_command_tokens,
     }))
 }
 
@@ -458,7 +474,7 @@ fn has_recent_matching_deny(project_root: &Path, replay_key: &str) -> Result<boo
     Ok(false)
 }
 
-fn read_hook_event_state_tail(state_path: &Path) -> Result<Vec<String>, String> {
+pub(crate) fn read_hook_event_state_tail(state_path: &Path) -> Result<Vec<String>, String> {
     let mut file = fs::File::open(state_path).map_err(|error| {
         format!(
             "failed to read hook state {}: {error}",
@@ -537,64 +553,15 @@ pub(crate) fn asp_search_stage(command: &str) -> Option<AspSearchCommandStage> {
 }
 
 pub(crate) fn asp_search_stage_tokens(tokens: &[String]) -> Option<AspSearchCommandStage> {
-    let asp_index = asp_token_index(tokens)?;
-    let after_asp = &tokens[asp_index + 1..];
-    if after_asp.first().map(String::as_str) == Some("search") {
-        let language_id = language_from_flags(after_asp)?;
-        return search_stage_from_tokens(after_asp, language_id);
-    }
-    let language_id = after_asp.first()?.to_string();
-    if after_asp.get(1).map(String::as_str) != Some("search") {
+    let command = classify_asp_language_command_tokens(tokens)?;
+    if command.intent != AspLanguageCommandIntent::Reasoning {
         return None;
     }
-    search_stage_from_tokens(&after_asp[1..], language_id)
-}
-
-pub(crate) fn asp_query_code_or_direct_read_tokens(tokens: &[String]) -> bool {
-    let Some(asp_index) = asp_token_index(tokens) else {
-        return false;
-    };
-    let after_asp = &tokens[asp_index + 1..];
-    let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
-        after_asp
-    } else if after_asp.get(1).map(String::as_str) == Some("query") {
-        &after_asp[1..]
-    } else {
-        return false;
-    };
-    query_tokens.iter().any(|token| token == "--code")
-        || query_tokens
-            .windows(2)
-            .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
-}
-
-pub(crate) fn asp_query_direct_inventory_or_fetch_tokens(tokens: &[String]) -> bool {
-    let Some(asp_index) = asp_token_index(tokens) else {
-        return false;
-    };
-    let after_asp = &tokens[asp_index + 1..];
-    let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
-        after_asp
-    } else if after_asp.get(1).map(String::as_str) == Some("query") {
-        &after_asp[1..]
-    } else {
-        return false;
-    };
-    if option_value(query_tokens, "--selector").is_none() {
-        return false;
+    match command.route.as_str() {
+        "search-prime" => Some(AspSearchCommandStage::Prime(command.language_id)),
+        "search-pipe" => Some(AspSearchCommandStage::Pipe(command.language_id)),
+        _ => None,
     }
-    if query_tokens
-        .windows(2)
-        .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
-    {
-        return false;
-    }
-    query_tokens
-        .iter()
-        .any(|token| token == "--code" || token == "--content")
-        || query_tokens
-            .windows(2)
-            .any(|pair| pair[0] == "--view" && pair[1] == "metadata")
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -679,31 +646,4 @@ fn asp_token_index(tokens: &[String]) -> Option<usize> {
     tokens
         .iter()
         .position(|token| token == "asp" || token.ends_with("/asp") || token.ends_with(".bin/asp"))
-}
-
-fn search_stage_from_tokens(
-    tokens: &[String],
-    language_id: String,
-) -> Option<AspSearchCommandStage> {
-    if !tokens.iter().any(|token| token == "search") {
-        return None;
-    }
-    let stage = tokens
-        .iter()
-        .find_map(|token| matches!(token.as_str(), "prime" | "pipe").then_some(token.as_str()))?;
-    if stage == "prime" {
-        return Some(AspSearchCommandStage::Prime(language_id));
-    }
-    if stage == "pipe" {
-        return Some(AspSearchCommandStage::Pipe(language_id));
-    }
-    None
-}
-
-fn language_from_flags(tokens: &[String]) -> Option<String> {
-    tokens.windows(2).find_map(|pair| {
-        (pair[0] == "--language")
-            .then(|| pair[1].clone())
-            .filter(|value| !value.starts_with('-'))
-    })
 }

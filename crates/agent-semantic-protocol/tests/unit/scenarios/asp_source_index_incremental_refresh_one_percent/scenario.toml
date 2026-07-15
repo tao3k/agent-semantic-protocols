@@ -1,0 +1,6 @@
+id = "asp-source-index-incremental-refresh-one-percent"
+title = "Turso source-index refresh materializes only the one-percent change set"
+policy_ids = ["RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001"]
+agent_goal = "Keep incremental source-index refresh bounded: a 1193-owner snapshot with 12 changed owners must use the Turso SQL join change set and must not rebuild unchanged owner selectors or postings."
+inputs = "An existing 1193-owner canonical snapshot followed by a new generation with exactly 12 changed file hashes, no added owners, and no removed owners."
+expected = "The refresh publishes the new generation, reports 12 changed owners and 0 removed owners, writes exactly 168 canonical token-owner postings, and finishes inside the fixed time and memory budgets."

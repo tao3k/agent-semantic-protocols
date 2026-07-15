@@ -1,7 +1,7 @@
 use agent_semantic_loop::{Choice, HostRequirement, LoopReceipt, TraceStep};
 use serde::Serialize;
 
-use super::types::AgentSessionRecord;
+use super::types::{AgentSessionRecord, agent_session_message_target_is_live_bound};
 
 #[derive(Serialize)]
 pub struct AgentSessionInteractiveMenu<'a> {
@@ -74,6 +74,9 @@ pub enum AgentSessionLoopState {
     Audit,
     Classify,
     Recover,
+    RebindExistingChildTarget,
+    Repair,
+    Blocked,
     Adopt,
     Cleanup,
     Create,
@@ -83,6 +86,196 @@ pub enum AgentSessionLoopState {
     SendDeniedCommand,
     WaitReceipt,
     RetryOriginal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SameChildRuntimeOverrideState {
+    Active,
+    ReplacementRequired,
+}
+
+impl SameChildRuntimeOverrideState {
+    pub fn registry_status(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::ReplacementRequired => "replacement-required",
+        }
+    }
+}
+
+pub fn classify_same_child_runtime_override_state(
+    _current_status: &str,
+    runtime_matches: bool,
+    _fresh_after_previous_observation: bool,
+) -> SameChildRuntimeOverrideState {
+    if runtime_matches {
+        return SameChildRuntimeOverrideState::Active;
+    }
+    SameChildRuntimeOverrideState::ReplacementRequired
+}
+
+pub fn resident_child_host_runtime_refresh_eligible(
+    registry_routable: bool,
+    record: &AgentSessionRecord,
+    current_root_session_id: &str,
+) -> bool {
+    registry_routable
+        || (record.status == "replacement-required"
+            && agent_session_message_target_is_live_bound(record, current_root_session_id))
+}
+
+/// Replace the normal create/reuse choices with typed-child replacement.
+///
+/// Codex does not expose a runtime model/profile override on follow-up or
+/// resume. A drifted child must therefore be retired and recreated through the
+/// registered custom-agent role. Runtime drift is diagnostic and must never
+/// become a global tool-use blocker.
+pub fn resident_child_runtime_repair_menu(
+    mut menu: AgentSessionInteractiveMenu<'_>,
+    _consecutive_observation_count: usize,
+) -> AgentSessionInteractiveMenu<'_> {
+    menu.state = AgentSessionLoopState::Repair;
+    menu.trace = vec![
+        AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Classify,
+            result: "resident-child-runtime-drift",
+        },
+        AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Repair,
+            result: "typed-resident-replacement-required",
+        },
+    ];
+    menu.choices = resident_child_model_repair_choices();
+    menu
+}
+
+/// Preserve a positive same-child runtime-switch receipt instead of collapsing
+/// it into "no drift". Readiness additionally requires a routable registry row.
+pub fn resident_child_runtime_verified_menu(
+    mut menu: AgentSessionInteractiveMenu<'_>,
+    registry_routable: bool,
+) -> AgentSessionInteractiveMenu<'_> {
+    menu.trace = vec![
+        AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Classify,
+            result: "same-resident-child-identity",
+        },
+        AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Repair,
+            result: "fresh-runtime-observation-matches-expected",
+        },
+        AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Validate,
+            result: "typed-resident-replacement-verified",
+        },
+    ];
+    if registry_routable {
+        menu.state = AgentSessionLoopState::Ready;
+        menu.trace.push(AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Ready,
+            result: "resident-child-ready-after-verified-runtime-switch",
+        });
+        menu.choices = vec![AgentSessionInteractiveChoice {
+            id: "send-denied-asp-command",
+            label: "Send the denied ASP command to the verified resident child.",
+            platform_action: "Use host-native message-agent send to the registered agentMessageTargetId; wait for a compact [asp-search-subagent] receipt.",
+            next_state: AgentSessionLoopState::WaitReceipt,
+            required_inputs: &["deniedAspCommand"],
+        }];
+    } else {
+        menu.state = AgentSessionLoopState::Register;
+        menu.trace.push(AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Register,
+            result: "verified-runtime-registry-rehydration-required",
+        });
+        menu.choices = vec![AgentSessionInteractiveChoice {
+            id: "rehydrate-verified-existing-child-registry",
+            label: "Rehydrate the verified same-child identity into the resident registry.",
+            platform_action: "Use the ASP-owned verified lifecycle receipt to rehydrate this exact child and message target. Do not ask the user to enter ids, create another child, or infer success from task text. Re-enter bootstrap after ASP records the verified observation.",
+            next_state: AgentSessionLoopState::Validate,
+            required_inputs: &["aspOwnedRegistryRehydrationReceipt"],
+        }];
+    }
+    menu
+}
+
+/// Apply a fresh native host-tree observation to the resident menu.
+///
+/// Persisted registry identity never proves that the current collaboration
+/// runtime can still resolve the canonical target after a host restart.
+pub fn resident_child_host_tree_observation_menu<'a>(
+    mut menu: AgentSessionInteractiveMenu<'a>,
+    target_status: &str,
+    typed_spawn_status: Option<&str>,
+) -> AgentSessionInteractiveMenu<'a> {
+    if target_status == "present" {
+        if menu.session.is_none() {
+            menu.choices
+                .retain(|choice| choice.id == "resume-existing-host-resident-child");
+            menu.trace.push(AgentSessionLoopTraceStep {
+                state: AgentSessionLoopState::Classify,
+                result: "canonical-host-target-present-registry-rebind-required",
+            });
+        }
+        return menu;
+    }
+    if menu.session.is_none() {
+        menu.choices.retain(|choice| {
+            !matches!(
+                choice.id,
+                "audit-host-agent-tree-for-existing-resident-child"
+                    | "resume-existing-host-resident-child"
+                    | "report-host-agent-tree-audit-unavailable"
+            )
+        });
+        menu.trace.push(AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Classify,
+            result: "canonical-host-target-absent",
+        });
+        return menu;
+    }
+    menu.state = AgentSessionLoopState::Audit;
+    menu.trace = vec![
+        AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Classify,
+            result: "persisted-resident-owner-found",
+        },
+        AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Audit,
+            result: "canonical-host-target-absent-registry-orphan-risk",
+        },
+    ];
+    menu.choices = match typed_spawn_status {
+        Some("present") => vec![AgentSessionInteractiveChoice {
+            id: "create-canonical-typed-child-after-orphaned-owner",
+            label: "Create one canonical typed child after the host-tree miss.",
+            platform_action: "The fresh native host-tree receipt proves /root/asp_explorer is absent. The registry owner is orphan-risk, so create exactly one child with agent_type=asp_explorer, task_name=asp_explorer, and fork_turns=none. SubagentStart atomically releases the orphaned registry owner and registers the new native identity.",
+            next_state: AgentSessionLoopState::Audit,
+            required_inputs: &[
+                "freshHostTreeAbsentObservation",
+                "freshTypedSpawnPresentObservation",
+            ],
+        }],
+        Some("absent") => vec![AgentSessionInteractiveChoice {
+            id: "activate-inline-parser-fallback",
+            label: "Use the exact parser-owned ASP command without creating a generic child.",
+            platform_action: "The fresh host-tree receipt proves the old canonical target is absent and the fresh typed-spawn receipt proves agent_type is unavailable. Rerun only the exact denied parser-owned ASP command with ASP_INLINE_PARSER_FALLBACK=1 before direnv exec. Do not register, resume, or create a generic child.",
+            next_state: AgentSessionLoopState::Audit,
+            required_inputs: &[
+                "freshHostTreeAbsentObservation",
+                "freshHostTypedSpawnAbsentObservation",
+                "exactDeniedAspCommand",
+            ],
+        }],
+        _ => vec![AgentSessionInteractiveChoice {
+            id: "audit-host-typed-spawn-schema",
+            label: "Audit typed spawn before replacing the orphaned registry owner.",
+            platform_action: "Inspect collaboration.spawn_agent and record the result with `direnv exec . asp agent session observe-host-capability --name asp-explore --agent-type-field present|absent`, then re-enter bootstrap. Do not create anything before this receipt exists.",
+            next_state: AgentSessionLoopState::Classify,
+            required_inputs: &["hostTypedSpawnObservation"],
+        }],
+    };
+    menu
 }
 
 pub type AgentSessionInteractiveReceipt<'a> = LoopReceipt<'a>;
@@ -104,6 +297,7 @@ pub fn resident_child_bootstrap_menu<'a>(
 ) -> AgentSessionInteractiveMenu<'a> {
     let (state, choices, trace) = resident_child_state_and_choices(
         input.record,
+        input.root_session_id,
         input.expected_model,
         input.rollout_history_status,
         input.now,
@@ -119,7 +313,9 @@ pub fn resident_child_bootstrap_menu<'a>(
         expected_reasoning_effort: input.expected_reasoning_effort,
         rollout_history_status: input.rollout_history_status,
         rollout_history_action: input.rollout_history_action,
-        session: input.record.map(interactive_session_record),
+        session: input
+            .record
+            .map(|record| interactive_session_record(record, input.root_session_id)),
         host_requirement: AgentSessionHostRequirement {
             platform: input.platform,
             resident_child_name: input.name,
@@ -144,6 +340,7 @@ pub fn resident_child_bootstrap_menu<'a>(
 
 fn resident_child_state_and_choices<'a>(
     record: Option<&AgentSessionRecord>,
+    root_session_id: Option<&str>,
     expected_model: Option<&str>,
     rollout_history_status: Option<&str>,
     now: i64,
@@ -171,21 +368,52 @@ fn resident_child_state_and_choices<'a>(
             );
         }
         return (
-            AgentSessionLoopState::Create,
+            AgentSessionLoopState::Audit,
             vec![
                 AgentSessionInteractiveChoice {
-                    id: "create-managed-resident-child",
-                    label: "Create the configured ASP resident child.",
-                    platform_action: "Use the detected platform-native managed-agent creation surface, not a shell command. Create the configured managed resident child once; do not create generic fallback agents or normal threads. Immediately re-enter this pane after the native create call returns; do not wait for SubagentStart as a child message. The pane observes host registration. If it still reports Create for this root, choose report-host-managed-agent-lifecycle-unavailable instead of creating a duplicate. Do not copy child ids, message targets, or model claims into this pane.",
-                    next_state: AgentSessionLoopState::Audit,
-                    required_inputs: &[],
+                    id: "audit-host-agent-tree-for-existing-resident-child",
+                    label: "Audit the native host agent tree before creating anything.",
+                    platform_action: "Use the native collaboration list-agents surface as the existence authority. Look for the canonical ASP resident task path, including completed, idle, interrupted, or running instances. Registry absence is not child absence. Do not create a child from this step.",
+                    next_state: AgentSessionLoopState::Classify,
+                    required_inputs: &["hostAgentTreeSnapshot"],
                 },
                 AgentSessionInteractiveChoice {
-                    id: "report-host-managed-agent-lifecycle-unavailable",
-                    label: "Report that the host cannot start the managed ASP lifecycle.",
-                    platform_action: "If the host cannot create the configured managed agent type, or native creation emits no SubagentStart event, report bootstrapBlocked=host-managed-agent-lifecycle-unavailable. Do not create or register a generic replacement.",
-                    next_state: AgentSessionLoopState::Create,
-                    required_inputs: &["hostLifecycleGapObserved"],
+                    id: "resume-existing-host-resident-child",
+                    label: "Resume the same existing ASP resident child identity.",
+                    platform_action: "Only when the host agent tree contains the canonical ASP resident child, use the native follow-up-task surface on that same canonical target. For a running target, do not create a duplicate; wait for an idle boundary or interrupt only when the main agent intentionally redirects the current turn, then follow up on the same target. Re-enter this pane after the fresh host lifecycle observation so ASP can audit runtime settings and rehydrate the registry.",
+                    next_state: AgentSessionLoopState::Audit,
+                    required_inputs: &["existingResidentChild"],
+                },
+                AgentSessionInteractiveChoice {
+                    id: "audit-host-typed-spawn-schema",
+                    label: "Audit that the native spawn tool exposes agent_type.",
+                    platform_action: "Before Create, inspect the currently exposed native collaboration.spawn_agent tool schema. It must contain an agent_type field that can be set to asp_explorer. task_name, message, and fork_turns alone are not typed-spawn capability. Record the observation through `direnv exec . asp agent session observe-host-capability --name asp-explore --agent-type-field present|absent`; do not merely report it in prose. Then re-enter bootstrap. If agent_type is absent, do not create any child.",
+                    next_state: AgentSessionLoopState::Classify,
+                    required_inputs: &["hostTypedSpawnObservation"],
+                },
+                AgentSessionInteractiveChoice {
+                    id: "activate-inline-parser-fallback",
+                    label: "Use the current session for the exact parser-owned ASP command when typed spawn is unavailable.",
+                    platform_action: "Only after the native spawn schema audit proves that agent_type is unavailable, do not create a generic child. Rerun the exact denied parser-owned ASP search/query with ASP_INLINE_PARSER_FALLBACK=1 before direnv exec. This permits only that classified ASP reasoning command in the current root session; it does not authorize raw reads, shell search substitutes, or resident-child registration.",
+                    next_state: AgentSessionLoopState::Audit,
+                    required_inputs: &[
+                        "freshHostTypedSpawnAbsentObservation",
+                        "exactDeniedAspCommand",
+                    ],
+                },
+                AgentSessionInteractiveChoice {
+                    id: "create-managed-resident-child-after-host-tree-miss",
+                    label: "Create the configured ASP resident child only after both audits miss.",
+                    platform_action: "Only when rollout history and the native host agent tree both prove that no reusable ASP resident child exists, use a platform-native creation surface that explicitly exposes agent_type. Set agent_type=asp_explorer to select the registered profile, task_name=asp_explorer to reserve the canonical /root/asp_explorer path, and fork_turns=none, then create once. message text does not select the registered profile. If agent_type is not exposed, report host-agent-type-unavailable; do not create generic fallback agents or normal threads. Re-enter this pane after the native create call returns so SubagentStart can be audited.",
+                    next_state: AgentSessionLoopState::Audit,
+                    required_inputs: &["hostTreeNoResidentChild", "typedSpawnAgentSchema"],
+                },
+                AgentSessionInteractiveChoice {
+                    id: "report-host-agent-tree-audit-unavailable",
+                    label: "Report that the host agent tree cannot be audited.",
+                    platform_action: "If the host exposes no native agent-tree listing surface, report bootstrapBlocked=host-agent-tree-audit-unavailable. Registry and rollout misses are insufficient evidence for Create; do not create or register a replacement.",
+                    next_state: AgentSessionLoopState::Audit,
+                    required_inputs: &["hostTreeAuditGapObserved"],
                 },
             ],
             vec![
@@ -195,38 +423,31 @@ fn resident_child_state_and_choices<'a>(
                 },
                 AgentSessionLoopTraceStep {
                     state: AgentSessionLoopState::Classify,
-                    result: "no-resident-child",
+                    result: "registry-missing-host-tree-audit-required",
                 },
             ],
         );
     };
-    if record.message_target_id().is_none() {
+    let live_message_target_bound = root_session_id
+        .is_some_and(|root| agent_session_message_target_is_live_bound(record, root));
+    if !live_message_target_bound {
         return (
-            AgentSessionLoopState::Recover,
-            vec![
-                AgentSessionInteractiveChoice {
-                    id: "resume-managed-child-for-native-start",
-                    label: "Resume the configured resident child through the native managed profile.",
-                    platform_action: "Use the host-native resume action once for this existing managed child, then immediately re-enter this pane. Do not wait for SubagentStart as a child message. The pane observes whether the host event refreshed child identity, message target, type, and model atomically. Do not verify or register a target through child text or command flags.",
-                    next_state: AgentSessionLoopState::Audit,
-                    required_inputs: &[],
-                },
-                AgentSessionInteractiveChoice {
-                    id: "cleanup-unrecoverable-child",
-                    label: "Close the child if its native message target cannot be verified.",
-                    platform_action: "Use the host-native close/archive action for the existing ASP-managed child. A close request whose previous status is running is not completion: wait for terminal host status or the SubagentStop receipt before re-entering this loop. Do not delete registry state manually.",
-                    next_state: AgentSessionLoopState::Cleanup,
-                    required_inputs: &["nativeStopReceipt"],
-                },
-            ],
+            AgentSessionLoopState::RebindExistingChildTarget,
+            vec![AgentSessionInteractiveChoice {
+                id: "resume-existing-child-for-live-target-rebind",
+                label: "Resume the same existing resident child to establish a live target binding.",
+                platform_action: "Use the main agent's native same-child follow-up/resume surface for the canonical existing managed target, then immediately re-enter this pane. A fresh same-root SubagentStart lifecycle hook must attest the collaboration target before Ready. Preserve the child identity; do not create a replacement, controller sibling, or manually register an id.",
+                next_state: AgentSessionLoopState::Audit,
+                required_inputs: &["freshSameRootSubagentStartBinding"],
+            }],
             vec![
                 AgentSessionLoopTraceStep {
                     state: AgentSessionLoopState::Classify,
-                    result: "registered-child-needs-recovery",
+                    result: "existing-child-discovered",
                 },
                 AgentSessionLoopTraceStep {
-                    state: AgentSessionLoopState::Recover,
-                    result: "native-message-target-unverified",
+                    state: AgentSessionLoopState::RebindExistingChildTarget,
+                    result: "live-collaboration-target-unbound",
                 },
             ],
         );
@@ -268,27 +489,16 @@ fn resident_child_state_and_choices<'a>(
     let model_unverified = expected_model.is_some() && observed_model.is_none();
     let model_mismatch = observed_model
         .is_some_and(|actual| expected_model.is_some_and(|expected| actual != expected));
-    if (model_unverified || model_mismatch)
-        && !(record.is_routable_at(now) && record.message_target_id().is_some())
-    {
+    if model_unverified {
         return (
             AgentSessionLoopState::Validate,
-            vec![
-                AgentSessionInteractiveChoice {
-                    id: "resume-managed-child-for-native-profile-observation",
-                    label: "Resume the resident child through its configured managed profile.",
-                    platform_action: "Use the host-native resume action once and immediately re-enter this pane. Do not wait for SubagentStart as a child message. Only the host event observed by this pane may update the model and message target. Do not ask the child to describe or switch its own model.",
-                    next_state: AgentSessionLoopState::Audit,
-                    required_inputs: &[],
-                },
-                AgentSessionInteractiveChoice {
-                    id: "stop-mismatched-managed-child",
-                    label: "Stop the mismatched managed child before creating another.",
-                    platform_action: "Use the host-native stop action and wait until terminal host status or the SubagentStop receipt. previous_status=running is not shutdown completion. Re-enter only after the event retires this child route; do not delete registry state manually.",
-                    next_state: AgentSessionLoopState::Cleanup,
-                    required_inputs: &["nativeStopReceipt"],
-                },
-            ],
+            vec![AgentSessionInteractiveChoice {
+                id: "resume-existing-child-for-runtime-observation",
+                label: "Resume the same resident child to obtain a fresh runtime observation.",
+                platform_action: "Use the main agent's native follow-up/resume surface for the same canonical /root/asp_explorer target. Wait for a fresh same-root SubagentStart model and reasoning observation, then re-enter bootstrap. Missing observation is not drift: do not retire the child or create a replacement.",
+                next_state: AgentSessionLoopState::Audit,
+                required_inputs: &["freshSameRootSubagentStartRuntimeObservation"],
+            }],
             vec![
                 AgentSessionLoopTraceStep {
                     state: AgentSessionLoopState::Classify,
@@ -296,29 +506,36 @@ fn resident_child_state_and_choices<'a>(
                 },
                 AgentSessionLoopTraceStep {
                     state: AgentSessionLoopState::Validate,
-                    result: "model-missing-or-mismatch",
+                    result: "model-observation-missing",
+                },
+            ],
+        );
+    }
+    if model_mismatch {
+        return (
+            AgentSessionLoopState::Repair,
+            resident_child_model_repair_choices(),
+            vec![
+                AgentSessionLoopTraceStep {
+                    state: AgentSessionLoopState::Classify,
+                    result: "registered-child-routable",
+                },
+                AgentSessionLoopTraceStep {
+                    state: AgentSessionLoopState::Repair,
+                    result: "model-mismatch",
                 },
             ],
         );
     }
     (
         AgentSessionLoopState::Ready,
-        vec![
-            AgentSessionInteractiveChoice {
-                id: "send-denied-asp-command",
-                label: "Send the denied ASP command to the resident child.",
-                platform_action: "Use host-native message-agent send to the registered agentMessageTargetId; wait for a compact [asp-search-subagent] receipt.",
-                next_state: AgentSessionLoopState::WaitReceipt,
-                required_inputs: &["deniedAspCommand"],
-            },
-            AgentSessionInteractiveChoice {
-                id: "record-native-child-retirement",
-                label: "Retire the completed resident child before the next loop.",
-                platform_action: "Use the host-native stop or archive action, then wait for terminal host status or the SubagentStop receipt. previous_status=running means shutdown was requested, not completed. Re-enter only after the event retires the matching route; do not return child identity or status as pane flags.",
-                next_state: AgentSessionLoopState::Cleanup,
-                required_inputs: &["nativeStopReceipt"],
-            },
-        ],
+        vec![AgentSessionInteractiveChoice {
+            id: "send-denied-asp-command",
+            label: "Send the denied ASP command to the resident child.",
+            platform_action: "Use host-native message-agent send for a running resident or follow-up/resume for the same completed or idle canonical /root/asp_explorer target; wait for a compact [asp-search-subagent] receipt. Keep the resident child for later reuse. Do not retire it merely because one search turn completed.",
+            next_state: AgentSessionLoopState::WaitReceipt,
+            required_inputs: &["deniedAspCommand"],
+        }],
         vec![
             AgentSessionLoopTraceStep {
                 state: AgentSessionLoopState::Classify,
@@ -340,7 +557,35 @@ fn resident_child_state_and_choices<'a>(
     )
 }
 
-fn interactive_session_record(record: &AgentSessionRecord) -> AgentSessionInteractiveSession<'_> {
+fn resident_child_model_repair_choices<'a>() -> Vec<AgentSessionInteractiveChoice<'a>> {
+    vec![
+        AgentSessionInteractiveChoice {
+            id: "retire-drifted-child-and-create-configured-replacement",
+            label: "Retire the drifted child and create one typed replacement from the registered profile.",
+            platform_action: "Use the host-native retire/archive action for the existing canonical child and wait for terminal status and /root/asp_explorer path release. Then create exactly one replacement through a spawn surface that exposes agent_type, with agent_type=asp_explorer, task_name=asp_explorer, and fork_turns=none. agent_type selects the registered role; task_name reserves its canonical collaboration path; message/natural-language task text is only payload. Let Codex load the full role configuration from ~/.codex/agents or the active higher-precedence agents directory; do not copy model or reasoning values into task text. If agent_type is unavailable, choose the blocker option instead of spawning. Re-enter this pane only after the replacement SubagentStart receipt.",
+            next_state: AgentSessionLoopState::Audit,
+            required_inputs: &["nativeRetireReceipt", "typedSubagentStartReceipt"],
+        },
+        resident_child_runtime_override_unavailable_choice(),
+    ]
+}
+
+fn resident_child_runtime_override_unavailable_choice<'a>() -> AgentSessionInteractiveChoice<'a> {
+    AgentSessionInteractiveChoice {
+        id: "report-host-typed-replacement-unavailable",
+        label: "Report that the host cannot retire and recreate the typed resident child.",
+        platform_action: "Report host-typed-resident-replacement-unavailable when the host lacks either native child retirement/path release or agent_type-aware creation. Keep ASP resident routing degraded, but do not deny unrelated Codex tools and do not re-enter bootstrap from the child. Never send natural-language model-switch instructions or create a generic replacement.",
+        next_state: AgentSessionLoopState::Blocked,
+        required_inputs: &["hostTypedReplacementCapabilityGap"],
+    }
+}
+
+fn interactive_session_record<'a>(
+    record: &'a AgentSessionRecord,
+    root_session_id: Option<&str>,
+) -> AgentSessionInteractiveSession<'a> {
+    let live_message_target_bound = root_session_id
+        .is_some_and(|root| agent_session_message_target_is_live_bound(record, root));
     AgentSessionInteractiveSession {
         child_session_id: &record.session_id,
         status: &record.status,
@@ -349,10 +594,10 @@ fn interactive_session_record(record: &AgentSessionRecord) -> AgentSessionIntera
         model_observation_source: record.model_observation_source.as_deref(),
         model_observed_at: record.model_observed_at,
         model_evidence_ref: record.model_evidence_ref.as_deref(),
-        message_target_status: if record.message_target_id().is_some() {
+        message_target_status: if live_message_target_bound {
             "ready"
         } else {
-            "missing"
+            "unbound"
         },
         message_target_id: record.message_target_id(),
     }

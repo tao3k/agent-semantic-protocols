@@ -149,6 +149,7 @@ pub enum ReasonKind {
     DirectSourceRead,
     BulkSourceDump,
     RawBroadSearch,
+    AspReasoningRouted,
     SourceDirectoryEnumeration,
     AgentSearchJson,
     SemanticAstPatchRequired,

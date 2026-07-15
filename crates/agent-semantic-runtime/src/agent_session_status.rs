@@ -48,6 +48,7 @@ pub struct CodexRolloutSessionMetadata {
     pub cwd: Option<String>,
     pub model: Option<String>,
     pub collaboration_model: Option<String>,
+    pub reasoning_effort: Option<String>,
     pub sandbox_policy: Option<String>,
     pub approval_policy: Option<String>,
     pub permission_profile: Option<String>,
@@ -143,6 +144,7 @@ fn read_codex_rollout_metadata(
         cwd: None,
         model: None,
         collaboration_model: None,
+        reasoning_effort: None,
         sandbox_policy: None,
         approval_policy: None,
         permission_profile: None,
@@ -196,6 +198,12 @@ fn read_codex_rollout_metadata(
                 }
                 if let Some(collaboration_model) = string_at(payload, "/collaboration_model") {
                     metadata.collaboration_model = Some(collaboration_model);
+                }
+                if let Some(reasoning_effort) = string_at(payload, "/reasoning_effort")
+                    .or_else(|| string_at(payload, "/reasoningEffort"))
+                    .or_else(|| string_at(payload, "/effort"))
+                {
+                    metadata.reasoning_effort = Some(reasoning_effort);
                 }
                 if let Some(sandbox_policy) = string_at(payload, "/sandbox_policy/type") {
                     metadata.sandbox_policy = Some(sandbox_policy);

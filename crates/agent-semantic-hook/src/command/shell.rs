@@ -192,7 +192,8 @@ fn fallback_shell_tokens(command: &str) -> Vec<String> {
     tokens
 }
 
-pub(crate) fn semantic_shell_tokens(command: &str) -> Vec<String> {
+/// Tokenize a shell command into semantic stages for shared hook routing.
+pub fn semantic_shell_tokens(command: &str) -> Vec<String> {
     let tokens = shell_tokens(command);
     if !tokens.iter().any(|token| is_separator(token)) {
         return unwrap_command_stage(&tokens);
@@ -237,7 +238,11 @@ fn unwrap_command_stage(tokens: &[String]) -> Vec<String> {
     }
     match command_name(&tokens[0]) {
         "env" => {
-            return unwrap_command_stage(&tokens[env_command_index(tokens)..]);
+            let command_index = env_command_index(tokens);
+            if command_index >= tokens.len() {
+                return tokens.to_vec();
+            }
+            return unwrap_command_stage(&tokens[command_index..]);
         }
         "direnv" => {
             let command_index = if tokens.get(1).is_some_and(|token| token == "exec") {

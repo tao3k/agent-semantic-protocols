@@ -1,0 +1,20 @@
+harness = "libtest"
+test = "source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate"
+phase = "warm"
+target_total = "100ms"
+max_total = "500ms"
+observed_total = "74ms"
+regression_budget = "400ms"
+memory_budget_bytes = 134217728
+observed_memory_bytes = 81821696
+route_source = "source-index-turso-sql-join"
+max_provider_process_count = 0
+max_stdout_bytes = 4096
+fallback_reason = "none"
+target_rationale = "The benchmark isolates the DB-owned incremental refresh after the initial snapshot exists. The fixed structural assertions require 12 changed owners, zero removals, and 168 posting writes, so a regression to all-owner selector serialization cannot pass merely because the host is fast. The memory budget covers incremental refresh working memory and forbids a second owned full-snapshot membership map."
+
+[observed_timings]
+incremental_refresh = "74ms"
+cold_snapshot = "850ms"
+scenario_total = "950ms"
+provider_process_count = "0us"

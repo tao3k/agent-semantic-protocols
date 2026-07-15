@@ -9,7 +9,7 @@ use crate::rust_harness_activation::support::{
 };
 
 #[test]
-fn cli_hook_records_dev_context_when_agents_asp_toml_enables_develop_mode() {
+fn cli_hook_records_dev_context_and_denies_direct_read_in_develop_mode() {
     let root = temp_project_root("hook-dev-context-asp-config");
     fs::write(
         root.join("Cargo.toml"),
@@ -62,7 +62,8 @@ fn cli_hook_records_dev_context_when_agents_asp_toml_enables_develop_mode() {
         String::from_utf8_lossy(&output.stderr)
     );
     let decision: Value = serde_json::from_slice(&output.stdout).expect("hook decision JSON");
-    assert_eq!(decision["decision"], "allow");
+    assert_eq!(decision["decision"], "deny");
+    assert_eq!(decision["reasonKind"], "bulk-source-dump");
 
     let marker_paths = fs::read_dir(trace_dir.join("dev-context"))
         .expect("read dev-context dir")

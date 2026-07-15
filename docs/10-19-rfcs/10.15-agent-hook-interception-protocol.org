@@ -621,6 +621,238 @@ hook state.
 
 ** Tool intent
 
+The hook must classify public =asp <language>= commands with a parser-owned
+taxonomy before applying generic shell read/search rules.  This is a semantic
+command boundary, not a substring allowlist.  The classifier recognizes the
+=asp= executable only in a shell command position, parses the language facade
+and immediate subcommand, and validates the facade against the activated
+provider registry before attaching language policy.
+
+| ASP command intent | Public command shapes | Meaning | Hook treatment |
+| =reasoning= | =asp <language> guide=, =search prime|pipe|owner|lexical|deps|dependency|failure|reasoning|ingest|guide=, non-projecting =query=, or =query --term= | discovers, refines, ranks, or explains evidence | route from a main session to the managed resident child; apply repeated-prime/pipe feedback and prompt reasoning budget inside the permitted reasoning context |
+| =exact-evidence= | =asp <language> query --selector <structural-selector> --code|--content= or =--view metadata= | projects precise evidence after parser-owned identity exists | allow independently of the reasoning-command budget |
+| =direct-read-fallback= | =query --from-hook direct-source-read --selector <bounded-range>= | audited low-priority fallback after an evidence frontier | enforce frontier and bounded-range policy; never treat as exact structural evidence |
+| =invalid-evidence= | projecting =query= with a missing, file-level, line-range, malformed, or cross-language selector | attempts precise projection without parser-owned identity | deny and route back to owner/items reasoning |
+
+The source-owned hook configuration MUST expose this taxonomy under
+=aspCommandIntentPolicy= in
+=crates/agent-semantic-config/templates/hooks/config.toml=.  The typed config
+has five explicit sections: =controlPlane=, =reasoning=, =exactEvidence=,
+=directReadFallback=, and =invalidEvidence=.  It owns the operational root
+commands, recognized reasoning root commands and search
+routes, query reasoning flags, evidence projection flags/views, structural
+selector kinds, same-language requirement, accepted =--from-hook= provenance,
+and invalid-evidence rejection switches.  The hook classifier and the protocol
+session router MUST consume the same loaded policy.  Rust defaults may preserve
+behavior when the config file is absent, but they must not form a second,
+independently maintained taxonomy.
+
+Command matching precedence is deterministic:
+
+1. parse one shell command stage and prove that =asp= is the invoked binary;
+2. parse either =asp <language> <command>= or the root
+   =asp <command> --language <language>= spelling;
+3. validate the language id against activated provider facades;
+4. classify an explicit =--from-hook direct-source-read= before ordinary query
+   projection;
+5. classify a projecting query as =exact-evidence= only when its selector is a
+   valid structural item selector for the same language;
+6. classify the enumerated guide/search/non-projecting query shapes as
+   =reasoning=;
+7. only then apply generic shell read, content-dump, raw-search, or invalid
+   facade rules.
+
+A structural selector has the canonical shape
+=<language>://<non-empty-owner>#item/<kind>/<name>[...]=.  The URI scheme must
+be a lower-case selector scheme, must match the language facade (with only
+contracted aliases such as =gerbil-scheme= -> =scheme=), the owner and item
+segments must be non-empty, and whitespace, duplicate schemes, extra fragments,
+file paths, and display line ranges are not accepted.  =sourceLocatorHint= and
+=displayLineRange= remain display metadata; they are never executable exact
+selectors.
+
+Hook decisions that classify a language command expose
+=fields.aspCommandIntent= and =fields.aspCommandRoute=.  These fields are the
+reviewable shared contract for rule matching and tests.  Hook code must not
+reconstruct this taxonomy through overlapping booleans or search for route
+words at arbitrary positions in the token stream.
+
+Prompt search-flow state rejects only an exact replay of the same tokenized
+=search pipe= command.  A different pipe query produced by refinement or a
+provider =nextCommand= remains eligible; a prior blocked or low-quality attempt
+must not consume a boolean once-per-prompt frontier for every later pipe.
+
+When main-session policy routes a =reasoning= command to the managed resident
+child, the decision uses =reasonKind=asp-reasoning-routed=.  It must not reuse
+=raw-broad-search=, because the ASP command is a valid semantic reasoning route,
+not an unsafe raw shell search.  The resident-child requirement remains an
+execution-policy decision and preserves =aspCommandIntent= and
+=aspCommandRoute= in its receipt.
+
+Only =reasoning= enters the resident-child route.  =exact-evidence=,
+=direct-read-fallback=, and =invalid-evidence= must pass the session gate so
+their own allow, bounded-read, or precise denial policy remains authoritative.
+The configured command inventory must describe accepted CLI spellings: aliases
+or search routes that the public parser does not accept must not be listed as
+reasoning commands.
+Unclassified ASP control and maintenance commands, including install, hook,
+cache, provider, and lifecycle surfaces, do not enter the resident route merely
+because their executable is named =asp=.  Resident routing is a positive
+=reasoning= match, never the negative remainder of a command allowlist.
+
+Native tool intent remains separate from ASP command intent.  A precise native
+single-file =Read= action is direct evidence access and MUST pass through the
+hook without entering reasoning, testing, or resident-session routing.  This
+includes source files such as =*.ts=, =*.tsx=, and =*.rs=; the file extension
+alone never changes a precise =Read= into a reasoning action.  Directory reads,
+multi-file content dumps, and raw shell search remain subject to their explicit
+source-access policies.
+
+Main-session identity MUST be resolved from the hook event before the session
+router decides that execution is outside an agent session.  A non-empty
+=session_id= or =sessionId= in the hook payload is a positive session signal and
+is the root-session fallback when no registered child/root attribution exists.
+Process environment such as =CODEX_THREAD_ID= remains a compatible fallback,
+but the router must not require the hook subprocess and the later tool
+subprocess to inherit the same environment.  This keeps Codex Normal tasks,
+background tasks, and other native hook hosts on the same routing contract.
+Decisions created from this fallback preserve the resolved identity as
+=fields.rootSessionId=; the ordinary payload annotation still exposes
+=fields.sessionId= and =fields.transcriptPath=.
+
+** Deterministic execution lanes
+
+Testing and build commands are deterministic execution work, not semantic
+reasoning actors.  The hook MUST NOT require a managed conversational agent in
+order to run a configured testing command.  Source-owned configuration exposes
+an =executionLanes.testing= policy with an enabled switch, an explicit
+transport, and parser-owned command prefixes.
+
+The default =current-session= transport allows only a command whose tokenized
+prefix matches that lane.  Its allow decision MUST carry a compact execution
+receipt containing the lane, transport, root session id when available, cwd,
+and a SHA-256 digest of the exact command.  This is a scoped deterministic
+execution capability; it is not a blanket shell allowlist and it does not
+change ASP reasoning, evidence, or source-read policy.
+
+This separates the two lifecycle classes:
+
+| Lane | Actor kind | Default transport | Capability rule |
+| =asp-explore= | semantic reasoning actor | managed resident agent | requires a profile-valid native child |
+| =executionLanes.testing= | deterministic command execution | current root session | exact configured prefix plus execution receipt; no resident testing actor |
+
+The retired =asp-testing= resident route is not a compatibility fallback.  A
+testing/build command either matches =executionLanes.testing= and runs in the
+current session with its receipt, or it falls through to ordinary hook policy.
+
+** Non-self-locking control-plane upgrade boundary
+
+Hook installation and recovery commands form a stable bootstrap surface.  The
+parser MUST classify configured =controlPlane.rootCommands= before resident
+reasoning policy and before generic ASP fallback handling.  In particular,
+=install=, =sync=, =hook=, =paths=, and =healthcheck= must never require an
+=asp-explore= lifecycle merely because the invoked executable
+is named =asp=.
+
+An installer updates the runtime through a versioned artifact followed by an
+atomic active-binary switch.  The running hook process may finish on its pinned
+binary; the next hook event resolves the new active binary.  Installation
+receipts record every updated active path and the artifact digest.  Unless an
+explicit =SEMANTIC_AGENT_BIN_DIR= selects one authoritative destination, the
+installer MUST enumerate and atomically update every existing =asp= entry on
+the invoking PATH.  Updating only the first match is invalid because a project
+direnv, login shell, and hook host may resolve different entries from the same
+PATH set.  This bootstrap boundary exists so an older hook cannot permanently
+prevent installation of the parser or routing fix that replaces it.
+
+** Resident runtime rebind control intent
+
+A resident-child runtime mismatch is repaired on the existing canonical child;
+it is never evidence that a replacement child should be created.  The repair
+owner is the main agent because a child cannot synchronously continue itself
+without locking its current turn.  The bootstrap pane therefore emits a
+structured host-control directive together with a concise natural-language
+instruction addressed to the main agent.
+
+The directive is declarative.  It identifies the canonical target, existing
+child session, managed profile, desired model and reasoning effort, and these
+invariants:
+
+#+begin_src text
+identityPolicy = same-child-only
+createPolicy = forbid
+instructionMode = main-agent-natural-language-control
+runtimeControlChannel = main-agent-followup-control-intent
+taskMessageCarriesControlIntent = true
+taskMessageIsRuntimeEvidence = false
+verification = fresh-host-runtime-observation
+#+end_src
+
+Natural language is the orchestration surface that lets the main agent select
+the existing managed target and native continuation action.  It is not itself
+runtime evidence.  The main agent MUST compile the directive into a same-child
+follow-up against the canonical managed target.  For a host surface that
+exposes =target= and =message=, the directive MUST include the exact imperative
+message that the main agent sends without paraphrasing:
+
+#+begin_src text
+Switch this existing SubAgent in place to model <expected-model> with reasoning
+effort <expected-reasoning> for the new continuation. Preserve the same
+child/thread identity. Execute the runtime switch now; do not merely explain
+capabilities, do not self-resume, and do not create a replacement.
+#+end_src
+
+This message carries the main agent's control intent to the existing child and
+host continuation surface.  It is not a success receipt.  When the host
+re-resolves the managed profile or interprets the command, the configured
+runtime may be rebound even if the public follow-up schema exposes no explicit
+=model= or =reasoningEffort= argument.  Only the later native lifecycle
+observation proves which runtime dimensions actually changed.
+
+For Codex multi-agent v2, the canonical resident target is root-scoped (for
+example =/root/asp_explorer=).  A completed, idle, or interrupted child remains
+the same resumable identity.  Codex v2 may resume that child without emitting a
+second =SubagentStart=, so event pairing is required: the first Stop after Start
+closes that start turn, while each later same-child Stop without an intervening
+Start is a fresh continuation observation.  Its model and reasoning fields
+supersede the older Start evidence.
+
+Runtime repair is dimension-aware.  Re-selecting the canonical managed target
+may successfully rebind the model while reasoning effort still inherits the
+main agent.  The pane MUST report that partial result instead of calling the
+whole continuation a model-switch failure.  When all observed dimensions still
+drift, the generic blocker is:
+
+#+begin_src text
+bootstrapBlocked=host-runtime-agent-resume-model-override-unavailable
+#+end_src
+
+When model matches but reasoning still drifts, the precise blocker is:
+
+#+begin_src text
+bootstrapBlocked=host-runtime-agent-resume-reasoning-override-unavailable
+repairAttemptStatus=same-child-model-rebind-applied-reasoning-drift-remains
+#+end_src
+
+A top-level app-server thread continuation is not a fallback for a multi-agent
+v2 child.  Explicit =model= or reasoning control arguments are used when the
+native follow-up surface exposes them; their absence is diagnosed only after
+the same-child follow-up and fresh Stop observation show which managed-profile
+dimensions the host did or did not apply.
+
+The blocker preserves the child and leaves it unrouted.  It must not loop by
+reissuing the same unsupported action, ask the child to self-resume, introduce
+a controller sibling, encode runtime control in task text, or create a
+replacement.  Readiness requires a fresh host observation where identity,
+profile, model, and reasoning effort all match the configured resident profile.
+The first drift observation enters =Repair=.  A later same-child Start, or a
+later unpaired Stop from a continuation turn, that still reports any drift
+proves that the in-place continuation did not fully apply the requested
+runtime; bootstrap then enters =Blocked= and exposes the consecutive observation
+count plus the remaining drift dimensions.  The Stop paired with the initial
+Start does not increment this count.  A fresh fully matching observation or
+explicit archive clears it.
+
 Classify the tool call into one or more intents:
 
 #+begin_src text

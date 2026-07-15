@@ -8,6 +8,8 @@ mod agent_session_registry_bootstrap;
 mod agent_session_registry_codex;
 #[path = "agent_session_registry_commands.rs"]
 mod agent_session_registry_commands;
+#[path = "agent_session_registry_host_capability.rs"]
+mod agent_session_registry_host_capability;
 #[path = "agent_session_registry_lifecycle_audit.rs"]
 mod agent_session_registry_lifecycle_audit;
 #[path = "agent_session_registry_lifetime.rs"]
@@ -30,7 +32,9 @@ mod agent_session_registry_state;
 mod agent_session_registry_tool_event;
 #[path = "agent_session_registry_validation.rs"]
 mod agent_session_registry_validation;
-pub(crate) use agent_session_registry_validation::expected_model_for_session_profile;
+pub(crate) use agent_session_registry_validation::{
+    expected_model_for_session_profile, expected_reasoning_effort_for_session_profile,
+};
 
 use agent_semantic_client_db::AgentSessionRegistry;
 use agent_semantic_config::codex_agent_projection::{
@@ -51,8 +55,10 @@ use agent_session_registry_state::open_or_create_default_registry;
 use std::{env, path::PathBuf};
 
 pub(crate) use agent_session_registry_state::{
-    current_agent_session_id, current_registered_session, current_root_session_id,
-    has_current_agent_session, registered_resident_session_for_root, registered_root_session_id,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity_proof,
+    current_agent_session_id, current_registered_session, current_registered_session_identity,
+    current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
+    registered_resident_session_for_root, registered_root_session_id,
 };
 pub(crate) use agent_session_registry_tool_event::record_current_session_tool_event;
 
@@ -95,6 +101,12 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
     match args.command {
         SessionCommand::Bootstrap => {
             agent_session_registry_bootstrap::bootstrap_session(&registry, &args, &project_root)
+        }
+        SessionCommand::ObserveHostCapability => {
+            agent_session_registry_host_capability::observe_host_capability(&registry, &args)
+        }
+        SessionCommand::ObserveHostTree => {
+            agent_session_registry_host_capability::observe_host_tree(&registry, &args)
         }
         SessionCommand::Register => register_session(&registry, &args),
         SessionCommand::List => list_sessions(&registry, &args),

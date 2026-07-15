@@ -152,26 +152,6 @@ fn route_option_value<'a>(tokens: &'a [String], option: &str) -> Option<&'a str>
         .find_map(|window| (window[0] == option).then_some(window[1].as_str()))
 }
 
-fn asp_parser_owned_query_code_tokens(tokens: &[String]) -> bool {
-    let Some(asp_index) = tokens
-        .iter()
-        .position(|token| token == "asp" || token.ends_with("/asp"))
-    else {
-        return false;
-    };
-    let after_asp = &tokens[asp_index + 1..];
-    let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
-        after_asp
-    } else if after_asp.get(1).map(String::as_str) == Some("query") {
-        &after_asp[1..]
-    } else {
-        return false;
-    };
-    query_tokens.iter().any(|token| token == "--code")
-        && route_option_value(query_tokens, "--selector")
-            .is_some_and(|selector| selector.contains("://") && selector.contains("#item/"))
-}
-
 fn with_prompt_scope_fields(mut decision: HookDecision, payload: &Value) -> HookDecision {
     if let Some(session_id) =
         payload_string(payload, "session_id").or_else(|| payload_string(payload, "sessionId"))
@@ -227,14 +207,6 @@ fn classify_tool_actions(
         event,
         payload,
     } = request;
-    if actions.iter().any(|action| {
-        action
-            .command_tokens()
-            .as_deref()
-            .is_some_and(|tokens| action_is_known_asp_command(registry, action, tokens))
-    }) {
-        return None;
-    }
     if let Some(decision) = actions
         .iter()
         .find_map(|action| config.classify(registry, platform, event, action))
@@ -242,7 +214,14 @@ fn classify_tool_actions(
         return Some(decision);
     }
     if let Some(decision) = actions.iter().find_map(|action| {
-        classify_prompt_search_flow_feedback(registry, platform, event, payload, action)
+        classify_prompt_search_flow_feedback(
+            registry,
+            platform,
+            event,
+            payload,
+            action,
+            config.asp_command_intent_policy(),
+        )
     }) {
         return Some(decision);
     }
@@ -302,9 +281,6 @@ fn classify_invalid_asp_facade(
     }
     action.command.as_deref()?;
     let command_tokens = action.command_tokens()?;
-    if asp_parser_owned_query_code_tokens(&command_tokens) {
-        return None;
-    }
     let invalid_facade = invalid_asp_facade_from_tokens(&command_tokens, registry)?;
     let preferred_language = preferred_language_for_invalid_facade(&invalid_facade, registry);
     let mut fields = std::collections::BTreeMap::new();
@@ -334,11 +310,19 @@ fn classify_invalid_asp_facade(
     );
     fields.insert(
         "targetAgentName".to_string(),
-        Value::String("asp-explore".to_string()),
+        Value::String("asp_explorer".to_string()),
     );
     fields.insert(
         "targetAgentRole".to_string(),
-        Value::String("asp-explore".to_string()),
+        Value::String("asp_explorer".to_string()),
+    );
+    fields.insert(
+        "targetAgentSelectionSource".to_string(),
+        Value::String("hook-deny-intent".to_string()),
+    );
+    fields.insert(
+        "targetAgentRegistrySource".to_string(),
+        Value::String("~/.agent-semantic-protocols/agents/config.toml".to_string()),
     );
     fields.insert(
         "forbiddenUntilResolved".to_string(),

@@ -122,16 +122,36 @@ agent-tools-install-asp bin_dir="":
 	@just agent-tools-install-protocol "{{bin_dir}}"
 
 agent-tools-install-protocol bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      mkdir -p "${bin_dir}"; \
+    @requested_bin_dir="{{bin_dir}}"; \
+      if [ -n "${requested_bin_dir}" ]; then \
+        mkdir -p "${requested_bin_dir}"; \
+        requested_bin_dir="$(cd "${requested_bin_dir}" && pwd -P)"; \
+      fi; \
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
       target/release/asp --version --require-release >/dev/null; \
-      install -m 755 target/release/asp "${bin_dir}/asp"; \
-      rm -f "${bin_dir}/semantic-agent-protocol"; \
-      test -x "${bin_dir}/asp"; \
-      "${bin_dir}/asp" --version --require-release >/dev/null; \
-      "${bin_dir}/asp" guide >/dev/null
+      artifact_digest="$(shasum -a 256 target/release/asp | awk '{print $1}')"; \
+      if [ -n "${requested_bin_dir}" ]; then \
+        destinations="${requested_bin_dir}/asp"; \
+      elif [ -n "${SEMANTIC_AGENT_BIN_DIR:-}" ]; then \
+        destinations="${SEMANTIC_AGENT_BIN_DIR}/asp"; \
+      else \
+        destinations="$(printf '%s\n' "$HOME/.local/bin/asp" $(which -a asp 2>/dev/null || true) | awk 'NF && !seen[$0]++')"; \
+      fi; \
+      printf '%s\n' "${destinations}" | while IFS= read -r destination; do \
+        [ -n "${destination}" ] || continue; \
+        bin_dir="$(dirname "${destination}")"; \
+        artifact_dir="${bin_dir}/.asp-versions/${artifact_digest}"; \
+        mkdir -p "${artifact_dir}"; \
+        install -m 755 target/release/asp "${artifact_dir}/asp"; \
+        next_link="${bin_dir}/.asp-next.$$"; \
+        ln -sfn "${artifact_dir}/asp" "${next_link}"; \
+        mv -f "${next_link}" "${destination}"; \
+        rm -f "${bin_dir}/semantic-agent-protocol"; \
+        test -x "${destination}"; \
+        "${destination}" --version --require-release >/dev/null; \
+        "${destination}" guide >/dev/null; \
+        printf '%s\n' "[agent-tools-install] binaryPath=${destination} binaryArtifactDigest=${artifact_digest} binarySwitch=atomic"; \
+      done
 
 # Install the debug protocol binary into a local bin dir and prewarm it.
 agent-tools-install-protocol-debug bin_dir=".bin":
@@ -213,11 +233,14 @@ agent-tools-build-gerbil bin_dir="":
       root_bin="${repo_root}/.bin"; \
       cd "${package_dir}"; \
       if [ "$(uname -s)" = "Darwin" ]; then \
-        env SDKROOT= CC="$(xcrun --find clang)" gxpkg env gxi src/build.ss compile; \
+        env SDKROOT= CC="$(xcrun --find clang)" gxi \
+          -e '(import :gslph/src/build-api/native-build)' \
+          -e '(install-target #f #f #f #f #f #t)'; \
       else \
-        gxpkg env gxi src/build.ss compile; \
+        gxi -e '(import :gslph/src/build-api/native-build)' \
+          -e '(install-target #f #f #f #f #f #t)'; \
       fi; \
-      launcher="${package_dir}/.gerbil/bin/gslph"; \
+      launcher="$HOME/.local/bin/gslph"; \
       test -x "${launcher}"; \
       mkdir -p "${root_bin}" "${bin_dir}"; \
       if [ ! "${launcher}" -ef "${root_bin}/gslph" ]; then install -m 755 "${launcher}" "${root_bin}/gslph"; fi; \

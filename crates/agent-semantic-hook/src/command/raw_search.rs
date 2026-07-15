@@ -40,16 +40,25 @@ pub(crate) fn raw_search_plan<'a>(
     registry: &'a HookRuntime,
     tokens: &[String],
 ) -> Option<RawSearchPlan<'a>> {
+    let filters_environment_output = filters_environment_command_output(tokens);
     let tokens = command_stage_without_env_prefix(tokens);
-    if filters_provider_command_output(registry, tokens) {
+    if filters_provider_command_output(registry, tokens) || filters_environment_output {
         return None;
     }
     let parsed = ParsedRawSearch::from_tokens(tokens)?;
-    if !parsed.scope.has_raw_source_selector(registry) {
+    let mut providers = if parsed.scope.has_raw_source_selector(registry) {
+        parsed.scope.matching_providers(registry)
+    } else {
+        Vec::new()
+    };
+    if providers.is_empty() {
+        providers = parsed.scope.workspace_source_providers(registry);
+    }
+    if providers.is_empty() {
         return None;
     }
     Some(RawSearchPlan {
-        providers: parsed.scope.matching_providers(registry),
+        providers,
         terms: parsed.terms,
     })
 }
@@ -79,6 +88,41 @@ fn filters_provider_command_output(registry: &HookRuntime, tokens: &[String]) ->
             return true;
         }
         previous_stage = Some(stage);
+        start = end;
+    }
+    false
+}
+
+fn filters_environment_command_output(tokens: &[String]) -> bool {
+    let mut previous_stage_is_environment = false;
+    let mut separator_before_stage: Option<&str> = None;
+    let mut start = 0;
+    while start < tokens.len() {
+        while tokens.get(start).is_some_and(|token| is_separator(token)) {
+            separator_before_stage = tokens.get(start).map(String::as_str);
+            start += 1;
+        }
+        if start >= tokens.len() {
+            break;
+        }
+        let end = tokens[start..]
+            .iter()
+            .position(|token| is_separator(token))
+            .map(|relative_index| start + relative_index)
+            .unwrap_or(tokens.len());
+        let raw_stage = &tokens[start..end];
+        let stage = command_stage_without_env_prefix(raw_stage);
+        if separator_before_stage == Some("|")
+            && raw_search_kind(stage).is_some()
+            && previous_stage_is_environment
+        {
+            return true;
+        }
+        previous_stage_is_environment = raw_stage.len() == 1
+            && matches!(
+                raw_stage.first().map(String::as_str),
+                Some("env" | "printenv")
+            );
         start = end;
     }
     false
@@ -603,6 +647,69 @@ impl RawSearchScope {
     fn matching_providers<'a>(&self, registry: &'a HookRuntime) -> Vec<&'a ActivatedProvider> {
         let mut providers = Vec::new();
         self.push_raw_source_selector_providers(registry, &mut providers);
+        providers
+    }
+
+    fn workspace_source_providers<'a>(
+        &self,
+        registry: &'a HookRuntime,
+    ) -> Vec<&'a ActivatedProvider> {
+        fn selector_mentions_root(selector: &str, root: &str) -> bool {
+            let selector = selector
+                .trim()
+                .trim_start_matches("./")
+                .trim_end_matches('/');
+            let root = root.trim().trim_start_matches("./").trim_end_matches('/');
+            !root.is_empty()
+                && (selector == root
+                    || selector.starts_with(&format!("{root}/"))
+                    || selector.ends_with(&format!("/{root}"))
+                    || selector.contains(&format!("/{root}/")))
+        }
+
+        fn selector_is_universal(selector: &str) -> bool {
+            selector
+                .chars()
+                .all(|character| matches!(character, '*' | '?' | '/' | '.'))
+        }
+
+        if !self.extensions.is_empty() || !self.types.is_empty() {
+            return Vec::new();
+        }
+
+        let selectors = self
+            .paths
+            .iter()
+            .chain(self.globs.iter())
+            .collect::<Vec<_>>();
+        let universal_glob = self
+            .globs
+            .iter()
+            .any(|selector| selector_is_universal(selector));
+        let bare_workspace_path = self.globs.is_empty()
+            && self.paths.iter().any(|path| {
+                let path = path.trim();
+                path == "." || path == "./"
+            });
+        if (self.implicit_workspace && selectors.is_empty())
+            || universal_glob
+            || bare_workspace_path
+        {
+            return registry.providers.iter().collect();
+        }
+
+        let mut providers = Vec::new();
+        for selector in selectors {
+            for provider in &registry.providers {
+                if provider
+                    .source_roots
+                    .iter()
+                    .any(|root| selector_mentions_root(selector, root))
+                {
+                    push_provider_once(&mut providers, provider);
+                }
+            }
+        }
         providers
     }
 

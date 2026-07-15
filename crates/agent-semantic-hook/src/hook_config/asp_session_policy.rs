@@ -1,21 +1,20 @@
-use agent_semantic_config::{HookClientAgentsConfig, HookClientResidentAgentConfig};
+use agent_semantic_config::HookClientAgentsConfig;
 
 #[derive(Debug)]
 /// Compiled ASP command routing policy for root and child agent sessions.
 pub struct AspSessionPolicy {
+    command_intent_policy: agent_semantic_config::HookClientAspCommandIntentPolicyConfig,
     enabled: bool,
     resident_child_name: String,
     resident_codex_agent_name: String,
     main_allowed_asp_command_prefixes: Vec<Vec<String>>,
-    testing_enabled: bool,
-    testing_resident_child_name: String,
-    testing_resident_codex_agent_name: String,
-    testing_command_prefixes: Vec<Vec<String>>,
 }
 
 impl Default for AspSessionPolicy {
     fn default() -> Self {
         Self {
+            command_intent_policy:
+                agent_semantic_config::HookClientAspCommandIntentPolicyConfig::default(),
             enabled: true,
             resident_child_name: "asp-explore".to_string(),
             resident_codex_agent_name: "asp_explorer".to_string(),
@@ -29,24 +28,26 @@ impl Default for AspSessionPolicy {
             ]
             .into_iter()
             .collect(),
-            testing_enabled: true,
-            testing_resident_child_name: "asp-testing".to_string(),
-            testing_resident_codex_agent_name: "asp_testing".to_string(),
-            testing_command_prefixes: [
-                vec!["cargo".to_string(), "test".to_string()],
-                vec!["cargo".to_string(), "check".to_string()],
-                vec!["cargo".to_string(), "build".to_string()],
-                vec!["pytest".to_string()],
-                vec!["uv".to_string(), "run".to_string(), "pytest".to_string()],
-                vec!["just".to_string(), "test".to_string()],
-            ]
-            .into_iter()
-            .collect(),
         }
     }
 }
 
 impl AspSessionPolicy {
+    pub(super) fn with_command_intent_policy(
+        mut self,
+        policy: agent_semantic_config::HookClientAspCommandIntentPolicyConfig,
+    ) -> Self {
+        self.command_intent_policy = policy;
+        self
+    }
+
+    /// Parser-owned command taxonomy shared by hook and session routing.
+    pub fn command_intent_policy(
+        &self,
+    ) -> &agent_semantic_config::HookClientAspCommandIntentPolicyConfig {
+        &self.command_intent_policy
+    }
+
     /// Return whether ASP session routing policy is enabled.
     pub fn enabled(&self) -> bool {
         self.enabled
@@ -68,33 +69,25 @@ impl AspSessionPolicy {
             .iter()
             .any(|prefix| command_prefix_matches(tokens, asp_index, prefix))
     }
-
-    /// Return the resident child session name used for ASP testing.
-    pub fn testing_resident_child_name(&self) -> &str {
-        &self.testing_resident_child_name
-    }
-
-    /// Return the configured Codex agent role used for ASP testing.
-    pub fn testing_resident_codex_agent_name(&self) -> &str {
-        &self.testing_resident_codex_agent_name
-    }
-
-    /// Return whether a command must be routed to the testing child session.
-    pub fn testing_command_matches(&self, tokens: &[String]) -> bool {
-        self.testing_enabled
-            && self
-                .testing_command_prefixes
-                .iter()
-                .any(|prefix| command_prefix_matches_wrapped(tokens, prefix))
-    }
 }
 
 impl TryFrom<HookClientAgentsConfig> for AspSessionPolicy {
     type Error = String;
 
     fn try_from(config: HookClientAgentsConfig) -> Result<Self, Self::Error> {
-        let asp_explore = find_resident_agent(&config, "asp-explore", "asp-explore")?.clone();
-        let asp_testing = find_resident_agent(&config, "asp-testing", "asp-testing")?.clone();
+        let default_config = HookClientAgentsConfig::default();
+        let asp_explore = config
+            .resident_agents
+            .iter()
+            .find(|agent| agent.lifecycle == "asp-command")
+            .or_else(|| {
+                default_config
+                    .resident_agents
+                    .iter()
+                    .find(|agent| agent.lifecycle == "asp-command")
+            })
+            .ok_or_else(|| "built-in asp-command resident agent is unavailable".to_string())?
+            .clone();
         let main_allowed_asp_command_prefixes = asp_explore
             .main_allowed_asp_command_prefixes
             .iter()
@@ -105,39 +98,15 @@ impl TryFrom<HookClientAgentsConfig> for AspSessionPolicy {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let testing_command_prefixes = asp_testing
-            .command_prefixes
-            .iter()
-            .map(|prefix| {
-                command_prefix_tokens(
-                    "agents.residentAgents[asp-testing].commandPrefixes[]",
-                    prefix,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
+            command_intent_policy:
+                agent_semantic_config::HookClientAspCommandIntentPolicyConfig::default(),
             enabled: asp_explore.enabled,
             resident_child_name: asp_explore.name,
             resident_codex_agent_name: asp_explore.codex_agent_name,
             main_allowed_asp_command_prefixes,
-            testing_enabled: asp_testing.enabled,
-            testing_resident_child_name: asp_testing.name,
-            testing_resident_codex_agent_name: asp_testing.codex_agent_name,
-            testing_command_prefixes,
         })
     }
-}
-
-fn find_resident_agent<'a>(
-    config: &'a HookClientAgentsConfig,
-    name: &str,
-    role: &str,
-) -> Result<&'a HookClientResidentAgentConfig, String> {
-    config
-        .resident_agents
-        .iter()
-        .find(|agent| agent.name == name || agent.role == role)
-        .ok_or_else(|| format!("agents.residentAgents must include {name}"))
 }
 
 fn command_prefix_matches(tokens: &[String], asp_index: usize, prefix: &[String]) -> bool {
@@ -151,62 +120,6 @@ fn command_prefix_matches(tokens: &[String], asp_index: usize, prefix: &[String]
         .zip(prefix.iter())
         .all(|(token, expected)| token.eq_ignore_ascii_case(expected))
         && tokens.len() >= command_start + prefix.len()
-}
-
-fn command_prefix_matches_at(tokens: &[String], start_index: usize, prefix: &[String]) -> bool {
-    tokens
-        .iter()
-        .skip(start_index)
-        .zip(prefix.iter())
-        .all(|(token, expected)| token.eq_ignore_ascii_case(expected))
-        && tokens.len() >= start_index + prefix.len()
-}
-
-fn command_prefix_matches_wrapped(tokens: &[String], prefix: &[String]) -> bool {
-    command_prefix_matches_at(tokens, command_start_after_wrappers(tokens), prefix)
-}
-
-fn command_start_after_wrappers(tokens: &[String]) -> usize {
-    let mut index = 0;
-    if tokens
-        .get(index)
-        .is_some_and(|token| token.eq_ignore_ascii_case("direnv"))
-        && tokens
-            .get(index + 1)
-            .is_some_and(|token| token.eq_ignore_ascii_case("exec"))
-    {
-        index += 2;
-        if index < tokens.len() {
-            index += 1;
-        }
-    }
-    if tokens
-        .get(index)
-        .is_some_and(|token| is_env_command_token(token))
-    {
-        index += 1;
-        while tokens
-            .get(index)
-            .is_some_and(|token| is_env_assignment_token(token))
-        {
-            index += 1;
-        }
-    }
-    index
-}
-
-fn is_env_command_token(token: &str) -> bool {
-    token.rsplit('/').next() == Some("env")
-}
-
-fn is_env_assignment_token(token: &str) -> bool {
-    let Some((name, _value)) = token.split_once('=') else {
-        return false;
-    };
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|character| character == '_' || character.is_ascii_alphanumeric())
 }
 
 fn command_prefix_tokens(field: &str, prefix: &str) -> Result<Vec<String>, String> {

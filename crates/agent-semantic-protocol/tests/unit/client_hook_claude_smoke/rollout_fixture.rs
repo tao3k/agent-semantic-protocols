@@ -16,7 +16,7 @@ pub(super) fn write_codex_asp_explore_rollout(
     if !agent_path.is_file() {
         std::fs::write(
             &agent_path,
-            "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nsandbox_mode = \"read-only\"\n",
+            "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nmodel_reasoning_effort = \"low\"\nsandbox_mode = \"read-only\"\n",
         )
         .expect("write test asp-explorer agent config");
     }
@@ -85,6 +85,7 @@ pub(super) fn write_codex_asp_explore_rollout(
         "type": "turn_context",
         "payload": {
             "model": actual_model,
+            "reasoning_effort": "low",
             "sandbox_policy": {"type": "read-only"},
             "approval_policy": "never",
             "permission_profile": {"type": "disabled"}
@@ -92,6 +93,34 @@ pub(super) fn write_codex_asp_explore_rollout(
     });
     std::fs::write(rollout_path, format!("{session_meta}\n{turn_context}\n"))
         .expect("write test Codex rollout");
+}
+
+pub(super) fn write_codex_v2_asp_explorer_rollout(
+    root: &Path,
+    root_session_id: &str,
+    child_session_id: &str,
+) {
+    write_codex_asp_explore_rollout(root, root_session_id, child_session_id, "gpt-5.4-mini");
+    let (rollout_dir_suffix, rollout_file_stamp) = codex_rollout_test_stamp(child_session_id);
+    let rollout_path = root
+        .join(".codex-home")
+        .join("sessions")
+        .join(rollout_dir_suffix)
+        .join(format!(
+            "rollout-{rollout_file_stamp}-{child_session_id}.jsonl"
+        ));
+    let text = std::fs::read_to_string(&rollout_path).expect("read test Codex v2 rollout");
+    let mut lines = text.lines();
+    let mut session_meta: serde_json::Value =
+        serde_json::from_str(lines.next().expect("session metadata line"))
+            .expect("parse session metadata");
+    session_meta["payload"]["agent_role"] = json!("default");
+    session_meta["payload"]["source"]["subagent"]["thread_spawn"]["agent_role"] = json!("default");
+    session_meta["payload"]["source"]["subagent"]["thread_spawn"]["agent_path"] =
+        json!("/root/asp_explorer");
+    let remaining = lines.collect::<Vec<_>>().join("\n");
+    std::fs::write(rollout_path, format!("{session_meta}\n{remaining}\n"))
+        .expect("write test Codex v2 rollout");
 }
 
 pub(super) fn append_codex_rollout_terminal_event(

@@ -57,6 +57,7 @@
         "direct-source-read",
         "bulk-source-dump",
         "raw-broad-search",
+        "asp-reasoning-routed",
         "source-directory-enumeration",
         "agent-search-json",
         "semantic-ast-patch-required",
@@ -235,6 +236,89 @@
             "unknown"
           ],
           "description": "Normalized operation inferred from the client tool payload before language routing."
+        },
+        "aspCommandIntent": {
+          "enum": [
+            "reasoning",
+            "exact-evidence",
+            "direct-read-fallback",
+            "invalid-evidence"
+          ],
+          "description": "Parser-owned intent for an asp language facade command. Reasoning covers guide and search/query refinement; exact-evidence requires a structural item selector and evidence projection."
+        },
+        "aspCommandRoute": {
+          "type": "string",
+          "pattern": "^(guide|search-[a-z][a-z0-9-]*|query-(reasoning|selector|direct-read-fallback))$",
+          "description": "Normalized parser-owned asp language command route used to make hook matching and receipts reviewable."
+        },
+        "executionLane": {
+          "const": "asp-testing",
+          "description": "Deterministic execution lane selected by parser-owned command-prefix policy."
+        },
+        "executionTransport": {
+          "const": "current-session"
+        },
+        "executionReceiptKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executionCommandDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "requiredHostCapability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetAgentName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Host-native managed profile selected from the hook deny intent, for example asp_explorer."
+        },
+        "targetAgentRole": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetAgentSelectionSource": {
+          "const": "hook-deny-intent"
+        },
+        "targetAgentRegistrySource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetAgentHostRegistry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetAgentLifecycleOwner": {
+          "const": "main-agent"
+        },
+        "targetAgentReusePolicy": {
+          "const": "reuse-unique-child-before-spawn"
+        },
+        "targetAgentRegistryStatus": {
+          "enum": [
+            "ready",
+            "repaired-by-asp-sync",
+            "degraded-built-in-route"
+          ]
+        },
+        "targetAgentAutoSync": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hookConfigStatus": {
+          "enum": [
+            "repaired-by-asp-sync",
+            "degraded-built-in-fallback"
+          ]
+        },
+        "hookConfigAutoSync": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hookConfigFailurePolicy": {
+          "const": "continue-with-built-in-policy"
         }
       },
       "additionalProperties": {

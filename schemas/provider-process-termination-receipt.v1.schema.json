@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/provider-process-termination-receipt.v1.schema.json",
+  "title": "ASP Provider Process Termination Receipt v1",
+  "type": "object",
+  "required": [
+    "abnormalTermination",
+    "memoryLimitEnforced",
+    "memoryLimitExceeded",
+    "timedOut",
+    "terminationReason"
+  ],
+  "properties": {
+    "abnormalTermination": { "type": "boolean" },
+    "memoryLimitBytes": { "type": "integer", "minimum": 1 },
+    "memoryLimitEnforced": { "type": "boolean" },
+    "memoryLimitExceeded": { "type": "boolean" },
+    "exitCode": { "type": "integer" },
+    "exitSignal": { "type": "integer", "minimum": 1 },
+    "timedOut": { "type": "boolean" },
+    "terminationReason": {
+      "enum": ["success", "exit-code", "signal", "timeout", "memory-limit-suspected", "memory-limit-exceeded"]
+    },
+    "stdoutBytes": { "type": "integer", "minimum": 0 },
+    "stderrBytes": { "type": "integer", "minimum": 0 },
+    "stdoutSha256": { "type": "string" },
+    "stderrSha256": { "type": "string" }
+  },
+  "additionalProperties": true
+}

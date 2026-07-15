@@ -5,7 +5,7 @@ use std::fs;
 use super::{allowed_command_decision, document_runtime_for_project, temp_project_root};
 
 #[test]
-fn pre_tool_allows_document_explicit_read_after_pipe() {
+fn pre_tool_denies_unbounded_document_explicit_read_after_pipe() {
     let project_root = temp_project_root("asp-hook-read-after-pipe-md");
     append_hook_event_state(
         &project_root,
@@ -46,7 +46,11 @@ fn pre_tool_allows_document_explicit_read_after_pipe() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.fields["hookFeedback"],
+        "direct-source-read-after-pipe"
+    );
     assert!(decision.routes.is_empty());
     let _ = fs::remove_dir_all(project_root);
 }

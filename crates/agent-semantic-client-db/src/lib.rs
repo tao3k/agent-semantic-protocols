@@ -19,8 +19,9 @@ pub use agent_session_registry::{
     AGENT_SESSION_REGISTRY_DB_NAME, AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED,
     AGENT_SESSION_STATUS_IDLE, AGENT_SESSION_STATUS_INVALID, AgentSessionLookupRequest,
     AgentSessionRecord, AgentSessionRegisterRequest, AgentSessionRegistry,
-    AgentSessionToolEventRequest, agent_session_normalized_metadata_json,
-    agent_session_status_is_routable, agent_session_unix_timestamp,
+    AgentSessionToolEventRequest, agent_session_message_target_is_live_bound,
+    agent_session_normalized_metadata_json, agent_session_status_is_routable,
+    agent_session_unix_timestamp,
 };
 pub use dependency_index::{
     DEFAULT_GERBIL_DEPS_SEARCH_LIMIT, GerbilDepsQueryRequest, GerbilDepsQueryResult,

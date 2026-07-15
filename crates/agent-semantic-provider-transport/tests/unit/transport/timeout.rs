@@ -23,6 +23,8 @@ fn times_out_and_kills_child_process() {
             assert!(receipt.timed_out);
             assert_eq!(receipt.status_code, None);
             assert!(!receipt.status_success);
+            assert!(receipt.abnormal_termination);
+            assert_eq!(receipt.termination_reason, "timeout");
         }
         other => panic!("expected timeout error, got {other:?}"),
     }

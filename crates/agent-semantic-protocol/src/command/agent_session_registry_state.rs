@@ -1,5 +1,6 @@
 use agent_semantic_client_db::{
-    AgentSessionRecord, AgentSessionRegistry, agent_session_unix_timestamp,
+    AgentSessionRecord, AgentSessionRegistry, agent_session_message_target_is_live_bound,
+    agent_session_unix_timestamp,
 };
 use agent_semantic_runtime::{
     current_agent_runtime_root_session_id, current_agent_runtime_session,
@@ -8,6 +9,14 @@ use agent_semantic_runtime::{
 
 use super::agent_session_registry_validation::validate_session_profile;
 use std::path::Path;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ResidentChildIdentityProof {
+    CodexHookPayload,
+    RegistryExact,
+    CodexTranscriptRegistryExact,
+    CodexRolloutMetadata,
+}
 
 pub(crate) fn registered_root_session_id(
     project_root: &Path,
@@ -41,6 +50,137 @@ pub(crate) fn current_registered_session(
         return Ok(None);
     }
     Ok(Some(record))
+}
+
+pub(crate) fn current_registered_session_identity(
+    project_root: &Path,
+) -> Result<Option<AgentSessionRecord>, String> {
+    let Some(session) = current_agent_runtime_session() else {
+        return Ok(None);
+    };
+    let Some(registry) = open_existing_registry(project_root)? else {
+        return Ok(None);
+    };
+    let project_id = project_session_scope_id(&registry, project_root)?;
+    registry.session_by_id(&project_id, &session.id)
+}
+
+pub(crate) fn current_resident_child_identity_proof(
+    project_root: &Path,
+    resident_child_name: &str,
+    resident_agent_role: &str,
+) -> Result<Option<ResidentChildIdentityProof>, String> {
+    let Some(session) = current_agent_runtime_session() else {
+        return Ok(None);
+    };
+    let registry = open_existing_registry(project_root)?;
+    let project_id = registry
+        .as_ref()
+        .map(|registry| project_session_scope_id(registry, project_root))
+        .transpose()?;
+    if let (Some(registry), Some(project_id)) = (registry.as_ref(), project_id.as_deref())
+        && let Some(record) = registry.session_by_id(project_id, &session.id)?
+    {
+        return Ok(
+            (record.name == resident_child_name || record.role == resident_agent_role)
+                .then_some(ResidentChildIdentityProof::RegistryExact),
+        );
+    }
+
+    let Some(metadata) = agent_semantic_runtime::codex_rollout_session_metadata(&session.id)?
+    else {
+        return Ok(None);
+    };
+    let Some(root_session_id) = metadata.root_session_id.as_deref() else {
+        return Ok(None);
+    };
+    if root_session_id == session.id
+        || !super::agent_session_registry_validation::rollout_metadata_matches_managed_agent_profile(
+            resident_child_name,
+            resident_agent_role,
+            &metadata,
+        )
+    {
+        return Ok(None);
+    }
+    if let (Some(registry), Some(project_id)) = (registry.as_ref(), project_id.as_deref())
+        && registry
+            .session_by_name(project_id, root_session_id, resident_child_name)?
+            .is_some()
+    {
+        return Ok(None);
+    }
+    Ok(Some(ResidentChildIdentityProof::CodexRolloutMetadata))
+}
+
+pub(crate) fn transcript_resident_child_identity_proof(
+    project_root: &Path,
+    transcript_session_id: &str,
+    root_session_id: &str,
+    resident_child_name: &str,
+    resident_agent_role: &str,
+) -> Result<Option<ResidentChildIdentityProof>, String> {
+    let Some(registry) = open_existing_registry(project_root)? else {
+        return Ok(None);
+    };
+    let project_id = project_session_scope_id(&registry, project_root)?;
+    let Some(record) = registry.session_by_id(&project_id, transcript_session_id)? else {
+        return Ok(None);
+    };
+    Ok((record.root_session_id == root_session_id
+        && record.session_id != record.root_session_id
+        && (record.name == resident_child_name || record.role == resident_agent_role))
+        .then_some(ResidentChildIdentityProof::CodexTranscriptRegistryExact))
+}
+
+pub(crate) fn codex_transcript_resident_child_identity_proof(
+    project_root: &Path,
+    payload: &serde_json::Value,
+    resident_child_name: &str,
+    resident_agent_role: &str,
+) -> Result<Option<ResidentChildIdentityProof>, String> {
+    let root_session_id = payload_string_field(payload, &["session_id", "sessionId"]);
+    let transcript_session_id =
+        payload_string_field(payload, &["transcript_path", "transcriptPath"])
+            .and_then(|path| codex_transcript_session_id(&path));
+    let (Some(transcript_session_id), Some(root_session_id)) =
+        (transcript_session_id.as_deref(), root_session_id.as_deref())
+    else {
+        return Ok(None);
+    };
+    if transcript_session_id == root_session_id {
+        return Ok(None);
+    }
+    transcript_resident_child_identity_proof(
+        project_root,
+        transcript_session_id,
+        root_session_id,
+        resident_child_name,
+        resident_agent_role,
+    )
+}
+
+fn payload_string_field(payload: &serde_json::Value, names: &[&str]) -> Option<String> {
+    names.iter().find_map(|name| {
+        payload
+            .get(*name)
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn codex_transcript_session_id(path: &str) -> Option<String> {
+    let stem = Path::new(path).file_stem()?.to_str()?;
+    let candidate = stem.get(stem.len().checked_sub(36)?..)?;
+    let valid = candidate.len() == 36
+        && candidate
+            .chars()
+            .enumerate()
+            .all(|(index, character)| match index {
+                8 | 13 | 18 | 23 => character == '-',
+                _ => character.is_ascii_hexdigit(),
+            });
+    valid.then(|| candidate.to_ascii_lowercase())
 }
 
 pub(crate) fn has_current_agent_session() -> bool {
@@ -78,6 +218,7 @@ pub(crate) fn registered_resident_session_for_root(
     };
     let now = agent_session_unix_timestamp()?;
     if !record.is_routable_at(now)
+        || !agent_session_message_target_is_live_bound(&record, root_session_id)
         || !session_record_validation_allows_routing(&registry, &record, now)?
     {
         return Ok(None);

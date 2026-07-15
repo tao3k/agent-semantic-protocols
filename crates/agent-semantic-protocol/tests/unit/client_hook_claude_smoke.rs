@@ -12,6 +12,8 @@ mod codex_session;
 mod lifecycle_restart;
 #[path = "client_hook_claude_smoke/rollout_fixture.rs"]
 mod rollout_fixture;
+#[path = "client_hook_claude_smoke/unmanaged_bootstrap.rs"]
+mod unmanaged_bootstrap;
 
 fn write_codex_asp_explore_rollout(
     root: &Path,
@@ -556,7 +558,7 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
     ));
     assert_eq!(
         decision["fields"]["targetAgentName"].as_str(),
-        Some("asp-explore")
+        Some("asp_explorer")
     );
     assert_eq!(
         decision["fields"]["forbiddenUntilResolved"].as_str(),
@@ -952,6 +954,10 @@ pub(super) fn run_codex_hook_decision_with_env(
         .current_dir(root)
         .env("CODEX_HOME", root.join(".codex-home"))
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_SESSION_ID")
+        .env_remove("CODEX_AGENT_SESSION_ID")
+        .env_remove("CLAUDE_SESSION_ID")
         .env_remove("PRJ_CACHE_HOME");
     for (key, value) in envs {
         command.env(key, value);

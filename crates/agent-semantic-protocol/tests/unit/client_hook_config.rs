@@ -136,7 +136,7 @@ tool = "Bash"
 }
 
 #[test]
-fn invalid_client_config_blocks_tool_use() {
+fn invalid_client_config_auto_sync_repairs_without_blocking_tool_use() {
     let root = temp_project_root("client-config-invalid");
     let activation_path = root.join("activation.json");
     std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
@@ -148,18 +148,144 @@ fn invalid_client_config_blocks_tool_use() {
         json!({"tool_name": "Bash", "tool_input": {"command": "printf ok"}}),
     );
 
-    assert_eq!(decision["decision"], "block");
+    assert_hook_config_auto_repaired(&decision, "failed to parse");
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn missing_resident_route_auto_syncs_then_routes_search_to_codex_profile() {
+    let root = temp_project_root("client-config-missing-resident-route");
+    let activation_path = root.join("activation.json");
+    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    write_config(
+        &root,
+        r#"
+[agents]
+residentAgents = []
+"#,
+    );
+
+    let decision = run_hook_decision(
+        &root,
+        &activation_path,
+        json!({
+            "session_id": "019f-hook-auto-sync-root",
+            "transcript_path": "/tmp/rollout-hook-auto-sync-root.jsonl",
+            "cwd": root,
+            "tool_name": "Bash",
+            "tool_input": {"command": "asp rust guide"}
+        }),
+    );
+
+    assert_eq!(decision["decision"], "deny", "{decision}");
+    assert_eq!(decision["reasonKind"], "asp-reasoning-routed", "{decision}");
+    assert_eq!(decision["fields"]["targetAgentName"], "asp_explorer");
+    assert_eq!(decision["fields"]["residentChildName"], "asp-explore");
+    assert_eq!(
+        decision["fields"]["targetAgentSelectionSource"],
+        "hook-deny-intent"
+    );
+    assert_eq!(
+        decision["fields"]["targetAgentRegistrySource"],
+        "~/.agent-semantic-protocols/agents/config.toml"
+    );
+    assert_eq!(
+        decision["fields"]["targetAgentHostRegistry"],
+        "~/.codex/agents"
+    );
+    assert_eq!(
+        decision["fields"]["hookConfigStatus"],
+        "repaired-by-asp-sync"
+    );
+    assert!(
+        decision["fields"]["hookConfigAutoSync"]
+            .as_str()
+            .is_some_and(|receipt| receipt.starts_with("completed:")),
+        "{decision}"
+    );
     assert!(
         decision["message"]
             .as_str()
-            .expect("message string")
-            .contains("Semantic hook config could not be loaded")
+            .is_some_and(|message| message
+                .contains("Main Agent must select configured profile `asp_explorer`")),
+        "{decision}"
     );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn duplicate_client_config_rule_ids_block_tool_use() {
+fn source_access_deny_selects_profile_before_auto_syncing_codex_registry() {
+    let root = temp_project_root("source-access-target-agent-auto-sync");
+    let activation_path = root.join("activation.json");
+    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    write_config(
+        &root,
+        r#"
+[agents]
+
+[[agents.residentAgents]]
+name = "asp-explore"
+role = "asp_explorer"
+lifecycle = "asp-command"
+enabled = true
+codexAgentName = "asp_explorer"
+mainAllowedAspCommandPrefixes = ["help", "agent session"]
+"#,
+    );
+    let agents_dir = root.join(".agent-semantic-protocols/agents");
+    std::fs::create_dir_all(&agents_dir).expect("create ASP agents dir");
+    std::fs::write(
+        agents_dir.join("config.toml"),
+        r#"[agents.asp_explorer]
+host_agent_name = "asp_explorer"
+profile = "asp-explorer_codex.toml"
+projection = "asp-explorer.toml"
+"#,
+    )
+    .expect("write ASP agent registry");
+    std::fs::write(
+        agents_dir.join("asp-explorer_codex.toml"),
+        "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nmodel_reasoning_effort = \"low\"\n",
+    )
+    .expect("write ASP Codex profile");
+
+    let decision = run_hook_decision(
+        &root,
+        &activation_path,
+        json!({
+            "session_id": "019f-source-auto-sync-root",
+            "transcript_path": "/tmp/rollout-source-auto-sync-root.jsonl",
+            "cwd": root,
+            "tool_name": "Bash",
+            "tool_input": {"command": "rg -n lifecycle crates/agent-semantic-protocol/src/command/sync.rs"}
+        }),
+    );
+
+    assert_eq!(decision["decision"], "deny", "{decision}");
+    assert_eq!(decision["reasonKind"], "raw-broad-search", "{decision}");
+    assert_eq!(decision["fields"]["targetAgentName"], "asp_explorer");
+    assert_eq!(
+        decision["fields"]["targetAgentRegistryStatus"], "repaired-by-asp-sync",
+        "{decision}"
+    );
+    assert!(
+        decision["fields"]["targetAgentAutoSync"]
+            .as_str()
+            .is_some_and(|receipt| receipt.starts_with("completed:")),
+        "{decision}"
+    );
+    let codex_home = root.join(".codex-home");
+    let codex_config =
+        std::fs::read_to_string(codex_home.join("config.toml")).expect("read Codex config");
+    assert!(codex_config.contains("# BEGIN ASP MANAGED CODEX AGENT REGISTRY"));
+    assert!(codex_config.contains("[agents.asp_explorer]"));
+    assert!(codex_home.join("agents/asp-explorer.toml").is_symlink());
+
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn duplicate_client_config_rule_ids_auto_sync_repair_without_blocking_tool_use() {
     let root = temp_project_root("client-config-duplicate-rule-id");
     let activation_path = root.join("activation.json");
     std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
@@ -184,18 +310,12 @@ tool = "Bash"
         &activation_path,
         json!({"tool_name": "Bash", "tool_input": {"command": "printf ok"}}),
     );
-    assert_eq!(decision["decision"], "block");
-    assert!(
-        decision["message"]
-            .as_str()
-            .expect("message string")
-            .contains("duplicate client hook rule id")
-    );
+    assert_hook_config_auto_repaired(&decision, "duplicate client hook rule id");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn client_config_schema_shape_errors_block_tool_use() {
+fn client_config_schema_shape_errors_auto_sync_repair_without_blocking_tool_use() {
     let cases = [
         (
             "bad-rule-id",
@@ -298,21 +418,13 @@ argv = ["rs-harness"]
             &activation_path,
             json!({"tool_name": "Bash", "tool_input": {"command": "printf ok"}}),
         );
-        assert_eq!(decision["decision"], "block", "{name}");
-        assert!(
-            decision["message"]
-                .as_str()
-                .expect("message string")
-                .contains(expected_error),
-            "{name}: {}",
-            decision["message"]
-        );
+        assert_hook_config_auto_repaired(&decision, expected_error);
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
     }
 }
 
 #[test]
-fn wrong_client_config_schema_id_blocks_tool_use() {
+fn wrong_client_config_schema_id_auto_sync_repairs_without_blocking_tool_use() {
     let root = temp_project_root("client-config-wrong-schema");
     let activation_path = root.join("activation.json");
     std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
@@ -333,13 +445,7 @@ decision = "block"
         json!({"tool_name": "Bash", "tool_input": {"command": "printf ok"}}),
     );
 
-    assert_eq!(decision["decision"], "block");
-    assert!(
-        decision["message"]
-            .as_str()
-            .expect("message string")
-            .contains("expected schemaId=")
-    );
+    assert_hook_config_auto_repaired(&decision, "expected schemaId=");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -348,6 +454,28 @@ fn write_config(root: &std::path::Path, content: &str) {
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create config dir");
     std::fs::write(config_path, content).expect("write config");
+}
+
+fn assert_hook_config_auto_repaired(decision: &Value, expected_reason: &str) {
+    assert_eq!(decision["decision"], "allow", "{decision}");
+    assert_eq!(
+        decision["fields"]["hookConfigStatus"], "repaired-by-asp-sync",
+        "{decision}"
+    );
+    assert!(
+        decision["fields"]["hookConfigAutoSync"]
+            .as_str()
+            .is_some_and(|receipt| receipt.starts_with("completed:")),
+        "{decision}"
+    );
+    assert!(
+        decision["fields"]["hookConfigRepairReasons"]
+            .as_array()
+            .is_some_and(|reasons| reasons.iter().any(|reason| reason
+                .as_str()
+                .is_some_and(|reason| reason.contains(expected_reason)))),
+        "{decision}"
+    );
 }
 
 fn temp_project_root(name: &str) -> PathBuf {
@@ -441,6 +569,8 @@ fn run_hook_decision_with_args(
         .current_dir(root)
         .args(args)
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env("CODEX_HOME", root.join(".codex-home"))
+        .env("CLAUDE_HOME", root.join(".claude-home"))
         .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

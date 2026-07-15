@@ -375,3 +375,177 @@ and the C ABI status is =not-admitted=.
 
 The remaining closure for this receipt is a cancellable 200 ms product boundary
 for any specific query that still reaches a bounded cold backend.
+
+*** 2026-07-12: Gerbil search/query pre-collection admission P0
+
+- A Gerbil provider command MUST validate the requested search view before it
+  constructs a project index.  Unsupported views such as =search query= are
+  terminal admission failures and MUST NOT call =collect-project=.
+- An owner route without an explicit, existing Gerbil source owner is also a
+  terminal admission failure.  It MUST NOT fall back to full-workspace
+  collection.  Exact-owner query remains a single-owner parser operation.
+- Workspace collection, candidate lookup, query parsing, ranking, budgets, and
+  deadlines are shared Rust search-runtime responsibilities.  Scheme code may
+  publish parser-owned facts and serve bounded owner-local adapters; it MUST NOT
+  recreate a heavy workspace search fallback.
+- The regression gate replays the installed =gslph search query= failure and
+  requires immediate rejection with bounded RSS, alongside the existing exact
+  owner query fast path.
+- =gslph info= MUST NOT parse the workspace to compute index statistics.  Its
+  provider packet is package-only and marks file/definition statistics as
+  =rust-owned-not-materialized=; authoritative counts come from the Rust read
+  model.
+- Whole-workspace =gslph search= views (=workspace=, full =prime=, =symbol=,
+  =import=, =structural=, source-backed =pattern=/=extension=,
+  source-backed language evidence, =lexical=, =pipe=, and =ingest=) MUST fail
+  before Scheme project collection. Shared Rust owns their indexing, query,
+  ranking, and memory budgets. The Scheme search surface is limited to
+  package-only metadata, index-free receipts, light prime seeds, and an exact
+  explicit owner file.
+- =search workspace-scope= is a package-topology receipt, not a hidden source
+  inventory. Its Scheme adapter may read the package manifest and inspect a
+  fixed set of root configuration anchors, but it MUST NOT call
+  =collect-source-files=, sort a full owner list, or build a source index merely
+  to render =filePreview=. Complete owner discovery and authoritative counts
+  remain Rust source-index responsibilities.
+- Light Scheme prime packets follow the same rule. Their =filePreview= may
+  contain a fixed, bounded set of package/configuration anchors, but Scheme
+  MUST NOT recursively enumerate or sort source directories to discover a few
+  sample owners. Rust source-index search composes authoritative source-owner
+  seeds with the package receipt.
+- Exact Scheme owner parsing MUST perform a constant-memory preflight before
+  native form materialization. Owners larger than the provider byte/character
+  or line budget fail closed and route bulk processing to the Rust index; line
+  counting MUST NOT first retain a second full copy of the source as a list.
+- Native direct-source selectors and line-range reads use the same source byte
+  budget. A range reader MUST stream to the requested end line and stop; it
+  MUST NOT materialize every source line or repeatedly append an ever-growing
+  result string.
+- Scheme formatting is an explicit bounded-file adapter: it accepts at most 64
+  named Gerbil source files and applies the same 1 MiB per-file ceiling. Empty
+  target sets and directory targets MUST fail before discovery; Rust owns bulk
+  workspace file discovery and scheduling.
+
+*** 2026-07-13: Gerbil active-corpus source scope P0-A
+
+- Standalone Scheme policy collection MUST minimize configured scan roots
+  before recursive traversal. If one normalized root is already covered by an
+  ancestor root, the descendant is removed before either directory is walked;
+  post-traversal deduplication is not an acceptable substitute.
+- Normal package-policy collection excludes parser-owned non-active corpus
+  classes =policy-scenario=, =fixture=, and =snapshot-output= before parsing.
+  Scenario runners and focused tests remain the explicit owners for reading
+  those inputs; exclusion from the normal corpus does not delete or reclassify
+  their documentation or test purpose.
+- Multi-segment directory exclusions are compared after relative-path
+  normalization. Directory representations with a trailing slash MUST NOT
+  bypass the configured exclusion policy.
+- The public ASP workflow continues to obtain authoritative owner membership
+  from the Rust source index. This Scheme fallback is bounded package/test
+  collection for policy execution, not a second workspace index or search
+  implementation.
+- On the Gerbil harness self-project, the corrected scope reduced selected
+  owners from 1071 to 425 and changed full collection plus policy from exceeding
+  three minutes to completing in 26.75 seconds, while preserving 66 findings.
+  Peak RSS remained 944111616 bytes, so this receipt closes corpus correction
+  only. P0-B remains required: bounded concurrent batches MUST run file-local
+  policies and release rich parser facts instead of retaining one full project
+  AST.
+
+*** 2026-07-13: Gerbil bounded policy prototype P0-B1
+
+- The first prototype separates two file-local rules from the retained
+  =ProjectIndex= contract and preserves rule-major finding order across
+  batches. On the 425-owner self corpus, batch size 16 reduced maximum RSS from
+  698138624 bytes to 204095488 bytes for the same two-rule workload.
+- Batch execution MUST NOT apply project-wide rules independently to each
+  batch. A diagnostic all-rule run emitted an R017 false positive because its
+  adapter contract witness lived in another batch. Facade sibling/export
+  relationships and cross-owner POO evidence have the same summary boundary.
+- The next contract is a compact typed project summary populated while batches
+  are resident. Project finalizers may retain owner identities, exports,
+  adapter witness keys, and declared POO type/protocol identities; they MUST
+  NOT retain native syntax objects, source lines, or complete =SourceFile=
+  values.
+
+** ASP provider process memory containment
+
+Every =asp <language>= native provider process runs behind the shared Rust
+transport boundary. The boundary applies a default 1 GiB process memory limit
+on Unix (an inherited address-space limit on Linux and parent-observed RSS
+monitoring with process-group termination on macOS), and accepts an override through
+=ASP_PROVIDER_MEMORY_LIMIT_BYTES=; =0= explicitly disables the memory limit.
+
+The parent MUST survive provider failure and preserve an abnormal termination
+receipt. The receipt records configured memory bytes, whether enforcement was
+active, exit code or Unix signal, timeout state, output byte counts/digests,
+and a stable termination reason. A signal compatible with allocation failure
+under an active limit is reported as =memory-limit-suspected= rather than being
+silently collapsed to exit code 1. Timeout receipts also remain present in the
+client receipt instead of being discarded while converting transport errors.
+- =gslph evidence graph/analyze= may read package identity, but MUST NOT build a
+  source index merely to choose the project owner node.
+- A source-backed guide exemplar already has an exact owner path.  It MUST parse
+  only that owner and MUST NOT call =collect-project=.
+
+** Turso SQL-owned incremental source-index refresh
+
+The durable source-index refresh path MUST compute membership changes inside
+Turso.  The Rust client may retain the incoming provider import and the bounded
+set of changed or removed owner paths, but it MUST NOT load a second complete
+snapshot membership map merely to compare file hashes.
+
+Each refresh stages the incoming =(owner_path, file_hash)= membership on the
+active connection and uses indexed SQL joins to derive the write set:
+
+- incoming =LEFT JOIN= canonical owners yields added and hash-changed owners;
+- canonical owners =LEFT JOIN= incoming yields removed owners;
+- only added or changed owners are upserted;
+- only changed or removed owners have token postings rebuilt or deleted;
+- generation and layout metadata publish in the same transaction after those
+  writes succeed.
+
+The staging relation is connection-local, keyed by =owner_path=, cleared before
+every import, and populated from the already-canonical incoming membership
+packet.  This keeps refresh memory proportional to the incoming packet plus the
+actual change set, rather than the incoming packet plus a second full database
+snapshot.
+
+Rust retains that incoming membership as a borrowed lookup over the provider
+import; it MUST NOT duplicate every owner path and file hash into another owned
+map.  Canonical selector JSON and semantic-term projection MUST be constructed
+only after the SQL joins return the change set, and only for added or changed
+owners.  Validating selector-to-owner membership may inspect every selector,
+but unchanged selector bodies, source text, and term vectors MUST NOT be cloned
+or serialized during an incremental refresh.
+
+The incremental performance gate MUST include a representative large snapshot
+followed by a one-percent change refresh.  Its receipt records elapsed time,
+changed owners, removed owners, posting writes, and peak RSS.  Correctness tests
+also cover additions, hash changes, removals, and a projection-rebuild request.
+
+The canonical Scenario is
+=asp-source-index-incremental-refresh-one-percent=: 1,193 owners followed by
+exactly 12 changed file hashes, no additions, and no removals.  Its release
+Benchmark MUST assert =changedOwnerCount= of =12=, =removedOwnerCount= of =0=,
+and =postingWriteCount= of =204= in addition to the 500 ms incremental-refresh ceiling
+and 128 MiB scenario RSS budget.  Refresh reports expose these write-set counts;
+a generation-reuse report exposes zero for all three.  This structural gate
+prevents an all-owner selector or posting rebuild from passing only because the
+benchmark host is fast.
+
+The Turso read model applies its own defensive query bounds even when the
+caller already passed shared parser admission.  Query text is limited to 16
+KiB, token projection to 32 terms, and returned candidate requests to 256.
+These limits bound the per-token posting fan-out and candidate materialization
+inside the Rust client DB process; a language provider or malformed internal
+caller cannot expand read memory by supplying an unbounded term list or
+=u32::MAX= candidate limit.
+
+In-process source-index read/write exclusion is scoped by normalized Turso DB
+path, not by one process-global lock.  Independent repositories MUST NOT return
+=Busy= merely because another repository is refreshing its own index.  The
+lock registry stores weak references and prunes entries whose DB lock is no
+longer active, so opening many projects does not create an unbounded resident
+lock map.  Cross-process serialization remains owned by the existing
+DB-specific operation lock.

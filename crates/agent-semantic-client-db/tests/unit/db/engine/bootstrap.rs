@@ -140,12 +140,8 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
         .await
         .expect("search Turso source-index documents through DB Engine facade");
     assert!(
-        source_index_hits.iter().any(|hit| {
-            hit.source == "stable"
-                && hit.document_id.contains("source-index-turso-fixture")
-                && hit.selector.as_deref() == Some("rust://src/source_index_fixture.rs#file")
-        }),
-        "source_index_hits={source_index_hits:?}"
+        source_index_hits.is_empty(),
+        "source-index imports use the canonical snapshot read model, not stable FTS documents: {source_index_hits:?}"
     );
     let rust_language_id = LanguageId::from("rust");
     let python_language_id = LanguageId::from("python");

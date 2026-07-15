@@ -11,8 +11,9 @@ use agent_semantic_client_core::{
     append_syntax_query_plan_args,
 };
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode,
-    provider_process_limits_from_environment, run_provider_process as run_transport_process,
+    OutputMode, ProviderProcessError, ProviderProcessLimits, ProviderProcessReceipt,
+    ProviderProcessSpec, StdinMode, provider_process_limits_from_environment,
+    run_provider_process as run_transport_process,
 };
 use bytes::{Bytes, BytesMut};
 
@@ -300,31 +301,56 @@ impl LocalNativeCliBackend {
                 stdout: OutputMode::Capture,
                 stderr: OutputMode::Capture,
                 limits,
-            })
-            .map_err(|error| {
-                format!(
-                    "failed to execute provider `{}` for language `{}` with cwd `{}` argv `{}`: {error}",
-                    prepared.provider.provider_id,
-                    prepared.provider.language_id,
-                    provider_cwd.display(),
-                    provider_argv.join(" ")
-                )
-            })?;
-            let command_status = output.status.code().unwrap_or(1);
-            provider_commands.push(ProviderCommandReceipt {
-                language_id: prepared.provider.language_id.clone(),
-                provider_id: prepared.provider.provider_id.clone(),
-                argv: provider_argv,
-                exit_code: command_status,
-                stdout_bytes: ByteCount::from_len(output.receipt.stdout_bytes),
-                stderr_bytes: ByteCount::from_len(output.receipt.stderr_bytes),
-                stdout_sha256: output.receipt.stdout_sha256.clone(),
-                stderr_sha256: output.receipt.stderr_sha256.clone(),
-                stdout_truncated: output.receipt.stdout_truncated,
-                stderr_truncated: output.receipt.stderr_truncated,
-                timed_out: output.receipt.timed_out,
-                elapsed_ms: ElapsedMillis::from_duration(output.receipt.elapsed),
             });
+            let output = match output {
+                Ok(output) => output,
+                Err(ProviderProcessError::Timeout { timeout, receipt }) => {
+                    provider_commands.push(Self::provider_command_receipt(
+                        &prepared,
+                        provider_argv,
+                        124,
+                        &receipt,
+                    ));
+                    stderr.extend_from_slice(
+                        format!("provider process timed out after {timeout:?}\n").as_bytes(),
+                    );
+                    status_code = 124;
+                    break;
+                }
+                Err(ProviderProcessError::MemoryLimit {
+                    limit_bytes,
+                    receipt,
+                }) => {
+                    provider_commands.push(Self::provider_command_receipt(
+                        &prepared,
+                        provider_argv,
+                        137,
+                        &receipt,
+                    ));
+                    stderr.extend_from_slice(
+                        format!("provider process exceeded memory limit {limit_bytes} bytes\n")
+                            .as_bytes(),
+                    );
+                    status_code = 137;
+                    break;
+                }
+                Err(error) => {
+                    return Err(format!(
+                        "failed to execute provider `{}` for language `{}` with cwd `{}` argv `{}`: {error}",
+                        prepared.provider.provider_id,
+                        prepared.provider.language_id,
+                        provider_cwd.display(),
+                        provider_argv.join(" ")
+                    ));
+                }
+            };
+            let command_status = output.status.code().unwrap_or(1);
+            provider_commands.push(Self::provider_command_receipt(
+                &prepared,
+                provider_argv,
+                command_status,
+                &output.receipt,
+            ));
             stdout.extend_from_slice(output.stdout.as_ref());
             stderr.extend_from_slice(output.stderr.as_ref());
             if command_status != 0 {
@@ -341,6 +367,34 @@ impl LocalNativeCliBackend {
             provider_commands,
             ElapsedMillis::from_duration(started_all.elapsed()),
         ))
+    }
+
+    fn provider_command_receipt(
+        prepared: &LocalNativeCommand,
+        argv: Vec<String>,
+        exit_code: i32,
+        receipt: &ProviderProcessReceipt,
+    ) -> ProviderCommandReceipt {
+        ProviderCommandReceipt {
+            language_id: prepared.provider.language_id.clone(),
+            provider_id: prepared.provider.provider_id.clone(),
+            argv,
+            exit_code,
+            stdout_bytes: ByteCount::from_len(receipt.stdout_bytes),
+            stderr_bytes: ByteCount::from_len(receipt.stderr_bytes),
+            stdout_sha256: receipt.stdout_sha256.clone(),
+            stderr_sha256: receipt.stderr_sha256.clone(),
+            stdout_truncated: receipt.stdout_truncated,
+            stderr_truncated: receipt.stderr_truncated,
+            timed_out: receipt.timed_out,
+            exit_signal: receipt.exit_signal,
+            memory_limit_bytes: receipt.memory_limit_bytes,
+            memory_limit_enforced: receipt.memory_limit_enforced,
+            memory_limit_exceeded: receipt.memory_limit_exceeded,
+            abnormal_termination: receipt.abnormal_termination,
+            termination_reason: Some(receipt.termination_reason.clone()),
+            elapsed_ms: ElapsedMillis::from_duration(receipt.elapsed),
+        }
     }
 
     fn protocol_renderer_env() -> BTreeMap<String, String> {

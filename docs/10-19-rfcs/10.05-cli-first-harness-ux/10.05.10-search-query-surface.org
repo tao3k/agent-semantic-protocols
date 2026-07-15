@@ -157,6 +157,18 @@ the shown selectors; agents that need exhaustive facts should ask for a larger
 limit deliberately instead of letting a real project emit hundreds of item rows
 by default.
 
+Source-language =query --selector= is likewise owner-bounded. A structural
+selector must carry its parser-owned source owner, and a file or range selector
+must identify one explicit source path. A bare symbol such as =selector-from=
+is not an exact selector: resolving it by enumerating source files and parsing
+candidate owners is workspace search. Language providers must reject that form
+before source collection and route discovery to the Rust-owned indexed search
+surface, for example =asp <language> search symbol <symbol> --workspace
+<workspace-root> --view seeds=. After search returns an owner-bearing selector,
+=query --selector <provider-selector> --code= remains the canonical exact read.
+Provider implementations must not hide a whole-workspace symbol scan behind
+manual garbage collection, incremental file reads, or a compatibility fallback.
+
 Document languages are a separate facade class.  =asp org= and =asp md= expose
 parser-owned document structure, not code harness policy.  The executable
 runtime is =asp= with a native =orgize= dependency.  The =orgize= binary remains

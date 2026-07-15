@@ -245,19 +245,42 @@ fn asp_agent_session_bootstrap_create_choice_uses_concrete_codex_native_action()
         String::from_utf8_lossy(&bootstrap.stderr)
     );
     assert!(bootstrap.status.success(), "{output}");
-    assert!(output.contains("pane: asp.session.create.v1"), "{output}");
+    assert!(output.contains("pane: asp.session.audit.v1"), "{output}");
     assert!(
-        output.contains("1: create-managed-resident-child"),
+        output.contains("1: audit-host-agent-tree-for-existing-resident-child"),
         "{output}"
     );
     assert!(
-        output.contains("Use the detected platform-native managed-agent creation surface"),
+        output.contains("2: resume-existing-host-resident-child"),
+        "{output}"
+    );
+    assert!(
+        output.contains("create-managed-resident-child-after-host-tree-miss"),
+        "{output}"
+    );
+    assert!(
+        output.contains("Registry absence is not child absence"),
         "{output}"
     );
     assert!(
         output.contains("SubagentStart event owns registration and validation"),
         "{output}"
     );
+    assert!(
+        output.contains(
+            "profile-discovery: Codex auto-loads custom-agent TOML from ~/.codex/agents/ and .codex/agents/"
+        ),
+        "{output}"
+    );
+    assert!(
+        output.contains("bootstrap does not write [agents.<name>] registration"),
+        "{output}"
+    );
+    assert!(
+        output.contains("`agent_type` selects the registered role"),
+        "{output}"
+    );
+    assert!(output.contains("`task_name` reserves the canonical /root/asp_explorer path"));
     assert!(
         output.contains("platform-native-create: platform=codex managedAgentKind=asp_explorer"),
         "{output}"
@@ -268,7 +291,7 @@ fn asp_agent_session_bootstrap_create_choice_uses_concrete_codex_native_action()
     );
     assert!(
         output.contains(
-            "platform-native-create-blocker: if platform=codex cannot create managedAgentKind=asp_explorer or emits no SubagentStart event"
+            "platform-native-create-blocker: Create is authorized only after rollout and host-agent-tree audits both miss"
         ),
         "{output}"
     );
@@ -288,6 +311,144 @@ fn asp_agent_session_bootstrap_create_choice_uses_concrete_codex_native_action()
     assert!(!output.contains("{managedAgentKind}"), "{output}");
     assert!(!output.contains("{requiredTransport}"), "{output}");
     assert!(!output.contains("--json"), "{output}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_agent_session_host_typed_spawn_observation_makes_menu_paths_exclusive() {
+    let root = temp_project_root("agent-command-host-typed-spawn-observation");
+    let home = root.join("home");
+    let agents_dir = home.join(".codex").join("agents");
+    std::fs::create_dir_all(&agents_dir).expect("create codex agents dir");
+    std::fs::write(
+        agents_dir.join("asp-explorer.toml"),
+        "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nmodel_reasoning_effort = \"low\"\nsandbox_mode = \"read-only\"\nsession_lifetime = \"resident\"\n",
+    )
+    .expect("write asp explorer config");
+    let state_home = root.join(".asp-home");
+    let root_session_id = "codex-root-thread";
+
+    let observe = |status: &str| {
+        let output = asp_command(&root)
+            .env("HOME", &home)
+            .env("CODEX_HOME", home.join(".codex"))
+            .env("ASP_STATE_HOME", &state_home)
+            .env("CODEX_THREAD_ID", root_session_id)
+            .args([
+                "agent",
+                "session",
+                "observe-host-capability",
+                "--name",
+                "asp-explore",
+                "--agent-type-field",
+                status,
+                "--json",
+            ])
+            .output()
+            .expect("record host typed spawn observation");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    let observe_tree = |status: &str| {
+        let output = asp_command(&root)
+            .env("HOME", &home)
+            .env("CODEX_HOME", home.join(".codex"))
+            .env("ASP_STATE_HOME", &state_home)
+            .env("CODEX_THREAD_ID", root_session_id)
+            .args([
+                "agent",
+                "session",
+                "observe-host-tree",
+                "--name",
+                "asp-explore",
+                "--resident-target-status",
+                status,
+                "--json",
+            ])
+            .output()
+            .expect("record host resident target observation");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    let bootstrap = || {
+        let output = asp_command(&root)
+            .env("HOME", &home)
+            .env("CODEX_HOME", home.join(".codex"))
+            .env("ASP_STATE_HOME", &state_home)
+            .env("CODEX_THREAD_ID", root_session_id)
+            .args([
+                "agent",
+                "session",
+                "bootstrap",
+                "--name",
+                "asp-explore",
+                "--root-session-id",
+                root_session_id,
+                "--json",
+            ])
+            .output()
+            .expect("run bootstrap with host typed spawn observation");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&output.stdout)
+            .expect("parse bootstrap observation json")
+    };
+
+    observe_tree("absent");
+    observe("absent");
+    let unavailable = bootstrap();
+    let unavailable_choices = unavailable["choices"]
+        .as_array()
+        .expect("unavailable choices");
+    assert!(
+        unavailable_choices
+            .iter()
+            .any(|choice| { choice["id"] == "activate-inline-parser-fallback" })
+    );
+    assert!(!unavailable_choices.iter().any(|choice| {
+        choice["id"] == "audit-host-typed-spawn-schema"
+            || choice["id"] == "create-managed-resident-child-after-host-tree-miss"
+    }));
+    assert_eq!(
+        unavailable["hostTypedSpawnClassification"]["bootstrapBlocked"],
+        "host-agent-type-unavailable"
+    );
+    assert_eq!(
+        unavailable["hostTypedSpawnClassification"]["fallbackAuthorized"],
+        false
+    );
+    assert_eq!(unavailable_choices.len(), 1);
+    assert_eq!(
+        unavailable["hostResidentTargetObservation"]["targetStatus"],
+        "absent"
+    );
+
+    observe("present");
+    let available = bootstrap();
+    let available_choices = available["choices"].as_array().expect("available choices");
+    assert!(
+        available_choices
+            .iter()
+            .any(|choice| { choice["id"] == "create-managed-resident-child-after-host-tree-miss" })
+    );
+    assert!(!available_choices.iter().any(|choice| {
+        choice["id"] == "audit-host-typed-spawn-schema"
+            || choice["id"] == "activate-inline-parser-fallback"
+    }));
+    assert_eq!(
+        available["hostTypedSpawnClassification"]["status"],
+        "typed-spawn-available"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }

@@ -5,12 +5,14 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <bootstrap|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--agent-type-field present|absent] [--resident-target-status present|absent] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
 pub(super) enum SessionCommand {
     Bootstrap,
+    ObserveHostCapability,
+    ObserveHostTree,
     Register,
     List,
     Show,
@@ -51,6 +53,10 @@ pub(super) struct SessionArgs {
     pub(super) activity: bool,
     pub(super) json: bool,
     pub(super) codex_args: Vec<String>,
+    pub(super) agent_type_field: Option<String>,
+    pub(super) resident_target_status: Option<String>,
+    pub(super) schema_digest: Option<String>,
+    pub(super) observation_ttl_seconds: i64,
 }
 
 impl SessionArgs {
@@ -78,6 +84,10 @@ impl SessionArgs {
             activity: false,
             json: false,
             codex_args: Vec::new(),
+            agent_type_field: None,
+            resident_target_status: None,
+            schema_digest: None,
+            observation_ttl_seconds: 300,
         };
         let mut passthrough_codex_args = false;
         let mut index = 0;
@@ -92,6 +102,12 @@ impl SessionArgs {
                 "-h" | "--help" | "help" => parsed.help = true,
                 "--guide" | "guide" => parsed.guide = true,
                 "bootstrap" | "loop" if index == 0 => parsed.command = SessionCommand::Bootstrap,
+                "observe-host-capability" if index == 0 => {
+                    parsed.command = SessionCommand::ObserveHostCapability;
+                }
+                "observe-host-tree" if index == 0 => {
+                    parsed.command = SessionCommand::ObserveHostTree;
+                }
                 "register" | "add" | "upsert" if index == 0 => {
                     parsed.command = SessionCommand::Register;
                 }
@@ -209,6 +225,33 @@ impl SessionArgs {
                         );
                     }
                 }
+                "--agent-type-field" => {
+                    index += 1;
+                    parsed.agent_type_field =
+                        Some(non_empty_flag(args, index, "--agent-type-field")?.to_string());
+                }
+                "--resident-target-status" => {
+                    index += 1;
+                    parsed.resident_target_status =
+                        Some(non_empty_flag(args, index, "--resident-target-status")?.to_string());
+                }
+                "--schema-digest" => {
+                    index += 1;
+                    parsed.schema_digest =
+                        Some(non_empty_flag(args, index, "--schema-digest")?.to_string());
+                }
+                "--observation-ttl-seconds" => {
+                    index += 1;
+                    let value = non_empty_flag(args, index, "--observation-ttl-seconds")?;
+                    parsed.observation_ttl_seconds = value.parse::<i64>().map_err(|error| {
+                        format!("--observation-ttl-seconds requires an integer: {error}")
+                    })?;
+                    if !(1..=3600).contains(&parsed.observation_ttl_seconds) {
+                        return Err(
+                            "--observation-ttl-seconds must be between 1 and 3600".to_string()
+                        );
+                    }
+                }
                 "--all" => parsed.all = true,
                 "--active" => parsed.active = true,
                 "--replace" => parsed.replace = true,
@@ -258,6 +301,18 @@ fn guide_text_for(
             "asp agent session bootstrap guide\n\
 Run the resident ASP child lifecycle loop as a structured menu. The loop prints state and choices only; the agent chooses a menu option, performs the platform-native action, then reruns bootstrap until state=Ready.\n\
 asp agent session bootstrap --name asp-explore",
+        ),
+        SessionCommand::ObserveHostCapability => Some(
+            "asp agent session observe-host-capability guide\n\
+Record a short-lived observation of the native collaboration.spawn_agent schema for the active CODEX_THREAD_ID.\n\
+This receipt is diagnostic only: it does not register a resident child and does not authorize fallback.\n\
+asp agent session observe-host-capability --name asp-explore --agent-type-field present|absent",
+        ),
+        SessionCommand::ObserveHostTree => Some(
+            "asp agent session observe-host-tree guide\n\
+Record a short-lived observation of the canonical resident target in the native collaboration.list_agents tree for the active CODEX_THREAD_ID.\n\
+This receipt never accepts a child id and does not register a resident child.\n\
+asp agent session observe-host-tree --name asp-explore --resident-target-status present|absent",
         ),
         SessionCommand::Register => guide.register(),
         SessionCommand::List => guide.list(),

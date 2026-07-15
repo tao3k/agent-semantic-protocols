@@ -34,6 +34,7 @@ use crate::tool_action::{ToolAction, subject_for_action};
 /// Compiled hook rules loaded from the global ASP state root.
 pub struct ClientHookConfig {
     rules: Vec<CompiledHookRule>,
+    asp_command_intent_policy: agent_semantic_config::HookClientAspCommandIntentPolicyConfig,
     semantic_ast_patch_disabled: bool,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
     recovery_prompt: CompiledRecoveryPromptConfig,
@@ -42,6 +43,13 @@ pub struct ClientHookConfig {
 }
 
 impl ClientHookConfig {
+    /// Configured parser-owned taxonomy for public ASP language commands.
+    pub fn asp_command_intent_policy(
+        &self,
+    ) -> &agent_semantic_config::HookClientAspCommandIntentPolicyConfig {
+        &self.asp_command_intent_policy
+    }
+
     /// Return the agent-facing session message templates.
     pub fn agent_session_messages(
         &self,
@@ -621,13 +629,16 @@ fn compile_config(config: HookClientConfigFile) -> Result<ClientHookConfig, Stri
         .collect::<Result<Vec<_>, _>>()?;
     // `sort_by_key` is stable, so equal-priority rules keep config file order.
     rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
+    let asp_command_intent_policy = config.asp_command_intent_policy;
     Ok(ClientHookConfig {
         rules,
+        asp_command_intent_policy: asp_command_intent_policy.clone(),
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
         agent_org_artifacts: compile_agent_org_artifacts_config(config.agent_org_artifacts)?,
         recovery_prompt: config.recovery_prompt.into(),
         agent_session_messages,
-        asp_session_policy: AspSessionPolicy::try_from(config.agents)?,
+        asp_session_policy: AspSessionPolicy::try_from(config.agents)?
+            .with_command_intent_policy(asp_command_intent_policy),
     })
 }
 
@@ -649,12 +660,6 @@ fn merge_agent_session_messages(
     }
     if config.main_restricted_without_child.is_none() {
         config.main_restricted_without_child = defaults.main_restricted_without_child;
-    }
-    if config.testing_with_child.is_none() {
-        config.testing_with_child = defaults.testing_with_child;
-    }
-    if config.testing_without_child.is_none() {
-        config.testing_without_child = defaults.testing_without_child;
     }
     if config.binary_gate_with_child.is_none() {
         config.binary_gate_with_child = defaults.binary_gate_with_child;

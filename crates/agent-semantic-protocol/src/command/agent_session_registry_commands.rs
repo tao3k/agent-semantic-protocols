@@ -1,6 +1,7 @@
 use agent_semantic_client_db::{
     AGENT_SESSION_STATUS_INVALID, AgentSessionLookupRequest, AgentSessionRecord,
-    AgentSessionRegisterRequest, AgentSessionRegistry, agent_session_unix_timestamp,
+    AgentSessionRegisterRequest, AgentSessionRegistry, agent_session_message_target_is_live_bound,
+    agent_session_unix_timestamp,
 };
 use agent_semantic_runtime::{
     agent_session_registration_identity, agent_session_runtime_status_snapshot,
@@ -586,11 +587,12 @@ pub(super) fn status_session(
         && matches!(validation.status.as_str(), "passed" | "warning")
         && let Some(model) = validation.actual_model.as_deref()
     {
-        let recoverable = session.message_target_id.is_some()
-            && matches!(
-                session.status.as_str(),
-                "invalid" | "pending-target" | "idle"
-            );
+        let recoverable =
+            agent_session_message_target_is_live_bound(session, &session.root_session_id)
+                && matches!(
+                    session.status.as_str(),
+                    "invalid" | "pending-target" | "idle"
+                );
         let status = if recoverable {
             "active"
         } else {
@@ -624,13 +626,14 @@ pub(super) fn status_session(
     let registry_allows_routing = record
         .as_ref()
         .map(|session| {
-            !matches!(session.status.as_str(), "archived" | "closed") && session.is_routable_at(now)
+            !matches!(session.status.as_str(), "archived" | "closed")
+                && session.is_routable_at(now)
+                && agent_session_message_target_is_live_bound(session, &session.root_session_id)
         })
         .unwrap_or(false);
     let validation_allows_routing = validation.as_ref().is_none_or(|validation| {
         matches!(validation.status.as_str(), "passed" | "warning" | "skipped")
     });
-    let validation_next_action = validation.as_ref().and_then(session_validation_next_action);
     let required_model = validation
         .as_ref()
         .and_then(|validation| validation.expected_model.clone());
@@ -753,26 +756,39 @@ pub(super) fn status_session(
         model_alignment_action: None,
         model_alignment_message: None,
     };
-    if report.routable && report.required_model.is_some() {
-        report.model_alignment_action = Some(
-            "parent-send-native-message-same-child-with-required-child-session-model".to_string(),
-        );
-        let required_model = report.required_model.as_deref().unwrap_or("");
-        let name = report.name.as_deref().unwrap_or("asp-explore");
-        let child_session = report
-            .session
-            .as_ref()
-            .map(|session| session.session_id.as_str())
-            .unwrap_or("<same-resident-child>");
-        report.model_alignment_message = Some(format!(
-            "Keep the main session model unchanged. Before the next child task, parent must send a native message-agent follow-up to child session `{child_session}` requesting child-session model {required_model} with low/light reasoning, wait for a compact receipt, then rerun `asp agent session status --name {name}`."
-        ));
-    }
     if let Some(activity) = report.rollout_activity.as_ref() {
         report.next_action = activity.agent_instruction.clone();
     }
-    if let Some(next_action) = validation_next_action {
-        report.next_action = next_action.to_string();
+    match (
+        report.required_model.as_deref(),
+        report.actual_model.as_deref(),
+    ) {
+        (Some(required_model), None) => {
+            report.model_alignment_action =
+                Some("resume-existing-child-for-runtime-observation".to_string());
+            report.model_alignment_message = Some(format!(
+                "Resume the same canonical resident child once to obtain a fresh SubagentStart model observation for required model {required_model}; missing observation is not model drift. Then rerun bootstrap."
+            ));
+            report.next_action =
+                "resume-existing-child-for-runtime-observation-then-bootstrap".to_string();
+        }
+        (Some(required_model), Some(actual_model)) if required_model != actual_model => {
+            report.model_alignment_action =
+                Some("reenter-bootstrap-for-capability-gated-typed-replacement".to_string());
+            report.model_alignment_message = Some(format!(
+                "Observed model {actual_model} does not match required model {required_model}. Do not ask the child to switch itself and do not create a generic replacement. Re-enter bootstrap so the live host tree and typed-spawn capability can authorize exactly one registered-profile replacement."
+            ));
+            report.next_action =
+                "reenter-bootstrap-for-capability-gated-typed-replacement".to_string();
+        }
+        _ => {}
+    }
+    if report.model_alignment_action.is_none() && report.session.is_some() && !report.routable {
+        report.next_action =
+            "reenter-bootstrap-for-host-tree-target-rebind-or-typed-replacement".to_string();
+    }
+    if report.session.is_none() {
+        report.next_action = "run-bootstrap-for-host-tree-and-typed-spawn-audit".to_string();
     }
     if report.routable && report.health_status == "registry-not-routable" {
         report.health_status = "unknown".to_string();
@@ -784,21 +800,6 @@ pub(super) fn status_session(
     print_status_report(report, args.json)
 }
 
-fn session_validation_next_action(
-    validation: &agent_semantic_runtime::AgentSessionValidationReport,
-) -> Option<&'static str> {
-    if validation.status == "warning"
-        && validation
-            .reason
-            .contains(
-                "requiredAction=parent-send-native-message-same-child-with-required-child-session-model",
-            )
-    {
-        return Some("resume-or-send-follow-up-to-same-child-before-considering-replacement");
-    }
-    None
-}
-
 fn registered_session_is_reusable(
     registry: &AgentSessionRegistry,
     record: &AgentSessionRecord,
@@ -808,6 +809,9 @@ fn registered_session_is_reusable(
         return Ok(false);
     }
     if !record.is_routable_at(now) {
+        return Ok(false);
+    }
+    if !agent_session_message_target_is_live_bound(record, &record.root_session_id) {
         return Ok(false);
     }
     if !session_record_validation_allows_routing(registry, record, now)? {

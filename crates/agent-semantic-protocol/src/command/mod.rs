@@ -4,9 +4,10 @@ mod agent_session;
 mod agent_session_registry;
 
 pub(crate) use agent_session_registry::{
-    current_agent_session_id, current_registered_session, current_root_session_id,
-    has_current_agent_session, record_current_session_tool_event,
-    registered_resident_session_for_root,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity_proof,
+    current_agent_session_id, current_registered_session, current_registered_session_identity,
+    current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
+    record_current_session_tool_event, registered_resident_session_for_root,
 };
 pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;

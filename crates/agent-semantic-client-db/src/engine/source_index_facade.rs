@@ -426,14 +426,15 @@ async fn lookup_source_index_read_model_at_path(
             Vec::new(),
         ));
     }
-    let _source_index_read_guard = match super::turso_source_index::turso_source_index_access_lock()
-        .clone()
-        .try_read_owned()
+    let _source_index_read_guard = match super::turso_source_index::turso_source_index_access_lock(
+        &db_path,
+    )
+    .try_read_owned()
     {
         Ok(guard) => guard,
         Err(_) => return Ok(source_index_busy_lookup_result(db_path)),
     };
-    let terms = source_index_read_model_terms(query);
+    let terms = source_index_read_model_terms(query)?;
     let connection = match connect_turso_client_db_read_only(&db_path).await {
         Ok(connection) => connection,
         Err(error) if is_turso_lock_error(&error) => {
@@ -766,6 +767,8 @@ async fn query_turso_source_index_snapshot_candidates_with_connection(
     if limit == 0 || query.trim().is_empty() {
         return Ok(Vec::new());
     }
+    let limit = limit.min(SOURCE_INDEX_READ_MODEL_MAX_CANDIDATES);
+    let terms = &terms[..terms.len().min(SOURCE_INDEX_READ_MODEL_MAX_TERMS)];
     let term_tokens_json = serde_json::to_string(terms)
         .map_err(|error| format!("failed to encode Turso source-index query terms: {error}"))?;
     if terms.is_empty() {
@@ -1014,12 +1017,23 @@ fn source_index_structured_candidate_score(
     terms.iter().filter(|term| haystack.contains(*term)).count()
 }
 
-fn source_index_read_model_terms(query: &str) -> Vec<String> {
-    query
+const SOURCE_INDEX_READ_MODEL_MAX_QUERY_BYTES: usize = 16 * 1024;
+const SOURCE_INDEX_READ_MODEL_MAX_TERMS: usize = 32;
+const SOURCE_INDEX_READ_MODEL_MAX_CANDIDATES: u32 = 256;
+
+fn source_index_read_model_terms(query: &str) -> Result<Vec<String>, String> {
+    if query.len() > SOURCE_INDEX_READ_MODEL_MAX_QUERY_BYTES {
+        return Err(format!(
+            "source-index query exceeds byte budget: bytes={} maxBytes={SOURCE_INDEX_READ_MODEL_MAX_QUERY_BYTES}",
+            query.len()
+        ));
+    }
+    Ok(query
         .split(|character: char| {
             !character.is_alphanumeric() && character != '_' && character != '-'
         })
         .filter(|term| !term.is_empty())
+        .take(SOURCE_INDEX_READ_MODEL_MAX_TERMS)
         .map(|term| term.to_ascii_lowercase())
-        .collect()
+        .collect())
 }

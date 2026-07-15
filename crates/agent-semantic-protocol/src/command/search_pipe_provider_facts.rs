@@ -62,6 +62,7 @@ pub(super) fn collect_provider_graph_facts(
         timeout: Some(provider_graph_fact_timeout()),
         max_stdout_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
         max_stderr_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+        memory_limit_bytes: Some(1024 * 1024 * 1024),
     };
     let args = vec![
         "search".to_string(),

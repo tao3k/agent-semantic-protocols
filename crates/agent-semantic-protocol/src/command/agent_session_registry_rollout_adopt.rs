@@ -76,7 +76,7 @@ pub(super) fn adopt_reusable_rollout_session(
                     evidence_ref: None,
                 }
             }),
-            status: "active",
+            status: "existing-child-discovered",
             expires_at: request.expires_at,
             metadata_json: &metadata_json,
             now: request.now,

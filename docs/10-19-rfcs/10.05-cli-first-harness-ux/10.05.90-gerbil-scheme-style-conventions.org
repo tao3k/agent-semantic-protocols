@@ -105,6 +105,19 @@ schema, snapshot, parser, checker, policy, search, and extension unit surfaces.
 Those should remain separately owned and runnable through native Gerbil
 =:std/test=.
 
+** Own public commands once
+
+A language harness must declare each public command in one typed command
+descriptor.  Launcher recognition, dynamic module lookup, help usage lines,
+release static-link roots, and semantic-language registry methods are
+projections of that descriptor; they are not independently maintained lists.
+
+Release linking may keep one explicit symbol-to-procedure resolver so the
+compiler can see concrete function identities.  That resolver must not repeat
+command names, usage text, or protocol methods, and a focused test must prove
+that every release descriptor resolves to one procedure.  A command advertised
+by help but absent from the native release closure is a protocol failure.
+
 ** Prefer structured guidance over inline examples
 
 When the provider teaches a style rule, it should expose structured fields:
@@ -124,6 +137,13 @@ or hand-copied inline source.  When the agent needs more contrast or transfer
 examples, the non-code guide packet should expose an explicit =--more= or
 =--limit N= command.  Multiple examples are therefore a progressive choice, not
 the default token cost.
+
+Every local source-backed guide exemplar must resolve its current parser-owned
+owner and symbol before it is exposed as a public =guide --code= route. Static
+owner, symbol-group, and comment-policy data should live in one typed descriptor
+catalog rather than in topic-specific emitter wrappers. Source splits must
+update that catalog and its black-box progressive-guide test in the same change;
+a stale owner is a broken public guide route, not a recoverable search fallback.
 
 The Gerbil guide selection grammar should stay on =guide --code= instead of
 adding topic-specific subcommands.  =--topic= chooses the idiom family,

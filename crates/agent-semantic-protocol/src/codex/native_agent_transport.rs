@@ -13,6 +13,7 @@ pub(crate) struct CodexNativeSubagentEvent {
     pub(crate) agent_id: String,
     pub(crate) agent_type: String,
     pub(crate) model: String,
+    pub(crate) reasoning_effort: Option<String>,
     pub(crate) permission_mode: String,
 }
 
@@ -40,8 +41,19 @@ pub(crate) fn parse_subagent_event(
         agent_id: required_string(payload, "agent_id")?,
         agent_type: required_string(payload, "agent_type")?,
         model: required_string(payload, "model")?,
+        reasoning_effort: ["reasoning_effort", "reasoningEffort", "effort"]
+            .into_iter()
+            .find_map(|field| optional_string(payload, field)),
         permission_mode: required_string(payload, "permission_mode")?,
     }))
+}
+
+fn optional_string(payload: &Value, field: &str) -> Option<String> {
+    payload
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
 }
 
 fn required_string(payload: &Value, field: &str) -> Result<String, String> {

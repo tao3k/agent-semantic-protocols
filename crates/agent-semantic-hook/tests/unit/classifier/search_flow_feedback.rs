@@ -140,7 +140,7 @@ fn stop_hook_allows_after_search_pipe_runs() {
 }
 
 #[test]
-fn pre_tool_allows_explicit_read_before_pipe() {
+fn pre_tool_denies_explicit_read_before_pipe() {
     let project_root = temp_project_root("asp-hook-read-before-pipe");
     append_hook_event_state(
         &project_root,
@@ -170,7 +170,9 @@ fn pre_tool_allows_explicit_read_before_pipe() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.fields["hookFeedback"], "read-before-pipe");
+    assert_eq!(decision.fields["aspCommandIntent"], "direct-read-fallback");
     assert!(decision.routes.is_empty());
     let _ = fs::remove_dir_all(project_root);
 }
@@ -196,6 +198,131 @@ fn pre_tool_allows_valid_root_language_search_form() {
     );
 
     assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.fields["aspCommandIntent"], "reasoning");
+    assert_eq!(decision.fields["aspCommandRoute"], "search-prime");
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_classifies_language_reasoning_routes_precisely() {
+    let project_root = temp_project_root("asp-hook-reasoning-route-taxonomy");
+    let runtime = runtime_for_project(&project_root);
+
+    for (command, route) in [
+        ("asp typescript guide --workspace .", "guide"),
+        (
+            "asp typescript search prime --workspace . --view seeds",
+            "search-prime",
+        ),
+        (
+            "asp typescript search pipe 'effect fiber' --workspace . --view seeds",
+            "search-pipe",
+        ),
+        (
+            "asp typescript search owner src/Fiber.ts items --workspace . --view seeds",
+            "search-owner",
+        ),
+        (
+            "asp typescript search lexical --query Fiber --query Scope --workspace . --view seeds",
+            "search-lexical",
+        ),
+        (
+            "asp typescript search deps Effect --workspace . --view seeds",
+            "search-deps",
+        ),
+        (
+            "asp typescript search failure failing-test --workspace . --view seeds",
+            "search-failure",
+        ),
+        (
+            "asp typescript search reasoning Fiber --workspace . --view seeds",
+            "search-reasoning",
+        ),
+        (
+            "asp typescript query guide treesitter --workspace .",
+            "query-reasoning",
+        ),
+        (
+            "asp typescript query --term useEffect --workspace . --code",
+            "query-reasoning",
+        ),
+    ] {
+        let decision = classify_hook(
+            &runtime,
+            "claude",
+            "pre-tool",
+            &json!({
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": command}
+            }),
+        );
+
+        assert_eq!(decision.decision, DecisionKind::Allow, "{command}");
+        assert_eq!(
+            decision.fields["aspCommandIntent"], "reasoning",
+            "{command}"
+        );
+        assert_eq!(decision.fields["aspCommandRoute"], route, "{command}");
+    }
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_allows_exact_selector_names_only_projection() {
+    let project_root = temp_project_root("asp-hook-exact-names-only");
+    let runtime = runtime_for_project(&project_root);
+    let decision = classify_hook(
+        &runtime,
+        "claude",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp typescript query --selector typescript://src/Fiber.ts#item/function/runFiber --workspace . --names-only"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.fields["aspCommandIntent"], "exact-evidence");
+    assert_eq!(decision.fields["aspCommandRoute"], "query-selector");
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_rejects_non_structural_or_cross_language_evidence_selectors() {
+    let project_root = temp_project_root("asp-hook-invalid-evidence-selectors");
+    let runtime = runtime_for_project(&project_root);
+
+    for selector in [
+        "src/Fiber.ts",
+        "src/Fiber.ts:10:20",
+        "typescript://#item/function/runFiber",
+        "typescript://src/Fiber.ts#item/function",
+        "rust://src/Fiber.ts#item/function/runFiber",
+        "TypeScript://src/Fiber.ts#item/function/runFiber",
+    ] {
+        let command = format!("asp typescript query --selector {selector} --workspace . --code");
+        let decision = classify_hook(
+            &runtime,
+            "claude",
+            "pre-tool",
+            &json!({
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": command}
+            }),
+        );
+
+        assert_eq!(decision.decision, DecisionKind::Deny, "{selector}");
+        assert_eq!(decision.fields["aspCommandIntent"], "invalid-evidence");
+        assert_eq!(
+            decision.fields["hookFeedback"],
+            "invalid-evidence-query-denied"
+        );
+    }
     let _ = fs::remove_dir_all(project_root);
 }
 

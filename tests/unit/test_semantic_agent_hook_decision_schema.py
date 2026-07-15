@@ -69,6 +69,12 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
             self.validation_errors(minimal_decision("semantic-ast-patch-required")),
         )
 
+    def test_asp_reasoning_routed_reason_kind_is_valid(self) -> None:
+        self.assertEqual(
+            [],
+            self.validation_errors(minimal_decision("asp-reasoning-routed")),
+        )
+
     def test_source_directory_enumeration_reason_kind_is_valid(self) -> None:
         decision = minimal_decision("source-directory-enumeration")
         decision["fields"] = {"operationIntent": "directory-read"}
@@ -116,6 +122,29 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
         errors = self.validation_errors(decision)
 
         self.assertTrue(any("is not one of" in message for message in errors))
+
+    def test_asp_command_intent_and_route_fields_are_valid(self) -> None:
+        decision = minimal_decision("none")
+        decision["fields"] = {
+            "aspCommandIntent": "exact-evidence",
+            "aspCommandRoute": "query-selector",
+        }
+
+        self.assertEqual([], self.validation_errors(decision))
+
+    def test_unknown_asp_command_intent_is_rejected(self) -> None:
+        decision = minimal_decision("none")
+        decision["fields"] = {"aspCommandIntent": "source-read"}
+        errors = self.validation_errors(decision)
+
+        self.assertTrue(any("is not one of" in message for message in errors))
+
+    def test_malformed_asp_command_route_is_rejected(self) -> None:
+        decision = minimal_decision("none")
+        decision["fields"] = {"aspCommandRoute": "owner tests"}
+        errors = self.validation_errors(decision)
+
+        self.assertTrue(any("does not match" in message for message in errors))
 
     def test_invalid_config_rule_id_field_is_rejected(self) -> None:
         decision = minimal_decision("raw-broad-search")
