@@ -72,6 +72,33 @@ pub(super) fn resident_agent_host_action(
     }
 }
 
+pub(super) fn reasoning_observation_mismatches_profile(
+    observed: Option<&str>,
+    expected: Option<&str>,
+) -> bool {
+    observed.is_some_and(|observed| expected.is_some_and(|expected| observed != expected))
+}
+
+pub(super) fn typed_spawn_reasoning_verification(
+    observed: Option<&str>,
+    configured: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "observedReasoningEffort": observed,
+        "configuredReasoningEffort": configured,
+        "status": if observed.is_some() {
+            "observed-match"
+        } else {
+            "typed-spawn-profile-attested"
+        },
+        "source": if observed.is_some() {
+            "codex.subagent-start-or-rollout"
+        } else {
+            "asp-collaboration-spawn-plus-profile"
+        },
+    })
+}
+
 pub(super) fn resident_child_create_action(
     platform: &str,
     asp_session_policy: &AspSessionPolicy,

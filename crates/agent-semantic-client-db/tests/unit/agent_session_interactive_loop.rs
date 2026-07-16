@@ -46,6 +46,86 @@ fn active_record(model: Option<&str>, message_target_id: Option<&str>) -> AgentS
     }
 }
 
+fn rollout_and_host_tree_bound_record() -> AgentSessionRecord {
+    let mut record = active_record(Some("gpt-5.4-mini"), Some("/root/asp_explorer"));
+    record.metadata_json = serde_json::json!({
+        "messageTargetBinding": {
+            "source": "codex-rollout-session-meta-plus-native-host-tree",
+            "boundRootSessionId": "root",
+            "childSessionId": "child",
+            "messageTargetId": "/root/asp_explorer",
+            "observedAt": 2,
+        }
+    })
+    .to_string();
+    record
+}
+
+#[test]
+fn rollout_identity_plus_native_host_tree_is_a_live_canonical_binding() {
+    let record = rollout_and_host_tree_bound_record();
+
+    assert!(
+        agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
+            &record, "root"
+        )
+    );
+}
+
+#[test]
+fn typed_subagent_start_plus_native_host_tree_is_a_live_canonical_binding() {
+    let mut record = rollout_and_host_tree_bound_record();
+    let mut metadata: serde_json::Value =
+        serde_json::from_str(&record.metadata_json).expect("metadata");
+    metadata["messageTargetBinding"]["source"] =
+        serde_json::Value::String("codex-typed-subagent-start-plus-native-host-tree".to_string());
+    record.metadata_json = metadata.to_string();
+
+    assert!(
+        agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
+            &record, "root"
+        )
+    );
+}
+
+#[test]
+fn rollout_host_tree_binding_rejects_root_child_and_target_mismatch() {
+    let record = rollout_and_host_tree_bound_record();
+
+    for (field, value) in [
+        ("boundRootSessionId", "other-root"),
+        ("childSessionId", "other-child"),
+        ("messageTargetId", "/root/other"),
+    ] {
+        let mut invalid = record.clone();
+        let mut metadata: serde_json::Value =
+            serde_json::from_str(&invalid.metadata_json).expect("metadata");
+        metadata["messageTargetBinding"][field] = serde_json::Value::String(value.to_string());
+        invalid.metadata_json = metadata.to_string();
+        assert!(
+            !agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
+                &invalid, "root"
+            ),
+            "{field} mismatch must invalidate the binding"
+        );
+    }
+}
+
+#[test]
+fn canonical_path_without_trusted_identity_source_is_not_live_bound() {
+    let mut record = rollout_and_host_tree_bound_record();
+    let mut metadata: serde_json::Value =
+        serde_json::from_str(&record.metadata_json).expect("metadata");
+    metadata["messageTargetBinding"]["source"] = serde_json::Value::String("path-only".to_string());
+    record.metadata_json = metadata.to_string();
+
+    assert!(
+        !agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
+            &record, "root"
+        )
+    );
+}
+
 #[test]
 fn pending_fresh_same_child_runtime_mismatch_requires_typed_replacement() {
     let mut record = active_record(Some("gpt-5.6-sol"), Some("child"));
@@ -381,6 +461,16 @@ fn aligned_routable_record_is_ready() {
             .platform_action
             .contains("Do not retire it merely because one search turn completed")
     );
+    assert!(menu.choices[0].platform_action.contains("exactly once"));
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("must never resend the command")
+    );
+    assert_eq!(
+        menu.choices[0].required_inputs,
+        &["deniedAspCommand", "dispatchIdentity"]
+    );
     assert_eq!(
         menu.trace.iter().map(|step| step.state).collect::<Vec<_>>(),
         vec![
@@ -454,6 +544,181 @@ fn host_tree_absent_with_typed_spawn_allows_one_canonical_replacement() {
         repair.choices[0]
             .platform_action
             .contains("task_name=asp_explorer")
+    );
+}
+
+#[test]
+fn historical_orphan_is_never_offered_as_a_live_rebind_target() {
+    let mut record = active_record(Some("gpt-5.4-mini"), Some("historical-child"));
+    record.status = "orphan-risk".to_string();
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        expected_reasoning_effort: Some("low"),
+        rollout_history_status: Some("locked-existing-repair-candidate"),
+        rollout_history_action: Some("preserve-candidate-identity-until-host-classification"),
+        now: 2,
+    });
+
+    assert_eq!(menu.state, AgentSessionLoopState::Cleanup);
+    assert!(
+        menu.choices
+            .iter()
+            .all(|choice| choice.id != "resume-existing-child-for-live-target-rebind")
+    );
+    assert_eq!(
+        menu.trace.last().map(|step| step.result),
+        Some("historical-or-stale-child-not-live-rebindable")
+    );
+}
+
+#[test]
+fn host_present_completed_resident_is_resumed_instead_of_cleaned_up() {
+    let mut record = active_record(Some("gpt-5.4-mini"), Some("child"));
+    record.status = "archived".to_string();
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        expected_reasoning_effort: Some("low"),
+        rollout_history_status: Some("locked-existing-repair-candidate"),
+        rollout_history_action: Some("preserve-candidate-identity-until-host-classification"),
+        now: 2,
+    });
+    assert_eq!(menu.state, AgentSessionLoopState::Cleanup);
+
+    let repair =
+        agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
+            menu,
+            "present",
+            Some("present"),
+        );
+
+    assert_eq!(
+        repair.state,
+        AgentSessionLoopState::RebindExistingChildTarget
+    );
+    assert_eq!(repair.choices.len(), 1);
+    assert_eq!(
+        repair.choices[0].id,
+        "resume-existing-child-for-live-target-rebind"
+    );
+    assert!(
+        repair.choices[0]
+            .platform_action
+            .contains("remain resumable")
+    );
+    assert!(
+        repair
+            .choices
+            .iter()
+            .all(|choice| choice.id != "close-stale-resident-child")
+    );
+    assert_eq!(
+        repair.trace.last().map(|step| step.result),
+        Some("canonical-host-target-present-completed-resumable")
+    );
+}
+
+#[test]
+fn historical_unbound_candidate_requires_host_tree_audit_before_resume() {
+    let record = active_record(Some("gpt-5.4-mini"), None);
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        expected_reasoning_effort: Some("low"),
+        rollout_history_status: Some("locked-existing-repair-candidate"),
+        rollout_history_action: Some("preserve-candidate-identity-until-host-classification"),
+        now: 2,
+    });
+    assert_eq!(menu.state, AgentSessionLoopState::RebindExistingChildTarget);
+
+    let audit = agent_semantic_client_db::agent_session_registry::resident_child_host_tree_audit_required_menu(menu);
+    assert_eq!(audit.state, AgentSessionLoopState::Audit);
+    assert_eq!(audit.choices.len(), 1);
+    assert_eq!(
+        audit.choices[0].id,
+        "audit-host-agent-tree-before-live-target-rebind"
+    );
+    assert!(
+        audit
+            .choices
+            .iter()
+            .all(|choice| choice.id != "resume-existing-child-for-live-target-rebind")
+    );
+}
+
+#[test]
+fn typed_runtime_match_requires_observed_low_when_profile_expects_low() {
+    assert!(
+        agent_semantic_client_db::agent_session_registry::typed_runtime_observation_matches_profile(
+            "asp_explorer",
+            "asp_explorer",
+            "gpt-5.4-mini",
+            Some("low"),
+            "subagent-start",
+            Some("gpt-5.4-mini"),
+            Some("low"),
+        )
+    );
+    assert!(
+        agent_semantic_client_db::agent_session_registry::typed_runtime_observation_matches_profile(
+            "asp_explorer",
+            "asp_explorer",
+            "gpt-5.4-mini",
+            Some("low"),
+            "codex-app-server-thread-resume-after-subagent-start",
+            Some("gpt-5.4-mini"),
+            Some("low"),
+        )
+    );
+    assert!(
+        !agent_semantic_client_db::agent_session_registry::typed_runtime_observation_matches_profile(
+            "asp_explorer",
+            "asp_explorer",
+            "gpt-5.4-mini",
+            None,
+            "subagent-start",
+            Some("gpt-5.4-mini"),
+            Some("low"),
+        )
+    );
+}
+
+#[test]
+fn incomplete_typed_runtime_evidence_preserves_child_and_forbids_cleanup() {
+    let record = active_record(Some("gpt-5.4-mini"), Some("/root/asp_explorer"));
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-explore",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        expected_reasoning_effort: Some("low"),
+        rollout_history_status: Some("typed-replacement-observed"),
+        rollout_history_action: Some("validate-runtime-before-ready"),
+        now: 2,
+    });
+
+    let menu = agent_semantic_client_db::agent_session_registry::resident_child_runtime_evidence_incomplete_menu(menu);
+    assert_eq!(menu.state, AgentSessionLoopState::Blocked);
+    assert_eq!(menu.choices.len(), 1);
+    assert_eq!(
+        menu.choices[0].id,
+        "report-host-runtime-reasoning-evidence-unavailable"
+    );
+    assert!(
+        menu.choices
+            .iter()
+            .all(|choice| choice.id != "close-stale-resident-child")
     );
 }
 

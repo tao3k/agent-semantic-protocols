@@ -446,8 +446,7 @@ fn hydrate_status_message_target_fields(report: &mut SessionStatusReport) {
             report.message_target_status = Some("ready".to_string());
         }
         if report.message_target_result_source.is_none() {
-            report.message_target_result_source =
-                Some("fresh-subagent-start-same-root-binding".to_string());
+            report.message_target_result_source = Some("trusted-live-identity-binding".to_string());
         }
         if report.message_agent_target_id.is_none() {
             report.message_agent_target_id = Some(target_id.to_string());
@@ -473,7 +472,34 @@ fn hydrate_status_message_target_fields(report: &mut SessionStatusReport) {
             "reenter-bootstrap-for-host-tree-target-rebind-or-typed-replacement".to_string();
     }
     downgrade_unverified_message_route(report);
+    reconcile_unobservable_host_status_with_trusted_binding(report);
 }
+
+fn reconcile_unobservable_host_status_with_trusted_binding(report: &mut SessionStatusReport) {
+    let trusted_live_binding = status_has_trusted_live_binding(
+        report.message_target_status.as_deref(),
+        report.message_target_result_source.as_deref(),
+    );
+    if !trusted_live_binding || report.host_status != "unknown" {
+        return;
+    }
+
+    report.host_status = "unobservable-not-required".to_string();
+    report.host_status_source = "trusted-live-identity-binding".to_string();
+    report.host_status_reason = "Codex exposes no native session-status API; the trusted live identity binding proves the resident target is currently routable, so host session status is not a Ready gate".to_string();
+    if report.host_thread_existence == "not-validated" {
+        report.host_thread_existence = "validated-by-trusted-live-binding".to_string();
+        report.host_thread_existence_reason = "the canonical resident target is live-bound to this root session even though Codex exposes no separate thread-status API".to_string();
+    }
+}
+
+fn status_has_trusted_live_binding(status: Option<&str>, source: Option<&str>) -> bool {
+    status == Some("ready") && source == Some("trusted-live-identity-binding")
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_render.rs"]
+mod trusted_live_binding_status_tests;
 
 fn downgrade_unverified_message_route(report: &mut SessionStatusReport) {
     if report.host_thread_existence != "not-validated" {

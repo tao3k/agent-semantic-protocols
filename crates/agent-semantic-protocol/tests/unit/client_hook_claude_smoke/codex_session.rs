@@ -119,7 +119,6 @@ fn codex_subagent_start_claims_native_child_without_thread_env() {
             "agent_id": child_session_id,
             "agent_type": "asp_explorer",
             "model": "gpt-5.4-mini",
-            "reasoning_effort": "low",
             "permission_mode": "default",
         }),
         &[("CODEX_THREAD_ID", "")],
@@ -133,7 +132,6 @@ fn codex_subagent_start_claims_native_child_without_thread_env() {
     assert_eq!(session["name"].as_str(), Some("asp-explore"));
     assert_eq!(session["status"].as_str(), Some("active"));
     assert_eq!(session["messageTargetId"].as_str(), Some(child_session_id));
-
     let stop = run_codex_hook_decision_with_env(
         &root,
         "subagent-stop",
@@ -151,10 +149,12 @@ fn codex_subagent_start_claims_native_child_without_thread_env() {
     assert_eq!(stop["decision"].as_str(), Some("allow"));
     assert_eq!(
         stop["fields"]["agentSessionAction"].as_str(),
-        Some("subagent-stop-archived-managed-child")
+        Some("subagent-stop-preserved-resident-idle")
     );
-    let archived = show_agent_session_json(&root, child_session_id);
-    assert_eq!(archived["sessions"][0]["status"].as_str(), Some("archived"));
+    assert_eq!(
+        show_agent_session_json(&root, child_session_id)["sessions"][0]["status"].as_str(),
+        Some("idle")
+    );
 }
 
 #[test]
@@ -1028,7 +1028,7 @@ mod inline_parser_fallback;
 mod resident_child_deny;
 
 #[test]
-fn codex_subagent_stop_archives_registered_asp_explore() {
+fn codex_subagent_stop_preserves_registered_asp_explore_as_idle() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
@@ -1053,7 +1053,7 @@ fn codex_subagent_stop_archives_registered_asp_explore() {
     assert_eq!(decision["decision"].as_str(), Some("allow"));
     assert_eq!(
         decision["fields"]["agentSessionAction"].as_str(),
-        Some("subagent-stop-archived-managed-child")
+        Some("subagent-stop-preserved-resident-idle")
     );
     assert_eq!(
         decision["fields"]["childSessionId"].as_str(),
@@ -1061,7 +1061,8 @@ fn codex_subagent_stop_archives_registered_asp_explore() {
     );
 
     let report = show_agent_session_json(&root, child_session_id);
-    assert_eq!(report["sessions"][0]["status"].as_str(), Some("archived"));
+    assert_eq!(report["sessions"][0]["status"].as_str(), Some("idle"));
+    assert_eq!(report["sessions"][0]["archivedAt"].as_i64(), None);
 }
 
 #[test]

@@ -10,6 +10,7 @@ mod agent_session_registry_codex;
 mod agent_session_registry_commands;
 #[path = "agent_session_registry_host_capability.rs"]
 mod agent_session_registry_host_capability;
+pub(super) use agent_session_registry_host_capability::record_subagent_start_target_present;
 #[path = "agent_session_registry_lifecycle_audit.rs"]
 mod agent_session_registry_lifecycle_audit;
 #[path = "agent_session_registry_lifetime.rs"]
@@ -344,6 +345,10 @@ pub(crate) fn normalized_metadata(
     let object = value
         .as_object_mut()
         .ok_or_else(|| "session metadata must be a JSON object".to_string())?;
+    let sandbox_verification_status = sandbox_verification_status(
+        validation.expected_sandbox.as_deref(),
+        validation.actual_sandbox.as_deref(),
+    );
     object.insert(
         "validationStatus".to_string(),
         serde_json::Value::String(validation.status.clone()),
@@ -371,11 +376,26 @@ pub(crate) fn normalized_metadata(
             "actualModel": validation.actual_model,
             "expectedSandbox": validation.expected_sandbox,
             "actualSandbox": validation.actual_sandbox,
+            "sandboxVerificationStatus": sandbox_verification_status,
+            "sandboxPolicy": "warning-only-host-inherited",
+            "sandboxAffectsReady": false,
         }),
     );
     serde_json::to_string(&value)
         .map_err(|error| format!("failed to serialize normalized session metadata: {error}"))
 }
+
+fn sandbox_verification_status(expected: Option<&str>, actual: Option<&str>) -> &'static str {
+    if expected == actual {
+        "matched"
+    } else {
+        "host-inherited-drift-warning"
+    }
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_sandbox.rs"]
+mod sandbox_verification_status_tests;
 
 pub(crate) fn normalized_metadata_with_roles(
     metadata_json: Option<&str>,

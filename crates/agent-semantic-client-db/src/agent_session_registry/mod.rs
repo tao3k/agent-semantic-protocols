@@ -3,7 +3,10 @@
 mod bootstrap;
 mod core;
 mod interactive_loop;
-pub use interactive_loop::resident_child_host_tree_observation_menu;
+pub use interactive_loop::{
+    resident_child_host_tree_audit_required_menu, resident_child_host_tree_observation_menu,
+    resident_child_runtime_evidence_incomplete_menu, typed_runtime_observation_matches_profile,
+};
 mod lifecycle;
 mod record;
 mod types;

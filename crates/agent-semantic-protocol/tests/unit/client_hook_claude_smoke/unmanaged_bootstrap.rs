@@ -76,6 +76,81 @@ fn codex_bootstrap_registry_miss_requires_host_tree_audit_before_create() {
 }
 
 #[test]
+fn codex_bootstrap_never_starts_codex_app_server() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let root_session_id = "019f126d-0000-7000-8000-000000000072";
+
+    let start = run_codex_hook_decision_with_env(
+        &root,
+        "subagent-start",
+        json!({
+            "hook_event_name": "SubagentStart",
+            "session_id": root_session_id,
+            "agent_id": "asp-bootstrap-performance-child",
+            "agent_type": "asp_explorer",
+            "model": "gpt-5.4-mini",
+            "reasoning_effort": "low",
+            "permission_mode": "bypassPermissions",
+        }),
+        &[("CODEX_THREAD_ID", root_session_id)],
+    );
+    assert_eq!(start["decision"].as_str(), Some("allow"));
+
+    let fake_codex = root.join("blocking-codex");
+    let marker = root.join("codex-app-server-invoked");
+    std::fs::write(
+        &fake_codex,
+        "#!/bin/sh\nprintf invoked > \"$ASP_CODEX_PROBE_MARKER\"\nsleep 5\nexit 1\n",
+    )
+    .expect("write blocking fake Codex binary");
+    let mut permissions = std::fs::metadata(&fake_codex)
+        .expect("read fake Codex permissions")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&fake_codex, permissions).expect("make fake Codex binary executable");
+
+    let started_at = std::time::Instant::now();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "agent",
+            "session",
+            "bootstrap",
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            root_session_id,
+            "--json",
+        ])
+        .current_dir(&root)
+        .env("PATH", prepend_path(&root.join(".bin")))
+        .env("CODEX_HOME", &codex_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env("ASP_CODEX_BIN", &fake_codex)
+        .env("ASP_CODEX_PROBE_MARKER", &marker)
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("run external-process-free bootstrap");
+    let elapsed = started_at.elapsed();
+    let rendered = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(output.status.success(), "{rendered}");
+    assert!(!marker.exists(), "bootstrap invoked ASP_CODEX_BIN");
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "bootstrap blocked on external runtime discovery for {elapsed:?}: {rendered}"
+    );
+}
+
+#[test]
 fn codex_v2_default_agent_type_requires_typed_replacement_without_registration() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -846,4 +921,242 @@ fn drifted_resident_route_never_blocks_unrelated_codex_tool_use() {
             "{field}: {decision}"
         );
     }
+}
+
+#[test]
+fn repeated_bootstrap_locks_historical_identity_and_never_binds_from_path_presence() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let root_session_id = "019f126d-0000-7000-8000-000000000070";
+    let child_a = "019f126d-0000-7000-8000-000000000170";
+    let child_b = "019f126d-0000-7000-8000-000000000171";
+    super::write_codex_asp_explore_rollout(&root, root_session_id, child_a, "gpt-5.4-mini");
+    super::write_codex_asp_explore_rollout(&root, root_session_id, child_b, "gpt-5.4-mini");
+
+    let run_bootstrap = || {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args([
+                "agent",
+                "session",
+                "bootstrap",
+                "--name",
+                "asp-explore",
+                "--root-session-id",
+                root_session_id,
+                "--json",
+            ])
+            .current_dir(&root)
+            .env("PATH", prepend_path(&root.join(".bin")))
+            .env("CODEX_HOME", &codex_home)
+            .env("CODEX_THREAD_ID", root_session_id)
+            .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+            .env_remove("PRJ_CACHE_HOME")
+            .output()
+            .expect("run bootstrap for historical identity lock");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&output.stdout)
+            .expect("parse historical identity bootstrap")
+    };
+
+    let first = run_bootstrap();
+    let locked_child = first["session"]["childSessionId"]
+        .as_str()
+        .expect("first bootstrap selects one historical child")
+        .to_string();
+    assert!(
+        locked_child == child_a || locked_child == child_b,
+        "{first:#}"
+    );
+    assert_eq!(first["state"], "Audit", "{first:#}");
+    assert_eq!(
+        first["choices"][0]["id"],
+        "audit-host-agent-tree-before-live-target-rebind"
+    );
+
+    let observation = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "agent",
+            "session",
+            "observe-host-tree",
+            "--name",
+            "asp-explore",
+            "--resident-target-status",
+            "present",
+        ])
+        .current_dir(&root)
+        .env("PATH", prepend_path(&root.join(".bin")))
+        .env("CODEX_HOME", &codex_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("record path-only host observation");
+    assert!(observation.status.success());
+
+    let second = run_bootstrap();
+    assert_eq!(
+        second["session"]["childSessionId"], locked_child,
+        "repair bootstrap rotated to a different historical child: {second:#}"
+    );
+    assert_eq!(second["state"], "RebindExistingChildTarget", "{second:#}");
+    assert_eq!(second["session"]["messageTargetStatus"], "unbound");
+    assert_eq!(
+        second["hostResidentTargetObservation"]["identityStatus"],
+        "unverified"
+    );
+
+    let absent = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "agent",
+            "session",
+            "observe-host-tree",
+            "--name",
+            "asp-explore",
+            "--resident-target-status",
+            "absent",
+        ])
+        .current_dir(&root)
+        .env("PATH", prepend_path(&root.join(".bin")))
+        .env("CODEX_HOME", &codex_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("record target-not-found as host absence");
+    assert!(absent.status.success());
+    let typed = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "agent",
+            "session",
+            "observe-host-capability",
+            "--name",
+            "asp-explore",
+            "--agent-type-field",
+            "present",
+        ])
+        .current_dir(&root)
+        .env("PATH", prepend_path(&root.join(".bin")))
+        .env("CODEX_HOME", &codex_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("record typed spawn capability");
+    assert!(typed.status.success());
+
+    let third = run_bootstrap();
+    assert_eq!(third["session"]["childSessionId"], locked_child);
+    assert_eq!(third["state"], "Audit", "{third:#}");
+    assert_eq!(third["bootstrapBlocked"], serde_json::Value::Null);
+    assert_eq!(
+        third["canonicalBindingObservation"]["status"],
+        "historical-only-non-rebindable"
+    );
+    assert_eq!(
+        third["canonicalBindingObservation"]["reasoningGateEvaluated"],
+        false
+    );
+    assert_eq!(
+        third["canonicalBindingObservation"]["nextAction"],
+        "create-canonical-typed-child-after-orphaned-owner"
+    );
+    assert!(third.get("hostLifecycleObservation").is_none(), "{third:#}");
+    assert_eq!(
+        third["choices"][0]["id"], "create-canonical-typed-child-after-orphaned-owner",
+        "{third:#}"
+    );
+    assert!(
+        third["choices"]
+            .as_array()
+            .expect("choices")
+            .iter()
+            .all(|choice| choice["id"] != "resume-existing-child-for-live-target-rebind")
+    );
+}
+
+#[test]
+fn typed_subagent_start_supersedes_pre_spawn_target_absence() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let root_session_id = "019f126d-0000-7000-8000-000000000072";
+    let child_session_id = "019f126d-0000-7000-8000-000000000172";
+    let asp_state_home = root.join(".agent-semantic-protocols");
+
+    let run_session = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args(args)
+            .current_dir(&root)
+            .env("PATH", prepend_path(&root.join(".bin")))
+            .env("CODEX_HOME", &codex_home)
+            .env("CODEX_THREAD_ID", root_session_id)
+            .env("ASP_STATE_HOME", &asp_state_home)
+            .env_remove("PRJ_CACHE_HOME")
+            .output()
+            .expect("run agent session command")
+    };
+    let absent = run_session(&[
+        "agent",
+        "session",
+        "observe-host-tree",
+        "--name",
+        "asp-explore",
+        "--resident-target-status",
+        "absent",
+    ]);
+    assert!(absent.status.success());
+
+    let decision = super::run_codex_hook_decision_with_env(
+        &root,
+        "subagent-start",
+        json!({
+            "hook_event_name": "SubagentStart",
+            "session_id": root_session_id,
+            "agent_id": child_session_id,
+            "agent_type": "asp_explorer",
+            "model": "gpt-5.4-mini",
+            "permission_mode": "default",
+        }),
+        &[("CODEX_THREAD_ID", "")],
+    );
+    assert_eq!(decision["decision"], "allow");
+
+    let bootstrap = run_session(&[
+        "agent",
+        "session",
+        "bootstrap",
+        "--name",
+        "asp-explore",
+        "--root-session-id",
+        root_session_id,
+        "--json",
+    ]);
+    assert!(bootstrap.status.success());
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&bootstrap.stdout).expect("parse bootstrap receipt");
+    assert_eq!(
+        receipt["hostResidentTargetObservation"]["targetStatus"], "present",
+        "{receipt:#}"
+    );
+    assert_eq!(
+        receipt["hostResidentTargetObservation"]["identityStatus"],
+        "verified"
+    );
+    assert_eq!(
+        receipt["hostResidentTargetObservation"]["source"],
+        "codex.subagent-start"
+    );
+    assert!(
+        receipt["choices"]
+            .as_array()
+            .expect("choices")
+            .iter()
+            .all(|choice| !choice["id"].as_str().unwrap_or_default().contains("create")),
+        "{receipt:#}"
+    );
 }

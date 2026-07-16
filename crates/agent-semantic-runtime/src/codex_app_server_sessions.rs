@@ -22,7 +22,11 @@ pub fn codex_app_server_child_session_metadata(
     );
     let mut records = Vec::new();
     for thread in &threads {
-        if let Some(record) = child_rollout_metadata(thread, root_session_id)? {
+        if let Some(mut record) = child_rollout_metadata(thread, root_session_id)? {
+            if let Some(runtime) = read_thread_runtime_observation(&record.session_id) {
+                record.model = runtime.model.or(record.model);
+                record.reasoning_effort = runtime.reasoning_effort.or(record.reasoning_effort);
+            }
             records.push(record);
         }
     }
@@ -32,6 +36,84 @@ pub fn codex_app_server_child_session_metadata(
         serde_json::json!({ "recordCount": records.len() }),
     );
     Ok(records)
+}
+
+struct CodexThreadRuntimeObservation {
+    model: Option<String>,
+    reasoning_effort: Option<String>,
+}
+
+/// Reads the runtime settings owned by Codex for an existing child thread.
+///
+/// SubagentStart does not expose reasoning effort.  `thread/resume` does, and
+/// a resume without overrides does not start a turn or ask the child to attest
+/// its own settings.  This is therefore the host-owned runtime evidence lane
+/// used to complete typed resident validation.
+fn read_thread_runtime_observation(
+    child_session_id: &str,
+) -> Option<CodexThreadRuntimeObservation> {
+    let codex_binary = std::env::var_os("ASP_CODEX_BIN").unwrap_or_else(|| "codex".into());
+    let mut child = std::process::Command::new(codex_binary)
+        .args(["app-server", "--stdio"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let requests = [
+        serde_json::json!({
+            "method": "initialize",
+            "id": 1,
+            "params": {
+                "clientInfo": {
+                    "name": "asp_lifecycle_runtime_audit",
+                    "title": "ASP Lifecycle Runtime Audit",
+                    "version": env!("CARGO_PKG_VERSION"),
+                },
+                "capabilities": { "experimentalApi": true },
+            },
+        }),
+        serde_json::json!({ "method": "initialized", "params": {} }),
+        serde_json::json!({
+            "method": "thread/resume",
+            "id": 2,
+            "params": {
+                "threadId": child_session_id,
+                "excludeTurns": true,
+            },
+        }),
+    ]
+    .into_iter()
+    .map(|request| request.to_string())
+    .collect::<Vec<_>>()
+    .join("\n")
+        + "\n";
+    let mut stdin = child.stdin.take()?;
+    if std::io::Write::write_all(&mut stdin, requests.as_bytes()).is_err() {
+        let _ = child.kill();
+        return None;
+    }
+    let stdout = child.stdout.take()?;
+    let response = std::io::BufRead::lines(std::io::BufReader::new(stdout))
+        .map_while(Result::ok)
+        .filter_map(|line| serde_json::from_str::<Value>(&line).ok())
+        .find(|value| value.get("id").and_then(Value::as_i64) == Some(2));
+    let _ = child.kill();
+    let _ = child.wait();
+    let response = response?;
+    if response.get("error").is_some() {
+        return None;
+    }
+    Some(CodexThreadRuntimeObservation {
+        model: response
+            .pointer("/result/model")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        reasoning_effort: response
+            .pointer("/result/reasoningEffort")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
 }
 
 fn read_direct_child_threads(root_session_id: &str) -> Option<Vec<Value>> {

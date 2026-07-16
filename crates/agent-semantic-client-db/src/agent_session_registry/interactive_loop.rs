@@ -178,9 +178,9 @@ pub fn resident_child_runtime_verified_menu(
         menu.choices = vec![AgentSessionInteractiveChoice {
             id: "send-denied-asp-command",
             label: "Send the denied ASP command to the verified resident child.",
-            platform_action: "Use host-native message-agent send to the registered agentMessageTargetId; wait for a compact [asp-search-subagent] receipt.",
+            platform_action: "Derive one dispatch identity from the root session, registered agentMessageTargetId, and exact denied ASP command. Use host-native message-agent send exactly once for that identity, then wait for a compact [asp-search-subagent] receipt. A timeout or repeated bootstrap may only poll/wait for the same receipt; it must never resend the command or concatenate a second search output block.",
             next_state: AgentSessionLoopState::WaitReceipt,
-            required_inputs: &["deniedAspCommand"],
+            required_inputs: &["deniedAspCommand", "dispatchIdentity"],
         }];
     } else {
         menu.state = AgentSessionLoopState::Register;
@@ -203,6 +203,65 @@ pub fn resident_child_runtime_verified_menu(
 ///
 /// Persisted registry identity never proves that the current collaboration
 /// runtime can still resolve the canonical target after a host restart.
+pub fn typed_runtime_observation_matches_profile(
+    observed_agent_type: &str,
+    expected_agent_type: &str,
+    observed_model: &str,
+    observed_reasoning_effort: Option<&str>,
+    observation_source: &str,
+    expected_model: Option<&str>,
+    expected_reasoning_effort: Option<&str>,
+) -> bool {
+    observed_agent_type == "asp_explorer"
+        && expected_agent_type == "asp_explorer"
+        && expected_model.is_some_and(|expected| observed_model == expected)
+        && expected_reasoning_effort
+            .is_none_or(|expected| observed_reasoning_effort == Some(expected))
+        && matches!(
+            observation_source,
+            "subagent-start" | "codex-app-server-thread-resume-after-subagent-start"
+        )
+}
+
+pub fn resident_child_runtime_evidence_incomplete_menu<'a>(
+    mut menu: AgentSessionInteractiveMenu<'a>,
+) -> AgentSessionInteractiveMenu<'a> {
+    menu.state = AgentSessionLoopState::Blocked;
+    menu.choices = vec![AgentSessionInteractiveChoice {
+        id: "report-host-runtime-reasoning-evidence-unavailable",
+        label: "Report that Codex runtime reasoning evidence is unavailable.",
+        platform_action: "ASP already attempted the host-owned Codex thread/resume metadata surface without sending a child turn or applying overrides. Report bootstrapBlocked=host-runtime-reasoning-evidence-unavailable and allow unrelated tool use. Preserve /root/asp_explorer; do not follow up merely to retrigger SubagentStart, close, replace, or duplicate the typed child.",
+        next_state: AgentSessionLoopState::Audit,
+        required_inputs: &["hostRuntimeReasoningEvidenceGapReceipt"],
+    }];
+    menu.trace.push(AgentSessionLoopTraceStep {
+        state: AgentSessionLoopState::Blocked,
+        result: "host-runtime-reasoning-evidence-unavailable",
+    });
+    menu
+}
+
+pub fn resident_child_host_tree_audit_required_menu<'a>(
+    mut menu: AgentSessionInteractiveMenu<'a>,
+) -> AgentSessionInteractiveMenu<'a> {
+    if menu.session.is_none() || menu.state != AgentSessionLoopState::RebindExistingChildTarget {
+        return menu;
+    }
+    menu.state = AgentSessionLoopState::Audit;
+    menu.choices = vec![AgentSessionInteractiveChoice {
+        id: "audit-host-agent-tree-before-live-target-rebind",
+        label: "Audit the current native host tree before attempting Resume.",
+        platform_action: "Call the native collaboration list-agents surface for this root task. If /root/asp_explorer is absent, record `direnv exec . asp agent session observe-host-tree --name asp-explore --resident-target-status absent` and re-enter bootstrap. If it is present, record the corresponding present observation before attempting follow-up. A historical rollout ID alone is never a callable target.",
+        next_state: AgentSessionLoopState::Classify,
+        required_inputs: &["freshHostAgentTreeObservation"],
+    }];
+    menu.trace.push(AgentSessionLoopTraceStep {
+        state: AgentSessionLoopState::Audit,
+        result: "host-tree-observation-required-before-rebind",
+    });
+    menu
+}
+
 pub fn resident_child_host_tree_observation_menu<'a>(
     mut menu: AgentSessionInteractiveMenu<'a>,
     target_status: &str,
@@ -215,6 +274,31 @@ pub fn resident_child_host_tree_observation_menu<'a>(
             menu.trace.push(AgentSessionLoopTraceStep {
                 state: AgentSessionLoopState::Classify,
                 result: "canonical-host-target-present-registry-rebind-required",
+            });
+        } else if matches!(
+            menu.state,
+            AgentSessionLoopState::Cleanup | AgentSessionLoopState::RebindExistingChildTarget
+        ) {
+            let completed_resident_is_resumable = menu.state == AgentSessionLoopState::Cleanup;
+            menu.state = AgentSessionLoopState::RebindExistingChildTarget;
+            menu.choices = vec![AgentSessionInteractiveChoice {
+                id: "resume-existing-child-for-live-target-rebind",
+                label: if completed_resident_is_resumable {
+                    "Resume the completed host-visible canonical resident child."
+                } else {
+                    "Resume the host-visible canonical resident child."
+                },
+                platform_action: "Use the main agent's native follow-up surface for /root/asp_explorer. Completed or idle native children remain resumable and must keep the same identity. If the host returns target/path/id not found, treat that native failure as a fresh absence observation: run `direnv exec . asp agent session observe-host-tree --name asp-explore --resident-target-status absent`, then re-enter bootstrap. Do not close a host-visible child or retry a historical child ID.",
+                next_state: AgentSessionLoopState::Audit,
+                required_inputs: &["freshSameRootSubagentStartBindingOrTargetAbsentObservation"],
+            }];
+            menu.trace.push(AgentSessionLoopTraceStep {
+                state: AgentSessionLoopState::Classify,
+                result: if completed_resident_is_resumable {
+                    "canonical-host-target-present-completed-resumable"
+                } else {
+                    "canonical-host-target-present-resume-once"
+                },
             });
         }
         return menu;
@@ -428,6 +512,34 @@ fn resident_child_state_and_choices<'a>(
             ],
         );
     };
+    if matches!(
+        record.status.as_str(),
+        "archived" | "closed" | "deleted" | "expired" | "invalid" | "missing" | "orphan-risk"
+    ) {
+        return (
+            AgentSessionLoopState::Cleanup,
+            vec![
+                AgentSessionInteractiveChoice {
+                    id: "close-stale-resident-child",
+                    label: "Close or archive the stale ASP resident child with the host native action.",
+                    platform_action: "Use the host-native close/archive action only when the current host can resolve the existing ASP-managed child. A historical-only child with no native target is already non-rebindable and must not be resumed by ID. Wait for terminal host status or the SubagentStop receipt when a live target exists; do not rotate to another rollout candidate.",
+                    next_state: AgentSessionLoopState::Cleanup,
+                    required_inputs: &["nativeStopReceiptOrHistoricalTargetAbsent"],
+                },
+                AgentSessionInteractiveChoice {
+                    id: "audit-after-cleanup",
+                    label: "Re-enter audit after cleanup.",
+                    platform_action: "Run the same interactive loop again so cleanup is followed by Audit and Classify, not direct replacement.",
+                    next_state: AgentSessionLoopState::Audit,
+                    required_inputs: &["rootSessionId"],
+                },
+            ],
+            vec![AgentSessionLoopTraceStep {
+                state: AgentSessionLoopState::Classify,
+                result: "historical-or-stale-child-not-live-rebindable",
+            }],
+        );
+    }
     let live_message_target_bound = root_session_id
         .is_some_and(|root| agent_session_message_target_is_live_bound(record, root));
     if !live_message_target_bound {
@@ -452,32 +564,19 @@ fn resident_child_state_and_choices<'a>(
             ],
         );
     }
-    if matches!(
-        record.status.as_str(),
-        "archived" | "closed" | "deleted" | "expired" | "invalid" | "missing" | "orphan-risk"
-    ) || !record.is_routable_at(now)
-    {
+    if !record.is_routable_at(now) {
         return (
             AgentSessionLoopState::Cleanup,
-            vec![
-                AgentSessionInteractiveChoice {
-                    id: "close-stale-resident-child",
-                    label: "Close or archive the stale ASP resident child with the host native action.",
-                    platform_action: "Use the host-native close/archive action for the existing ASP-managed child. Wait for terminal host status or the SubagentStop receipt; previous_status=running only confirms the request. Do not create a replacement or re-enter Audit before shutdown completes.",
-                    next_state: AgentSessionLoopState::Cleanup,
-                    required_inputs: &["nativeStopReceipt"],
-                },
-                AgentSessionInteractiveChoice {
-                    id: "audit-after-cleanup",
-                    label: "Re-enter audit after cleanup.",
-                    platform_action: "Run the same interactive loop again so cleanup is followed by Audit and Classify, not direct replacement.",
-                    next_state: AgentSessionLoopState::Audit,
-                    required_inputs: &["rootSessionId"],
-                },
-            ],
+            vec![AgentSessionInteractiveChoice {
+                id: "close-stale-resident-child",
+                label: "Close or archive the expired ASP resident child with the host native action.",
+                platform_action: "The registry lease is no longer routable. Close/archive the live target when the host can resolve it, then re-enter Audit. Do not treat an expired binding as Ready and do not rotate to another historical rollout candidate.",
+                next_state: AgentSessionLoopState::Cleanup,
+                required_inputs: &["nativeStopReceiptOrExpiredBindingCleanup"],
+            }],
             vec![AgentSessionLoopTraceStep {
                 state: AgentSessionLoopState::Classify,
-                result: "registered-child-stale-or-non-routable",
+                result: "registered-child-binding-expired-or-non-routable",
             }],
         );
     }
@@ -532,9 +631,9 @@ fn resident_child_state_and_choices<'a>(
         vec![AgentSessionInteractiveChoice {
             id: "send-denied-asp-command",
             label: "Send the denied ASP command to the resident child.",
-            platform_action: "Use host-native message-agent send for a running resident or follow-up/resume for the same completed or idle canonical /root/asp_explorer target; wait for a compact [asp-search-subagent] receipt. Keep the resident child for later reuse. Do not retire it merely because one search turn completed.",
+            platform_action: "Derive one dispatch identity from the root session, canonical /root/asp_explorer target, and exact denied ASP command. Send or follow up exactly once for that identity, then wait for a compact [asp-search-subagent] receipt. A timeout or repeated bootstrap may only poll/wait for the same receipt; it must never resend the command or concatenate a second search output block. Keep the resident child for later reuse. Do not retire it merely because one search turn completed.",
             next_state: AgentSessionLoopState::WaitReceipt,
-            required_inputs: &["deniedAspCommand"],
+            required_inputs: &["deniedAspCommand", "dispatchIdentity"],
         }],
         vec![
             AgentSessionLoopTraceStep {

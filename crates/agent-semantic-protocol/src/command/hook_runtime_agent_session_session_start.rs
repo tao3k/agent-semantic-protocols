@@ -187,6 +187,9 @@ pub(super) fn classify_session_start_bootstrap(
     payload: &serde_json::Value,
     asp_session_policy: &AspSessionPolicy,
 ) -> Result<Option<HookDecision>, String> {
+    use crate::command::agent_session_registry::record_subagent_start_target_present as record_start;
+
+    let resident_name = asp_session_policy.resident_child_name();
     let codex_native_event = if platform == "codex" && event == "subagent-start" {
         crate::codex::native_agent_transport::parse_subagent_event(payload)?
     } else {
@@ -279,11 +282,10 @@ pub(super) fn classify_session_start_bootstrap(
             .as_deref()
             .is_some_and(|expected_model| expected_model != native.model);
         let reasoning_mismatch =
-            expected_reasoning_for_native_start
-                .as_deref()
-                .is_some_and(|expected_reasoning| {
-                    observed_reasoning_for_native_start.as_deref() != Some(expected_reasoning)
-                });
+            super::hook_runtime_agent_session_profile::reasoning_observation_mismatches_profile(
+                observed_reasoning_for_native_start.as_deref(),
+                expected_reasoning_for_native_start.as_deref(),
+            );
         let profile_mismatch = native.agent_type != asp_session_policy.resident_agent_role();
         let repair_candidate = (profile_mismatch || model_mismatch || reasoning_mismatch)
             && active_resident
@@ -329,13 +331,10 @@ pub(super) fn classify_session_start_bootstrap(
                 let model_mismatch = expected_model
                     .as_deref()
                     .is_some_and(|expected_model| expected_model != native.model);
-                let reasoning_mismatch =
-                    expected_reasoning_effort
-                        .as_deref()
-                        .is_some_and(|expected_reasoning_effort| {
-                            observed_reasoning_for_native_start.as_deref()
-                                != Some(expected_reasoning_effort)
-                        });
+                let reasoning_mismatch = super::hook_runtime_agent_session_profile::reasoning_observation_mismatches_profile(
+                    observed_reasoning_for_native_start.as_deref(),
+                    expected_reasoning_effort.as_deref(),
+                );
                 if model_mismatch || reasoning_mismatch {
                     let observed_reasoning_effort = observed_reasoning_for_native_start
                         .as_deref()
@@ -524,7 +523,10 @@ pub(super) fn classify_session_start_bootstrap(
                     "agentRole": asp_session_policy.resident_agent_role(),
                     "agentType": codex_native_event.as_ref().map(|native| native.agent_type.as_str()),
                     "model": codex_native_event.as_ref().map(|native| native.model.as_str()),
-                    "reasoningEffort": observed_reasoning_for_native_start.as_deref(),
+                    "reasoningVerification": super::hook_runtime_agent_session_profile::typed_spawn_reasoning_verification(
+                        observed_reasoning_for_native_start.as_deref(),
+                        expected_reasoning_for_native_start.as_deref(),
+                    ),
                     "permissionMode": codex_native_event.as_ref().map(|native| native.permission_mode.as_str()),
                     "messageTargetBinding": message_target_id.as_ref().map(|target| serde_json::json!({
                         "source": "codex.subagent-start",
@@ -581,6 +583,9 @@ pub(super) fn classify_session_start_bootstrap(
                             now,
                         },
                     )?;
+                    if message_target_id.is_some() {
+                        record_start(&registry, &root_session_id, resident_name, now)?;
+                    }
                     return Ok(native_runtime_drift_decision);
                 }
                 let claimed = registry.claim_resident_session(
@@ -643,6 +648,9 @@ pub(super) fn classify_session_start_bootstrap(
                                 now,
                             },
                         )?;
+                    }
+                    if message_target_id.is_some() {
+                        record_start(&registry, &root_session_id, resident_name, now)?;
                     }
                     return Ok(native_runtime_drift_decision);
                 }

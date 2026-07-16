@@ -4,8 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use agent_semantic_client_db::agent_session_registry::{
     AgentSessionInteractiveMenu, AgentSessionLookupRequest, AgentSessionRegistry,
     ResidentChildBootstrapMenuInput, resident_child_bootstrap_menu,
-    resident_child_host_runtime_refresh_eligible, resident_child_runtime_repair_menu,
-    resident_child_runtime_verified_menu,
+    resident_child_runtime_repair_menu, resident_child_runtime_verified_menu,
 };
 use agent_semantic_client_db::{AgentSessionRecord, agent_session_message_target_is_live_bound};
 
@@ -13,7 +12,10 @@ use super::agent_session_registry_args::SessionArgs;
 use super::agent_session_registry_state::{project_session_scope_id, resolved_root_session_id};
 
 use agent_semantic_client_db::agent_session_registry::AgentSessionHostRequirement;
-
+#[path = "agent_session_registry_binding.rs"]
+mod binding;
+#[path = "agent_session_registry_reasoning.rs"]
+mod reasoning;
 pub(super) fn bootstrap_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
@@ -81,7 +83,7 @@ pub(super) fn bootstrap_session(
     let mut registry_routable = record
         .as_ref()
         .is_some_and(|session| registry_record_routable(session, root_session_id.as_deref(), now));
-    if !registry_routable {
+    if record.is_none() {
         let preflight =
             super::agent_session_registry_profile::adopt_reusable_rollout_session_before_create(
                 registry,
@@ -100,7 +102,13 @@ pub(super) fn bootstrap_session(
         registry_routable = record.as_ref().is_some_and(|session| {
             registry_record_routable(session, root_session_id.as_deref(), now)
         });
+    } else if !registry_routable {
+        rollout_history_status = "locked-existing-repair-candidate";
+        rollout_history_action = "preserve-candidate-identity-until-host-classification";
     }
+    let host_resident_target_present = host_resident_target_observation
+        .as_ref()
+        .is_some_and(|observation| observation.target_status == "present");
     if host_resident_target_observation
         .as_ref()
         .is_some_and(|observation| observation.target_status == "absent")
@@ -113,81 +121,6 @@ pub(super) fn bootstrap_session(
         registry.update_session_status(&project_id, &existing.session_id, "orphan-risk", now)?;
         existing.status = "orphan-risk".to_string();
         registry_routable = false;
-    }
-    if host_resident_target_observation
-        .as_ref()
-        .is_some_and(|observation| observation.target_status == "present")
-        && let Some(existing) = record.as_ref()
-        && let Some(root_session_id) = root_session_id.as_deref()
-        && (!agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
-            existing,
-            root_session_id,
-        ) || existing.message_target_id.as_deref() != Some("/root/asp_explorer")
-            || !existing.is_routable_at(now))
-    {
-        // The registry `role` is the ASP semantic permission role (for
-        // example `search,subagent`), not the Codex managed agent kind.
-        // The native v2 target path is owned by managedAgentKind.
-        let message_target_id = "/root/asp_explorer".to_string();
-        let mut metadata = serde_json::from_str::<serde_json::Value>(&existing.metadata_json)
-            .unwrap_or_else(|_| serde_json::json!({}));
-        if !metadata.is_object() {
-            metadata = serde_json::json!({});
-        }
-        metadata["messageTargetBinding"] = serde_json::json!({
-            "source": "native-collaboration-list-agents",
-            "boundRootSessionId": root_session_id,
-            "childSessionId": existing.session_id,
-            "messageTargetId": message_target_id,
-            "observedAt": now,
-        });
-        let model_observation = match (
-            existing.model.as_deref(),
-            existing.model_observation_source.as_deref(),
-            existing.model_observed_at,
-        ) {
-            (Some(model), Some("codex.subagent-start"), Some(observed_at)) => Some(
-                agent_semantic_client_db::agent_session_registry::AgentSessionModelObservationRef {
-                    model,
-                    source: agent_semantic_client_db::agent_session_registry::AgentSessionModelObservationSource::CodexSubagentStart,
-                    observed_at,
-                    evidence_ref: existing.model_evidence_ref.as_deref(),
-                },
-            ),
-            (Some(model), Some("codex.rollout"), Some(observed_at)) => Some(
-                agent_semantic_client_db::agent_session_registry::AgentSessionModelObservationRef {
-                    model,
-                    source: agent_semantic_client_db::agent_session_registry::AgentSessionModelObservationSource::CodexRollout,
-                    observed_at,
-                    evidence_ref: existing.model_evidence_ref.as_deref(),
-                },
-            ),
-            _ => None,
-        };
-        registry.archive_session(&project_id, &existing.session_id, now)?;
-        let rebound = registry.claim_resident_session(
-            agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id: &project_id,
-                root_session_id,
-                session_id: &existing.session_id,
-                message_target_id: Some(&message_target_id),
-                parent_session_id: Some(root_session_id),
-                name,
-                role: &existing.role,
-                model_observation,
-                // Registry routability is expressed as active|idle; `Ready`
-                // is the derived bootstrap state, not a persisted row status.
-                status: "idle",
-                // A fresh native host-tree presence observation renews the
-                // resident route. Never carry an expired transient lease into
-                // the repaired durable resident binding.
-                expires_at: None,
-                metadata_json: &metadata.to_string(),
-                now,
-            },
-        )?;
-        record = Some(rebound);
-        registry_routable = true;
     }
     let expected_model =
         super::agent_session_registry_validation::expected_model_for_session_profile(
@@ -203,41 +136,161 @@ pub(super) fn bootstrap_session(
                 .map_or(name, |session| session.name.as_str()),
             record.as_ref().map_or("", |session| session.role.as_str()),
         )?;
+    let subagent_start_registered_child_id = record
+        .as_ref()
+        .filter(|session| {
+            reasoning::typed_subagent_start_binding_is_valid(
+                &session.role,
+                session.model_observation_source.as_deref(),
+                session.message_target_id.as_deref(),
+                root_session_id.as_deref().is_some_and(|root_session_id| {
+                    agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
+                        session,
+                        root_session_id,
+                    )
+                }),
+            )
+        })
+        .map(|session| session.session_id.clone());
+    let profile_attestation_target_verified = host_resident_target_present || registry_routable;
+    let (attested_child_id, attestation_source) = reasoning::profile_attestation_identity(
+        record.as_ref(),
+        subagent_start_registered_child_id.as_ref(),
+        root_session_id.as_deref(),
+        profile_attestation_target_verified,
+    )
+    .unzip();
     let platform =
         crate::command::agent_session_registry::active_platform().unwrap_or("{platform}");
-    let mut fresh_same_child_runtime_observation = false;
-    let mut host_runtime_override_blocked = false;
-    let mut host_observed_model = None;
-    let mut host_observed_reasoning_effort = None;
-    if platform == "codex"
-        && let (Some(root_session_id), Some(existing)) =
-            (root_session_id.as_deref(), record.as_ref())
-        && resident_child_host_runtime_refresh_eligible(
-            registry_routable,
-            existing,
-            root_session_id,
-        )
-    {
-        let refresh = super::agent_session_registry_profile::refresh_existing_codex_host_runtime(
-            registry,
-            &project_id,
-            root_session_id,
-            existing,
-            expected_model.as_deref(),
-            expected_reasoning_effort.as_deref(),
-            now,
-        )?;
-        fresh_same_child_runtime_observation = refresh.fresh_after_previous_observation;
-        host_runtime_override_blocked = refresh.runtime_override_blocked;
-        host_observed_model = refresh.observed_model;
-        host_observed_reasoning_effort = refresh.observed_reasoning_effort;
-        if let Some(refreshed) = refresh.record {
-            record = Some(refreshed);
-            registry_routable = record.as_ref().is_some_and(|session| {
-                registry_record_routable(session, Some(root_session_id), now)
-            });
-        }
+    // Bootstrap is a local state classifier. Runtime evidence is written by
+    // lifecycle observation paths; bootstrap must never synchronously start a
+    // Codex app-server or any other child process to manufacture missing facts.
+    let fresh_same_child_runtime_observation = false;
+    let host_runtime_override_blocked = false;
+    let host_observed_model: Option<String> = None;
+    let host_observed_reasoning_effort: Option<String> = None;
+    if let Some(rebound) = binding::maybe_bind_verified_canonical_target(
+        registry,
+        record.as_ref(),
+        host_resident_target_present,
+        expected_model.as_deref(),
+        host_observed_model.as_deref(),
+    )? {
+        registry_routable = true;
+        record = Some(rebound);
     }
+    let runtime_drift = root_session_id
+        .as_deref()
+        .map(|root_session_id| {
+            agent_semantic_hook::latest_subagent_runtime_drift(project_root, root_session_id)
+        })
+        .transpose()?
+        .flatten()
+        .filter(|observation| {
+            record
+                .as_ref()
+                .is_none_or(|session| session.session_id == observation.child_session_id)
+        });
+    let mut runtime_verification_observation = root_session_id
+        .as_deref()
+        .map(|root_session_id| {
+            agent_semantic_hook::latest_subagent_runtime_rebind_verified(
+                project_root,
+                root_session_id,
+            )
+        })
+        .transpose()?
+        .flatten()
+        .or_else(|| {
+            let root_session_id = root_session_id.as_deref()?;
+            let child_session_id = subagent_start_registered_child_id.as_ref()?;
+            let observed_model = host_observed_model.as_ref()?;
+            let observed_reasoning_effort = host_observed_reasoning_effort.as_ref()?;
+            let expected_model = expected_model.as_ref()?;
+            let expected_reasoning_effort = expected_reasoning_effort.as_ref()?;
+            (observed_model == expected_model
+                && observed_reasoning_effort == expected_reasoning_effort)
+                .then(
+                    || agent_semantic_hook::SubagentRuntimeRebindVerifiedObservation {
+                        root_session_id: root_session_id.to_string(),
+                        child_session_id: child_session_id.clone(),
+                        observed_agent_type: "asp_explorer".to_string(),
+                        expected_agent_type: "asp_explorer".to_string(),
+                        previous_observed_model: None,
+                        previous_observed_reasoning_effort: None,
+                        observed_model: observed_model.clone(),
+                        observed_reasoning_effort: Some(observed_reasoning_effort.clone()),
+                        expected_model: expected_model.clone(),
+                        expected_reasoning_effort: Some(expected_reasoning_effort.clone()),
+                        observation_source: "codex-app-server-thread-resume-after-subagent-start",
+                        observation_count: 1,
+                    },
+                )
+        })
+        .or_else(|| {
+            reasoning::profile_attested_runtime_observation(
+                root_session_id.as_deref(),
+                attested_child_id.as_ref(),
+                record.as_ref().and_then(|record| record.model.as_ref()),
+                expected_model.as_ref(),
+                expected_reasoning_effort.as_ref(),
+                profile_attestation_target_verified,
+                attestation_source,
+            )
+        });
+    let runtime_reasoning_from_host = runtime_verification_observation
+        .as_ref()
+        .is_some_and(|observation| observation.observed_reasoning_effort.is_none())
+        && host_observed_reasoning_effort.is_some();
+    if runtime_reasoning_from_host
+        && let Some(observation) = runtime_verification_observation.as_mut()
+    {
+        observation.observed_reasoning_effort = host_observed_reasoning_effort.clone();
+    }
+    let runtime_reasoning_profile_attested = reasoning::profile_attestation_is_valid(
+        runtime_verification_observation.as_ref(),
+        expected_reasoning_effort.as_ref(),
+        attested_child_id.as_ref(),
+        expected_model.as_ref(),
+        profile_attestation_target_verified,
+        runtime_drift.as_ref(),
+    );
+    let runtime_verification_matches_profile = runtime_verification_observation
+        .as_ref()
+        .is_some_and(|observation| {
+            agent_semantic_client_db::agent_session_registry::typed_runtime_observation_matches_profile(
+                &observation.observed_agent_type,
+                &observation.expected_agent_type,
+                &observation.observed_model,
+                observation.observed_reasoning_effort.as_deref(),
+                observation.observation_source,
+                expected_model.as_deref(),
+                expected_reasoning_effort.as_deref(),
+            )
+        }) || runtime_reasoning_profile_attested;
+    let runtime_verification_evidence_incomplete = runtime_verification_observation.is_some()
+        && !runtime_verification_matches_profile
+        && runtime_drift.is_none();
+    let runtime_verified = runtime_verification_observation
+        .clone()
+        .filter(|_| runtime_verification_matches_profile);
+
+    if let (Some(root_session_id), Some(observation)) =
+        (root_session_id.as_deref(), runtime_verified.as_ref())
+        && host_resident_target_present
+        && let Some(mut verified_record) = registry.lookup_session(AgentSessionLookupRequest {
+            project_id: &project_id,
+            session_id: Some(&observation.child_session_id),
+            root_session_id: Some(root_session_id),
+            name: Some(name),
+        })?
+    {
+        registry.update_session_status(&project_id, &verified_record.session_id, "active", now)?;
+        verified_record.status = "active".to_string();
+        registry_routable = registry_record_routable(&verified_record, Some(root_session_id), now);
+        record = Some(verified_record);
+    }
+
     let mut menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
         platform,
         name,
@@ -249,6 +302,7 @@ pub(super) fn bootstrap_session(
         rollout_history_action: Some(rollout_history_action),
         now,
     });
+    menu = binding::require_host_tree_audit(menu, host_resident_target_observation.is_none());
     if let Some(observation) = host_resident_target_observation.as_ref() {
         menu = agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
             menu,
@@ -269,39 +323,17 @@ pub(super) fn bootstrap_session(
                 .retain(|choice| choice.id != "activate-inline-parser-fallback");
         }
     }
-    let runtime_drift = root_session_id
-        .as_deref()
-        .map(|root_session_id| {
-            agent_semantic_hook::latest_subagent_runtime_drift(project_root, root_session_id)
-        })
-        .transpose()?
-        .flatten()
-        .filter(|observation| {
-            record
-                .as_ref()
-                .is_none_or(|session| session.session_id == observation.child_session_id)
-        });
-    let runtime_verified = root_session_id
-        .as_deref()
-        .map(|root_session_id| {
-            agent_semantic_hook::latest_subagent_runtime_rebind_verified(
-                project_root,
-                root_session_id,
-            )
-        })
-        .transpose()?
-        .flatten()
-        .filter(|observation| {
-            record
-                .as_ref()
-                .is_none_or(|session| session.session_id == observation.child_session_id)
-        });
-    if registry_routable && runtime_verified.is_some() {
-        menu = resident_child_runtime_verified_menu(menu, registry_routable);
-    } else if let Some(observation) = runtime_drift.as_ref() {
-        menu = resident_child_runtime_repair_menu(menu, observation.consecutive_observation_count);
-    } else if registry_routable && host_runtime_override_blocked {
-        menu = resident_child_runtime_repair_menu(menu, 2);
+    if profile_attestation_target_verified {
+        if runtime_verified.is_some() {
+            menu = resident_child_runtime_verified_menu(menu, registry_routable);
+        } else if runtime_verification_evidence_incomplete {
+            menu = agent_semantic_client_db::agent_session_registry::resident_child_runtime_evidence_incomplete_menu(menu);
+        } else if let Some(observation) = runtime_drift.as_ref() {
+            menu =
+                resident_child_runtime_repair_menu(menu, observation.consecutive_observation_count);
+        } else if registry_routable && host_runtime_override_blocked {
+            menu = resident_child_runtime_repair_menu(menu, 2);
+        }
     }
     if args.json {
         let mut rendered = serde_json::to_value(&menu)
@@ -360,6 +392,7 @@ pub(super) fn bootstrap_session(
                             "residentName": observation.resident_name,
                             "canonicalTarget": canonical_resident_target(&menu.host_requirement),
                             "targetStatus": observation.target_status,
+                            "identityStatus": observation.identity_status,
                             "source": observation.source,
                             "observedAt": observation.observed_at,
                             "expiresAt": observation.expires_at,
@@ -369,6 +402,18 @@ pub(super) fn bootstrap_session(
                     },
                 ),
             );
+            if host_resident_target_observation
+                .as_ref()
+                .is_some_and(|observation| observation.target_status == "absent")
+            {
+                binding::insert_absent_canonical_target_receipt(
+                    object,
+                    record.as_ref(),
+                    host_typed_spawn_observation
+                        .as_ref()
+                        .map(|observation| observation.field_status.as_str()),
+                );
+            }
             object.insert(
                 "hostTypedSpawnClassification".to_string(),
                 host_typed_spawn_observation.as_ref().map_or(
@@ -400,7 +445,8 @@ pub(super) fn bootstrap_session(
                 ),
             );
         }
-        if let Some(observation) = runtime_drift.as_ref()
+        if profile_attestation_target_verified
+            && let Some(observation) = runtime_drift.as_ref()
             && let Some(object) = rendered.as_object_mut()
         {
             let canonical_target = canonical_resident_target(&menu.host_requirement);
@@ -654,7 +700,23 @@ pub(super) fn bootstrap_session(
                 );
             }
         }
-        if let Some(observation) = runtime_verified.as_ref()
+        if profile_attestation_target_verified
+            && runtime_verification_evidence_incomplete
+            && let Some(observation) = runtime_verification_observation.as_ref()
+        {
+            reasoning::insert_runtime_evidence_incomplete_receipt(
+                &mut rendered,
+                observation,
+                &canonical_resident_target(&menu.host_requirement),
+                menu.host_requirement.managed_agent_kind,
+                expected_model.as_deref(),
+                expected_reasoning_effort.as_deref(),
+                runtime_reasoning_from_host,
+                registry_routable,
+            );
+        }
+        if profile_attestation_target_verified
+            && let Some(observation) = runtime_verified.as_ref()
             && let Some(object) = rendered.as_object_mut()
         {
             object.insert(
@@ -671,14 +733,14 @@ pub(super) fn bootstrap_session(
                     "mainAgentAction": serde_json::Value::Null,
                     "verification": {
                         "source": observation.observation_source,
-                        "result": "observed-runtime-matches-expected"
+                        "result": reasoning::profile_attested_control_result(runtime_reasoning_profile_attested)
                     }
                 }),
             );
             object.insert(
                 "hostLifecycleObservation".to_string(),
                 serde_json::json!({
-                    "status": "resident-child-typed-replacement-verified",
+                    "status": reasoning::profile_attested_lifecycle_status(runtime_reasoning_profile_attested),
                     "rootSessionId": observation.root_session_id,
                     "childSessionId": observation.child_session_id,
                     "sameChildIdentity": false,
@@ -689,10 +751,28 @@ pub(super) fn bootstrap_session(
                     "previousObservedReasoningEffort": observation.previous_observed_reasoning_effort,
                     "observedModel": observation.observed_model,
                     "observedReasoningEffort": observation.observed_reasoning_effort,
-                    "expectedModel": observation.expected_model,
-                    "expectedReasoningEffort": observation.expected_reasoning_effort,
-                    "modelMatchesExpected": observation.observed_model == observation.expected_model,
-                    "reasoningMatchesExpected": observation.observed_reasoning_effort == observation.expected_reasoning_effort,
+                    "expectedModel": expected_model,
+                    "expectedReasoningEffort": expected_reasoning_effort,
+                    "modelMatchesExpected": expected_model.as_deref().is_some_and(|expected| observation.observed_model == expected),
+                    "reasoningMatchesExpected": expected_reasoning_effort.as_deref().is_none_or(|expected| observation.observed_reasoning_effort.as_deref() == Some(expected)),
+                    "reasoningRuntimeObserved": observation.observed_reasoning_effort.is_some(),
+                    "reasoningVerificationStatus": if runtime_reasoning_profile_attested {
+                        "host-profile-attested-unobservable"
+                    } else {
+                        "observed-match"
+                    },
+                    "reasoningEvidenceSource": if runtime_reasoning_profile_attested {
+                        reasoning::profile_attestation_evidence_source(observation.observation_source)
+                    } else if runtime_reasoning_from_host {
+                        "codex-app-server-thread-resume"
+                    } else {
+                        observation.observation_source
+                    },
+                    "profileAttestation": reasoning::profile_attestation_receipt(
+                        runtime_reasoning_profile_attested,
+                        observation,
+                        (attested_child_id.as_ref(), expected_reasoning_effort.as_ref()),
+                    ),
                     "registryRoutable": registry_routable,
                     "nextAction": if registry_routable {
                         "send-denied-asp-command"
@@ -730,9 +810,10 @@ pub(super) fn bootstrap_session(
         }
         if let Some(observation) = host_resident_target_observation.as_ref() {
             println!(
-                "host-resident-target-observation: target={} status={} source={} expiresAt={} fresh=true registersResidentChild=false",
+                "host-resident-target-observation: target={} status={} identityStatus={} source={} expiresAt={} fresh=true registersResidentChild=false",
                 canonical_resident_target(&menu.host_requirement),
                 observation.target_status,
+                observation.identity_status,
                 observation.source,
                 observation.expires_at,
             );
@@ -804,7 +885,7 @@ fn print_bootstrap_menu(
     println!("why: {why}");
     if let Some(observation) = runtime_verified {
         println!(
-            "typed-replacement-verification: verified=true child={} sameChildIdentity=false source={} observationCount={} previousModel={} observedModel={} expectedModel={} previousReasoning={} observedReasoning={} expectedReasoning={} modelMatchesExpected=true reasoningMatchesExpected=true registryRoutable={}",
+            "typed-replacement-verification: verified=true child={} sameChildIdentity=false source={} observationCount={} previousModel={} observedModel={} expectedModel={} previousReasoning={} observedReasoning={} expectedReasoning={} modelMatchesExpected=true reasoningVerification=observation-or-profile-attestation registryRoutable={}",
             observation.child_session_id,
             observation.observation_source,
             observation.observation_count,

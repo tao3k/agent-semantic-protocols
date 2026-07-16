@@ -173,6 +173,147 @@ fn codex_rollout_session_index_uses_direct_pure_rust_session_lookup() {
     );
 }
 
+#[test]
+fn codex_app_server_runtime_observation_supplies_reasoning_effort() {
+    let _env_guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let session_id = "019f2dc6-3ed6-73b3-809d-62c4a3802ffb";
+    let root_session_id = "019f1f1a-5389-7223-a150-77dcb5ea8dd4";
+    let root = temp_codex_home("codex-app-server-runtime-observation");
+    let rollout_dir = root.join("sessions").join("2026").join("07").join("04");
+    fs::create_dir_all(&rollout_dir).expect("create rollout dir");
+    let rollout_path = rollout_dir.join(format!("rollout-2026-07-04T08-36-35-{session_id}.jsonl"));
+    fs::write(
+        &rollout_path,
+        format!(
+            r#"{{"type":"session_meta","payload":{{"id":"{session_id}","session_id":"{root_session_id}","parent_thread_id":"{root_session_id}","thread_source":"subagent","agent_role":"asp_explorer","source":{{"subagent":{{"thread_spawn":{{"parent_thread_id":"{root_session_id}","agent_role":"asp_explorer","depth":1}}}}}},"model_provider":"openai","cli_version":"0.142.5","cwd":"/tmp/project"}}}}
+{{"type":"turn_context","payload":{{"model":"gpt-5.4-mini"}}}}
+"#
+        ),
+    )
+    .expect("write rollout");
+
+    let fake_codex = root.join("fake-codex");
+    fs::write(
+        &fake_codex,
+        format!(
+            r#"#!/bin/sh
+IFS= read -r initialize
+IFS= read -r initialized
+IFS= read -r request
+input="$initialize$initialized$request"
+case "$input" in
+  *'"thread/list"'*)
+    printf '%s\n' '{{"id":2,"result":{{"data":[{{"id":"{session_id}","parentThreadId":"{root_session_id}","agentRole":"asp_explorer","source":{{"subAgent":{{"threadSpawn":{{"parentThreadId":"{root_session_id}","agentPath":"/root/asp_explorer","depth":1}}}}}}}}]}}}}'
+    ;;
+  *)
+    printf '%s\n' '{{"id":2,"result":{{"thread":{{"id":"{session_id}"}},"model":"gpt-5.4-mini","reasoningEffort":"low"}}}}'
+    ;;
+esac
+"#
+        ),
+    )
+    .expect("write fake codex");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&fake_codex, fs::Permissions::from_mode(0o755))
+            .expect("make fake codex executable");
+    }
+
+    let previous_codex_home = env::var_os("CODEX_HOME");
+    let previous_codex_bin = env::var_os("ASP_CODEX_BIN");
+    unsafe {
+        env::set_var("CODEX_HOME", &root);
+        env::set_var("ASP_CODEX_BIN", &fake_codex);
+    }
+    let records = agent_semantic_runtime::codex_app_server_child_session_metadata(root_session_id)
+        .expect("read app-server child metadata");
+    restore_codex_home(previous_codex_home);
+    unsafe {
+        match previous_codex_bin {
+            Some(value) => env::set_var("ASP_CODEX_BIN", value),
+            None => env::remove_var("ASP_CODEX_BIN"),
+        }
+    }
+    fs::remove_dir_all(&root).ok();
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].session_id, session_id);
+    assert_eq!(records[0].model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(records[0].reasoning_effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn missing_runtime_reasoning_preserves_rollout_reasoning_effort() {
+    let _env_guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let session_id = "019f2dc6-3ed6-73b3-809d-62c4a3802ffc";
+    let root_session_id = "019f1f1a-5389-7223-a150-77dcb5ea8ddc";
+    let root = temp_codex_home("codex-runtime-null-preserves-rollout-reasoning");
+    let rollout_dir = root.join("sessions").join("2026").join("07").join("04");
+    fs::create_dir_all(&rollout_dir).expect("create rollout dir");
+    fs::write(
+        rollout_dir.join(format!("rollout-2026-07-04T08-36-35-{session_id}.jsonl")),
+        format!(
+            r#"{{"type":"session_meta","payload":{{"id":"{session_id}","session_id":"{root_session_id}","parent_thread_id":"{root_session_id}","thread_source":"subagent","agent_role":"asp_explorer","source":{{"subagent":{{"thread_spawn":{{"parent_thread_id":"{root_session_id}","agent_role":"asp_explorer","depth":1}}}}}},"model_provider":"openai","cli_version":"0.142.5","cwd":"/tmp/project"}}}}
+{{"type":"turn_context","payload":{{"model":"gpt-5.4-mini","reasoning_effort":"low"}}}}
+"#
+        ),
+    )
+    .expect("write rollout");
+
+    let fake_codex = root.join("fake-codex");
+    fs::write(
+        &fake_codex,
+        format!(
+            r#"#!/bin/sh
+IFS= read -r initialize
+IFS= read -r initialized
+IFS= read -r request
+input="$initialize$initialized$request"
+case "$input" in
+  *'"thread/list"'*)
+    printf '%s\n' '{{"id":2,"result":{{"data":[{{"id":"{session_id}","parentThreadId":"{root_session_id}","agentRole":"asp_explorer","source":{{"subAgent":{{"threadSpawn":{{"parentThreadId":"{root_session_id}","agentPath":"/root/asp_explorer","depth":1}}}}}}}}]}}}}'
+    ;;
+  *)
+    printf '%s\n' '{{"id":2,"result":{{"thread":{{"id":"{session_id}"}},"model":"gpt-5.4-mini","reasoningEffort":null}}}}'
+    ;;
+esac
+"#
+        ),
+    )
+    .expect("write fake codex");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&fake_codex, fs::Permissions::from_mode(0o755))
+            .expect("make fake codex executable");
+    }
+
+    let previous_codex_home = env::var_os("CODEX_HOME");
+    let previous_codex_bin = env::var_os("ASP_CODEX_BIN");
+    unsafe {
+        env::set_var("CODEX_HOME", &root);
+        env::set_var("ASP_CODEX_BIN", &fake_codex);
+    }
+    let records = agent_semantic_runtime::codex_app_server_child_session_metadata(root_session_id)
+        .expect("read app-server child metadata");
+    restore_codex_home(previous_codex_home);
+    unsafe {
+        match previous_codex_bin {
+            Some(value) => env::set_var("ASP_CODEX_BIN", value),
+            None => env::remove_var("ASP_CODEX_BIN"),
+        }
+    }
+    fs::remove_dir_all(&root).ok();
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].reasoning_effort.as_deref(), Some("low"));
+}
+
 fn temp_codex_home(label: &str) -> std::path::PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)

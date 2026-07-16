@@ -302,12 +302,20 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         {
             decision.decision = DecisionKind::Allow;
             decision.reason_kind = ReasonKind::None;
-            decision.message =
+            decision.message = if client == "codex" {
+                "ASP preserved the completed managed resident as idle; allow the native child turn to finish."
+                    .to_string()
+            } else {
                 "ASP archived the stopped managed child; allow native subagent shutdown."
-                    .to_string();
+                    .to_string()
+            };
             decision.fields.insert(
                 "agentSessionAction".to_string(),
-                serde_json::Value::String("subagent-stop-archived-managed-child".to_string()),
+                serde_json::Value::String(if client == "codex" {
+                    "subagent-stop-preserved-resident-idle".to_string()
+                } else {
+                    "subagent-stop-archived-managed-child".to_string()
+                }),
             );
             decision.fields.insert(
                 "childSessionId".to_string(),
@@ -506,7 +514,16 @@ fn archive_stopped_managed_child(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| format!("failed to read subagent-stop timestamp: {error}"))?
         .as_secs() as i64;
-    if registry.archive_session(&project_id, &session_id, now)? {
+    // Codex emits SubagentStop when one child turn finishes, while the native
+    // collaboration target remains addressable through followup_task. A
+    // resident therefore becomes idle here; archiving it would confuse turn
+    // completion with resident identity termination.
+    let updated = if platform == "codex" {
+        registry.update_session_status(&project_id, &session_id, "idle", now)?
+    } else {
+        registry.archive_session(&project_id, &session_id, now)?
+    };
+    if updated {
         return Ok(Some(session_id));
     }
     Ok(None)

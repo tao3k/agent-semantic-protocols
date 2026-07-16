@@ -172,7 +172,7 @@ fn validate_session_profile_with_rollout_lookup(
         .as_deref()
         .map(|path| normalized_path_string(Path::new(path)));
     let mut failures = Vec::new();
-    let warnings: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
     let mut pass_reason = None;
     if metadata.thread_source.as_deref() != Some("subagent") {
         failures.push(format!(
@@ -332,13 +332,9 @@ fn validate_session_profile_with_rollout_lookup(
     if let Some(reason) =
         sandbox_policy_mismatch_reason(&expected.sandbox, metadata.sandbox_policy.as_deref())
     {
-        let sandbox_drift_reason = format!(
-            "{reason}; sandbox mismatch is warning-only because Codex can inherit the parent sandbox"
-        );
-        pass_reason = Some(match pass_reason.take() {
-            Some(existing) => format!("{existing}; {sandbox_drift_reason}"),
-            None => sandbox_drift_reason,
-        });
+        warnings.push(format!(
+            "{reason}; sandboxVerificationStatus=host-inherited-drift-warning; sandboxPolicy=warning-only-host-inherited; sandboxAffectsReady=false"
+        ));
     }
     Ok(SessionValidationReport {
         status: if !failures.is_empty() {

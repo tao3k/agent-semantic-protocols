@@ -13,6 +13,8 @@ const SCHEMA_VERSION: &str = "1";
 const SOURCE: &str = "native-collaboration-spawn-agent-schema";
 const HOST_TREE_SCHEMA_ID: &str = "agent.semantic-protocols.host-resident-target-observation";
 const HOST_TREE_SOURCE: &str = "native-collaboration-list-agents";
+const NATIVE_SUBAGENT_START_SOURCE: &str = "codex.subagent-start";
+const NATIVE_SUBAGENT_START_OBSERVATION_TTL_SECONDS: i64 = 300;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,9 +55,17 @@ pub(super) struct HostResidentTargetObservation {
     pub(super) root_session_id: String,
     pub(super) resident_name: String,
     pub(super) target_status: String,
+    /// `present` proves path addressability only.  Native child identity is
+    /// established separately by a lifecycle receipt such as SubagentStart.
+    #[serde(default = "unverified_identity_status")]
+    pub(super) identity_status: String,
     pub(super) source: String,
     pub(super) observed_at: i64,
     pub(super) expires_at: i64,
+}
+
+fn unverified_identity_status() -> String {
+    "unverified".to_string()
 }
 
 impl HostResidentTargetObservation {
@@ -65,7 +75,10 @@ impl HostResidentTargetObservation {
             && self.root_session_id == root_session_id
             && self.resident_name == name
             && matches!(self.target_status.as_str(), "present" | "absent")
-            && self.source == HOST_TREE_SOURCE
+            && matches!(
+                self.source.as_str(),
+                HOST_TREE_SOURCE | NATIVE_SUBAGENT_START_SOURCE
+            )
             && self.observed_at <= now
             && now <= self.expires_at
     }
@@ -149,6 +162,7 @@ pub(super) fn observe_host_tree(
         root_session_id,
         resident_name: name.to_string(),
         target_status: target_status.to_string(),
+        identity_status: unverified_identity_status(),
         source: HOST_TREE_SOURCE.to_string(),
         observed_at,
         expires_at: observed_at + args.observation_ttl_seconds,
@@ -162,10 +176,11 @@ pub(super) fn observe_host_tree(
         );
     } else {
         println!(
-            "[agent-session-host-tree] rootSession=\"{}\" name=\"{}\" targetStatus={} source={} expiresAt={} registersResidentChild=false",
+            "[agent-session-host-tree] rootSession=\"{}\" name=\"{}\" targetStatus={} identityStatus={} source={} expiresAt={} registersResidentChild=false",
             observation.root_session_id,
             observation.resident_name,
             observation.target_status,
+            observation.identity_status,
             observation.source,
             observation.expires_at,
         );
@@ -256,6 +271,28 @@ fn write_host_tree_observation(
     fs::write(&temporary, bytes)
         .map_err(|error| format!("write host tree observation: {error}"))?;
     fs::rename(&temporary, &path).map_err(|error| format!("commit host tree observation: {error}"))
+}
+
+pub(in crate::command) fn record_subagent_start_target_present(
+    registry: &AgentSessionRegistry,
+    root_session_id: &str,
+    resident_name: &str,
+    observed_at: i64,
+) -> Result<(), String> {
+    write_host_tree_observation(
+        registry,
+        &HostResidentTargetObservation {
+            schema_id: HOST_TREE_SCHEMA_ID.to_string(),
+            schema_version: SCHEMA_VERSION.to_string(),
+            root_session_id: root_session_id.to_string(),
+            resident_name: resident_name.to_string(),
+            target_status: "present".to_string(),
+            identity_status: "verified".to_string(),
+            source: NATIVE_SUBAGENT_START_SOURCE.to_string(),
+            observed_at,
+            expires_at: observed_at + NATIVE_SUBAGENT_START_OBSERVATION_TTL_SECONDS,
+        },
+    )
 }
 
 fn observation_path(

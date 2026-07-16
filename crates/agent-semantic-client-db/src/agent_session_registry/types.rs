@@ -120,7 +120,12 @@ pub fn agent_session_message_target_is_live_bound(
     };
     matches!(
         binding.get("source").and_then(serde_json::Value::as_str),
-        Some("codex.subagent-start" | "native-collaboration-list-agents")
+        Some(
+            "codex.subagent-start"
+                | "native-collaboration-list-agents"
+                | "codex-typed-subagent-start-plus-native-host-tree"
+                | "codex-rollout-session-meta-plus-native-host-tree"
+        )
     ) && binding
         .get("boundRootSessionId")
         .and_then(serde_json::Value::as_str)
