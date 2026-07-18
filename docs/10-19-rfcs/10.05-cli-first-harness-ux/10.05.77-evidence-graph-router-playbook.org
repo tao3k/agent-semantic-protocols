@@ -1,0 +1,221 @@
+* Evidence graph router playbook
+
+ASP search is one bounded evidence-state machine, not a conversational chain of
+independent commands.  Evidence, graph facts, topology, frontier selection,
+router decisions, synthesis, and reflection share one receipt identity.
+
+** State machine
+
+#+begin_example
+observe -> route -> materialize -> rank -> advance -> synthesize -> reflect
+                 \-> typed-failure ----------------------------/
+#+end_example
+
+Each transition consumes the previous evidence state and appends facts.  It
+MUST NOT restart discovery, repeat an exact command, or discard a previously
+materialized owner/selector.  =prime= is only an initial map.  Exact owner,
+selector, dependency, failure, or recommended-next anchors skip =prime=.
+
+** Graph and topology
+
+Evidence becomes typed graph nodes and edges before another search command is
+chosen.  The minimum shared node kinds are =query=, =owner=, =item=, =test=,
+=dependency=, =failure=, and =policy=.  Edges record why one fact reaches or
+blocks another.  Topology is the current connected evidence subgraph plus its
+open frontier, not a dump of the whole project graph.
+
+The router ranks only open frontier edges.  It selects one next edge using
+information gain, owner materialization value, reachability, cost, and repeat
+risk.  Independent axes may fan out, but they fan in to one synthesis receipt.
+
+** Router decision table
+
+The router derives the next command from materialized state; it does not infer
+progress from the conversation transcript.
+
+| Evidence state | Next edge | Closure condition |
+|----------------+-----------+-------------------|
+| exact selector | exact query | selector payload returned |
+| owner path | owner items | exact item or explicit miss |
+| symbol/path anchor | lexical or owner search | owner materialized |
+| broad independent axes | one prime, then fan-out/fan-in | synthesis selects one frontier |
+| provider capability absent | no command | =provider-unavailable= |
+| every candidate fails workspace admission | no rank | =candidate-out-of-scope= |
+| candidate/provider language differs | no rank | =candidate-language-mismatch= |
+| equally specific providers claim one candidate | no rank | =candidate-provider-ambiguous= |
+| repeated generic miss | no replay | =selector-anchor-unavailable= |
+| command budget consumed | no command | =budget-exhausted= |
+
+Every command is recorded as a route edge before execution.  A command whose
+normalized identity already exists in the route is ineligible.  The selected
+frontier is replaced by its result facts rather than appended as another
+unrelated search turn.
+
+Workspace identity is immutable state.  A route may narrow below the requested
+workspace but MUST NOT widen into its parent repository.  Route kind records
+the facade actually executed; =fd= and =rg= are discovery kinds, never aliases
+for =prime= or =pipe=.  These invariants make scope drift and misleading
+metrics machine-detectable.
+
+** Budget and closure
+
+The default resident budget is three ASP commands.  Search closes early when an
+exact owner/selector is materialized or a typed failure proves the next edge is
+unavailable.  A timeout does not reset the state or authorize replay.
+
+Budget identity is the parent search intent, not the lifetime of the resident.
+A distinct parent task starts a fresh route and command counter.  A correction
+that only repairs receipt serialization consumes no search command.
+
+An unsupported workspace language is a terminal =provider-unavailable=
+failure, not permission to alternate generic =fd= and =rg= discovery.  A
+generic-term miss may be refined once into a parser-owned path or symbol
+anchor; if that anchor cannot be formed, the router closes with
+=selector-anchor-unavailable=.  It MUST NOT emit the facade-less and therefore
+non-executable =asp search prime ...= form.
+
+Every completed exploration emits exactly one
+=asp.search.playbook-receipt.v1= receipt as one schema-valid JSON object
+containing the executed route, compact
+evidence, topology/frontier, one next command, metrics, and one reflection.
+Reflection names a missing/repeated edge and is input to the next protocol
+improvement; it is not free-form narration.
+
+A typed failure includes =reasonKind= and a non-empty =detail=; it includes
+=languageId= whenever provider capability is the failed edge.  A failure label
+without its explanatory payload is not a valid closure receipt.
+
+** Quality SLO
+
+Search quality is measured by rounds to first actionable identity, not by the
+number of facts printed.
+
+| Starting evidence | Maximum discovery commands | Expected closure |
+|-------------------+----------------------------+------------------|
+| exact selector | 0 | exact query |
+| exact owner | 1 | item selector or explicit miss |
+| symbol/path anchor | 2 | owner/selector |
+| unknown project map | 3 | one selected frontier |
+| unsupported provider | 1 | typed failure |
+
+Across all cases, repeated triggers, workspace drift, placeholder commands, and
+schema-invalid receipts have a target of zero.  A candidate optimization is
+accepted only when it improves or preserves these bounds on the fixed replay
+cases; larger packets or more facts do not compensate for an extra round.
+
+** Pre-rank candidate admission
+
+Search quality begins before ranking.  Every candidate MUST carry semantic
+workspace/package identity and provider language provenance.  The CLI
+=--workspace= path is only the discovery seed.  The language harness resolves
+package-manager anchors such as =Cargo.toml=, =pyproject.toml=, or
+=package.json= into a =workspaceScope= containing package identities and an
+admitted root set.
+
+The search core rejects a candidate before graph construction when it belongs
+to none of the provider-admitted package roots or its file kind is not admitted
+by the selected language provider.  This is a set-membership contract, not a
+single directory-prefix rule: package managers may declare legitimate members
+outside the invocation directory.  Graph diffusion and owner rank MUST NOT
+repair, down-rank, or explain an inadmissible candidate.
+
+All owner roots, source-index rows, overlay documents, and ingest candidates are
+joined to =workspaceScope= before merge.  A candidate without a matching
+workspace/package identity becomes typed =candidate-out-of-scope= evidence and
+is absent from rank input.
+
+The provider exposes this admission projection as an independent fast-path:
+#+begin_src shell
+asp <language> search workspace-scope --workspace <discovery-root> --json
+#+end_src
+It returns =semantic-workspace-scope.v1= without starting the full analysis
+harness.  =workspace-scope= is not a semantic-fact graph view: it establishes
+which package roots may contribute facts before =semantic-facts=, topology, or
+rank is requested.  The registry advertises =search/workspace-scope= and the
+scope schema so routers can choose this edge without probing provider help.
+
+=discoveryRoot= and provider-emitted anchor, package-root, manifest, and
+=admittedRoots= paths are canonical absolute paths.  Search result locators may
+remain workspace-relative, but admission resolves them against the packet's
+=discoveryRoot= before testing membership.  Absolute roots are required because
+a package-manager workspace may admit a member outside the discovery directory.
+
+=languageId=, =packageManager=, and anchor =kind= values are provider-owned
+identifiers emitted from language-harness parsing.  The shared schema constrains
+their stable identifier shape but MUST NOT enumerate Cargo, Python, JavaScript,
+or future language-specific anchor kinds.  The generic search core validates
+packet structure and membership consistency; it MUST NOT reconstruct manifest
+meaning from filename or a hard-coded anchor-kind table.
+
+The scope packet also carries provider-owned =sourceExtensions=.  Candidate
+language admission is proven by membership in one of those extensions, or by
+an exact match with a provider-emitted anchor path.  Passing a facade
+=languageId= into the search core is not sufficient evidence that an arbitrary
+file under the package root belongs to that language.  Extension and anchor
+facts come from the language harness; the generic search core MUST NOT maintain
+its own Rust, Python, TypeScript, or future-language suffix table.
+
+Provider-neutral discovery surfaces such as =fd= and =rg= do not choose one
+language scope.  The router collects scope packets from the activated language
+harnesses that claim the discovery root, then performs union admission.  The
+most specific admitted package root wins.  If two providers claim the same
+candidate at equal specificity, the candidate closes as
+=candidate-provider-ambiguous=; provider ordering or facade registration order
+MUST NOT break the tie.  A provider-neutral wrapper never substitutes the
+synthetic language =query-wrapper= for harness evidence.
+
+Workspace scope is materialized provider-first and reused across discovery
+commands.  The client cache key includes schema version, provider identity and
+binary/profile stamp, canonical discovery root, and provider activation facts.
+Before reuse, the client re-hashes every provider-emitted anchor; an added,
+removed, changed, or retargeted manifest invalidates the entry.  Source-file
+edits do not.  A cold miss may invoke the provider once under a bounded cold
+budget, but =fd=/=rg= warm admission MUST read the validated packet without
+starting another provider process.  Raising the per-search timeout without
+materialization is not an accepted performance fix.
+
+** Frontier cycle closure
+
+The router records a normalized action identity containing workspace, language,
+route kind, and normalized query.  A recommended action is ineligible when it
+already exists in route history.  The two-edge generic fallback cycle
+=fd(query) -> rg(query) -> fd(query)= is also ineligible unless the intermediate
+edge materialized a new path, symbol, owner, selector, or failure anchor.
+
+When every open frontier edge is a replay or cycle, search closes with
+=selector-anchor-unavailable=.  It does not delegate cycle detection to agent
+prompt compliance.
+
+** Resident invariant
+
+The =asp_explorer= child is the terminal executor.  It never waits for or
+delegates to another resident, never re-enters lifecycle bootstrap after a
+search task arrives, and never returns lifecycle prose in place of evidence.
+
+The repo-owned =agents/asp-explorer_codex.toml= and
+=agents/asp-explorer_claude.md= assets are the platform-specific subagent
+configurations.  They define only role, execution boundary, and receipt
+responsibility.  Search ranking, graph topology, frontier selection, budget,
+and closure semantics remain protocol/provider behavior owned by this RFC,
+shared schemas, =agent-semantic-search=, and language graph providers.
+
+Hook/runtime code only substitutes the selected model and projects the matching
+client profile.  It MUST NOT carry a second inline prompt or implement search
+quality through prompt prose.  State-home profiles and =~/.codex/agents/= links
+are generated artifacts.  Every =asp sync= refreshes them from the active
+binary's bundled platform asset.
+
+** Validation scenario
+
+Run the same bounded investigation against =.data/codebase-memory-mcp= before
+and after a playbook change.  Record command count, rounds, latency, packet
+bytes, repeated triggers, missing edges, owner materialization, and whether the
+returned next command is executable.  Accept the change only when the second
+run returns one schema-valid receipt with no duplicate route edge.
+
+The reference project demonstrates a useful separation of responsibilities:
+the graph backend exposes schema, structural search, exact qualified identity,
+traversal, and architecture surfaces, while the agent translates intent into
+those operations.  The corresponding ASP rule is =capabilities/schema first=,
+=owner or selector identity second=, =reachability third=, and synthesis last.
+Free-form search must not stand in for a missing provider capability.

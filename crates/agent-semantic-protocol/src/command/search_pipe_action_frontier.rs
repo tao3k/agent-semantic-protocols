@@ -1,8 +1,6 @@
 //! Typed search-pipe action frontier facts and display materialization.
 
-use serde_json::{Value, json};
-
-use super::search_pipe_projection::{query_projection_flag, query_projection_kind};
+use super::search_pipe_projection::query_projection_flag;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ActionNode {
@@ -21,29 +19,16 @@ pub(super) enum ActionRoute {
         symbol: String,
         workspace: String,
     },
-    FdQuery {
-        query: String,
-        scope: String,
-        command_scope: Option<String>,
-    },
     RgQuery {
         query: String,
         scope: String,
         command_scope: Option<String>,
-    },
-    RgQuerySet {
-        queries: Vec<String>,
-        scope: String,
-        command_scope: String,
     },
     OwnerItems {
         language_id: String,
         owner: String,
         query: String,
         scope: String,
-    },
-    OwnerItemsHint {
-        owner: String,
     },
     DependencySearch {
         language_id: String,
@@ -73,15 +58,6 @@ impl ActionNode {
                     shell_arg(selector)
                 ))
             }
-            ActionRoute::FdQuery {
-                query,
-                scope,
-                command_scope,
-            } => Some(format!(
-                "asp fd -query {} --workspace {}",
-                shell_arg(query),
-                command_scope.as_deref().unwrap_or(scope)
-            )),
             ActionRoute::RgQuery {
                 query,
                 scope,
@@ -90,14 +66,6 @@ impl ActionNode {
                 "asp rg -query {} --workspace {}",
                 shell_arg(query),
                 command_scope.as_deref().unwrap_or(scope)
-            )),
-            ActionRoute::RgQuerySet {
-                queries,
-                command_scope,
-                ..
-            } => Some(format!(
-                "asp rg {} --workspace {command_scope}",
-                repeated_query_args(queries)
             )),
             ActionRoute::OwnerItems {
                 language_id,
@@ -109,7 +77,6 @@ impl ActionNode {
                 shell_arg(owner),
                 shell_arg(query),
             )),
-            ActionRoute::OwnerItemsHint { .. } => None,
             ActionRoute::DependencySearch {
                 language_id,
                 dependency,
@@ -133,96 +100,6 @@ impl ActionNode {
             }
         }
     }
-
-    pub(super) fn as_json(&self) -> Value {
-        let mut fields = serde_json::Map::new();
-        let (capability_id, target, target_role) = match &self.route {
-            ActionRoute::QueryCode {
-                language_id,
-                selector,
-                owner,
-                symbol,
-                workspace,
-            } => {
-                fields.insert("languageId".to_string(), json!(language_id));
-                fields.insert("selector".to_string(), json!(selector));
-                if is_source_locator(selector) {
-                    fields.insert("sourceLocatorHint".to_string(), json!(selector));
-                    fields.insert("codePolicy".to_string(), json!("requires-exact-code"));
-                    fields.insert("requiresExact".to_string(), json!(true));
-                }
-                fields.insert("ownerPath".to_string(), json!(owner));
-                fields.insert("symbol".to_string(), json!(symbol));
-                fields.insert("workspace".to_string(), json!(workspace));
-                fields.insert(
-                    "projection".to_string(),
-                    json!(query_projection_kind(language_id)),
-                );
-                ("query", owner.as_str(), "owner")
-            }
-            ActionRoute::FdQuery { query, scope, .. } => {
-                fields.insert("query".to_string(), json!(query));
-                fields.insert("scope".to_string(), json!(scope));
-                ("fd", query.as_str(), "query")
-            }
-            ActionRoute::RgQuery { query, scope, .. } => {
-                fields.insert("query".to_string(), json!(query));
-                fields.insert("scope".to_string(), json!(scope));
-                ("rg", query.as_str(), "query")
-            }
-            ActionRoute::RgQuerySet { queries, scope, .. } => {
-                fields.insert("queryClauses".to_string(), json!(queries));
-                fields.insert("scope".to_string(), json!(scope));
-                ("rg", scope.as_str(), "query-set")
-            }
-            ActionRoute::OwnerItems {
-                language_id,
-                owner,
-                query,
-                scope,
-            } => {
-                fields.insert("languageId".to_string(), json!(language_id));
-                fields.insert("ownerPath".to_string(), json!(owner));
-                fields.insert("query".to_string(), json!(query));
-                fields.insert("scope".to_string(), json!(scope));
-                ("owner-items", owner.as_str(), "owner")
-            }
-            ActionRoute::OwnerItemsHint { owner } => {
-                fields.insert("ownerPath".to_string(), json!(owner));
-                ("owner-items", owner.as_str(), "owner")
-            }
-            ActionRoute::DependencySearch {
-                language_id,
-                dependency,
-                scope,
-            } => {
-                fields.insert("languageId".to_string(), json!(language_id));
-                fields.insert("dependency".to_string(), json!(dependency));
-                fields.insert("scope".to_string(), json!(scope));
-                ("search-deps", dependency.as_str(), "dependency")
-            }
-            ActionRoute::TreeSitterQuery {
-                language_id,
-                recipe,
-                names,
-                scope,
-            } => {
-                fields.insert("languageId".to_string(), json!(language_id));
-                fields.insert("recipe".to_string(), json!(recipe));
-                fields.insert("names".to_string(), json!(names));
-                fields.insert("scope".to_string(), json!(scope));
-                ("treesitter-query", recipe.as_str(), "syntax-recipe")
-            }
-        };
-        json!({
-            "id": self.id,
-            "kind": self.kind,
-            "capabilityId": capability_id,
-            "target": target,
-            "targetRole": target_role,
-            "fields": fields,
-        })
-    }
 }
 
 pub(super) fn render_next_command_line(actions: &[ActionNode]) -> String {
@@ -231,14 +108,6 @@ pub(super) fn render_next_command_line(actions: &[ActionNode]) -> String {
         .find_map(ActionNode::materialized_command)
         .map(|command| format!("nextCommand={command}\n"))
         .unwrap_or_else(|| "nextCommand=-\n".to_string())
-}
-
-fn repeated_query_args(queries: &[String]) -> String {
-    queries
-        .iter()
-        .map(|query| format!("-query {}", shell_arg(query)))
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn tree_sitter_query_pattern(language_id: &str, recipe: &str, names: &[&str]) -> Option<String> {
@@ -344,23 +213,6 @@ fn shell_arg(value: &str) -> String {
     } else {
         shell_quote(value)
     }
-}
-
-fn is_source_locator(value: &str) -> bool {
-    let Some((_, range)) = value.split_once(':') else {
-        return false;
-    };
-    let mut parts = range.split([':', '-']);
-    let Some(start) = parts.next() else {
-        return false;
-    };
-    let Some(end) = parts.next() else {
-        return false;
-    };
-    !start.is_empty()
-        && !end.is_empty()
-        && start.chars().all(|character| character.is_ascii_digit())
-        && end.chars().all(|character| character.is_ascii_digit())
 }
 
 fn shell_quote(value: &str) -> String {

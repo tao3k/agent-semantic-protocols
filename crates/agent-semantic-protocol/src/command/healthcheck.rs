@@ -1,6 +1,8 @@
 //! Runtime healthcheck for project-local ASP state.
 
-use super::protocol_binary::protocol_binary_on_path;
+#[cfg(not(test))]
+use super::hook_runtime::active_codex_plugin_skill_path;
+use super::protocol_binary::{protocol_binary_artifact_digest, protocol_binary_on_path};
 use agent_semantic_config::{PRJ_CACHE_HOME_ENV, ProjectRuntimeLayout, project_runtime_layout};
 use agent_semantic_hook::{
     RuntimeProfiles, RuntimeProviderHealthStatus, load_activation, runtime_profiles_for_runtime,
@@ -18,17 +20,20 @@ const HEALTHCHECK_PROTOCOL_VERSION: &str = "1";
 pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let options = HealthcheckOptions::parse(args)?;
     let layout = project_runtime_layout(&options.project_root);
-    let activation = check_activation(layout.activation_path.as_deref());
-    let activation_runtime = check_activation_runtime(
-        layout.activation_path.as_deref(),
-        layout
-            .git_toplevel
-            .as_deref()
-            .unwrap_or(&options.project_root),
-    );
+    let context = agent_semantic_client_core::ProjectContext::resolve(&options.project_root)?;
+    let project_state_paths = agent_semantic_runtime::project_state_paths(context.cwd())?;
+    let activation_path = project_state_paths.activation_path;
+    let activation = check_activation(Some(&activation_path));
+    let activation_runtime = check_activation_runtime(Some(&activation_path), context.cwd());
     let binary = check_binary();
+    #[cfg(not(test))]
+    let plugin_skill_path = active_codex_plugin_skill_path(&options.project_root)
+        .ok()
+        .flatten();
+    #[cfg(test)]
+    let plugin_skill_path: Option<std::path::PathBuf> = None;
 
-    let mut issues = collect_layout_issues(&layout);
+    let mut issues = collect_layout_issues(&layout, plugin_skill_path.as_deref());
     collect_read_issue(
         &mut issues,
         "missing-activation",
@@ -45,18 +50,22 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         print_json(
             status,
             &layout,
+            &activation_path,
             &activation,
             &activation_runtime,
             &binary,
+            plugin_skill_path.as_deref(),
             &issues,
         )?;
     } else {
         print_compact(
             status,
             &layout,
+            &activation_path,
             &activation,
             &activation_runtime,
             &binary,
+            plugin_skill_path.as_deref(),
             &issues,
         );
     }
@@ -205,7 +214,7 @@ fn check_binary() -> BinaryCheck {
     let current_asp = env::current_exe().ok();
     let path_asp = protocol_binary_on_path();
     let status = match (&current_asp, &path_asp) {
-        (Some(current), Some(on_path)) if same_path(current, on_path) => "ok",
+        (Some(current), Some(on_path)) if same_binary_artifact(current, on_path) => "ok",
         (Some(_), Some(_)) => "mismatch",
         (Some(_), None) => "path-missing",
         (None, Some(_)) => "current-missing",
@@ -218,7 +227,19 @@ fn check_binary() -> BinaryCheck {
     }
 }
 
-fn collect_layout_issues(layout: &ProjectRuntimeLayout) -> Vec<HealthIssue> {
+fn same_binary_artifact(left: &Path, right: &Path) -> bool {
+    if same_path(left, right) {
+        return true;
+    }
+    protocol_binary_artifact_digest(left)
+        .zip(protocol_binary_artifact_digest(right))
+        .is_some_and(|(left_digest, right_digest)| left_digest == right_digest)
+}
+
+fn collect_layout_issues(
+    layout: &ProjectRuntimeLayout,
+    plugin_skill_path: Option<&Path>,
+) -> Vec<HealthIssue> {
     let mut issues = Vec::new();
     if layout.git_toplevel.is_none() {
         issues.push(error(
@@ -241,12 +262,16 @@ fn collect_layout_issues(layout: &ProjectRuntimeLayout) -> Vec<HealthIssue> {
         "git toplevel .agents directory is missing",
         fs_status(layout.agents_dir.as_deref(), FsKind::Dir),
     );
-    collect_file_issue(
-        &mut issues,
-        "missing-agent-skill",
-        "git toplevel agent-semantic-protocols skill is missing",
-        fs_status(layout.agent_skill_path.as_deref(), FsKind::File),
-    );
+    let project_skill_status = fs_status(layout.agent_skill_path.as_deref(), FsKind::File);
+    let plugin_skill_status = fs_status(plugin_skill_path, FsKind::File);
+    if project_skill_status != "ok" && plugin_skill_status != "ok" {
+        collect_file_issue(
+            &mut issues,
+            "missing-agent-skill",
+            "no active agent-semantic-protocols skill is materialized",
+            plugin_skill_status,
+        );
+    }
     issues
 }
 
@@ -346,9 +371,11 @@ fn same_path(left: &Path, right: &Path) -> bool {
 fn print_compact(
     status: &str,
     layout: &ProjectRuntimeLayout,
+    activation_path: &Path,
     activation: &ActivationCheck,
     activation_runtime: &ActivationRuntimeCheck,
     binary: &BinaryCheck,
+    plugin_skill_path: Option<&Path>,
     issues: &[HealthIssue],
 ) {
     println!(
@@ -378,8 +405,13 @@ fn print_compact(
         fs_status(layout.agent_skill_path.as_deref(), FsKind::File)
     );
     println!(
+        "|path pluginSkill={} status={}",
+        display_opt(plugin_skill_path),
+        fs_status(plugin_skill_path, FsKind::File)
+    );
+    println!(
         "|path activation={} status={} providers={}",
-        display_opt(layout.activation_path.as_deref()),
+        activation_path.display(),
         activation.status,
         display_count(activation.provider_count)
     );
@@ -419,9 +451,11 @@ fn print_compact(
 fn print_json(
     status: &str,
     layout: &ProjectRuntimeLayout,
+    activation_path: &Path,
     activation: &ActivationCheck,
     activation_runtime: &ActivationRuntimeCheck,
     binary: &BinaryCheck,
+    plugin_skill_path: Option<&Path>,
     issues: &[HealthIssue],
 ) -> Result<(), String> {
     let providers = activation_runtime
@@ -461,7 +495,8 @@ fn print_json(
         "paths": {
             "agentsDir": path_report(layout.agents_dir.as_deref(), fs_status(layout.agents_dir.as_deref(), FsKind::Dir), None, None),
             "agentsSkill": path_report(layout.agent_skill_path.as_deref(), fs_status(layout.agent_skill_path.as_deref(), FsKind::File), None, None),
-            "activation": path_report(layout.activation_path.as_deref(), activation.status, activation.provider_count, activation.error.as_deref()),
+            "pluginSkill": path_report(plugin_skill_path, fs_status(plugin_skill_path, FsKind::File), None, None),
+            "activation": path_report(Some(activation_path), activation.status, activation.provider_count, activation.error.as_deref()),
         },
         "activationRuntime": {
             "status": activation_runtime.status,

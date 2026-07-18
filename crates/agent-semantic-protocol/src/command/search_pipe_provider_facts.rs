@@ -1,6 +1,7 @@
 //! Provider-owned semantic fact enrichment for ASP search pipe graph requests.
 
 use std::env;
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -8,6 +9,7 @@ use std::time::Duration;
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use agent_semantic_provider_transport::ProviderProcessLimits;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use super::provider_process::{
     provider_invocation_with_profile, run_provider_command_with_stdin_limits,
@@ -18,6 +20,7 @@ use super::search_pipe_model::Candidate;
 const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 12;
 const PROVIDER_GRAPH_FACT_TIMEOUT_MS: u64 = 100;
 const PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES: usize = 256 * 1024;
+const PROVIDER_WORKSPACE_SCOPE_COLD_TIMEOUT_MS: u64 = 500;
 
 #[derive(Debug, Default)]
 pub(super) struct ProviderGraphFacts {
@@ -33,6 +36,157 @@ pub(super) struct ProviderGraphFactsContext<'a> {
     pub(super) provider: &'a ActivatedProvider,
     pub(super) profiles: &'a RuntimeProfiles,
     pub(super) cache_home: &'a Path,
+}
+
+pub(super) fn collect_provider_workspace_scope(
+    language_id: &str,
+    project_root: &Path,
+    config: &AspConfig,
+    context: Option<&ProviderGraphFactsContext<'_>>,
+) -> Result<Option<agent_semantic_search::SemanticWorkspaceScope>, String> {
+    let Some(context) = context else {
+        return Ok(None);
+    };
+    if !context.provider.search_capabilities.workspace_scope {
+        return Ok(None);
+    }
+    if let Some(scope) = load_cached_provider_workspace_scope(project_root, context) {
+        return Ok(Some(scope));
+    }
+    let args = vec![
+        "search".to_string(),
+        "workspace-scope".to_string(),
+        "--json".to_string(),
+    ];
+    let invocation = provider_invocation_with_profile(
+        context.profiles,
+        context.provider,
+        &args,
+        project_root,
+        config,
+    )?;
+    let limits = ProviderProcessLimits {
+        timeout: Some(Duration::from_millis(
+            PROVIDER_WORKSPACE_SCOPE_COLD_TIMEOUT_MS,
+        )),
+        max_stdout_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+        max_stderr_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+        memory_limit_bytes: Some(1024 * 1024 * 1024),
+    };
+    let output = run_provider_command_with_stdin_limits(
+        language_id,
+        context.provider,
+        &invocation,
+        project_root,
+        context.cache_home,
+        Vec::new(),
+        limits,
+    )
+    .map_err(|error| format!("provider-unavailable: workspace-scope failed: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "provider-unavailable: workspace-scope exited with status {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(output.stderr.as_ref()).trim()
+        ));
+    }
+    let packet: Value = serde_json::from_slice(output.stdout.as_ref())
+        .map_err(|error| format!("provider workspace-scope returned invalid JSON: {error}"))?;
+    let scope = agent_semantic_search::SemanticWorkspaceScope::from_packet(&packet)?;
+    persist_provider_workspace_scope(project_root, context, &packet);
+    Ok(Some(scope))
+}
+
+fn load_cached_provider_workspace_scope(
+    project_root: &Path,
+    context: &ProviderGraphFactsContext<'_>,
+) -> Option<agent_semantic_search::SemanticWorkspaceScope> {
+    let cache_path = provider_workspace_scope_cache_path(project_root, context);
+    let cached: Value = serde_json::from_slice(&fs::read(cache_path).ok()?).ok()?;
+    if cached.get("providerBinaryStamp").and_then(Value::as_str)
+        != Some(provider_binary_stamp(context.provider).as_str())
+    {
+        return None;
+    }
+    let packet = cached.get("packet")?;
+    let scope = agent_semantic_search::SemanticWorkspaceScope::from_packet(packet).ok()?;
+    let expected_root = fs::canonicalize(project_root).ok()?;
+    if scope.provider_id != context.provider.provider_id
+        || scope.language_id != context.provider.language_id
+        || scope.discovery_root != expected_root
+        || !scope.anchors.iter().all(|anchor| {
+            fs::read(&anchor.path)
+                .ok()
+                .is_some_and(|bytes| sha256_bytes(&bytes) == anchor.sha256)
+        })
+    {
+        return None;
+    }
+    Some(scope)
+}
+
+fn persist_provider_workspace_scope(
+    project_root: &Path,
+    context: &ProviderGraphFactsContext<'_>,
+    packet: &Value,
+) {
+    let cache_path = provider_workspace_scope_cache_path(project_root, context);
+    let Some(parent) = cache_path.parent() else {
+        return;
+    };
+    if fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    let payload = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.provider-workspace-scope-cache",
+        "schemaVersion": "1",
+        "providerBinaryStamp": provider_binary_stamp(context.provider),
+        "packet": packet,
+    });
+    let Ok(bytes) = serde_json::to_vec(&payload) else {
+        return;
+    };
+    let temporary = cache_path.with_extension(format!("tmp-{}", std::process::id()));
+    if fs::write(&temporary, bytes).is_ok() {
+        let _ = fs::rename(&temporary, &cache_path);
+    }
+}
+
+fn provider_workspace_scope_cache_path(
+    project_root: &Path,
+    context: &ProviderGraphFactsContext<'_>,
+) -> PathBuf {
+    let canonical_root = fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_owned());
+    let identity = format!(
+        "workspace-scope-v1\n{}\n{}\n{}\n{}",
+        context.provider.provider_id,
+        context.provider.language_id,
+        canonical_root.display(),
+        provider_binary_stamp(context.provider),
+    );
+    context
+        .cache_home
+        .join("workspace-scope")
+        .join(format!("{}.json", sha256_bytes(identity.as_bytes())))
+}
+
+fn provider_binary_stamp(provider: &ActivatedProvider) -> String {
+    let metadata = fs::metadata(&provider.binary).ok();
+    let modified = metadata
+        .as_ref()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| format!("{}:{}", duration.as_secs(), duration.subsec_nanos()))
+        .unwrap_or_else(|| "unknown".to_string());
+    format!(
+        "{}:{}:{modified}",
+        provider.binary,
+        metadata.as_ref().map_or(0, fs::Metadata::len),
+    )
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 pub(super) fn collect_provider_graph_facts(

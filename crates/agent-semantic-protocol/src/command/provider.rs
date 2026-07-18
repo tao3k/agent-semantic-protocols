@@ -1011,6 +1011,9 @@ fn fast_search_needs_provider_context(
             && fast_search_requests_dependency_topology(args);
     }
     if matches!(args.get(1).map(String::as_str), Some("pipe")) {
+        if provider.search_capabilities.workspace_scope {
+            return true;
+        }
         if provider.search_capabilities.dependency_topology
             && fast_search_requests_dependency_topology(args)
         {

@@ -65,6 +65,36 @@ fn bash_ast_tokens_surface_nl_sed_python_source_dump_pipeline() {
 }
 
 #[test]
+fn source_command_intent_reuses_the_shared_matcher() {
+    use agent_semantic_hook::{SourceCommandIntent, classify_source_command_intent};
+
+    assert_eq!(
+        classify_source_command_intent("direnv exec . cat src/lib.rs"),
+        SourceCommandIntent::ContentDump
+    );
+    assert_eq!(
+        classify_source_command_intent("nl -ba src/lib.rs | sed -n '1,40p'"),
+        SourceCommandIntent::ContentDump
+    );
+    assert_eq!(
+        classify_source_command_intent("git diff -- src/lib.rs"),
+        SourceCommandIntent::VcsDiffReview
+    );
+    for command in [
+        "direnv exec . asp sync",
+        "asp hook doctor",
+        "cargo test -p agent-semantic-hook",
+        "mv src/old.rs src/new.rs",
+    ] {
+        assert_eq!(
+            classify_source_command_intent(command),
+            SourceCommandIntent::Other,
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn bash_ast_tokens_surface_nested_command_stages() {
     assert_eq!(
         semantic_shell_tokens("echo $(cat src/lib.rs) && cat <(sed -n '1,3p' tests/unit.rs)"),

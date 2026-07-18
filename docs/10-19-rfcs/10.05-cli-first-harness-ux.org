@@ -46,6 +46,8 @@ always-read document.
 - [[file:10.05-cli-first-harness-ux/10.05.60-agent-cli-sandtable.org][Agent CLI Sandtable]] :: Scenario-owned agent CLI replay for Claude Code and provider env profiles.
 - [[file:10.05-cli-first-harness-ux/10.05.70-failure-frontier-sandtable.org][Failure Frontier Sandtable]] :: Receipt/trace gates for proving fewer validation rounds without losing hot blocks.
 - [[file:10.05-cli-first-harness-ux/10.05.75-agent-session-observability.org][Agent Session Observability]] :: Local raw agent-session artifacts plus compact receipts and analyzer feedback.
+- [[file:10.05-cli-first-harness-ux/10.05.76-resident-search-dispatch-receipt.org][Resident Search Dispatch Receipt]] :: Live transport verification, terminal resident execution, and exactly-once owner receipts.
+- [[file:10.05-cli-first-harness-ux/10.05.77-evidence-graph-router-playbook.org][Evidence Graph Router Playbook]] :: Bounded evidence-state, graph topology, frontier routing, synthesis, and reflection loop.
 - [[file:10.05-cli-first-harness-ux/10.05.80-language-evidence-search-namespaces.org][Language Evidence Search Namespaces]] :: Runtime, source, extension, std, pattern, and compare namespaces.
 - [[file:10.05-cli-first-harness-ux/10.05.85-verification-horizon-for-search-routing.org][Verification Horizon For Search Routing]] :: Trajectory-level route verification, monitor patterns, and user feedback loops.
 - [[file:10.05-cli-first-harness-ux/10.05.90-gerbil-scheme-style-conventions.org][Gerbil Scheme Style Conventions]] :: Gerbil-specific source, t/ test, naming, and control-flow policy.
@@ -69,7 +71,78 @@ they do not rely on Org include expansion.
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.60-agent-cli-sandtable.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.70-failure-frontier-sandtable.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.75-agent-session-observability.org"
+#+INCLUDE: "10.05-cli-first-harness-ux/10.05.76-resident-search-dispatch-receipt.org"
+#+INCLUDE: "10.05-cli-first-harness-ux/10.05.77-evidence-graph-router-playbook.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.80-language-evidence-search-namespaces.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.90-gerbil-scheme-style-conventions.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.93-search-runtime-performance-native-acceleration.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.90-readiness-history.org"
+
+* Health Activation Convergence
+
+`asp healthcheck`, `asp paths`, and `asp hook doctor` MUST resolve the
+workspace through the same =ProjectContext::resolve= and derive activation from
+=project_state_paths=.  The canonical activation is
+=project_state_paths.activation_path=; no command may independently construct
+an activation path from a git top-level, =PRJ_CACHE_HOME=, or legacy cache
+layout.
+
+Git discovery, cache source selection, and legacy activation locations remain
+diagnostic observations.  They MAY be emitted to explain migration state, but
+MUST NOT select the activation consumed for health, paths, doctor, provider
+profiles, or binary-freshness checks.  A missing canonical activation is an
+activation error even when a legacy cache activation exists; a legacy cache
+activation is retained only as diagnostic evidence.
+
+Binary freshness is artifact identity, not pathname identity. Health MAY use
+canonical-path equality as a fast success, but different executable paths are
+fresh when their byte length and streaming SHA-256 digest match. A workspace
+build, versioned install path, Homebrew entrypoint, or symlink target MUST NOT
+be reported as drift solely because the path strings differ.
+
+* Managed Hook Config Lifecycle
+
+The v1 hook config schema remains stable.  Install owns only a default config
+it can prove it previously wrote: the config directory contains
+=config.toml.managed.sha256= whose single SHA-256 value is the exact installed
+=config.toml= byte sequence.
+
+Install resolves the current default through
+=default_client_config_template()=.  An absent config is atomically created
+with its sidecar.  A config whose contract fingerprint is current is preserved
+(and receives a missing sidecar only when its bytes equal the current managed
+template).  A stale or fingerprint-less config is atomically upgraded only
+when its sidecar digest matches its present bytes, or when it has one of the
+following explicit historical managed signatures:
+
+- current template minus only the top-level =contractFingerprint=;
+- pre-rules managed template: current template minus the top-level
+  =contractFingerprint= and top-level =rules=.
+- the audited pre-rules prompt-era managed template: it has the exact historical
+  byte length and SHA-256 signature for =agentSessionGuide.register=,
+  =agentSessionGuide.status=, and the three deprecated
+  =agentSessionMessages.sourceAccessCompact*= fields; after removing only those
+  five proven historical fields, its remaining TOML must equal the current
+  pre-rules template with the corresponding current guide fields removed.
+
+These are structural TOML variants, not a permissive rule that accepts an
+arbitrary config with missing =rules= or arbitrary prompt text. Any signature,
+length, or remaining-structure mismatch remains unproven user-owned
+configuration.
+
+Any other valid config is user-owned and install fails with
+=user-config-contract-unproven= without changing either config or sidecar.
+Invalid TOML retains the existing parse error.  Managed writes use a temporary
+file and rename, clean temporary failures, then reload and verify the current
+fingerprint before a successful receipt.  Receipts report
+=userConfigStatus=current|created|migrated-managed|unproven=.
+
+* Codex Global Plugin Idempotency
+
+Global plugin install MUST remain idempotent in Codex Desktop environments that
+do not expose a =codex= CLI executable. When the global Codex config already
+enables the exact ASP plugin id and ASP has materialized the current versioned
+global plugin cache, install reuses that native state and MUST NOT invoke
+=codex plugin marketplace add= or =codex plugin add=. If either proof is
+absent, the CLI-owned marketplace/add path remains required and failure is
+reported without pretending the plugin is installed.

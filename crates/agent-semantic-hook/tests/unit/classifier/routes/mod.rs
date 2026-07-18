@@ -4,8 +4,8 @@ use super::{command, command_with_stdin, provider, provider_routes, typescript_p
 
 mod codex_command_actions;
 mod python_priority;
-mod raw_search;
 mod search_json;
+mod source_access_rules;
 mod wrappers;
 
 fn registry_with_python() -> HookRuntime {
@@ -19,29 +19,6 @@ fn registry_with_rust_and_python() -> HookRuntime {
     HookRuntime {
         project_root: ".".to_string(),
         providers: vec![typescript_provider(), rust_provider(), python_provider()],
-    }
-}
-
-fn registry_with_prefixed_python() -> HookRuntime {
-    let mut python = provider(
-        "python",
-        "python-project-harness",
-        "python-project-harness",
-        "agent.semantic-protocols.languages.python.python-project-harness",
-        &[".py"],
-        &["Project.toml", "Manifest.toml"],
-        &["src", "test"],
-        &[".git", ".python"],
-        provider_routes("python-project-harness", None),
-    );
-    python.provider_command_prefix = vec![
-        "python".to_string(),
-        "-m".to_string(),
-        "tools.fake_provider".to_string(),
-    ];
-    HookRuntime {
-        project_root: ".".to_string(),
-        providers: vec![typescript_provider(), python],
     }
 }
 

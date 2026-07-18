@@ -1,7 +1,10 @@
 //! Hook client configuration interface.
 
 mod model;
+pub use model::HookClientDecisionMaterializer;
 mod validation;
+
+pub use model::hook_client_contract_fingerprint;
 
 pub use model::{
     AspProjectConfigFile, AspProjectHookConfig, CLIENT_HOOK_CONFIG_SCHEMA_ID,

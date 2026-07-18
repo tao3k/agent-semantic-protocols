@@ -16,6 +16,7 @@ reference_patterns = [
   "graph_candidate_sparsity",
   "graph_evidence_projection",
   "graph_node_projection",
+  "graph_owner_item_route",
   "graph_owner_rank",
   "graph_query_owner_seed",
   "graph_seed_decision",
@@ -23,6 +24,7 @@ reference_patterns = [
   "lexical_search_frame",
   "owner_items_source_index_trace",
   "pipe_candidates",
+  "pipe_source_query_gate",
   "prompt_output_replay",
   "provider_candidate_annotations",
   "query_packet_replay",
@@ -45,6 +47,7 @@ reference_patterns = [
   "turso_overlay_search",
   "unit_test",
   "unit_test_smoke",
+  "workspace_scope",
 ]
 inputs = "inputs"
 expected = "expected"

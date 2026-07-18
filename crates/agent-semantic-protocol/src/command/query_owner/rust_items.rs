@@ -56,6 +56,13 @@ fn collect_rust_item(item: &syn::Item, items: &mut Vec<OwnerItem>) {
         }
         syn::Item::Type(item) => push_item(items, item.ident.to_string(), "type", item),
         syn::Item::Union(item) => push_item(items, item.ident.to_string(), "union", item),
+        syn::Item::Use(item) if matches!(item.vis, syn::Visibility::Public(_)) => {
+            let mut names = Vec::new();
+            collect_public_use_binding_names(&item.tree, &mut names);
+            for name in names {
+                push_item(items, name, "reexport", item);
+            }
+        }
         syn::Item::Impl(item) => {
             if let Some(name) = rust_impl_owner_name(item) {
                 push_item(items, name, "impl", item);
@@ -67,6 +74,20 @@ fn collect_rust_item(item: &syn::Item, items: &mut Vec<OwnerItem>) {
             }
         }
         _ => {}
+    }
+}
+
+fn collect_public_use_binding_names(tree: &syn::UseTree, names: &mut Vec<String>) {
+    match tree {
+        syn::UseTree::Name(name) => names.push(name.ident.to_string()),
+        syn::UseTree::Rename(rename) => names.push(rename.rename.to_string()),
+        syn::UseTree::Path(path) => collect_public_use_binding_names(&path.tree, names),
+        syn::UseTree::Group(group) => {
+            for item in &group.items {
+                collect_public_use_binding_names(item, names);
+            }
+        }
+        syn::UseTree::Glob(_) => {}
     }
 }
 
@@ -122,6 +143,7 @@ fn rust_syntax_node_for_kind(kind: &str) -> &'static str {
         "trait-function" => "function_signature_item",
         "type" => "type_item",
         "union" => "union_item",
+        "reexport" => "use_declaration",
         _ => "item",
     }
 }

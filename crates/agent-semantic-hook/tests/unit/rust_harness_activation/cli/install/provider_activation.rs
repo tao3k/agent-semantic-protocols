@@ -261,8 +261,31 @@ fn cli_install_writes_executable_python_ingest_route() {
 fn installed_activation_path(root: &std::path::Path) -> std::path::PathBuf {
     let mut matches = Vec::new();
     collect_activation_paths(root, &mut matches);
+    let expected_project_root = root
+        .parent()
+        .expect("state home must be rooted under the fixture project")
+        .canonicalize()
+        .expect("canonical fixture project root");
+    // Provider-control-plane activations may coexist with the fixture project
+    // under ASP_STATE_HOME. Select the activation owned by this project scope.
+    matches.retain(|path| {
+        let activation: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(path).expect("read activation candidate"),
+        )
+        .expect("parse activation candidate");
+        activation
+            .get("projectRoot")
+            .and_then(serde_json::Value::as_str)
+            .map(std::path::PathBuf::from)
+            .and_then(|project_root| project_root.canonicalize().ok())
+            .is_some_and(|project_root| project_root == expected_project_root)
+    });
     matches.sort();
-    assert_eq!(matches.len(), 1, "activation paths: {matches:?}");
+    assert_eq!(
+        matches.len(),
+        1,
+        "project activation paths for {expected_project_root:?}: {matches:?}"
+    );
     matches.remove(0)
 }
 

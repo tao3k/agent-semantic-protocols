@@ -5,5 +5,4 @@ const _: fn(&[String]) -> Result<(), String> = source_access::run_source_access_
 
 mod errors;
 mod happy_path;
-mod routing;
 mod support;

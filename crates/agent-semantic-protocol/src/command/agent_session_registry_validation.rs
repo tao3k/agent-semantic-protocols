@@ -32,8 +32,6 @@ struct ExpectedAgentProfile {
     role: String,
     model: String,
     reasoning_effort: Option<String>,
-    fallback_models: Vec<String>,
-    capacity_threshold: Option<f64>,
     sandbox: String,
 }
 
@@ -41,11 +39,9 @@ struct ExpectedAgentProfile {
 struct CodexModelSwitchConfig {
     primary_model: Option<String>,
     agent_models: BTreeMap<String, String>,
-    fallback_models: Vec<String>,
-    capacity_threshold: Option<f64>,
 }
 
-pub(super) fn validate_session_profile(
+pub(crate) fn validate_session_profile(
     session_id: &str,
     root_session_id: &str,
     name: &str,
@@ -268,41 +264,19 @@ fn validate_session_profile_with_rollout_lookup(
     }
     match actual_model.as_deref() {
         Some(actual_model) if actual_model == expected.model => {}
-        Some(actual_model)
-            if expected
-                .fallback_models
-                .iter()
-                .any(|fallback_model| fallback_model == actual_model) =>
-        {
-            pass_reason = Some(format!(
-                "model matches configured fallback {actual_model}; primaryModel={} fallbackModels={} capacityThreshold={}",
-                expected.model,
-                expected.fallback_models.join(","),
-                expected
-                    .capacity_threshold
-                    .map(|threshold| threshold.to_string())
-                    .unwrap_or_else(|| "unset".to_string())
-            ));
-        }
         Some(actual_model) => {
             let runtime_observation = format!(
                 "child-session runtime model drift observed: host observed {actual_model}, configured managed-child profile expects {}. identity remains adoptable for same-child repair; requiredAction=main-agent-followup-existing-child-with-natural-language-runtime-switch; runtimeEvidence=fresh-host-observation",
                 expected.model
             );
-            pass_reason = Some(match pass_reason.take() {
-                Some(existing) => format!("{existing}; {runtime_observation}"),
-                None => runtime_observation,
-            });
+            warnings.push(runtime_observation);
         }
         None => {
             let runtime_observation = format!(
                 "child-session runtime model observation is missing; configured managed-child profile expects {}. identity remains adoptable for same-child repair; requiredAction=main-agent-followup-existing-child-with-natural-language-runtime-switch; runtimeEvidence=fresh-host-observation",
                 expected.model
             );
-            pass_reason = Some(match pass_reason.take() {
-                Some(existing) => format!("{existing}; {runtime_observation}"),
-                None => runtime_observation,
-            });
+            warnings.push(runtime_observation);
         }
     }
     if let Some(expected_reasoning_effort) = expected.reasoning_effort.as_deref() {
@@ -521,8 +495,6 @@ fn load_expected_agent_profile(kind: ValidatedAgentKind) -> Result<ExpectedAgent
         role,
         model: primary_model,
         reasoning_effort: toml_string(&value, "model_reasoning_effort"),
-        fallback_models: model_switch.fallback_models,
-        capacity_threshold: model_switch.capacity_threshold,
         sandbox,
     })
 }
@@ -557,13 +529,6 @@ fn codex_model_switch_config(value: &toml::Value) -> CodexModelSwitchConfig {
             toml_string(models, "primary").or_else(|| toml_string(models, "primaryModel"))
         }),
         agent_models: codex_agent_model_overrides(value),
-        fallback_models: models
-            .and_then(|models| {
-                toml_string_array(models, "fallback")
-                    .or_else(|| toml_string_array(models, "fallbackModels"))
-            })
-            .unwrap_or_default(),
-        capacity_threshold: models.and_then(|models| toml_f64(models, "capacityThreshold")),
     }
 }
 
@@ -626,23 +591,6 @@ fn toml_string(value: &toml::Value, key: &str) -> Option<String> {
         .and_then(toml::Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .map(str::to_string)
-}
-
-fn toml_string_array(value: &toml::Value, key: &str) -> Option<Vec<String>> {
-    Some(
-        value
-            .get(key)?
-            .as_array()?
-            .iter()
-            .filter_map(toml::Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .map(str::to_string)
-            .collect(),
-    )
-}
-
-fn toml_f64(value: &toml::Value, key: &str) -> Option<f64> {
-    value.get(key).and_then(toml::Value::as_float)
 }
 
 fn normalized_path_string(path: &Path) -> String {

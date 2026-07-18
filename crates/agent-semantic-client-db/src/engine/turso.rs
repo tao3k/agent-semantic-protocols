@@ -171,42 +171,7 @@ pub(super) fn turso_bootstrap_report(db_path: &Path) -> TursoClientDbEngineRepor
 }
 
 async fn open_turso_client_db_read_only(turso_path: PathBuf) -> Result<turso::Connection, String> {
-    let io: std::sync::Arc<dyn turso::core::IO> = std::sync::Arc::new(
-        turso::core::PlatformIO::new()
-            .map_err(|error| format!("failed to create Turso read-only IO: {error}"))?,
-    );
-    let path = turso_path.to_string_lossy().into_owned();
-    let file = io
-        .open_file(&path, turso::core::OpenFlags::ReadOnly, true)
-        .map_err(|error| format!("failed to open Turso client DB read-only: {error}"))?;
-    let db_file: std::sync::Arc<dyn turso::core::DatabaseStorage> =
-        std::sync::Arc::new(turso::core::storage::database::DatabaseFile::new(file));
-    let connection_config = turso_sdk_kit::rsapi::TursoDatabaseConfig {
-        path: path.clone(),
-        experimental_features: Some("index_method".to_string()),
-        async_io: true,
-        encryption: None,
-        vfs: None,
-        io: Some(io.clone()),
-        db_file: Some(db_file.clone()),
-    };
-    let database = turso::core::Database::open_with_flags(
-        io,
-        &path,
-        db_file,
-        turso::core::OpenFlags::ReadOnly,
-        turso::core::DatabaseOpts::new().with_index_method(true),
-        None,
-        None,
-    )
-    .map_err(|error| format!("failed to initialize Turso client DB read-only: {error}"))?;
-    let connection = database
-        .connect()
-        .map_err(|error| format!("failed to connect Turso client DB read-only: {error}"))?;
-    Ok(turso::Connection::create(
-        turso_sdk_kit::rsapi::TursoConnection::new(&connection_config, connection),
-        None,
-    ))
+    shared_turso_read_only_connection(&turso_path).await
 }
 
 fn turso_builder(turso_path: &Path) -> turso::Builder {
@@ -235,8 +200,11 @@ impl std::ops::DerefMut for TursoConnectionLease {
     }
 }
 
-type TursoDatabasePool =
-    std::collections::BTreeMap<std::path::PathBuf, std::sync::Weak<turso::Database>>;
+struct TursoDatabasePoolEntry {
+    database: std::sync::Arc<turso::Database>,
+}
+
+type TursoDatabasePool = std::collections::BTreeMap<std::path::PathBuf, TursoDatabasePoolEntry>;
 
 fn turso_database_pool() -> &'static tokio::sync::Mutex<TursoDatabasePool> {
     static POOL: std::sync::OnceLock<tokio::sync::Mutex<TursoDatabasePool>> =
@@ -248,16 +216,29 @@ async fn shared_turso_database(
     turso_path: &Path,
 ) -> Result<std::sync::Arc<turso::Database>, String> {
     let mut pool = turso_database_pool().lock().await;
-    pool.retain(|_, database| database.strong_count() > 0);
-    if let Some(database) = pool.get(turso_path).and_then(std::sync::Weak::upgrade) {
-        return Ok(database);
+    if let Some(entry) = pool.get(turso_path) {
+        return Ok(std::sync::Arc::clone(&entry.database));
     }
     let database = std::sync::Arc::new(build_turso_database_with_lock_retry(turso_path).await?);
     pool.insert(
         turso_path.to_path_buf(),
-        std::sync::Arc::downgrade(&database),
+        TursoDatabasePoolEntry {
+            database: std::sync::Arc::clone(&database),
+        },
     );
     Ok(database)
+}
+
+async fn shared_turso_read_only_connection(turso_path: &Path) -> Result<turso::Connection, String> {
+    let database = shared_turso_database(turso_path).await?;
+    let connection = database
+        .connect()
+        .map_err(|error| format!("failed to connect Turso client DB read-only: {error}"))?;
+    connection
+        .execute("PRAGMA query_only = 1", ())
+        .await
+        .map_err(|error| format!("failed to enforce Turso client DB read-only mode: {error}"))?;
+    Ok(connection)
 }
 
 async fn build_turso_database_with_lock_retry(
@@ -285,6 +266,10 @@ async fn build_turso_database_with_lock_retry(
         )),
         TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS
     ))
+}
+
+pub(super) fn turso_client_db_exists(db_path: &Path) -> bool {
+    db_path.with_file_name(TURSO_CLIENT_DB_FILE).exists()
 }
 
 pub(super) async fn connect_turso_client_db(

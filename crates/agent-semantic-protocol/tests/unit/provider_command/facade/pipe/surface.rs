@@ -41,7 +41,12 @@ fn search_pipe_source_option_controls_graph_request_source() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "graph request json: {error}; stdout={}",
+            String::from_utf8_lossy(&output.stdout)
+        )
+    });
     assert_graph_turbo_request_contract(&payload);
     assert_eq!(payload["surface"], "search-pipe");
     assert_eq!(
@@ -151,7 +156,12 @@ fn search_pipe_finder_respects_gitignore_and_configured_hidden_dirs() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "graph request json: {error}; stdout={}",
+            String::from_utf8_lossy(&output.stdout)
+        )
+    });
     assert_graph_turbo_request_contract(&payload);
     let payload_text = serde_json::to_string(&payload).expect("serialize payload");
     assert!(payload_text.contains("src/lib.rs"), "{payload_text}");

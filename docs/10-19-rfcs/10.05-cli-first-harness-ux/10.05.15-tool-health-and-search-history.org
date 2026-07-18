@@ -218,3 +218,20 @@ The gate measures the complete wrapper command, while =elapsedMs= measures the
 internal collection/ranking phase. Both values matter: a slow wall clock with a
 small =elapsedMs= points to process startup or wrapper dispatch, while a slow
 =elapsedMs= points to finder/ranker work.
+
+* Clean Git transitions must invalidate source-index reuse
+A clean worktree is not sufficient evidence that an indexed generation is
+current.  Commands such as =asp sync= may perform =git pull --ff-only=; the
+result is clean both before and after the pull even when owners were deleted.
+
+The source-index scope witness MUST therefore include the indexed worktree's
+Git =HEAD= identity when one is available.  A changed =HEAD= makes the prior
+generation non-reusable and routes through the existing transactional refresh,
+which prunes owners, selectors, and postings absent from the new generation.
+
+=asp sync= MUST request a scoped source-index refresh for the synchronized Org
+state root after =cloned= or =updated=.  It MUST NOT use global cache
+invalidation and MUST NOT delete cache state belonging to the caller's project
+or another workspace.  If provider activation is not available yet during an
+install bootstrap, the sync receipt may report =orgSourceIndex=deferred=; this
+must not block unrelated Codex tool use.

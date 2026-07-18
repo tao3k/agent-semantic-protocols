@@ -13,48 +13,61 @@ use crate::rust_harness_activation::support::{
 };
 
 #[test]
-fn cli_hook_fails_closed_for_source_read_when_activation_is_missing() {
+fn cli_hook_repairs_missing_activation_and_denies_source_read() {
     let root = temp_project_root("hook-activation-missing-fail-closed");
     let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+    let _ = std::fs::remove_file(&activation_path);
+    std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"activation-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Rust manifest fixture");
+    std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n")
+        .expect("write Rust source fixture");
 
-    let (decision, stderr) = run_hook_with_activation(
+    let (decision, _stderr) = run_hook_with_activation(
         &activation_path,
-        json!({"tool_name": "Read", "tool_input": {"file_path": "main.rs"}}),
+        json!({"tool_name": "Read", "tool_input": {"file_path": "src/lib.rs"}}),
     );
 
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["reasonKind"], "direct-source-read");
     assert_eq!(decision["subject"]["toolName"], "Read");
-    assert_eq!(decision["subject"]["paths"], json!(["main.rs"]));
-    assert!(
-        decision["message"]
-            .as_str()
-            .expect("message")
-            .contains("source reads fail closed")
+    assert_eq!(decision["subject"]["paths"], json!(["src/lib.rs"]));
+    assert_eq!(
+        decision["fields"]["activationRecoveryStatus"],
+        "reloaded-and-classified"
     );
-    assert!(stderr.contains("activation disabled for this hook event"));
+    assert!(activation_path.is_file());
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn cli_hook_allows_non_source_read_when_activation_is_missing() {
+fn cli_hook_repairs_missing_activation_then_classifies_source_read() {
     let root = temp_project_root("hook-activation-missing-non-source-allow");
     let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+    let _ = std::fs::remove_file(&activation_path);
+    std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"activation-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Rust manifest fixture");
+    std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n")
+        .expect("write Rust source fixture");
 
     let (decision, stderr) = run_hook_with_activation(
         &activation_path,
-        json!({"tool_name": "Read", "tool_input": {"file_path": "README.md"}}),
+        json!({"tool_name": "Read", "tool_input": {"file_path": "src/lib.rs"}}),
     );
 
-    assert_eq!(decision["decision"], "allow");
-    assert_eq!(decision["reasonKind"], "none");
-    assert!(
-        decision["message"]
-            .as_str()
-            .expect("message")
-            .contains("allowing tool use so activation can be repaired")
+    assert_eq!(decision["decision"], "deny", "{decision}\n{stderr}");
+    assert_eq!(decision["reasonKind"], "direct-source-read");
+    assert_eq!(
+        decision["fields"]["activationRecoveryStatus"],
+        "reloaded-and-classified"
     );
-    assert!(stderr.contains("activation disabled for this hook event"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -207,7 +220,27 @@ fn run_hook_with_activation(
     payload: serde_json::Value,
 ) -> (serde_json::Value, String) {
     let mut child = asp_command()
-        .env("PATH", "")
+        .env(
+            "ASP_STATE_HOME",
+            activation_path
+                .parent()
+                .and_then(Path::parent)
+                .expect("legacy activation state home"),
+        )
+        .env(
+            "CODEX_HOME",
+            activation_path
+                .ancestors()
+                .nth(4)
+                .expect("legacy activation project root")
+                .join(".codex-home"),
+        )
+        .current_dir(
+            activation_path
+                .ancestors()
+                .nth(4)
+                .expect("legacy activation project root"),
+        )
         .args([
             "hook",
             "--client",

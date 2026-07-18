@@ -4,10 +4,11 @@ mod agent_session;
 mod agent_session_registry;
 
 pub(crate) use agent_session_registry::{
-    ResidentChildIdentityProof, codex_transcript_resident_child_identity_proof,
-    current_agent_session_id, current_registered_session, current_registered_session_identity,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity, current_agent_session_id,
+    current_registered_session, current_registered_session_identity,
     current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
     record_current_session_tool_event, registered_resident_session_for_root,
+    rollout_metadata_matches_managed_agent_profile, validate_session_profile,
 };
 pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;
@@ -25,6 +26,7 @@ mod hook;
 mod hook_enforcement;
 mod hook_runtime;
 mod hook_runtime_context;
+mod hook_runtime_source_access;
 mod install_provider;
 mod install_provider_archive;
 mod install_provider_release;
@@ -64,10 +66,7 @@ mod search_pipe_graph_turbo_owner_rank;
 mod search_pipe_graph_turbo_seed;
 mod search_pipe_meta;
 mod search_pipe_model;
-mod search_pipe_owner_action;
 mod search_pipe_owner_items_fast;
-mod search_pipe_owner_items_query;
-mod search_pipe_owner_roles;
 mod search_pipe_plan;
 mod search_pipe_projection;
 mod search_pipe_provider_facts;
@@ -84,12 +83,6 @@ mod search_pipe_source;
 mod search_pipe_surfaces;
 mod search_pipe_view;
 mod search_query_budget;
-mod search_query_wrapper;
-mod search_query_wrapper_candidates;
-mod search_query_wrapper_frontier;
-mod search_query_wrapper_model;
-mod search_query_wrapper_preview;
-mod search_query_wrapper_quality;
 mod search_suggest;
 mod source_access;
 mod sync;

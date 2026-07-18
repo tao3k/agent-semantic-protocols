@@ -15,6 +15,8 @@ fn doctor_uses_default_client_hook_config_when_override_is_absent() {
     assert!(stdout.contains("clientConfig="));
     assert!(stdout.contains(".agent-semantic-protocols/hooks/config.toml"));
     assert!(stdout.contains("clientConfigStatus=default"));
+    assert!(stdout.contains("configContractStatus=match"));
+    assert!(stdout.contains("configuredContractFingerprint=hook-client-v1-"));
     assert!(stdout.contains("classifierProbe=deny"));
     assert!(!stdout.contains("client-config-missing"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
@@ -40,8 +42,33 @@ tool = "Bash"
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
     assert!(stdout.contains("clientConfigStatus=ok"));
+    assert!(stdout.contains("configContractStatus=missing"));
     assert!(stdout.contains("enforcement=unavailable"));
     assert!(stdout.contains("enforcementReason=project-hook-missing"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn strict_doctor_rejects_config_without_contract_fingerprint() {
+    let root = temp_project_root("doctor-strict-contract");
+    let activation_path = write_activation(&root);
+    write_client_config(
+        &root,
+        r#"
+[[rules]]
+id = "valid-but-stale-doctor-rule"
+decision = "deny"
+"#,
+    );
+
+    let output = super::run_doctor_strict(&root, &activation_path);
+
+    assert!(!output.status.success());
+    let stderr = stderr(&output);
+    assert!(
+        stderr.contains("hook contract freshness gate failed: config=missing"),
+        "{stderr}"
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -145,7 +172,11 @@ fn doctor_rejects_invalid_client_hook_config() {
     let output = run_doctor(&root, &activation_path);
 
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("invalid client hook config"));
+    let stderr = stderr(&output);
+    assert!(
+        stderr.contains("invalid effective client hook config"),
+        "{stderr}"
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 

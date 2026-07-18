@@ -15,7 +15,7 @@ fn language_owner_items_uses_dynamic_owner_items_without_provider_fallback() {
     std::fs::create_dir_all(root.join("crate/src")).expect("create source");
     std::fs::write(
         root.join("crate/src/lib.rs"),
-        "pub async fn dynamic_owner_item_index() {}\n",
+        "pub async fn dynamic_owner_item_index() {}\npub use crate::dispatch::run_protocol_command as run_binary_from_env;\n",
     )
     .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
@@ -49,6 +49,8 @@ fn language_owner_items_uses_dynamic_owner_items_without_provider_fallback() {
         "{stdout}"
     );
     assert!(stdout.contains("dynamic_owner_item_index"), "{stdout}");
+    assert!(stdout.contains("run_binary_from_env"), "{stdout}");
+    assert!(stdout.contains("kind=reexport"), "{stdout}");
     assert!(
         !marker.exists(),
         "dynamic owner-items should not invoke the provider fallback"

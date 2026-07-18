@@ -99,10 +99,11 @@ async fn db_engine_source_index_bootstrap_converges_historical_owner_schema_colu
         },
     )
     .expect("refresh source-index after token-owner migration");
-    assert_eq!(
+    assert_ne!(
         restored_refresh.generation_id.as_str(),
         "source-index-migrated-turso"
     );
+    assert_ne!(restored_refresh.generation_id, refresh.generation_id);
     {
         let db_path_string = db_path.display().to_string();
         let database = turso::Builder::new_local(&db_path_string)

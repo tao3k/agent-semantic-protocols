@@ -36,10 +36,15 @@ pub(super) fn codex_plugin_scope_arg(
     let global_plugin = args
         .iter()
         .any(|arg| matches!(arg.as_str(), "--global" | "--global-plugin"));
-    if global_plugin && client != "codex" {
+    let project_plugin = args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--project" | "--project-plugin"));
+    if global_plugin && !project_plugin && client != "codex" {
         return Err("--global is only supported for Codex plugin installations".to_string());
     }
-    Ok(if global_plugin {
+    Ok(if project_plugin {
+        CodexPluginScope::Project
+    } else if global_plugin {
         CodexPluginScope::Global
     } else {
         CodexPluginScope::Project
@@ -108,25 +113,35 @@ pub(super) fn install_codex_plugin_hooks(
         CodexPluginScope::Global => {
             remove_codex_project_marketplace_source(&project_config_path, marketplace_name)?;
             remove_codex_project_plugin_config(&project_config_path, &plugin_id)?;
-            ensure_codex_plugin_marketplace_registered(
-                project_root,
-                &plugin_source_root,
-                codex_home.as_deref(),
-                marketplace_name,
-            )?;
-            let add_stdout = run_codex_plugin_command(
-                &[
-                    "plugin".to_string(),
-                    "add".to_string(),
-                    plugin_id,
-                    "--json".to_string(),
-                ],
-                project_root,
-                codex_home.as_deref(),
-            )?;
-            codex_plugin_installed_path(&add_stdout)
-                .map(|path| format!(" pluginInstalledPath={path}"))
-                .unwrap_or_default()
+            if agent_semantic_config::codex_config_plugin_enabled(
+                &codex_agent_config_path,
+                &plugin_id,
+            )? {
+                format!(
+                    " pluginInstalledPath={}",
+                    super::display_path(project_root, &global_plugin_cache)
+                )
+            } else {
+                ensure_codex_plugin_marketplace_registered(
+                    project_root,
+                    &plugin_source_root,
+                    codex_home.as_deref(),
+                    marketplace_name,
+                )?;
+                let add_stdout = run_codex_plugin_command(
+                    &[
+                        "plugin".to_string(),
+                        "add".to_string(),
+                        plugin_id,
+                        "--json".to_string(),
+                    ],
+                    project_root,
+                    codex_home.as_deref(),
+                )?;
+                codex_plugin_installed_path(&add_stdout)
+                    .map(|path| format!(" pluginInstalledPath={path}"))
+                    .unwrap_or_default()
+            }
         }
     };
     let config_path = match scope {
@@ -436,32 +451,45 @@ fn normalize_codex_project_plugin_config(content: &str) -> String {
 }
 
 fn ensure_codex_project_feature_flags(lines: &mut Vec<String>, required_features: &[&str]) {
-    let Some((features_start, mut features_end)) = codex_features_section_bounds(lines) else {
+    let Some((features_start, features_end)) = codex_features_section_bounds(lines) else {
         if !lines.is_empty() && lines.last().is_some_and(|line| !line.trim().is_empty()) {
             lines.push(String::new());
         }
         lines.push("[features]".to_string());
-        for feature in required_features {
-            lines.push(format!("{feature} = true"));
-        }
+        lines.extend(
+            required_features
+                .iter()
+                .map(|feature| format!("{feature} = true")),
+        );
         return;
     };
 
-    for feature in required_features {
-        if let Some(line) = lines[features_start + 1..features_end]
-            .iter_mut()
-            .find(|line| toml_bare_key_line(line, feature))
-        {
+    let required = required_features
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>();
+    let mut present = std::collections::HashSet::new();
+    lines[features_start + 1..features_end]
+        .iter_mut()
+        .filter_map(|line| {
+            let key = line.trim_start().split_once('=')?.0.trim();
+            required.get(key).copied().map(|feature| (line, feature))
+        })
+        .for_each(|(line, feature)| {
             let indent = line
                 .chars()
                 .take_while(|character| character.is_whitespace())
                 .collect::<String>();
             *line = format!("{indent}{feature} = true");
-        } else {
-            lines.insert(features_end, format!("{feature} = true"));
-            features_end += 1;
-        }
-    }
+            present.insert(feature);
+        });
+    let missing = required_features
+        .iter()
+        .copied()
+        .filter(|feature| !present.contains(feature))
+        .map(|feature| format!("{feature} = true"))
+        .collect::<Vec<_>>();
+    lines.splice(features_end..features_end, missing);
 }
 
 fn codex_features_section_bounds(lines: &[String]) -> Option<(usize, usize)> {
@@ -484,13 +512,6 @@ fn codex_features_section_bounds(lines: &[String]) -> Option<(usize, usize)> {
 
 fn toml_table_header(trimmed: &str) -> bool {
     trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.starts_with("[[")
-}
-
-fn toml_bare_key_line(line: &str, key: &str) -> bool {
-    line.trim_start()
-        .strip_prefix(key)
-        .and_then(|rest| rest.trim_start().strip_prefix('='))
-        .is_some()
 }
 
 fn ensure_codex_project_plugin_enabled(config_path: &Path, plugin_id: &str) -> Result<(), String> {

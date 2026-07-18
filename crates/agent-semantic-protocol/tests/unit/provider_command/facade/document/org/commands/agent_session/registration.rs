@@ -99,7 +99,7 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
     );
     assert!(
         list_stdout.contains(
-            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"cheap-code-model\" status=\"active\""
+            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"\" status=\"active\""
         ),
         "{list_stdout}"
     );
@@ -125,7 +125,7 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
     let show_stdout = String::from_utf8(show.stdout).expect("session show stdout");
     assert!(
         show_stdout.contains(
-            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"cheap-code-model\" status=\"active\""
+            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"\" status=\"active\""
         ),
         "{show_stdout}"
     );

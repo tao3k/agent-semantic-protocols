@@ -1,0 +1,58 @@
+#+title: Hook Matching Derived Facts And Decision Materializers
+#+startup: overview
+
+* Status
+
+Accepted for incremental implementation.
+
+* Problem
+
+The hook configuration engine owns static tool, command, argv, and path
+matching, but several source-access policies still fall through to procedural
+Rust classifiers.  Those classifiers mix three different responsibilities:
+
+- extracting typed facts from a tool action;
+- selecting allow or deny policy;
+- materializing a provider-aware route.
+
+This makes =configRuleId= disappear from decisions and leaves a second policy
+surface outside the hook matching engine.
+
+* Contract
+
+One hook rule may name an optional =decisionMaterializer=.  Static matching is
+still performed by the rule engine.  After a rule matches, the materializer may
+use the current runtime, tool action, command tokens, and derived paths to
+produce a provider-aware decision.
+
+The materializer is not an independent classifier:
+
+- it is reachable only from a matched, enabled rule;
+- its decision inherits the matched rule's =configRuleId=;
+- returning no decision continues evaluation with the next rule;
+- it may extract dynamic facts and routes, but may not introduce an unnamed
+  policy branch.
+
+The first materializer is =agent-search-json=.  It preserves provider policy
+and owner-versus-lexical route selection while moving the policy entry point
+into a declarative built-in rule.
+
+* Migration order
+
+1. Add =decisionMaterializer= to the shared hook client-config schema.
+2. Compile and validate the materializer as a typed enum.
+3. Add the built-in =deny-agent-search-json= rule.
+4. Remove the procedural search-json fallback from command classification.
+5. Add derived facts for direct reads, source-directory enumeration, bulk
+   dumps, and structured patch paths.
+6. Migrate their policy decisions into named built-in rules and retain only
+   typed fact extraction and route materialization in Rust.
+
+* Invariants
+
+- Existing project rules may override a built-in rule by stable rule id.
+- Provider and language behavior remains data-driven; no provider list is
+  hard-coded into the hook runtime.
+- Every migrated deny decision contains =configRuleId=.
+- Lifecycle, receipt, and ASP facade validation remain outside command policy
+  matching.

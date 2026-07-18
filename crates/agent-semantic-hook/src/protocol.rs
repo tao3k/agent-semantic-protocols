@@ -94,6 +94,8 @@ pub struct HookRoutes {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dependency_topology_metadata: Option<CommandTemplate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_scope: Option<CommandTemplate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub export_index: Option<CommandTemplate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guide: Option<CommandTemplate>,

@@ -23,22 +23,6 @@ pub(super) fn write_activation(root: &Path, language_id: &str) -> PathBuf {
     write_activation_specs(root, &[(language_id, &["."])])
 }
 
-pub(super) fn write_activation_with_languages(root: &Path, language_ids: &[&str]) -> PathBuf {
-    let specs: Vec<_> = language_ids
-        .iter()
-        .map(|language_id| (*language_id, &["."][..]))
-        .collect();
-    write_activation_specs(root, &specs)
-}
-
-pub(super) fn write_activation_with_package_roots(
-    root: &Path,
-    language_id: &str,
-    package_roots: &[&str],
-) -> PathBuf {
-    write_activation_specs(root, &[(language_id, package_roots)])
-}
-
 fn write_activation_specs(root: &Path, specs: &[(&str, &[&str])]) -> PathBuf {
     let activation_path = root.join("activation.json");
     let manifests = builtin_provider_manifests();

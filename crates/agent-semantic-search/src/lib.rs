@@ -31,17 +31,13 @@ mod graph_owner_item_route;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
 mod query_packet_replay;
-mod query_wrapper_candidates;
-mod query_wrapper_quality;
-mod query_wrapper_scan;
-mod query_wrapper_scan_source;
 mod search_candidate;
 mod search_language_files;
 mod search_lexical_replay;
 mod search_overlay;
 mod search_packet_replay;
 mod search_pipe_evidence;
-mod search_pipe_quality;
+pub mod search_pipe_quality;
 mod search_pipe_query_pack;
 mod search_query_budget;
 mod search_subagent_receipt;
@@ -61,6 +57,7 @@ pub use source_index_rank::{
 mod structural_index_search;
 pub mod syntax_query_replay;
 mod turso_overlay_search;
+mod workspace_scope;
 
 pub use document_candidates::{
     DocumentSearchCandidate, DocumentSearchCandidateCollection, DocumentSearchCandidateRequest,
@@ -147,32 +144,6 @@ pub use provider_candidate_annotations::{
 pub use query_packet_replay::{
     QueryPacketReplayRequest, query_packet_matches_request, render_query_packet_stdout,
 };
-pub use query_wrapper_candidates::{
-    QueryWrapperCandidateCollection, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
-    QueryWrapperSearchStageTraceProjection, QueryWrapperSearchSurface,
-    QueryWrapperSourceIndexTraceProjection, collect_query_wrapper_candidate_collection,
-    query_wrapper_ranked_search_candidates, query_wrapper_search_stage_trace_projection,
-    query_wrapper_source_index_trace_projection,
-};
-pub use query_wrapper_quality::{
-    QueryWrapperClauseCoverage, QueryWrapperQuality, QueryWrapperQualityCandidate,
-    QueryWrapperSearchClause, analyze_query_wrapper_quality, query_wrapper_axis_terms,
-    query_wrapper_candidate_matches_term, query_wrapper_clauses, query_wrapper_owner_candidates,
-    query_wrapper_package_clusters, query_wrapper_package_clusters_from_paths,
-    query_wrapper_package_key, query_wrapper_rg_scope_next, query_wrapper_terms,
-    query_wrapper_unique_clause_terms,
-};
-pub use query_wrapper_scan::{
-    QUERY_WRAPPER_CANDIDATE_LIMIT, QueryCandidateAppend, QueryWrapperCandidate,
-    QueryWrapperCandidateSurface, QueryWrapperScanConfig, QueryWrapperSearchCandidateCollection,
-    QueryWrapperSearchCandidateRequest, QueryWrapperSourceIndexCandidate,
-    QueryWrapperSourceIndexCandidateRequest, QueryWrapperSourceIndexCollection,
-    QueryWrapperSourceIndexLookup, QueryWrapperSourceIndexRequest, append_query_candidates,
-    augment_package_path_candidates,
-};
-pub use query_wrapper_scan_source::{
-    collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
-};
 pub use search_candidate::structural_index_hit_to_search_candidate;
 pub use search_candidate::{
     FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,
@@ -216,7 +187,7 @@ pub use search_pipe_query_pack::{
 };
 pub use search_query_budget::{
     SearchQueryBudgetBlock, search_query_budget_block, search_query_terms,
-    search_rg_terms_budget_block, search_terms_budget_block, specific_search_term,
+    search_terms_budget_block, specific_search_term,
 };
 pub use search_subagent_receipt::{
     SEARCH_SUBAGENT_GRAPH_ROUTE_RECEIPT_SCHEMA, search_subagent_graph_route_receipt,
@@ -246,6 +217,10 @@ pub use syntax_query_replay::{
 pub use turso_overlay_search::{
     TursoOverlaySearchDocument, TursoOverlaySearchHit, bootstrap_turso_overlay_search_store,
     search_turso_overlay_documents, upsert_turso_overlay_search_document,
+};
+pub use workspace_scope::{
+    SemanticWorkspaceAnchor, SemanticWorkspacePackage, SemanticWorkspaceScope,
+    SemanticWorkspaceScopeSet, WorkspaceCandidateAdmission, WorkspaceCandidateRejection,
 };
 
 #[cfg(test)]
@@ -295,9 +270,6 @@ mod provider_candidate_annotations_tests;
 #[path = "../tests/unit/query_packet_replay.rs"]
 mod query_packet_replay_tests;
 #[cfg(test)]
-#[path = "../tests/unit/query_wrapper_candidates.rs"]
-mod query_wrapper_candidates_tests;
-#[cfg(test)]
 #[path = "../tests/unit/search_candidate.rs"]
 mod search_candidate_tests;
 pub mod search_command_preflight;
@@ -324,11 +296,18 @@ mod search_pipe_quality_tests;
 mod search_pipe_query_pack_tests;
 pub mod search_planner;
 #[cfg(test)]
-#[path = "../tests/unit/search_query_budget.rs"]
-mod search_query_budget_tests;
-#[cfg(test)]
 #[path = "../tests/unit/source_index_rank.rs"]
 mod source_index_rank_tests;
 #[cfg(test)]
-#[path = "../tests/unit/syntax_query_replay.rs"]
-mod syntax_query_replay_tests;
+#[path = "../tests/unit/workspace_scope.rs"]
+mod workspace_scope_tests;
+pub use search_pipe_quality::QueryWrapperCandidate;
+pub use search_pipe_quality::QueryWrapperSearchSourceIndexTrace;
+pub use search_pipe_quality::QueryWrapperSearchSurface;
+pub use search_pipe_quality::QueryWrapperSourceIndexLookup;
+pub use search_pipe_quality::query_wrapper_clauses;
+pub use search_pipe_quality::query_wrapper_owner_candidates;
+pub use search_pipe_quality::query_wrapper_package_clusters_from_paths;
+pub use search_pipe_quality::query_wrapper_rg_scope_next;
+pub use search_pipe_quality::query_wrapper_source_index_trace_projection;
+pub use search_pipe_quality::query_wrapper_unique_clause_terms;

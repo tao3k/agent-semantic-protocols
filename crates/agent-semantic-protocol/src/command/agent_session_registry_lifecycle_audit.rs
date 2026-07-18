@@ -177,7 +177,6 @@ pub(super) fn lifecycle_audit_report(
 
     let missing_registered_rollout_sessions: Vec<serde_json::Value> = sessions
         .iter()
-        .filter(|session| session.status != "archived")
         .filter(|session| !rollout_session_ids.contains(&session.session_id))
         .map(lifecycle_registry_session_entry)
         .collect();

@@ -5,9 +5,9 @@ mod asp;
 mod intent;
 mod provider_candidates;
 mod query;
-mod raw_search;
 mod search_json;
 mod shell;
+mod source_intent;
 
 pub(crate) use apply_patch::apply_patch_source_paths;
 pub use asp::{
@@ -17,9 +17,8 @@ pub use asp::{
 pub(crate) use intent::{CommandIntent, command_intent};
 pub(crate) use provider_candidates::{command_source_paths, path_like_token_matches};
 pub(crate) use query::{
-    infer_query_from_path, search_query_route, search_query_route_for_selector,
-    selector_query_route,
+    infer_query_from_path, search_query_route_for_selector, selector_query_route,
 };
-pub(crate) use raw_search::raw_search_plan;
-pub(crate) use search_json::{contains_ingest_pipe, search_json_route};
+pub(crate) use search_json::search_json_route;
 pub use shell::semantic_shell_tokens;
+pub use source_intent::{SourceCommandIntent, classify_source_command_intent};

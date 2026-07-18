@@ -129,7 +129,7 @@ fn builtin_source_argv_rule_matches_command_names_not_harness_subcommands() {
             .fields
             .get("configRuleId")
             .and_then(|id| id.as_str()),
-        None
+        Some("deny-uncontrolled-source-search-commands")
     );
 
     let _ = fs::remove_dir_all(root);
@@ -772,6 +772,7 @@ protocolVersion = "1"
 [[rules]]
 id = "deny-case-insensitive-command-contains"
 decision = "deny"
+priority = 20000
 
 [rules.match]
 tool = "Bash"

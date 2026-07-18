@@ -6,7 +6,7 @@ mod hook_runtime_context;
 mod protocol_binary;
 
 use hook_runtime_context::payload_indicates_subagent_context;
-use protocol_binary::install_protocol_binary;
+use protocol_binary::install_protocol_binary_targets;
 use serde_json::json;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -273,7 +273,9 @@ fn protocol_binary_install_replaces_existing_target_file() {
     #[cfg(unix)]
     let old_inode = target_inode(&target);
 
-    let status = install_protocol_binary(&source, &target).expect("install binary");
+    let install = install_protocol_binary_targets(&source, std::slice::from_ref(&target))
+        .expect("install binary");
+    let status = install.status;
 
     assert_eq!(status, "updated");
     assert_eq!(

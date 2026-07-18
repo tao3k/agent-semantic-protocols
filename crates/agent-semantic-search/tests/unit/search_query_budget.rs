@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
 use agent_semantic_search::{
-    search_query_budget_block, search_query_terms, search_rg_terms_budget_block,
-    search_terms_budget_block, specific_search_term,
+    search_query_budget_block, search_query_terms, search_terms_budget_block, specific_search_term,
 };
 
 #[test]
@@ -67,21 +66,4 @@ fn search_query_budget_blocks_short_all_generic_queries() {
 
     assert_eq!(block.reason, "query-too-broad");
     assert_eq!(block.term_count, 2);
-}
-
-#[test]
-fn rg_budget_blocks_many_terms_on_broad_scope() {
-    let terms = vec![
-        "alpha".to_string(),
-        "beta".to_string(),
-        "gamma".to_string(),
-        "delta".to_string(),
-        "epsilon".to_string(),
-    ];
-    let block = search_rg_terms_budget_block(&terms, &[], false)
-        .expect("rg query with many broad terms should be blocked");
-
-    assert_eq!(block.reason, "query-too-broad");
-    assert_eq!(block.generic_terms, terms);
-    assert_eq!(block.term_count, 5);
 }

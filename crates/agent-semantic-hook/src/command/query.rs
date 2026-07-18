@@ -1,6 +1,5 @@
 use crate::protocol::{DecisionRoute, DecisionRouteKind};
 use crate::protocol_activation::ActivatedProvider;
-use crate::source_selector::provider_source_selector;
 
 pub(crate) fn infer_query_from_path(path: &str) -> Option<String> {
     let normalized = path.trim().trim_end_matches('/');
@@ -14,14 +13,6 @@ pub(crate) fn infer_query_from_path(path: &str) -> Option<String> {
         stem
     };
     query_variants(base)
-}
-
-pub(crate) fn search_query_route(
-    provider: &ActivatedProvider,
-    terms: &[String],
-) -> Option<DecisionRoute> {
-    let selector = provider_source_selector(provider);
-    search_lexical_route_for_selector(provider, &selector, ".", terms)
 }
 
 pub(crate) fn selector_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
@@ -67,22 +58,6 @@ pub(crate) fn search_query_route_for_selector(
         provider,
         kind,
         template,
-        selector,
-        project_root,
-        terms,
-    ))
-}
-
-fn search_lexical_route_for_selector(
-    provider: &ActivatedProvider,
-    selector: &str,
-    project_root: &str,
-    terms: &[String],
-) -> Option<DecisionRoute> {
-    Some(route_from_query_template(
-        provider,
-        DecisionRouteKind::Lexical,
-        &provider.routes.lexical,
         selector,
         project_root,
         terms,

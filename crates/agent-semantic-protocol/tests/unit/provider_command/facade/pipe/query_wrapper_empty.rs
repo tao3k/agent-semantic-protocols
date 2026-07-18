@@ -39,12 +39,12 @@ fn asp_fd_query_empty_seeds_prints_compact_no_output_receipt() {
         stdout.contains("noOutput reason=no-candidates sourceTrace=query-overlay:empty"),
         "{stdout}"
     );
+    assert!(stdout.contains("nextCommand=-"), "{stdout}");
     assert!(
-        stdout.contains(
-            "nextCommand=asp rg -query 'missingowner' -query 'missinghelper' --workspace ."
-        ),
+        stdout.contains("failure=selector-anchor-unavailable"),
         "{stdout}"
     );
+    assert!(!stdout.contains("nextCommand=asp rg"), "{stdout}");
     assert!(
         stdout.contains("avoid=repeat-flat-fd,workspace-wide-fd,raw-read"),
         "{stdout}"
@@ -98,10 +98,12 @@ fn asp_rg_query_empty_seeds_prints_compact_no_output_receipt() {
         stdout.contains("noOutput reason=no-candidates sourceTrace=query-overlay:empty"),
         "{stdout}"
     );
+    assert!(stdout.contains("nextCommand=-"), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp fd -query 'MissingOwner|MissingHelper' --workspace ."),
+        stdout.contains("failure=selector-anchor-unavailable"),
         "{stdout}"
     );
+    assert!(!stdout.contains("nextCommand=asp fd"), "{stdout}");
     assert!(
         stdout.contains("avoid=repeat-flat-rg,workspace-wide-rg,manual-window-scan,raw-read"),
         "{stdout}"

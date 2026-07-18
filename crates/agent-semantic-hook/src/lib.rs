@@ -18,13 +18,17 @@ mod codex_project_trust;
 mod codex_trust;
 mod command;
 pub use command::{
-    AspLanguageCommand, AspLanguageCommandIntent, asp_invocation_indices,
+    AspLanguageCommand, AspLanguageCommandIntent, SourceCommandIntent, asp_invocation_indices,
     classify_asp_language_command_tokens, classify_asp_language_command_tokens_with_policy,
-    semantic_shell_tokens,
+    classify_source_command_intent, semantic_shell_tokens,
 };
 mod event_replay;
 mod event_state;
 mod event_state_subagent_model_drift;
+pub use event_state_subagent_model_drift::{
+    ReasoningAssessment, ReasoningEvidence, ReasoningEvidenceSource, ReasoningEvidenceVisibility,
+    ReasoningVerdict, reduce_reasoning_evidence,
+};
 mod executable;
 mod hook_config;
 mod hook_config_agent_org;

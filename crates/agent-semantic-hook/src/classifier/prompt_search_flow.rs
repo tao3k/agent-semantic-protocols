@@ -18,7 +18,7 @@ use crate::{
 
 const LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES: usize = 80;
 
-pub(super) fn classify_prompt_search_flow_feedback(
+pub(crate) fn materialize_prompt_search_strategy_decision(
     registry: &HookRuntime,
     platform: &str,
     event: &str,
@@ -74,68 +74,19 @@ pub(super) fn classify_prompt_search_flow_feedback(
     .ok()
     .flatten();
     if let Some(feedback) = feedback.as_ref()
-        && !feedback.saw_pipe
+        && let Some(decision) = classify_prompt_search_flow_feedback(
+            platform,
+            event,
+            action,
+            &asp_command,
+            command_tokens.as_ref(),
+            direct_source_read_shape,
+            &feedback.language_id,
+            feedback.saw_pipe,
+            &feedback.pipe_command_tokens,
+        )
     {
-        if asp_command.route == "search-prime" && asp_command.language_id == feedback.language_id {
-            return Some(search_flow_feedback_decision(
-                platform,
-                event,
-                action,
-                &feedback.language_id,
-                AspLanguageCommandIntent::Reasoning,
-                "repeat-prime-before-pipe",
-                "ASP hook denied repeated `search prime` before `search pipe`.",
-            ));
-        }
-        if asp_command.intent == AspLanguageCommandIntent::DirectReadFallback {
-            return Some(search_flow_feedback_decision(
-                platform,
-                event,
-                action,
-                &feedback.language_id,
-                AspLanguageCommandIntent::DirectReadFallback,
-                "read-before-pipe",
-                "ASP hook denied code/direct read before `search pipe`.",
-            ));
-        }
-    }
-    if let Some(feedback) = feedback.as_ref()
-        && feedback.saw_pipe
-    {
-        if asp_command.route == "search-pipe"
-            && asp_command.language_id == feedback.language_id
-            && feedback
-                .pipe_command_tokens
-                .iter()
-                .any(|previous| previous.as_slice() == command_tokens.as_ref())
-        {
-            return Some(search_flow_feedback_decision(
-                platform,
-                event,
-                action,
-                &feedback.language_id,
-                AspLanguageCommandIntent::Reasoning,
-                "repeat-search-pipe",
-                "ASP hook denied exact replay of `search pipe` in the same prompt.",
-            ));
-        }
-        if let Some(shape) = direct_source_read_shape {
-            match shape {
-                AspDirectSourceReadShape::Bounded { line_span }
-                    if line_span <= LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES => {}
-                _ => {
-                    return Some(search_flow_feedback_decision(
-                        platform,
-                        event,
-                        action,
-                        &feedback.language_id,
-                        AspLanguageCommandIntent::DirectReadFallback,
-                        "direct-source-read-after-pipe",
-                        "ASP hook denied broad manual `direct-source-read` after `search pipe`.",
-                    ));
-                }
-            }
-        }
+        return Some(decision);
     }
     if asp_command.intent == AspLanguageCommandIntent::Reasoning
         && let Some(decision) = classify_prompt_asp_command_budget(
@@ -155,6 +106,79 @@ pub(super) fn classify_prompt_search_flow_feedback(
         action,
         &asp_command,
     ))
+}
+
+fn classify_prompt_search_flow_feedback(
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    asp_command: &AspLanguageCommand,
+    command_tokens: &[String],
+    direct_source_read_shape: Option<AspDirectSourceReadShape>,
+    feedback_language_id: &str,
+    saw_pipe: bool,
+    pipe_command_tokens: &[Vec<String>],
+) -> Option<HookDecision> {
+    if !saw_pipe {
+        if asp_command.route == "search-prime" && asp_command.language_id == feedback_language_id {
+            return Some(search_flow_feedback_decision(
+                platform,
+                event,
+                action,
+                feedback_language_id,
+                AspLanguageCommandIntent::Reasoning,
+                "repeat-prime-before-pipe",
+                "ASP hook denied repeated `search prime` before `search pipe`.",
+            ));
+        }
+        if asp_command.intent == AspLanguageCommandIntent::DirectReadFallback {
+            return Some(search_flow_feedback_decision(
+                platform,
+                event,
+                action,
+                feedback_language_id,
+                AspLanguageCommandIntent::DirectReadFallback,
+                "read-before-pipe",
+                "ASP hook denied code/direct read before `search pipe`.",
+            ));
+        }
+        return None;
+    }
+
+    if asp_command.route == "search-pipe"
+        && asp_command.language_id == feedback_language_id
+        && pipe_command_tokens
+            .iter()
+            .any(|previous| previous.as_slice() == command_tokens)
+    {
+        return Some(search_flow_feedback_decision(
+            platform,
+            event,
+            action,
+            feedback_language_id,
+            AspLanguageCommandIntent::Reasoning,
+            "repeat-search-pipe",
+            "ASP hook denied exact replay of `search pipe` in the same prompt.",
+        ));
+    }
+    if let Some(shape) = direct_source_read_shape {
+        match shape {
+            AspDirectSourceReadShape::Bounded { line_span }
+                if line_span <= LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES => {}
+            _ => {
+                return Some(search_flow_feedback_decision(
+                    platform,
+                    event,
+                    action,
+                    feedback_language_id,
+                    AspLanguageCommandIntent::DirectReadFallback,
+                    "direct-source-read-after-pipe",
+                    "ASP hook denied broad manual `direct-source-read` after `search pipe`.",
+                ));
+            }
+        }
+    }
+    None
 }
 
 fn action_supports_prompt_search_flow_feedback(action: &ToolAction) -> bool {

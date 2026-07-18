@@ -19,7 +19,9 @@ use super::search_pipe_model::SearchPipeSourceTrace;
 use super::search_pipe_owner_items_fast::{
     SearchOwnerItemsFastContext, run_search_owner_items_query_command,
 };
-use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
+use super::search_pipe_provider_facts::{
+    ProviderGraphFactsContext, collect_provider_graph_facts, collect_provider_workspace_scope,
+};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{render_empty_ingest_diagnostic, render_owner_tests_frontier};
 use super::search_pipe_selector_seed::{
@@ -249,7 +251,9 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         });
     }
     let budget_scopes = search_pipe_budget_scopes(&pipe_args);
-    if let Some(block) = search_query_budget_block(&pipe_args.seed_query, &budget_scopes, false) {
+    if pipe_args.view != "graph-turbo-request"
+        && let Some(block) = search_query_budget_block(&pipe_args.seed_query, &budget_scopes, false)
+    {
         print_search_query_budget_block(
             "search-pipe",
             context.language_id,
@@ -260,7 +264,18 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         );
         return Ok(());
     }
-    let acquisition =
+    let planning_only = pipe_args.view == "graph-turbo-request";
+    let workspace_scope = if planning_only {
+        None
+    } else {
+        collect_provider_workspace_scope(
+            context.language_id,
+            &project_root,
+            context.config,
+            context.provider_context,
+        )?
+    };
+    let mut acquisition =
         dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
             language_id: context.language_id,
             project_root: &project_root,
@@ -281,15 +296,27 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
                 true,
             )
         })?;
+    if let Some(scope) = workspace_scope.as_ref() {
+        admit_search_pipe_candidates(
+            &mut acquisition,
+            scope,
+            context.language_id,
+            context.locator_root,
+        );
+    }
     let provider_facts_started_at = Instant::now();
-    let provider_facts = collect_provider_graph_facts(
-        context.language_id,
-        &project_root,
-        Some(&pipe_args.seed_query),
-        &acquisition.candidates,
-        context.config,
-        context.provider_context,
-    )?;
+    let provider_facts = if planning_only {
+        super::search_pipe_provider_facts::ProviderGraphFacts::default()
+    } else {
+        collect_provider_graph_facts(
+            context.language_id,
+            &project_root,
+            Some(&pipe_args.seed_query),
+            &acquisition.candidates,
+            context.config,
+            context.provider_context,
+        )?
+    };
     let source_trace = source_trace_with_provider_facts(
         &acquisition.source_trace,
         provider_facts_started_at.elapsed(),
@@ -325,6 +352,53 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     })?;
     Ok(())
 }
+
+fn admit_search_pipe_candidates(
+    acquisition: &mut CandidateAcquisition,
+    scope: &agent_semantic_search::SemanticWorkspaceScope,
+    language_id: &str,
+    locator_root: &Path,
+) {
+    let input_count = acquisition.candidates.len();
+    let mut rejection_kinds = std::collections::BTreeSet::new();
+    acquisition.candidates.retain(|candidate| {
+        match scope.admit_candidate_from(locator_root, Path::new(&candidate.path), language_id) {
+            Ok(_) => true,
+            Err(rejection) => {
+                rejection_kinds.insert(rejection.reason_kind);
+                false
+            }
+        }
+    });
+    let admitted_count = acquisition.candidates.len();
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "workspaceId".to_string(),
+        Value::from(scope.workspace_id.clone()),
+    );
+    fields.insert(
+        "rejectionKinds".to_string(),
+        Value::from(rejection_kinds.into_iter().collect::<Vec<_>>()),
+    );
+    acquisition.source_trace.push(
+        SearchPipeSourceTrace::new(
+            "workspace-scope",
+            if admitted_count == input_count {
+                "used"
+            } else {
+                "filtered"
+            },
+            admitted_count,
+            input_count.saturating_sub(admitted_count),
+            input_count,
+        )
+        .with_fields(fields),
+    );
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/search_pipe_workspace_scope.rs"]
+mod workspace_scope_admission_tests;
 
 fn resolved_search_pipe_source(source: SourceSpec, acquisition: &CandidateAcquisition) -> String {
     acquisition

@@ -14,6 +14,8 @@ const SOURCE_INDEX_HASH_REUSE_GATE: Duration = Duration::from_millis(25);
 #[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE: Duration = Duration::from_secs(1);
 #[cfg(not(debug_assertions))]
+const SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE: Duration = Duration::from_secs(1);
+#[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_ONE_PERCENT_REFRESH_GATE: Duration = Duration::from_millis(500);
 #[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_HIGH_FANOUT_COLD_LOOKUP_GATE: Duration = Duration::from_millis(400);
@@ -49,10 +51,43 @@ async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
     assert_eq!(refresh.selector_count, 1_193);
     assert_eq!(refresh.changed_owner_count, 1_193);
     assert_eq!(refresh.removed_owner_count, 0);
-    assert_eq!(refresh.posting_write_count, 20_281);
+    assert_eq!(
+        refresh.posting_write_count, 6_308,
+        "cold-write receipt must match the deterministic 16-term owner frontier"
+    );
     assert!(
         elapsed < SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE,
         "1193-owner source-index cold write exceeded V1 DB gate: elapsed={elapsed:?} gate={SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(not(debug_assertions))]
+#[tokio::test(flavor = "current_thread")]
+async fn source_index_1278_owner_posting_frontier_cold_write_stays_inside_v1_gate() {
+    let _test_guard = source_index_refresh_test_guard();
+    let root = temp_project_root("source-index-1278-owner-posting-frontier-cold-write");
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&client_dir).expect("create client dir");
+    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
+
+    let request = large_high_term_refresh_request(&project_root, 1_278, 32);
+    let started_at = Instant::now();
+    let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request)
+        .expect("write bounded-posting source-index snapshot");
+    let elapsed = started_at.elapsed();
+
+    assert_eq!(refresh.owner_count, 1_278);
+    assert_eq!(refresh.selector_count, 1_278);
+    assert!(
+        (12_000..=20_448).contains(&refresh.posting_write_count),
+        "posting frontier must remain large enough to exercise bulk writes while retaining at most 16 ranked terms per owner: refresh={refresh:?}"
+    );
+    assert!(
+        elapsed < SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE,
+        "posting-frontier source-index cold write exceeded V1 DB gate: elapsed={elapsed:?} gate={SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE:?}"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -210,9 +245,15 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
     assert!(!pruned.reused_generation);
     assert_eq!(pruned.owner_count, 1);
     assert_eq!(pruned.selector_count, 1);
-    assert_eq!(pruned.changed_owner_count, 0);
+    assert_eq!(
+        pruned.changed_owner_count, 1,
+        "a removal-only generation materializes retained owners into the new immutable snapshot"
+    );
     assert_eq!(pruned.removed_owner_count, 1);
-    assert_eq!(pruned.posting_write_count, 0);
+    assert_eq!(
+        pruned.posting_write_count, 16,
+        "a removal-only generation materializes retained postings into the new immutable snapshot"
+    );
 
     let rust_language_id = LanguageId::from("rust");
     let lookup_deadline = Instant::now() + Duration::from_secs(15);
@@ -512,8 +553,47 @@ fn source_index_refresh_rewrites_canonical_snapshot_after_file_hash_changes() {
     )
     .expect("republish historical source-index facts");
     assert!(!restored.reused_generation);
-    assert_ne!(restored.generation_id, first.generation_id);
-    assert_ne!(restored.generation_id, changed.generation_id);
+    assert_ne!(
+        restored.generation_id, first.generation_id,
+        "first={:?} changed={:?} restored={:?}",
+        first.generation_id, changed.generation_id, restored.generation_id
+    );
+    assert_ne!(
+        restored.generation_id, changed.generation_id,
+        "first={:?} changed={:?} restored={:?}",
+        first.generation_id, changed.generation_id, restored.generation_id
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_refresh_detects_selector_change_without_file_hash_change() {
+    let _test_guard = source_index_refresh_test_guard();
+    let root = temp_project_root("source-index-selector-only-refresh");
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&client_dir).expect("create client dir");
+    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
+
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        refresh_request(&project_root),
+    )
+    .expect("write initial source-index facts");
+
+    let mut changed_request = refresh_request(&project_root);
+    changed_request.import.selectors[0].source =
+        "pub fn source_index_perf_fixture() { changed(); }".into();
+    let changed =
+        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
+            .expect("publish selector-only source-index change");
+
+    assert!(!changed.reused_generation);
+    assert_eq!(changed.owner_count, 1);
+    assert_eq!(changed.selector_count, 1);
+    assert_eq!(changed.changed_owner_count, 1);
+    assert!(changed.posting_write_count > 0);
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -604,6 +684,22 @@ fn large_refresh_request(
             selectors,
         },
     }
+}
+
+#[cfg(not(debug_assertions))]
+fn large_high_term_refresh_request(
+    project_root: &Path,
+    owner_count: u32,
+    unique_terms_per_owner: u32,
+) -> ClientDbSourceIndexRefreshRequest {
+    let mut request = large_refresh_request(project_root, owner_count);
+    for (owner_index, owner) in request.import.owners.iter_mut().enumerate() {
+        owner.query_keys.extend(
+            (0..unique_terms_per_owner)
+                .map(|term_index| format!("z{owner_index:04}q{term_index:02}unique").into()),
+        );
+    }
+    request
 }
 
 fn run_git(project_root: &Path, args: impl IntoIterator<Item = &'static str>) {

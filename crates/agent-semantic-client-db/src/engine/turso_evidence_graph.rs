@@ -407,7 +407,22 @@ pub async fn lookup_turso_graph_owner_read_model(
             selector_nodes: Vec::new(),
         });
     }
-    let connection = connect_turso_client_db(db_path).await?;
+    if !super::turso::turso_client_db_exists(db_path) {
+        return Ok(TursoClientDbGraphOwnerReadModel {
+            projection_ready: false,
+            selector_nodes: Vec::new(),
+        });
+    }
+    let connection = match super::turso::connect_turso_client_db_read_only(db_path).await {
+        Ok(connection) => connection,
+        Err(error) if error.to_ascii_lowercase().contains("entity not found") => {
+            return Ok(TursoClientDbGraphOwnerReadModel {
+                projection_ready: false,
+                selector_nodes: Vec::new(),
+            });
+        }
+        Err(error) => return Err(error),
+    };
     let mut rows = run_turso_operation_with_lock_retry(
         || async {
             connection

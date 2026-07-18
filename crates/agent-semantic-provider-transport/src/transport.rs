@@ -313,10 +313,17 @@ async fn collect_provider_output(
 
     let status = if let Some(timeout) = limits.timeout {
         tokio::select! {
+            biased;
             result = child.wait() => {
                 result.map_err(|source| ProviderProcessError::Wait { source })?
             }
             _ = tokio::time::sleep(timeout) => {
+                if let Some(status) = child
+                    .try_wait()
+                    .map_err(|source| ProviderProcessError::Wait { source })?
+                {
+                    status
+                } else {
                 warn!(
                     timeout_ms = timeout.as_millis(),
                     "provider process timed out; requesting kill"
@@ -329,6 +336,7 @@ async fn collect_provider_output(
                     timeout,
                     receipt: provider_process_receipt(start, None, stdout, stderr, true, false, limits),
                 });
+                }
             }
             _ = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes) => {
                 let limit_bytes = limits.memory_limit_bytes.expect("memory monitor requires limit");
@@ -344,6 +352,7 @@ async fn collect_provider_output(
         }
     } else {
         tokio::select! {
+            biased;
             result = child.wait() => {
                 result.map_err(|source| ProviderProcessError::Wait { source })?
             }

@@ -41,17 +41,6 @@ fn asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_ga
 }
 
 #[test]
-fn asp_search_owner_source_index_trace_missing_db_cold_functional_path_stays_inside_scenario_gate()
-{
-    super::search_owner_source_index_gates::asp_search_owner_source_index_trace_missing_db_cold_functional_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_search_owner_source_index_trace_hit_cold_functional_path_stays_inside_scenario_gate() {
-    super::search_owner_source_index_gates::asp_search_owner_source_index_trace_hit_cold_functional_path_stays_inside_scenario_gate();
-}
-
-#[test]
 fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate() {
     super::graph_rank::asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate();
 }
@@ -62,34 +51,8 @@ fn asp_search_candidate_contract_cold_functional_path_stays_inside_scenario_gate
 }
 
 #[test]
-fn asp_query_wrapper_source_index_bridge_cold_functional_path_stays_inside_scenario_gate() {
-    super::query_wrapper_gates::asp_query_wrapper_source_index_bridge_cold_functional_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_query_wrapper_render_hint_projection_cold_functional_path_stays_inside_scenario_gate() {
-    super::query_wrapper_gates::asp_query_wrapper_render_hint_projection_cold_functional_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_query_wrapper_source_index_trace_projection_cold_functional_path_stays_inside_scenario_gate()
-{
-    super::source_index::asp_query_wrapper_source_index_trace_projection_cold_functional_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_query_wrapper_clause_normalization_cold_functional_path_stays_inside_scenario_gate() {
-    super::query_wrapper_gates::asp_query_wrapper_clause_normalization_cold_functional_path_stays_inside_scenario_gate();
-}
-
-#[test]
 fn asp_query_selector_directory_code_preflight_cold_functional_path_stays_inside_scenario_gate() {
     super::query_selector_preflight::asp_query_selector_directory_code_preflight_cold_functional_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate() {
-    super::query_wrapper_gates::asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate();
 }
 
 #[test]
@@ -211,21 +174,6 @@ fn asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate() {
 #[test]
 fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate() {
     super::overlay_and_provider_gates::asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_rg_query_source_index_warm_path_stays_inside_scenario_gate() {
-    super::source_index::asp_rg_query_source_index_warm_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_rg_query_source_index_miss_skips_search_overlay_gate() {
-    super::source_index::asp_rg_query_source_index_miss_skips_search_overlay_gate();
-}
-
-#[test]
-fn asp_fd_query_source_index_warm_path_stays_inside_scenario_gate() {
-    super::source_index::asp_fd_query_source_index_warm_path_stays_inside_scenario_gate();
 }
 
 #[test]

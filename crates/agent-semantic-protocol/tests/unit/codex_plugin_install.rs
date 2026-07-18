@@ -37,7 +37,7 @@ mod unix {
             .env("PATH", prepend_path(&fake_bin))
             .env("ASP_STATE_HOME", root.join(".state"))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
-            .args(["install", "plugin", "--codex", "."])
+            .args(["install", "plugin", "--codex", "--project", "."])
             .output()
             .expect("run asp install plugin --codex");
         assert!(
@@ -48,6 +48,10 @@ mod unix {
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(stdout.contains("[plugin-install]"), "stdout={stdout}");
+        assert!(
+            stdout.contains("userConfigStatus=created"),
+            "stdout={stdout}"
+        );
         assert!(
             stdout.contains(
                 "pluginSkill=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org"
@@ -253,7 +257,7 @@ fallback = ["gpt-5.4-mini"]
             .env("PATH", prepend_path(&fake_bin))
             .env("ASP_STATE_HOME", root.join(".state"))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
-            .args(["install", "plugin", "--codex", "."])
+            .args(["install", "plugin", "--codex", "--project", "."])
             .output()
             .expect("run asp install plugin --codex");
         assert!(
@@ -511,7 +515,7 @@ fallback = ["gpt-5.4-mini"]
             .join("0.1.0")
     }
 
-    fn temp_project_root(name: &str) -> PathBuf {
+    pub(super) fn temp_project_root(name: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
@@ -564,4 +568,204 @@ esac
             .to_string_lossy()
             .into_owned()
     }
+}
+#[test]
+fn claude_install_creates_managed_hook_config_and_sidecar() {
+    let root = unix::temp_project_root("managed-hook-config-create");
+    let output = run_claude_hook_install(&root);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=created"));
+    let config = managed_hook_config_path(&root);
+    assert!(config.is_file());
+    assert!(managed_config_sidecar(&config).is_file());
+    assert_no_managed_config_temporaries(config.parent().expect("config parent"));
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn claude_install_migrates_recognized_legacy_default_without_fingerprint() {
+    let root = unix::temp_project_root("managed-hook-config-legacy");
+    let config = managed_hook_config_path(&root);
+    let mut legacy =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse template");
+    legacy
+        .as_table_mut()
+        .expect("template table")
+        .remove("contractFingerprint");
+    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
+    std::fs::write(&config, toml::to_string(&legacy).expect("render legacy"))
+        .expect("write legacy");
+    let output = run_claude_hook_install(&root);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("read config"),
+        agent_semantic_hook::default_client_config_template()
+    );
+    assert!(managed_config_sidecar(&config).is_file());
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn claude_install_migrates_pre_rules_legacy_managed_config() {
+    let root = unix::temp_project_root("managed-hook-config-pre-rules");
+    let config = managed_hook_config_path(&root);
+    let mut pre_rules =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse template");
+    let pre_rules_table = pre_rules.as_table_mut().expect("template table");
+    pre_rules_table.remove("contractFingerprint");
+    pre_rules_table.remove("rules");
+    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
+    std::fs::write(
+        &config,
+        toml::to_string(&pre_rules).expect("render pre-rules legacy config"),
+    )
+    .expect("write pre-rules legacy config");
+
+    let output = run_claude_hook_install(&root);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
+
+    let installed = std::fs::read_to_string(&config).expect("read restored config");
+    let installed = toml::from_str::<toml::Value>(&installed).expect("parse restored config");
+    let current =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse current template");
+    assert_eq!(
+        installed
+            .get("contractFingerprint")
+            .and_then(toml::Value::as_str),
+        current
+            .get("contractFingerprint")
+            .and_then(toml::Value::as_str)
+    );
+    assert_eq!(
+        installed
+            .get("rules")
+            .and_then(toml::Value::as_array)
+            .map(Vec::len),
+        Some(7)
+    );
+    let restored_bytes = std::fs::read(&config).expect("read restored config bytes");
+    assert_eq!(
+        std::fs::read_to_string(managed_config_sidecar(&config))
+            .expect("read managed config sidecar")
+            .trim(),
+        test_sha256(&restored_bytes)
+    );
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn claude_install_rejects_unproven_custom_config_without_stamping() {
+    let root = unix::temp_project_root("managed-hook-config-custom");
+    let config = managed_hook_config_path(&root);
+    let mut custom =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse template");
+    custom
+        .as_table_mut()
+        .expect("template table")
+        .remove("contractFingerprint");
+    custom["rules"][0]["message"] = toml::Value::String("custom managed rule message".to_string());
+    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
+    let custom_bytes = toml::to_string(&custom).expect("render custom");
+    std::fs::write(&config, &custom_bytes).expect("write custom");
+    let output = run_claude_hook_install(&root);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("user-config-contract-unproven"));
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("read config"),
+        custom_bytes
+    );
+    assert!(!managed_config_sidecar(&config).exists());
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn claude_install_migrates_stale_managed_config_when_sidecar_proves_ownership() {
+    let root = unix::temp_project_root("managed-hook-config-stale-sidecar");
+    let config = managed_hook_config_path(&root);
+    let mut stale =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse template");
+    stale["contractFingerprint"] = toml::Value::String("stale-contract".to_string());
+    let stale_bytes = toml::to_string(&stale).expect("render stale");
+    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
+    std::fs::write(&config, &stale_bytes).expect("write stale");
+    std::fs::write(
+        managed_config_sidecar(&config),
+        test_sha256(stale_bytes.as_bytes()),
+    )
+    .expect("write sidecar");
+    let output = run_claude_hook_install(&root);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("read config"),
+        agent_semantic_hook::default_client_config_template()
+    );
+    assert_no_managed_config_temporaries(config.parent().expect("config parent"));
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+fn run_claude_hook_install(root: &std::path::Path) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(root)
+        .env("ASP_STATE_HOME", root.join(".state"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["install", "hook", "--client", "claude", "."])
+        .output()
+        .expect("run claude hook install")
+}
+
+fn managed_config_sidecar(config: &std::path::Path) -> std::path::PathBuf {
+    config.with_file_name(format!(
+        "{}.managed.sha256",
+        config
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("config name")
+    ))
+}
+
+fn managed_hook_config_path(root: &std::path::Path) -> std::path::PathBuf {
+    root.join(".state").join("hooks").join("config.toml")
+}
+
+fn test_sha256(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn assert_no_managed_config_temporaries(dir: &std::path::Path) {
+    let temporaries = std::fs::read_dir(dir)
+        .expect("read config directory")
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp"))
+        .count();
+    assert_eq!(
+        temporaries,
+        0,
+        "managed config temporaries remain in {}",
+        dir.display()
+    );
 }

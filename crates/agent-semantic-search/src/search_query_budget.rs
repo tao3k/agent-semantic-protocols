@@ -59,22 +59,6 @@ pub fn search_terms_budget_block(
 }
 
 #[must_use]
-pub fn search_rg_terms_budget_block(
-    terms: &[String],
-    scopes: &[PathBuf],
-    explicit_filters: bool,
-) -> Option<SearchQueryBudgetBlock> {
-    if explicit_filters || terms.len() < 5 || !broad_scope(scopes) {
-        return None;
-    }
-    Some(SearchQueryBudgetBlock {
-        reason: "query-too-broad",
-        generic_terms: terms.iter().take(6).cloned().collect(),
-        term_count: terms.len(),
-    })
-}
-
-#[must_use]
 pub fn search_query_terms(query: &str) -> Vec<String> {
     let mut seen = BTreeSet::new();
     query

@@ -213,13 +213,30 @@ fn try_render_dynamic_owner_items(
     query: &str,
     view: &str,
 ) -> Result<bool, String> {
-    let Some(collector) = dynamic_owner_item_collector(language_id) else {
+    let Some(output) =
+        render_dynamic_owner_items(language_id, project_root, locator_root, owner, query, view)?
+    else {
         return Ok(false);
+    };
+    print!("{output}");
+    Ok(true)
+}
+
+fn render_dynamic_owner_items(
+    language_id: &str,
+    project_root: &Path,
+    locator_root: &Path,
+    owner: &Path,
+    query: &str,
+    view: &str,
+) -> Result<Option<String>, String> {
+    let Some(collector) = dynamic_owner_item_collector(language_id) else {
+        return Ok(None);
     };
     let owner_path = language_owner_source_path(project_root, owner);
     let dynamic_items = collector(&owner_path)?;
     if dynamic_items.is_empty() {
-        return Ok(false);
+        return Ok(None);
     }
     let request = DynamicOwnerItemsRequest {
         language: DynamicSearchLanguage::new(language_id),
@@ -233,8 +250,7 @@ fn try_render_dynamic_owner_items(
     } else {
         render_dynamic_owner_items_frontier(request)
     };
-    print!("{output}");
-    Ok(true)
+    Ok(Some(output))
 }
 
 fn collect_dynamic_rust_owner_items(owner_path: &Path) -> Result<Vec<DynamicOwnerItem>, String> {
@@ -384,6 +400,10 @@ fn document_heading_slug(title: &str) -> String {
         slug
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/search_pipe_owner_items_fast.rs"]
+mod latency_tests;
 
 fn dynamic_owner_item_from_query_owner_item(item: &OwnerItem) -> DynamicOwnerItem {
     DynamicOwnerItem::new(item.name(), item.kind(), item.start_line(), item.end_line())

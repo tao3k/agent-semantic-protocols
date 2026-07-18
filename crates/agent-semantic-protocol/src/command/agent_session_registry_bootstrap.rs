@@ -1,21 +1,27 @@
+//! Resident-slot classifier; `binding` owns target transitions, `reasoning`
+//! owns evidence verdicts, and target absence precedes runtime readiness.
+
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use agent_semantic_client_db::AgentSessionRecord;
 use agent_semantic_client_db::agent_session_registry::{
     AgentSessionInteractiveMenu, AgentSessionLookupRequest, AgentSessionRegistry,
     ResidentChildBootstrapMenuInput, resident_child_bootstrap_menu,
-    resident_child_runtime_repair_menu, resident_child_runtime_verified_menu,
+    resident_child_live_transport_gate, resident_child_runtime_repair_menu,
+    resident_child_runtime_verified_menu,
 };
-use agent_semantic_client_db::{AgentSessionRecord, agent_session_message_target_is_live_bound};
 
-use super::agent_session_registry_args::SessionArgs;
-use super::agent_session_registry_state::{project_session_scope_id, resolved_root_session_id};
-
+use super::{SessionArgs, project_session_scope_id, resolved_root_session_id};
 use agent_semantic_client_db::agent_session_registry::AgentSessionHostRequirement;
 #[path = "agent_session_registry_binding.rs"]
-mod binding;
+pub(in crate::command) mod binding;
+#[path = "agent_session_registry_observation.rs"]
+mod observation;
 #[path = "agent_session_registry_reasoning.rs"]
 mod reasoning;
+#[path = "agent_session_registry_bootstrap_render.rs"]
+mod render;
 pub(super) fn bootstrap_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
@@ -24,7 +30,6 @@ pub(super) fn bootstrap_session(
     let project_id = project_session_scope_id(registry, project_root)?;
     let name = args.name.as_deref().unwrap_or("asp-explore");
     reject_resident_child_bootstrap(registry, &project_id, name)?;
-    registry.refresh_expired_sessions()?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let now = unix_timestamp()?;
     let host_typed_spawn_observation = root_session_id
@@ -51,6 +56,18 @@ pub(super) fn bootstrap_session(
         })
         .transpose()?
         .flatten();
+    let host_resident_target_present = host_resident_target_observation
+        .as_ref()
+        .is_some_and(|observation| observation.target_status == "present");
+    let host_resident_transport_verified =
+        host_resident_target_observation
+            .as_ref()
+            .is_some_and(|observation| {
+                observation.target_status == "present" && observation.identity_status == "verified"
+            });
+    let host_resident_target_absent = host_resident_target_observation
+        .as_ref()
+        .is_some_and(|observation| observation.target_status == "absent");
     if args.child_session_id.is_some()
         || args.message_target_id.is_some()
         || args.parent_session_id.is_some()
@@ -80,9 +97,14 @@ pub(super) fn bootstrap_session(
     }
     let mut rollout_history_status = "not-needed";
     let mut rollout_history_action = "none";
-    let mut registry_routable = record
-        .as_ref()
-        .is_some_and(|session| registry_record_routable(session, root_session_id.as_deref(), now));
+    let mut registry_routable = record.as_ref().is_some_and(|session| {
+        registry_record_routable(
+            session,
+            root_session_id.as_deref(),
+            host_resident_transport_verified,
+            now,
+        )
+    });
     if record.is_none() {
         let preflight =
             super::agent_session_registry_profile::adopt_reusable_rollout_session_before_create(
@@ -100,26 +122,22 @@ pub(super) fn bootstrap_session(
             record = Some(adopted);
         }
         registry_routable = record.as_ref().is_some_and(|session| {
-            registry_record_routable(session, root_session_id.as_deref(), now)
+            registry_record_routable(
+                session,
+                root_session_id.as_deref(),
+                host_resident_transport_verified,
+                now,
+            )
         });
     } else if !registry_routable {
         rollout_history_status = "locked-existing-repair-candidate";
         rollout_history_action = "preserve-candidate-identity-until-host-classification";
     }
-    let host_resident_target_present = host_resident_target_observation
-        .as_ref()
-        .is_some_and(|observation| observation.target_status == "present");
-    if host_resident_target_observation
-        .as_ref()
-        .is_some_and(|observation| observation.target_status == "absent")
-        && let Some(existing) = record.as_mut()
-        && !matches!(
-            existing.status.as_str(),
-            "archived" | "closed" | "orphan-risk"
-        )
-    {
-        registry.update_session_status(&project_id, &existing.session_id, "orphan-risk", now)?;
-        existing.status = "orphan-risk".to_string();
+    if host_resident_target_absent {
+        if let Some(session) = record.as_mut() {
+            session.status = "orphan-risk".to_string();
+            session.message_target_id = None;
+        }
         registry_routable = false;
     }
     let expected_model =
@@ -136,32 +154,50 @@ pub(super) fn bootstrap_session(
                 .map_or(name, |session| session.name.as_str()),
             record.as_ref().map_or("", |session| session.role.as_str()),
         )?;
+    let platform =
+        crate::command::agent_session_registry::active_platform().unwrap_or("{platform}");
+    let expected_host_requirement =
+        resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+            platform,
+            name,
+            root_session_id: root_session_id.as_deref(),
+            record: record.as_ref(),
+            expected_model: expected_model.as_deref(),
+            expected_reasoning_effort: expected_reasoning_effort.as_deref(),
+            rollout_history_status: Some(rollout_history_status),
+            rollout_history_action: Some(rollout_history_action),
+            now,
+        })
+        .host_requirement;
+    let expected_agent_type = expected_host_requirement.managed_agent_kind.to_string();
+    let expected_canonical_target = canonical_resident_target(&expected_host_requirement);
     let subagent_start_registered_child_id = record
         .as_ref()
         .filter(|session| {
-            reasoning::typed_subagent_start_binding_is_valid(
-                &session.role,
-                session.model_observation_source.as_deref(),
-                session.message_target_id.as_deref(),
-                root_session_id.as_deref().is_some_and(|root_session_id| {
+            root_session_id.as_deref().is_some_and(|root_session_id| {
+                reasoning::typed_subagent_start_binding_is_valid(
+                    session,
+                    root_session_id,
+                    &expected_agent_type,
+                    &expected_canonical_target,
                     agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
                         session,
                         root_session_id,
-                    )
-                }),
-            )
+                    ),
+                )
+            })
         })
         .map(|session| session.session_id.clone());
-    let profile_attestation_target_verified = host_resident_target_present || registry_routable;
+    let profile_attestation_target_verified = host_resident_transport_verified;
     let (attested_child_id, attestation_source) = reasoning::profile_attestation_identity(
         record.as_ref(),
         subagent_start_registered_child_id.as_ref(),
         root_session_id.as_deref(),
+        &expected_agent_type,
+        &expected_canonical_target,
         profile_attestation_target_verified,
     )
     .unzip();
-    let platform =
-        crate::command::agent_session_registry::active_platform().unwrap_or("{platform}");
     // Bootstrap is a local state classifier. Runtime evidence is written by
     // lifecycle observation paths; bootstrap must never synchronously start a
     // Codex app-server or any other child process to manufacture missing facts.
@@ -169,16 +205,6 @@ pub(super) fn bootstrap_session(
     let host_runtime_override_blocked = false;
     let host_observed_model: Option<String> = None;
     let host_observed_reasoning_effort: Option<String> = None;
-    if let Some(rebound) = binding::maybe_bind_verified_canonical_target(
-        registry,
-        record.as_ref(),
-        host_resident_target_present,
-        expected_model.as_deref(),
-        host_observed_model.as_deref(),
-    )? {
-        registry_routable = true;
-        record = Some(rebound);
-    }
     let runtime_drift = root_session_id
         .as_deref()
         .map(|root_session_id| {
@@ -187,9 +213,12 @@ pub(super) fn bootstrap_session(
         .transpose()?
         .flatten()
         .filter(|observation| {
-            record
-                .as_ref()
-                .is_none_or(|session| session.session_id == observation.child_session_id)
+            observation::matches_resident_slot(
+                &expected_agent_type,
+                record.as_ref().map(|session| session.session_id.as_str()),
+                &observation.expected_agent_type,
+                &observation.child_session_id,
+            )
         });
     let mut runtime_verification_observation = root_session_id
         .as_deref()
@@ -201,6 +230,14 @@ pub(super) fn bootstrap_session(
         })
         .transpose()?
         .flatten()
+        .filter(|observation| {
+            observation::matches_resident_slot(
+                &expected_agent_type,
+                record.as_ref().map(|session| session.session_id.as_str()),
+                &observation.expected_agent_type,
+                &observation.child_session_id,
+            )
+        })
         .or_else(|| {
             let root_session_id = root_session_id.as_deref()?;
             let child_session_id = subagent_start_registered_child_id.as_ref()?;
@@ -210,27 +247,36 @@ pub(super) fn bootstrap_session(
             let expected_reasoning_effort = expected_reasoning_effort.as_ref()?;
             (observed_model == expected_model
                 && observed_reasoning_effort == expected_reasoning_effort)
-                .then(
-                    || agent_semantic_hook::SubagentRuntimeRebindVerifiedObservation {
+                .then(|| {
+                    let (reasoning_evidence, reasoning_assessment) =
+                        reasoning::direct_reasoning_receipt(
+                            root_session_id,
+                            child_session_id,
+                            observed_reasoning_effort,
+                        );
+                    agent_semantic_hook::SubagentRuntimeRebindVerifiedObservation {
                         root_session_id: root_session_id.to_string(),
                         child_session_id: child_session_id.clone(),
-                        observed_agent_type: "asp_explorer".to_string(),
-                        expected_agent_type: "asp_explorer".to_string(),
+                        observed_agent_type: expected_agent_type.clone(),
+                        expected_agent_type: expected_agent_type.clone(),
                         previous_observed_model: None,
                         previous_observed_reasoning_effort: None,
                         observed_model: observed_model.clone(),
                         observed_reasoning_effort: Some(observed_reasoning_effort.clone()),
                         expected_model: expected_model.clone(),
                         expected_reasoning_effort: Some(expected_reasoning_effort.clone()),
+                        reasoning_evidence,
+                        reasoning_assessment,
                         observation_source: "codex-app-server-thread-resume-after-subagent-start",
                         observation_count: 1,
-                    },
-                )
+                    }
+                })
         })
         .or_else(|| {
             reasoning::profile_attested_runtime_observation(
                 root_session_id.as_deref(),
                 attested_child_id.as_ref(),
+                &expected_agent_type,
                 record.as_ref().and_then(|record| record.model.as_ref()),
                 expected_model.as_ref(),
                 expected_reasoning_effort.as_ref(),
@@ -249,6 +295,7 @@ pub(super) fn bootstrap_session(
     }
     let runtime_reasoning_profile_attested = reasoning::profile_attestation_is_valid(
         runtime_verification_observation.as_ref(),
+        &expected_agent_type,
         expected_reasoning_effort.as_ref(),
         attested_child_id.as_ref(),
         expected_model.as_ref(),
@@ -285,9 +332,13 @@ pub(super) fn bootstrap_session(
             name: Some(name),
         })?
     {
-        registry.update_session_status(&project_id, &verified_record.session_id, "active", now)?;
         verified_record.status = "active".to_string();
-        registry_routable = registry_record_routable(&verified_record, Some(root_session_id), now);
+        registry_routable = registry_record_routable(
+            &verified_record,
+            Some(root_session_id),
+            host_resident_transport_verified,
+            now,
+        );
         record = Some(verified_record);
     }
 
@@ -318,14 +369,15 @@ pub(super) fn bootstrap_session(
         if observation.field_status == "absent" {
             menu.choices
                 .retain(|choice| choice.id != "create-managed-resident-child-after-host-tree-miss");
-        } else {
-            menu.choices
-                .retain(|choice| choice.id != "activate-inline-parser-fallback");
         }
     }
     if profile_attestation_target_verified {
         if runtime_verified.is_some() {
-            menu = resident_child_runtime_verified_menu(menu, registry_routable);
+            menu = resident_child_runtime_verified_menu(
+                menu,
+                registry_routable,
+                host_resident_transport_verified,
+            );
         } else if runtime_verification_evidence_incomplete {
             menu = agent_semantic_client_db::agent_session_registry::resident_child_runtime_evidence_incomplete_menu(menu);
         } else if let Some(observation) = runtime_drift.as_ref() {
@@ -335,6 +387,14 @@ pub(super) fn bootstrap_session(
             menu = resident_child_runtime_repair_menu(menu, 2);
         }
     }
+    menu = resident_child_live_transport_gate(menu, host_resident_transport_verified);
+    let host_resident_target_registers_child = host_resident_target_observation
+        .as_ref()
+        .is_some_and(|observation| {
+            observation.target_status == "present"
+                && observation.identity_status == "verified"
+                && registry_routable
+        });
     if args.json {
         let mut rendered = serde_json::to_value(&menu)
             .map_err(|error| format!("failed to render bootstrap menu: {error}"))?;
@@ -397,7 +457,7 @@ pub(super) fn bootstrap_session(
                             "observedAt": observation.observed_at,
                             "expiresAt": observation.expires_at,
                             "fresh": true,
-                            "registersResidentChild": false,
+                            "registersResidentChild": host_resident_target_registers_child,
                         })
                     },
                 ),
@@ -430,7 +490,9 @@ pub(super) fn bootstrap_session(
                                 "typed-spawn-unavailable"
                             },
                             "bootstrapBlocked": if observation.field_status == "absent" {
-                                serde_json::Value::String("host-agent-type-unavailable".to_string())
+                                serde_json::Value::String(
+                                    "host-typed-spawn-unavailable".to_string(),
+                                )
                             } else {
                                 serde_json::Value::Null
                             },
@@ -438,7 +500,7 @@ pub(super) fn bootstrap_session(
                             "nextAction": if observation.field_status == "present" {
                                 "continue-host-tree-audit-before-typed-create"
                             } else {
-                                "choose-explicit-inline-parser-fallback-for-exact-denied-command"
+                                "blocked-host-typed-spawn-unavailable"
                             },
                         })
                     },
@@ -452,8 +514,11 @@ pub(super) fn bootstrap_session(
             let canonical_target = canonical_resident_target(&menu.host_requirement);
             let diagnosis = runtime_repair_diagnosis(&menu, observation);
             let switch_message = runtime_switch_followup_message(&menu);
-            let natural_language =
-                main_agent_runtime_rebind_instruction(&canonical_target, observation);
+            let natural_language = main_agent_runtime_rebind_instruction(
+                &canonical_target,
+                observation,
+                menu.host_requirement.managed_agent_kind,
+            );
             // Repeated observations do not make a nonexistent same-child
             // override become available. Keep offering one typed replacement;
             // only a missing host retire/spawn capability blocks that action.
@@ -562,8 +627,9 @@ pub(super) fn bootstrap_session(
         {
             let canonical_target = canonical_resident_target(&menu.host_requirement);
             let switch_message = runtime_switch_followup_message(&menu);
+            let managed_agent_kind = menu.host_requirement.managed_agent_kind;
             let natural_language = format!(
-                "Retire/archive drifted target {canonical_target} and child {}, wait for terminal status and path release, then create exactly one replacement with agent_type=asp_explorer, task_name=asp_explorer, and fork_turns=none. Codex must resolve the registered role TOML; do not send a natural-language model switch. Expected profile summary: `{switch_message}`",
+                "Retire/archive drifted target {canonical_target} and child {}, wait for terminal status and path release, then create exactly one replacement with agent_type={managed_agent_kind}, task_name={managed_agent_kind}, and fork_turns=none. Codex must resolve the registered role TOML; do not send a natural-language model switch. Expected profile summary: `{switch_message}`",
                 session.child_session_id,
             );
             let observed_model = rendered
@@ -771,11 +837,12 @@ pub(super) fn bootstrap_session(
                     "profileAttestation": reasoning::profile_attestation_receipt(
                         runtime_reasoning_profile_attested,
                         observation,
+                        menu.host_requirement.managed_agent_kind,
                         (attested_child_id.as_ref(), expected_reasoning_effort.as_ref()),
                     ),
                     "registryRoutable": registry_routable,
                     "nextAction": if registry_routable {
-                        "send-denied-asp-command"
+                "dispatch-resident-command"
                     } else {
                         "rehydrate-verified-existing-child-registry"
                     }
@@ -788,7 +855,7 @@ pub(super) fn bootstrap_session(
                 .map_err(|error| format!("failed to render bootstrap menu: {error}"))?
         );
     } else {
-        print_bootstrap_menu(&menu, runtime_drift.as_ref(), runtime_verified.as_ref());
+        render::print_bootstrap_menu(&menu, runtime_drift.as_ref(), runtime_verified.as_ref());
         if let Some(observation) = host_typed_spawn_observation.as_ref() {
             println!(
                 "host-typed-spawn-observation: field=agent_type status={} source={} expiresAt={} diagnosticOnly=true registersResidentChild=false authorizesFallback=false",
@@ -796,7 +863,7 @@ pub(super) fn bootstrap_session(
             );
             if observation.field_status == "absent" {
                 println!(
-                    "host-typed-spawn-classification: status=typed-spawn-unavailable bootstrapBlocked=host-agent-type-unavailable fallbackAuthorized=false nextAction=choose-explicit-inline-parser-fallback-for-exact-denied-command"
+                    "host-typed-spawn-classification: status=typed-spawn-unavailable bootstrapBlocked=host-typed-spawn-unavailable fallbackAuthorized=false nextAction=blocked-host-typed-spawn-unavailable"
                 );
             } else {
                 println!(
@@ -810,12 +877,13 @@ pub(super) fn bootstrap_session(
         }
         if let Some(observation) = host_resident_target_observation.as_ref() {
             println!(
-                "host-resident-target-observation: target={} status={} identityStatus={} source={} expiresAt={} fresh=true registersResidentChild=false",
+                "host-resident-target-observation: target={} status={} identityStatus={} source={} expiresAt={} fresh=true registersResidentChild={}",
                 canonical_resident_target(&menu.host_requirement),
                 observation.target_status,
                 observation.identity_status,
                 observation.source,
                 observation.expires_at,
+                host_resident_target_registers_child,
             );
         } else {
             println!(
@@ -855,206 +923,6 @@ fn reject_resident_child_bootstrap(
         ));
     }
     Ok(())
-}
-
-fn print_bootstrap_menu(
-    menu: &AgentSessionInteractiveMenu<'_>,
-    runtime_drift: Option<&agent_semantic_hook::SubagentRuntimeDriftObservation>,
-    runtime_verified: Option<&agent_semantic_hook::SubagentRuntimeRebindVerifiedObservation>,
-) {
-    let state = format!("{:?}", menu.state);
-    println!(
-        "pane: asp.session.{}.v{}",
-        state.to_ascii_lowercase(),
-        menu.schema_version
-    );
-    println!("state: {state}");
-    println!("target: {}", menu.name);
-    if let Some(root_session_id) = menu.root_session_id {
-        println!("root-session: {root_session_id}");
-    }
-    let why = runtime_verified.map_or_else(
-        || {
-            runtime_drift.map_or_else(
-                || latest_trace_result(menu),
-                |_| "typed-resident-replacement-required".to_string(),
-            )
-        },
-        |_| "typed-resident-replacement-verified".to_string(),
-    );
-    println!("why: {why}");
-    if let Some(observation) = runtime_verified {
-        println!(
-            "typed-replacement-verification: verified=true child={} sameChildIdentity=false source={} observationCount={} previousModel={} observedModel={} expectedModel={} previousReasoning={} observedReasoning={} expectedReasoning={} modelMatchesExpected=true reasoningVerification=observation-or-profile-attestation registryRoutable={}",
-            observation.child_session_id,
-            observation.observation_source,
-            observation.observation_count,
-            observation
-                .previous_observed_model
-                .as_deref()
-                .unwrap_or("unknown"),
-            observation.observed_model,
-            observation.expected_model,
-            observation
-                .previous_observed_reasoning_effort
-                .as_deref()
-                .unwrap_or("unknown"),
-            observation
-                .observed_reasoning_effort
-                .as_deref()
-                .unwrap_or("unknown"),
-            observation
-                .expected_reasoning_effort
-                .as_deref()
-                .unwrap_or("unknown"),
-            menu.session.is_some(),
-        );
-    }
-    if let Some(observation) = runtime_drift {
-        let diagnosis = runtime_repair_diagnosis(menu, observation);
-        println!(
-            "host-lifecycle: child={} expectedAgentType={} observedAgentType={} expectedModel={} observedModel={} expectedReasoning={} observedReasoning={} driftDimensions={} consecutiveObservationCount={} repairAttemptStatus=typed-resident-replacement-required action=retire-drifted-child-and-create-configured-replacement runtimeOverrideOwner=none runtimeSwitchIntentInFollowupMessage=false preserveChildIdentity=false managedProfileAttestation={}",
-            observation.child_session_id,
-            observation.expected_agent_type,
-            observation.observed_agent_type,
-            menu.expected_model.unwrap_or("unknown"),
-            observation.observed_model.as_deref().unwrap_or("unknown"),
-            menu.expected_reasoning_effort.unwrap_or("unknown"),
-            observation
-                .observed_reasoning_effort
-                .as_deref()
-                .unwrap_or("unknown"),
-            diagnosis.drift_dimensions.join(","),
-            observation.consecutive_observation_count,
-            if observation.observed_agent_type == observation.expected_agent_type {
-                "observed-agent-type-match"
-            } else {
-                "not-established-by-host-agent-type"
-            },
-        );
-        println!(
-            "repair: retire/archive the drifted child, wait for terminal host status and canonical-path release, then create exactly one replacement with agent_type={}, task_name={}, and fork_turns=none. Codex must load the registered TOML; do not send a natural-language model switch.",
-            menu.host_requirement.managed_agent_kind, menu.host_requirement.managed_agent_kind,
-        );
-        let canonical_target = canonical_resident_target(&menu.host_requirement);
-        println!(
-            "main-agent-control-directive: {}",
-            main_agent_runtime_rebind_instruction(&canonical_target, observation)
-        );
-        println!(
-            "host-control-contract: target={} identityPolicy=retire-before-replacement createPolicy=single-typed-replacement-only instructionMode=host-native-lifecycle requiredSurface=host-native-retire-and-typed-spawn requiredParameters=target,agent_type,task_name,fork_turns runtimeApplication=codex-registered-role-config taskMessageCarriesControlIntent=false verification=typed-SubagentStart",
-            canonical_target
-        );
-        println!(
-            "host-control-blocker: nextState=Blocked bootstrapBlocked={} driftDimensions={} policy=ASP-routing-degraded-but-unrelated-Codex-tools-allowed",
-            diagnosis.bootstrap_blocked,
-            diagnosis.drift_dimensions.join(","),
-        );
-    }
-    println!(
-        "must: prefer a profile-valid resident child; when typed spawn is unavailable, use only the explicit inline parser fallback choice; never substitute raw source access"
-    );
-    println!(
-        "transport: preferred=native.{}.{} fallback=current-session-parser; resident lifecycle identity is captured by host hooks",
-        menu.host_requirement.platform, menu.host_requirement.required_transport
-    );
-    if menu.host_requirement.platform == "codex" {
-        println!(
-            "profile-discovery: Codex auto-loads custom-agent TOML from ~/.codex/agents/ and .codex/agents/; bootstrap does not write [agents.<name>] registration"
-        );
-        let metadata = codex_spawn_agent_metadata_capability();
-        println!(
-            "host-typed-spawn-projection: spawnAgentMetadata={} agentTypeProjected={} metadataHiddenByConfig={} diagnosticOnly=true lifecycleAuthority=live-host-spawn-schema-and-agent-tree-audit fallbackAuthority=explicit-choice-after-live-typed-transport-audit",
-            metadata,
-            metadata == "visible-agent-type",
-            metadata == "hidden-by-config",
-        );
-    }
-    println!(
-        "resident-registration: SubagentStart event owns registration and validation of the spawned runtime child identity"
-    );
-    let has_create_choice = menu
-        .choices
-        .iter()
-        .any(|choice| choice.id == "create-managed-resident-child-after-host-tree-miss");
-    if has_create_choice {
-        println!(
-            "host-typed-spawn-preflight: tool=collaboration.spawn_agent requiredField=agent_type requiredValue={} genericFieldsInsufficient=task_name,message,fork_turns unavailable=bootstrapBlocked=host-agent-type-unavailable",
-            menu.host_requirement.managed_agent_kind,
-        );
-        println!(
-            "platform-native-create: platform={} managedAgentKind={} action={}",
-            menu.host_requirement.platform,
-            menu.host_requirement.managed_agent_kind,
-            platform_native_create_action(&menu.host_requirement)
-        );
-        println!(
-            "platform-native-create-blocker: Create is authorized only after rollout and host-agent-tree audits both miss; if platform={} cannot audit or create managedAgentKind={} or emits no SubagentStart event, report the matching host lifecycle gap; do not create fallback agents or normal threads",
-            menu.host_requirement.platform, menu.host_requirement.managed_agent_kind
-        );
-    }
-    let has_inline_fallback_choice = menu
-        .choices
-        .iter()
-        .any(|choice| choice.id == "activate-inline-parser-fallback");
-    if has_inline_fallback_choice {
-        println!(
-            "inline-parser-fallback: available=true state=ReadyDegraded transport=current-session optIn=ASP_INLINE_PARSER_FALLBACK=1 policy=exact-parser-owned-command-only residentChild=false rawSourceFallback=false"
-        );
-    }
-    if let Some(expected_model) = menu.expected_model {
-        println!("model: expected {expected_model}");
-    }
-    if let Some(expected_reasoning_effort) = menu.expected_reasoning_effort {
-        println!("reasoning: expected {expected_reasoning_effort}");
-    }
-    if let Some(status) = menu.rollout_history_status {
-        println!(
-            "rollout: status={} action={}",
-            status,
-            menu.rollout_history_action.unwrap_or("none")
-        );
-    }
-    if let Some(session) = menu.session.as_ref() {
-        println!(
-            "session: child={} status={} role={} model={} messageTarget={}",
-            session.child_session_id,
-            session.status,
-            session.role,
-            session.model.unwrap_or("unknown"),
-            session.message_target_status
-        );
-        if let Some(source) = session.model_observation_source {
-            println!(
-                "model-observation: source={} observedAt={} evidence={}",
-                source,
-                session.model_observed_at.unwrap_or_default(),
-                session.model_evidence_ref.unwrap_or("none")
-            );
-        }
-    } else {
-        println!(
-            "registry: missing; this does not mean the resident child is absent; audit rollout history and the native host agent tree before Create"
-        );
-    }
-    println!();
-    for (index, choice) in menu.choices.iter().enumerate() {
-        println!("{}: {}", index + 1, choice.id);
-        println!("  ask: {}", choice.label);
-        println!("  do: {}", choice.platform_action);
-        println!(
-            "  expect: {}",
-            required_inputs_phrase(choice.required_inputs)
-        );
-        println!("  after: {:?}", choice.next_state);
-        println!();
-    }
-    println!(
-        "select: return exactly one number, such as \"1\"; perform its do action through the declared transport; return expect; re-enter the loop at after."
-    );
-    println!(
-        "lifecycle: after native create, typed replacement, or interrupt, re-enter this pane; never pass child ids, message targets, model claims, or lifecycle status as bootstrap command flags."
-    );
 }
 
 fn codex_spawn_agent_metadata_capability() -> &'static str {
@@ -1103,27 +971,35 @@ fn canonical_resident_target(requirement: &AgentSessionHostRequirement<'_>) -> S
 fn registry_record_routable(
     record: &AgentSessionRecord,
     current_root_session_id: Option<&str>,
+    fresh_host_transport_verified: bool,
     now: i64,
 ) -> bool {
     !matches!(record.status.as_str(), "archived" | "closed")
-        && current_root_session_id
-            .is_some_and(|root| agent_session_message_target_is_live_bound(record, root))
-        && record.is_routable_at(now)
+        && current_root_session_id.is_some_and(|root| {
+            agent_semantic_client_db::agent_session_message_target_is_currently_routable(
+                record,
+                root,
+                fresh_host_transport_verified,
+                now,
+            )
+        })
 }
 
 fn main_agent_runtime_rebind_instruction(
     canonical_target: &str,
     observation: &agent_semantic_hook::SubagentRuntimeDriftObservation,
+    managed_agent_kind: &str,
 ) -> String {
     format!(
-        "Retire/archive drifted target {canonical_target} and child {}, wait for terminal host status and canonical-path release, then create exactly one replacement through a spawn surface that exposes agent_type, with agent_type=asp_explorer and fork_turns=none. task_name only names the tree node and message/natural-language task text is only payload; neither selects the registered role. Codex must load the complete registered TOML profile; if agent_type is unavailable, report the host capability blocker instead of spawning.",
+        "Retire/archive drifted target {canonical_target} and child {}, wait for terminal host status and canonical-path release, then create exactly one replacement through a spawn surface that exposes agent_type, with agent_type={managed_agent_kind}, task_name={managed_agent_kind}, and fork_turns=none. Message/natural-language task text is only payload and does not select the registered role. Codex must load the complete registered TOML profile; if agent_type is unavailable, report the host capability blocker instead of spawning.",
         observation.child_session_id,
     )
 }
 
 fn runtime_switch_followup_message(menu: &AgentSessionInteractiveMenu<'_>) -> String {
     format!(
-        "Retire the drifted resident and create one typed asp_explorer replacement from the registered Codex role. The expected runtime is model {} with reasoning {}, but Codex must obtain both values from the role TOML rather than this message.",
+        "Retire the drifted resident and create one typed {} replacement from the registered Codex role. The expected runtime is model {} with reasoning {}, but Codex must obtain all values from the role TOML rather than this message.",
+        menu.host_requirement.managed_agent_kind,
         menu.expected_model.unwrap_or("unknown"),
         menu.expected_reasoning_effort.unwrap_or("unknown"),
     )

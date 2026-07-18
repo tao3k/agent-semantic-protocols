@@ -118,7 +118,7 @@ fn render_next_action(
     rendered: &mut String,
     language: &str,
     display_owner: &str,
-    query: &str,
+    _query: &str,
     first_match: Option<&OwnerItemMatch>,
 ) {
     if let Some(item_match) = first_match {
@@ -137,12 +137,8 @@ fn render_next_action(
         rendered
             .push_str("avoid=selector-code-before-exact,direct-source-read,manual-window-scan\n");
     } else {
-        let _ = writeln!(
-            rendered,
-            "nextCommand=asp rg -query {} {}",
-            shell_arg(query),
-            shell_arg(display_owner),
-        );
+        rendered.push_str("recommendedNext=revise-query\n");
+        rendered.push_str("actionFrontier=revise-query\n");
         rendered.push_str("reason=no-owner-item-match\n");
     }
 }

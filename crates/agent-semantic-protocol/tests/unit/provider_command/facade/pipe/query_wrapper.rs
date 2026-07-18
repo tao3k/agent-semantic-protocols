@@ -115,8 +115,15 @@ fn asp_rg_query_uses_source_index_before_query_overlay() {
     assert!(stdout.contains("sourceTrace=sourceIndex:used"), "{stdout}");
     assert!(stdout.contains("query-overlay:skipped"), "{stdout}");
     assert!(stdout.contains("packages=src/lib.rs"), "{stdout}");
+    assert!(stdout.contains("ownerCandidates=src/lib.rs"), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp fd -query source_index_fixture --workspace ."),
+        stdout.contains(
+            "nextCommand=asp rust search owner src/lib.rs items --query source_index_fixture --workspace . --view seeds"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextClasses=owner-items,fd-query"),
         "{stdout}"
     );
     assert!(

@@ -1,8 +1,8 @@
 //! Session-start bootstrap and route-context decisions for resident ASP children.
 
 use crate::command::{
-    ResidentChildIdentityProof, codex_transcript_resident_child_identity_proof,
-    current_agent_session_id, current_registered_session, current_registered_session_identity,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity, current_agent_session_id,
+    current_registered_session, current_registered_session_identity,
     current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
     registered_resident_session_for_root,
 };
@@ -142,29 +142,130 @@ pub(in crate::command) fn current_session_resident_child_identity_proof(
     asp_session_policy: &AspSessionPolicy,
     payload: &serde_json::Value,
 ) -> Result<Option<ResidentChildIdentityProof>, String> {
-    let payload_agent_id = string_field(payload, &["agent_id", "agentId"]);
-    let payload_agent_type = string_field(payload, &["agent_type", "agentType"]);
-    let current_codex_thread_id = std::env::var("CODEX_THREAD_ID")
-        .ok()
-        .filter(|session_id| !session_id.trim().is_empty());
-    if payload_agent_id == current_codex_thread_id
-        && payload_agent_type.as_deref() == Some(asp_session_policy.resident_agent_role())
-    {
-        return Ok(Some(ResidentChildIdentityProof::CodexHookPayload));
-    }
-    if let Some(proof) = codex_transcript_resident_child_identity_proof(
+    current_session_configured_resident_identity_proof(
         project_root,
         payload,
         asp_session_policy.resident_child_name(),
         asp_session_policy.resident_agent_role(),
+        asp_session_policy.resident_codex_agent_name(),
+    )
+}
+
+pub(super) fn current_session_configured_resident_identity_proof(
+    project_root: &Path,
+    payload: &serde_json::Value,
+    resident_child_name: &str,
+    resident_agent_role: &str,
+    resident_codex_agent_name: &str,
+) -> Result<Option<ResidentChildIdentityProof>, String> {
+    // Codex keeps CODEX_THREAD_ID pinned to the root task for collaboration
+    // children.  The host-owned pre-tool envelope identifies the executing
+    // child separately through top-level agent_id/agent_type fields, so
+    // requiring agent_id == CODEX_THREAD_ID misclassifies resumed residents as
+    // the main Agent.  Never recurse into tool_input here: only host envelope
+    // fields may prove identity.
+    let payload_agent_id = super::hook_runtime_agent_session_identity::top_level_string_field(
+        payload,
+        &["agent_id", "agentId"],
+    );
+    let payload_agent_type = super::hook_runtime_agent_session_identity::top_level_string_field(
+        payload,
+        &["agent_type", "agentType"],
+    );
+    if let Some(payload_agent_id) = payload_agent_id
+        && payload_agent_type.as_deref() == Some(resident_codex_agent_name)
+    {
+        if let Some(session) =
+            super::hook_runtime_agent_session_identity::registered_resident_session_by_id(
+                project_root,
+                &payload_agent_id,
+            )?
+            && session_matches_resident_agent(&session, resident_child_name, resident_agent_role)
+        {
+            super::hook_runtime_agent_session_presence::record_trusted_resident_hook_presence(
+                project_root,
+                &session,
+                resident_child_name,
+                resident_codex_agent_name,
+            )?;
+            return Ok(Some(ResidentChildIdentityProof::CodexHookPayload));
+        }
+        if let Some(root_session_id) =
+            super::hook_runtime_agent_session_identity::top_level_string_field(
+                payload,
+                &["session_id", "sessionId"],
+            )
+            && let Some(session) =
+                super::hook_runtime_agent_session_presence::rehydrate_trusted_resident_hook_session(
+                    project_root,
+                    &root_session_id,
+                    &payload_agent_id,
+                    resident_child_name,
+                    resident_agent_role,
+                    resident_codex_agent_name,
+                )?
+        {
+            super::hook_runtime_agent_session_presence::record_trusted_resident_hook_presence(
+                project_root,
+                &session,
+                resident_child_name,
+                resident_codex_agent_name,
+            )?;
+            return Ok(Some(ResidentChildIdentityProof::CodexHookPayload));
+        }
+        // The host-owned top-level agent_id/agent_type pair proves which
+        // executor is running, so that child may terminate its own configured
+        // execution lane without routing back to itself. Registry mutation is
+        // deliberately stricter: only the exact registered identity or the
+        // rollout/profile compare-and-swap paths above may refresh Ready.
+        return Ok(Some(ResidentChildIdentityProof::CodexHookPayload));
+    }
+    if let Some(session_id) = super::hook_runtime_agent_session_identity::top_level_string_field(
+        payload,
+        &["session_id", "sessionId"],
+    ) && let Some(session) =
+        super::hook_runtime_agent_session_identity::registered_resident_session_by_id(
+            project_root,
+            &session_id,
+        )?
+        && session_matches_resident_agent(&session, resident_child_name, resident_agent_role)
+    {
+        super::hook_runtime_agent_session_presence::record_trusted_resident_hook_presence(
+            project_root,
+            &session,
+            resident_child_name,
+            resident_codex_agent_name,
+        )?;
+        return Ok(Some(ResidentChildIdentityProof::RegistryExact));
+    }
+    if let Some((proof, transcript_session_id)) = codex_transcript_resident_child_identity(
+        project_root,
+        payload,
+        resident_child_name,
+        resident_agent_role,
     )? {
+        if let Some(session) =
+            super::hook_runtime_agent_session_identity::registered_resident_session_by_id(
+                project_root,
+                &transcript_session_id,
+            )?
+            && session_matches_resident_agent(&session, resident_child_name, resident_agent_role)
+        {
+            super::hook_runtime_agent_session_presence::record_trusted_resident_hook_presence(
+                project_root,
+                &session,
+                resident_child_name,
+                resident_codex_agent_name,
+            )?;
+        }
         return Ok(Some(proof));
     }
-    current_resident_child_identity_proof(
+    let proof = current_resident_child_identity_proof(
         project_root,
-        asp_session_policy.resident_child_name(),
-        asp_session_policy.resident_agent_role(),
-    )
+        resident_child_name,
+        resident_agent_role,
+    )?;
+    Ok(proof)
 }
 
 fn payload_matches_resident_managed_agent(
@@ -263,34 +364,6 @@ pub(super) fn classify_session_start_bootstrap(
     if let Some(native) = codex_native_event.as_ref()
         && !codex_native_managed_subagent_start
     {
-        let now = unix_timestamp()?;
-        let active_resident = registered_resident_session_for_root(
-            project_root,
-            native_root_session_id
-                .as_deref()
-                .unwrap_or(&native.root_session_id),
-            asp_session_policy.resident_child_name(),
-        )?
-        .filter(|session| {
-            session_matches_resident_agent(
-                session,
-                asp_session_policy.resident_child_name(),
-                asp_session_policy.resident_agent_role(),
-            ) && session.is_routable_at(now)
-        });
-        let model_mismatch = expected_model_for_native_start
-            .as_deref()
-            .is_some_and(|expected_model| expected_model != native.model);
-        let reasoning_mismatch =
-            super::hook_runtime_agent_session_profile::reasoning_observation_mismatches_profile(
-                observed_reasoning_for_native_start.as_deref(),
-                expected_reasoning_for_native_start.as_deref(),
-            );
-        let profile_mismatch = native.agent_type != asp_session_policy.resident_agent_role();
-        let repair_candidate = (profile_mismatch || model_mismatch || reasoning_mismatch)
-            && active_resident
-                .as_ref()
-                .is_none_or(|session| session.session_id == native.agent_id);
         return Ok(Some(unmanaged_codex_subagent_start_decision(
             platform,
             event,
@@ -300,7 +373,7 @@ pub(super) fn classify_session_start_bootstrap(
             expected_model_for_native_start.as_deref(),
             expected_reasoning_for_native_start.as_deref(),
             observed_reasoning_for_native_start.as_deref(),
-            repair_candidate,
+            false,
         )));
     }
     let native_managed_subagent_start = event == "subagent-start"
@@ -492,7 +565,7 @@ pub(super) fn classify_session_start_bootstrap(
                     && existing.session.session_id != child_session_id
                     && !matches!(existing.session.status.as_str(), "archived" | "closed")
                 {
-                    let mut decision = session_start_decision_for_reconciled_resident(
+                    let mut decision = super::hook_runtime_agent_session_typed_replacement::session_start_decision_for_reconciled_resident(
                         now,
                         platform,
                         event,
@@ -500,7 +573,7 @@ pub(super) fn classify_session_start_bootstrap(
                         existing,
                         asp_session_policy,
                     );
-                    append_resident_reconciliation_fields(&mut decision, &reconciliation);
+                    super::hook_runtime_agent_session_typed_replacement::append_resident_reconciliation_fields(&mut decision, &reconciliation);
                     decision.fields.insert(
                         "agentSessionDuplicateChildId".to_string(),
                         serde_json::Value::String(child_session_id),
@@ -713,7 +786,7 @@ pub(super) fn classify_session_start_bootstrap(
             asp_session_policy.resident_agent_role(),
         )?;
         if let Some(existing) = reconciliation.current.as_ref() {
-            let mut decision = session_start_decision_for_reconciled_resident(
+            let mut decision = super::hook_runtime_agent_session_typed_replacement::session_start_decision_for_reconciled_resident(
                 now,
                 platform,
                 event,
@@ -721,7 +794,7 @@ pub(super) fn classify_session_start_bootstrap(
                 existing,
                 asp_session_policy,
             );
-            append_resident_reconciliation_fields(&mut decision, &reconciliation);
+            super::hook_runtime_agent_session_typed_replacement::append_resident_reconciliation_fields(&mut decision, &reconciliation);
             return Ok(Some(decision));
         }
     }
@@ -899,122 +972,7 @@ fn registry_unavailable_for_route_child(error: &str) -> bool {
         || error.contains("failed locking file")
 }
 
-fn session_start_decision_for_reconciled_resident(
-    now: i64,
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    existing: &crate::codex::resident_session_reconcile::CodexResidentSessionCandidate,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    if !existing.session.is_routable_at(now) {
-        return session_start_resume_existing_decision(
-            platform,
-            event,
-            payload,
-            &existing.session,
-            asp_session_policy,
-        );
-    }
-    match &existing.liveness {
-        crate::codex::rollout::CodexRolloutSessionLiveness::Resumable(_) => {
-            session_start_resume_existing_decision(
-                platform,
-                event,
-                payload,
-                &existing.session,
-                asp_session_policy,
-            )
-        }
-        crate::codex::rollout::CodexRolloutSessionLiveness::Active(_)
-        | crate::codex::rollout::CodexRolloutSessionLiveness::Unknown(_) => {
-            session_start_reuse_decision(
-                platform,
-                event,
-                payload,
-                &existing.session,
-                asp_session_policy,
-            )
-        }
-        crate::codex::rollout::CodexRolloutSessionLiveness::Missing
-        | crate::codex::rollout::CodexRolloutSessionLiveness::Unavailable(_) => {
-            session_start_resume_existing_decision(
-                platform,
-                event,
-                payload,
-                &existing.session,
-                asp_session_policy,
-            )
-        }
-    }
-}
-
-fn append_resident_reconciliation_fields(
-    decision: &mut HookDecision,
-    reconciliation: &crate::codex::resident_session_reconcile::CodexResidentSessionReconciliation,
-) {
-    let Some(current) = reconciliation.current.as_ref() else {
-        return;
-    };
-    let (state, last_event_kind, scanned_bytes, error) = match &current.liveness {
-        crate::codex::rollout::CodexRolloutSessionLiveness::Resumable(activity) => (
-            "rollout-resumable",
-            activity.last_event_kind.as_deref(),
-            Some(activity.scanned_bytes),
-            None,
-        ),
-        crate::codex::rollout::CodexRolloutSessionLiveness::Active(activity) => (
-            "rollout-active",
-            activity.last_event_kind.as_deref(),
-            Some(activity.scanned_bytes),
-            None,
-        ),
-        crate::codex::rollout::CodexRolloutSessionLiveness::Unknown(activity) => (
-            "rollout-unknown",
-            activity.last_event_kind.as_deref(),
-            Some(activity.scanned_bytes),
-            None,
-        ),
-        crate::codex::rollout::CodexRolloutSessionLiveness::Missing => {
-            ("rollout-missing", None, None, None)
-        }
-        crate::codex::rollout::CodexRolloutSessionLiveness::Unavailable(error) => {
-            ("rollout-unavailable", None, None, Some(error.as_str()))
-        }
-    };
-    decision.fields.insert(
-        "agentSessionReconciliation".to_string(),
-        serde_json::Value::String(state.to_string()),
-    );
-    decision.fields.insert(
-        "agentSessionRolloutLookup".to_string(),
-        serde_json::Value::String("session-id-fast-path".to_string()),
-    );
-    decision.fields.insert(
-        "agentSessionHistoricalResidentCount".to_string(),
-        serde_json::json!(reconciliation.historical_resident_count),
-    );
-    if let Some(last_event_kind) = last_event_kind {
-        decision.fields.insert(
-            "agentSessionRolloutLastEventKind".to_string(),
-            serde_json::Value::String(last_event_kind.to_string()),
-        );
-    }
-    if let Some(scanned_bytes) = scanned_bytes {
-        decision.fields.insert(
-            "agentSessionRolloutScannedBytes".to_string(),
-            serde_json::json!(scanned_bytes),
-        );
-    }
-    if let Some(error) = error {
-        decision.fields.insert(
-            "agentSessionRolloutError".to_string(),
-            serde_json::Value::String(error.to_string()),
-        );
-    }
-}
-
-fn session_start_reuse_decision(
+pub(super) fn session_start_reuse_decision(
     platform: &str,
     event: &str,
     payload: &serde_json::Value,
@@ -1073,7 +1031,7 @@ fn session_start_reuse_decision(
     }
 }
 
-fn session_start_resume_existing_decision(
+pub(super) fn session_start_resume_existing_decision(
     platform: &str,
     event: &str,
     payload: &serde_json::Value,

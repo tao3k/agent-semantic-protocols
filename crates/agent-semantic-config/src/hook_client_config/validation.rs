@@ -13,12 +13,16 @@ use super::model::{
 
 pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
+    validate_optional_non_empty(
+        "contractFingerprint",
+        config.contract_fingerprint.as_deref(),
+    )?;
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_recovery_prompt(&config.recovery_prompt)?;
     validate_agent_session_guide(&config.agent_session_guide)?;
     validate_agent_session_messages(&config.agent_session_messages)?;
     validate_resident_agents(&config.agents.resident_agents)?;
-    validate_execution_lanes(&config.execution_lanes)?;
+    validate_execution_lanes(&config.execution_lanes, &config.agents.resident_agents)?;
     validate_asp_command_intent_policy(&config.asp_command_intent_policy)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules)
@@ -26,25 +30,58 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
 
 fn validate_execution_lanes(
     lanes: &super::model::HookClientExecutionLanesConfig,
+    resident_agents: &[HookClientResidentAgentConfig],
 ) -> Result<(), String> {
-    let testing = &lanes.testing;
-    validate_optional_non_empty(
-        "executionLanes.testing.receiptKind",
-        Some(testing.receipt_kind.as_str()),
-    )?;
-    if testing.enabled && testing.command_prefixes.is_empty() {
-        return Err(
-            "executionLanes.testing.commandPrefixes must not be empty when enabled".to_string(),
-        );
+    let mut command_prefix_owners = std::collections::BTreeMap::new();
+    for (lane_name, lane) in &lanes.lanes {
+        validate_non_empty("executionLanes lane name", lane_name)?;
+        let prefix = format!("executionLanes.{lane_name}");
+        validate_optional_non_empty(
+            &format!("{prefix}.receiptKind"),
+            Some(lane.receipt_kind.as_str()),
+        )?;
+        if lane.enabled && lane.command_prefixes.is_empty() {
+            return Err(format!(
+                "{prefix}.commandPrefixes must not be empty when enabled"
+            ));
+        }
+        if lane.transport == super::model::HookClientExecutionTransport::ResidentAgent {
+            validate_non_empty(&format!("{prefix}.residentName"), &lane.resident_name)?;
+            if !resident_agents
+                .iter()
+                .any(|agent| agent.enabled && agent.name == lane.resident_name)
+            {
+                return Err(format!(
+                    "{prefix}.residentName `{}` must name an enabled agents.residentAgents entry",
+                    lane.resident_name
+                ));
+            }
+        }
+        validate_non_empty_values(
+            &format!("{prefix}.commandPrefixes[]"),
+            &lane.command_prefixes,
+        )?;
+        validate_unique_values(
+            &format!("{prefix}.commandPrefixes[]"),
+            &lane.command_prefixes,
+        )?;
+        if lane.enabled {
+            for command_prefix in &lane.command_prefixes {
+                let normalized = command_prefix
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if let Some(previous_lane) =
+                    command_prefix_owners.insert(normalized.clone(), lane_name.as_str())
+                {
+                    return Err(format!(
+                        "executionLanes.{lane_name}.commandPrefixes[] `{normalized}` duplicates enabled lane `{previous_lane}`"
+                    ));
+                }
+            }
+        }
     }
-    validate_non_empty_values(
-        "executionLanes.testing.commandPrefixes[]",
-        &testing.command_prefixes,
-    )?;
-    validate_unique_values(
-        "executionLanes.testing.commandPrefixes[]",
-        &testing.command_prefixes,
-    )
+    Ok(())
 }
 
 fn validate_asp_command_intent_policy(
@@ -171,7 +208,7 @@ fn validate_resident_agent(config: &HookClientResidentAgentConfig) -> Result<(),
     validate_non_empty_values("agents.residentAgents[].roles[]", &config.roles)?;
     validate_unique_values("agents.residentAgents[].roles[]", &config.roles)?;
     for role in &config.roles {
-        validate_session_role("agents.residentAgents[].roles[]", role)?;
+        validate_binary_name("agents.residentAgents[].roles[]", role)?;
     }
     validate_non_empty_values("agents.residentAgents[].permissions[]", &config.permissions)?;
     validate_unique_values("agents.residentAgents[].permissions[]", &config.permissions)?;
@@ -236,6 +273,12 @@ fn validate_rule_schema_shape(rules: &[HookClientRuleConfig]) -> Result<(), Stri
         validate_unique_values("rules[].languageIds", &rule.language_ids)?;
         validate_identifiers("rules[].languageIds[]", &rule.language_ids)?;
         validate_match_schema_shape(&rule.match_config)?;
+        if rule.decision_materializer.is_some() && !rule.routes.is_empty() {
+            return Err(format!(
+                "hook rule `{}` cannot combine decisionMaterializer with static routes",
+                rule.id
+            ));
+        }
         for route in &rule.routes {
             validate_route_schema_shape(route)?;
         }
@@ -413,15 +456,6 @@ fn validate_binary_name(field: &str, value: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("invalid {field} `{value}`"))
-    }
-}
-
-fn validate_session_role(field: &str, value: &str) -> Result<(), String> {
-    match value {
-        "subagent" | "search" | "testing" | "build" | "checkpoint" => Ok(()),
-        _ => Err(format!(
-            "invalid {field} `{value}`; expected one of subagent, search, testing, build, checkpoint"
-        )),
     }
 }
 

@@ -21,6 +21,68 @@ fn resident_agent<'a>(
 }
 
 #[test]
+fn default_template_round_trips_with_third_lint_resident() {
+    let root = temp_root("hook-client-template-third-resident");
+    let config_path = root.join("hooks").join("config.toml");
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
+
+    let fixture = format!(
+        r#"{template}
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-lint"
+role = "asp_lint"
+roles = ["subagent", "lint"]
+permissions = ["workspace-write"]
+codexAgentName = "asp_lint"
+lifecycle = "lint-command"
+sessionLifetime = "resident"
+mainAllowedAspCommandPrefixes = []
+commandPrefixes = ["cargo clippy", "cargo fmt", "ruff check"]
+"#,
+        template = default_hook_client_config_template(),
+    );
+    fs::write(&config_path, fixture).expect("write config");
+
+    let config = load_hook_client_config_file(&config_path).expect("load config");
+
+    assert_eq!(
+        config.schema_id.as_deref(),
+        Some(CLIENT_HOOK_CONFIG_SCHEMA_ID)
+    );
+    assert_eq!(
+        config.contract_fingerprint.as_deref(),
+        Some(crate::hook_client_contract_fingerprint().as_str())
+    );
+    assert_eq!(config.agents.resident_agents.len(), 3);
+
+    let asp_explore = resident_agent(&config, "asp-explore");
+    assert_eq!(asp_explore.codex_agent_name, "asp_explorer");
+
+    let asp_testing = resident_agent(&config, "asp-testing");
+    assert_eq!(asp_testing.codex_agent_name, "asp_testing");
+
+    let asp_lint = resident_agent(&config, "asp-lint");
+    assert!(asp_lint.enabled);
+    assert_eq!(asp_lint.name, "asp-lint");
+    assert_eq!(asp_lint.role, "asp_lint");
+    assert_eq!(asp_lint.codex_agent_name, "asp_lint");
+    assert_eq!(asp_lint.lifecycle, "lint-command");
+    assert_eq!(asp_lint.session_lifetime, "resident");
+    assert!(asp_lint.main_allowed_asp_command_prefixes.is_empty());
+    assert_eq!(
+        asp_lint.command_prefixes,
+        ["cargo clippy", "cargo fmt", "ruff check"]
+    );
+
+    assert_ne!(asp_explore.name, asp_lint.name);
+    assert_ne!(asp_testing.name, asp_lint.name);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn default_template_round_trips_through_config_parser() {
     let root = temp_root("hook-client-template");
     let config_path = root.join("hooks").join("config.toml");
@@ -33,6 +95,10 @@ fn default_template_round_trips_through_config_parser() {
         config.schema_id.as_deref(),
         Some(CLIENT_HOOK_CONFIG_SCHEMA_ID)
     );
+    assert_eq!(
+        config.contract_fingerprint.as_deref(),
+        Some(crate::hook_client_contract_fingerprint().as_str())
+    );
     assert!(config.experimental.is_empty());
     assert!(config.agent_org_artifacts.is_none());
     assert!(config.recovery_prompt.template.is_none());
@@ -42,25 +108,23 @@ fn default_template_round_trips_through_config_parser() {
     assert!(
         config
             .agent_session_guide
-            .register
+            .register()
             .as_deref()
             .is_some_and(|guide| guide.contains("asp agent session register guide"))
     );
     assert!(
         config
             .agent_session_guide
-            .register
+            .register()
             .as_deref()
             .is_some_and(|guide| guide.contains("asp agent session bootstrap"))
     );
     assert!(
-        config
-            .agent_session_guide
-            .status
-            .as_deref()
-            .is_some_and(|guide| guide.contains("bootstrap --name asp-explore"))
+        config.agent_session_guide.status().as_deref().is_some_and(
+            |guide| guide.contains("bootstrap --name <residentChildName-from-hook-decision>")
+        )
     );
-    assert!(config.agent_session_guide.reuse.is_none());
+    assert!(config.agent_session_guide.reuse().is_none());
     assert!(
         config
             .agent_session_messages
@@ -89,17 +153,12 @@ fn default_template_round_trips_through_config_parser() {
             .as_deref()
             .is_some_and(|message| message.contains("send the blocked ASP command"))
     );
-    let source_access_compact_subagent = config
-        .agent_session_messages
-        .source_access_compact_subagent
-        .as_deref()
-        .expect("source access compact subagent message");
     assert!(
-        source_access_compact_subagent
-            .contains("compact `[asp-search-subagent]` graph-route receipt")
+        config
+            .agent_session_messages
+            .source_access_compact_subagent
+            .is_none()
     );
-    assert!(source_access_compact_subagent.contains("schema/intent/route/state/evidence/next"));
-    assert!(source_access_compact_subagent.contains("Do not return source bodies"));
     let invalid_child_message = config
         .agent_session_messages
         .binary_gate_invalid_child
@@ -124,18 +183,23 @@ fn default_template_round_trips_through_config_parser() {
             "org capture"
         ]
     );
-    assert_eq!(config.agents.resident_agents.len(), 1);
-    assert!(config.execution_lanes.testing.enabled);
+    let asp_testing = resident_agent(&config, "asp-testing");
+    assert_eq!(asp_testing.codex_agent_name, "asp_testing");
+    assert_eq!(config.agents.resident_agents.len(), 2);
+    let testing_lane = config
+        .execution_lanes
+        .lanes
+        .get("testing")
+        .expect("testing execution lane");
+    assert!(testing_lane.enabled);
     assert_eq!(
-        config.execution_lanes.testing.transport,
-        HookClientExecutionTransport::CurrentSession
+        testing_lane.transport,
+        HookClientExecutionTransport::ResidentAgent
     );
+    assert_eq!(testing_lane.resident_name, "asp-testing");
+    assert_eq!(testing_lane.receipt_kind, "asp-testing-execution-v1");
     assert_eq!(
-        config.execution_lanes.testing.receipt_kind,
-        "asp-testing-execution-v1"
-    );
-    assert_eq!(
-        config.execution_lanes.testing.command_prefixes,
+        testing_lane.command_prefixes,
         [
             "cargo test",
             "cargo check",
@@ -145,7 +209,35 @@ fn default_template_round_trips_through_config_parser() {
             "just test"
         ]
     );
-    assert!(config.rules.is_empty());
+    assert_eq!(config.rules.len(), 6);
+    assert_eq!(
+        config
+            .rules
+            .iter()
+            .map(|rule| rule.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "deny-agent-search-json",
+            "materialize-prompt-search-strategy",
+            "materialize-apply-patch-policy",
+            "materialize-source-access-policy",
+            "deny-uncontrolled-source-search-commands",
+            "deny-uncontrolled-git-source-reads",
+        ]
+    );
+    let prompt_strategy_rule = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "materialize-prompt-search-strategy")
+        .expect("prompt search strategy rule");
+    assert!(
+        matches!(
+            prompt_strategy_rule.decision_materializer,
+            Some(crate::HookClientDecisionMaterializer::PromptSearchStrategy)
+        ),
+        "prompt strategy materializer: {:?}",
+        prompt_strategy_rule.decision_materializer
+    );
     assert_eq!(
         config.asp_command_intent_policy.control_plane.root_commands,
         [
@@ -166,9 +258,12 @@ fn default_template_round_trips_through_config_parser() {
             "graph",
         ]
     );
-    assert_eq!(
-        config.asp_command_intent_policy.reasoning.root_commands,
-        ["fd", "rg"]
+    assert!(
+        config
+            .asp_command_intent_policy
+            .reasoning
+            .root_commands
+            .is_empty()
     );
     assert_eq!(
         config.asp_command_intent_policy.reasoning.search_routes,
@@ -208,6 +303,54 @@ fn default_template_round_trips_through_config_parser() {
             .asp_command_intent_policy
             .invalid_evidence
             .reject_cross_language_selector
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn default_template_contains_no_legacy_asp_facade_rule() {
+    let value: toml::Value =
+        toml::from_str(&default_hook_client_config_template()).expect("parse default TOML");
+    let rules = value
+        .get("rules")
+        .and_then(toml::Value::as_array)
+        .expect("default rules");
+    let legacy = rules.iter().find(|rule| {
+        rule.get("id").and_then(toml::Value::as_str) == Some("deny-invalid-asp-facade")
+            || rule
+                .get("decisionMaterializer")
+                .and_then(toml::Value::as_str)
+                == Some("invalid-asp-facade")
+    });
+    assert!(
+        legacy.is_none(),
+        "legacy ASP facade rule remains: {legacy:#?}"
+    );
+}
+
+#[test]
+fn legacy_invalid_asp_facade_materializer_is_rejected() {
+    let root = temp_root("legacy-invalid-asp-facade-materializer");
+    let config_path = root.join("hooks/config.toml");
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
+    let legacy_rule = r#"
+[[rules]]
+id = "legacy-invalid-asp-facade"
+priority = 1
+decision = "deny"
+decisionMaterializer = "invalid-asp-facade"
+message = "legacy"
+"#;
+    fs::write(
+        &config_path,
+        format!("{}{}", default_hook_client_config_template(), legacy_rule),
+    )
+    .expect("write legacy config");
+
+    let error = load_hook_client_config_file(&config_path).expect_err("legacy value must fail");
+    assert!(
+        error.contains("invalid-asp-facade"),
+        "unexpected error: {error}"
     );
     let _ = fs::remove_dir_all(root);
 }
@@ -265,19 +408,19 @@ mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org cap
         Some("default flow from config")
     );
     assert_eq!(
-        config.agent_session_guide.register.as_deref(),
+        config.agent_session_guide.register().as_deref(),
         Some("register guide")
     );
     assert_eq!(
-        config.agent_session_guide.list.as_deref(),
+        config.agent_session_guide.list().as_deref(),
         Some("list guide")
     );
     assert_eq!(
-        config.agent_session_guide.show.as_deref(),
+        config.agent_session_guide.show().as_deref(),
         Some("show guide")
     );
     assert_eq!(
-        config.agent_session_guide.reuse.as_deref(),
+        config.agent_session_guide.reuse().as_deref(),
         Some("reuse guide")
     );
     let asp_explore = resident_agent(&config, "asp-explore");
@@ -359,7 +502,21 @@ fn template_source_extensions_do_not_generate_user_rules() {
     fs::write(&config_path, rendered).expect("write config");
 
     let config = load_hook_client_config_file(&config_path).expect("load config");
-    assert!(config.rules.is_empty());
+    assert_eq!(
+        config
+            .rules
+            .iter()
+            .map(|rule| rule.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "deny-agent-search-json",
+            "materialize-prompt-search-strategy",
+            "materialize-apply-patch-policy",
+            "materialize-source-access-policy",
+            "deny-uncontrolled-source-search-commands",
+            "deny-uncontrolled-git-source-reads",
+        ]
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -400,6 +557,7 @@ decision = "deny"
         Some("agent.semantic-protocols.hook")
     );
     assert_eq!(config.protocol_version.as_deref(), Some("1"));
+    assert!(config.contract_fingerprint.is_none());
     assert!(config.agent_org_artifacts.is_none());
     assert_eq!(config.rules.len(), 1);
     assert_eq!(config.rules[0].id, "deny-rust-read");
@@ -494,6 +652,66 @@ argv = ["asp", "rust"]
     let error = load_hook_client_config_file(&config_path).expect_err("invalid route kind");
 
     assert!(error.contains("route-text"), "{error}");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn invalid_decision_materializer_is_rejected_by_config_layer() {
+    let root = temp_root("hook-client-invalid-materializer");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[[rules]]
+id = "deny-source-access"
+decision = "deny"
+decisionMaterializer = "legacy-source-classifier"
+"#,
+    )
+    .expect("write config");
+
+    let error = load_hook_client_config_file(&config_path).expect_err("invalid materializer");
+
+    assert!(error.contains("legacy-source-classifier"), "{error}");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn decision_materializer_cannot_compete_with_static_routes() {
+    let root = temp_root("hook-client-materializer-routes");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[[rules]]
+id = "deny-source-access"
+decision = "deny"
+decisionMaterializer = "source-access"
+
+[[rules.routes]]
+providerId = "rs-harness"
+kind = "query"
+argv = ["asp", "rust", "query"]
+"#,
+    )
+    .expect("write config");
+
+    let error = load_hook_client_config_file(&config_path).expect_err("ambiguous materializer");
+
+    assert!(
+        error.contains("cannot combine decisionMaterializer"),
+        "{error}"
+    );
     let _ = fs::remove_dir_all(root);
 }
 

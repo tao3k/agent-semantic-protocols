@@ -1,8 +1,9 @@
 use agent_semantic_client_db::agent_session_registry::{
     AgentSessionLoopState, AgentSessionRecord, ResidentChildBootstrapMenuInput,
-    SameChildRuntimeOverrideState, agent_session_message_target_is_live_bound,
-    classify_same_child_runtime_override_state, resident_child_bootstrap_menu,
-    resident_child_host_runtime_refresh_eligible, resident_child_runtime_repair_menu,
+    SameChildRuntimeOverrideState, agent_session_message_target_is_currently_routable,
+    agent_session_message_target_is_live_bound, classify_same_child_runtime_override_state,
+    resident_child_bootstrap_menu, resident_child_host_runtime_refresh_eligible,
+    resident_child_runtime_repair_menu, typed_runtime_observation_matches_profile,
 };
 
 fn active_record(model: Option<&str>, message_target_id: Option<&str>) -> AgentSessionRecord {
@@ -10,6 +11,9 @@ fn active_record(model: Option<&str>, message_target_id: Option<&str>) -> AgentS
         project_id: "project".to_string(),
         root_session_id: "root".to_string(),
         session_id: "child".to_string(),
+        physical_generation: 1,
+        configured_agent_type: Some("asp_explorer".to_string()),
+        profile_evidence_json: None,
         message_target_id: message_target_id.map(str::to_string),
         parent_session_id: Some("root".to_string()),
         name: "asp-explore".to_string(),
@@ -61,6 +65,165 @@ fn rollout_and_host_tree_bound_record() -> AgentSessionRecord {
     record
 }
 
+fn testing_record(message_target_id: Option<&str>) -> AgentSessionRecord {
+    let mut record = active_record(Some("gpt-5.4-mini"), message_target_id);
+    record.name = "asp-testing".to_string();
+    record.role = "build,subagent,testing".to_string();
+    record.configured_agent_type = Some("asp_testing".to_string());
+    record
+}
+
+#[test]
+fn testing_typed_runtime_is_validated_against_its_own_profile() {
+    assert!(typed_runtime_observation_matches_profile(
+        "asp_testing",
+        "asp_testing",
+        "gpt-5.4-mini",
+        Some("low"),
+        "subagent-start",
+        Some("gpt-5.4-mini"),
+        Some("low"),
+    ));
+    assert!(!typed_runtime_observation_matches_profile(
+        "asp_explorer",
+        "asp_testing",
+        "gpt-5.4-mini",
+        Some("low"),
+        "subagent-start",
+        Some("gpt-5.4-mini"),
+        Some("low"),
+    ));
+}
+
+#[test]
+fn testing_resident_projects_testing_profile_and_canonical_target() {
+    let record = testing_record(Some("/root/asp_testing"));
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-testing",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        expected_reasoning_effort: Some("low"),
+        rollout_history_status: Some("not-needed"),
+        rollout_history_action: Some("none"),
+        now: 2,
+    });
+
+    assert_eq!(menu.host_requirement.resident_child_name, "asp-testing");
+    assert_eq!(menu.host_requirement.managed_agent_kind, "asp_testing");
+    assert_eq!(menu.state, AgentSessionLoopState::Ready);
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("configured resident slot")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("verified canonical message target")
+    );
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("configured receipt kind")
+    );
+    assert!(menu.choices[0].platform_action.contains("dispatch-claim"));
+    assert!(!menu.choices[0].platform_action.contains("asp_explorer"));
+}
+
+#[test]
+fn testing_host_tree_rebind_never_points_at_explorer() {
+    let record = testing_record(None);
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-testing",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        expected_reasoning_effort: Some("low"),
+        rollout_history_status: Some("existing-child-discovered"),
+        rollout_history_action: Some("resume-existing-child-then-bind-target"),
+        now: 2,
+    });
+    let observed =
+        agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
+            menu,
+            "present",
+            Some("present"),
+        );
+
+    assert_eq!(
+        observed.state,
+        AgentSessionLoopState::RebindExistingChildTarget
+    );
+    assert!(
+        observed.choices[0]
+            .platform_action
+            .contains("/root/asp_testing")
+    );
+    assert!(
+        observed.choices[0]
+            .platform_action
+            .contains("--name asp-testing")
+    );
+    assert!(!observed.choices[0].platform_action.contains("asp_explorer"));
+    assert!(!observed.choices[0].platform_action.contains("asp-explore"));
+}
+
+#[test]
+fn testing_live_transport_gate_uses_testing_target_and_receipt() {
+    let record = testing_record(Some("/root/asp_testing"));
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-testing",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        expected_reasoning_effort: Some("low"),
+        rollout_history_status: Some("not-needed"),
+        rollout_history_action: Some("none"),
+        now: 2,
+    });
+    let rebind =
+        agent_semantic_client_db::agent_session_registry::resident_child_runtime_verified_menu(
+            menu, true, false,
+        );
+
+    assert_eq!(
+        rebind.state,
+        AgentSessionLoopState::RebindExistingChildTarget
+    );
+    assert!(
+        rebind.choices[0]
+            .platform_action
+            .contains("/root/asp_testing")
+    );
+    assert!(!rebind.choices[0].platform_action.contains("asp_explorer"));
+
+    let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+        platform: "codex",
+        name: "asp-testing",
+        root_session_id: Some("root"),
+        record: Some(&record),
+        expected_model: Some("gpt-5.4-mini"),
+        expected_reasoning_effort: Some("low"),
+        rollout_history_status: Some("not-needed"),
+        rollout_history_action: Some("none"),
+        now: 2,
+    });
+    let ready =
+        agent_semantic_client_db::agent_session_registry::resident_child_runtime_verified_menu(
+            menu, true, true,
+        );
+    assert_eq!(ready.state, AgentSessionLoopState::Ready);
+    assert!(
+        ready.choices[0]
+            .platform_action
+            .contains("asp-testing-execution-v1")
+    );
+}
+
 #[test]
 fn rollout_identity_plus_native_host_tree_is_a_live_canonical_binding() {
     let record = rollout_and_host_tree_bound_record();
@@ -70,6 +233,18 @@ fn rollout_identity_plus_native_host_tree_is_a_live_canonical_binding() {
             &record, "root"
         )
     );
+}
+
+#[test]
+fn durable_identity_binding_requires_fresh_host_transport_for_routing() {
+    let record = rollout_and_host_tree_bound_record();
+
+    assert!(agent_session_message_target_is_currently_routable(
+        &record, "root", true, 2,
+    ));
+    assert!(!agent_session_message_target_is_currently_routable(
+        &record, "root", false, 2,
+    ));
 }
 
 #[test]
@@ -128,10 +303,10 @@ fn canonical_path_without_trusted_identity_source_is_not_live_bound() {
 
 #[test]
 fn pending_fresh_same_child_runtime_mismatch_requires_typed_replacement() {
-    let mut record = active_record(Some("gpt-5.6-sol"), Some("child"));
+    let mut record = active_record(Some("gpt-5.6-sol"), Some("/root/asp_explorer"));
     record.status = "replacement-required".to_string();
 
-    assert!(resident_child_host_runtime_refresh_eligible(
+    assert!(!resident_child_host_runtime_refresh_eligible(
         false, &record, "root"
     ));
     assert_eq!(
@@ -211,7 +386,7 @@ fn checked_rollout_miss_offers_managed_create_or_host_blocker() {
     });
 
     assert_eq!(menu.state, AgentSessionLoopState::Audit);
-    assert_eq!(menu.choices.len(), 6);
+    assert_eq!(menu.choices.len(), 5);
     assert_eq!(
         menu.choices[0].id,
         "audit-host-agent-tree-for-existing-resident-child"
@@ -227,13 +402,12 @@ fn checked_rollout_miss_offers_managed_create_or_host_blocker() {
             .platform_action
             .contains("observe-host-capability")
     );
-    assert_eq!(menu.choices[3].id, "activate-inline-parser-fallback");
     assert_eq!(
-        menu.choices[4].id,
+        menu.choices[3].id,
         "create-managed-resident-child-after-host-tree-miss"
     );
     assert!(
-        menu.choices[4]
+        menu.choices[3]
             .platform_action
             .contains("task_name=asp_explorer")
     );
@@ -363,7 +537,7 @@ fn missing_message_target_requires_same_child_live_rebind() {
     assert!(
         menu.choices[0]
             .platform_action
-            .contains("fresh same-root SubagentStart lifecycle hook")
+            .contains("fresh same-root host-tree target observation")
     );
     assert!(
         menu.choices[0]
@@ -451,7 +625,7 @@ fn aligned_routable_record_is_ready() {
 
     assert_eq!(menu.state, AgentSessionLoopState::Ready);
     assert_eq!(menu.choices.len(), 1);
-    assert_eq!(menu.choices[0].id, "send-denied-asp-command");
+    assert_eq!(menu.choices[0].id, "dispatch-resident-command");
     assert_eq!(
         menu.choices[0].next_state,
         AgentSessionLoopState::WaitReceipt
@@ -459,17 +633,16 @@ fn aligned_routable_record_is_ready() {
     assert!(
         menu.choices[0]
             .platform_action
-            .contains("Do not retire it merely because one search turn completed")
+            .contains("only action=send may deliver once")
     );
-    assert!(menu.choices[0].platform_action.contains("exactly once"));
     assert!(
         menu.choices[0]
             .platform_action
-            .contains("must never resend the command")
+            .contains("must never resend")
     );
     assert_eq!(
         menu.choices[0].required_inputs,
-        &["deniedAspCommand", "dispatchIdentity"]
+        &["residentCommand", "dispatchIdentity"]
     );
     assert_eq!(
         menu.trace.iter().map(|step| step.state).collect::<Vec<_>>(),
@@ -498,17 +671,25 @@ fn host_tree_observation_prevents_persisted_target_false_ready() {
     });
     assert_eq!(ready.state, AgentSessionLoopState::Ready);
 
-    let degraded =
+    let blocked =
         agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
             ready,
             "absent",
             Some("absent"),
         );
-    assert_eq!(degraded.state, AgentSessionLoopState::Audit);
-    assert_eq!(degraded.choices.len(), 1);
-    assert_eq!(degraded.choices[0].id, "activate-inline-parser-fallback");
+    assert_eq!(blocked.state, AgentSessionLoopState::Blocked);
+    assert_eq!(blocked.choices.len(), 1);
     assert_eq!(
-        degraded.trace.last().map(|step| step.result),
+        blocked.choices[0].id,
+        "report-host-typed-spawn-capability-unavailable"
+    );
+    assert!(
+        blocked.choices[0]
+            .platform_action
+            .contains("Unrelated Codex tools remain available")
+    );
+    assert_eq!(
+        blocked.trace.last().map(|step| step.result),
         Some("canonical-host-target-absent-registry-orphan-risk")
     );
 }
@@ -743,5 +924,54 @@ fn serialized_menu_is_choice_only_and_keeps_message_target() {
     assert_eq!(value["hostRequirement"]["platform"], "native-host");
     assert_eq!(value["expectedReasoningEffort"], "low");
     assert_eq!(value["session"]["messageTargetId"], "target");
-    assert_eq!(value["choices"][0]["id"], "send-denied-asp-command");
+    assert_eq!(value["choices"][0]["id"], "dispatch-resident-command");
+}
+
+#[test]
+fn runtime_verified_registry_requires_fresh_live_transport_before_ready() {
+    let record = active_record(Some("gpt-5.4-mini"), Some("/root/asp_explorer"));
+    let make_menu = || {
+        resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
+            platform: "codex",
+            name: "asp-explore",
+            root_session_id: Some("root"),
+            record: Some(&record),
+            expected_model: Some("gpt-5.4-mini"),
+            expected_reasoning_effort: Some("low"),
+            rollout_history_status: Some("not-needed"),
+            rollout_history_action: Some("none"),
+            now: 2,
+        })
+    };
+
+    let rejected =
+        agent_semantic_client_db::agent_session_registry::resident_child_runtime_verified_menu(
+            make_menu(),
+            true,
+            false,
+        );
+    assert_eq!(
+        rejected.state,
+        AgentSessionLoopState::RebindExistingChildTarget
+    );
+    assert_eq!(
+        rejected
+            .session
+            .as_ref()
+            .map(|session| session.message_target_status),
+        Some("unbound")
+    );
+    assert_eq!(
+        rejected.choices[0].id,
+        "verify-live-resident-transport-before-dispatch"
+    );
+
+    let ready =
+        agent_semantic_client_db::agent_session_registry::resident_child_runtime_verified_menu(
+            make_menu(),
+            true,
+            true,
+        );
+    assert_eq!(ready.state, AgentSessionLoopState::Ready);
+    assert_eq!(ready.choices[0].id, "send-denied-asp-command");
 }

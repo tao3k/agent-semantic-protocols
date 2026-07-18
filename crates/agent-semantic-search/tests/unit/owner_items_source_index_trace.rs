@@ -111,6 +111,8 @@ fn owner_items_source_index_lookup_trace_projects_hit_path() {
             line_count: Some(12),
             query_keys: vec!["lib".to_string()],
             selector_proof: None,
+            selector_kind: None,
+            selector_symbol: None,
         }],
     };
     let line = render_owner_items_source_index_lookup_trace("src/lib.rs", &lookup);

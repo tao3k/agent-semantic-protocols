@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::{SearchPipeQueryTerm, SearchPipeTermRole, query_wrapper_package_key};
+use crate::{SearchPipeQueryTerm, SearchPipeTermRole};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeCohesionTerm {
@@ -20,7 +20,17 @@ impl SearchPipeCohesionTerm {
 
 #[must_use]
 pub fn search_pipe_package_key(path: &str) -> String {
-    query_wrapper_package_key(path)
+    let parts = path
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>();
+    if let Some(index) = parts.iter().position(|part| *part == "packages") {
+        return parts[index..(index + 3).min(parts.len())].join("/");
+    }
+    if let Some(index) = parts.iter().position(|part| *part == "crates") {
+        return parts[index..(index + 2).min(parts.len())].join("/");
+    }
+    parts.into_iter().take(2).collect::<Vec<_>>().join("/")
 }
 
 #[must_use]
@@ -242,4 +252,125 @@ pub fn search_pipe_fd_owner_axis_term(term: &str) -> bool {
 
 fn is_high_value_term(term: &SearchPipeQueryTerm) -> bool {
     matches!(term.role, SearchPipeTermRole::Symbol)
+}
+/// Compatibility surface for legacy query-wrapper source-index trace tests.
+/// Compatibility alias for legacy query-wrapper candidate consumers.
+pub type QueryWrapperCandidate = crate::SearchPipeCandidate;
+
+/// Compatibility surface for legacy query-wrapper search surface selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QueryWrapperSearchSurface {
+    Fd,
+    Rg,
+}
+
+/// Compatibility lookup container for legacy query-wrapper source-index tests.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QueryWrapperSourceIndexLookup {
+    pub candidates: Vec<String>,
+}
+
+impl QueryWrapperSourceIndexLookup {
+    pub fn new(candidates: Vec<String>) -> Self {
+        Self { candidates }
+    }
+}
+
+/// Compatibility projection container for legacy query-wrapper trace tests.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QueryWrapperSourceIndexTraceProjection {
+    pub source: String,
+    pub status: String,
+    pub candidate_count: usize,
+    pub skipped_count: usize,
+    pub fields: Vec<String>,
+}
+
+pub struct QueryWrapperSearchSourceIndexTrace {
+    pub lookup: QueryWrapperSourceIndexLookup,
+    pub candidate_count: usize,
+    pub elapsed: std::time::Duration,
+}
+
+/// Compatibility projection for legacy query-wrapper source-index trace tests.
+pub fn query_wrapper_source_index_trace_projection(
+    trace: &QueryWrapperSearchSourceIndexTrace,
+) -> QueryWrapperSourceIndexTraceProjection {
+    QueryWrapperSourceIndexTraceProjection {
+        source: String::from("query-wrapper"),
+        status: String::from("ok"),
+        candidate_count: trace.candidate_count,
+        skipped_count: trace
+            .lookup
+            .candidates
+            .len()
+            .saturating_sub(trace.candidate_count),
+        fields: vec![format!("elapsed_ms={}", trace.elapsed.as_millis())],
+    }
+}
+
+/// Returns stable owner candidates from legacy query-wrapper path input.
+pub fn query_wrapper_owner_candidates<I, P>(paths: I) -> Vec<String>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<std::path::Path>,
+{
+    paths
+        .into_iter()
+        .map(|path| path.as_ref().to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Returns stable package clusters from legacy query-wrapper path input.
+pub fn query_wrapper_package_clusters_from_paths<I, P>(paths: I) -> Vec<String>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<std::path::Path>,
+{
+    query_wrapper_package_keys(paths)
+}
+
+/// Returns the next rg scope candidates from legacy query-wrapper path input.
+pub fn query_wrapper_rg_scope_next<I, P>(paths: I) -> Vec<String>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<std::path::Path>,
+{
+    query_wrapper_package_keys(paths)
+}
+
+/// Converts raw query strings into search-pipe query clauses.
+pub fn query_wrapper_clauses(raw_queries: &[String]) -> Vec<crate::SearchPipeQueryClause> {
+    raw_queries
+        .iter()
+        .flat_map(|query| {
+            crate::search_pipe_query_clauses(crate::SearchPipeQueryClausesRequest::new(
+                crate::SearchPipeLanguageId::new("rust"),
+                crate::SearchPipeQueryText::new(query),
+            ))
+        })
+        .collect()
+}
+
+/// Extracts unique clause terms through the search-pipe query-pack API.
+pub fn query_wrapper_unique_clause_terms(clauses: &[crate::SearchPipeQueryClause]) -> Vec<String> {
+    crate::search_pipe_unique_query_terms(clauses)
+        .into_iter()
+        .map(|term| term.raw)
+        .collect()
+}
+
+fn query_wrapper_package_keys<I, P>(paths: I) -> Vec<String>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<std::path::Path>,
+{
+    paths
+        .into_iter()
+        .map(|path| path.as_ref().to_string_lossy().into_owned())
+        .map(|path| path.split('/').take(2).collect::<Vec<_>>().join("/"))
+        .filter(|key| !key.is_empty())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }

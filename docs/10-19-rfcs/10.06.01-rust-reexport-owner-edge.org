@@ -1,0 +1,38 @@
+#+title: Rust Re-export Owner Edge
+#+startup: overview
+
+* Status
+
+Accepted for implementation and search-quality validation.
+
+* Problem
+
+Exact lexical search can identify the owner file of a public Rust re-export,
+but owner-items currently omits =syn::Item::Use=.  The resulting transition is
+=lexical owner hit -> owner-items miss -> raw fallback=, which adds rounds and
+loses the call/re-export topology needed to reach the defining item.
+
+* Contract
+
+Rust owner-items MUST emit public =use= bindings as kind =reexport=.  A grouped
+or renamed public use MUST emit one item per public binding name.  Ordinary
+private imports and glob imports MUST NOT become definition-like owner items.
+
+The structural selector is:
+
+#+begin_example
+rust://<owner>#item/reexport/<public-binding-name>
+#+end_example
+
+The syntax projection MUST identify the underlying Rust =use_declaration=.
+Search output SHOULD recommend an exact re-export selector before any raw text
+fallback.  Graph projection MAY additionally connect the re-export binding to
+its target when target resolution is available.
+
+* Acceptance
+
+- =run_binary_from_env= resolves from lexical owner to one owner-item hop
+- renamed and grouped public uses produce stable re-export selectors
+- private and glob uses do not pollute owner-items
+- selector query can materialize the public use declaration
+- the measured fingerprint search task uses fewer rounds and zero repeated dispatch

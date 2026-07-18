@@ -41,6 +41,15 @@ pub(super) fn classify_main_session_asp_command(
     let Some(first) = tokens.get(asp_index + 1).map(|token| token.as_str()) else {
         return MainSessionAspCommandClass::Unknown;
     };
+    if exact_parser_owner_search(tokens, asp_index) {
+        return MainSessionAspCommandClass::ExactEvidenceRead;
+    }
+    if matches!(
+        first,
+        "--version" | "-V" | "version" | "--help" | "-h" | "help"
+    ) {
+        return MainSessionAspCommandClass::ControlPlane;
+    }
     if let Some(command) =
         classify_asp_language_command_tokens_with_policy(&tokens[asp_index..], intent_policy)
     {
@@ -74,6 +83,15 @@ pub(super) fn classify_main_session_asp_command(
         return MainSessionAspCommandClass::ReasoningFlow;
     }
     MainSessionAspCommandClass::Unknown
+}
+
+fn exact_parser_owner_search(tokens: &[String], asp_index: usize) -> bool {
+    tokens
+        .get(asp_index + 2)
+        .is_some_and(|stage| stage.eq_ignore_ascii_case("search"))
+        && tokens
+            .get(asp_index + 3)
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("owner"))
 }
 
 pub(super) fn command_contains_asp_binary(command: &str) -> bool {

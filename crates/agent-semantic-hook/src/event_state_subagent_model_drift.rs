@@ -19,6 +19,149 @@ pub struct SubagentRuntimeDriftObservation {
     pub consecutive_observation_count: usize,
 }
 
+/// Whether a host surface exposed a reasoning-effort value for one child.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReasoningEvidenceVisibility {
+    Observed,
+    FieldOmitted,
+    HostUnsupported,
+    TransportFailed,
+}
+
+/// Native source that supplied a reasoning-effort fact.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReasoningEvidenceSource {
+    CodexThreadRuntime,
+    SubagentStart,
+    RolloutHeader,
+    TypedRoleProfile,
+}
+
+/// One provenance-preserving reasoning-effort fact for a physical child.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReasoningEvidence {
+    pub root_session_id: String,
+    pub child_session_id: String,
+    pub resident_generation: Option<u64>,
+    pub value: Option<String>,
+    pub visibility: ReasoningEvidenceVisibility,
+    pub source: ReasoningEvidenceSource,
+    pub observed_at: Option<i64>,
+    pub profile_digest: Option<String>,
+}
+
+/// Lifecycle decision produced from all reasoning evidence for one generation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReasoningVerdict {
+    DirectMatch,
+    ProfileAttestedUnobservable,
+    DirectMismatch,
+    TransientlyUnavailable,
+    StaleEvidence,
+    ConflictingEvidence,
+}
+
+/// Reduced reasoning state consumed by the resident Ready gate.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReasoningAssessment {
+    pub verdict: ReasoningVerdict,
+    pub observed_reasoning_effort: Option<String>,
+    pub effective_reasoning_effort: Option<String>,
+    pub evidence_source: ReasoningEvidenceSource,
+}
+
+/// Reduces evidence without promoting rollout or profile values into direct
+/// runtime observations.
+pub fn reduce_reasoning_evidence(
+    expected: &str,
+    evidence: &[ReasoningEvidence],
+) -> ReasoningAssessment {
+    let direct = evidence.iter().filter(|fact| {
+        fact.visibility == ReasoningEvidenceVisibility::Observed
+            && matches!(
+                fact.source,
+                ReasoningEvidenceSource::CodexThreadRuntime
+                    | ReasoningEvidenceSource::SubagentStart
+            )
+    });
+    let direct_values = direct
+        .filter_map(|fact| fact.value.as_deref())
+        .collect::<std::collections::BTreeSet<_>>();
+    if direct_values.len() > 1 {
+        return ReasoningAssessment {
+            verdict: ReasoningVerdict::ConflictingEvidence,
+            observed_reasoning_effort: None,
+            effective_reasoning_effort: None,
+            evidence_source: ReasoningEvidenceSource::CodexThreadRuntime,
+        };
+    }
+    if let Some(observed) = direct_values.first().copied() {
+        return ReasoningAssessment {
+            verdict: if observed == expected {
+                ReasoningVerdict::DirectMatch
+            } else {
+                ReasoningVerdict::DirectMismatch
+            },
+            observed_reasoning_effort: Some(observed.to_string()),
+            effective_reasoning_effort: Some(observed.to_string()),
+            evidence_source: evidence
+                .iter()
+                .find(|fact| fact.value.as_deref() == Some(observed))
+                .map(|fact| fact.source)
+                .unwrap_or(ReasoningEvidenceSource::CodexThreadRuntime),
+        };
+    }
+    if evidence
+        .iter()
+        .any(|fact| fact.visibility == ReasoningEvidenceVisibility::TransportFailed)
+    {
+        return ReasoningAssessment {
+            verdict: ReasoningVerdict::TransientlyUnavailable,
+            observed_reasoning_effort: None,
+            effective_reasoning_effort: None,
+            evidence_source: ReasoningEvidenceSource::CodexThreadRuntime,
+        };
+    }
+    let host_unobservable = evidence.iter().any(|fact| {
+        matches!(
+            fact.visibility,
+            ReasoningEvidenceVisibility::FieldOmitted
+                | ReasoningEvidenceVisibility::HostUnsupported
+        ) && matches!(
+            fact.source,
+            ReasoningEvidenceSource::CodexThreadRuntime | ReasoningEvidenceSource::SubagentStart
+        )
+    });
+    let profile_attested = evidence.iter().any(|fact| {
+        fact.source == ReasoningEvidenceSource::TypedRoleProfile
+            && fact.visibility == ReasoningEvidenceVisibility::Observed
+            && fact.value.as_deref() == Some(expected)
+            && fact.profile_digest.is_some()
+    });
+    if host_unobservable && profile_attested {
+        return ReasoningAssessment {
+            verdict: ReasoningVerdict::ProfileAttestedUnobservable,
+            observed_reasoning_effort: None,
+            effective_reasoning_effort: Some(expected.to_string()),
+            evidence_source: ReasoningEvidenceSource::TypedRoleProfile,
+        };
+    }
+    let rollout = evidence.iter().find(|fact| {
+        fact.source == ReasoningEvidenceSource::RolloutHeader
+            && fact.visibility == ReasoningEvidenceVisibility::Observed
+    });
+    ReasoningAssessment {
+        verdict: ReasoningVerdict::StaleEvidence,
+        observed_reasoning_effort: None,
+        effective_reasoning_effort: rollout.and_then(|fact| fact.value.clone()),
+        evidence_source: ReasoningEvidenceSource::RolloutHeader,
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/reasoning_evidence.rs"]
+mod reasoning_evidence_tests;
+
 /// Positive receipt proving that a fresh typed child observation matches the
 /// runtime required by the preceding replacement state.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -33,6 +176,12 @@ pub struct SubagentRuntimeRebindVerifiedObservation {
     pub observed_reasoning_effort: Option<String>,
     pub expected_model: String,
     pub expected_reasoning_effort: Option<String>,
+    /// Host-owned reasoning evidence captured at the same lifecycle boundary.
+    /// This intentionally preserves an omitted field instead of coalescing it
+    /// with rollout or profile configuration.
+    pub reasoning_evidence: Vec<ReasoningEvidence>,
+    /// Deterministic verdict over `reasoning_evidence` at capture time.
+    pub reasoning_assessment: ReasoningAssessment,
     pub observation_source: &'static str,
     pub observation_count: usize,
 }
@@ -248,6 +397,32 @@ fn verified_runtime_rebind_observation(
     expected_model: String,
     observation_source: &'static str,
 ) -> SubagentRuntimeRebindVerifiedObservation {
+    let reasoning_evidence = vec![ReasoningEvidence {
+        root_session_id: drift.observation.root_session_id.clone(),
+        child_session_id: child_session_id.to_string(),
+        resident_generation: None,
+        value: observed_reasoning_effort.clone(),
+        source: if observation_source == "codex.subagent-start" {
+            ReasoningEvidenceSource::SubagentStart
+        } else {
+            ReasoningEvidenceSource::CodexThreadRuntime
+        },
+        visibility: if observed_reasoning_effort.is_some() {
+            ReasoningEvidenceVisibility::Observed
+        } else {
+            ReasoningEvidenceVisibility::FieldOmitted
+        },
+        observed_at: None,
+        profile_digest: None,
+    }];
+    let reasoning_assessment = reduce_reasoning_evidence(
+        drift
+            .expected_reasoning_effort
+            .as_deref()
+            .unwrap_or_default(),
+        &reasoning_evidence,
+    );
+
     SubagentRuntimeRebindVerifiedObservation {
         root_session_id: drift.observation.root_session_id.clone(),
         child_session_id: child_session_id.to_string(),
@@ -261,6 +436,8 @@ fn verified_runtime_rebind_observation(
         observed_reasoning_effort,
         expected_model,
         expected_reasoning_effort: drift.expected_reasoning_effort.clone(),
+        reasoning_evidence,
+        reasoning_assessment,
         observation_source,
         observation_count: drift.observation.consecutive_observation_count + 1,
     }

@@ -17,14 +17,26 @@ use agent_semantic_hook::{
 mod hook_runtime_agent_session_activation_failure;
 #[path = "hook_runtime_agent_session_command.rs"]
 mod hook_runtime_agent_session_command;
+#[path = "hook_runtime_agent_session_execution_lane.rs"]
+mod hook_runtime_agent_session_execution_lane;
+#[path = "hook_runtime_agent_session_identity.rs"]
+mod hook_runtime_agent_session_identity;
 #[path = "hook_runtime_agent_session_inline_fallback.rs"]
 mod hook_runtime_agent_session_inline_fallback;
+#[path = "hook_runtime_agent_session_presence.rs"]
+mod hook_runtime_agent_session_presence;
 #[path = "hook_runtime_agent_session_profile.rs"]
 mod hook_runtime_agent_session_profile;
 #[path = "hook_runtime_agent_session_rollout_topology.rs"]
 mod hook_runtime_agent_session_rollout_topology;
 #[path = "hook_runtime_agent_session_session_start.rs"]
 mod hook_runtime_agent_session_session_start;
+#[path = "hook_runtime_agent_session_spawn.rs"]
+mod hook_runtime_agent_session_spawn;
+#[path = "hook_runtime_agent_session_terminal.rs"]
+mod hook_runtime_agent_session_terminal;
+#[path = "hook_runtime_agent_session_testing.rs"]
+mod hook_runtime_agent_session_testing;
 #[path = "hook_runtime_agent_session_typed_replacement.rs"]
 mod hook_runtime_agent_session_typed_replacement;
 pub(super) use hook_runtime_agent_session_activation_failure::classify_activation_failure_main_session_asp;
@@ -32,10 +44,8 @@ use hook_runtime_agent_session_command::{
     command_contains_asp_binary, command_prefix_matches, command_prefix_matches_wrapped,
     command_prefix_tokens, command_requires_resident_child, shell_like_tokens,
 };
-use hook_runtime_agent_session_inline_fallback::{
-    command_enables_inline_parser_fallback, current_session_exploration_fallback_decision,
-    missing_resident_asp_explore_decision,
-};
+use hook_runtime_agent_session_execution_lane::ResidentExecutionLane;
+use hook_runtime_agent_session_inline_fallback::missing_resident_decision;
 use hook_runtime_agent_session_profile::{
     append_resident_agent_fields, resident_agent_host_action, resident_child_create_action,
 };
@@ -43,12 +53,18 @@ use hook_runtime_agent_session_rollout_topology::{
     nested_resident_child_decision, register_required_resident_child_decision,
 };
 use hook_runtime_agent_session_session_start::{
-    classify_session_start_bootstrap, main_session_route_context,
+    classify_session_start_bootstrap, current_session_configured_resident_identity_proof,
+    main_session_route_context,
 };
 pub(super) use hook_runtime_agent_session_session_start::{
     current_session_resident_child_identity_proof, session_matches_resident_agent,
 };
-use sha2::{Digest, Sha256};
+use hook_runtime_agent_session_spawn::resident_spawn_context_decision;
+use hook_runtime_agent_session_terminal::{
+    append_terminal_execution_fields, proven_resident_parser_command_is_terminal,
+    resident_dispatch_wrapper_is_terminal,
+};
+use hook_runtime_agent_session_testing::resident_execution_decision;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -67,9 +83,7 @@ pub(super) struct AspSessionPolicy {
     resident_codex_agent_name: String,
     resident_route_source: &'static str,
     main_allowed_asp_command_prefixes: Vec<Vec<String>>,
-    testing_enabled: bool,
-    testing_command_prefixes: Vec<Vec<String>>,
-    testing_receipt_kind: String,
+    execution_lanes: Vec<ResidentExecutionLane>,
     messages: HookClientAgentSessionMessagesConfig,
 }
 
@@ -90,7 +104,7 @@ impl AspSessionPolicy {
         &self.resident_agent_role
     }
 
-    fn resident_codex_agent_name(&self) -> &str {
+    pub(super) fn resident_codex_agent_name(&self) -> &str {
         &self.resident_codex_agent_name
     }
 
@@ -205,12 +219,38 @@ impl AspSessionPolicy {
             .flat_map(|agent| agent.main_allowed_asp_command_prefixes.iter())
             .map(|prefix| command_prefix_tokens(prefix))
             .collect::<Result<Vec<_>, _>>()?;
-        let testing_command_prefixes = execution_lanes
-            .testing
-            .command_prefixes
+        let resident_agents = config
+            .resident_agents
             .iter()
-            .map(|prefix| command_prefix_tokens(prefix))
-            .collect::<Result<Vec<_>, _>>()?;
+            .filter(|agent| agent.enabled)
+            .map(|agent| (agent.name.as_str(), agent))
+            .collect::<std::collections::HashMap<_, _>>();
+        let resident_execution_lanes = execution_lanes
+            .lanes
+            .into_iter()
+            .filter(|(_, lane)| lane.enabled)
+            .map(|(lane_name, lane)| {
+                let resident_agent = resident_agents.get(lane.resident_name.as_str()).copied();
+                let command_prefixes = lane
+                    .command_prefixes
+                    .iter()
+                    .map(|prefix| command_prefix_tokens(prefix))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ResidentExecutionLane {
+                    name: lane_name,
+                    transport: lane.transport,
+                    resident_child_name: lane.resident_name,
+                    resident_agent_role: resident_agent
+                        .map(|agent| agent.role.clone())
+                        .unwrap_or_default(),
+                    resident_codex_agent_name: resident_agent
+                        .map(configured_codex_agent_name)
+                        .unwrap_or_default(),
+                    command_prefixes,
+                    receipt_kind: lane.receipt_kind,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         Ok(Self {
             command_intent_policy,
             enabled: explore_agent.is_some_and(|agent| agent.enabled),
@@ -229,9 +269,7 @@ impl AspSessionPolicy {
                 "built-in-fallback"
             },
             main_allowed_asp_command_prefixes,
-            testing_enabled: execution_lanes.testing.enabled,
-            testing_command_prefixes,
-            testing_receipt_kind: execution_lanes.testing.receipt_kind,
+            execution_lanes: resident_execution_lanes,
             messages,
         })
     }
@@ -267,20 +305,6 @@ impl TryFrom<HookClientConfigFile> for AspSessionPolicy {
             config.asp_command_intent_policy,
             config.execution_lanes,
         )
-    }
-}
-
-impl AspSessionPolicy {
-    fn testing_receipt_kind(&self) -> &str {
-        &self.testing_receipt_kind
-    }
-
-    fn testing_command_matches(&self, command_tokens: &[String]) -> bool {
-        self.testing_enabled
-            && self
-                .testing_command_prefixes
-                .iter()
-                .any(|prefix| command_prefix_matches_wrapped(command_tokens, prefix))
     }
 }
 
@@ -337,9 +361,82 @@ fn classify_pre_tool_main_session_asp(
     payload: &serde_json::Value,
     asp_session_policy: &AspSessionPolicy,
 ) -> Result<Option<HookDecision>, String> {
+    if let Some(decision) =
+        resident_spawn_context_decision(platform, event, payload, asp_session_policy)
+    {
+        return Ok(Some(decision));
+    }
     let commands = payload_command_strings(payload);
     if commands.is_empty() {
         return Ok(None);
+    }
+
+    let resident_identity_proven =
+        current_session_resident_child_identity_proof(project_root, asp_session_policy, payload)?
+            .is_some();
+    if resident_dispatch_wrapper_is_terminal(&commands) {
+        return Ok(Some(agent_session_allow_decision(
+            platform,
+            event,
+            payload,
+            "resident-command-bridge",
+            "ASP allowed the hook-selected resident command wrapper to validate and consume one exact dispatch lease.",
+        )));
+    }
+    if proven_resident_parser_command_is_terminal(&commands, resident_identity_proven) {
+        let mut decision = agent_session_allow_decision(
+            platform,
+            event,
+            payload,
+            "active-resident-child",
+            "ASP allowed the proven resident child to execute the parser command as a terminal dispatch; self-routing is forbidden.",
+        );
+        decision.fields.insert(
+            "executionLane".to_string(),
+            serde_json::Value::String(asp_session_policy.resident_child_name().to_string()),
+        );
+        return Ok(Some(decision));
+    }
+    if let Some((_, lane)) = first_resident_execution_command(&commands, asp_session_policy)
+        && current_session_configured_resident_identity_proof(
+            project_root,
+            payload,
+            lane.resident_child_name(),
+            lane.resident_agent_role(),
+            lane.resident_codex_agent_name(),
+        )?
+        .is_some()
+    {
+        let mut decision = agent_session_allow_decision(
+            platform,
+            event,
+            payload,
+            "active-hook-selected-resident",
+            "ASP allowed the host-proven hook-selected resident to execute its configured lane as a routing terminal.",
+        );
+        decision.fields.extend([
+            (
+                "executionLane".to_string(),
+                serde_json::Value::String(lane.name().to_string()),
+            ),
+            (
+                "executionTransport".to_string(),
+                serde_json::Value::String("resident-child-terminal".to_string()),
+            ),
+            (
+                "residentChildName".to_string(),
+                serde_json::Value::String(lane.resident_child_name().to_string()),
+            ),
+            (
+                "targetAgentName".to_string(),
+                serde_json::Value::String(lane.resident_codex_agent_name().to_string()),
+            ),
+            (
+                "canonicalTarget".to_string(),
+                serde_json::Value::String(format!("/root/{}", lane.resident_codex_agent_name())),
+            ),
+        ]);
+        return Ok(Some(decision));
     }
 
     let context = main_session_route_context(project_root, asp_session_policy, payload)?;
@@ -357,13 +454,11 @@ fn classify_pre_tool_main_session_asp(
                 "ASP allowed resident asp-explore child session command.",
             )));
         }
-        if let Some(command) = first_testing_command(&commands, asp_session_policy) {
-            return Ok(Some(main_session_testing_command_decision(
-                platform,
-                event,
-                payload,
-                command,
-                asp_session_policy,
+        if let Some((command, lane)) =
+            first_resident_execution_command(&commands, asp_session_policy)
+        {
+            return Ok(Some(main_session_resident_execution_decision(
+                platform, event, payload, command, lane,
             )));
         }
         return Ok(None);
@@ -371,29 +466,14 @@ fn classify_pre_tool_main_session_asp(
     if context.outside_agent_session() {
         return Ok(None);
     }
-    if let Some(command) = first_testing_command(&commands, asp_session_policy) {
-        return Ok(Some(main_session_testing_command_decision(
-            platform,
-            event,
-            payload,
-            command,
-            asp_session_policy,
+    if let Some((command, lane)) = first_resident_execution_command(&commands, asp_session_policy) {
+        return Ok(Some(main_session_resident_execution_decision(
+            platform, event, payload, command, lane,
         )));
     }
     if context.active_explore_session.is_none()
-        && let Some((command, invocation)) =
-            first_asp_exploration_command(&commands, runtime, asp_session_policy)
+        && first_asp_exploration_command(&commands, runtime, asp_session_policy).is_some()
     {
-        if command_enables_inline_parser_fallback(command) {
-            return Ok(Some(current_session_exploration_fallback_decision(
-                platform,
-                event,
-                payload,
-                command,
-                invocation,
-                asp_session_policy,
-            )));
-        }
         if let Some(topology) = context.current_nested_resident_child(asp_session_policy) {
             return Ok(Some(nested_resident_child_decision(
                 platform,
@@ -413,7 +493,7 @@ fn classify_pre_tool_main_session_asp(
                 asp_session_policy,
             )));
         }
-        return Ok(Some(missing_resident_asp_explore_decision(
+        return Ok(Some(missing_resident_decision(
             platform,
             event,
             payload,
@@ -474,14 +554,22 @@ fn first_restricted_main_session_asp_command<'a>(
     })
 }
 
-fn first_testing_command<'a>(
+fn first_resident_execution_command<'a>(
     commands: &'a [String],
-    asp_session_policy: &AspSessionPolicy,
-) -> Option<&'a str> {
-    commands
-        .iter()
-        .find(|command| asp_session_policy.testing_command_matches(&shell_like_tokens(command)))
-        .map(String::as_str)
+    asp_session_policy: &'a AspSessionPolicy,
+) -> Option<(&'a str, &'a ResidentExecutionLane)> {
+    commands.iter().find_map(|command| {
+        let tokens = shell_like_tokens(command);
+        asp_session_policy
+            .execution_lanes
+            .iter()
+            .filter_map(|lane| {
+                lane.matching_prefix_len(&tokens)
+                    .map(|length| (length, lane))
+            })
+            .max_by_key(|(length, _)| *length)
+            .map(|(_, lane)| (command.as_str(), lane))
+    })
 }
 
 fn record_post_tool_session_event(
@@ -712,95 +800,14 @@ fn append_asp_command_intent_fields(
     }
 }
 
-fn main_session_testing_command_decision(
+fn main_session_resident_execution_decision(
     platform: &str,
     event: &str,
     payload: &serde_json::Value,
     command: &str,
-    asp_session_policy: &AspSessionPolicy,
+    lane: &ResidentExecutionLane,
 ) -> HookDecision {
-    current_session_testing_execution_decision(
-        platform,
-        event,
-        payload,
-        command,
-        asp_session_policy,
-    )
-}
-
-fn current_session_testing_execution_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    command: &str,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    let mut fields = BTreeMap::from([
-        (
-            "executionLane".to_string(),
-            serde_json::Value::String("asp-testing".to_string()),
-        ),
-        (
-            "executionTransport".to_string(),
-            serde_json::Value::String(
-                HookClientExecutionTransport::CurrentSession
-                    .as_str()
-                    .to_string(),
-            ),
-        ),
-        (
-            "executionReceiptKind".to_string(),
-            serde_json::Value::String(asp_session_policy.testing_receipt_kind().to_string()),
-        ),
-        (
-            "executionCommandDigest".to_string(),
-            serde_json::Value::String(command_sha256(command)),
-        ),
-        (
-            "blockedCommandClass".to_string(),
-            serde_json::Value::String("test-build-command".to_string()),
-        ),
-    ]);
-    if let Some(root_session_id) = string_field(
-        payload,
-        &[
-            "root_session_id",
-            "rootSessionId",
-            "session_id",
-            "sessionId",
-        ],
-    ) {
-        fields.insert(
-            "rootSessionId".to_string(),
-            serde_json::Value::String(root_session_id),
-        );
-    }
-    if let Some(cwd) = string_field(payload, &["cwd"]) {
-        fields.insert("cwd".to_string(), serde_json::Value::String(cwd));
-    }
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Allow,
-        reason_kind: ReasonKind::None,
-        language_ids: Vec::new(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: Some(command.to_string()),
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message: "ASP allowed an exact configured testing command in the current session with a command-digest execution receipt.".to_string(),
-        fields,
-    }
-}
-
-fn command_sha256(command: &str) -> String {
-    format!("sha256:{:x}", Sha256::digest(command.as_bytes()))
+    resident_execution_decision(platform, event, payload, command, lane)
 }
 
 fn template_value(key: &'static str, value: impl Into<String>) -> (&'static str, String) {
@@ -824,11 +831,6 @@ fn agent_session_route_fields(
     action: &str,
     resident_child_name: &str,
 ) -> BTreeMap<String, serde_json::Value> {
-    let resident_role = if resident_child_name == "asp-testing" {
-        "asp-testing"
-    } else {
-        "asp-explore"
-    };
     let mut fields = BTreeMap::from([
         (
             "agentSessionRoute".to_string(),
@@ -878,7 +880,7 @@ fn agent_session_route_fields(
         &mut fields,
         action,
         resident_child_name,
-        resident_role,
+        resident_child_name,
     );
     fields
 }
@@ -940,6 +942,11 @@ fn agent_session_allow_decision(
     action: &str,
     message: &str,
 ) -> HookDecision {
+    let mut fields = BTreeMap::from([(
+        "agentSessionAction".to_string(),
+        serde_json::Value::String(action.to_string()),
+    )]);
+    append_terminal_execution_fields(&mut fields, action);
     HookDecision {
         schema_id: HOOK_DECISION_SCHEMA_ID,
         schema_version: HOOK_DECISION_SCHEMA_VERSION,
@@ -957,10 +964,7 @@ fn agent_session_allow_decision(
         },
         routes: Vec::new(),
         message: message.to_string(),
-        fields: BTreeMap::from([(
-            "agentSessionAction".to_string(),
-            serde_json::Value::String(action.to_string()),
-        )]),
+        fields,
     }
 }
 
@@ -1092,17 +1096,21 @@ fn restricted_main_session_asp_command(
     asp_session_policy: &AspSessionPolicy,
 ) -> Option<AspExplorationCommand> {
     let tokens = agent_semantic_hook::semantic_shell_tokens(command);
+    let provider_language_ids = runtime.map(|runtime| {
+        runtime
+            .providers
+            .iter()
+            .map(|provider| provider.language_id.as_str())
+            .collect::<std::collections::HashSet<_>>()
+    });
     for index in agent_semantic_hook::asp_invocation_indices(&tokens) {
-        if let (Some(runtime), Some(parsed)) = (
-            runtime,
+        if let (Some(provider_language_ids), Some(parsed)) = (
+            provider_language_ids.as_ref(),
             classify_asp_language_command_tokens_with_policy(
                 &tokens[index..],
                 asp_session_policy.command_intent_policy(),
             ),
-        ) && !runtime
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == parsed.language_id)
+        ) && !provider_language_ids.contains(parsed.language_id.as_str())
         {
             continue;
         }

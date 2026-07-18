@@ -3,7 +3,6 @@
 use std::collections::{BTreeSet, HashMap};
 
 use super::search_pipe_model::Candidate;
-use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_pipe_quality_model::{OwnerCoverage, SearchPipeQuality};
 use super::search_pipe_query_evidence::{
     declaration_header_match, handle_paths, high_value_matches, high_value_missing,
@@ -312,6 +311,33 @@ fn owner_role_score(owner: &str, terms: &[QueryTerm]) -> usize {
 
 fn query_has_secondary_owner_intent(terms: &[QueryTerm]) -> bool {
     has_strong_secondary_owner_intent(terms.iter().map(|term| term.lower.as_str()))
+}
+
+fn has_strong_secondary_owner_intent<'a>(terms: impl IntoIterator<Item = &'a str>) -> bool {
+    terms.into_iter().any(|term| {
+        matches!(
+            term,
+            "test"
+                | "tests"
+                | "fixture"
+                | "fixtures"
+                | "bench"
+                | "benches"
+                | "example"
+                | "examples"
+                | "owner"
+                | "owners"
+        )
+    })
+}
+
+fn secondary_like_owner(owner: &str) -> bool {
+    owner.contains("/tests/")
+        || owner.ends_with("/tests")
+        || owner.contains("/benches/")
+        || owner.ends_with("/benches")
+        || owner.contains("/examples/")
+        || owner.ends_with("/examples")
 }
 
 fn config_like_owner(owner: &str) -> bool {

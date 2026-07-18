@@ -357,6 +357,18 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     packet
 }
 
+pub(crate) fn graph_route_next_action(language_id: &str, owner_path: &str, query: &str) -> Value {
+    json!({
+        "kind": "search-owner-items",
+        "languageId": language_id,
+        "ownerPath": owner_path,
+        "query": query,
+        "requiredActor": "verified-resident-search-agent",
+        "requiredCapability": "owner-items",
+        "executable": true,
+    })
+}
+
 fn graph_route_value(
     language_id: &str,
     query: Option<&str>,
@@ -384,13 +396,9 @@ fn graph_route_value(
             "score": graph_route_score(&owner.score),
             "localHits": owner.score.local_hits,
             "symbols": owner.symbols.iter().take(6).cloned().collect::<Vec<_>>(),
+            "reachability": "unknown",
         },
-        "nextAction": {
-            "kind": "search-owner-items",
-            "languageId": language_id,
-            "ownerPath": owner.path.clone(),
-            "query": query,
-        },
+        "nextAction": graph_route_next_action(language_id, &owner.path, &query),
         "avoid": ["frontier-dump", "source-body", "line-selector"],
     }))
 }

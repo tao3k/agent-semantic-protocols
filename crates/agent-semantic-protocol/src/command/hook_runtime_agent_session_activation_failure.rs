@@ -5,7 +5,7 @@ use super::{
     AspSessionPolicy, HookDecision, agent_session_allow_decision, command_contains_asp_binary,
     command_requires_resident_child, first_restricted_main_session_asp_command,
     main_session_restricted_asp_command_decision, main_session_route_context,
-    missing_resident_asp_explore_decision, payload_command_strings, unix_timestamp,
+    missing_resident_decision, payload_command_strings, unix_timestamp,
 };
 use std::path::Path;
 
@@ -78,7 +78,7 @@ pub(in crate::command) fn classify_activation_failure_main_session_asp(
                 asp_session_policy,
             )));
         }
-        return Ok(Some(missing_resident_asp_explore_decision(
+        return Ok(Some(missing_resident_decision(
             platform,
             event,
             payload,

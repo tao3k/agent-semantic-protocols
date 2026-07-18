@@ -46,19 +46,17 @@ fn asp_agent_session_rejects_mismatched_codex_model_profile() {
     );
     let stdout = String::from_utf8(output.stdout).expect("model mismatch stdout");
     assert!(
-        stdout.contains(
-            "child-session model mismatch: this same Codex child session is running gpt-5.5"
-        ),
+        stdout.contains("child-session runtime model drift observed: host observed gpt-5.5"),
         "{stdout}"
     );
     assert!(
         stdout.contains(
-            "requiredAction=parent-send-native-message-same-child-with-required-child-session-model"
+            "requiredAction=main-agent-followup-existing-child-with-natural-language-runtime-switch"
         ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("requiresAgentMessageTargetId=true"),
+        stdout.contains("runtimeEvidence=fresh-host-observation"),
         "{stdout}"
     );
 
@@ -126,7 +124,7 @@ fn asp_agent_session_rejects_placeholder_native_message_target() {
 }
 
 #[test]
-fn asp_agent_session_accepts_codex_fallback_model_from_agents_config() {
+fn asp_agent_session_treats_configured_fallback_model_as_non_ready_drift() {
     let root = temp_project_root("agent-command-session-codex-model-fallback");
     let home = root.join("home");
     write_codex_asp_explorer_fixture_with_actual_profile(
@@ -183,13 +181,9 @@ sessionLifetime = "resident"
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");
+    assert!(stdout.contains("\"status\": \"warning\""), "{stdout}");
     assert!(
-        stdout.contains("model switched to configured fallback gpt-5.4-mini"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("\\\"status\\\":\\\"warning\\\"")
-            && !stdout.contains("\\\"status\\\":\\\"failed\\\""),
+        !stdout.contains("model switched to configured fallback"),
         "{stdout}"
     );
 
@@ -231,6 +225,16 @@ sessionLifetime = "resident"
         Some("agent-config"),
         "{status_stdout}"
     );
+    assert_eq!(
+        status_json["validationStatus"].as_str(),
+        Some("warning"),
+        "{status_stdout}"
+    );
+    assert_eq!(
+        status_json["routable"].as_bool(),
+        Some(false),
+        "{status_stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -263,6 +267,31 @@ permissions = ["read-only"]
 "#,
     )
     .expect("write ASP dynamic agents config");
+
+    std::fs::write(
+        agents_dir.join("asp-explorer_codex.toml"),
+        r#"name = "asp_explorer"
+model = "gpt-5.4-mini"
+model_reasoning_effort = "low"
+sandbox_mode = "read-only"
+session_lifetime = "resident"
+"#,
+    )
+    .expect("write dynamic agent Codex profile");
+
+    let sync = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_AGENTS_HOME", &agents_dir)
+        .env("CODEX_THREAD_ID", "codex-root-thread")
+        .arg("sync")
+        .output()
+        .expect("sync dynamic-agent lifecycle fixture");
+    assert!(
+        sync.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sync.stderr)
+    );
 
     let output = asp_command(&root)
         .env("HOME", &home)
@@ -631,7 +660,7 @@ fn asp_agent_session_warns_but_allows_missing_codex_agent_config_path() {
 }
 
 #[test]
-fn asp_agent_session_allows_codex_default_role_as_host_fallback() {
+fn asp_agent_session_rejects_codex_default_role_for_typed_resident() {
     let root = temp_project_root("agent-command-session-codex-default-role-fallback");
     let home = root.join("home");
     write_codex_asp_explorer_fixture_with_default_agent_role(
@@ -663,17 +692,16 @@ fn asp_agent_session_allows_codex_default_role_as_host_fallback() {
             "--json",
         ])
         .output()
-        .expect("allow codex default role fallback");
+        .expect("reject codex default role fallback");
     assert!(
-        output.status.success(),
+        !output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8(output.stdout).expect("default role fallback stdout");
-    assert!(stdout.contains("\"status\": \"passed\""), "{stdout}");
+    let stderr = String::from_utf8(output.stderr).expect("default role rejection stderr");
     assert!(
-        stdout.contains("agentRole default accepted as Codex host role fallback"),
-        "{stdout}"
+        stderr.contains("agentRole expected asp_explorer got default"),
+        "{stderr}"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -782,28 +810,8 @@ fn asp_agent_session_model_mismatch_is_warning_not_invalid() {
     assert!(stdout.contains("\"status\": \"warning\""), "{stdout}");
     assert!(
         stdout.contains(
-            "requiredAction=parent-send-native-message-same-child-with-required-child-session-model"
+            "requiredAction=main-agent-followup-existing-child-with-natural-language-runtime-switch"
         ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("main/parent agent must send a native message-agent follow-up"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("keep the main session model unchanged"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("requiresAgentMessageTargetId=true"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("bootstrapBlocked=host-message-agent-target-unavailable"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("do not create or replace the child"),
         "{stdout}"
     );
     assert!(!stdout.contains("\"status\": \"failed\""), "{stdout}");
@@ -832,12 +840,6 @@ fn asp_agent_session_model_mismatch_is_warning_not_invalid() {
     );
     assert!(
         status_stdout.contains("\"routable\": false"),
-        "{status_stdout}"
-    );
-    assert!(
-        status_stdout.contains(
-            "\"nextAction\": \"register-existing-child-with-native-message-target-or-create-managed-child\""
-        ),
         "{status_stdout}"
     );
 
@@ -870,6 +872,20 @@ session_lifetime = "resident"
     )
     .expect("write codex agent file");
 
+    let sync = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_AGENTS_HOME", &agents_dir)
+        .env("CODEX_THREAD_ID", "codex-root-thread")
+        .arg("sync")
+        .output()
+        .expect("sync agent-file lifecycle fixture");
+    assert!(
+        sync.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sync.stderr)
+    );
+
     let output = asp_command(&root)
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
@@ -901,7 +917,7 @@ session_lifetime = "resident"
 }
 
 #[test]
-fn asp_agent_session_register_keeps_drifted_existing_child_on_model_warning() {
+fn asp_agent_session_register_rejects_replacement_without_generation_cas() {
     let root = temp_project_root("agent-command-session-replace-drifted-child");
     let home = root.join("home");
     write_codex_asp_explorer_fixture_with_actual_profile(
@@ -972,24 +988,16 @@ fn asp_agent_session_register_keeps_drifted_existing_child_on_model_warning() {
             "--json",
         ])
         .output()
-        .expect("recover drifted child session");
+        .expect("reject replacement without generation CAS");
     assert!(
-        replacement.status.success(),
+        !replacement.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&replacement.stderr)
     );
-    let stdout = String::from_utf8(replacement.stdout).expect("replacement stdout");
-    assert!(stdout.contains("drifted-child-thread"), "{stdout}");
-    assert!(!stdout.contains("replacement-child-thread"), "{stdout}");
+    let stderr = String::from_utf8(replacement.stderr).expect("replacement stderr");
     assert!(
-        stdout.contains(
-            "requiredAction=parent-send-native-message-same-child-with-required-child-session-model"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("requiresAgentMessageTargetId=true"),
-        "{stdout}"
+        stderr.contains("replacement requires exact compare-and-swap"),
+        "{stderr}"
     );
 
     let _ = std::fs::remove_dir_all(root);

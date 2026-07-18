@@ -5,7 +5,6 @@ use agent_semantic_hook::{
 
 mod activation_contract;
 mod platform;
-mod raw_search_policy;
 mod routes;
 mod search_flow_feedback;
 
@@ -121,6 +120,7 @@ pub(super) fn provider_routes(binary: &str, query: Option<CommandTemplate>) -> H
             StdinMode::PipeCandidates,
         ),
         check_changed: command(&[binary, "check", "--changed", "."]),
+        workspace_scope: None,
         dependency_topology: None,
         dependency_topology_metadata: None,
         export_index: None,

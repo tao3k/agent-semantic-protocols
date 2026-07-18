@@ -1,8 +1,7 @@
 //! Source-access, direct-read, and raw-search classifier routes.
 
 use crate::command::{
-    CommandIntent, command_intent, contains_ingest_pipe, raw_search_plan, search_query_route,
-    search_query_route_for_selector, selector_query_route,
+    CommandIntent, command_intent, search_query_route_for_selector, selector_query_route,
 };
 use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
 use crate::{
@@ -149,7 +148,7 @@ pub(super) fn classify_direct_read_action(
 
         let routes: Vec<DecisionRoute> = providers
             .iter()
-            .map(|provider| raw_search_ingest_route(provider))
+            .map(|provider| source_access_ingest_route(provider))
             .collect();
         let message = source_access_recovery_message(
             platform,
@@ -462,59 +461,7 @@ fn direct_read_query_route(provider: &ActivatedProvider, path: &str) -> Decision
     route
 }
 
-pub(super) fn classify_raw_search_command(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    tokens: &[String],
-    semantic_ast_patch_enabled: bool,
-    recovery_prompt: &CompiledRecoveryPromptConfig,
-) -> Option<HookDecision> {
-    if command_intent(tokens) != CommandIntent::RawSearch {
-        return None;
-    }
-    let plan = raw_search_plan(registry, tokens)?;
-    let raw_search_providers = plan
-        .providers
-        .into_iter()
-        .filter(|provider| provider.policy.blocks_raw_source_search())
-        .collect::<Vec<_>>();
-    if raw_search_providers.is_empty() || contains_ingest_pipe(tokens, &raw_search_providers) {
-        return None;
-    }
-    let terms = plan.terms;
-    let routes: Vec<DecisionRoute> = raw_search_providers
-        .iter()
-        .map(|provider| {
-            if terms.is_empty() {
-                return raw_search_ingest_route(provider);
-            }
-            search_query_route(provider, &terms)
-                .unwrap_or_else(|| raw_search_ingest_route(provider))
-        })
-        .collect();
-    let message = source_access_recovery_message(
-        platform,
-        "raw-broad-search",
-        &raw_search_providers,
-        &routes,
-        semantic_ast_patch_enabled,
-        recovery_prompt,
-    );
-    Some(deny_for_action(
-        platform,
-        event,
-        ReasonKind::RawBroadSearch,
-        action,
-        language_ids(&raw_search_providers),
-        subject_for_action(action),
-        routes,
-        message,
-    ))
-}
-
-fn raw_search_ingest_route(provider: &ActivatedProvider) -> DecisionRoute {
+fn source_access_ingest_route(provider: &ActivatedProvider) -> DecisionRoute {
     provider.route_from_template(
         DecisionRouteKind::Ingest,
         &provider.routes.ingest,

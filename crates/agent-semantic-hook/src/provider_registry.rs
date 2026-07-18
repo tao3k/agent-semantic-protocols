@@ -127,6 +127,9 @@ fn normalize_hook_routes(routes: &mut HookRoutes) {
     if let Some(export_index) = routes.export_index.as_mut() {
         normalize_command_template(export_index);
     }
+    if let Some(workspace_scope) = routes.workspace_scope.as_mut() {
+        normalize_command_template(workspace_scope);
+    }
     if let Some(guide) = routes.guide.as_mut() {
         normalize_command_template(guide);
     }

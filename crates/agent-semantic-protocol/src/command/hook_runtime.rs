@@ -2,8 +2,6 @@
 
 #[path = "hook_runtime_agent_session.rs"]
 mod hook_runtime_agent_session;
-#[path = "hook_runtime_agent_session_drift.rs"]
-mod hook_runtime_agent_session_drift;
 #[path = "hook_runtime_codex_plugin.rs"]
 mod hook_runtime_codex_plugin;
 #[path = "hook_runtime_codex_plugin_identity.rs"]
@@ -20,6 +18,9 @@ mod hook_runtime_skill;
 mod hook_runtime_stdin;
 #[path = "hook_runtime_subagent.rs"]
 mod hook_runtime_subagent;
+
+#[cfg(not(test))]
+pub(super) use hook_runtime_skill::active_codex_plugin_skill_path;
 
 use super::{
     codex_enforcement_report, payload_indicates_subagent_context, protocol_binary_on_path,
@@ -114,34 +115,70 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
+    let mut activation_auto_sync = None;
     let mut runtime = match load_activation(&activation_path) {
         Ok(registry) => registry,
-        Err(error) => {
-            if let Some(mut fallback) =
-                activation_failure_main_session_asp_decision(args, client, event, &stdin)
-            {
-                if let Err(error) =
-                    apply_repeated_deny_replay(&fallback.project_root, &mut fallback.decision)
-                {
-                    eprintln!("[agent-semantic-hook] failed to inspect hook replay state: {error}");
+        Err(initial_error) => {
+            activation_auto_sync = Some(match super::sync::sync_agent_configuration() {
+                Ok(sync) => format!(
+                    "completed:hookConfig={};activation={};agentConfigs={};codexAgentRegistry={}",
+                    sync.hook_config_status,
+                    sync.activation_status,
+                    sync.projected,
+                    sync.codex_registry_entries
+                ),
+                Err(error) => format!("failed:{error}"),
+            });
+            let repair_project_root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            match agent_semantic_hook::load_or_sync_activation(
+                &activation_path,
+                &repair_project_root,
+            ) {
+                Ok(registry) => registry,
+                Err(reload_error) => {
+                    if let Some(mut fallback) =
+                        activation_failure_main_session_asp_decision(args, client, event, &stdin)
+                    {
+                        fallback.decision.fields.insert(
+                            "activationAutoSync".to_string(),
+                            serde_json::json!(activation_auto_sync),
+                        );
+                        if let Err(error) = apply_repeated_deny_replay(
+                            &fallback.project_root,
+                            &mut fallback.decision,
+                        ) {
+                            eprintln!(
+                                "[agent-semantic-hook] failed to inspect hook replay state: {error}"
+                            );
+                        }
+                        record_active_context(ActiveContextRecord {
+                            activation_path: &activation_path,
+                            platform: client,
+                            event,
+                            payload: &fallback.payload,
+                            decision: &fallback.decision,
+                        });
+                        if let Err(error) =
+                            append_hook_event_state(&fallback.project_root, &fallback.decision)
+                        {
+                            eprintln!("[agent-semantic-hook] failed to update hook state: {error}");
+                        }
+                        emit_decision(emit, &fallback.decision)?;
+                        return Ok(());
+                    }
+                    emit_activation_load_failure(
+                        client,
+                        event,
+                        emit,
+                        &activation_path,
+                        &format!(
+                            "initial load failed: {initial_error}; reload after asp sync failed: {reload_error}"
+                        ),
+                        &stdin,
+                    )?;
+                    return Ok(());
                 }
-                record_active_context(ActiveContextRecord {
-                    activation_path: &activation_path,
-                    platform: client,
-                    event,
-                    payload: &fallback.payload,
-                    decision: &fallback.decision,
-                });
-                if let Err(error) =
-                    append_hook_event_state(&fallback.project_root, &fallback.decision)
-                {
-                    eprintln!("[agent-semantic-hook] failed to update hook state: {error}");
-                }
-                emit_decision(emit, &fallback.decision)?;
-                return Ok(());
             }
-            emit_activation_load_failure(client, event, emit, &activation_path, &error, &stdin)?;
-            return Ok(());
         }
     };
     let project_root = hook_runtime_project_root(&activation_path, &runtime.project_root);
@@ -188,8 +225,11 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     if needs_auto_sync {
         hook_config_auto_sync = Some(match super::sync::sync_agent_configuration() {
             Ok(sync) => format!(
-                "completed:hookConfig={};agentConfigs={};codexAgentRegistry={}",
-                sync.hook_config_status, sync.projected, sync.codex_registry_entries
+                "completed:hookConfig={};activation={};agentConfigs={};codexAgentRegistry={}",
+                sync.hook_config_status,
+                sync.activation_status,
+                sync.projected,
+                sync.codex_registry_entries
             ),
             Err(error) => format!("failed:{error}"),
         });
@@ -270,6 +310,16 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             hook_config_auto_sync.as_deref(),
         );
     }
+    if let Some(receipt) = activation_auto_sync {
+        decision.fields.insert(
+            "activationAutoSync".to_string(),
+            serde_json::Value::String(receipt),
+        );
+        decision.fields.insert(
+            "activationRecoveryStatus".to_string(),
+            serde_json::Value::String("reloaded-and-classified".to_string()),
+        );
+    }
     if matches!(event, "subagent-start" | "subagent-stop") {
         let mut payload_keys = payload
             .as_object()
@@ -326,7 +376,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     if let Err(error) = annotate_payload_context(&project_root, &mut decision, &payload) {
         eprintln!("[agent-semantic-hook] failed to annotate hook payload context: {error}");
     }
-    annotate_source_access_compact_templates(&mut decision, &hook_config);
+    materialize_source_access_deny_message(&mut decision, &hook_config);
     if let Err(error) = apply_repeated_deny_replay(&project_root, &mut decision) {
         eprintln!("[agent-semantic-hook] failed to inspect hook replay state: {error}");
     }
@@ -347,12 +397,6 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         &mut decision,
     ) {
         eprintln!("[agent-semantic-hook] failed to enforce resident child deny contract: {error}");
-    }
-    if let Err(error) = hook_runtime_agent_session_drift::soften_drifted_resident_route(
-        &project_root,
-        &mut decision,
-    ) {
-        eprintln!("[agent-semantic-hook] failed to apply resident drift soft policy: {error}");
     }
     record_active_context(ActiveContextRecord {
         activation_path: &activation_path,
@@ -598,41 +642,49 @@ fn annotate_payload_context(
             .fields
             .insert("subagentContext".to_string(), serde_json::Value::Bool(true));
     }
-    if decision.decision == DecisionKind::Deny && subagent_context {
+    if decision.decision == DecisionKind::Deny
+        && subagent_context
+        && !hook_selected_resident_execution(decision)
+    {
         decision.message = subagent_deny_message(&decision.message);
     }
     Ok(())
 }
 
-fn annotate_source_access_compact_templates(
+fn materialize_source_access_deny_message(
     decision: &mut HookDecision,
     hook_config: &agent_semantic_hook::ClientHookConfig,
 ) {
     if decision.decision != DecisionKind::Deny {
         return;
     }
-    let messages = hook_config.agent_session_messages();
-    insert_template_field(
-        decision,
-        "sourceAccessCompactMessage",
-        messages.source_access_compact.as_deref(),
-    );
-    insert_template_field(
-        decision,
-        "sourceAccessCompactRepeatedMessage",
-        messages.source_access_compact_repeated.as_deref(),
-    );
-    insert_template_field(
-        decision,
-        "sourceAccessCompactSubagentMessage",
-        messages.source_access_compact_subagent.as_deref(),
-    );
+    if hook_selected_resident_execution(decision) {
+        return;
+    }
     decision
         .fields
         .entry("residentChildName".to_string())
         .or_insert_with(|| {
             serde_json::Value::String(hook_config.resident_asp_explore_child_name().to_string())
         });
+    let resident_child_name = hook_config.resident_asp_explore_child_name();
+    if let Ok(serialized) = serde_json::to_value(&*decision)
+        && let Some(message) = super::hook_runtime_source_access::compact_root_source_access_message(
+            &serialized,
+            resident_child_name,
+        )
+    {
+        decision.message = message;
+    }
+}
+
+fn hook_selected_resident_execution(decision: &HookDecision) -> bool {
+    decision.fields.contains_key("executionLane")
+        && decision
+            .fields
+            .get("executionTransport")
+            .and_then(serde_json::Value::as_str)
+            == Some("resident-agent")
 }
 
 fn enforce_resident_child_deny_contract(
@@ -658,11 +710,12 @@ fn enforce_resident_child_deny_contract(
             );
         }
     }
-    let identity_proof = hook_runtime_agent_session::current_session_resident_child_identity_proof(
-        project_root,
-        asp_session_policy,
-        payload,
-    )?;
+    let mut identity_proof =
+        hook_runtime_agent_session::current_session_resident_child_identity_proof(
+            project_root,
+            asp_session_policy,
+            payload,
+        )?;
     let current_session_id = std::env::var("CODEX_THREAD_ID")
         .ok()
         .filter(|session_id| !session_id.trim().is_empty());
@@ -670,11 +723,43 @@ fn enforce_resident_child_deny_contract(
         .fields
         .get("sessionId")
         .and_then(serde_json::Value::as_str)
-        .filter(|session_id| !session_id.trim().is_empty());
+        .filter(|session_id| !session_id.trim().is_empty())
+        .map(str::to_string);
+    if identity_proof.is_none()
+        && let Some(root_session_id) = root_session_id.as_deref()
+    {
+        let payload_agent_id = ["agent_id", "agentId"]
+            .iter()
+            .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str));
+        identity_proof =
+            crate::command::agent_session_registry::payload_live_target_resident_identity_proof(
+                project_root,
+                payload_agent_id,
+                root_session_id,
+                asp_session_policy.resident_child_name(),
+                asp_session_policy.resident_agent_role(),
+                asp_session_policy.resident_codex_agent_name(),
+            )?;
+        if identity_proof.is_none() {
+            let status =
+                crate::command::agent_session_registry::payload_live_target_resident_identity_status(
+                    project_root,
+                    payload_agent_id,
+                    root_session_id,
+                    asp_session_policy.resident_child_name(),
+                    asp_session_policy.resident_agent_role(),
+                    asp_session_policy.resident_codex_agent_name(),
+                )?;
+            decision.fields.insert(
+                "payloadLiveTargetIdentityProofStatus".to_string(),
+                serde_json::Value::String(status.to_string()),
+            );
+        }
+    }
     let codex_subagent_session = identity_proof.is_none()
         && current_session_id
             .as_deref()
-            .zip(root_session_id)
+            .zip(root_session_id.as_deref())
             .is_some_and(|(current, root)| current != root);
     if identity_proof.is_none() && !codex_subagent_session {
         return Ok(());
@@ -689,7 +774,7 @@ fn enforce_resident_child_deny_contract(
         .fields
         .get("blockedAspStage")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|stage| matches!(stage, "search" | "query"))
+        .is_some_and(|stage| matches!(stage, "search" | "query" | "-search" | "-query"))
         || decision
             .fields
             .get("aspCommandRoute")
@@ -721,23 +806,9 @@ fn enforce_resident_child_deny_contract(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("resident-child-direct-route");
     let resident_child_name = asp_session_policy.resident_child_name();
-    let compact_message = decision
-        .fields
-        .get("sourceAccessCompactSubagentMessage")
-        .and_then(serde_json::Value::as_str)
-        .map(|template| {
-            template
-                .replace("{{reason}}", &reason)
-                .replace("{{recoveryRef}}", recovery_ref)
-                .replace("{{residentChildName}}", resident_child_name)
-                .trim()
-                .to_string()
-        })
-        .unwrap_or_else(|| {
-            format!(
-                "ASP denied source access (`{reason}`) inside {resident_child_name}. Use parser-owned ASP query/search and return one compact `[asp-search-subagent]` receipt; do not return source bodies."
-            )
-        });
+    let compact_message = format!(
+        "ASP denied source access (`{reason}`) inside `{resident_child_name}`. Next: execute the selected parser-owned ASP route and return `asp.search.playbook-receipt`. recoveryRef={recovery_ref}"
+    );
     decision.fields.insert(
         "registeredResidentChild".to_string(),
         serde_json::Value::Bool(matches!(
@@ -745,6 +816,7 @@ fn enforce_resident_child_deny_contract(
             Some(
                 crate::command::ResidentChildIdentityProof::RegistryExact
                     | crate::command::ResidentChildIdentityProof::CodexTranscriptRegistryExact
+                    | crate::command::ResidentChildIdentityProof::CodexHookPayloadLiveTarget
             )
         )),
     );
@@ -762,6 +834,9 @@ fn enforce_resident_child_deny_contract(
                     }
                     crate::command::ResidentChildIdentityProof::CodexRolloutMetadata => {
                         "codex-rollout-metadata"
+                    }
+                    crate::command::ResidentChildIdentityProof::CodexHookPayloadLiveTarget => {
+                        "codex-hook-payload-live-target"
                     }
                 }
                 .to_string(),
@@ -786,18 +861,6 @@ fn enforce_resident_child_deny_contract(
     }
     decision.message = compact_message;
     Ok(())
-}
-
-fn insert_template_field(decision: &mut HookDecision, field: &str, value: Option<&str>) {
-    if decision.fields.contains_key(field) {
-        return;
-    }
-    if let Some(value) = value {
-        decision.fields.insert(
-            field.to_string(),
-            serde_json::Value::String(value.to_string()),
-        );
-    }
 }
 
 fn emit_activation_load_failure(
@@ -876,27 +939,42 @@ fn activation_failure_source_decision(
         .or_else(|| payload.get("input"))
         .unwrap_or(&payload);
     let mut paths = Vec::new();
-    collect_source_like_values(tool_input, &mut paths);
+    super::hook_runtime_source_access::collect_activation_path_values(tool_input, &mut paths);
     let command = string_field(tool_input, &["cmd", "command", "script"]);
+    if command
+        .as_deref()
+        .is_some_and(is_activation_recovery_command)
+    {
+        return None;
+    }
     if let Some(command) = command.as_deref() {
-        collect_command_source_paths(command, &mut paths);
+        super::hook_runtime_source_access::collect_activation_command_paths(command, &mut paths);
     }
     paths.sort();
     paths.dedup();
-    if !paths.iter().any(|path| is_source_path(path)) {
+    if paths.is_empty() {
         return None;
     }
 
-    let is_direct_read = tool_name.eq_ignore_ascii_case("read")
-        || tool_name.eq_ignore_ascii_case("view")
-        || command
-            .as_deref()
-            .is_some_and(starts_with_source_dump_command);
-    let reason_kind = if is_direct_read {
-        ReasonKind::DirectSourceRead
-    } else {
-        ReasonKind::BulkSourceDump
-    };
+    let reason_kind =
+        if tool_name.eq_ignore_ascii_case("read") || tool_name.eq_ignore_ascii_case("view") {
+            ReasonKind::DirectSourceRead
+        } else {
+            match command
+                .as_deref()
+                .map(agent_semantic_hook::classify_source_command_intent)
+            {
+                Some(agent_semantic_hook::SourceCommandIntent::DirectRead) => {
+                    ReasonKind::DirectSourceRead
+                }
+                Some(agent_semantic_hook::SourceCommandIntent::ContentDump) => {
+                    ReasonKind::BulkSourceDump
+                }
+                Some(agent_semantic_hook::SourceCommandIntent::Other)
+                | Some(agent_semantic_hook::SourceCommandIntent::VcsDiffReview)
+                | None => return None,
+            }
+        };
     Some(HookDecision {
         schema_id: HOOK_DECISION_SCHEMA_ID,
         schema_version: HOOK_DECISION_SCHEMA_VERSION,
@@ -925,6 +1003,25 @@ fn activation_failure_source_decision(
     })
 }
 
+fn is_activation_recovery_command(command: &str) -> bool {
+    let tokens = agent_semantic_hook::semantic_shell_tokens(command);
+    agent_semantic_hook::asp_invocation_indices(&tokens)
+        .into_iter()
+        .any(
+            |asp_index| match tokens.get(asp_index + 1).map(String::as_str) {
+                Some("sync") => true,
+                Some("hook") => tokens
+                    .get(asp_index + 2)
+                    .is_some_and(|token| token == "doctor"),
+                _ => false,
+            },
+        )
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/hook_runtime_activation_recovery.rs"]
+mod hook_runtime_activation_recovery_tests;
+
 fn emit_decision(emit: &str, decision: &HookDecision) -> Result<(), String> {
     let output_value = match emit {
         "decision" => serde_json::to_value(decision)
@@ -947,84 +1044,6 @@ fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
     keys.iter()
         .find_map(|key| value.get(*key).and_then(serde_json::Value::as_str))
         .map(str::to_string)
-}
-
-fn collect_source_like_values(value: &serde_json::Value, paths: &mut Vec<String>) {
-    match value {
-        serde_json::Value::String(text) if is_source_path(text) => {
-            paths.push(text.to_string());
-        }
-        serde_json::Value::Array(values) => {
-            for value in values {
-                collect_source_like_values(value, paths);
-            }
-        }
-        serde_json::Value::Object(map) => {
-            for (key, value) in map {
-                if matches!(
-                    key.as_str(),
-                    "file_path" | "filePath" | "path" | "paths" | "file" | "files" | "selector"
-                ) {
-                    collect_source_like_values(value, paths);
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn collect_command_source_paths(command: &str, paths: &mut Vec<String>) {
-    for token in command.split_whitespace() {
-        let token = token.trim_matches(|character: char| {
-            matches!(
-                character,
-                '\'' | '"' | ',' | ';' | ':' | '(' | ')' | '[' | ']'
-            )
-        });
-        if is_source_path(token) {
-            paths.push(token.to_string());
-        }
-    }
-}
-
-fn starts_with_source_dump_command(command: &str) -> bool {
-    let Some(first) = command.split_whitespace().next() else {
-        return false;
-    };
-    matches!(
-        first,
-        "cat" | "sed" | "less" | "more" | "head" | "tail" | "nl" | "bat" | "awk"
-    )
-}
-
-fn is_source_path(path: &str) -> bool {
-    let path = path.trim();
-    matches!(
-        Path::new(path)
-            .extension()
-            .and_then(|extension| extension.to_str()),
-        Some(
-            "rs" | "ts"
-                | "tsx"
-                | "js"
-                | "jsx"
-                | "mjs"
-                | "cjs"
-                | "py"
-                | "pyi"
-                | "jl"
-                | "go"
-                | "java"
-                | "kt"
-                | "kts"
-                | "swift"
-                | "c"
-                | "h"
-                | "cc"
-                | "cpp"
-                | "hpp"
-        )
-    )
 }
 
 fn emit_hook_runtime_failure(

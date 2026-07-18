@@ -7,16 +7,39 @@ use super::reasoning::{
     rollout_proves_canonical_typed_binding, typed_subagent_start_proves_canonical_typed_binding,
 };
 
+pub(in crate::command) fn invalidate_absent_canonical_target(
+    registry: &AgentSessionRegistry,
+    project_id: &str,
+    existing: Option<&mut AgentSessionRecord>,
+    host_target_absent: bool,
+    now: i64,
+) -> Result<bool, String> {
+    let Some(existing) = existing.filter(|existing| {
+        host_target_absent && !matches!(existing.status.as_str(), "archived" | "closed")
+    }) else {
+        return Ok(false);
+    };
+    *existing = registry
+        .invalidate_session_live_binding(project_id, &existing.session_id, "orphan-risk", now)?
+        .ok_or_else(|| {
+            format!(
+                "failed to invalidate absent resident child `{}`",
+                existing.session_id
+            )
+        })?;
+    Ok(true)
+}
+
 fn bind_verified_canonical_target(
     registry: &AgentSessionRegistry,
     project_id: &str,
     root_session_id: &str,
     existing: &AgentSessionRecord,
     name: &str,
+    message_target_id: &str,
     binding_source: &str,
     now: i64,
 ) -> Result<AgentSessionRecord, Box<dyn std::error::Error>> {
-    let message_target_id = "/root/asp_explorer";
     let mut metadata = serde_json::from_str::<serde_json::Value>(&existing.metadata_json)
         .unwrap_or_else(|_| serde_json::json!({}));
     if !metadata.is_object() {
@@ -96,8 +119,8 @@ pub(super) fn insert_absent_canonical_target_receipt(
             serde_json::Value::Null,
         ),
         Some("absent") => (
-            "activate-inline-parser-fallback",
-            serde_json::Value::String("host-agent-type-unavailable".to_string()),
+            "blocked-host-typed-spawn-unavailable",
+            serde_json::Value::String("host-typed-spawn-unavailable".to_string()),
         ),
         _ => (
             "audit-host-typed-spawn-schema",
@@ -121,14 +144,18 @@ pub(super) fn insert_absent_canonical_target_receipt(
     );
 }
 
-pub(super) fn maybe_bind_verified_canonical_target(
+pub(in crate::command) fn maybe_bind_verified_canonical_target(
     registry: &AgentSessionRegistry,
     existing: Option<&AgentSessionRecord>,
     host_target_present: bool,
+    canonical_target: Option<&str>,
+    expected_agent_type: &str,
     expected_model: Option<&str>,
     host_observed_model: Option<&str>,
 ) -> Result<Option<AgentSessionRecord>, String> {
-    let (Some(existing), Some(expected_model)) = (existing, expected_model) else {
+    let (Some(existing), Some(canonical_target), Some(expected_model)) =
+        (existing, canonical_target, expected_model)
+    else {
         return Ok(None);
     };
     let root_session_id = existing.root_session_id.as_str();
@@ -147,20 +174,31 @@ pub(super) fn maybe_bind_verified_canonical_target(
     {
         return Ok(None);
     }
-    let binding_source =
-        if typed_subagent_start_proves_canonical_typed_binding(existing, root_session_id) {
-            "codex-typed-subagent-start-plus-native-host-tree"
-        } else if rollout_proves_canonical_typed_binding(&existing.session_id, root_session_id) {
-            "codex-rollout-session-meta-plus-native-host-tree"
-        } else {
-            return Ok(None);
-        };
+    let binding_source = if typed_subagent_start_proves_canonical_typed_binding(
+        existing,
+        root_session_id,
+        expected_agent_type,
+    ) {
+        "codex-typed-subagent-start-plus-native-host-tree"
+    } else if rollout_proves_canonical_typed_binding(
+        &existing.session_id,
+        root_session_id,
+        expected_agent_type,
+        canonical_target,
+    ) {
+        "codex-rollout-session-meta-plus-native-host-tree"
+    } else if canonical_target == format!("/root/{expected_agent_type}") {
+        "codex-locked-generation-profile-plus-native-host-tree"
+    } else {
+        return Ok(None);
+    };
     bind_verified_canonical_target(
         registry,
         &existing.project_id,
         root_session_id,
         existing,
         &existing.name,
+        canonical_target,
         binding_source,
         now,
     )

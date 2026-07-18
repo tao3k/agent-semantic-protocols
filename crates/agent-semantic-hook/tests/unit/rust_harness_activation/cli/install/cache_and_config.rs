@@ -35,8 +35,32 @@ fn cli_install_uses_state_core_home_over_prj_cache_home() {
 fn installed_activation_path(state_home: &std::path::Path) -> std::path::PathBuf {
     let mut matches = Vec::new();
     collect_activation_paths(state_home, &mut matches);
+    let expected_project_root = state_home
+        .parent()
+        .expect("state home must be rooted under the fixture project")
+        .canonicalize()
+        .expect("canonical fixture project root");
+    // ASP_STATE_HOME may contain activations for multiple independently owned
+    // roots. The install contract is one activation for this project scope,
+    // not one activation across the entire state home.
+    matches.retain(|path| {
+        let activation: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(path).expect("read activation candidate"),
+        )
+        .expect("parse activation candidate");
+        activation
+            .get("projectRoot")
+            .and_then(serde_json::Value::as_str)
+            .map(std::path::PathBuf::from)
+            .and_then(|project_root| project_root.canonicalize().ok())
+            .is_some_and(|project_root| project_root == expected_project_root)
+    });
     matches.sort();
-    assert_eq!(matches.len(), 1, "activation paths: {matches:?}");
+    assert_eq!(
+        matches.len(),
+        1,
+        "project activation paths for {expected_project_root:?}: {matches:?}"
+    );
     matches.remove(0)
 }
 
@@ -55,7 +79,7 @@ fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::
 }
 
 #[test]
-fn cli_install_preserves_existing_client_hook_config() {
+fn cli_install_rejects_unproven_existing_client_hook_config() {
     let root = git_project_root("install-preserves-client-config");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -83,11 +107,8 @@ decision = "deny"
         .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
-    assert!(
-        output.status.success(),
-        "install stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("user-config-contract-unproven"));
     assert_eq!(
         std::fs::read_to_string(&client_config_path).expect("read client config"),
         custom_config
@@ -96,7 +117,7 @@ decision = "deny"
 }
 
 #[test]
-fn cli_install_preserves_existing_user_hook_config_without_regeneration() {
+fn cli_install_rejects_unproven_user_hook_config_without_regeneration() {
     let root = git_project_root("install-preserves-user-hook-config");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -137,11 +158,8 @@ argvSourceGlobAny = [
         .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
-    assert!(
-        output.status.success(),
-        "install stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("user-config-contract-unproven"));
 
     let client_config = std::fs::read_to_string(&client_config_path).expect("read client config");
     assert!(client_config.contains("\"*.ss\", \"**/*.ss\""));

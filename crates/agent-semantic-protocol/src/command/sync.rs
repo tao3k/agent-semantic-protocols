@@ -15,6 +15,7 @@ pub(super) struct AgentConfigurationSync {
     pub(super) codex_registry_entries: usize,
     pub(super) codex_spawn_agent_metadata: &'static str,
     pub(super) hook_config_status: &'static str,
+    pub(super) activation_status: &'static str,
 }
 
 struct CodexAgentRegistryEntry {
@@ -31,31 +32,50 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let project_root = project_root_arg(args)?;
+    let agent_session_registry =
+        agent_semantic_client_db::AgentSessionRegistry::open_or_create_project(&project_root)?;
     let sync = run_org_state_sync(&project_root)?;
-    let agent_configs = sync_agent_configuration()?;
+    let agent_configs = sync_agent_configuration_for_project(&project_root)?;
     sync_codex_plugin_activation_cache(&project_root)?;
     let org_state = agent_semantic_runtime::project_state_paths(&project_root)?
         .protocol_home
         .join("org");
     let org_artifacts = org_artifacts_root_for_project(&project_root)?;
     println!(
-        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={} agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} hookConfig={}",
+        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={} orgSourceIndex={} orgSourceIndexGeneration={} agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} hookConfig={} activationStatus={} agentSessionRegistry={}",
         display_path(&project_root, &org_state),
         display_path(&project_root, &org_artifacts),
         sync.source,
         sync.status,
+        sync.source_index_status,
+        sync.source_index_generation.as_deref().unwrap_or("-"),
         agent_configs.projected,
         agent_configs.codex_registry_entries,
         agent_configs.codex_spawn_agent_metadata,
         agent_configs.hook_config_status,
+        agent_configs.activation_status,
+        display_path(&project_root, agent_session_registry.db_path()),
     );
     Ok(())
 }
 
 pub(super) fn sync_agent_configuration() -> Result<AgentConfigurationSync, String> {
+    let project_root = std::env::current_dir()
+        .map_err(|error| format!("failed to resolve current project root: {error}"))?;
+    sync_agent_configuration_for_project(&project_root)
+}
+
+fn sync_agent_configuration_for_project(
+    project_root: &std::path::Path,
+) -> Result<AgentConfigurationSync, String> {
     let hook_config_status = sync_global_hook_config()?;
+    let activation_path = agent_semantic_hook::default_activation_path(&project_root);
+    let activation_status =
+        agent_semantic_hook::load_or_refresh_default_activation(&activation_path, &project_root)?
+            .status;
     let mut sync = sync_global_agent_configs()?;
     sync.hook_config_status = hook_config_status;
+    sync.activation_status = activation_status;
     Ok(sync)
 }
 
@@ -133,6 +153,7 @@ fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
             codex_registry_entries,
             codex_spawn_agent_metadata: "visible-agent-type",
             hook_config_status: "unchanged",
+            activation_status: "not-synced",
         });
     }
     let mut synced = 0usize;
@@ -178,6 +199,7 @@ fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
         codex_registry_entries,
         codex_spawn_agent_metadata: "visible-agent-type",
         hook_config_status: "unchanged",
+        activation_status: "not-synced",
     })
 }
 
@@ -196,85 +218,144 @@ fn sync_global_hook_config() -> Result<&'static str, String> {
         }
     };
 
+    let repaired =
+        match merge_default_hook_resident_routes(&existing, &default_config, &config_path) {
+            Ok(repaired) => repaired,
+            Err(_) => return replace_invalid_hook_config(&config_path, &default_config),
+        };
+    let status = if repaired != existing {
+        write_hook_config(&config_path, &repaired)?;
+        "repaired-resident-routes"
+    } else {
+        "unchanged"
+    };
     match agent_semantic_config::load_hook_client_config_file(&config_path) {
-        Ok(config)
-            if config
-                .agents
-                .resident_agents
-                .iter()
-                .any(|agent| agent.lifecycle == "asp-command") =>
-        {
-            Ok("unchanged")
-        }
-        Ok(_) => {
-            let default_value: toml::Value = toml::from_str(&default_config).map_err(|error| {
-                format!("failed to parse built-in hook config template: {error}")
-            })?;
-            let resident = default_value
-                .get("agents")
-                .and_then(|agents| agents.get("residentAgents"))
-                .and_then(toml::Value::as_array)
-                .and_then(|agents| agents.first())
-                .ok_or_else(|| {
-                    "built-in hook config is missing agents.residentAgents[0]".to_string()
-                })?
-                .clone();
-            let mut repaired_value: toml::Value = toml::from_str(&existing).map_err(|error| {
-                format!(
-                    "failed to parse {} for repair: {error}",
-                    config_path.display()
-                )
-            })?;
-            let root = repaired_value
-                .as_table_mut()
-                .ok_or_else(|| format!("{} must contain a TOML table", config_path.display()))?;
-            let agents = root
-                .entry("agents".to_string())
-                .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-                .as_table_mut()
-                .ok_or_else(|| format!("{}.agents must be a TOML table", config_path.display()))?;
-            let resident_agents = agents
-                .entry("residentAgents".to_string())
-                .or_insert_with(|| toml::Value::Array(Vec::new()))
-                .as_array_mut()
-                .ok_or_else(|| {
-                    format!(
-                        "{}.agents.residentAgents must be an array",
-                        config_path.display()
-                    )
-                })?;
-            resident_agents.push(resident);
-            let repaired = toml::to_string_pretty(&repaired_value)
-                .map_err(|error| format!("failed to render repaired hook config: {error}"))?;
-            write_hook_config(&config_path, &repaired)?;
-            agent_semantic_config::load_hook_client_config_file(&config_path).map_err(|error| {
-                format!(
-                    "auto-repaired hook config still fails to load at {}: {error}",
-                    config_path.display()
-                )
-            })?;
-            Ok("repaired-resident-route")
-        }
-        Err(_) => {
-            let backup_path = invalid_hook_config_backup_path(&config_path);
-            if let Some(parent) = backup_path.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-            }
-            fs::rename(&config_path, &backup_path).map_err(|error| {
-                format!(
-                    "failed to preserve invalid hook config {} as {}: {error}",
-                    config_path.display(),
-                    backup_path.display()
-                )
-            })?;
-            if let Err(error) = write_hook_config(&config_path, &default_config) {
-                let _ = fs::rename(&backup_path, &config_path);
-                return Err(error);
-            }
-            Ok("replaced-invalid-with-backup")
+        Ok(_) => Ok(status),
+        Err(_) => replace_invalid_hook_config(&config_path, &default_config),
+    }
+}
+
+fn replace_invalid_hook_config(
+    config_path: &Path,
+    default_config: &str,
+) -> Result<&'static str, String> {
+    let backup_path = invalid_hook_config_backup_path(config_path);
+    if let Some(parent) = backup_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    fs::rename(config_path, &backup_path).map_err(|error| {
+        format!(
+            "failed to preserve invalid hook config {} as {}: {error}",
+            config_path.display(),
+            backup_path.display()
+        )
+    })?;
+    if let Err(error) = write_hook_config(config_path, default_config) {
+        let _ = fs::rename(&backup_path, config_path);
+        return Err(error);
+    }
+    Ok("replaced-invalid-with-backup")
+}
+
+fn merge_default_hook_resident_routes(
+    existing: &str,
+    defaults: &str,
+    config_path: &Path,
+) -> Result<String, String> {
+    let mut value: toml::Value = toml::from_str(existing).map_err(|error| {
+        format!(
+            "failed to parse {} for repair: {error}",
+            config_path.display()
+        )
+    })?;
+    let default_value: toml::Value = toml::from_str(defaults)
+        .map_err(|error| format!("failed to parse built-in hook config template: {error}"))?;
+    let default_residents = default_value
+        .get("agents")
+        .and_then(|agents| agents.get("residentAgents"))
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| "built-in hook config is missing agents.residentAgents".to_string())?;
+    let root = value
+        .as_table_mut()
+        .ok_or_else(|| format!("{} must contain a TOML table", config_path.display()))?;
+    let agents = root
+        .entry("agents".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| format!("{}.agents must be a TOML table", config_path.display()))?;
+    let residents = agents
+        .entry("residentAgents".to_string())
+        .or_insert_with(|| toml::Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or_else(|| {
+            format!(
+                "{}.agents.residentAgents must be an array",
+                config_path.display()
+            )
+        })?;
+    let mut changed = false;
+    for default_resident in default_residents {
+        let default_name = default_resident
+            .get("name")
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| "built-in resident agent is missing name".to_string())?;
+        if !residents.iter().any(|resident| {
+            resident.get("name").and_then(toml::Value::as_str) == Some(default_name)
+        }) {
+            residents.push(default_resident.clone());
+            changed = true;
         }
     }
+    let default_lanes = default_value
+        .get("executionLanes")
+        .and_then(toml::Value::as_table)
+        .ok_or_else(|| "built-in hook config is missing executionLanes".to_string())?;
+    let lanes = root
+        .entry("executionLanes".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| {
+            format!(
+                "{}.executionLanes must be a TOML table",
+                config_path.display()
+            )
+        })?;
+    for (lane_name, default_lane) in default_lanes {
+        match lanes.get_mut(lane_name) {
+            None => {
+                lanes.insert(lane_name.clone(), default_lane.clone());
+                changed = true;
+            }
+            Some(existing_lane)
+                if is_legacy_generated_current_session_lane(existing_lane, default_lane) =>
+            {
+                *existing_lane = default_lane.clone();
+                changed = true;
+            }
+            Some(_) => {}
+        }
+    }
+    if !changed {
+        return Ok(existing.to_string());
+    }
+    toml::to_string_pretty(&value)
+        .map_err(|error| format!("failed to render repaired hook config: {error}"))
+}
+
+fn is_legacy_generated_current_session_lane(
+    existing: &toml::Value,
+    current_default: &toml::Value,
+) -> bool {
+    let (Some(existing), Some(default)) = (existing.as_table(), current_default.as_table()) else {
+        return false;
+    };
+    existing.get("transport").and_then(toml::Value::as_str) == Some("current-session")
+        && existing.get("residentName").is_none()
+        && default.get("transport").and_then(toml::Value::as_str) == Some("resident-agent")
+        && ["enabled", "receiptKind", "commandPrefixes"]
+            .iter()
+            .all(|key| existing.get(*key) == default.get(*key))
 }
 
 fn write_hook_config(path: &Path, contents: &str) -> Result<(), String> {
@@ -298,20 +379,23 @@ fn load_codex_agent_registry(
     source_dir: &Path,
 ) -> Result<BTreeMap<String, CodexAgentRegistryEntry>, String> {
     let config_path = source_dir.join("config.toml");
-    let source = match fs::read_to_string(&config_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
+    let config = match fs::read_to_string(&config_path) {
+        Ok(source) => toml::from_str::<toml::Value>(&source)
+            .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            toml::Value::Table(toml::Table::new())
+        }
         Err(error) => {
             return Err(format!("failed to read {}: {error}", config_path.display()));
         }
     };
-    let config: toml::Value = toml::from_str(&source)
-        .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?;
-    let Some(agents) = config.get("agents").and_then(toml::Value::as_table) else {
-        return Ok(BTreeMap::new());
-    };
     let mut registry: BTreeMap<String, CodexAgentRegistryEntry> = BTreeMap::new();
-    for (agent_id, value) in agents {
+    for (agent_id, value) in config
+        .get("agents")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flatten()
+    {
         let Some(agent) = value.as_table() else {
             continue;
         };
@@ -376,7 +460,74 @@ fn load_codex_agent_registry(
             },
         );
     }
+    discover_unregistered_codex_agent_profiles(source_dir, &mut registry)?;
     Ok(registry)
+}
+
+fn discover_unregistered_codex_agent_profiles(
+    source_dir: &Path,
+    registry: &mut BTreeMap<String, CodexAgentRegistryEntry>,
+) -> Result<(), String> {
+    if !source_dir.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(source_dir)
+        .map_err(|error| format!("failed to read {}: {error}", source_dir.display()))?
+    {
+        let entry = entry.map_err(|error| {
+            format!("failed to read entry in {}: {error}", source_dir.display())
+        })?;
+        let path = entry.path();
+        let Some(profile) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(stem) = profile.strip_suffix("_codex.toml") else {
+            continue;
+        };
+        if registry.values().any(|entry| entry.profile == profile) {
+            continue;
+        }
+        let source = fs::read_to_string(&path)
+            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        let profile_value: toml::Value = toml::from_str(&source)
+            .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+        let host_agent_name = profile_value
+            .get("name")
+            .and_then(toml::Value::as_str)
+            .filter(|name| !name.trim().is_empty())
+            .ok_or_else(|| format!("Codex profile lacks string name: {}", path.display()))?;
+        if !host_agent_name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+        {
+            return Err(format!(
+                "invalid Codex profile name `{host_agent_name}` in {}",
+                path.display()
+            ));
+        }
+        let projection = format!("{stem}.toml");
+        if registry.contains_key(host_agent_name) {
+            return Err(format!(
+                "Codex profile `{profile}` duplicates host agent `{host_agent_name}`"
+            ));
+        }
+        if registry
+            .values()
+            .any(|entry| entry.projection == projection)
+        {
+            return Err(format!(
+                "Codex profile `{profile}` duplicates projection `{projection}`"
+            ));
+        }
+        registry.insert(
+            host_agent_name.to_string(),
+            CodexAgentRegistryEntry {
+                profile: profile.to_string(),
+                projection,
+            },
+        );
+    }
+    Ok(())
 }
 
 fn required_agent_config_string<'a>(

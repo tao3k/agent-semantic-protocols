@@ -57,6 +57,8 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub protocol_version: Option<String>,
     #[serde(default)]
+    pub contract_fingerprint: Option<String>,
+    #[serde(default)]
     pub experimental: BTreeMap<String, BTreeMap<String, bool>>,
     #[serde(default)]
     pub agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
@@ -341,10 +343,13 @@ pub struct HookClientAgentSessionMessagesConfig {
     #[serde(default)]
     pub binary_gate_registry_blocked: Option<String>,
     #[serde(default)]
+    /// Deprecated compatibility input. Source-access receipts are rule-owned typed materializers.
     pub source_access_compact: Option<String>,
     #[serde(default)]
+    /// Deprecated compatibility input. Repeated deny replay no longer carries prompt templates.
     pub source_access_compact_repeated: Option<String>,
     #[serde(default)]
+    /// Deprecated compatibility input. Resident agent role text belongs to its agent profile.
     pub source_access_compact_subagent: Option<String>,
 }
 
@@ -356,18 +361,17 @@ pub struct HookClientAgentsConfig {
     pub resident_agents: Vec<HookClientResidentAgentConfig>,
 }
 
-/// Deterministic command-execution lanes that do not require a reasoning agent.
+/// Hook-selected command-execution lanes keyed by a user-defined lane name.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientExecutionLanesConfig {
-    #[serde(default)]
-    pub testing: HookClientExecutionLaneConfig,
+    #[serde(flatten)]
+    pub lanes: BTreeMap<String, HookClientExecutionLaneConfig>,
 }
 
 impl Default for HookClientExecutionLanesConfig {
     fn default() -> Self {
         Self {
-            testing: HookClientExecutionLaneConfig::default(),
+            lanes: BTreeMap::new(),
         }
     }
 }
@@ -380,6 +384,8 @@ pub struct HookClientExecutionLaneConfig {
     pub enabled: bool,
     #[serde(default)]
     pub transport: HookClientExecutionTransport,
+    #[serde(default = "default_testing_resident_agent_name")]
+    pub resident_name: String,
     #[serde(default = "default_asp_testing_command_prefixes")]
     pub command_prefixes: Vec<String>,
     #[serde(default = "default_execution_receipt_kind")]
@@ -390,7 +396,8 @@ impl Default for HookClientExecutionLaneConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            transport: HookClientExecutionTransport::CurrentSession,
+            transport: HookClientExecutionTransport::ResidentAgent,
+            resident_name: default_testing_resident_agent_name(),
             command_prefixes: default_asp_testing_command_prefixes(),
             receipt_kind: default_execution_receipt_kind(),
         }
@@ -404,6 +411,8 @@ pub enum HookClientExecutionTransport {
     /// Execute the exact matched command in the current root session.
     #[default]
     CurrentSession,
+    /// Route the exact matched command to the configured resident agent.
+    ResidentAgent,
 }
 
 impl HookClientExecutionTransport {
@@ -412,6 +421,7 @@ impl HookClientExecutionTransport {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::CurrentSession => "current-session",
+            Self::ResidentAgent => "resident-agent",
         }
     }
 }
@@ -448,18 +458,40 @@ impl Default for HookClientAgentsConfig {
 }
 
 fn default_resident_agent_configs() -> Vec<HookClientResidentAgentConfig> {
-    vec![HookClientResidentAgentConfig {
-        enabled: true,
-        name: default_explore_resident_agent_name(),
-        role: default_explore_resident_agent_role(),
-        roles: default_explore_resident_agent_roles(),
-        permissions: default_explore_resident_agent_permissions(),
-        codex_agent_name: default_explore_resident_codex_agent_name(),
-        lifecycle: "asp-command".to_string(),
-        session_lifetime: "resident".to_string(),
-        main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
-        command_prefixes: Vec::new(),
-    }]
+    vec![
+        HookClientResidentAgentConfig {
+            enabled: true,
+            name: default_explore_resident_agent_name(),
+            role: default_explore_resident_agent_role(),
+            roles: default_explore_resident_agent_roles(),
+            permissions: default_explore_resident_agent_permissions(),
+            codex_agent_name: default_explore_resident_codex_agent_name(),
+            lifecycle: "asp-command".to_string(),
+            session_lifetime: "resident".to_string(),
+            main_allowed_asp_command_prefixes: default_asp_session_policy_main_allowed_prefixes(),
+            command_prefixes: Vec::new(),
+        },
+        HookClientResidentAgentConfig {
+            enabled: true,
+            name: default_testing_resident_agent_name(),
+            role: "asp_testing".to_string(),
+            roles: vec![
+                "subagent".to_string(),
+                "testing".to_string(),
+                "build".to_string(),
+            ],
+            permissions: vec!["workspace-write".to_string()],
+            codex_agent_name: "asp_testing".to_string(),
+            lifecycle: "test-build-command".to_string(),
+            session_lifetime: "resident".to_string(),
+            main_allowed_asp_command_prefixes: Vec::new(),
+            command_prefixes: default_asp_testing_command_prefixes(),
+        },
+    ]
+}
+
+fn default_testing_resident_agent_name() -> String {
+    "asp-testing".to_string()
 }
 
 fn default_execution_receipt_kind() -> String {
@@ -559,6 +591,8 @@ pub struct HookClientRuleConfig {
     pub priority: i64,
     pub decision: HookClientConfigDecision,
     #[serde(default)]
+    pub decision_materializer: Option<HookClientDecisionMaterializer>,
+    #[serde(default)]
     pub reason_kind: Option<HookClientConfigReasonKind>,
     #[serde(default)]
     pub message: Option<String>,
@@ -623,6 +657,15 @@ pub struct HookClientRuleRouteConfig {
 pub enum HookClientConfigDecision {
     Block,
     Deny,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HookClientDecisionMaterializer {
+    AgentSearchJson,
+    PromptSearchStrategy,
+    ApplyPatch,
+    SourceAccess,
 }
 
 /// Config-level reason category spelling for a rule.
@@ -749,6 +792,29 @@ pub fn default_hook_client_config_file() -> Result<HookClientConfigFile, String>
         .map_err(|error| format!("failed to parse default hook client config template: {error}"))
 }
 
+const HOOK_CLIENT_CONFIG_SCHEMA: &str =
+    include_str!("../../../../schemas/semantic-agent-hook-client-config.v1.schema.json");
+
+/// Stable identity for the parser-visible hook config contract embedded in ASP.
+pub fn hook_client_contract_fingerprint() -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for component in [
+        CLIENT_HOOK_CONFIG_SCHEMA_ID,
+        CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
+        HOOK_PROTOCOL_ID,
+        HOOK_PROTOCOL_VERSION,
+        env!("CARGO_PKG_VERSION"),
+        HOOK_CLIENT_CONFIG_SCHEMA,
+        DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE,
+    ] {
+        for byte in component.as_bytes().iter().copied().chain([0]) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    format!("hook-client-v1-{hash:016x}")
+}
+
 /// Render the seed global hook config file for active provider source extensions.
 pub fn default_hook_client_config_template_for_source_extensions<I, S>(
     source_extensions: I,
@@ -769,6 +835,10 @@ where
         )
         .replace("@HOOK_PROTOCOL_ID@", HOOK_PROTOCOL_ID)
         .replace("@HOOK_PROTOCOL_VERSION@", HOOK_PROTOCOL_VERSION)
+        .replace(
+            "@HOOK_CLIENT_CONTRACT_FINGERPRINT@",
+            &hook_client_contract_fingerprint(),
+        )
         .replace("@ARGV_SOURCE_GLOBS@", &argv_source_globs)
 }
 

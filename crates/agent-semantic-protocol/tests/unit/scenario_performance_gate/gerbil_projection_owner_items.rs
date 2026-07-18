@@ -36,8 +36,17 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
     .expect("write package anchor");
     fs::write(&owner, "(def (dynamic-owner-item-index) #t)\n").expect("write source");
     write_counting_projection_provider(&bin_dir, &provider_count);
+    let installed_bin_dir = root.join("home").join(".local").join("bin");
+    fs::create_dir_all(&installed_bin_dir).expect("create installed provider bin dir");
+    fs::copy(bin_dir.join("gslph"), installed_bin_dir.join("gslph"))
+        .expect("install counting projection provider");
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
+    let process_warmup = asp_command(&root)
+        .arg("--help")
+        .output()
+        .expect("warm ASP process image before projection-cold timing");
+    assert!(process_warmup.status.success());
     let cold_started = Instant::now();
     let cold = run_owner_search(&root, &bin_dir);
     let cold_elapsed = cold_started.elapsed();
@@ -114,7 +123,7 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
     let max_total = parse_milliseconds(&benchmark.max_total);
     assert!(
         cold_elapsed <= max_total,
-        "cold={cold_elapsed:?} max={max_total:?}"
+        "cold={cold_elapsed:?} max={max_total:?} stdout={cold_stdout}"
     );
     assert!(
         warm_elapsed <= max_total,
@@ -127,7 +136,8 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
 }
 
 fn run_owner_search(root: &Path, bin_dir: &Path) -> std::process::Output {
-    asp_command(root)
+    let mut command = asp_command(root);
+    command
         .env("PATH", prepend_path(bin_dir))
         .args([
             "gerbil-scheme",

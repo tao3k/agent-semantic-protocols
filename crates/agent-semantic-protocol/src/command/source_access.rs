@@ -2,11 +2,17 @@
 
 use agent_semantic_hook::load_activation;
 use agent_semantic_hook::source_access::{
-    SourceAccessDecision, codex_fs_read_file_decision, codex_shell_egress_suppression_decision,
+    SourceAccessDecision, codex_shell_egress_suppression_decision,
 };
 use std::path::PathBuf;
 
 pub(crate) fn run_source_access_command(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h")
+        || matches!(args.first().map(String::as_str), Some("help"))
+    {
+        println!("{}", usage());
+        return Ok(());
+    }
     let decision = source_access_decision_from_args(args)?;
     let text = serde_json::to_string_pretty(&decision)
         .map_err(|error| format!("failed to serialize source-access decision: {error}"))?;
@@ -21,21 +27,22 @@ pub(crate) fn source_access_decision_from_args(
         return Err(usage());
     };
     let parsed = SourceAccessArgs::parse(&args[1..])?;
-    let activation_path = parsed.activation.clone().ok_or_else(|| {
-        "source-access requires --activation <activation.json>; this command does not discover hook state".to_string()
-    })?;
+    let activation_path = match parsed.activation.clone() {
+        Some(path) => path,
+        None => {
+            let current_dir = std::env::current_dir().map_err(|error| {
+                format!("source-access could not resolve the current project directory: {error}")
+            })?;
+            agent_semantic_hook::discover_activation_path(&current_dir).ok_or_else(|| {
+                format!(
+                    "source-access could not discover a project activation from {}",
+                    current_dir.display()
+                )
+            })?
+        }
+    };
     let registry = load_activation(&activation_path)?;
     match kind {
-        "read-file" => {
-            let path = parsed.single_path(kind)?.to_string();
-            Ok(codex_fs_read_file_decision(
-                &registry,
-                parsed
-                    .rpc_method
-                    .unwrap_or_else(|| "fs/readFile".to_string()),
-                path,
-            ))
-        }
         "shell-egress" => {
             let path = parsed.single_path(kind)?.to_string();
             let command = parsed.command.ok_or_else(|| {
@@ -62,9 +69,9 @@ pub(crate) fn source_access_decision_from_args(
 #[derive(Default)]
 struct SourceAccessArgs {
     activation: Option<PathBuf>,
-    rpc_method: Option<String>,
     command: Option<String>,
     output_digest: Option<String>,
+    json: bool,
     paths: Vec<String>,
 }
 
@@ -80,14 +87,6 @@ impl SourceAccessArgs {
                         Some(PathBuf::from(args.get(index).ok_or_else(|| {
                             "--activation requires a value".to_string()
                         })?));
-                }
-                "--rpc-method" => {
-                    index += 1;
-                    parsed.rpc_method = Some(
-                        args.get(index)
-                            .ok_or_else(|| "--rpc-method requires a value".to_string())?
-                            .to_string(),
-                    );
                 }
                 "--command" => {
                     index += 1;
@@ -105,6 +104,8 @@ impl SourceAccessArgs {
                             .to_string(),
                     );
                 }
+                "--json" => parsed.json = true,
+                "--code" => parsed.json = false,
                 value if value.starts_with('-') => {
                     return Err(format!("unknown source-access flag `{value}`\n{}", usage()));
                 }
@@ -125,6 +126,6 @@ impl SourceAccessArgs {
 }
 
 fn usage() -> String {
-    "usage: asp source-access <read-file|shell-egress> --activation <activation.json> [FLAGS] <path>"
+    "usage: asp source-access shell-egress [--activation <activation.json>] --command <command> --output-digest <digest> [--json] <path>\n       source-access reports hook-owned egress decisions; source code must use parser-owned ASP search/query selectors."
         .to_string()
 }

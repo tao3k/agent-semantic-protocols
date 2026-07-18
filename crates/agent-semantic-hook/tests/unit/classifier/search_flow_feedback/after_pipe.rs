@@ -88,6 +88,10 @@ fn pre_tool_denies_repeated_search_pipe_after_pipe() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.fields["hookFeedback"], "repeat-search-pipe");
+    assert_eq!(
+        decision.fields["configRuleId"],
+        "materialize-prompt-search-strategy"
+    );
     assert!(
         decision
             .message

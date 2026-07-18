@@ -3,7 +3,7 @@
 #[path = "hook_runtime_skill_render.rs"]
 pub(crate) mod hook_runtime_skill_render;
 
-use hook_runtime_skill_render::{
+use self::hook_runtime_skill_render::{
     render_agent_semantic_protocols_installed_skill, render_agent_semantic_protocols_plugin_skill,
 };
 
@@ -186,6 +186,21 @@ fn global_codex_plugin_cache_skill_path() -> Result<PathBuf, String> {
         .join(ASP_CODEX_PLUGIN_NAME)
         .join(codex_plugin_manifest_version()?)
         .join(codex_plugin_skill_relative_path()))
+}
+
+#[cfg(not(test))]
+pub(crate) fn active_codex_plugin_skill_path(
+    project_root: &Path,
+) -> Result<Option<PathBuf>, String> {
+    let project_skill_path = project_root.join(codex_project_plugin_cache_skill_config_path()?);
+    if project_skill_path.exists() {
+        return Ok(Some(project_skill_path));
+    }
+    let global_skill_path = global_codex_plugin_cache_skill_path()?;
+    if global_skill_path.exists() {
+        return Ok(Some(global_skill_path));
+    }
+    Ok(None)
 }
 
 fn global_codex_config_path() -> Result<PathBuf, String> {

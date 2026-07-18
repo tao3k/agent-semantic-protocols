@@ -744,6 +744,48 @@ semantic identity.  The final source read happens only after owner/item
 frontier evidence selects an exact parser-owned item or a bounded audited
 fallback.
 
+** Source-index posting projection uses staged changed-owner membership
+
+Source-index generation reuse MUST bind both file membership and the canonical
+selector projection identity.  The scope stores a stable selector fingerprint
+over owner path, structural selector, semantic fields, query keys, and parser
+payload proof.  Equal file hashes alone MUST NOT reuse a generic generation
+when a language harness supplies parser-owned selectors; equal file and
+selector fingerprints MAY reuse the existing generation without rewriting
+postings.
+
+The published scope count represents the effective canonical projection after
+generic membership and parser-owned overlays are merged.  A generic refresh
+MUST preserve valid parser selectors for unchanged owners and MUST NOT fail
+merely because the effective selector count is greater than the generic import
+count; it still MUST fail when imported selectors are missing.
+
+Version-control object reads are source-access surfaces, not an alternate
+evidence channel.  The declarative hook rule engine MUST deny =git show=, =git
+ls-tree=, =git grep=, =git ls-files=, =git diff=, and the other configured
+object-read commands through the same ASP Explore recovery contract as raw
+source search.  Command parsing owns only shell-stage and argument-vector
+normalization; it MUST NOT embed command/flag policy or maintain a parallel
+raw-search classifier.  Built-in rules are merged by stable rule ID, and a
+project rule with the same ID MAY replace the built-in declaration.
+
+Source-index refresh MUST materialize the changed and removed owner set once
+as indexed staging data before deleting or rebuilding token-owner postings.
+Posting SQL must join that staging relation; it must not repeatedly evaluate a
+JSON owner-membership subquery for every indexed owner or token. This preserves
+incremental refresh semantics while keeping cold refresh proportional to the
+changed owners and their terms. A cold-write budget failure is a failed index
+generation and may not publish the new scope or be hidden by a larger timeout.
+
+Generic source-index refresh owns file membership and hash evidence only. It
+must not approximate whole-file parser coverage by increasing raw text scans.
+Every source-language provider that advertises projection import MUST implement
+=projection <relative-owner> --workspace <root> --json= and return
+=semantic-language-projection= v1. ASP imports that bounded, parser-owned
+receipt when an owner is selected; provider selectors then become the durable
+source-index and EvidenceGraph facts for later symbol lookup. ASP must reject a
+projection capability at activation time when the provider command is absent.
+
 For the internal audited fallback path, the language provider must make explicit
 direct-read selectors useful.  A query
 such as =asp <language> query --from-hook direct-source-read --selector

@@ -5,13 +5,7 @@ use std::path::{Path, PathBuf};
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_next_command_line};
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
-use super::search_pipe_owner_action::{
-    owner_items_handle, preferred_owner_items_handle, preview_owner_items_handle,
-    unique_terms_without_weak_natural, usable_query_term, weak_natural_action_term,
-};
 use super::search_pipe_quality_model::SearchPipeQuality;
-use super::search_pipe_seed_decision::SeedActionIntent;
-use super::search_query_wrapper_model::FdQueryPreview;
 
 #[derive(Clone, Copy)]
 pub(super) struct SearchPipeActionRequest<'a> {
@@ -23,8 +17,6 @@ pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) candidates: &'a [Candidate],
     pub(super) ranked_compact: Option<&'a str>,
     pub(super) selector_actions: &'a [PipeAction],
-    pub(super) fd_preview: Option<&'a FdQueryPreview>,
-    pub(super) seed_action_intents: &'a [SeedActionIntent],
     pub(super) read_memory_selectors: &'a [String],
     pub(super) dependency_action_targets: &'a [String],
 }
@@ -37,8 +29,6 @@ pub(super) fn render_action_next_command(request: SearchPipeActionRequest<'_>) -
 
 fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<ActionNode> {
     let mut actions = Vec::new();
-    let command_scope = low_cohesion_command_scope_arg(request);
-    let command_scope_arg = command_scope.as_deref().unwrap_or(scope_arg);
     if let Some(dependency) = request.dependency_action_targets.first() {
         actions.push(dependency_search_action(
             request.language_id,
@@ -46,16 +36,9 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             scope_arg,
         ));
     }
-    let low_cohesion_fd_owner_discovery = request.quality.package_cohesion == "low"
-        && request.quality.owner_seed_terms.is_empty()
-        && request.quality.fd_query.is_some();
-    let prefer_owner_scope_first = request.quality.package_cohesion == "low"
-        && (request.quality.fd_query.is_none() || request.fd_preview.is_some());
     let mut pushed_preferred_owner_items = false;
-    let mut pushed_fd_query = false;
-    if prefer_owner_scope_first
-        && let Some(handle) =
-            preferred_owner_items_handle(request.quality, request.candidates, request.fd_preview)
+    if request.quality.package_cohesion == "low"
+        && let Some(handle) = preferred_owner_items_handle(request.quality, request.candidates)
         && let Some((owner, query)) = handle.split_once(':')
     {
         actions.push(owner_items_action(
@@ -65,43 +48,6 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             query,
         ));
         pushed_preferred_owner_items = true;
-    }
-    if let Some(queries) = query_pack_queries(request) {
-        actions.push(ActionNode {
-            id: String::new(),
-            kind: "rg-query-set".to_string(),
-            suffix: "query-pack-refine".to_string(),
-            route: ActionRoute::RgQuerySet {
-                queries,
-                scope: scope_arg.to_string(),
-                command_scope: command_scope_arg.to_string(),
-            },
-        });
-    }
-    if low_cohesion_fd_owner_discovery
-        && !pushed_preferred_owner_items
-        && request.fd_preview.is_none()
-        && let Some(handle) = owner_items_handle(request.quality, request.candidates)
-        && let Some((owner, query)) = handle.split_once(':')
-    {
-        actions.push(owner_items_action(
-            request.language_id,
-            scope_arg,
-            owner,
-            query,
-        ));
-        pushed_preferred_owner_items = true;
-    }
-    if low_cohesion_fd_owner_discovery
-        && !pushed_preferred_owner_items
-        && let Some(fd_query) = &request.quality.fd_query
-    {
-        actions.push(fd_query_action(
-            fd_query,
-            scope_arg,
-            command_scope.as_deref(),
-        ));
-        pushed_fd_query = true;
     }
     if request.quality.allow_query_selector
         && let Some(action) = request
@@ -111,63 +57,9 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
     {
         actions.push(query_code_action(request, action));
     }
-    let pushed_preview_owner_items = if let Some(handle) =
-        preview_owner_items_handle(request.quality, request.fd_preview)
+    if !pushed_preferred_owner_items
+        && let Some(handle) = preferred_owner_items_handle(request.quality, request.candidates)
         && let Some((owner, query)) = handle.split_once(':')
-        && !pushed_preferred_owner_items
-    {
-        actions.push(owner_items_action(
-            request.language_id,
-            scope_arg,
-            owner,
-            query,
-        ));
-        true
-    } else {
-        false
-    };
-    if !pushed_preview_owner_items
-        && !pushed_preferred_owner_items
-        && request.fd_preview.is_none()
-        && let Some(handle) = owner_items_handle(request.quality, request.candidates)
-        && let Some((owner, query)) = handle.split_once(':')
-    {
-        actions.push(owner_items_action(
-            request.language_id,
-            scope_arg,
-            owner,
-            query,
-        ));
-        pushed_preferred_owner_items = true;
-    }
-    if !pushed_preview_owner_items
-        && !pushed_fd_query
-        && !pushed_preferred_owner_items
-        && (request.fd_preview.is_none() || !request.quality.allow_query_selector)
-        && let Some(fd_query) = &request.quality.fd_query
-    {
-        actions.push(fd_query_action(
-            fd_query,
-            scope_arg,
-            command_scope.as_deref(),
-        ));
-    }
-    if let Some(query) = rg_query(request.quality, request.ranked_compact) {
-        actions.push(ActionNode {
-            id: String::new(),
-            kind: "rg-query".to_string(),
-            suffix: "finder-content".to_string(),
-            route: ActionRoute::RgQuery {
-                query,
-                scope: scope_arg.to_string(),
-                command_scope,
-            },
-        });
-    }
-    if request.fd_preview.is_none()
-        && let Some(handle) = owner_items_handle(request.quality, request.candidates)
-        && let Some((owner, query)) = handle.split_once(':')
-        && !pushed_preferred_owner_items
     {
         actions.push(owner_items_action(
             request.language_id,
@@ -217,19 +109,6 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         .collect()
 }
 
-fn fd_query_action(fd_query: &str, scope_arg: &str, command_scope: Option<&str>) -> ActionNode {
-    ActionNode {
-        id: String::new(),
-        kind: "fd-query".to_string(),
-        suffix: "finder-owner".to_string(),
-        route: ActionRoute::FdQuery {
-            query: fd_query.to_string(),
-            scope: scope_arg.to_string(),
-            command_scope: command_scope.map(str::to_string),
-        },
-    }
-}
-
 fn dependency_search_action(language_id: &str, dependency: &str, scope_arg: &str) -> ActionNode {
     ActionNode {
         id: String::new(),
@@ -241,57 +120,6 @@ fn dependency_search_action(language_id: &str, dependency: &str, scope_arg: &str
             scope: scope_arg.to_string(),
         },
     }
-}
-
-fn low_cohesion_command_scope_arg(request: &SearchPipeActionRequest<'_>) -> Option<String> {
-    if request.quality.package_cohesion != "low" {
-        return None;
-    }
-    let package = dominant_compact_owner_package(request.ranked_compact?)?;
-    let scope = PathBuf::from(package);
-    scope_absolute(request.project_root, &scope)
-        .exists()
-        .then(|| display_scope_arg(request.project_root, request.locator_root, &scope))
-}
-
-fn dominant_compact_owner_package(compact: &str) -> Option<String> {
-    let packages = compact
-        .lines()
-        .flat_map(|line| line.split(';'))
-        .filter_map(compact_owner_path)
-        .map(|path| compact_package_key(&path))
-        .filter(|package| !package.is_empty())
-        .take(4)
-        .collect::<Vec<_>>();
-    let first = packages.first()?;
-    let first_count = packages
-        .iter()
-        .take(3)
-        .filter(|package| *package == first)
-        .count();
-    (first_count >= 2).then(|| first.clone())
-}
-
-fn compact_owner_path(segment: &str) -> Option<String> {
-    let marker = "owner:path(";
-    let start = segment.find(marker)? + marker.len();
-    let end = segment[start..].find(')')? + start;
-    let path = segment[start..end].trim();
-    (!path.is_empty()).then(|| path.to_string())
-}
-
-fn compact_package_key(path: &str) -> String {
-    let parts = path.split('/').collect::<Vec<_>>();
-    if let Some(index) = parts.iter().position(|part| *part == "packages") {
-        let end = (index + 3).min(parts.len());
-        return parts[index..end].join("/");
-    }
-    parts
-        .into_iter()
-        .filter(|part| !part.is_empty() && *part != ".")
-        .take(2)
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 fn owner_items_action(language_id: &str, scope_arg: &str, owner: &str, query: &str) -> ActionNode {
@@ -306,45 +134,6 @@ fn owner_items_action(language_id: &str, scope_arg: &str, owner: &str, query: &s
             scope: scope_arg.to_string(),
         },
     }
-}
-
-fn query_pack_queries(request: &SearchPipeActionRequest<'_>) -> Option<Vec<String>> {
-    let has_split = request
-        .seed_action_intents
-        .contains(&SeedActionIntent::SplitQueryPack);
-    let has_narrow_owner_scope = request
-        .seed_action_intents
-        .contains(&SeedActionIntent::NarrowOwnerScope);
-    if !has_split || !has_narrow_owner_scope {
-        return None;
-    }
-    if let Some(queries) = query_pack_hint_queries(request.quality) {
-        return Some(queries);
-    }
-    let mut terms = Vec::new();
-    terms.extend(request.quality.context_terms.iter().cloned());
-    terms.extend(request.quality.owner_seed_terms.iter().cloned());
-    terms.extend(request.quality.concept_terms.iter().cloned());
-    if terms.len() < 4 {
-        return None;
-    }
-    let split_at = terms.len().div_ceil(2);
-    Some(vec![
-        terms[..split_at].join(" "),
-        terms[split_at..].join(" "),
-    ])
-}
-
-fn query_pack_hint_queries(quality: &SearchPipeQuality) -> Option<Vec<String>> {
-    let queries = quality
-        .next_query_pack_hint
-        .as_deref()?
-        .split('|')
-        .map(str::trim)
-        .filter(|query| !query.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    (queries.len() > 1).then_some(queries)
 }
 
 fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction) -> ActionNode {
@@ -397,17 +186,51 @@ fn selector_matches_seen(seen: &str, candidate: &str) -> bool {
     seen_path == candidate_path && seen_start <= candidate_start && candidate_end <= seen_end
 }
 
-fn rg_query(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String> {
+fn preferred_owner_items_handle(
+    quality: &SearchPipeQuality,
+    _candidates: &[Candidate],
+) -> Option<String> {
+    let owner = quality
+        .best_owner
+        .as_ref()
+        .map(|coverage| coverage.owner.as_str())?;
     let mut terms = Vec::new();
-    terms.extend(quality.concept_terms.iter().cloned());
+    terms.extend(quality.strong_matched.iter().cloned());
     terms.extend(quality.owner_seed_terms.iter().cloned());
-    terms.extend(
-        compact_symbols(compact, "field")
-            .into_iter()
-            .chain(compact_symbols(compact, "hot"))
-            .filter(|symbol| usable_query_term(symbol) && !weak_natural_action_term(symbol)),
-    );
-    unique_terms_without_weak_natural(terms, 8).map(|terms| terms.join("|"))
+    terms.extend(quality.concept_terms.iter().cloned());
+    let query = unique_terms_without_weak_natural(terms, 6)?.join("|");
+    Some(format!("{owner}:{query}"))
+}
+
+fn unique_terms_without_weak_natural(terms: Vec<String>, limit: usize) -> Option<Vec<String>> {
+    let mut unique = Vec::new();
+    for term in terms {
+        if !usable_query_term(&term) || weak_natural_action_term(&term) {
+            continue;
+        }
+        if !unique.iter().any(|existing| existing == &term) {
+            unique.push(term);
+        }
+        if unique.len() >= limit {
+            break;
+        }
+    }
+    (!unique.is_empty()).then_some(unique)
+}
+
+fn usable_query_term(term: &str) -> bool {
+    let trimmed = term.trim();
+    trimmed.len() >= 2
+        && trimmed
+            .chars()
+            .any(|character| character.is_ascii_alphanumeric())
+}
+
+fn weak_natural_action_term(term: &str) -> bool {
+    matches!(
+        term.trim().to_ascii_lowercase().as_str(),
+        "the" | "and" | "or" | "for" | "with" | "from" | "this" | "that"
+    )
 }
 
 fn tree_sitter_action_handle(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String> {

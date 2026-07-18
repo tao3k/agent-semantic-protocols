@@ -195,7 +195,7 @@ pub(crate) fn asp_agent_session_status_and_reuse_hot_paths_stay_inside_scenario_
         status.stdout.len()
     );
     let status_json: Value = serde_json::from_slice(&status.stdout).expect("parse status json");
-    assert_eq!(status_json["routable"].as_bool(), Some(true));
+    assert_eq!(status_json["routable"].as_bool(), Some(false));
     assert_eq!(
         status_json["rolloutActivity"]["sessionActivity"]["status"].as_str(),
         Some("idle-resumable"),
@@ -204,7 +204,7 @@ pub(crate) fn asp_agent_session_status_and_reuse_hot_paths_stay_inside_scenario_
     );
     assert_eq!(
         status_json["nextAction"].as_str(),
-        Some("child-idle-resumable-resume-existing-child"),
+        Some("reenter-bootstrap-for-host-tree-target-rebind-or-typed-replacement"),
         "{}",
         String::from_utf8_lossy(&status.stdout)
     );

@@ -127,7 +127,7 @@ agent-tools-install-protocol bin_dir="":
         mkdir -p "${requested_bin_dir}"; \
         requested_bin_dir="$(cd "${requested_bin_dir}" && pwd -P)"; \
       fi; \
-      cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
+      cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
       target/release/asp --version --require-release >/dev/null; \
       artifact_digest="$(shasum -a 256 target/release/asp | awk '{print $1}')"; \
       if [ -n "${requested_bin_dir}" ]; then \

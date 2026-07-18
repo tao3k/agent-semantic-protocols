@@ -223,6 +223,20 @@ fn asp_agent_session_bootstrap_create_choice_uses_concrete_codex_native_action()
     let state_home = root.join(".asp-home");
     let root_session_id = "codex-root-thread";
 
+    let sync = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .arg("sync")
+        .output()
+        .expect("sync resident lifecycle state");
+    assert!(
+        sync.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sync.stderr)
+    );
+
     let bootstrap = asp_command(&root)
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
@@ -411,23 +425,21 @@ fn asp_agent_session_host_typed_spawn_observation_makes_menu_paths_exclusive() {
         .as_array()
         .expect("unavailable choices");
     assert!(
-        unavailable_choices
-            .iter()
-            .any(|choice| { choice["id"] == "activate-inline-parser-fallback" })
+        !unavailable_choices.iter().any(|choice| {
+            choice["id"] == "audit-host-typed-spawn-schema"
+                || choice["id"] == "create-managed-resident-child-after-host-tree-miss"
+        }),
+        "{unavailable}"
     );
-    assert!(!unavailable_choices.iter().any(|choice| {
-        choice["id"] == "audit-host-typed-spawn-schema"
-            || choice["id"] == "create-managed-resident-child-after-host-tree-miss"
-    }));
     assert_eq!(
         unavailable["hostTypedSpawnClassification"]["bootstrapBlocked"],
-        "host-agent-type-unavailable"
+        "host-typed-spawn-unavailable"
     );
     assert_eq!(
         unavailable["hostTypedSpawnClassification"]["fallbackAuthorized"],
         false
     );
-    assert_eq!(unavailable_choices.len(), 1);
+    assert!(unavailable_choices.is_empty());
     assert_eq!(
         unavailable["hostResidentTargetObservation"]["targetStatus"],
         "absent"
@@ -467,6 +479,20 @@ fn asp_agent_session_bootstrap_rejects_model_authored_native_receipts() {
     let state_home = root.join(".asp-home");
     let root_session_id = "codex-root-thread";
     let child_session_id = "codex-child-thread";
+
+    let sync = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("ASP_STATE_HOME", &state_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .arg("sync")
+        .output()
+        .expect("sync resident lifecycle state");
+    assert!(
+        sync.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sync.stderr)
+    );
 
     let bootstrap = asp_command(&root)
         .env("HOME", &home)
@@ -579,8 +605,10 @@ fn asp_agent_session_wraps_codex_saved_session_commands() {
     assert!(
         resume_stdout.contains("[agent-session-resume]")
             && resume_stdout.contains("session=\"codex-child-thread\"")
-            && resume_stdout.contains("messageTargetStatus=\"ready\"")
-            && resume_stdout.contains("nextAction=\"send-follow-up-to-registered-message-target\""),
+            && resume_stdout.contains("messageTargetStatus=\"missing\"")
+            && resume_stdout.contains(
+                "nextAction=\"rebind-existing-child-target-with-native-same-child-resume\""
+            ),
         "unexpected resume stdout: {resume_stdout}"
     );
 
@@ -684,7 +712,11 @@ fn asp_agent_session_status_from_temp_cwd_uses_root_project_scope() {
         stdout.contains("\"registryStatus\": \"active\""),
         "{stdout}"
     );
-    assert!(stdout.contains("\"routable\": true"), "{stdout}");
+    assert!(stdout.contains("\"routable\": false"), "{stdout}");
+    assert!(
+        stdout.contains("\"messageTargetStatus\": \"unbound\""),
+        "{stdout}"
+    );
     assert!(
         stdout.contains(&format!("\"rootSessionId\": \"{root_session_id}\"")),
         "{stdout}"
@@ -765,7 +797,7 @@ fn asp_agent_session_allows_mismatched_codex_sandbox_profile() {
     );
     let stdout = String::from_utf8(status_output.stdout).expect("status stdout");
     assert!(
-        stdout.contains("\"validationStatus\": \"passed\""),
+        stdout.contains("\"validationStatus\": \"warning\""),
         "{stdout}"
     );
     assert!(

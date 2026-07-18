@@ -39,6 +39,13 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
                 display_path(&project_root, &client_config_path)
             )
         })?;
+    let binary_contract_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
+    let configured_contract_fingerprint = hook_config.contract_fingerprint();
+    let config_contract_status = match configured_contract_fingerprint {
+        Some(configured) if configured == binary_contract_fingerprint => "match",
+        Some(_) => "mismatch",
+        None => "missing",
+    };
     let legacy_root_hook = if client == "claude" {
         config.contains("asp hook") && config.contains("--client claude")
     } else {
@@ -56,6 +63,23 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         global_plugin_hook,
     );
     let hook_binary_path = protocol_binary_on_path();
+    let active_contract_fingerprint = hook_binary_path.as_ref().and_then(|path| {
+        let output = std::process::Command::new(path)
+            .arg("--contract-fingerprint")
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let fingerprint = String::from_utf8(output.stdout).ok()?;
+        let fingerprint = fingerprint.trim();
+        (!fingerprint.is_empty()).then(|| fingerprint.to_string())
+    });
+    let binary_contract_status = match active_contract_fingerprint.as_deref() {
+        Some(active) if active == binary_contract_fingerprint => "match",
+        Some(_) => "mismatch",
+        None => "unavailable",
+    };
     let hook_binary = hook_binary_path.is_some();
     let hook_binary_path = hook_binary_path
         .as_ref()
@@ -173,7 +197,10 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         .as_ref()
         .map(|report| report.status)
         .unwrap_or("not-applicable");
-    let doctor_status = if client == "codex" && enforcement_status != "ok" {
+    let doctor_status = if config_contract_status != "match"
+        || binary_contract_status != "match"
+        || (client == "codex" && enforcement_status != "ok")
+    {
         "warning"
     } else {
         "ok"
@@ -184,12 +211,14 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         "not-applicable"
     };
     println!(
-        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
+        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
         display_path(&project_root, &client_config_path),
         client_config_status,
+        config_contract_status,
+        configured_contract_fingerprint.unwrap_or("missing"),
         root_hook,
         hook_mode,
         plugin_hook,
@@ -201,6 +230,11 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         trust_config,
         hook_binary,
         hook_binary_path,
+        binary_contract_status,
+        binary_contract_fingerprint,
+        active_contract_fingerprint
+            .as_deref()
+            .unwrap_or("unavailable"),
         classifier_probe,
         classifier_reason,
         enforcement_status,
@@ -298,6 +332,13 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
             provider.source_roots.join(","),
             provider.source_extensions.join(","),
         );
+    }
+    if args.iter().any(|arg| arg == "--strict-contract")
+        && (config_contract_status != "match" || binary_contract_status != "match")
+    {
+        return Err(format!(
+            "hook contract freshness gate failed: config={config_contract_status} activeBinary={binary_contract_status}"
+        ));
     }
     Ok(())
 }

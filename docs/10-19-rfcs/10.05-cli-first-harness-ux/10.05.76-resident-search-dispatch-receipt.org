@@ -1,0 +1,91 @@
+* Resident search dispatch receipt
+
+ASP resident search is a two-transport protocol: the root agent dispatches one
+exact parser-owned command through the host message-agent transport, and the
+resident child executes that command through the provider CLI.  A persisted
+registry binding is historical identity evidence; it is not proof that the
+current host can address the target.
+
+** Readiness invariant
+
+=Ready= requires all of the following facts for the same root, resident name,
+child session, and canonical message target:
+
+- the registry row is active and profile-valid;
+- a fresh native =SubagentStart= lifecycle observation verifies child identity;
+- the canonical host target is present;
+- the verified child identity equals the registry owner.
+
+When a host does not emit =SubagentStart= for a resumed message-agent turn, the
+current child runtime may supply the equivalent identity edge from its own
+Codex rollout metadata.  This self-attestation is valid only when the current
+session differs from the root, its recorded root joins the dispatch root, and
+its model, reasoning, and managed agent profile match the resident profile.  A
+stale same-name registry row MUST NOT veto this stronger current-runtime proof;
+reconciliation replaces that stale owner atomically.
+
+A manual host-tree =present= observation proves path addressability only.  It
+MUST NOT promote a historical rollout or registry row to =Ready=.  When any
+identity join is missing, bootstrap returns =Audit= or =Rebind= with one
+executable host action.
+
+** Terminal resident execution
+
+Once the hook proves that the current session is the registered resident child,
+an ASP search/query command is terminal on that child.  The hook MUST allow the
+command and project =routingTerminal=true= and =redispatchAllowed=false=.  It
+MUST NOT classify the same command as another resident-dispatch request.  This
+is the protocol edge that prevents recursive =reasoning-routed= loops.
+
+An exact =search owner= command is parser evidence, not resident reasoning.  It
+executes terminally on the current parser lane even when a resident is
+registered.  Resident routing is reserved for ambiguous exploration; owner
+materialization never depends on an LLM child interpreting or replaying an
+exact command.
+
+** Exactly-once dispatch
+
+The root derives =dispatchIdentity= from the root session, verified message
+target, and exact command digest.  Dispatch state is monotonic:
+
+#+begin_example
+accepted -> running -> owner-materialized -> completed
+                    \-> failed
+#+end_example
+
+Timeout and repeated bootstrap calls poll the same identity.  They never resend
+the command and never concatenate another output block.
+
+When the native target is present but the host cannot bind a callable
+message-agent target, the root may claim a one-shot =resident-command-bridge=
+lease for that exact canonical target.  Root execution is allowed only through
+=dispatch-execute= after the lease binds =dispatchIdentity= to the canonical
+argv digest.  The bridge consumes the same terminal state machine; it is not a
+general current-session testing bypass.  A different digest, missing lease, or
+non-canonical target fails closed, and a terminal lease is never executed
+again.
+
+** Owner materialization
+
+Reasoning output is not an owner receipt.  A completed receipt contains either
+an exact parser-owned owner selector plus a fully executable =nextCommand=, or a
+typed terminal failure.  Placeholders such as =<owner-path>= are invalid.  A
+=search pipe= result that needs owner evidence MUST materialize an owner
+candidate before completion.
+
+The shared receipt contract is
+=schemas/semantic-agent-search-dispatch-receipt.v1.schema.json=.  Providers may
+add language-owned evidence fields, but lifecycle state, dispatch identity,
+terminal routing, owner selector, and executable next action are language
+neutral.
+
+** Closure gates
+
+- A stale registry binding plus missing fresh native lifecycle identity never
+  renders =Ready=.
+- A registered resident child can execute one ASP reasoning command without a
+  second resident dispatch decision.
+- One dispatch identity produces at most one terminal receipt.
+- =completed= owner receipts contain no unresolved command placeholders.
+- The black-box flow uses one dispatch, one receipt, and zero duplicate search
+  output blocks.

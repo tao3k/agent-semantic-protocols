@@ -10,6 +10,12 @@ use super::temp_root;
 
 #[tokio::test(flavor = "current_thread")]
 async fn harness_projection_imports_without_source_text_projection() {
+    use agent_semantic_client_db::{
+        CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, ClientDbSourceIndexImportFile,
+        ClientDbSourceIndexImportRequest, ClientDbSourceIndexRefreshRequest,
+        ClientDbSourceIndexSource, build_source_index_import,
+    };
+
     let client_dir = temp_root("db-language-projection-client");
     let project_root = temp_root("db-language-projection-project");
     let source_path = project_root.join("src/projection.ss");
@@ -46,6 +52,35 @@ async fn harness_projection_imports_without_source_text_projection() {
     assert_eq!(import.selectors.len(), 1);
     assert_eq!(import.selectors[0].start_line, 0);
     assert_eq!(import.selectors[0].end_line, 0);
+
+    let generic_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+        generation_id: CacheGenerationId::from("language-projection-generic-turso"),
+        project_root: project_root.clone(),
+        schema_id: import.schema_id.clone(),
+        schema_version: import.schema_version.clone(),
+        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        file_hashes: import.file_hashes.clone(),
+        files: vec![ClientDbSourceIndexImportFile {
+            relative_path: "src/projection.ss".to_string(),
+            language_id: LanguageId::from("gerbil-scheme"),
+            provider_id: import.owners[0]
+                .provider_id
+                .clone()
+                .expect("parser projection provider id"),
+            text: "(def (run) 1)\n".to_string(),
+            selectors: Vec::new(),
+        }],
+    })
+    .expect("build generic source-index import before parser projection");
+    let generic_report = ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        ClientDbSourceIndexRefreshRequest {
+            import: generic_import,
+            file_count: 1,
+        },
+    )
+    .expect("persist generic source-index import before parser projection");
+    assert_eq!(generic_report.selector_count, 1);
 
     let report = ClientDbEngine::persist_language_projection_read_model_from_client_dir(
         &client_dir,

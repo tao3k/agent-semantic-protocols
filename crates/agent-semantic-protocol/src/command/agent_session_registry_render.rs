@@ -434,10 +434,11 @@ fn hydrate_status_message_target_fields(report: &mut SessionStatusReport) {
         .message_target_id()
         .filter(|target_id| !target_id.trim().is_empty())
         .map(str::to_string);
-    let live_binding = report
-        .root_session_id
-        .as_deref()
-        .is_some_and(|root| agent_session_message_target_is_live_bound(session, root));
+    let live_binding = report.routable
+        && report
+            .root_session_id
+            .as_deref()
+            .is_some_and(|root| agent_session_message_target_is_live_bound(session, root));
     if live_binding {
         let target_id = persisted_target_id
             .as_deref()
@@ -459,8 +460,10 @@ fn hydrate_status_message_target_fields(report: &mut SessionStatusReport) {
             report.message_target_status = Some("unbound".to_string());
         }
         if report.message_target_result_source.is_none() {
-            report.message_target_result_source = Some(if persisted_target_id.is_some() {
-                "persisted-message-target-without-live-attestation".to_string()
+            report.message_target_result_source = Some(if session.status == "orphan-risk" {
+                "native-host-target-absent".to_string()
+            } else if persisted_target_id.is_some() {
+                "persisted-message-target-without-fresh-host-attestation".to_string()
             } else {
                 "live-message-target-binding-missing".to_string()
             });

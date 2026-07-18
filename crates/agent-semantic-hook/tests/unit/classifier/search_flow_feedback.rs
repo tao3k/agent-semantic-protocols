@@ -14,7 +14,6 @@ use super::{command, provider, provider_routes, registry};
 
 mod after_pipe;
 mod document;
-mod invalid_facade;
 
 #[test]
 fn user_prompt_decision_records_prompt_scope_fields() {

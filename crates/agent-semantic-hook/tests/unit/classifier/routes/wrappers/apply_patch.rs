@@ -22,6 +22,13 @@ PATCH"#;
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::SemanticAstPatchRequired);
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(|value| value.as_str()),
+        Some("materialize-apply-patch-policy")
+    );
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
@@ -100,6 +107,13 @@ fn direct_apply_patch_tool_to_source_requires_semantic_ast_patch() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::SemanticAstPatchRequired);
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(|value| value.as_str()),
+        Some("materialize-apply-patch-policy")
+    );
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
     assert!(decision.message.contains("Locator route:"));
     assert!(decision.message.contains("path-only locator output"));

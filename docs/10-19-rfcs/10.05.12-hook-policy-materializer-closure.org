@@ -1,0 +1,53 @@
+#+title: Hook Policy Materializer Closure
+#+startup: overview
+
+* Status
+
+Accepted for implementation and real-project validation.
+
+* Problem
+
+The client hook historically ran declarative rules first and then ran hidden
+policy classifiers.  That created two policy engines, made rule ownership
+unclear, and allowed installed binaries to accept a different client-config
+contract from the workspace build.
+
+* Contract
+
+All tool deny/allow policy MUST be activated by an enabled client hook rule.
+A rule MAY name one typed =decisionMaterializer=.  The materializer derives
+facts and constructs the decision; it does not decide whether it participates
+in the policy pipeline.  A materializer rule MUST NOT declare static routes.
+Successful materialization MUST attach the activating =configRuleId=.
+
+The accepted materializers are:
+
+- =agent-search-json=
+- =prompt-search-strategy=
+- =invalid-asp-facade=
+- =apply-patch=
+- =source-access=
+
+=prompt-search-strategy= may consult prompt/session observations for repeated
+prime, repeated pipe, direct-read ordering, and command budget.  Those
+observations remain control-plane facts; the config rule only owns activation
+and precedence.  Session lifecycle, bootstrap, Org recovery, and non-tool
+events remain outside the tool-policy matcher.
+
+* Active binary freshness
+
+Freshness MUST be based on a stable build-contract fingerprint, not equality of
+whole debug/release executable hashes.  The fingerprint MUST cover the hook
+client schema, embedded default client config, hook protocol/schema versions,
+and the config/compiler crate versions.  =asp hook doctor= MUST report the
+workspace/active fingerprint comparison and fail its contract probe when the
+active parser cannot load the embedded current config.
+
+* Acceptance
+
+- no tool policy classifier runs after =ClientHookConfig::classify=
+- invalid facade and prompt search strategy decisions carry =configRuleId=
+- unknown materializers and materializer plus static routes are rejected
+- workspace build and active binary expose comparable contract fingerprints
+- hook doctor exercises the effective parser with the current embedded config
+- config, hook, sandtable, and real-project search scenarios remain green

@@ -266,3 +266,8 @@ pub(super) fn assert_runtime_timeout_policy_benchmark_contract(benchmark: &Share
     assert_eq!(benchmark.max_stdout_bytes, Some(1024));
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
+const _: fn(&SharedBenchmarkToml) = assert_query_wrapper_source_index_bridge_benchmark_contract;
+const _: fn(&SharedBenchmarkToml) = assert_query_wrapper_render_hint_projection_benchmark_contract;
+const _: fn(&SharedBenchmarkToml, &str) = assert_search_owner_source_index_trace_benchmark_contract;
+const _: fn(&SharedBenchmarkToml) = assert_query_wrapper_clause_normalization_benchmark_contract;
+const _: fn(&SharedBenchmarkToml) = assert_search_query_budget_benchmark_contract;

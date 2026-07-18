@@ -17,9 +17,7 @@ use crate::source_index::{
 use crate::structural_index::ClientDbStructuralIndexImport;
 
 use super::facade::{ClientDbEngine, block_on_db_engine_async};
-use super::turso::{
-    connect_turso_client_db_read_only, turso_table_column_exists, turso_table_exists,
-};
+use super::turso::{connect_turso_client_db_read_only, turso_table_exists};
 use super::turso_evidence_graph::{
     TursoClientDbEvidenceGraphPersistReport, persist_turso_evidence_graph,
 };
@@ -101,7 +99,7 @@ impl ClientDbEngine {
             .collect::<Vec<_>>()
             .join(" ");
         let db_path = Self::turso_path_for_client_dir(request.client_dir);
-        let lookup_scope = TursoSourceIndexLookupScope {
+        let lookup_scope = TursoSourceIndexLookupRequestScope {
             project_root: request
                 .indexed_project_root
                 .canonicalize()
@@ -405,14 +403,19 @@ fn structural_index_read_model_report(
     }
 }
 
+fn is_turso_source_index_schema_missing_error(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    normalized.contains("no such table") || normalized.contains("no such column")
+}
+
 async fn lookup_source_index_read_model_at_path(
     db_path: PathBuf,
-    requested_scope: Option<TursoSourceIndexLookupScope>,
+    requested_scope: Option<TursoSourceIndexLookupRequestScope>,
     query: &str,
     language_id: Option<&LanguageId>,
     limit: u32,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
-    if !db_path.exists() {
+    if !super::turso::turso_client_db_exists(&db_path) {
         return Ok(source_index_lookup_result(
             db_path,
             ClientDbSourceIndexLookupState::MissingDb,
@@ -440,72 +443,95 @@ async fn lookup_source_index_read_model_at_path(
         Err(error) if is_turso_lock_error(&error) => {
             return Ok(source_index_busy_lookup_result(db_path));
         }
-        Err(error) => return Err(error),
-    };
-    let tables_exist = match turso_source_index_lookup_tables_exist(&connection).await {
-        Ok(tables_exist) => tables_exist,
-        Err(error) if is_turso_lock_error(&error) => {
-            return Ok(source_index_busy_lookup_result(db_path));
-        }
-        Err(error) => return Err(error),
-    };
-    if !tables_exist {
-        if turso_source_index_precanonical_storage_exists(&connection).await? {
+        Err(error) if error.to_ascii_lowercase().contains("entity not found") => {
             return Ok(source_index_lookup_result(
                 db_path,
-                ClientDbSourceIndexLookupState::ColdRequired,
+                ClientDbSourceIndexLookupState::MissingDb,
                 Vec::new(),
             ));
         }
-        return Ok(source_index_lookup_result(
-            db_path,
-            ClientDbSourceIndexLookupState::EmptyIndex,
-            Vec::new(),
-        ));
-    }
-    match turso_source_index_lookup_schema_current(&connection).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return Ok(source_index_lookup_result(
-                db_path,
-                ClientDbSourceIndexLookupState::ColdRequired,
-                Vec::new(),
-            ));
-        }
-        Err(error) if is_turso_lock_error(&error) => {
-            return Ok(source_index_busy_lookup_result(db_path));
-        }
-        Err(error) => return Err(error),
-    }
-    let scope = match resolve_turso_source_index_lookup_scope(&connection, requested_scope).await {
-        Ok(Some(scope)) => scope,
-        Ok(None) => {
-            return Ok(source_index_lookup_result(
-                db_path,
-                ClientDbSourceIndexLookupState::EmptyIndex,
-                Vec::new(),
-            ));
-        }
-        Err(error) if is_turso_lock_error(&error) => {
-            return Ok(source_index_busy_lookup_result(db_path));
-        }
         Err(error) => return Err(error),
     };
-    let candidates = match query_turso_source_index_candidates_with_connection(
-        &connection,
-        &scope,
-        query,
-        language_id,
-        limit,
-        &terms,
-    )
-    .await
-    {
-        Ok(candidates) => candidates,
-        Err(error) if is_turso_lock_error(&error) => {
-            return Ok(source_index_busy_lookup_result(db_path));
+    let requested_scope_candidates = if let Some(requested_scope) = requested_scope.as_ref() {
+        let candidates =
+            match query_turso_source_index_snapshot_candidates_for_scope_with_connection(
+                &connection,
+                TursoSourceIndexCandidateScope::Requested(requested_scope),
+                query,
+                language_id,
+                limit,
+                &terms,
+            )
+            .await
+            {
+                Ok(candidates) => candidates,
+                Err(error) if is_turso_source_index_schema_missing_error(&error) => Vec::new(),
+                Err(error) if is_turso_lock_error(&error) => {
+                    return Ok(source_index_busy_lookup_result(db_path));
+                }
+                Err(error) => return Err(error),
+            };
+        if !candidates.is_empty() {
+            return Ok(source_index_lookup_result(
+                db_path,
+                ClientDbSourceIndexLookupState::Hit,
+                candidates,
+            ));
         }
-        Err(error) => return Err(error),
+        Some(candidates)
+    } else {
+        None
+    };
+    let scope =
+        match resolve_turso_source_index_lookup_scope(&connection, requested_scope.clone()).await {
+            Ok(Some(scope)) => scope,
+            Ok(None) => {
+                let state = match turso_source_index_lookup_schema_current(
+                    &connection,
+                    requested_scope.as_ref(),
+                )
+                .await
+                {
+                    Ok(true) => ClientDbSourceIndexLookupState::EmptyIndex,
+                    Ok(false) => ClientDbSourceIndexLookupState::ColdRequired,
+                    Err(error) if is_turso_lock_error(&error) => {
+                        return Ok(source_index_busy_lookup_result(db_path));
+                    }
+                    Err(error) => return Err(error),
+                };
+                return Ok(source_index_lookup_result(db_path, state, Vec::new()));
+            }
+            Err(error) if is_turso_source_index_schema_missing_error(&error) => {
+                let state = if turso_source_index_precanonical_storage_exists(&connection).await? {
+                    ClientDbSourceIndexLookupState::ColdRequired
+                } else {
+                    ClientDbSourceIndexLookupState::EmptyIndex
+                };
+                return Ok(source_index_lookup_result(db_path, state, Vec::new()));
+            }
+            Err(error) if is_turso_lock_error(&error) => {
+                return Ok(source_index_busy_lookup_result(db_path));
+            }
+            Err(error) => return Err(error),
+        };
+    let candidates = match requested_scope_candidates {
+        Some(candidates) => candidates,
+        None => match query_turso_source_index_candidates_with_connection(
+            &connection,
+            &scope,
+            query,
+            language_id,
+            limit,
+            &terms,
+        )
+        .await
+        {
+            Ok(candidates) => candidates,
+            Err(error) if is_turso_lock_error(&error) => {
+                return Ok(source_index_busy_lookup_result(db_path));
+            }
+            Err(error) => return Err(error),
+        },
     };
     let owner_rows_exist = match turso_source_index_owner_rows_exist(&connection, &scope).await {
         Ok(owner_rows_exist) => owner_rows_exist,
@@ -529,21 +555,6 @@ async fn lookup_source_index_read_model_at_path(
     Ok(source_index_lookup_result(db_path, state, candidates))
 }
 
-async fn turso_source_index_lookup_tables_exist(
-    connection: &turso::Connection,
-) -> Result<bool, String> {
-    for table_name in [
-        "asp_source_index_scope_v1",
-        "asp_source_index_owner_v1",
-        "asp_source_index_layout_v1",
-    ] {
-        if !turso_table_exists(connection, table_name).await? {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
 async fn turso_source_index_precanonical_storage_exists(
     connection: &turso::Connection,
 ) -> Result<bool, String> {
@@ -552,25 +563,45 @@ async fn turso_source_index_precanonical_storage_exists(
 
 async fn turso_source_index_lookup_schema_current(
     connection: &turso::Connection,
+    requested_scope: Option<&TursoSourceIndexLookupRequestScope>,
 ) -> Result<bool, String> {
-    if !turso_table_exists(connection, "asp_source_index_token_owner_v1").await? {
-        return Ok(false);
-    }
-    for column in [
-        "file_hash",
-        "language_id",
-        "provider_id",
-        "source_kind",
-        "line_count",
-        "query_keys_json",
-        "selector_facts_json",
-        "selector_count",
-    ] {
-        if !turso_table_column_exists(connection, "asp_source_index_owner_v1", column).await? {
-            return Ok(false);
+    let mut rows =
+        match requested_scope {
+            Some(scope) => connection
+                .query(
+                    "SELECT 1
+                     FROM asp_source_index_layout_v1
+                     WHERE project_root = ?1
+                       AND schema_id = ?2
+                       AND schema_version = ?3
+                       AND term_projection_version = ?4
+                       AND token_projection_generation_id <> ''
+                     LIMIT 1",
+                    (
+                        scope.project_root.as_str(),
+                        scope.schema_id.as_str(),
+                        scope.schema_version.as_str(),
+                        super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
+                    ),
+                )
+                .await,
+            None => connection
+                .query(
+                    "SELECT 1
+                     FROM asp_source_index_layout_v1
+                     WHERE term_projection_version = ?1
+                       AND token_projection_generation_id <> ''
+                     LIMIT 1",
+                    (super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,),
+                )
+                .await,
         }
-    }
-    Ok(true)
+        .map_err(|error| format!("failed to inspect Turso source-index layout: {error}"))?;
+    Ok(rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Turso source-index layout: {error}"))?
+        .is_some())
 }
 
 async fn turso_source_index_owner_rows_exist(
@@ -586,11 +617,13 @@ async fn turso_source_index_owner_rows_exist(
                      WHERE project_root = ?1
                        AND schema_id = ?2
                        AND schema_version = ?3
+                       AND generation_id = ?4
                      LIMIT 1",
                     (
                         scope.project_root.as_str(),
                         scope.schema_id.as_str(),
                         scope.schema_version.as_str(),
+                        scope.generation_id.as_str(),
                     ),
                 )
                 .await
@@ -607,10 +640,18 @@ async fn turso_source_index_owner_rows_exist(
 }
 
 #[derive(Clone)]
+struct TursoSourceIndexLookupRequestScope {
+    project_root: String,
+    schema_id: String,
+    schema_version: String,
+}
+
+#[derive(Clone)]
 struct TursoSourceIndexLookupScope {
     project_root: String,
     schema_id: String,
     schema_version: String,
+    generation_id: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -678,7 +719,7 @@ fn decode_turso_source_index_canonical_selectors(
 
 async fn resolve_turso_source_index_lookup_scope(
     connection: &turso::Connection,
-    requested_scope: Option<TursoSourceIndexLookupScope>,
+    requested_scope: Option<TursoSourceIndexLookupRequestScope>,
 ) -> Result<Option<TursoSourceIndexLookupScope>, String> {
     let mut rows = match requested_scope {
         Some(scope) => {
@@ -686,16 +727,23 @@ async fn resolve_turso_source_index_lookup_scope(
                 || async {
                     connection
                         .query(
-                            "SELECT project_root, schema_id, schema_version
-                         FROM asp_source_index_scope_v1
-                         WHERE project_root = ?1
-                           AND schema_id = ?2
-                           AND schema_version = ?3
+                            "SELECT scope.project_root, scope.schema_id, scope.schema_version, scope.generation_id
+                         FROM asp_source_index_scope_v1 AS scope
+                         JOIN asp_source_index_layout_v1 AS layout
+                           ON layout.project_root = scope.project_root
+                          AND layout.schema_id = scope.schema_id
+                          AND layout.schema_version = scope.schema_version
+                          AND layout.term_projection_version = ?4
+                          AND layout.token_projection_generation_id = scope.generation_id
+                         WHERE scope.project_root = ?1
+                           AND scope.schema_id = ?2
+                           AND scope.schema_version = ?3
                          LIMIT 1",
                             (
                                 scope.project_root.as_str(),
                                 scope.schema_id.as_str(),
                                 scope.schema_version.as_str(),
+                                super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
                             ),
                         )
                         .await
@@ -710,11 +758,17 @@ async fn resolve_turso_source_index_lookup_scope(
                 || async {
                     connection
                         .query(
-                            "SELECT project_root, schema_id, schema_version
-                         FROM asp_source_index_scope_v1
-                         ORDER BY updated_at_ms DESC
+                            "SELECT scope.project_root, scope.schema_id, scope.schema_version, scope.generation_id
+                         FROM asp_source_index_scope_v1 AS scope
+                         JOIN asp_source_index_layout_v1 AS layout
+                           ON layout.project_root = scope.project_root
+                          AND layout.schema_id = scope.schema_id
+                          AND layout.schema_version = scope.schema_version
+                          AND layout.term_projection_version = ?1
+                          AND layout.token_projection_generation_id = scope.generation_id
+                         ORDER BY scope.updated_at_ms DESC
                          LIMIT 2",
-                            (),
+                            (super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,),
                         )
                         .await
                         .map_err(|error| error.to_string())
@@ -741,6 +795,9 @@ async fn resolve_turso_source_index_lookup_scope(
         schema_version: row.get::<String>(2).map_err(|error| {
             format!("failed to read Turso source-index schema version: {error}")
         })?,
+        generation_id: row
+            .get::<String>(3)
+            .map_err(|error| format!("failed to read Turso source-index generation id: {error}"))?,
     };
     if rows
         .next()
@@ -764,6 +821,25 @@ async fn query_turso_source_index_snapshot_candidates_with_connection(
     limit: u32,
     terms: &[String],
 ) -> Result<Vec<ClientDbSourceIndexCandidate>, String> {
+    query_turso_source_index_snapshot_candidates_for_scope_with_connection(
+        connection,
+        TursoSourceIndexCandidateScope::Resolved(scope),
+        query,
+        language_id,
+        limit,
+        terms,
+    )
+    .await
+}
+
+async fn query_turso_source_index_snapshot_candidates_for_scope_with_connection(
+    connection: &turso::Connection,
+    scope: TursoSourceIndexCandidateScope<'_>,
+    query: &str,
+    language_id: Option<&LanguageId>,
+    limit: u32,
+    terms: &[String],
+) -> Result<Vec<ClientDbSourceIndexCandidate>, String> {
     if limit == 0 || query.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -778,7 +854,9 @@ async fn query_turso_source_index_snapshot_candidates_with_connection(
     // directly. Avoid a Turso group/order aggregate over high-fanout postings;
     // structured scoring below fuses the bounded per-token owner windows.
     let candidate_limit = i64::from(limit);
-    if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
+    if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some()
+        && let TursoSourceIndexCandidateScope::Resolved(scope) = scope
+    {
         trace_turso_source_index_posting_projection(
             connection,
             scope,
@@ -794,8 +872,9 @@ async fn query_turso_source_index_snapshot_candidates_with_connection(
     for term in terms {
         let mut rows = run_turso_operation_with_lock_retry(
             || async {
-                connection
-                    .query(
+                match scope {
+                    TursoSourceIndexCandidateScope::Resolved(scope) => connection
+                        .query(
                         "SELECT owner.owner_path,
                                 owner.language_id,
                                 owner.provider_id,
@@ -804,29 +883,82 @@ async fn query_turso_source_index_snapshot_candidates_with_connection(
                                 owner.query_keys_json,
                                 owner.selector_facts_json
                          FROM asp_source_index_token_owner_v1 AS indexed
-                         JOIN asp_source_index_owner_v1 AS owner
+JOIN asp_source_index_owner_v1 AS owner
                            ON owner.project_root = indexed.project_root
                           AND owner.schema_id = indexed.schema_id
                           AND owner.schema_version = indexed.schema_version
+                          AND owner.generation_id = indexed.generation_id
                           AND owner.owner_path = indexed.owner_path
                          WHERE indexed.project_root = ?1
                            AND indexed.schema_id = ?2
                            AND indexed.schema_version = ?3
-                           AND indexed.token = ?4
-                           AND (?5 IS NULL OR owner.language_id = ?5)
+                       AND indexed.generation_id = ?4
+                       AND indexed.token = ?5
+                       AND (?6 IS NULL OR owner.language_id = ?6)
                          ORDER BY indexed.owner_path
-                         LIMIT ?6",
+                    LIMIT ?7",
                         (
                             scope.project_root.as_str(),
                             scope.schema_id.as_str(),
                             scope.schema_version.as_str(),
+                            scope.generation_id.as_str(),
                             term.as_str(),
                             language_id.map(|value| value.as_str()),
                             candidate_limit,
                         ),
                     )
                     .await
-                    .map_err(|error| error.to_string())
+                    .map_err(|error| error.to_string()),
+                    TursoSourceIndexCandidateScope::Requested(scope) => connection
+                        .query(
+                            "SELECT owner.owner_path,
+                                    owner.language_id,
+                                    owner.provider_id,
+                                    owner.source_kind,
+                                    owner.line_count,
+                                    owner.query_keys_json,
+                                    owner.selector_facts_json
+                             FROM asp_source_index_token_owner_v1 AS indexed
+                             JOIN asp_source_index_owner_v1 AS owner
+                               ON owner.project_root = indexed.project_root
+                              AND owner.schema_id = indexed.schema_id
+                              AND owner.schema_version = indexed.schema_version
+                              AND owner.generation_id = indexed.generation_id
+                              AND owner.owner_path = indexed.owner_path
+                             WHERE indexed.project_root = ?1
+                               AND indexed.schema_id = ?2
+                               AND indexed.schema_version = ?3
+                               AND indexed.generation_id = (
+                                   SELECT published.generation_id
+                                   FROM asp_source_index_scope_v1 AS published
+                                   JOIN asp_source_index_layout_v1 AS layout
+                                     ON layout.project_root = published.project_root
+                                    AND layout.schema_id = published.schema_id
+                                    AND layout.schema_version = published.schema_version
+                                    AND layout.term_projection_version = ?7
+                                    AND layout.token_projection_generation_id = published.generation_id
+                                   WHERE published.project_root = ?1
+                                     AND published.schema_id = ?2
+                                     AND published.schema_version = ?3
+                                   LIMIT 1
+                               )
+                               AND indexed.token = ?4
+                               AND (?5 IS NULL OR owner.language_id = ?5)
+                             ORDER BY indexed.owner_path
+                             LIMIT ?6",
+                            (
+                                scope.project_root.as_str(),
+                                scope.schema_id.as_str(),
+                                scope.schema_version.as_str(),
+                                term.as_str(),
+                                language_id.map(|value| value.as_str()),
+                                candidate_limit,
+                                super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
+                            ),
+                        )
+                        .await
+                        .map_err(|error| error.to_string()),
+                }
             },
             "failed to query Turso source-index token postings",
         )
@@ -932,6 +1064,11 @@ async fn trace_turso_source_index_posting_projection(
              SELECT COUNT(*),
                     COUNT(*)
              FROM asp_source_index_token_owner_v1 AS indexed
+             JOIN asp_source_index_scope_v1 AS active
+               ON active.project_root = indexed.project_root
+              AND active.schema_id = indexed.schema_id
+              AND active.schema_version = indexed.schema_version
+              AND active.generation_id = indexed.generation_id
              JOIN requested_terms
                ON requested_terms.token = indexed.token
              WHERE indexed.project_root = ?1
@@ -1036,4 +1173,9 @@ fn source_index_read_model_terms(query: &str) -> Result<Vec<String>, String> {
         .take(SOURCE_INDEX_READ_MODEL_MAX_TERMS)
         .map(|term| term.to_ascii_lowercase())
         .collect())
+}
+#[derive(Clone, Copy)]
+enum TursoSourceIndexCandidateScope<'a> {
+    Resolved(&'a TursoSourceIndexLookupScope),
+    Requested(&'a TursoSourceIndexLookupRequestScope),
 }

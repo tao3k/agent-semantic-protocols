@@ -1,5 +1,4 @@
 use crate::protocol::normalize_source_route_selector;
-use crate::protocol_activation::ActivatedProvider;
 
 use super::shell::is_separator;
 
@@ -175,16 +174,4 @@ fn source_path_without_line_range(path: &str) -> Option<&str> {
         && start.chars().all(|character| character.is_ascii_digit())
         && end.chars().all(|character| character.is_ascii_digit()))
     .then_some(base)
-}
-
-pub(super) fn push_provider_once<'a>(
-    providers: &mut Vec<&'a ActivatedProvider>,
-    provider: &'a ActivatedProvider,
-) {
-    if !providers
-        .iter()
-        .any(|existing| existing.language_id == provider.language_id)
-    {
-        providers.push(provider);
-    }
 }

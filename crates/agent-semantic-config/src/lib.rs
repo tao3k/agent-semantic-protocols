@@ -3,7 +3,13 @@
 //! Unified project identity, configuration, and local state layout for ASP.
 
 pub mod codex_agent_projection;
+mod codex_plugin_config;
 mod hook_client_config;
+
+pub use codex_plugin_config::codex_config_plugin_enabled;
+
+pub use hook_client_config::HookClientDecisionMaterializer;
+pub use hook_client_config::hook_client_contract_fingerprint;
 mod layout;
 
 pub use hook_client_config::{

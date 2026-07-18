@@ -5,9 +5,62 @@ schemaId = "@CLIENT_HOOK_CONFIG_SCHEMA_ID@"
 schemaVersion = "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@"
 protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
+contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
 # Parser-owned `asp <language>` command intent taxonomy. These entries drive
 # runtime matching; they are not documentation-only command examples.
+[[rules]]
+id = "deny-agent-search-json"
+priority = 1100
+decision = "deny"
+reasonKind = "agent-search-json"
+decisionMaterializer = "agent-search-json"
+message = "Agent-facing search JSON is denied; use the compact ASP search route."
+
+[rules.match]
+commandContainsAny = ["--json"]
+
+[[rules]]
+id = "materialize-prompt-search-strategy"
+priority = 1050
+decision = "deny"
+decisionMaterializer = "prompt-search-strategy"
+message = "Prompt-scoped ASP search strategy is derived by the configured hook materializer."
+
+[[rules]]
+id = "materialize-apply-patch-policy"
+priority = 1000
+decision = "deny"
+decisionMaterializer = "apply-patch"
+message = "Apply-patch policy is derived by the configured hook materializer."
+
+[[rules]]
+id = "materialize-source-access-policy"
+priority = 900
+decision = "deny"
+decisionMaterializer = "source-access"
+message = "Source-access policy is derived by the configured hook materializer."
+
+[[rules]]
+id = "deny-uncontrolled-source-search-commands"
+priority = 10000
+decision = "deny"
+reasonKind = "raw-broad-search"
+message = "Uncontrolled source search is denied. Route the evidence task to the resident ASP Explore agent."
+
+[rules.match]
+argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["git", "ls-files"], ["git", "ls-tree"]]
+
+[[rules]]
+id = "deny-uncontrolled-git-source-reads"
+priority = 10000
+decision = "deny"
+reasonKind = "raw-broad-search"
+message = "Git object and diff reads are denied as source-access escapes. Route the evidence task to the resident ASP Explore agent."
+
+[rules.match]
+argvPrefixAny = [["git", "show"], ["git", "diff"], ["git", "cat-file"], ["git", "blame"], ["git", "log"]]
+
 [aspCommandIntentPolicy.controlPlane]
 rootCommands = [
   "guide",
@@ -28,7 +81,7 @@ rootCommands = [
 ]
 
 [aspCommandIntentPolicy.reasoning]
-rootCommands = ["fd", "rg"]
+rootCommands = []
 guideCommand = true
 searchRoutes = [
   "prime",
@@ -58,12 +111,13 @@ fromHookValues = ["direct-source-read"]
 rejectProjectedQueryWithoutExactSelector = true
 rejectCrossLanguageSelector = true
 
-# Deterministic testing/build work is not a reasoning-agent lifecycle.  The
-# hook permits only these exact token prefixes and emits a command-digest
-# receipt for each current-session execution.
+# Deterministic testing/build work is routed to its configured resident agent.
+# The hook denies execution in the main Agent and emits a digest-bound resident
+# dispatch action for these exact token prefixes.
 [executionLanes.testing]
 enabled = true
-transport = "current-session"
+transport = "resident-agent"
+residentName = "asp-testing"
 receiptKind = "asp-testing-execution-v1"
 commandPrefixes = [
   "cargo test",
@@ -92,6 +146,24 @@ mainAllowedAspCommandPrefixes = [
   "org capture",
 ]
 
+[[agents.residentAgents]]
+enabled = true
+name = "asp-testing"
+role = "asp_testing"
+roles = ["subagent", "testing", "build"]
+permissions = ["workspace-write"]
+codexAgentName = "asp_testing"
+lifecycle = "test-build-command"
+sessionLifetime = "resident"
+commandPrefixes = [
+  "cargo test",
+  "cargo check",
+  "cargo build",
+  "pytest",
+  "uv run pytest",
+  "just test",
+]
+
 [agentSessionGuide]
 register = """
 asp agent session register guide
@@ -99,7 +171,7 @@ Register is a low-level state write owned by the resident-child interactive loop
 Detected host: {{hostLabel}}
 Session env: {{sessionEnv}}
 Canonical loop entry:
-   asp agent session bootstrap --name asp-explore
+   asp agent session bootstrap --name <residentChildName-from-hook-decision>
 After a hook deny, run only the loop entry. Choose exactly one number, perform the platform-native action for that choice, then re-enter the same loop until state=Ready.
 The pane owns audit, recovery, cleanup, creation, model alignment, and durable registration. Only run register when a pane choice explicitly asks for it and provides both childSessionId and agentMessageTargetId.
 Configured resident child action: {{createAction}}
@@ -118,8 +190,8 @@ Show one registered child session by --name or --child-session-id.
 status = """
 asp agent session status guide
 Status is diagnostic only; do not use it as a fallback workflow after hook deny.
-If a resident child is missing, non-routable, or unclear, enter the canonical choice pane:
-   asp agent session bootstrap --name asp-explore
+ If a resident child is missing, non-routable, or unclear, enter the canonical choice pane:
+    asp agent session bootstrap --name <residentChildName-from-hook-decision>
 Timeout is not a duplicate-worker trigger. The bootstrap pane owns recovery.
 """
 
@@ -203,25 +275,4 @@ Run the resident-child choice pane again after the registry lock clears.
 Do not fall back to raw source tools while the registry is locked.
 registryError={{registryError}}
 command={{command}}
-"""
-sourceAccessCompact = """
-ASP denied source access (`{{reason}}`).
-Use the resident-child interactive loop. Choose one number, perform that native platform action, then re-enter the loop until state=Ready:
-   asp agent session bootstrap --name {{residentChildName}}
-After state=Ready, send the denied command to the registered message-agent target and wait for a compact `[asp-search-subagent]` receipt.
-Do not use low-level session commands, generic subagents, normal thread reads, raw source reads, or rollout scans as fallback paths.
-recoveryRef={{recoveryRef}}
-"""
-sourceAccessCompactRepeated = """
-ASP denied source access again (`{{reason}}`).
-Stay in the resident-child interactive loop; choose one number and re-enter the loop until state=Ready:
-   asp agent session bootstrap --name {{residentChildName}}
-After state=Ready, use the registered message-agent target for ASP evidence work only.
-recoveryRef={{recoveryRef}}
-"""
-sourceAccessCompactSubagent = """
-ASP denied source access (`{{reason}}`) inside {{residentChildName}}.
-Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next.
-Do not return source bodies, snippets, line-range selectors, raw thread reads, or rollout log scans.
-recoveryRef={{recoveryRef}}
 """

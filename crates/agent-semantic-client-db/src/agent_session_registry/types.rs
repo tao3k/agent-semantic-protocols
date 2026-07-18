@@ -23,6 +23,21 @@ pub struct AgentSessionRecord {
     /// Concrete Codex session id registered for this agent.
     #[serde(rename = "sessionId")]
     pub session_id: String,
+    /// Monotonic physical child generation within the stable resident slot.
+    #[serde(rename = "physicalGeneration")]
+    pub physical_generation: i64,
+    /// Configured typed-agent role captured from native SubagentStart evidence.
+    #[serde(
+        rename = "configuredAgentType",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub configured_agent_type: Option<String>,
+    /// Durable typed profile evidence, kept separate from replaceable heartbeat metadata.
+    #[serde(
+        rename = "profileEvidenceJson",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub profile_evidence_json: Option<String>,
     /// Native host message-agent target id, when it differs from durable session identity.
     #[serde(rename = "messageTargetId", skip_serializing_if = "Option::is_none")]
     pub message_target_id: Option<String>,
@@ -101,6 +116,9 @@ pub fn agent_session_message_target_is_live_bound(
     record: &AgentSessionRecord,
     current_root_session_id: &str,
 ) -> bool {
+    if !agent_session_status_is_routable(&record.status) {
+        return false;
+    }
     let Some(message_target_id) = record
         .message_target_id()
         .filter(|target| !target.trim().is_empty())
@@ -125,6 +143,8 @@ pub fn agent_session_message_target_is_live_bound(
                 | "native-collaboration-list-agents"
                 | "codex-typed-subagent-start-plus-native-host-tree"
                 | "codex-rollout-session-meta-plus-native-host-tree"
+                | "codex-locked-generation-profile-plus-native-host-tree"
+                | "codex-hook-payload-plus-rollout-profile"
         )
     ) && binding
         .get("boundRootSessionId")
@@ -139,6 +159,29 @@ pub fn agent_session_message_target_is_live_bound(
             .and_then(serde_json::Value::as_str)
             == Some(message_target_id)
 }
+
+/// Return whether a durable binding is also backed by a fresh native-host
+/// transport observation for the current root.
+///
+/// A `SubagentStart` binding proves identity, but it cannot prove that Codex
+/// still exposes the target after a later root turn. Callers must therefore
+/// supply the fresh host-tree verdict separately instead of treating persisted
+/// binding metadata as a perpetual liveness lease.
+#[must_use]
+pub fn agent_session_message_target_is_currently_routable(
+    record: &AgentSessionRecord,
+    current_root_session_id: &str,
+    fresh_host_transport_verified: bool,
+    now: i64,
+) -> bool {
+    fresh_host_transport_verified
+        && record.is_routable_at(now)
+        && agent_session_message_target_is_live_bound(record, current_root_session_id)
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_message_target_binding.rs"]
+mod message_target_binding_tests;
 
 /// Trusted native-host observation of a child session model profile.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -359,6 +402,99 @@ pub struct AgentSessionToolEventRequest<'a> {
     pub command: Option<&'a str>,
     /// Optional compact evidence reference associated with the event.
     pub evidence_ref: Option<&'a str>,
+    /// Mutation timestamp supplied by the caller.
+    pub now: i64,
+}
+
+/// Durable dispatch lease for one exact resident-child command.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AgentSessionDispatchLeaseRecord {
+    /// Stable State Core project scope that owns this dispatch.
+    #[serde(rename = "projectId")]
+    pub project_id: String,
+    /// Root Codex session id for the resident topology.
+    #[serde(rename = "rootSessionId")]
+    pub root_session_id: String,
+    /// Stable resident registry lane name.
+    pub name: String,
+    /// Logical identity derived from root, canonical target, and exact command.
+    #[serde(rename = "dispatchIdentity")]
+    pub dispatch_identity: String,
+    /// Digest of the exact command payload guarded by this identity.
+    #[serde(rename = "commandDigest")]
+    pub command_digest: String,
+    /// Native target selected for the current delivery attempt.
+    #[serde(rename = "deliveryTargetId", skip_serializing_if = "Option::is_none")]
+    pub delivery_target_id: Option<String>,
+    /// Physical child generation that owns the current delivery attempt.
+    /// For Codex this is the exact child session id, not the canonical path.
+    #[serde(
+        rename = "deliveryGenerationId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub delivery_generation_id: Option<String>,
+    /// Lease state: `in-flight`, `orphaned-awaiting-rebind`, or `terminal`.
+    pub status: String,
+    /// Number of distinct native target generations authorized to deliver.
+    #[serde(rename = "attemptCount")]
+    pub attempt_count: u32,
+    /// Unix timestamp when the logical dispatch was first claimed.
+    #[serde(rename = "createdAt")]
+    pub created_at: i64,
+    /// Unix timestamp when the lease last changed.
+    #[serde(rename = "updatedAt")]
+    pub updated_at: i64,
+    /// Unix timestamp when a terminal receipt was recorded.
+    #[serde(rename = "completedAt", skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<i64>,
+    /// Compact terminal evidence reference.
+    #[serde(rename = "evidenceRef", skip_serializing_if = "Option::is_none")]
+    pub evidence_ref: Option<String>,
+}
+
+/// Result of atomically claiming one resident dispatch identity.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AgentSessionDispatchClaimResult {
+    /// Host action authorized by the lease: `send`, `wait`, or `complete`.
+    pub action: String,
+    /// Durable lease state after the claim.
+    pub lease: AgentSessionDispatchLeaseRecord,
+}
+
+/// Request for claiming or polling one exact resident dispatch.
+pub struct AgentSessionDispatchClaimRequest<'a> {
+    /// Stable project scope that owns the registry row.
+    pub project_id: &'a str,
+    /// Root Codex session id for the resident topology.
+    pub root_session_id: &'a str,
+    /// Stable resident registry lane name.
+    pub name: &'a str,
+    /// Logical dispatch identity.
+    pub dispatch_identity: &'a str,
+    /// Digest of the exact command payload.
+    pub command_digest: &'a str,
+    /// Explicit logical delivery target for a fenced parser bridge.  Normal
+    /// native dispatch leaves this unset and requires a live-bound registry
+    /// target.
+    pub delivery_target_override: Option<&'a str>,
+    /// Mutation timestamp supplied by the caller.
+    pub now: i64,
+}
+
+/// Request for recording a terminal resident dispatch receipt.
+pub struct AgentSessionDispatchCompleteRequest<'a> {
+    /// Stable project scope that owns the registry row.
+    pub project_id: &'a str,
+    /// Root Codex session id for the resident topology.
+    pub root_session_id: &'a str,
+    /// Stable resident registry lane name.
+    pub name: &'a str,
+    /// Logical dispatch identity.
+    pub dispatch_identity: &'a str,
+    /// Digest of the exact command payload.
+    pub command_digest: &'a str,
+    /// Compact terminal evidence reference.
+    pub evidence_ref: &'a str,
     /// Mutation timestamp supplied by the caller.
     pub now: i64,
 }

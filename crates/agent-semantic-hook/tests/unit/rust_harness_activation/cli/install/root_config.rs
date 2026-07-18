@@ -118,7 +118,7 @@ source = "."
 fn assert_install_stdout(stdout: &str) {
     assert!(stdout.contains("[plugin-install] client=codex"));
     assert!(stdout.contains("activation="));
-    assert!(stdout.contains("userConfigStatus=missing"));
+    assert!(stdout.contains("userConfigStatus=current"));
     assert!(
         stdout.contains(
             "pluginSkill=.codex-home/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org"
@@ -360,20 +360,14 @@ fn assert_asp_explorer_instructions(instructions: &str) {
     assert!(lower.contains("asp"));
     assert!(lower.contains("search"));
     assert!(lower.contains("query"));
-    assert!(lower.contains("source"));
-    assert!(instructions.contains("Own cheap but turn-expensive search work"));
-    assert!(instructions.contains("search pipe, search owner, frontier ranking"));
-    assert!(instructions.contains("owner/item discovery"));
-    assert!(instructions.contains("[asp-search-subagent]"));
-    assert!(instructions.contains("owner=<owner path>"));
-    assert!(instructions.contains("read=<parser-owned selector>"));
-    assert!(instructions.contains("item=<symbol or item identity, or ->"));
-    assert!(instructions.contains("next=<exact asp query command for the parent to run>"));
-    assert!(instructions.contains("must not run that final exact read yourself"));
-    assert!(instructions.contains("Do not return source bodies, snippets, line-range selectors"));
-    assert!(!instructions.contains("confidence is high"));
-    assert!(!instructions.contains("missing=<missing facts"));
-    assert!(!instructions.contains("risk=<risk"));
+    assert!(instructions.contains("ASP search/query evidence explorer."));
+    assert!(
+        instructions
+            .contains("Do not edit files, manage lifecycle, delegate, or spawn another agent.")
+    );
+    assert!(instructions.contains("Execute the narrowest parser-owned ASP route"));
+    assert!(instructions.contains("asp.search.playbook-receipt"));
+    assert!(instructions.contains("executable next command or typed terminal failure"));
 }
 
 fn assert_agent_config(root: &std::path::Path) {
@@ -415,8 +409,27 @@ fn assert_installed_activation(root: &std::path::Path) {
 fn installed_activation_path(root: &std::path::Path) -> std::path::PathBuf {
     let mut matches = Vec::new();
     collect_activation_paths(&root.join(".asp-state-home"), &mut matches);
+    let expected_project_root = root.canonicalize().expect("canonical fixture project root");
+    // Root-owned provider/config activations can share ASP_STATE_HOME with the
+    // installed project. Select by the activation's explicit project scope.
+    matches.retain(|path| {
+        let activation: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(path).expect("read activation candidate"),
+        )
+        .expect("parse activation candidate");
+        activation
+            .get("projectRoot")
+            .and_then(serde_json::Value::as_str)
+            .map(std::path::PathBuf::from)
+            .and_then(|project_root| project_root.canonicalize().ok())
+            .is_some_and(|project_root| project_root == expected_project_root)
+    });
     matches.sort();
-    assert_eq!(matches.len(), 1, "activation paths: {matches:?}");
+    assert_eq!(
+        matches.len(),
+        1,
+        "project activation paths for {expected_project_root:?}: {matches:?}"
+    );
     matches.remove(0)
 }
 

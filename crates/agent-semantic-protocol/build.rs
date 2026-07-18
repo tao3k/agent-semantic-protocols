@@ -5,6 +5,7 @@ use rust_lang_project_harness::{
 
 fn main() {
     println!("cargo:rerun-if-changed=../../languages/org/contracts/asp.skill.v1.org");
+    println!("cargo:rerun-if-changed=../agent-semantic-runtime/src/codex_app_server_sessions.rs");
 
     let config = default_rust_harness_config()
         .with_rule_severity("RUST-AGENT-PROJECT-005", RustDiagnosticSeverity::Info)

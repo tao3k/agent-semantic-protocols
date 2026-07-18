@@ -1,5 +1,4 @@
 use super::provider_candidates::path_like_tokens;
-use super::raw_search;
 use super::shell::{command_name, is_separator};
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -8,20 +7,16 @@ pub(crate) enum CommandIntent {
     DirectRead,
     ContentDump,
     VcsDiffReview,
-    RawSearch,
 }
 
 pub(crate) fn command_intent(tokens: &[String]) -> CommandIntent {
     let mut saw_vcs_diff_review = false;
     for stage in command_stages(tokens) {
         match command_stage_intent(stage) {
-            CommandIntent::Other | CommandIntent::RawSearch => {}
+            CommandIntent::Other => {}
             CommandIntent::VcsDiffReview => saw_vcs_diff_review = true,
             intent => return intent,
         }
-    }
-    if raw_search::raw_search_stage(tokens).is_some() {
-        return CommandIntent::RawSearch;
     }
     if saw_vcs_diff_review {
         return CommandIntent::VcsDiffReview;

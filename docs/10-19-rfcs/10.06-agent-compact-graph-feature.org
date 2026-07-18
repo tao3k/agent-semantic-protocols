@@ -1834,3 +1834,37 @@ expand snippet -> parser-owned source projection for one selector
 expand receipt -> machine JSON / DB replay only on explicit request
 #+end_src
 This makes =frontier=, =routeGraph=, =G*= relation groups, and =S*= selector groups a compression language for attention. They are useful only while they reduce the next decision. When they become topology telemetry, ablation metadata, or route-state exhaust, they belong in the receipt layer.
+
+* Workspace and language provenance before graph rank
+Every graph candidate carries =workspaceId=, package identity, canonical path,
+=languageId=, and provider identity before it is admitted as a node.  The
+language harness derives =workspaceId= and the admitted package-root set from
+package-manager anchors.  The invocation directory is only a discovery seed;
+it is not itself the semantic workspace boundary.
+
+Candidates that join to none of the admitted package roots or whose file kind
+is not accepted by the selected provider are terminal admission failures.  A
+workspace may legitimately include members outside the invocation directory,
+so admission uses provider-resolved membership rather than one path-prefix
+check.  Rejected candidates are not low-score nodes and MUST NOT enter Python
+graph diffusion, graph owner rank, topology projection, or compact rendering.
+
+This ordering is normative:
+#+begin_src text
+package-anchor discovery -> workspace membership -> provider admission -> evidence node -> topology -> rank
+#+end_src
+Ranking a cross-workspace or cross-language candidate and filtering it later is
+invalid because its edges already distort graph topology and frontier choice.
+
+* Frontier action identity and cycle rejection
+Typed frontier actions include workspace, language, kind, and normalized query
+identity.  GraphRouter rejects an action already present in route history.  It
+also rejects inverse generic fallback pairs such as =fd -> rg -> fd= when the
+intermediate result added no new owner, path, symbol, selector, or typed failure
+node.  An exhausted frontier renders one terminal failure action rather than a
+repeated search recommendation.
+
+Python graph ranking consumes only admitted nodes and returns rank/explanation;
+it does not own workspace recovery, language correction, or replay suppression.
+Those are deterministic admission and router responsibilities shared across
+providers.

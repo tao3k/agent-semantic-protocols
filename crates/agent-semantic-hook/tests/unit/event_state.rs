@@ -158,13 +158,35 @@ fn unique_state_home(project_root: &std::path::Path) -> PathBuf {
     project_root.join(".agent-semantic-protocols-test-state")
 }
 
-struct AspStateHomeGuard {
+pub(super) struct AspStateHomeGuard {
     _guard: MutexGuard<'static, ()>,
     previous: Option<OsString>,
 }
 
 impl AspStateHomeGuard {
-    fn activate(path: PathBuf) -> Self {
+    pub(super) fn activate_isolated() -> Self {
+        let guard = ASP_STATE_HOME_ENV_LOCK
+            .lock()
+            .expect("lock ASP_STATE_HOME test environment");
+        let previous = std::env::var_os("ASP_STATE_HOME");
+        let state_home = std::env::temp_dir().join(format!(
+            "asp-hook-drift-state-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock after unix epoch")
+                .as_nanos()
+        ));
+        unsafe {
+            std::env::set_var("ASP_STATE_HOME", state_home);
+        }
+        Self {
+            _guard: guard,
+            previous,
+        }
+    }
+
+    pub(super) fn activate(path: PathBuf) -> Self {
         let guard = ASP_STATE_HOME_ENV_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());

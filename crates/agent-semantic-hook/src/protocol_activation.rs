@@ -126,6 +126,8 @@ pub struct ProviderSearchCapabilities {
     pub dependency_topology: bool,
     #[serde(default)]
     pub dependency_topology_metadata: bool,
+    #[serde(default)]
+    pub workspace_scope: bool,
 }
 
 /// Source matching defaults declared by a provider manifest.
@@ -319,36 +321,6 @@ impl HookRuntime {
                 provider
                     .match_source_selector_with(&matcher)
                     .map(|kind| ProviderSelectorMatch { provider, kind })
-            })
-            .collect()
-    }
-
-    pub(crate) fn providers_for_raw_search_selector(
-        &self,
-        selector: &str,
-    ) -> Vec<ProviderSelectorMatch<'_>> {
-        let matcher = SourceSelectorMatcher::new(selector);
-        self.providers
-            .iter()
-            .filter_map(|provider| {
-                if provider
-                    .ignored_path_prefixes
-                    .iter()
-                    .any(|prefix| matcher.is_ignored_by(prefix))
-                {
-                    return None;
-                }
-                (provider.glob_matches_source_selector(&matcher)
-                    || (!matcher.has_glob
-                        && provider.package_roots_match_search_token(matcher.normalized)))
-                .then_some(ProviderSelectorMatch {
-                    provider,
-                    kind: if matcher.has_glob {
-                        SourceSelectorKind::Pattern
-                    } else {
-                        SourceSelectorKind::ExactPath
-                    },
-                })
             })
             .collect()
     }

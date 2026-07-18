@@ -13,8 +13,8 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 fs2 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
-turso = { workspace = true }
-turso_sdk_kit = "=0.7.0-pre.18"
+turso = { version = "0.7.0", default-features = false, features = ["fts"] }
+turso_sdk_kit = "=0.7.0"
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
 which = { workspace = true }
 

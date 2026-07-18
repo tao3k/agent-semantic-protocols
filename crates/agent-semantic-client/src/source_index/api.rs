@@ -39,7 +39,7 @@ pub fn refresh_source_index(
     }
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
     source_index_trace("provider-registry-loaded", trace_started);
-    let registry = snapshot.evidence(project_root);
+    let registry = source_index_scope_evidence(snapshot.evidence(project_root), project_root);
     let previous_file_hashes = context.latest_file_hashes(project_root)?;
     source_index_trace("previous-file-hashes-loaded", trace_started);
     if !tracked_worktree_dirty {
@@ -88,7 +88,7 @@ pub fn rebuild_source_index(project_root: &Path) -> Result<SourceIndexRefreshRep
     source_index_trace("context-resolved", trace_started);
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
     source_index_trace("provider-registry-loaded", trace_started);
-    let registry = snapshot.evidence(project_root);
+    let registry = source_index_scope_evidence(snapshot.evidence(project_root), project_root);
     let previous_file_hashes = context.latest_file_hashes(project_root)?;
     source_index_trace("previous-file-hashes-loaded", trace_started);
     let files = collect_source_index_files(project_root, &snapshot)?;
@@ -479,6 +479,32 @@ fn source_index_git_root(project_root: &Path) -> Option<PathBuf> {
     }
     let git_root = String::from_utf8(output.stdout).ok()?;
     PathBuf::from(git_root.trim()).canonicalize().ok()
+}
+
+fn source_index_git_head(project_root: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let head = String::from_utf8(output.stdout).ok()?;
+    let head = head.trim();
+    (!head.is_empty()).then(|| head.to_string())
+}
+
+fn source_index_scope_evidence(
+    mut registry: ProviderRegistryEvidence,
+    project_root: &Path,
+) -> ProviderRegistryEvidence {
+    if let Some(head) = source_index_git_head(project_root) {
+        registry.fingerprint.push_str("\n@git-head:");
+        registry.fingerprint.push_str(&head);
+    }
+    registry
 }
 
 fn source_index_path_matches_indexed_extension(

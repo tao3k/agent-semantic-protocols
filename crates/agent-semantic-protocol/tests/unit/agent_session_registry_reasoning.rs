@@ -17,6 +17,34 @@ use crate::command::agent_session_registry::agent_session_registry_bootstrap::re
 };
 
 fn observation(reasoning: Option<&str>) -> SubagentRuntimeRebindVerifiedObservation {
+    let mut reasoning_evidence = vec![agent_semantic_hook::ReasoningEvidence {
+        root_session_id: "root".into(),
+        child_session_id: "child".into(),
+        resident_generation: None,
+        value: reasoning.map(str::to_string),
+        visibility: if reasoning.is_some() {
+            agent_semantic_hook::ReasoningEvidenceVisibility::Observed
+        } else {
+            agent_semantic_hook::ReasoningEvidenceVisibility::FieldOmitted
+        },
+        source: agent_semantic_hook::ReasoningEvidenceSource::SubagentStart,
+        observed_at: None,
+        profile_digest: None,
+    }];
+    if reasoning.is_none() {
+        reasoning_evidence.push(agent_semantic_hook::ReasoningEvidence {
+            root_session_id: "root".into(),
+            child_session_id: "child".into(),
+            resident_generation: None,
+            value: Some("low".into()),
+            visibility: agent_semantic_hook::ReasoningEvidenceVisibility::Observed,
+            source: agent_semantic_hook::ReasoningEvidenceSource::TypedRoleProfile,
+            observed_at: None,
+            profile_digest: Some("asp_explorer|gpt-5.4-mini|low".into()),
+        });
+    }
+    let reasoning_assessment =
+        agent_semantic_hook::reduce_reasoning_evidence("low", &reasoning_evidence);
     SubagentRuntimeRebindVerifiedObservation {
         root_session_id: "root".into(),
         child_session_id: "child".into(),
@@ -28,6 +56,8 @@ fn observation(reasoning: Option<&str>) -> SubagentRuntimeRebindVerifiedObservat
         observed_reasoning_effort: reasoning.map(str::to_string),
         expected_model: "gpt-5.4-mini".into(),
         expected_reasoning_effort: Some("low".into()),
+        reasoning_evidence,
+        reasoning_assessment,
         observation_source: "subagent-start-profile-attestation",
         observation_count: 1,
     }
@@ -40,6 +70,7 @@ fn attestation_applies_only_when_reasoning_is_unobservable() {
     let reasoning = "low".to_string();
     assert!(profile_attestation_is_valid(
         Some(&observation(None)),
+        "asp_explorer",
         Some(&reasoning),
         Some(&child),
         Some(&model),
@@ -48,6 +79,7 @@ fn attestation_applies_only_when_reasoning_is_unobservable() {
     ));
     assert!(!profile_attestation_is_valid(
         Some(&observation(Some("high"))),
+        "asp_explorer",
         Some(&reasoning),
         Some(&child),
         Some(&model),
@@ -59,6 +91,7 @@ fn attestation_applies_only_when_reasoning_is_unobservable() {
     let wrong_model = "gpt-5.6".to_string();
     assert!(!profile_attestation_is_valid(
         Some(&observation(None)),
+        "asp_explorer",
         Some(&reasoning),
         Some(&wrong_child),
         Some(&model),
@@ -67,6 +100,7 @@ fn attestation_applies_only_when_reasoning_is_unobservable() {
     ));
     assert!(!profile_attestation_is_valid(
         Some(&observation(None)),
+        "asp_explorer",
         Some(&reasoning),
         Some(&child),
         Some(&wrong_model),
@@ -75,6 +109,7 @@ fn attestation_applies_only_when_reasoning_is_unobservable() {
     ));
     assert!(!profile_attestation_is_valid(
         Some(&observation(None)),
+        "asp_explorer",
         Some(&reasoning),
         Some(&child),
         Some(&model),
@@ -91,6 +126,7 @@ fn synthesized_attestation_does_not_invent_reasoning_evidence() {
     let observation = profile_attested_runtime_observation(
         Some("root"),
         Some(&child),
+        "asp_explorer",
         Some(&model),
         Some(&model),
         Some(&reasoning),
@@ -107,6 +143,18 @@ fn synthesized_attestation_does_not_invent_reasoning_evidence() {
 
 fn live_typed_record() -> AgentSessionRecord {
     AgentSessionRecord {
+        physical_generation: 1,
+        configured_agent_type: Some("asp_explorer".into()),
+        profile_evidence_json: Some(
+            serde_json::json!({
+                "event": "subagent-start",
+                "native": true,
+                "rootSessionId": "root",
+                "childSessionId": "child",
+                "agentType": "asp_explorer",
+            })
+            .to_string(),
+        ),
         project_id: "project".into(),
         root_session_id: "root".into(),
         session_id: "child".into(),
@@ -146,6 +194,93 @@ fn live_typed_record() -> AgentSessionRecord {
 }
 
 #[test]
+fn typed_subagent_start_binding_uses_configured_resident_type() {
+    let mut record = live_typed_record();
+    record.name = "asp-testing".into();
+    record.role = "build,subagent,testing".into();
+    record.message_target_id = Some("/root/asp_testing".into());
+    record.configured_agent_type = Some("asp_testing".into());
+    record.profile_evidence_json = Some(
+        serde_json::json!({
+            "event": "subagent-start",
+            "native": true,
+            "rootSessionId": "root",
+            "childSessionId": "child",
+            "agentType": "asp_testing",
+        })
+        .to_string(),
+    );
+    record.metadata_json = serde_json::json!({
+        "event": "subagent-start",
+        "native": true,
+        "rootSessionId": "root",
+        "childSessionId": "child",
+        "agentType": "asp_testing",
+        "messageTargetBinding": {
+            "source": "codex.subagent-start",
+            "boundRootSessionId": "root",
+            "childSessionId": "child",
+            "messageTargetId": "/root/asp_testing"
+        }
+    })
+    .to_string();
+
+    assert!(typed_subagent_start_proves_canonical_typed_binding(
+        &record,
+        "root",
+        "asp_testing",
+    ));
+    assert!(!typed_subagent_start_proves_canonical_typed_binding(
+        &record,
+        "root",
+        "asp_explorer",
+    ));
+}
+
+#[test]
+fn profile_attestation_uses_configured_resident_type() {
+    let child = "child".to_string();
+    let model = "gpt-5.4-mini".to_string();
+    let reasoning = "low".to_string();
+    let mut testing_observation = observation(None);
+    testing_observation.observed_agent_type = "asp_testing".into();
+    testing_observation.expected_agent_type = "asp_testing".into();
+
+    assert!(profile_attestation_is_valid(
+        Some(&testing_observation),
+        "asp_testing",
+        Some(&reasoning),
+        Some(&child),
+        Some(&model),
+        true,
+        None,
+    ));
+    assert!(!profile_attestation_is_valid(
+        Some(&testing_observation),
+        "asp_explorer",
+        Some(&reasoning),
+        Some(&child),
+        Some(&model),
+        true,
+        None,
+    ));
+
+    let synthesized = profile_attested_runtime_observation(
+        Some("root"),
+        Some(&child),
+        "asp_testing",
+        Some(&model),
+        Some(&model),
+        Some(&reasoning),
+        true,
+        Some("subagent-start-profile-attestation"),
+    )
+    .expect("configured testing profile attestation");
+    assert_eq!(synthesized.observed_agent_type, "asp_testing");
+    assert_eq!(synthesized.expected_agent_type, "asp_testing");
+}
+
+#[test]
 fn durable_rollout_binding_rehydrates_profile_attestation_without_rollout_file() {
     let mut record = live_typed_record();
     record.model_observation_source = Some("codex.rollout".into());
@@ -160,7 +295,14 @@ fn durable_rollout_binding_rehydrates_profile_attestation_without_rollout_file()
     .to_string();
 
     assert_eq!(
-        profile_attestation_identity(Some(&record), None, Some("root"), true),
+        profile_attestation_identity(
+            Some(&record),
+            None,
+            Some("root"),
+            "asp_explorer",
+            "/root/asp_explorer",
+            true,
+        ),
         Some(("child".to_string(), "rollout-recovery-profile-attestation"))
     );
 }
@@ -175,6 +317,7 @@ fn trusted_rollout_recovery_can_attest_unobservable_reasoning() {
 
     assert!(profile_attestation_is_valid(
         Some(&recovered),
+        "asp_explorer",
         Some(&reasoning),
         Some(&child),
         Some(&model),
@@ -188,13 +331,16 @@ fn trusted_rollout_recovery_can_attest_unobservable_reasoning() {
 fn trusted_profile_attestation_makes_unobservable_reasoning_ready() {
     let record = live_typed_record();
     assert!(typed_subagent_start_proves_canonical_typed_binding(
-        &record, "root"
+        &record,
+        "root",
+        "asp_explorer",
     ));
     let reasoning = "low".to_string();
     let child = record.session_id.clone();
     let model = record.model.clone().expect("model");
     let attested = profile_attestation_is_valid(
         Some(&observation(None)),
+        "asp_explorer",
         Some(&reasoning),
         Some(&child),
         Some(&model),
@@ -205,6 +351,7 @@ fn trusted_profile_attestation_makes_unobservable_reasoning_ready() {
     let attested_observation = profile_attested_runtime_observation(
         Some("root"),
         Some(&child),
+        "asp_explorer",
         Some(&model),
         Some(&model),
         Some(&reasoning),
@@ -232,6 +379,7 @@ fn trusted_profile_attestation_makes_unobservable_reasoning_ready() {
     let receipt = profile_attestation_receipt(
         attested,
         &attested_observation,
+        "asp_explorer",
         (Some(&child), Some(&reasoning)),
     );
     assert_eq!(receipt["typedSpawnIdentityVerified"], true);
@@ -242,6 +390,11 @@ fn trusted_profile_attestation_makes_unobservable_reasoning_ready() {
         "subagent-start-profile-attestation"
     );
     assert_eq!(receipt["expectedReasoningEffort"], "low");
+    assert_eq!(receipt["observedReasoningEffort"], serde_json::Value::Null);
+    assert_eq!(receipt["effectiveReasoningEffort"], "low");
+    assert_eq!(receipt["reasoningVisibility"], "field-omitted");
+    assert_eq!(receipt["reasoningVerdict"], "profile-attested-unobservable");
+    assert_eq!(receipt["reasoningAssurance"], "config-attested");
     assert_eq!(receipt["contradictoryReasoningObservation"], false);
 
     let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
@@ -255,7 +408,7 @@ fn trusted_profile_attestation_makes_unobservable_reasoning_ready() {
         rollout_history_action: Some("validate-runtime-before-ready"),
         now: 2,
     });
-    let menu = resident_child_runtime_verified_menu(menu, attested);
+    let menu = resident_child_runtime_verified_menu(menu, attested, true);
 
     assert_eq!(menu.state, AgentSessionLoopState::Ready);
     assert_eq!(menu.choices.len(), 1);

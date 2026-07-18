@@ -104,12 +104,37 @@ fn run_doctor(root: &std::path::Path, activation_path: &std::path::Path) -> std:
     run_doctor_with_env(root, activation_path, &[], &[], None)
 }
 
+fn run_doctor_strict(
+    root: &std::path::Path,
+    activation_path: &std::path::Path,
+) -> std::process::Output {
+    run_doctor_with_env_and_args(
+        root,
+        activation_path,
+        &[],
+        &[],
+        None,
+        &["--strict-contract"],
+    )
+}
+
 fn run_doctor_with_env(
     root: &std::path::Path,
     activation_path: &std::path::Path,
     envs: &[(&str, &str)],
     env_paths: &[(&str, &str)],
     path_prefix: Option<&std::path::Path>,
+) -> std::process::Output {
+    run_doctor_with_env_and_args(root, activation_path, envs, env_paths, path_prefix, &[])
+}
+
+fn run_doctor_with_env_and_args(
+    root: &std::path::Path,
+    activation_path: &std::path::Path,
+    envs: &[(&str, &str)],
+    env_paths: &[(&str, &str)],
+    path_prefix: Option<&std::path::Path>,
+    extra_args: &[&str],
 ) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command.current_dir(root).args([
@@ -121,6 +146,7 @@ fn run_doctor_with_env(
         activation_path.to_str().expect("utf8 activation path"),
         ".",
     ]);
+    command.args(extra_args);
     command.env("CODEX_HOME", root.join(".codex-home"));
     command.env("ASP_STATE_HOME", asp_state_home(root));
     for (key, value) in envs {

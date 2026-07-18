@@ -2,17 +2,6 @@ use crate::protocol_activation::{ActivatedProvider, HookRuntime};
 
 use super::shell::{command_name, is_separator};
 
-pub(crate) fn contains_ingest_pipe(tokens: &[String], providers: &[&ActivatedProvider]) -> bool {
-    providers.iter().any(|provider| {
-        tokens
-            .windows(3)
-            .any(|window| provider_ingest_window(provider, window))
-            || tokens
-                .windows(4)
-                .any(|window| agent_facade_ingest_window(provider, window))
-    })
-}
-
 pub(crate) fn search_json_route<'a>(
     registry: &'a HookRuntime,
     tokens: &[String],
@@ -66,15 +55,4 @@ fn provider_command_index(
         }
         None
     })
-}
-
-fn provider_ingest_window(provider: &ActivatedProvider, window: &[String]) -> bool {
-    command_name(&window[0]) == provider.binary && window[1] == "search" && window[2] == "ingest"
-}
-
-fn agent_facade_ingest_window(provider: &ActivatedProvider, window: &[String]) -> bool {
-    command_name(&window[0]) == "asp"
-        && window[1] == provider.language_id
-        && window[2] == "search"
-        && window[3] == "ingest"
 }

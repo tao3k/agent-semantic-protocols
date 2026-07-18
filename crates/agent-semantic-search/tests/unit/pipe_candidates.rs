@@ -73,7 +73,7 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
 fn source_index_acquisition_gates_broad_generic_queries() {
     let acquisition =
         collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
-            intent: "search query route trace graph quality latency selector",
+            intent: "search query budget block generic provider",
             project_root: std::path::Path::new("."),
             scopes: &[],
             lookup: None,
@@ -85,8 +85,8 @@ fn source_index_acquisition_gates_broad_generic_queries() {
         SearchPipeSourceIndexDecision::QueryGate
     );
     let gate = acquisition.gate.expect("gate metadata");
-    assert_eq!(gate.term_count, 8);
-    assert_eq!(gate.generic_term_count, 8);
+    assert_eq!(gate.term_count, 6);
+    assert_eq!(gate.generic_term_count, 6);
     assert!(acquisition.candidates.is_empty());
 }
 

@@ -206,6 +206,12 @@ pub(super) fn write_cache_source_fixture(root: &Path) {
 }
 
 pub(crate) fn asp_command(root: &Path) -> Command {
+    let runtime_bin = state_home(root).join("runtime/bin");
+    write_default_workspace_scope_provider_shims(&runtime_bin);
+    write_default_workspace_scope_provider_shims(
+        &root.join(".cache/agent-semantic-protocol/runtime/bin"),
+    );
+    write_default_workspace_scope_provider_shims(&home_local_bin(root));
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
         .current_dir(root)
@@ -258,11 +264,43 @@ pub(super) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
 }
 
 pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path) {
+    let (language_id, source_extensions) = match binary {
+        "rs-harness" => ("rust", r#"[".rs"]"#),
+        "ts-harness" => ("typescript", r#"[".ts",".tsx"]"#),
+        "python-harness" | "py-harness" => ("python", r#"[".py"]"#),
+        "julia-harness" | "asp-julia-harness" => ("julia", r#"[".jl"]"#),
+        "gslph" => ("gerbil-scheme", r#"[".ss",".ssi",".scm",".sld"]"#),
+        _ => ("test", r#"[".txt"]"#),
+    };
     write_provider_script(
         bin_dir,
         binary,
-        &format!("#!/bin/sh\nprintf called > '{}'\n", marker.display()),
+        &format!(
+            r#"#!/bin/sh
+if [ "$1" = "search" ] && [ "$2" = "workspace-scope" ] && [ "$3" = "--json" ]; then
+  root=$(pwd -P)
+  printf '{{"schemaId":"agent.semantic-protocols.semantic-workspace-scope","schemaVersion":"1","workspaceId":"test:%s","languageId":"{language_id}","providerId":"{binary}","packageManager":"test","sourceExtensions":{source_extensions},"discoveryRoot":"%s","anchors":[{{"kind":"test-manifest","path":"%s/Cargo.toml","sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}],"packages":[{{"packageId":"test:%s","name":"fixture","languageId":"{language_id}","root":"%s","manifestPath":"%s/Cargo.toml"}}],"admittedRoots":["%s"],"fingerprint":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}\n' "$root" "$root" "$root" "$root" "$root" "$root" "$root"
+  exit 0
+fi
+printf called > '{}'
+"#,
+            marker.display()
+        ),
     );
+}
+
+fn write_default_workspace_scope_provider_shims(bin_dir: &Path) {
+    std::fs::create_dir_all(bin_dir).expect("create default provider shim directory");
+    for binary in [
+        "rs-harness",
+        "ts-harness",
+        "py-harness",
+        "asp-julia-harness",
+        "gslph",
+    ] {
+        let marker = bin_dir.join(format!(".{binary}-marker"));
+        write_marker_provider(bin_dir, binary, &marker);
+    }
 }
 
 pub(super) fn write_guide_provider(bin_dir: &Path, binary: &str) {

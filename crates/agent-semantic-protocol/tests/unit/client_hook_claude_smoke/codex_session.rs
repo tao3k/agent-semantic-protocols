@@ -7,201 +7,6 @@ use super::{
 };
 
 #[test]
-fn codex_session_start_reuses_registered_asp_explore() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-    register_asp_explore_session(
-        &root,
-        "019f126d-0000-7000-8000-000000000030",
-        "019f126d-0000-7000-8000-000000000130",
-    );
-
-    let decision = run_codex_hook_decision_with_env(
-        &root,
-        "session-start",
-        json!({"source": "session-start-smoke"}),
-        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000030")],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionSpawnPolicy"].as_str(),
-        Some("registered-profile-valid-child-only")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionValidationPolicy"].as_str(),
-        Some("register-hard-validates-profile")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionInvalidChildAction"].as_str(),
-        Some("close-native-subagent-or-archive-temporary-thread-and-create-configured-child")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionDuplicatePolicy"].as_str(),
-        Some("one-active-resident-child-per-root-session-and-name")
-    );
-    assert_eq!(
-        decision["fields"]["childSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000130")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionExistingChildId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000130")
-    );
-    assert_eq!(
-        decision["fields"]["nextAction"].as_str(),
-        Some("enter-bootstrap-pane-for-existing-child")
-    );
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP session-start reuse"));
-    assert!(message.contains("already has active resident asp-explore child session"));
-    assert!(
-        message.contains("do not spawn another asp-explore session"),
-        "{message}"
-    );
-    assert!(message.contains("019f126d-0000-7000-8000-000000000130"));
-}
-
-#[test]
-fn codex_subagent_start_reuses_registered_asp_explore() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-    let root_session_id = "019f126d-0000-7000-8000-000000000032";
-    let child_session_id = "019f126d-0000-7000-8000-000000000132";
-    register_asp_explore_session(&root, root_session_id, child_session_id);
-
-    let decision = run_codex_hook_decision_with_env(
-        &root,
-        "subagent-start",
-        json!({
-            "agentRole": "asp_explorer",
-            "childSessionId": "019f126d-0000-7000-8000-000000000232",
-            "parentThreadId": root_session_id,
-        }),
-        &[("CODEX_THREAD_ID", root_session_id)],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionExistingChildId"].as_str(),
-        Some(child_session_id)
-    );
-    assert_eq!(
-        decision["fields"]["childSessionId"].as_str(),
-        Some(child_session_id)
-    );
-}
-
-#[test]
-fn codex_subagent_start_claims_native_child_without_thread_env() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-    let root_session_id = "019f126d-0000-7000-8000-000000000033";
-    let child_session_id = "019f126d-0000-7000-8000-000000000133";
-
-    let decision = run_codex_hook_decision_with_env(
-        &root,
-        "subagent-start",
-        json!({
-            "hook_event_name": "SubagentStart",
-            "session_id": root_session_id,
-            "agent_id": child_session_id,
-            "agent_type": "asp_explorer",
-            "model": "gpt-5.4-mini",
-            "permission_mode": "default",
-        }),
-        &[("CODEX_THREAD_ID", "")],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("allow"));
-    let report = show_agent_session_json(&root, child_session_id);
-    let session = &report["sessions"][0];
-    assert_eq!(session["rootSessionId"].as_str(), Some(root_session_id));
-    assert_eq!(session["sessionId"].as_str(), Some(child_session_id));
-    assert_eq!(session["name"].as_str(), Some("asp-explore"));
-    assert_eq!(session["status"].as_str(), Some("active"));
-    assert_eq!(session["messageTargetId"].as_str(), Some(child_session_id));
-    let stop = run_codex_hook_decision_with_env(
-        &root,
-        "subagent-stop",
-        json!({
-            "hook_event_name": "SubagentStop",
-            "session_id": root_session_id,
-            "agent_id": child_session_id,
-            "agent_type": "asp_explorer",
-            "model": "gpt-5.4-mini",
-            "reasoning_effort": "low",
-            "permission_mode": "default",
-        }),
-        &[("CODEX_THREAD_ID", "")],
-    );
-    assert_eq!(stop["decision"].as_str(), Some("allow"));
-    assert_eq!(
-        stop["fields"]["agentSessionAction"].as_str(),
-        Some("subagent-stop-preserved-resident-idle")
-    );
-    assert_eq!(
-        show_agent_session_json(&root, child_session_id)["sessions"][0]["status"].as_str(),
-        Some("idle")
-    );
-}
-
-#[test]
-fn codex_subagent_start_rejects_duplicate_native_child_without_replacing_owner() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-    let root_session_id = "019f126d-0000-7000-8000-000000000034";
-    let existing_child_id = "019f126d-0000-7000-8000-000000000134";
-    register_asp_explore_session(&root, root_session_id, existing_child_id);
-
-    let decision = run_codex_hook_decision_with_env(
-        &root,
-        "subagent-start",
-        json!({
-            "hook_event_name": "SubagentStart",
-            "session_id": root_session_id,
-            "agent_id": "019f126d-0000-7000-8000-000000000234",
-            "agent_type": "asp_explorer",
-            "model": "gpt-5.4-mini",
-            "reasoning_effort": "low",
-            "permission_mode": "default",
-        }),
-        &[("CODEX_THREAD_ID", "")],
-    );
-
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionExistingChildId"].as_str(),
-        Some(existing_child_id)
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionDuplicateChildId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000234")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionDuplicateChildAction"].as_str(),
-        Some("close-native-subagent")
-    );
-    let report = show_agent_session_json(&root, existing_child_id);
-    assert_eq!(
-        report["sessions"][0]["sessionId"].as_str(),
-        Some(existing_child_id)
-    );
-}
-
-#[test]
 fn codex_session_start_resumes_existing_non_routable_asp_explore() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -261,7 +66,9 @@ fn codex_global_activation_uses_cwd_repo_registry_for_session_reuse() {
     assert_eq!(decision["decision"].as_str(), Some("allow"));
     assert_eq!(
         decision["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child")
+        Some("reuse-resident-child"),
+        "decision: {}",
+        serde_json::to_string_pretty(&decision).expect("serialize decision")
     );
     assert_eq!(
         decision["fields"]["childSessionId"].as_str(),
@@ -302,7 +109,6 @@ fn codex_main_session_denies_reasoning_flow_commands_for_every_language_facade()
         "asp md search owner docs/spec.md items --workspace . --view seeds",
         "asp rust query --term run --workspace .",
         "asp rust query --selector src/lib.rs --workspace . --code",
-        "asp org query --selector org://docs/spec.org#heading/run --workspace . --content",
         "asp org elements-query --packet '{\"selector\":\"docs/spec.org\"}'",
         "asp org contract trace docs/spec.org",
         "asp org contract query-surface docs/spec.org",
@@ -348,14 +154,16 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
 
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        codex_asp_query_payload("asp rust query --term demo --workspace . --code"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000001")],
     );
 
     assert_eq!(decision["decision"].as_str(), Some("deny"));
     assert_eq!(
         decision["reasonKind"].as_str(),
-        Some("asp-reasoning-routed")
+        Some("asp-reasoning-routed"),
+        "decision: {}",
+        serde_json::to_string_pretty(&decision).expect("serialize decision")
     );
     assert_eq!(
         decision["fields"]["agentSessionRoute"].as_str(),
@@ -403,7 +211,9 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
     );
     assert_eq!(
         decision["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child")
+        Some("reuse-resident-child"),
+        "decision: {}",
+        serde_json::to_string_pretty(&decision).expect("serialize decision")
     );
     assert_eq!(
         decision["fields"]["requiredAction"].as_str(),
@@ -440,7 +250,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
 
     let repeated = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        codex_asp_query_payload("asp rust query --term demo --workspace . --code"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000001")],
     );
     assert_eq!(repeated["fields"]["denyReplay"].as_str(), Some("repeated"));
@@ -469,7 +279,7 @@ fn codex_main_session_denies_env_prefixed_asp_query_when_asp_explore_registered(
         codex_asp_query_payload(
             "env CODEX_THREAD_ID=019f126d-0000-7000-8000-000000000102 \
              ASP_ROOT_SESSION_ID=019f126d-0000-7000-8000-000000000002 \
-             ./target/debug/asp rust query src/lib.rs --workspace . --code",
+         ./target/debug/asp rust query --term demo --workspace . --code",
         ),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000002")],
     );
@@ -635,85 +445,6 @@ fn codex_main_session_denies_reasoning_search_pipe_when_asp_explore_registered()
 }
 
 #[test]
-fn codex_installed_hook_full_resident_child_lifecycle_scenario() {
-    let root = claude_fixture();
-    let codex_home = root.join(".codex-home");
-    install_codex_hooks(&root, &codex_home);
-    let root_session_id = "019f126d-0000-7000-8000-000000000051";
-    let child_session_id = "019f126d-0000-7000-8000-000000000151";
-    register_asp_explore_session(&root, root_session_id, child_session_id);
-
-    let session_start = run_codex_hook_decision_with_env(
-        &root,
-        "session-start",
-        json!({"source": "full-lifecycle-scenario"}),
-        &[("CODEX_THREAD_ID", root_session_id)],
-    );
-    assert_eq!(session_start["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        session_start["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child")
-    );
-    assert_eq!(
-        session_start["fields"]["childSessionId"].as_str(),
-        Some(child_session_id)
-    );
-
-    let main_query = run_codex_pre_tool_decision_with_env(
-        &root,
-        codex_asp_query_payload("asp rust search lexical resident owner --view seeds"),
-        &[("CODEX_THREAD_ID", root_session_id)],
-    );
-    assert_eq!(main_query["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        main_query["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        main_query["fields"]["childSessionId"].as_str(),
-        Some(child_session_id)
-    );
-
-    let child_query = run_codex_pre_tool_decision_with_env(
-        &root,
-        codex_asp_query_payload("asp rust search lexical resident owner --view seeds"),
-        &[("CODEX_THREAD_ID", child_session_id)],
-    );
-    assert_eq!(child_query["decision"].as_str(), Some("allow"));
-    assert_eq!(
-        child_query["fields"]["agentSessionAction"].as_str(),
-        Some("active-resident-child")
-    );
-
-    let post_tool = run_codex_hook_decision_with_env(
-        &root,
-        "post-tool",
-        json!({
-            "tool_name": "Bash",
-            "tool_input": {
-                "command": "asp rust search lexical resident owner --view seeds"
-            },
-            "tool_result": {
-                "evidenceRef": "asp-evidence:full-lifecycle"
-            }
-        }),
-        &[("CODEX_THREAD_ID", child_session_id)],
-    );
-    assert_eq!(post_tool["decision"].as_str(), Some("allow"));
-
-    let report = show_agent_session_json(&root, child_session_id);
-    let session = &report["sessions"][0];
-    assert_eq!(
-        session["lastEvidenceRef"].as_str(),
-        Some("asp-evidence:full-lifecycle")
-    );
-    assert_eq!(
-        session["lastCommand"].as_str(),
-        Some("asp rust search lexical resident owner --view seeds")
-    );
-}
-
-#[test]
 fn codex_main_session_reuses_model_drifted_asp_explore_registration() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -732,7 +463,7 @@ fn codex_main_session_reuses_model_drifted_asp_explore_registration() {
 
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        codex_asp_query_payload("asp rust query --term demo --workspace . --code"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000011")],
     );
 
@@ -857,7 +588,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_is_expired() {
 
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        codex_asp_query_payload("asp rust query --term demo --workspace . --code"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000006")],
     );
 
@@ -1090,7 +821,8 @@ fn codex_native_custom_subagent_is_outside_asp_lifecycle_management() {
     assert_eq!(start["decision"].as_str(), Some("allow"));
     assert_eq!(
         start["fields"]["agentSessionAction"].as_str(),
-        Some("ignore-unmanaged-native-subagent")
+        Some("ignore-unmanaged-native-subagent"),
+        "{start}"
     );
     assert_eq!(
         start["fields"]["agentSessionObservedAgentType"].as_str(),

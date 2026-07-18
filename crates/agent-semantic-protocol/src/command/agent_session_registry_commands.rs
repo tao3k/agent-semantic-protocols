@@ -485,7 +485,6 @@ pub(super) fn show_session(
     args: &SessionArgs,
 ) -> Result<(), String> {
     let project_id = current_project_session_scope_id(registry)?;
-    registry.refresh_expired_sessions()?;
     let name = if args.child_session_id.is_some() {
         None
     } else {
@@ -553,7 +552,6 @@ pub(super) fn status_session(
     }
 
     let project_id = project_session_scope_id(registry, project_root)?;
-    registry.refresh_expired_sessions()?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let name = args.name.clone();
     let mut record = registry.lookup_session(AgentSessionLookupRequest {
@@ -563,13 +561,35 @@ pub(super) fn status_session(
         name: name.as_deref(),
     })?;
     let now = agent_session_unix_timestamp()?;
+    let host_resident_target_observation = root_session_id
+        .as_deref()
+        .zip(name.as_deref())
+        .map(|(root_session_id, name)| {
+            super::agent_session_registry_host_capability::fresh_host_resident_target_observation(
+                registry,
+                root_session_id,
+                name,
+                now,
+            )
+        })
+        .transpose()?
+        .flatten();
+    let fresh_host_transport_verified =
+        host_resident_target_observation
+            .as_ref()
+            .is_some_and(|observation| {
+                observation.target_status == "present" && observation.identity_status == "verified"
+            });
+    let host_target_absent = host_resident_target_observation
+        .as_ref()
+        .is_some_and(|observation| observation.target_status == "absent");
+    if host_target_absent && let Some(session) = record.as_mut() {
+        session.status = "orphan-risk".to_string();
+    }
     if let Some(session) = record.as_mut()
         && stale_invalid_session_should_be_idle(session, now)?
     {
-        registry.update_session_status(&project_id, &session.session_id, "idle", now)?;
         session.status = "idle".to_string();
-        session.updated_at = now;
-        session.last_seen_at = Some(now);
     }
     let validation = record
         .as_ref()
@@ -583,52 +603,21 @@ pub(super) fn status_session(
             )
         })
         .transpose()?;
-    if let (Some(session), Some(validation)) = (record.as_ref(), validation.as_ref())
-        && matches!(validation.status.as_str(), "passed" | "warning")
-        && let Some(model) = validation.actual_model.as_deref()
-    {
-        let recoverable =
-            agent_session_message_target_is_live_bound(session, &session.root_session_id)
-                && matches!(
-                    session.status.as_str(),
-                    "invalid" | "pending-target" | "idle"
-                );
-        let status = if recoverable {
-            "active"
-        } else {
-            session.status.as_str()
-        };
-        record = Some(registry.register_session(AgentSessionRegisterRequest {
-            project_id: &session.project_id,
-            root_session_id: &session.root_session_id,
-            session_id: &session.session_id,
-            message_target_id: session.message_target_id.as_deref(),
-            parent_session_id: session.parent_session_id.as_deref(),
-            name: &session.name,
-            role: &session.role,
-            model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
-                model,
-                source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexRollout,
-                observed_at: now,
-                evidence_ref: validation.rollout_path.as_deref(),
-            }),
-            status,
-            expires_at: session.expires_at,
-            metadata_json: &session.metadata_json,
-            now,
-        })?);
-    }
-    if let (Some(session), Some(validation)) = (record.as_ref(), validation.as_ref())
+    if let (Some(session), Some(validation)) = (record.as_mut(), validation.as_ref())
         && validation.status == "failed"
     {
-        let _ = registry.mark_session_invalid(&project_id, &session.session_id, now);
+        session.status = "invalid".to_string();
     }
     let registry_allows_routing = record
         .as_ref()
         .map(|session| {
             !matches!(session.status.as_str(), "archived" | "closed")
-                && session.is_routable_at(now)
-                && agent_session_message_target_is_live_bound(session, &session.root_session_id)
+                && agent_semantic_client_db::agent_session_message_target_is_currently_routable(
+                    session,
+                    &session.root_session_id,
+                    fresh_host_transport_verified,
+                    now,
+                )
         })
         .unwrap_or(false);
     let validation_allows_routing = validation.as_ref().is_none_or(|validation| {
@@ -698,7 +687,11 @@ pub(super) fn status_session(
     let activity_snapshot_short = None;
     let (host_thread_existence, host_thread_existence_reason) =
         host_thread_existence_snapshot(runtime_status.host_thread_id.as_deref());
-    let multi_agent_child_state = multi_agent_child_state_snapshot(rollout_activity.as_ref());
+    let multi_agent_child_state = multi_agent_child_state_snapshot(
+        record.as_ref().map(|session| session.status.as_str()),
+        routable,
+        rollout_activity.as_ref(),
+    );
     let session_lifetime = resolve_session_lifetime(
         project_root,
         name.as_deref(),
@@ -864,10 +857,19 @@ fn host_thread_existence_snapshot(host_thread_id: Option<&str>) -> (String, Stri
 }
 
 fn multi_agent_child_state_snapshot(
+    registry_status: Option<&str>,
+    routable: bool,
     rollout_activity: Option<
         &super::agent_session_registry_rollout_activity::RolloutActivityReport,
     >,
 ) -> String {
+    if !routable {
+        return if registry_status == Some("orphan-risk") {
+            "control-plane-orphaned-unbound".to_string()
+        } else {
+            "not-routable".to_string()
+        };
+    }
     match rollout_activity {
         Some(activity)
             if activity
@@ -897,6 +899,10 @@ fn multi_agent_child_state_snapshot(
         None => "not-reported".to_string(),
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_commands.rs"]
+mod multi_agent_child_state_tests;
 
 pub(super) fn close_session(
     registry: &AgentSessionRegistry,
@@ -940,16 +946,18 @@ pub(super) fn gc_sessions(
             args.name.as_deref(),
         )?
     };
-    let mut inspected = 0usize;
-    let mut deleted = Vec::new();
-    for record in candidates {
-        inspected += 1;
-        if (args.force || is_gc_candidate_status(&record.status))
-            && registry.delete_session(&project_id, &record.session_id)?
-        {
-            deleted.push(record.session_id);
-        }
-    }
+    let inspected = candidates.len();
+    let deleted = candidates
+        .into_iter()
+        .map(|record| {
+            let eligible = args.force || is_gc_candidate_status(&record.status);
+            let deleted = eligible && registry.delete_session(&project_id, &record.session_id)?;
+            Ok(deleted.then_some(record.session_id))
+        })
+        .collect::<Result<Vec<_>, String>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
     if args.json {
         print_lifecycle_json("gc", &deleted, inspected, deleted.len(), None)
     } else {
@@ -958,9 +966,9 @@ pub(super) fn gc_sessions(
             inspected,
             deleted.len()
         );
-        for session_id in deleted {
-            println!("{session_id}");
-        }
+        deleted
+            .into_iter()
+            .for_each(|session_id| println!("{session_id}"));
         Ok(())
     }
 }
@@ -978,14 +986,18 @@ pub(super) fn reconcile_sessions(
         root_session_id.as_deref(),
         args.name.as_deref(),
     )?;
-    let mut reconciled_session_ids = Vec::new();
-    for record in &sessions {
-        if stale_invalid_session_should_be_idle(record, now)?
-            && registry.update_session_status(&project_id, &record.session_id, "idle", now)?
-        {
-            reconciled_session_ids.push(record.session_id.clone());
-        }
-    }
+    let reconciled_session_ids = sessions
+        .iter()
+        .map(|record| {
+            let stale = stale_invalid_session_should_be_idle(record, now)?;
+            let reconciled = stale
+                && registry.update_session_status(&project_id, &record.session_id, "idle", now)?;
+            Ok(reconciled.then(|| record.session_id.clone()))
+        })
+        .collect::<Result<Vec<_>, String>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
     let gc_candidates = sessions
         .iter()
         .filter(|record| is_gc_candidate_status(&record.status))

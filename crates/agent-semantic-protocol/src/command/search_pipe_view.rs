@@ -20,7 +20,6 @@ use super::search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsCo
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_query_pack::query_clause_texts;
 use super::search_pipe_render::render_ingest_frontier;
-use super::search_pipe_seed_decision::SeedActionIntent;
 use serde_json::Value;
 
 pub(super) struct SearchPipeViewRequest<'a> {
@@ -153,7 +152,6 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         candidates,
                         precomputed_quality: Some(quality.clone()),
                         ranked_compact: None,
-                        seed_action_intents: &[],
                         read_memory_selectors,
                         dependency_action_targets: &[],
                     })
@@ -246,7 +244,6 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     }
     let receipt_elapsed = receipt_started_at.elapsed();
     let seed_started_at = Instant::now();
-    let seed_action_intents = seed_action_intents(&request_packet);
     let dependency_action_targets = dependency_action_targets_from_graph(&request_packet, query);
     let seed_plan_line = include_pipe_plan
         .then(|| seed_plan_detail_line(&request_packet))
@@ -271,7 +268,6 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
                 candidates,
                 precomputed_quality: quality.clone(),
                 ranked_compact: ranked_compact.as_deref(),
-                seed_action_intents: &seed_action_intents,
                 read_memory_selectors,
                 dependency_action_targets: &dependency_action_targets,
             })
@@ -477,22 +473,6 @@ fn seed_plan_detail_line(packet: &Value) -> Option<String> {
     Some(format!(
         "seedPlanDetail=quality={quality} queryOwnerSeedCount={query_owner_seed_count} selectedSeedCount={selected_seed_count} riskFactors={risk_factors} recommendedActions={recommended_actions} flow={flow} firstActionMatchesEvidenceState={first_action_matches_evidence_state} reasoningTreeRouteShown={reasoning_tree_route_shown} chosenRoutePreconditionsMet={chosen_route_preconditions_met} unnecessarySeedCount={unnecessary_seed_count} seedWhenKnownOwnerCount={seed_when_known_owner_count} seedWhenKnownSymbolCount={seed_when_known_symbol_count} seedWhenKnownSelectorCount={seed_when_known_selector_count}"
     ))
-}
-
-fn seed_action_intents(packet: &Value) -> Vec<SeedActionIntent> {
-    packet
-        .get("seedPlan")
-        .and_then(|seed_plan| seed_plan.get("recommendedActions"))
-        .and_then(Value::as_array)
-        .map(|actions| {
-            actions
-                .iter()
-                .filter_map(Value::as_str)
-                .filter(|action| !action.is_empty())
-                .filter_map(SeedActionIntent::from_seed_plan_action)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
 }
 
 fn compact_string_array(value: Option<&Value>) -> String {

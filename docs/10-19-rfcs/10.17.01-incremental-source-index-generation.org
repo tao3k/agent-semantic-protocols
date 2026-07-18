@@ -1,0 +1,167 @@
+#+TITLE: Incremental Source Index Generation Materialization
+#+AUTHOR: ASP maintainers
+#+OPTIONS: toc:2
+
+* Status
+
+Proposed for the V1 Turso source-index performance closure.
+
+* Problem
+
+A changed workspace currently publishes a new immutable generation by rewriting
+every owner and every posting, even when membership evidence identifies only a
+small owner delta.  This makes refresh latency proportional to workspace size,
+exhausts the fixed cold-write budget under ordinary contention, and prevents an
+exact selector lookup from becoming ready in one bounded search step.
+
+Raising the timeout is not a solution.  The write amplification is the protocol
+defect.
+
+* Contract
+
+Each published generation remains a complete immutable snapshot.  Its physical
+materialization is incremental:
+
+1. Compute changed and removed owner paths from file membership and canonical
+   selector payload proofs.
+2. Copy unchanged owner facts and token-owner postings from the previously
+   published generation into the new generation inside the same transaction.
+3. Materialize owner facts and postings only for changed owners.
+4. Exclude removed owners from the copy-forward set.
+5. Publish the new scope row only after owner and selector counts prove that the
+   new generation is complete.
+
+Cold rebuilds without a prior compatible generation continue to materialize the
+entire snapshot.  Warm requests with identical membership and selector
+fingerprints continue to reuse the current generation without a write.
+
+* Evidence and receipt
+
+The refresh receipt MUST expose total owner/selector counts separately from
+=changedOwnerCount=, =removedOwnerCount=, and =postingWriteCount=.  A one-percent
+change MUST report and write only that delta even though the new generation is a
+complete snapshot.
+
+The freshness gate MUST bind an exact selector result to the published source
+index generation and workspace scope.  A cold-required or budget-exhausted
+index is not valid evidence for Legacy closure.
+
+* Stable physical projection generation
+
+The scope generation is a physical projection slot, not a content revision.
+After the first complete materialization, an incremental refresh MUST update
+that slot inside the same database transaction: changed owners and postings are
+replaced, removed owners and postings are deleted, and unchanged rows are left
+in place.  The imported generation id remains evidence for the refresh request;
+it MUST NOT force a physical copy of every unchanged posting.
+
+Readers observe the old or new committed projection atomically.  A refresh MUST
+still publish file hashes, selector fingerprint, counts, and updated time only
+after the owner and posting deltas are complete.  A cold rebuild or incompatible
+layout migration MAY allocate a new physical projection generation.
+
+This rule prevents generation immutability from turning a one-percent logical
+delta into a full posting rewrite.  =changedOwnerCount= and
+=postingWriteCount= report physical delta work.
+
+* Rejected experiment: owner-clustered posting projection
+
+This layout is non-normative.  It was tested while =turso 0.7.0-pre.18= was
+leaving committed frames unpublished, so the apparent owner-delete cost was a
+storage-engine snapshot cost.  With the stable engine floor, an owner-first
+primary key plus a token-first secondary index imposes a fixed second-B-tree
+maintenance cost even for a 1% refresh.
+
+The canonical projection is therefore a single token-first table with primary
+key =(project_root, schema_id, schema_version, generation_id, token,
+owner_path)= and no duplicate token lookup index.  Incremental refresh may scan
+or delete the changed owner set, but search lookup must use the primary key and
+must not maintain two equivalent indexes.  The cold, one-percent, and
+high-fanout gates decide this layout; the rejected experiment below is retained
+only as design evidence.
+
+The token-owner projection MUST cluster its primary storage by physical
+generation, owner path, then token.  Incremental refresh deletes and rebuilds
+postings by owner; a token-first primary key turns a small owner delta into
+random writes across the full B-tree.  Token lookup remains indexed through a
+separate generation-token-owner index.
+
+An existing token-first layout is incompatible.  Because source-index data is
+derived, schema bootstrap MUST retire that projection and request or perform a
+cold rebuild instead of preserving the slow physical layout.
+
+* Performance gates
+
+Latency gates run under one process-wide source-index benchmark lock.  They
+measure the indexed operation, not CPU and WAL contention from unrelated cold,
+refresh, and lookup benchmarks running concurrently in the same test binary.
+
+- 1,193-owner cold write: less than one second in the release performance test.
+- 1,193-owner one-percent refresh: less than 500 milliseconds and exactly 12
+  changed owners in the existing gate fixture.
+- Exact owner lookup after refresh: one lookup round, no repeated dispatch.
+
+* Failure semantics
+
+Timeout or write failure rolls back the unpublished generation.  The previously
+published generation remains readable.  The router returns an explicit
+=source-index-cold-required= or refresh failure receipt; it MUST NOT silently
+fall back to raw source search.
+* Storage-engine publication floor
+
+The incremental projection requires a storage engine whose stable release
+publishes committed WAL frames before a later connection evaluates membership
+against the same scope.  A pre-release engine that reports unpublished frames
+after =COMMIT= plus =wal_checkpoint(TRUNCATE)= does not satisfy this contract:
+the following refresh must not pay an implicit full-WAL snapshot catch-up in
+its membership phase.
+
+The Turso-backed implementation therefore requires =turso >= 0.7.0=.  That
+stable floor includes the checkpoint, durable-header, and latest-snapshot
+coordination needed by this contract.  Application-level sleeps, retries, and
+larger performance budgets are not valid substitutes.  Regression evidence
+must include cold, one-percent incremental, and high-fanout refresh gates, and
+the one-percent trace must not report unpublished committed frames.
+
+* Single-round lookup packet
+
+The single-round contract includes the action frontier, not only database
+latency.  When a source-index lookup reports =state=hit= and yields at least
+one language-owned source candidate, the same public packet MUST expose the
+best owner and materialize an =owner-items= (or stronger exact-selector)
+action before any filename-discovery action.  A query wrapper MUST NOT hide
+those candidates and emit an unconditional =rg -> fd= hand-off: that repeats
+semantic discovery in a second agent turn even though the source index already
+resolved the owner.
+
+Filename discovery remains valid only when the query is path/file intent or
+the source-index packet has no admissible language owner.  Receipts and tests
+MUST distinguish these cases with the selected candidate source and action
+class, so a =sourceIndex:used[state=hit]= receipt followed by an unrelated
+=fd-query= cannot pass the single-round gate.
+
+=nextCommand= and =nextClasses= MUST be projections of the same ordered action
+nodes.  A separate static class list is contract drift because it can advertise
+=fd-query= as primary after the router has selected =owner-items=.
+
+Workspace admission is provider-owned.  Every language provider that claims
+source candidates in its activation coverage MUST implement
+=search workspace-scope --json= against the shared semantic workspace-scope
+schema and derive package membership from its language harness package-manager
+parser.  ASP MUST NOT replace a missing provider packet with hard-coded Cargo,
+package.json, Python, Gerbil, Julia, Org, or filename heuristics.  A provider
+manifest may advertise =workspaceScope=true= only when that command is covered
+by provider tests.
+
+A source-index lookup must not rediscover readiness through a serial chain of
+table-existence, schema-version, generation, scope, candidate, and owner-row
+queries.  The DB provider owns one lookup packet that returns the readiness
+state, resolved scope/generation, bounded ranked candidates, and whether the
+active scope contains owner rows.  Compatibility inspection of precanonical
+storage is a separate miss-only path and must not run for a canonical packet.
+
+The packet query must push aggregation and the caller's owner limit into SQL;
+it must not materialize every posting for a high-fanout token and rank the
+unbounded set in Rust.  This database round-trip contract mirrors the public
+search packet contract: one provider-owned evidence packet replaces several
+agent or router turns.

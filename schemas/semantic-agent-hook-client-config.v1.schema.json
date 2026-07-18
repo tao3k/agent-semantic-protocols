@@ -34,6 +34,10 @@
         "$ref": "#/$defs/rule"
       }
     },
+    "contractFingerprint": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
     "experimental": {
       "$ref": "#/$defs/experimental"
     }
@@ -215,6 +219,21 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "decision"],
+      "allOf": [
+        {
+          "if": {
+            "required": ["decisionMaterializer"],
+            "properties": {
+              "decisionMaterializer": { "type": "string" }
+            }
+          },
+          "then": {
+            "properties": {
+              "routes": { "maxItems": 0 }
+            }
+          }
+        }
+      ],
       "properties": {
         "id": {
           "$ref": "#/$defs/identifier"
@@ -227,6 +246,17 @@
         },
         "decision": {
           "enum": ["deny", "block"]
+        },
+        "decisionMaterializer": {
+          "type": ["string", "null"],
+          "enum": [
+            "agent-search-json",
+            "prompt-search-strategy",
+            "invalid-asp-facade",
+            "apply-patch",
+            "source-access",
+            null
+          ]
         },
         "reasonKind": {
           "enum": [

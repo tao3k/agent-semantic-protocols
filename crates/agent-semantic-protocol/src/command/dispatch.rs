@@ -20,7 +20,6 @@ use super::paths::run_paths_command;
 use super::provider::run_language_command;
 use super::root_language_facade::run_root_language_facade;
 use super::run_protocol_version_command;
-use super::search_query_wrapper::{is_query_wrapper, run_query_wrapper_command};
 use super::source_access::run_source_access_command;
 use super::sync::run_sync_command;
 
@@ -33,7 +32,11 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
             println!("{}", usage());
             Ok(())
         }
-        Some("--version" | "-V") => run_protocol_version_command(&args[1..]),
+        Some("version" | "--version" | "-V") => run_protocol_version_command(&args[1..]),
+        Some("--contract-fingerprint") => {
+            println!("{}", agent_semantic_config::hook_client_contract_fingerprint());
+            Ok(())
+        }
         Some("guide" | "providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap") => {
             run_client_command(args)
         }
@@ -54,7 +57,6 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]),
-        Some(command) if is_query_wrapper(command) => run_query_wrapper_command(command, &args[1..]),
         Some(language_id) => run_language_command(language_id, &args[1..]),
         _ => Err(usage()),
     }

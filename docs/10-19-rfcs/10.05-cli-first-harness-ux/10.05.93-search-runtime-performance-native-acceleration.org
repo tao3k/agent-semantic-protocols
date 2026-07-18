@@ -468,6 +468,33 @@ for any specific query that still reaches a bounded cold backend.
   NOT retain native syntax objects, source lines, or complete =SourceFile=
   values.
 
+** Search hot-path latency is a hard contract
+
+Interactive =search owner=, exact selector query, resident dispatch, and cache
+lookup are millisecond-scale operations.  A slower timeout is not a recovery
+mechanism: increasing a deadline MUST NOT be used to convert a latency failure
+into an apparent success.
+
+Every hot-path stage MUST emit a terminal receipt within its own fixed budget.
+The receipt records =elapsedMs=, =stage=, =queryIdentity=, =selector= (or
+=null=), cache state, provider-process count, and
+=result|empty|timeout|cancelled=.  The first missed stage budget cancels its
+owned work and returns that receipt; callers MUST NOT silently retry with a
+larger deadline or start a duplicate resident worker.
+
+The performance gate measures warm and cold paths separately.  Warm exact
+owner/selector queries MUST be served from the Rust read model without a
+provider process.  A cold path may refresh bounded missing state, but MUST NOT
+perform an unconditional workspace refresh or spawn a language provider merely
+to discover that cached state is current.  Tests fail on latency-budget breach
+even if a later result is semantically correct.
+
+Timeout policy is operation-specific and contract-visible.  A global provider
+timeout environment variable remains only a safety ceiling for explicitly
+long-running provider commands; it MUST NOT define or relax interactive search
+latency.  Search quality work therefore removes the blocking stage or process
+boundary that caused the delay instead of increasing the wait.
+
 ** ASP provider process memory containment
 
 Every =asp <language>= native provider process runs behind the shared Rust
