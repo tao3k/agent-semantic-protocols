@@ -252,7 +252,13 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     }
     let budget_scopes = search_pipe_budget_scopes(&pipe_args);
     if pipe_args.view != "graph-turbo-request"
-        && let Some(block) = search_query_budget_block(&pipe_args.seed_query, &budget_scopes, false)
+        && let Some(block) =
+            search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+                language_id: context.language_id,
+                query: &pipe_args.seed_query,
+                scopes: &budget_scopes,
+                explicit_filters: false,
+            })
     {
         print_search_query_budget_block(
             "search-pipe",
@@ -264,17 +270,12 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         );
         return Ok(());
     }
-    let planning_only = pipe_args.view == "graph-turbo-request";
-    let workspace_scope = if planning_only {
-        None
-    } else {
-        collect_provider_workspace_scope(
-            context.language_id,
-            &project_root,
-            context.config,
-            context.provider_context,
-        )?
-    };
+    let workspace_scope = collect_provider_workspace_scope(
+        context.language_id,
+        &project_root,
+        context.config,
+        context.provider_context,
+    )?;
     let mut acquisition =
         dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
             language_id: context.language_id,
@@ -296,6 +297,24 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
                 true,
             )
         })?;
+    if super::search_pipe_provider_facts::query_requests_semantic_facts(
+        context.language_id,
+        &pipe_args.seed_query,
+    ) {
+        if let Some(scope) = workspace_scope.as_ref() {
+            let topology_acquisition =
+                super::search_pipe_source::collect_workspace_scope_topology_acquisition(
+                    scope,
+                    context.locator_root,
+                    &context.config.search.ignore_dirs,
+                    &context.config.search.include_hidden_dirs,
+                )?;
+            super::search_pipe_source::merge_candidate_acquisitions(
+                &mut acquisition,
+                topology_acquisition,
+            );
+        }
+    }
     if let Some(scope) = workspace_scope.as_ref() {
         admit_search_pipe_candidates(
             &mut acquisition,
@@ -305,18 +324,14 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         );
     }
     let provider_facts_started_at = Instant::now();
-    let provider_facts = if planning_only {
-        super::search_pipe_provider_facts::ProviderGraphFacts::default()
-    } else {
-        collect_provider_graph_facts(
-            context.language_id,
-            &project_root,
-            Some(&pipe_args.seed_query),
-            &acquisition.candidates,
-            context.config,
-            context.provider_context,
-        )?
-    };
+    let provider_facts = collect_provider_graph_facts(
+        context.language_id,
+        &project_root,
+        Some(&pipe_args.seed_query),
+        &acquisition.candidates,
+        context.config,
+        context.provider_context,
+    )?;
     let source_trace = source_trace_with_provider_facts(
         &acquisition.source_trace,
         provider_facts_started_at.elapsed(),
@@ -516,11 +531,46 @@ fn source_trace_with_provider_facts(
         "truncatedCandidates".to_string(),
         Value::from(provider_facts.truncated_candidates),
     );
+    if let Some(descriptor_id) = provider_facts.descriptor_id.as_ref() {
+        fields.insert(
+            "descriptorId".to_string(),
+            Value::from(descriptor_id.clone()),
+        );
+    }
+    if let Some(descriptor_version) = provider_facts.descriptor_version.as_ref() {
+        fields.insert(
+            "descriptorVersion".to_string(),
+            Value::from(descriptor_version.clone()),
+        );
+    }
+    fields.insert(
+        "matchedAxes".to_string(),
+        Value::Array(
+            provider_facts
+                .matched_axes
+                .iter()
+                .cloned()
+                .map(Value::from)
+                .collect(),
+        ),
+    );
+    fields.insert(
+        "matchedTerms".to_string(),
+        Value::Array(
+            provider_facts
+                .matched_terms
+                .iter()
+                .cloned()
+                .map(Value::from)
+                .collect(),
+        ),
+    );
     let skipped = node_count == 0
         && provider_facts.edges.is_empty()
         && provider_facts.input_candidates == 0
         && provider_facts.fact_candidates == 0
-        && provider_facts.truncated_candidates == 0;
+        && provider_facts.truncated_candidates == 0
+        && provider_facts.descriptor_id.is_none();
     let state = if skipped { "skipped" } else { "used" };
     trace.push(
         SearchPipeSourceTrace::new(
@@ -739,7 +789,14 @@ fn run_search_lexical_command(
             "search lexical supports --view seeds; GraphRouter is selected by the built-in route wrapper".to_string(),
         );
     }
-    if let Some(block) = search_query_budget_block(&pipe_args.query, &pipe_args.owners, false) {
+    if let Some(block) =
+        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+            language_id: context.language_id,
+            query: &pipe_args.query,
+            scopes: &pipe_args.owners,
+            explicit_filters: false,
+        })
+    {
         print_search_query_budget_block(
             "search-lexical",
             context.language_id,

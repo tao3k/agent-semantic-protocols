@@ -60,7 +60,7 @@ fn ready_menu(mut menu: AgentSessionInteractiveMenu<'_>) -> AgentSessionInteract
     menu.choices = vec![AgentSessionInteractiveChoice {
         id: "send-denied-asp-command",
         label: "Send the denied ASP command to the verified resident child.",
-        platform_action: ready_dispatch_action(menu.name),
+        platform_action: std::borrow::Cow::Borrowed(ready_dispatch_action(menu.name)),
         next_state: AgentSessionLoopState::WaitReceipt,
         required_inputs: &["deniedAspCommand", "dispatchIdentity"],
     }];
@@ -82,7 +82,7 @@ fn live_transport_rebind_menu<'a>(
     menu.choices = vec![AgentSessionInteractiveChoice {
         id: "verify-live-resident-transport-before-dispatch",
         label: "Verify the current native resident transport before dispatch.",
-        platform_action: verify_live_transport_action(menu.name),
+        platform_action: std::borrow::Cow::Owned(verify_live_transport_action(menu.name)),
         next_state: AgentSessionLoopState::Validate,
         required_inputs: &["freshVerifiedResidentTransportBinding"],
     }];
@@ -97,12 +97,14 @@ fn ready_dispatch_action(name: &str) -> &'static str {
     }
 }
 
-fn verify_live_transport_action(name: &str) -> &'static str {
-    if name == "asp-testing" {
-        "Audit the native tree for /root/asp_testing, then resume that exact target once so a fresh same-root SubagentStart receipt binds the current testing child identity. A historical rollout, registry row, or path-only observation cannot authorize execution."
-    } else {
-        "Audit the native tree for /root/asp_explorer, then resume that exact target once so a fresh same-root SubagentStart receipt binds the current child identity. A historical rollout, registry row, or path-only present observation cannot authorize dispatch."
-    }
+fn verify_live_transport_action(name: &str) -> String {
+    let canonical_target = format!(
+        "/root/{}",
+        super::interactive_loop_actions::managed_agent_kind(name)
+    );
+    format!(
+        "Audit the native tree for {canonical_target}, then use the main agent's native follow-up surface for that exact target once. If the follow-up succeeds, immediately record `direnv exec . asp agent session observe-host-ack --name {name} --canonical-target {canonical_target} --evidence-ref <native-followup-receipt>`, then re-enter bootstrap; this is the same-child live binding writeback. If the host returns target/path/id not found, record `direnv exec . asp agent session observe-host-tree --name {name} --resident-target-status absent`, then re-enter bootstrap. A historical rollout, registry row, or path-only observation cannot authorize dispatch or execution."
+    )
 }
 
 fn registry_rehydration_menu(
@@ -119,7 +121,9 @@ fn registry_rehydration_menu(
     menu.choices = vec![AgentSessionInteractiveChoice {
         id: "rehydrate-verified-existing-child-registry",
         label: "Rehydrate the verified same-child identity into the resident registry.",
-        platform_action: "Use the ASP-owned verified lifecycle receipt to rehydrate this exact child and message target. Do not ask the user to enter ids, create another child, or infer success from task text. Re-enter bootstrap after ASP records the verified observation.",
+        platform_action: std::borrow::Cow::Borrowed(
+            "Use the ASP-owned verified lifecycle receipt to rehydrate this exact child and message target. Do not ask the user to enter ids, create another child, or infer success from task text. Re-enter bootstrap after ASP records the verified observation.",
+        ),
         next_state: AgentSessionLoopState::Validate,
         required_inputs: &["aspOwnedRegistryRehydrationReceipt"],
     }];

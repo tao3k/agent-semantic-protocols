@@ -22,6 +22,8 @@ description = "Search orchestration services for ASP agent-facing queries."
 license = "MIT"
 
 [dependencies]
+agent-semantic-content-identity.workspace = true
+agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
 globset = "0.4"
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-db = { path = "../agent-semantic-client-db" }

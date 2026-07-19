@@ -6,6 +6,7 @@ description = "Turso-backed DB Engine for the agent semantic client cache."
 license = "MIT"
 
 [dependencies]
+agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 serde = { workspace = true, features = ["derive"] }

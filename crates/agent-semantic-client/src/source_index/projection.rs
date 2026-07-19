@@ -36,9 +36,19 @@ pub fn import_language_projection(
             generation_id: client_db_source_index_generation_id(),
             project_root: project_root.to_path_buf(),
             previous_file_hashes: previous_file_hashes.clone(),
-            registry_fingerprint,
+            registry_fingerprint: registry_fingerprint.clone(),
             projection: projection.clone(),
         })?;
+    let workspace_snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(
+        import
+            .file_hashes
+            .iter()
+            .map(|file_hash| (file_hash.path.as_str(), file_hash.sha256.as_str())),
+    );
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        agent_semantic_artifacts::provider_digest(registry_fingerprint.as_bytes()),
+    );
     if db_session
         .reusable_source_index_generation(
             project_root,
@@ -58,6 +68,7 @@ pub fn import_language_projection(
         client_dir,
         &import,
         &projection,
+        &source_snapshot,
     )?;
     Ok(LanguageProjectionImportReport {
         reused: false,

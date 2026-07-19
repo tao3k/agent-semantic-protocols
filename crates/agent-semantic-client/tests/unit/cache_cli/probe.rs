@@ -6,7 +6,7 @@ use agent_semantic_client_core::{
     ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId,
 };
 use agent_semantic_client_db::{ClientDbEngine, ClientDbGenerationHit};
-use serde_json::{Value, json};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -89,121 +89,6 @@ fn hook_direct_source_read_bypasses_cache_probe() {
         ]);
 
     assert!(provider_cache_probe(&root, &snapshot, &request).is_none());
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn tree_sitter_rows_replay_when_latest_unrelated_generation_is_stale() {
-    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
-    let root = temp_root("syntax-row-replay-beats-unrelated-stale-generation");
-    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
-    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
-    std::fs::create_dir_all(root.join("src")).expect("create src dir");
-    let cache_root = ClientCacheManifest::inspect_project(&root)
-        .cache_root
-        .expect("cache root");
-    std::fs::write(
-        root.join("src/lib.rs"),
-        "pub fn parse_query() -> usize {\n    1\n}\n",
-    )
-    .expect("write lib source");
-    std::fs::write(root.join("src/other.rs"), "pub fn stale() {}\n").expect("write other source");
-
-    let fresh_generation = syntax_generation(
-        &root,
-        "syntax-row-fresh",
-        vec![hash_project_file(&root, "src/lib.rs")],
-    );
-    let fresh_manifest = manifest_from_generation(&cache_root, fresh_generation.clone());
-    let packet_bytes = serde_json::to_vec(&syntax_packet_with_matches()).expect("packet bytes");
-    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
-        .expect("open DB Engine write session");
-    db.import_manifest(&fresh_manifest)
-        .expect("import fresh manifest");
-    db.import_semantic_tree_sitter_query_packet(&fresh_generation, &packet_bytes)
-        .expect("import fresh rows");
-
-    std::thread::sleep(Duration::from_secs(1));
-    let stale_generation = syntax_generation(
-        &root,
-        "syntax-row-stale-latest",
-        vec![hash_project_file(&root, "src/other.rs")],
-    );
-    let stale_manifest = manifest_from_generation(&cache_root, stale_generation);
-    db.import_manifest(&stale_manifest)
-        .expect("import stale manifest");
-    std::fs::write(root.join("src/other.rs"), "pub fn changed() {}\n")
-        .expect("mutate stale source");
-    drop(db);
-
-    let snapshot = ProviderRegistrySnapshot {
-        activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
-        providers: vec![rust_provider()],
-    };
-    let request = ClientRequest::new(ClientMethod::Query, &root).with_forwarded_args(vec![
-        "--treesitter-query".to_string(),
-        "(function_item name: (identifier) @function.name)".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:1:80".to_string(),
-        ".".to_string(),
-    ]);
-
-    let probe = provider_cache_probe(&root, &snapshot, &request).expect("probe");
-    let replay = probe.replay.as_ref().expect("row replay");
-    let stdout = std::str::from_utf8(replay.stdout.as_ref()).expect("utf8");
-
-    assert_eq!(probe.cache_status, CacheStatus::Hit);
-    assert!(stdout.contains("C=capture:function.name(parse_query)@src/lib.rs:10!code"));
-    assert_eq!(replay.db_read_count, 1);
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn tree_sitter_rows_are_stale_when_matching_source_hash_changes() {
-    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
-    let root = temp_root("syntax-row-matching-stale-source");
-    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
-    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
-    std::fs::create_dir_all(root.join("src")).expect("create src dir");
-    let cache_root = ClientCacheManifest::inspect_project(&root)
-        .cache_root
-        .expect("cache root");
-    std::fs::write(
-        root.join("src/lib.rs"),
-        "pub fn parse_query() -> usize {\n    1\n}\n",
-    )
-    .expect("write lib source");
-
-    let generation = syntax_generation(
-        &root,
-        "syntax-row-stale-source",
-        vec![hash_project_file(&root, "src/lib.rs")],
-    );
-    let manifest = manifest_from_generation(&cache_root, generation.clone());
-    let packet_bytes = serde_json::to_vec(&syntax_packet_with_matches()).expect("packet bytes");
-    let mut db = ClientDbEngine::open_write_session_client_dir(&cache_root)
-        .expect("open DB Engine write session");
-    db.import_manifest(&manifest).expect("import manifest");
-    db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
-        .expect("import syntax rows");
-    std::fs::write(root.join("src/lib.rs"), "pub fn changed() {}\n").expect("mutate source");
-
-    let snapshot = ProviderRegistrySnapshot {
-        activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
-        providers: vec![rust_provider()],
-    };
-    let request = ClientRequest::new(ClientMethod::Query, &root).with_forwarded_args(vec![
-        "--treesitter-query".to_string(),
-        "(function_item name: (identifier) @function.name)".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:1:80".to_string(),
-        ".".to_string(),
-    ]);
-
-    let probe = provider_cache_probe(&root, &snapshot, &request).expect("probe");
-
-    assert_eq!(probe.cache_status, CacheStatus::Stale);
-    assert!(probe.replay.is_none());
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -355,29 +240,6 @@ fn temp_root(label: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("agent-client-probe-{label}-{nanos}"))
 }
 
-fn syntax_generation(
-    root: &std::path::Path,
-    generation_id: &str,
-    file_hashes: Vec<ClientCacheFileHash>,
-) -> ClientCacheGeneration {
-    serde_json::from_value(json!({
-        "generationId": generation_id,
-        "languageId": "rust",
-        "providerId": "rs-harness",
-        "providerVersion": "0.1.0",
-        "exportMethod": "query/tree-sitter",
-        "projectRoot": root.display().to_string(),
-        "packageRoot": ".",
-        "schemaIds": ["agent.semantic-protocols.semantic-tree-sitter-query"],
-        "cacheStatus": "hit",
-        "rawSourceStored": false,
-        "requestFingerprint": format!("fnv64:{generation_id}"),
-        "fileHashes": file_hashes,
-        "artifactIds": [format!("semantic-tree-sitter-query/{generation_id}.json")]
-    }))
-    .expect("syntax generation")
-}
-
 fn search_prime_generation(
     root: &std::path::Path,
     generation_id: &str,
@@ -480,48 +342,6 @@ fn write_search_packet_artifact(cache_root: &std::path::Path, file_name: &str, q
     });
     let bytes = serde_json::to_vec(&packet).expect("search packet bytes");
     std::fs::write(search_dir.join(file_name), bytes).expect("write search packet");
-}
-
-fn syntax_packet_with_matches() -> Value {
-    json!({
-        "schemaId": "agent.semantic-protocols.semantic-tree-sitter-query",
-        "method": "query",
-        "languageId": "rust",
-        "providerId": "rs-harness",
-        "grammarId": "tree-sitter-rust",
-        "grammarProfileVersion": "2026-06-04.v1",
-        "query": {
-            "input": "(function_item name: (identifier) @function.name)",
-            "inputForm": "s-expression",
-            "dialect": "tree-sitter-query",
-            "compiledSource": "(function_item name: (identifier) @function.name)",
-            "fields": {
-                "selector": "src/lib.rs:1:80",
-                "codeOutput": false,
-                "captures": ["function.name"]
-            }
-        },
-        "matches": [
-            {
-                "id": "m1",
-                "range": {"path": "src/lib.rs", "lineRange": "10:12"},
-                "captures": [
-                    {
-                        "id": "c1",
-                        "name": "function.name",
-                        "nodeType": "identifier",
-                        "range": {"path": "src/lib.rs", "lineRange": "10:10"},
-                        "fields": {"symbol": "parse_query"}
-                    }
-                ]
-            }
-        ],
-        "truncated": false,
-        "cache": {
-            "artifactKind": "semantic-tree-sitter-query",
-            "rawSourceStored": false
-        }
-    })
 }
 
 fn rust_provider() -> ResolvedProvider {

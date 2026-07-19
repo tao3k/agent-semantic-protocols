@@ -470,3 +470,71 @@ pub(super) async fn turso_complete_dispatch(
     .await?
     .ok_or_else(|| "completed agent dispatch lease was not readable".to_string())
 }
+
+pub(super) async fn turso_mark_dispatch_orphaned(
+    db_path: &Path,
+    request: super::types::AgentSessionDispatchMarkOrphanedRequest<'_>,
+) -> Result<super::types::AgentSessionDispatchLeaseRecord, String> {
+    let connection = connect_turso_agent_session_registry(db_path).await?;
+    let lease = turso_dispatch_lease_by_identity(
+        &connection,
+        request.project_id,
+        request.root_session_id,
+        request.name,
+        request.dispatch_identity,
+    )
+    .await?
+    .ok_or_else(|| "cannot mark an unknown agent dispatch identity orphaned".to_string())?;
+    if lease.command_digest != request.command_digest {
+        return Err(format!(
+            "dispatch identity digest mismatch: identity={} stored={} requested={}",
+            request.dispatch_identity, lease.command_digest, request.command_digest
+        ));
+    }
+    match lease.status.as_str() {
+        "in-flight" => {
+            execute_turso_operation_with_lock_retry(
+                || async {
+                    connection
+                        .execute(
+                            "UPDATE asp_agent_dispatch_leases
+                             SET status = 'orphaned-awaiting-rebind',
+                                 updated_at = ?1
+                             WHERE project_id = ?2
+                               AND root_session_id = ?3
+                               AND name = ?4
+                               AND dispatch_identity = ?5
+                               AND status = 'in-flight'",
+                            (
+                                request.now,
+                                request.project_id,
+                                request.root_session_id,
+                                request.name,
+                                request.dispatch_identity,
+                            ),
+                        )
+                        .await
+                        .map_err(|error| error.to_string())
+                },
+                "failed to mark Turso agent dispatch lease orphaned",
+            )
+            .await?;
+        }
+        "orphaned-awaiting-rebind" | "terminal" => {}
+        other => {
+            return Err(format!(
+                "dispatch is not orphanable: identity={} status={other}",
+                request.dispatch_identity
+            ));
+        }
+    }
+    turso_dispatch_lease_by_identity(
+        &connection,
+        request.project_id,
+        request.root_session_id,
+        request.name,
+        request.dispatch_identity,
+    )
+    .await?
+    .ok_or_else(|| "orphaned agent dispatch lease was not readable".to_string())
+}

@@ -50,7 +50,13 @@ fn search_pipe_seeds_omits_graph_projection_from_default_stdout() {
     assert!(!stdout.contains("evidenceEdges="), "{stdout}");
     assert!(!stdout.contains("rankedEvidence="), "{stdout}");
     assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
-    assert!(stdout.contains("nextCommand=asp fd -query"), "{stdout}");
+    assert!(stdout.contains("nextCommand=-"), "{stdout}");
+    assert!(
+        stdout.contains("nextClasses=search-deps,owner-items,treesitter-query,query-selector"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("fd-query"), "{stdout}");
+    assert!(!stdout.contains("rg-query"), "{stdout}");
     assert!(
         !stdout.contains("nextCommand=asp rust query --code"),
         "{stdout}"

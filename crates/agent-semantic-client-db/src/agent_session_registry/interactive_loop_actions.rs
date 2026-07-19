@@ -1,5 +1,23 @@
 //! Host action text for configured resident-agent lifecycle menus.
 
+pub(super) fn managed_agent_kind(name: &str) -> std::borrow::Cow<'_, str> {
+    if name.is_empty()
+        || name.starts_with('-')
+        || name.ends_with('-')
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return std::borrow::Cow::Borrowed("unknown-resident-agent-kind");
+    }
+
+    match name {
+        "asp-explore" => std::borrow::Cow::Borrowed("asp_explorer"),
+        "asp-testing" => std::borrow::Cow::Borrowed("asp_testing"),
+        _ => std::borrow::Cow::Owned(name.replace('-', "_")),
+    }
+}
+
 pub(super) fn host_tree_audit_action(name: &str) -> &'static str {
     if name == "asp-testing" {
         "Call the native collaboration list-agents surface for this root task. If /root/asp_testing is absent, record `direnv exec . asp agent session observe-host-tree --name asp-testing --resident-target-status absent` and re-enter bootstrap. If it is present, record the corresponding present observation with canonical target /root/asp_testing before attempting follow-up. A historical rollout ID alone is never a callable target."
@@ -8,20 +26,23 @@ pub(super) fn host_tree_audit_action(name: &str) -> &'static str {
     }
 }
 
-pub(super) fn host_tree_resume_action(name: &str) -> &'static str {
-    if name == "asp-testing" {
-        "Use the main agent's native follow-up surface for /root/asp_testing. Completed or idle native children remain resumable and must keep the same identity. If the host returns target/path/id not found, record `direnv exec . asp agent session observe-host-tree --name asp-testing --resident-target-status absent`, then re-enter bootstrap. Do not close a host-visible child or retry a historical child ID."
-    } else {
-        "Use the main agent's native follow-up surface for /root/asp_explorer. Completed or idle native children remain resumable and must keep the same identity. If the host returns target/path/id not found, treat that native failure as a fresh absence observation: run `direnv exec . asp agent session observe-host-tree --name asp-explore --resident-target-status absent`, then re-enter bootstrap. Do not close a host-visible child or retry a historical child ID."
-    }
+pub(super) fn host_tree_resume_action(name: &str) -> String {
+    let canonical_target = format!("/root/{}", managed_agent_kind(name));
+    format!(
+        "Use the main agent's native follow-up surface for {canonical_target}. Completed or idle native children remain resumable and must keep the same identity. If the follow-up succeeds, immediately record `direnv exec . asp agent session observe-host-ack --name {name} --canonical-target {canonical_target} --evidence-ref <native-followup-receipt>`, then re-enter bootstrap; this is the same-child live binding writeback and must not be replaced by spawn. If the host returns target/path/id not found, record `direnv exec . asp agent session observe-host-tree --name {name} --resident-target-status absent`, then re-enter bootstrap. Do not close a host-visible child, spawn a duplicate, or retry a historical child ID."
+    )
 }
 
-pub(super) fn orphan_replacement_action(name: &str) -> &'static str {
-    if name == "asp-testing" {
-        "The fresh native host-tree receipt proves /root/asp_testing is absent. The registry owner is orphan-risk, so create exactly one child with agent_type=asp_testing, task_name=asp_testing, and fork_turns=none. SubagentStart atomically releases the orphaned registry owner and registers the new native identity."
-    } else {
-        "The fresh native host-tree receipt proves /root/asp_explorer is absent. The registry owner is orphan-risk, so create exactly one child with agent_type=asp_explorer, task_name=asp_explorer, and fork_turns=none. SubagentStart atomically releases the orphaned registry owner and registers the new native identity."
+pub(super) fn orphan_replacement_action(name: &str, managed_agent_kind: &str) -> String {
+    if managed_agent_kind == "unknown-resident-agent-kind" {
+        return format!(
+            "Resident {name} has no configured managed agent kind. Do not replace the orphaned owner with a fallback child, generic agent, or normal thread; report host-agent-type-unavailable and keep only this resident lane blocked."
+        );
     }
+
+    format!(
+        "The fresh native host-tree receipt proves /root/{managed_agent_kind} is absent. The registry owner is orphan-risk, so create exactly one child with agent_type={managed_agent_kind}, task_name={managed_agent_kind}, and fork_turns=none. SubagentStart atomically releases the orphaned registry owner and registers the new native identity."
+    )
 }
 
 pub(super) fn typed_spawn_audit_action(name: &str) -> &'static str {
@@ -32,12 +53,16 @@ pub(super) fn typed_spawn_audit_action(name: &str) -> &'static str {
     }
 }
 
-pub(super) fn managed_resident_create_action(name: &str) -> &'static str {
-    if name == "asp-testing" {
-        "Only after rollout and host-tree audits miss, create one child with agent_type=asp_testing, task_name=asp_testing, and fork_turns=none so /root/asp_testing is canonical. Re-enter bootstrap after SubagentStart; do not use prompt text as profile selection."
-    } else {
-        "Only when rollout history and the native host agent tree both prove that no reusable ASP resident child exists, use a platform-native creation surface that explicitly exposes agent_type. Set agent_type=asp_explorer to select the registered profile, task_name=asp_explorer to reserve the canonical /root/asp_explorer path, and fork_turns=none, then create once. message text does not select the registered profile. If agent_type is not exposed, report host-agent-type-unavailable; do not create generic fallback agents or normal threads. Re-enter this pane after the native create call returns so SubagentStart can be audited."
+pub(super) fn managed_resident_create_action(name: &str, managed_agent_kind: &str) -> String {
+    if managed_agent_kind == "unknown-resident-agent-kind" {
+        return format!(
+            "Resident {name} has no configured managed agent kind. Do not create a fallback child, generic agent, or normal thread; report host-agent-type-unavailable and keep only this resident lane blocked."
+        );
     }
+
+    format!(
+        "Only when rollout history and the native host agent tree both prove that no reusable ASP resident child exists, use a platform-native creation surface that explicitly exposes agent_type. Set agent_type={managed_agent_kind} to select the registered profile, task_name={managed_agent_kind} to reserve the canonical /root/{managed_agent_kind} path, and fork_turns=none, then create once. message text does not select the registered profile. If agent_type is not exposed, report host-agent-type-unavailable; do not create generic fallback agents or normal threads. Re-enter this pane after the native create call returns so SubagentStart can be audited."
+    )
 }
 
 pub(super) fn runtime_observation_action(name: &str) -> &'static str {

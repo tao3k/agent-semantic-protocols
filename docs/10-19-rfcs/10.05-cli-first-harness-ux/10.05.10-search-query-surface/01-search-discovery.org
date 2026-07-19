@@ -1,0 +1,237 @@
+** =search= — discovery and candidate acquisition
+
+Every read-only discovery step goes through =<lang-harness> search=.  Search
+returns compact evidence, owner/test seeds, dependency facts, and candidate
+frontiers.  It should not be the primary path for parser-owned code extraction.
+Common views:
+
+#+begin_src shell
+<lang-harness> search prime
+
+<lang-harness> search owner <path-or-owner>
+<lang-harness> search dependency <crate-or-import-or-package>
+
+<lang-harness> search symbol <name>
+<lang-harness> search callsite <name>
+<lang-harness> search import <root>
+<lang-harness> search pattern <recipe>
+<lang-harness> search tests <owner-or-path>
+<lang-harness> search lexical <query>
+#+end_src
+
+=search lexical= is the preferred agent-facing lexical candidate command.  The
+name is intentional: LLMs already know =lexical= means fuzzy filtering/ranking over
+a candidate stream, so the command communicates the search behavior better than
+a provider-invented =text= abstraction.  The provider still owns the pipeline:
+=rg= or an equivalent scanner builds bounded candidates, =lexical= or an
+equivalent scorer ranks them headlessly, then the provider groups by owner,
+deduplicates, caps, and renders compact seeds.
+
+Search wrapper grammar owns query-shape admission before any finder backend is
+invoked.  The shared =asp fd=, =asp rg=, =search pipe=, and =search lexical=
+surfaces must reject workspace-wide or package-wide generic phrases when the
+query has no path, selector, symbol, error-code, or other specific axis and no
+explicit native/backend filter.  This is a protocol boundary, not an =rg=
+optimization: broad natural-language intent belongs to the agent's planning
+step, while the backend receives bounded path/symbol/error-code/dependency/owner
+axes.  A blocked command must stop before native finder execution, provider fact
+collection, graph rendering, or query-set expansion, and it must emit a compact
+=noOutput reason=query-too-broad= receipt with exactly one granular follow-up
+example, for example:
+
+#+begin_src shell
+asp fd -query 'path-or-symbol|error-code' --workspace <scope>
+#+end_src
+
+If the agent needs a content backend anyway, it must first narrow the scope or
+provide backend-native filters after the wrapper boundary, such as =--
+<rg/fd option...>=.  Accepted native options are still budgeted backend inputs;
+they are not permission to emit unbounded stdout.
+
+Do not expose the old text-named compatibility view.  Exact lexical matching,
+fixed-string matching, and fuzzy matching are modes of =search lexical= or provider
+finder pipelines, not separate public views.  =search lexical= is not a language
+query: code-shaped questions, known owners, symbols, declarations, parser
+items, and hook read reroutes should use top-level =query= first.
+
+Agent-facing =search lexical= grammar keeps search composition, workspace
+selection, and lexical-native options separate:
+
+#+begin_src text
+<lang-harness> search lexical <query> [owner|tests|items|...] [--scope <path-or-kind>] \
+  [--pipe <surface>] [--view seeds|hits|graph|both] [PROJECT_ROOT] \
+  [--lexical-arg <lexical-option> ...]
+<lang-harness> search lexical <query> [search-options...] [PROJECT_ROOT] --lexical <lexical-options...>
+#+end_src
+
+=--scope=, =--pipe=, =--view=, =--query-set=, and =--workspace= belong to the
+harness search grammar.  Positional paths in =search lexical= are search scopes,
+not project roots; they resolve under the selected workspace unless they are
+absolute paths.  =--lexical-arg <value>= passes one provider-approved lexical-native
+option without changing grammar ownership.  =--lexical= is a boundary marker: it
+must be the last harness option and all following tokens are lexical-native
+options, so agents should place =--workspace <workspace-root>= before =--lexical=
+or omit it and let the provider use the invocation workspace.
+Providers must reject interactive or shell-shaped lexical options on agent paths
+and record accepted/rejected options in the search packet =finder= field.
+
+An explicit =--workspace <workspace-root>= selects the target project root for
+=search= and =query=, including absolute roots outside the current activation
+workspace. The provider activation, installed binary, and registry still come
+from the invocation workspace; only source resolution, selector reads, cache
+keys, and provider working directory move to the selected project root.
+Positional =PROJECT_ROOT= inference remains activation-workspace bounded so
+accidental trailing paths cannot silently escape the active project.
+Path scopes passed to =search lexical= are search scopes, not extra project roots.
+Providers must normalize them against the discovered project/package root and
+its ancestors.  For example, when the package root is =crates/demo= inside a
+workspace, =search lexical run owner crates/demo/tests .= must scope to package-local
+=tests= instead of resolving =crates/demo/crates/demo/tests=.
+
+In fuzzy mode, a plain query containing multiple whitespace-separated tokens may
+be promoted to the same homogeneous query-set machinery as explicit
+=--query-set= terms.  The provider must mark the output with =querySet=N= and a
+query-set selector so agents can see that the single lexical phrase was decomposed
+into bounded same-axis lexical terms.  Exact mode keeps the query as one literal
+lexical pattern.
+
+=search owner= resolves semantic owners first, then parser-visible modules,
+then existing project paths.  A parser-visible module that is not a reasoning
+owner should return =source=parser-visible-module=, =parserOwner=false=, and
+module facts such as role, layer, line count, validity, and diagnostics.  A path
+outside the parser module set may return =source=path-only= and
+=next=ingest:<path>= so agents can keep the path in the protocol instead of
+falling back to raw shell output.
+
+=search deps <dependency[@version][::api]>= is the provider-owned dependency
+usage view.  The language provider resolves project manifests, lockfiles,
+package metadata, imports, and use-sites with its native project model, then
+emits dependency hits, owner/test frontiers, and the replay-safe
+=cache.fileHashes= evidence in the =semantic-search-packet=.  The ASP client
+may validate and compare those hashes for warm-hit replay, but it must not
+hard-code dependency manifests, package layouts, or source roots outside the
+language provider.  Providers should set =cache.rawSourceStored=false= for this
+view because replay stores compact search output and packet artifacts, not raw
+dependency source.
+
+Agent-facing search command surfaces should expose dependency routes as command
+affordances, not as natural-language workflow rules.  The prompt-visible command
+shape is =asp <language> search deps <dependency[@version][::api]> --workspace
+<workspace-root> --view seeds=.  =search pipe= remains the graph-ranked query
+frontier, but when its graph-turbo packet contains dependency topology nodes
+that match the query, the action frontier should materialize a =search-deps=
+action and executable =nextCommand= ahead of generic =fd= or =rg= fallback.  The
+graph signal owns this promotion: SKILL text lists command syntax and purpose,
+while the agent chooses the command from intent, graph evidence, and the ranked
+frontier.
+
+Dependency API and documentation questions must stay local-first.  When a query
+mentions a dependency plus an API, module path, platform concept, or external
+documentation target, the dependency view should emit executable local next
+actions such as =dependency:<crate>=, =docs:<crate>::<api>=,
+=docs-use:<crate>::<api>=, =crate-source:<crate>=, =import:<crate>=, and
+=tests:<api>= before any external documentation fallback.  Prompt-facing
+output must include =avoid=web-search,docs.rs-search= unless the provider has
+exhausted manifest facts, local dependency usage, local public API facts, and
+available crate source/doc artifacts.  A =doc= or =docs= frontier node is a
+provider-owned local documentation/API frontier; agents must not interpret it
+as permission to browse docs.rs while local dependency actions are available.
+
+The dependency selector grammar is one positional token:
+=<crate[@version][::api]>=.  A command such as =search deps tokio thread= is
+ambiguous because =thread= is neither a workspace nor a flag; facades must fail
+closed with a compact diagnostic that points to =search deps tokio::thread=
+instead of silently ignoring the extra token.  When a selector includes =::api=,
+compact output should preserve the original selector in =q= and emit local next
+actions for =dependency:<selector>=, =docs-use:<selector>=,
+=crate-source:<crate>=, =import:<crate>=, and =tests:<api>= so an agent can
+answer version-sensitive dependency questions from current local code or
+provider-owned documentation artifacts before relying on stale model memory or
+external web search.
+
+Dependency usage guidance is a capability-coverage surface, not just a
+declared-or-unused check.  When a provider has local dependency usage owners, it
+may emit =dependency-guidance= facts that classify the observed usage as
+=basic_usage= or =capability_boundary= and name missing boundary capabilities.
+For example, Rust can distinguish a =tokio= owner that only imports task APIs
+from one that uses timeout, cancellation, child-process lifecycle, or stream
+drain APIs.  These facts should point agents toward local =search deps
+<crate>::<capability>= queries and engineering follow-up, rather than treating a
+used dependency as already operationalized.
+
+Language-specific structural facts may participate in =search lexical= ranking when
+they are parser-owned and projected through the shared packet.  For Gerbil this
+means a query may match fact families such as macro definitions, binding
+surfaces, POO forms (=defclass=, =defgeneric=, =defmethod=, =defprotocol=),
+higher-order forms, control-flow forms, and dependency usage facts.  The match
+is still a search projection: compact output should cite the fact kind,
+language kind, owner, and source range, keep =rawSourceStored=false=, and avoid
+using call literal arguments or rendered source text as a hidden haystack.  For
+example, a query for a protocol should rank a =defprotocol= owner because the
+parser emitted =kind=interface=, =languageKind=defprotocol=, and =role=protocol=
+facts, not because a provider string-searched the source body.
+
+=search pipe= in automatic source mode must try the DB Engine source-index before
+search overlay or provider collection when the query has no owner scope. A
+source-index hit is the stable-generation fast path: compact output must report
+=sourceTrace=sourceIndex:used=, skip search overlay/provider collection, and
+render the next owner-local action from the indexed owner path. A miss, busy DB,
+or missing DB may continue to the existing overlay/provider route, but that
+continuation is a bounded recovery path, not a reason to synchronously refresh
+the index or write dirty overlay facts into Turso.
+The source-index owns stable owner/file recall only. Dynamic owner items,
+selector overlays, dirty subagent edits, and owner-local parser facts remain
+overlay/provider surfaces and must not be inserted into the durable source-index
+on every agent edit. If a dynamic overlay later uses Turso internals, it must do
+so as a session-scoped overlay with explicit provenance, not by mutating the
+stable generation index.
+** Dynamic owner-items use the shared owner-items interface
+For a non-empty owner-items query, the emitted frontier is the minimal matching AST cut. If a matching =impl=, class, module, or other container strictly contains a matching child item, =items= emits only the more-specific child. Containers remain valid results when they are themselves the narrowest matching fact, but =items= must not flatten an ancestor and its matching descendant into peer evidence. This is an AST projection rule, not post-render deduplication: each parser node is projected once and parent/child containment decides the frontier before ranking or rendering.
+
+An explicit owner path is sufficient authority for this projection. Source-index, FTS, and cross-owner candidate routes may provide cache health or broader discovery elsewhere, but they must not inject competing owner-item candidates into =search owner <path> items=. The selected language harness parse is the sole fact source for that command.
+
+For a Rust owner whose path is explicit, this parser-owned projection runs before generic search preflight, activation runtime, provider, cache, or database setup. The command still honors the lightweight language-enabled configuration check. Only a missing owner, an empty local AST projection, or a language without a native projection may continue into the normal activated provider route.
+
+=search owner <path> items --workspace . --view seeds= is valid without =--query=. Empty query means "enumerate bounded owner-local structural anchors" for the selected owner. This surface is dynamic dirty-code search, not a durable DB indexing request. The command facade should use a =languages/*-harness= owner-items interface, then let Rust orchestrate caching, overlay merge, ranking, timeout control, and compact rendering around that interface.
+
+This interface is an orchestrator/render boundary, not a fallback parser and not a place to encode language grammar. Complete item semantics come from =languages/*-harness= command-line interfaces and their schemas/artifacts. For =search owner <path> items --view seeds= the language harness contract is intentionally narrow: parse the selected owner file, project owner-local parser facts, and return the shared owner-items packet. It must not need workspace traversal, dependency fan-out, cross-owner ranking, DB refresh, or graph expansion for this command. ASP owns those heavier workflows when the agent asks for broader search, and it can call the same single-owner harness interface many times through batch/warm/overlay policy.
+
+ASP must not hard-code file extensions, Rust visibility/async syntax, TypeScript declaration variants, Python decorator rules, Scheme forms, or similar provider-owned parser knowledge in client/protocol crates. The owner-items route should dispatch to the active language harness even when capability metadata is incomplete; only a harness failure or empty owner-items contract for an existing owner should fail closed. ASP must not synthesize language facts from raw source text.
+
+For agent-facing performance, the CLI shape hides a layered execution plan:
+#+begin_src text
+asp <language> search owner <owner> items
+-> Rust ASP facade normalizes workspace/owner/query
+-> Rust ASP selects one or more owners and calls the active language harness CLI
+-> language harness parses only the requested owner file and emits native parser facts
+-> Rust ASP applies trust, timeout, warm-worker, batch, and overlay policy
+-> Rust ASP validates/normalizes the packet and merges cache/overlay state
+-> Rust ASP renders compact selector-first evidence for the agent
+#+end_src
+The language harness must stay thin in the opposite direction: it should not own global DB paths, graph ranking, prompt rendering, multi-session overlay policy, or state-root layout. It does own native parser facts and language ecosystem integration. This is why performance work belongs primarily in the Rust wrapper/runtime path and packet contract, not in adding ad hoc parser heuristics to ASP.
+
+The performance acceptance target is the first evaluated query on an already-built ASP binary and already-installed language harness, not a second query that only proves stdout cache reuse and not a =cargo run= or build path. For owner-local dynamic search, that first query should stay in the millisecond class by using a bounded harness owner-items interface, warm/batch-capable wrapper policy, compact packets, and source-hash cache probes. Persisted DB and result-cache hits are allowed to make later runs cheaper, but they are not the primary explanation for the interface.
+
+The packet contract is shared across languages. The default owner-items schema should be reused for any language that can express owner path, item kind, item name, selector, display range, and source/generation identity. Provider-specific language details may be carried as extension fields, but the Rust wrapper cache, DB ingestion, graph bridge, and compact render should stay shared. A new language should not create a new owner-items route just because its syntax differs.
+
+=search owner <path> items --workspace . --view seeds= is the owner-local discovery surface. Code projection is a separate exact-item step: the agent selects one parser-owned item locator from that frontier, then runs =query --selector <language://path#item/kind/name> --workspace . --code=. The owner path itself is never the executable code selector and line ranges are never semantic identity.
+
+=search pipe <seed>= is a refinement/combinator surface, not a single-token lexical lookup. Without an exact =--selector= seed, the facade must reject a single seed atom such as =Connected= before provider/backend collection and point the agent to lexical, fd-query, owner-items, or exact selector routes. Pipe succeeds only when it has at least two independent seed atoms/candidates to compose into a query pack or reasoning frontier.
+
+Durable Turso FTS/BM25 belongs to stable generations and accepted checkpoints. Dirty overlays may later reuse Turso-owned search internals through the DB Engine/search adapter, but the hot path must not synchronously insert every subagent edit into the durable DB.
+** Line selectors are display and transport hints
+Agent-facing =search= and default =query= frontiers must distinguish semantic identity from source transport. Parser-owned identities are =structuralSelector=, semantic handle ids, native fact ids, owner/item names, tree-sitter query recipes, or another schema-owned structural selector. Line ranges remain useful, but only as =displayLineRange= for humans and =sourceLocatorHint= for the final exact source transport path.
+
+Prompt-visible =syntax=, =owner-items=, =treeSitterHandles=, compact graph aliases, and action-frontier entries must not put =path:start:end= or =path:start-end= in the executable selector position. If the only known fact is a line range, the next action is an outline, names, owner-items, or query-set repair action. Exact source transport is an internal audited fallback after parser-owned evidence has selected a bounded window; it must not appear as the guide or recovery default.
+
+This rule does not delete line fields from packets. It moves them out of the decision selector. Renderers should prefer:
+
+#+begin_src text
+structuralSelector=<parser-owned-uri-or-handle>
+displayLineRange=<start:end>
+sourceLocatorHint=<path:start:end>
+projection=outline|names|content|code
+codePolicy=no-code|code-after-exact-selector|requires-exact-code
+#+end_src
+
+The regression gate is observable at the ARI layer: =syntax= aliases, =syntax ... selector= rows, default =owner-items= rows, and graph-turbo action-frontier JSON must have zero prompt-visible line selectors in executable selector fields. Exact =--code= routes may still carry line selectors as source transport.

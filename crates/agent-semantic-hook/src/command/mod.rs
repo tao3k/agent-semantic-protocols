@@ -11,8 +11,8 @@ mod source_intent;
 
 pub(crate) use apply_patch::apply_patch_source_paths;
 pub use asp::{
-    AspLanguageCommand, AspLanguageCommandIntent, asp_invocation_indices,
-    classify_asp_language_command_tokens, classify_asp_language_command_tokens_with_policy,
+    AspLanguageCommand, asp_invocation_indices, classify_asp_language_command_tokens,
+    classify_asp_language_command_tokens_with_policy,
 };
 pub(crate) use intent::{CommandIntent, command_intent};
 pub(crate) use provider_candidates::{command_source_paths, path_like_token_matches};

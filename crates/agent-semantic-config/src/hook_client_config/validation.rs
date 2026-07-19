@@ -2,14 +2,15 @@
 
 use std::collections::HashSet;
 
-use super::model::{
+use super::agent_runtime::HookClientResidentAgentConfig;
+use super::document::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
-    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig,
-    HookClientAspCommandIntentPolicyConfig, HookClientConfigFile, HookClientRecoveryPromptConfig,
-    HookClientResidentAgentConfig, HookClientRuleConfig, HookClientRuleMatchConfig,
-    HookClientRuleRouteConfig,
+    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig, HookClientConfigFile,
+    HookClientRecoveryPromptConfig,
 };
+use super::intent_policy::HookClientAspCommandIntentPolicyConfig;
+use super::routing::{HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig};
 
 pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
@@ -29,7 +30,7 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
 }
 
 fn validate_execution_lanes(
-    lanes: &super::model::HookClientExecutionLanesConfig,
+    lanes: &super::agent_runtime::HookClientExecutionLanesConfig,
     resident_agents: &[HookClientResidentAgentConfig],
 ) -> Result<(), String> {
     let mut command_prefix_owners = std::collections::BTreeMap::new();
@@ -45,7 +46,7 @@ fn validate_execution_lanes(
                 "{prefix}.commandPrefixes must not be empty when enabled"
             ));
         }
-        if lane.transport == super::model::HookClientExecutionTransport::ResidentAgent {
+        if lane.transport == super::agent_runtime::HookClientExecutionTransport::ResidentAgent {
             validate_non_empty(&format!("{prefix}.residentName"), &lane.resident_name)?;
             if !resident_agents
                 .iter()
@@ -152,7 +153,7 @@ fn validate_agent_session_guide(config: &HookClientAgentSessionGuideConfig) -> R
 }
 
 fn validate_agent_session_messages(
-    config: &super::model::HookClientAgentSessionMessagesConfig,
+    config: &super::document::HookClientAgentSessionMessagesConfig,
 ) -> Result<(), String> {
     validate_optional_non_empty(
         "agentSessionMessages.sourceAccessCompactSubagent",

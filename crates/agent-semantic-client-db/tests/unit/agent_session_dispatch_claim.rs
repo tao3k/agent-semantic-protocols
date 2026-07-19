@@ -34,6 +34,34 @@ fn same_identity_and_digest_waits_without_resend() {
 }
 
 #[test]
+fn orphaned_awaiting_rebind_replays_once_after_verified_generation() {
+    assert_eq!(
+        dispatch_claim_action(
+            Some(&lease("orphaned-awaiting-rebind", "digest")),
+            "identity",
+            "digest",
+            "resident-command-bridge:/root/asp_testing",
+            "generation-2",
+        )
+        .unwrap(),
+        "send"
+    );
+}
+
+#[test]
+fn orphaned_awaiting_rebind_waits_for_new_generation() {
+    let error = dispatch_claim_action(
+        Some(&lease("orphaned-awaiting-rebind", "digest")),
+        "identity",
+        "digest",
+        "resident-command-bridge:/root/asp_testing",
+        "generation-1",
+    )
+    .unwrap_err();
+    assert!(error.contains("not deliverable"));
+}
+
+#[test]
 fn terminal_identity_and_digest_completes_without_resend() {
     assert_eq!(
         dispatch_claim_action(

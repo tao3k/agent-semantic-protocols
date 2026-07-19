@@ -1,0 +1,184 @@
+#+TITLE: 10.05.11 Merkle Workspace Snapshot Authority
+#+SUBTITLE: Live source is authoritative; indexes are content-addressed derived artifacts
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Draft for implementation and cross-provider alignment.
+
+* Problem
+
+Agent coding changes a workspace faster than a mutable semantic index can be
+refreshed.  An exact selector must therefore never use the presence or absence
+of an indexed owner or item as the authority for current source state.
+
+The failure mode addressed by this RFC is:
+
+#+begin_example
+live file or editor buffer changes
+  -> dynamic search can observe candidate text
+  -> exact query resolves against an older indexed owner/item set
+  -> a false item-not-found result is emitted
+#+end_example
+
+An index miss may reduce search quality or performance.  It must not turn a
+live source hit into a negative correctness result.
+
+* Authority law
+
+Every source-facing search or query command MUST pin one immutable workspace
+snapshot for the duration of the command.  The snapshot is identified by a
+Merkle root over normalized workspace-relative paths and source blob digests.
+
+The authority order is:
+
+1. pinned live workspace snapshot, including editor-buffer overlays;
+2. parser artifact keyed by source blob digest and provider/parser digest;
+3. content-addressed semantic or graph artifacts derived from that snapshot;
+4. mutable registry or database pointers, used only to discover reusable
+   artifacts.
+
+A database row, generation number, Git HEAD, or cached owner set MUST NOT veto
+a path or item that exists in the pinned live snapshot.
+
+* Snapshot model
+
+The language-neutral snapshot evidence is:
+
+#+begin_example
+SourceSnapshotEvidence {
+  schemaId
+  rootDigest
+  sourceKind
+  baseRootDigest?
+  providerDigest?
+  dirtyPathsDigest?
+}
+#+end_example
+
+Each source leaf commits to:
+
+#+begin_example
+normalized workspace-relative path
+file kind and executable mode when relevant
+source blob digest
+#+end_example
+
+An editor buffer, an untracked file, a deletion, or a rename is represented as
+a Merkle delta over a base snapshot.  Applying that delta produces a normal
+derived snapshot root.  Downstream consumers MUST NOT maintain a separate
+"overlay truth" beside the snapshot.
+
+* Exact selector resolution
+
+Exact selector resolution MUST perform these steps in order:
+
+1. normalize the selector namespace into a workspace-relative path;
+2. resolve that path in the pinned snapshot;
+3. load or build a parser artifact for the resolved blob digest;
+4. resolve the exact item kind and name in that parser artifact;
+5. emit resolution evidence tied to the snapshot and blob digests.
+
+The following terminal states are distinct protocol states:
+
+- =owner-not-in-snapshot=
+- =selector-path-namespace-mismatch=
+- =item-not-in-live-owner=
+- =parser-failed=
+- =live-hit=
+- =artifact-cache-hit=
+
+=stale-index= MUST NOT be translated into =item-not-found=.  Index
+availability is orthogonal evidence and may be reported separately.
+
+* Derived artifact contract
+Every provider manifest MUST expose a descriptor at =searchCapabilities.sourceSnapshot= conforming to =provider-source-snapshot-descriptor.v1=. Activation MUST preserve this object verbatim; a missing descriptor or =null= search capabilities is an activation error.
+
+The source snapshot root MUST use the shared =agent-semantic-artifacts= identity contract: BLAKE3 artifact leaves, deterministically ordered artifact child edges, and a =sourceSnapshot= artifact node. Providers MUST NOT introduce a private workspace-root hash algorithm. Existing per-file hashes, including SHA-256 file hashes, are leaf payload inputs only; they are not the workspace authority.
+
+
+Parser, search, and graph artifacts MUST be content addressed.  Their keys
+commit to all correctness-relevant inputs, including:
+
+#+begin_example
+parser artifact  = H(language, parser version, provider digest, blob digest)
+search shard     = H(schema version, provider digest, subtree digest)
+graph artifact  = H(graph schema version, dependency input digests)
+#+end_example
+
+Negative results are reusable only under the exact snapshot root and provider
+digest that produced them.
+
+An artifact cache may be absent, incomplete, or behind the live snapshot.  A
+consumer MUST either build the missing artifact from the pinned snapshot or
+report partial derived evidence.  It MUST NOT report a definitive live-source
+negative solely from the missing artifact.
+
+* Packet evidence
+Every =sourceSnapshot= MUST carry a BLAKE3 =providerDigest= that commits to the activated provider/registry identity. Derived artifacts are addressable only by the tuple =(rootDigest, providerDigest, parser-or-schema-digest)=.
+
+Both evidence objects are mandatory under this breaking contract. =resolutionEvidence.snapshotRoot= MUST equal =sourceSnapshot.rootDigest=. A =derived-index= authority is admissible only when its artifact key commits to the same snapshot root and provider digest; missing evidence is rejected rather than downgraded to legacy freshness.
+
+
+Search and query packets MUST carry =sourceSnapshot=.  Exact selector results
+and graph/search facts SHOULD carry =resolutionEvidence=:
+
+#+begin_example
+ResolutionEvidence {
+  schemaId
+  snapshotRoot
+  authority
+  state
+  ownerPath?
+  ownerBlobDigest?
+  parserArtifactDigest?
+  indexArtifactDigest?
+}
+#+end_example
+
+=authority= identifies =live-parser=, =content-cache=, or =derived-index=.
+Packets without snapshot evidence are legacy packets and cannot claim current
+workspace freshness.
+
+* CLI behavior
+
+Human and JSON output MUST preserve the difference between live-source state
+and derived-index state.  Recommended next commands MUST use the normalized
+live owner when available.
+
+A path namespace mismatch MUST recommend path normalization or owner discovery;
+it MUST NOT recommend rebuilding the index as the correctness fix.
+
+* Breaking migration
+
+This RFC intentionally defines a breaking protocol generation.  There is no
+legacy packet fallback and no mutable-index authority compatibility mode.
+
+1. Publish a new shared schema that requires snapshot and resolution evidence.
+2. Reject packets and provider descriptors that cannot declare their pinned
+   snapshot root and resolution authority.
+3. Make exact selectors resolve from the pinned snapshot and parser artifact.
+4. Represent lexical/editor overlays as Merkle deltas that produce a new root.
+5. Key semantic and graph artifacts by snapshot/subtree digests.
+6. Remove mutable indexed-owner presence from the exact-query authority path.
+7. Remove old constructors and tests that permit snapshot-free refresh or
+   query results.
+
+* Conformance gates
+
+A provider conforms only when all of these hold:
+
+- a newly added unindexed item is immediately queryable by exact selector;
+- a renamed owner makes the old path =owner-not-in-snapshot=;
+- database unavailability does not break exact live-source queries;
+- two snapshots with the same path and different content cannot share a
+  correctness result;
+- concurrent commands pinned to different roots are independently reproducible;
+- cache-hit and live-parse item identities are equivalent;
+- index lag can reduce performance but cannot create a false negative.
+
+* Non-goals
+
+This RFC does not require removing databases or background indexing.  It
+removes their authority over live source correctness and makes their artifacts
+explicitly derived, content-addressed, and disposable.

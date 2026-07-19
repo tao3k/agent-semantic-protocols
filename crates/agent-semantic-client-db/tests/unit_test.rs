@@ -2,6 +2,8 @@
 
 #[path = "unit/agent_session_interactive_loop.rs"]
 mod agent_session_interactive_loop;
+#[path = "unit/agent_session_lifecycle_p0.rs"]
+mod agent_session_lifecycle_p0;
 #[path = "unit/db.rs"]
 mod db;
 #[path = "unit/db/engine/mod.rs"]

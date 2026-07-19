@@ -1,0 +1,33 @@
+** Rust harness execution scope is explicit
+Rust harness execution has no compatibility default. The CLI MUST require an explicit
+=check= command. A positional path on =check= resolves to the nearest Cargo package and
+selects =Package= scope; =check= without a path resolves the current Cargo project/workspace
+and selects =ProjectWorkspace= scope.
+
+The public harness runner contract MUST require a typed execution scope. Unsuffixed runner
+APIs that silently choose =ProjectWorkspace= are legacy and MUST be removed rather than
+deprecated. Cargo build-policy entry points rooted at =CARGO_MANIFEST_DIR= select =Package=
+explicitly. Callers that intend dependency-topology or workspace expansion select
+=ProjectWorkspace= explicitly. The harness, not a Rust router heuristic, remains the owner
+of Cargo package/workspace discovery.
+
+** File selector code recovery is shared
+File-selector =--code= recovery is a shared preflight contract, not a
+language-specific error string. When any registered source language receives
+=query --selector <file> --code=, the facade must stop before provider
+execution and render compact machine-readable recovery fields:
+#+begin_src text
+selectorState=file-selector
+projection=code
+allowed=false
+reason=file-selectors-are-not-code-selectors
+nextAction=materialize-owner-items
+nextCommand=asp <language> search owner <file> items --workspace <workspace-root> --view seeds
+requiredSelector=<language>://<file>#item/<kind>/<name>
+#+end_src
+The command may also include prose, but agents should be able to route from
+these fields alone. If owner-items later returns exactly one parser-owned item,
+that search surface may add a recommended exact =query --selector
+<parser-owned-uri> --code= action. The initial query preflight must not guess
+the item, read the file, render source text, or fall through to provider
+fallback.

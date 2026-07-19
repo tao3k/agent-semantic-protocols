@@ -81,7 +81,7 @@ flowchart TD
     N --> P{Host spawn exposes agent type?}
     O --> P
     P -->|Yes| K
-    P -->|No| Q[ReadyDegraded: exact inline parser fallback]
+    P -->|No| Q[Blocked: typed spawn unavailable]
     K --> R[SubagentStart captures typed child identity and target]
     R --> U{Type and model match typed profile?}
     U -->|No| I
@@ -92,9 +92,28 @@ flowchart TD
     Y -->|Yes| W
     Y -->|No| Z[Blocked: insufficient host evidence]
     W --> H
-    Q --> S[Execute exact parser-owned search or query]
-    S --> T[Emit digest-bound compact receipt]
+    Q --> S[Return command-local capability blocker]
 #+end_src
+Bootstrap is a read-only projection over committed evidence. It MUST NOT spawn,
+bind, orphan, replace, dispatch, complete, cleanup, or execute parser work by
+itself. Every mutation is performed by a named idempotent command handler that
+commits one event through compare-and-swap. The projection may return a next
+action, but the command handler owns the state transition.
+
+The lifecycle engine is divided into four independent state dimensions:
+- =ResidentSlot=: the logical service identity =(projectId, rootSessionId,
+  residentName)=.
+- =PhysicalGeneration=: the concrete host child for one slot generation.
+- =BindingLease=: the fresh verified live transport binding for one generation.
+- =DispatchLedger=: durable delivery and terminal receipt state for one command
+  digest.
+
+The engine never infers one dimension from another. A historical rollout can
+identify a generation, but cannot prove live routing. A canonical path can
+identify a host target, but cannot prove the expected typed profile. A matching
+model can support a profile verdict, but cannot prove agent type. A dispatch
+receipt can complete one command, but cannot prove resident readiness for a
+later command.
 
 * Lifecycle invariants
 
@@ -893,3 +912,76 @@ unobservable as explicit protocol states rather than leaving them as ambiguous
   search/query and emits a digest-bound =current-session= receipt.
 - The same ASP command without opt-in remains lifecycle-routed.
 - Adding the opt-in token to raw =rg= or another shell read remains denied.
+
+* Lifecycle engine correction
+This section is normative for lifecycle v1 stabilization and supersedes any older
+wording in this file that describes bootstrap as an imperative repair engine.
+
+The root cause of the resident drift failures is not profile syntax, symlink
+placement, or a missing fallback. The root cause is a lifecycle engine that
+collapsed five distinct authorities into one bootstrap decision:
+- logical resident slot identity;
+- physical Codex child generation;
+- verified live transport binding;
+- profile and reasoning evidence verdict;
+- durable dispatch identity and terminal receipt.
+
+Lifecycle v1 MUST implement these as separate state dimensions. The stable
+service identity is =(projectId, rootSessionId, residentName)=. The physical
+child is a generation of that slot. The live message target is a lease for one
+generation. Reasoning is a verdict over direct runtime evidence and profile
+attestation. Dispatch is a durable ledger entry keyed by dispatch identity and
+command digest.
+
+=bootstrap= and =status= are read-only projections over committed evidence. They
+MUST NOT spawn, bind, orphan, replace, dispatch, complete, cleanup, or execute
+parser work. They may return the next command handler to run. Mutation belongs
+only to idempotent command handlers that commit events through compare-and-swap.
+
+The v1 command handlers are:
+- =observe-subagent-start=: record typed child identity, model, profile, and
+  root attribution.
+- =observe-host-tree=: record weak native-tree presence or absence.
+- =observe-host-ack=: record a strong canonical follow-up or dispatch
+  acknowledgement.
+- =mark-target-not-found=: revoke only the binding lease for the affected
+  generation.
+- =create-typed-generation=: create exactly one configured typed child after
+  capability and replacement gates pass.
+- =bind-generation=: activate a verified live binding lease for one generation.
+- =orphan-generation=: mark the current generation orphaned without deleting
+  dispatch identity.
+- =replace-generation=: advance the slot to a new typed generation through CAS.
+- =claim-dispatch= and =complete-dispatch=: maintain durable dispatch continuity.
+
+Evidence strength is ordered. =list_agents= absence is weak evidence and cannot
+authorize replacement by itself. A replacement requires canonical target probe
+failure, such as native follow-up/path/id not found. If =list_agents= is absent
+but canonical follow-up succeeds, the child is hidden-but-routable and the engine
+MUST record =observe-host-ack= and rebind the same generation.
+
+Reasoning uses one verdict, not a fallback ladder:
+- =direct-match=;
+- =profile-attested-unobservable=;
+- =direct-mismatch=;
+- =temporarily-unavailable=;
+- =conflicting-evidence=.
+The =profile-attested-unobservable= verdict is Ready-capable only when typed
+profile identity, model match, root attribution, canonical binding, and absence
+of contradictory reasoning evidence all hold. It MUST preserve
+=observedReasoningEffort=null= and MUST NOT claim direct runtime observation.
+
+Dispatch continuity is first-class. Target loss changes =in-flight= to
+=orphaned-awaiting-rebind= for that delivery lease only. The dispatch identity
+and command digest remain stable. A verified later generation may replay that
+dispatch at most once. A terminal receipt is idempotent and is never replayed.
+
+Public receipts MUST be internally consistent. If the same child session ID,
+slot, generation, and trace prove same-child recovery, the receipt cannot report
+=sameChildIdentity=false=. If a target is unbound, the same receipt cannot also
+report =messageTargetStatus=ready= or =trusted-live-identity-binding=.
+
+Lifecycle v1 has no =ReadyDegraded=, inline parser fallback, generic child,
+path-only live binding, or historical-target execution path. Capability absence
+is represented as a command-local =Blocked= receipt while unrelated Codex tools
+remain usable.

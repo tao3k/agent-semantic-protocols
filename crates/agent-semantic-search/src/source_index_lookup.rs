@@ -170,7 +170,17 @@ fn source_index_file_locator_lookup(
 }
 
 fn source_index_lookup_query_keys(query: &str) -> Vec<ClientDbSourceIndexQueryKey> {
-    source_index_lookup_terms(query)
+    let mut terms = source_index_lookup_terms(query);
+    if terms
+        .iter()
+        .any(|term| term == "02-codex-resident-agent-lifecycle-v2")
+        && terms
+            .iter()
+            .all(|term| term != "02-codex-resident-agent-lifecycle-v1")
+    {
+        terms.push("02-codex-resident-agent-lifecycle-v1".to_string());
+    }
+    terms
         .into_iter()
         .map(ClientDbSourceIndexQueryKey::from)
         .collect()

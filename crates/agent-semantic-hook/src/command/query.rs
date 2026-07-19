@@ -1,5 +1,5 @@
 use crate::protocol::{DecisionRoute, DecisionRouteKind};
-use crate::protocol_activation::ActivatedProvider;
+use crate::protocol_activation::protocol_activation_manifest::ActivatedProvider;
 
 pub(crate) fn infer_query_from_path(path: &str) -> Option<String> {
     let normalized = path.trim().trim_end_matches('/');

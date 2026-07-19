@@ -89,7 +89,9 @@ pub fn resident_child_runtime_evidence_incomplete_menu<'a>(
     menu.choices = vec![AgentSessionInteractiveChoice {
         id: "report-host-runtime-reasoning-evidence-unavailable",
         label: "Report that Codex runtime reasoning evidence is unavailable.",
-        platform_action: "ASP already attempted the host-owned Codex thread/resume metadata surface without sending a child turn or applying overrides. Report bootstrapBlocked=host-runtime-reasoning-evidence-unavailable and allow unrelated tool use. Preserve the configured resident; do not follow up merely to retrigger SubagentStart, close, replace, or duplicate the typed child.",
+        platform_action: std::borrow::Cow::Borrowed(
+            "ASP already attempted the host-owned Codex thread/resume metadata surface without sending a child turn or applying overrides. Report bootstrapBlocked=host-runtime-reasoning-evidence-unavailable and allow unrelated tool use. Preserve the configured resident; do not follow up merely to retrigger SubagentStart, close, replace, or duplicate the typed child.",
+        ),
         next_state: AgentSessionLoopState::Audit,
         required_inputs: &["hostRuntimeReasoningEvidenceGapReceipt"],
     }];
@@ -107,7 +109,7 @@ pub(super) fn resident_child_model_repair_choices<'a>(
         AgentSessionInteractiveChoice {
             id: "retire-drifted-child-and-create-configured-replacement",
             label: "Retire the drifted child and create one typed replacement from the registered profile.",
-            platform_action: model_repair_action(name),
+            platform_action: std::borrow::Cow::Borrowed(model_repair_action(name)),
             next_state: AgentSessionLoopState::Audit,
             required_inputs: &["nativeRetireReceipt", "typedSubagentStartReceipt"],
         },
@@ -119,7 +121,9 @@ fn resident_child_runtime_override_unavailable_choice<'a>() -> AgentSessionInter
     AgentSessionInteractiveChoice {
         id: "report-host-typed-replacement-unavailable",
         label: "Report that the host cannot retire and recreate the typed resident child.",
-        platform_action: "Report host-typed-resident-replacement-unavailable when the host lacks either native child retirement/path release or agent_type-aware creation. Keep ASP resident routing degraded, but do not deny unrelated Codex tools and do not re-enter bootstrap from the child. Never send natural-language model-switch instructions or create a generic replacement.",
+        platform_action: std::borrow::Cow::Borrowed(
+            "Report host-typed-resident-replacement-unavailable when the host lacks either native child retirement/path release or agent_type-aware creation. Keep ASP resident routing degraded, but do not deny unrelated Codex tools and do not re-enter bootstrap from the child. Never send natural-language model-switch instructions or create a generic replacement.",
+        ),
         next_state: AgentSessionLoopState::Blocked,
         required_inputs: &["hostTypedReplacementCapabilityGap"],
     }

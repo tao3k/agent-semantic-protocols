@@ -51,6 +51,7 @@ dependencies = [
 name = "agent-semantic-artifacts"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-content-identity",
  "asp-rust-project-harness-policy",
  "blake3",
  "serde",
@@ -61,9 +62,11 @@ dependencies = [
 name = "agent-semantic-client"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-artifacts",
  "agent-semantic-client-core",
  "agent-semantic-client-db",
  "agent-semantic-client-local-cli",
+ "agent-semantic-content-identity",
  "agent-semantic-hook",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
@@ -100,6 +103,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-artifacts",
  "agent-semantic-client-core",
+ "agent-semantic-content-identity",
  "agent-semantic-loop",
  "asp-rust-project-harness-policy",
  "criterion",
@@ -134,6 +138,15 @@ dependencies = [
  "serde",
  "tempfile",
  "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "agent-semantic-content-identity"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -230,8 +243,10 @@ dependencies = [
 name = "agent-semantic-search"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-artifacts",
  "agent-semantic-client-core",
  "agent-semantic-client-db",
+ "agent-semantic-content-identity",
  "agent-semantic-hook",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
@@ -382,6 +397,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 name = "asp-rust-project-harness-policy"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "rust-lang-project-harness 0.1.2",
  "serde",
 ]
@@ -2545,6 +2561,7 @@ dependencies = [
 name = "rust-lang-project-harness"
 version = "0.1.2"
 dependencies = [
+ "agent-semantic-content-identity",
  "cargo-lock",
  "cargo_toml",
  "proc-macro2",

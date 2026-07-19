@@ -218,30 +218,57 @@ fn invalid_owner_items_owner_reason(
         return Some(InvalidOwnerReason::WorkspaceRootOwner);
     }
     let owner_path = search_owner_source_path(project_root, owner);
-    if same_existing_path(&owner_path, project_root) {
+    let lexical_owner = lexical_normalize(&owner_path);
+    let lexical_root = lexical_normalize(project_root);
+    if lexical_owner == lexical_root {
         return Some(InvalidOwnerReason::WorkspaceRootOwner);
     }
-    if !owner_path.exists() {
+    let Ok(link_metadata) = std::fs::symlink_metadata(&owner_path) else {
         return Some(InvalidOwnerReason::MissingOwner);
-    }
-    if owner_path.is_dir() {
+    };
+    let owner_is_symlink = link_metadata.file_type().is_symlink();
+    let metadata = if owner_is_symlink {
+        let Ok(metadata) = std::fs::metadata(&owner_path) else {
+            return Some(InvalidOwnerReason::MissingOwner);
+        };
+        metadata
+    } else {
+        link_metadata
+    };
+    if metadata.is_dir() {
         return Some(InvalidOwnerReason::DirectoryOwner);
     }
-    if !existing_path_is_within_workspace(&owner_path, project_root) {
+    if !lexical_owner.starts_with(&lexical_root) {
         return Some(InvalidOwnerReason::OutsideWorkspace);
     }
+    let relative_owner = lexical_owner
+        .strip_prefix(&lexical_root)
+        .expect("lexical workspace containment checked above");
+    let mut cursor = lexical_root.clone();
+    let mut components = relative_owner.components().peekable();
+    let mut parent_has_symlink = false;
+    while let Some(component) = components.next() {
+        cursor.push(component);
+        if components.peek().is_none() {
+            break;
+        }
+        if std::fs::symlink_metadata(&cursor)
+            .is_ok_and(|metadata| metadata.file_type().is_symlink())
+        {
+            parent_has_symlink = true;
+            break;
+        }
+    }
+    if (owner_is_symlink || parent_has_symlink)
+        && let Ok(canonical_owner) = owner_path.canonicalize()
+        && !canonical_owner.starts_with(&lexical_root)
+    {
+        match project_root.canonicalize() {
+            Ok(canonical_root) if canonical_owner.starts_with(&canonical_root) => {}
+            _ => return Some(InvalidOwnerReason::OutsideWorkspace),
+        }
+    }
     None
-}
-
-fn existing_path_is_within_workspace(owner_path: &Path, project_root: &Path) -> bool {
-    let lexical_root = lexical_normalize(project_root);
-    if !owner_path.starts_with(&lexical_root) {
-        return false;
-    }
-    match (project_root.canonicalize(), owner_path.canonicalize()) {
-        (Ok(canonical_root), Ok(canonical_owner)) => canonical_owner.starts_with(canonical_root),
-        _ => true,
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -339,10 +366,6 @@ fn search_owner_source_path(project_root: &Path, owner: &Path) -> PathBuf {
     } else {
         lexical_normalize(&project_root.join(owner))
     }
-}
-
-fn same_existing_path(left: &Path, right: &Path) -> bool {
-    lexical_normalize(left) == lexical_normalize(right)
 }
 
 fn lexical_normalize(path: &Path) -> PathBuf {

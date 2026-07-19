@@ -147,7 +147,7 @@ pub fn rank_source_index_report(request: SourceIndexRankRequest) -> SourceIndexR
             }
         })
         .collect::<Vec<_>>();
-    indexed.sort_by(|left, right| {
+    indexed.sort_unstable_by(|left, right| {
         right
             .ranked
             .score
@@ -216,10 +216,10 @@ fn source_index_rank_score_from_normalized(
             && normalized_path.ends_with(normalized_query)
             && normalized_path != normalized_query,
     );
-    let term_coverage =
-        source_index_candidate_query_axis_coverage(normalized_path, query_key_blob, terms) as u16;
-    let query_key_coverage =
-        source_index_candidate_query_key_coverage(query_key_blob, terms) as u16;
+    let (term_coverage, query_key_coverage) =
+        source_index_candidate_query_coverages(normalized_path, query_key_blob, terms);
+    let term_coverage = term_coverage as u16;
+    let query_key_coverage = query_key_coverage as u16;
     SourceIndexRankScore {
         total: exact_path * 1000
             + basename_score * 800
@@ -236,30 +236,30 @@ fn source_index_rank_score_from_normalized(
     }
 }
 
-fn source_index_candidate_query_axis_coverage(
+fn source_index_candidate_query_coverages(
     normalized_path: &str,
     query_key_blob: &str,
     terms: &[String],
-) -> usize {
+) -> (usize, usize) {
     terms
         .iter()
-        .filter(|term| {
-            !term.is_empty()
-                && (normalized_path.contains(term.as_str())
-                    || query_key_blob.contains(term.as_str()))
+        .fold((0, 0), |(axis_coverage, key_coverage), term| {
+            if term.is_empty() {
+                return (axis_coverage, key_coverage);
+            }
+            let key_match = query_key_blob.contains(term.as_str());
+            let axis_match = key_match || normalized_path.contains(term.as_str());
+            (
+                axis_coverage + usize::from(axis_match),
+                key_coverage + usize::from(key_match),
+            )
         })
-        .count()
-}
-
-fn source_index_candidate_query_key_coverage(query_key_blob: &str, terms: &[String]) -> usize {
-    terms
-        .iter()
-        .filter(|term| !term.is_empty() && query_key_blob.contains(term.as_str()))
-        .count()
 }
 
 fn source_index_rank_query_key_blob(query_keys: &[String]) -> String {
-    let mut blob = String::new();
+    let capacity =
+        query_keys.iter().map(String::len).sum::<usize>() + query_keys.len().saturating_sub(1);
+    let mut blob = String::with_capacity(capacity);
     for key in query_keys {
         if !blob.is_empty() {
             blob.push(' ');

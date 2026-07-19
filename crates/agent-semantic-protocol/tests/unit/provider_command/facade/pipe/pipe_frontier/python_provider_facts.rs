@@ -46,6 +46,26 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_semantic_facts() {
     );
     let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
     super::assert_graph_turbo_request_contract(&payload);
+    let provider_trace = payload["sourceTrace"]
+        .as_array()
+        .expect("sourceTrace")
+        .iter()
+        .find(|entry| entry["source"] == "providerFacts")
+        .expect("providerFacts source trace");
+    assert_eq!(provider_trace["state"], "used");
+    assert_eq!(
+        provider_trace["fields"]["descriptorId"],
+        "python.semantic-facts"
+    );
+    assert_eq!(provider_trace["fields"]["descriptorVersion"], "1");
+    assert_eq!(
+        provider_trace["fields"]["matchedAxes"],
+        serde_json::json!(["collection", "data-shape"])
+    );
+    assert_eq!(
+        provider_trace["fields"]["matchedTerms"],
+        serde_json::json!(["list", "collection", "fields"])
+    );
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
     assert!(
         nodes.iter().any(|node| {

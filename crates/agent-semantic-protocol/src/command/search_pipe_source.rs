@@ -80,6 +80,13 @@ pub(super) fn collect_search_pipe_candidates(
             config,
         );
     }
+    let query_clauses = agent_semantic_search::search_pipe_query_clauses(
+        agent_semantic_search::SearchPipeQueryClausesRequest::new(
+            agent_semantic_search::SearchPipeLanguageId::new(language_id),
+            agent_semantic_search::SearchPipeQueryText::new(intent),
+        ),
+    );
+    let query_terms = agent_semantic_search::search_pipe_unique_query_terms(&query_clauses);
     match source {
         SourceSpec::Auto => auto_candidates(
             language_id,
@@ -89,6 +96,7 @@ pub(super) fn collect_search_pipe_candidates(
             scopes,
             config,
             require_multi_clause,
+            &query_terms,
         ),
         SourceSpec::SearchOverlay => search_overlay_candidates(
             language_id,
@@ -158,10 +166,13 @@ fn auto_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
     require_multi_clause: bool,
+    query_terms: &[agent_semantic_search::SearchPipeQueryTerm],
 ) -> Result<CandidateAcquisition, String> {
     let language = agent_semantic_client::LanguageId::from(language_id);
     let source_index_query = source_index_lookup_query(language_id, intent);
-    let source_index_lookup = if scopes.is_empty() {
+    let source_index_query_gated = scopes.is_empty()
+        && agent_semantic_search::search_pipe_source_index_query_gate(query_terms).is_some();
+    let source_index_lookup = if scopes.is_empty() && !source_index_query_gated {
         Some(lookup_search_pipe_source_index_for_language(
             project_root,
             Some(&language),
@@ -176,6 +187,7 @@ fn auto_candidates(
         project_root,
         locator_root,
         query: intent,
+        query_terms,
         owners: scopes,
         ignore_dirs: &config.search.ignore_dirs,
         include_hidden_dirs: &config.search.include_hidden_dirs,
@@ -216,6 +228,59 @@ fn candidate_acquisition_from_search(
     }
 }
 
+pub(super) fn collect_workspace_scope_topology_acquisition(
+    scope: &agent_semantic_search::SemanticWorkspaceScope,
+    locator_root: &Path,
+    ignore_dirs: &[String],
+    include_hidden_dirs: &[String],
+) -> Result<CandidateAcquisition, String> {
+    agent_semantic_search::collect_search_pipe_scope_topology_acquisition(
+        agent_semantic_search::SearchPipeScopeTopologyAcquisitionRequest {
+            workspace_scope: scope,
+            locator_root,
+            ignore_dirs,
+            include_hidden_dirs,
+            entry_visit_limit: agent_semantic_search::SEARCH_PIPE_SCOPE_TOPOLOGY_ENTRY_VISIT_LIMIT,
+            candidate_limit: agent_semantic_search::SEARCH_PIPE_SCOPE_TOPOLOGY_CANDIDATE_LIMIT,
+        },
+    )
+    .map(candidate_acquisition_from_search)
+}
+
+pub(super) fn merge_candidate_acquisitions(
+    primary: &mut CandidateAcquisition,
+    secondary: CandidateAcquisition,
+) {
+    let mut seen = primary
+        .candidates
+        .iter()
+        .map(|candidate| {
+            (
+                candidate.path.clone(),
+                candidate.line,
+                candidate.end_line,
+                candidate.symbol.clone(),
+            )
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    primary
+        .candidates
+        .extend(secondary.candidates.into_iter().filter(|candidate| {
+            seen.insert((
+                candidate.path.clone(),
+                candidate.line,
+                candidate.end_line,
+                candidate.symbol.clone(),
+            ))
+        }));
+    for source in secondary.candidate_sources {
+        if !primary.candidate_sources.contains(&source) {
+            primary.candidate_sources.push(source);
+        }
+    }
+    primary.source_trace.extend(secondary.source_trace);
+}
+
 fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSourceTrace {
     let mut source_trace = SearchPipeSourceTrace::new(
         trace.source,
@@ -239,11 +304,6 @@ fn search_overlay_candidates(
     config: &AspConfig,
     require_multi_clause: bool,
 ) -> Result<CandidateAcquisition, String> {
-    if scopes.is_empty()
-        && let Some(acquisition) = turso_overlay_candidates(project_root, locator_root, intent)?
-    {
-        return Ok(acquisition);
-    }
     let acquisition = collect_search_pipe_search_overlay_acquisition(
         SearchPipeSearchOverlayAcquisitionRequest {
             language_id,
@@ -270,57 +330,6 @@ fn search_overlay_candidates(
         ],
         candidates,
     })
-}
-
-fn turso_overlay_candidates(
-    project_root: &Path,
-    locator_root: &Path,
-    intent: &str,
-) -> Result<Option<CandidateAcquisition>, String> {
-    let engine = match ClientDbEngine::resolve(project_root) {
-        Ok(engine) => engine,
-        Err(_) => return Ok(None),
-    };
-    let hits = match engine.search_documents_blocking(intent, PIPE_CANDIDATE_LINE_LIMIT as u32) {
-        Ok(hits) => hits,
-        Err(_) => return Ok(None),
-    };
-    if hits.is_empty() {
-        return Ok(None);
-    }
-    let candidates = hits
-        .into_iter()
-        .map(|hit| turso_search_hit_candidate(locator_root, hit))
-        .collect::<Vec<_>>();
-    Ok(Some(CandidateAcquisition {
-        candidate_sources: vec!["search-overlay".to_string()],
-        source_trace: vec![candidate_trace("search-overlay", &candidates)],
-        candidates,
-    }))
-}
-
-fn turso_search_hit_candidate(locator_root: &Path, hit: TursoClientDbSearchHit) -> Candidate {
-    let selector = hit.selector.clone();
-    let path = selector
-        .as_deref()
-        .and_then(selector_path)
-        .unwrap_or(hit.document_id.as_str())
-        .to_string();
-    let path = display_locator_path(locator_root, &path);
-    Candidate {
-        path: path.clone(),
-        line: selector.as_deref().and_then(selector_line).unwrap_or(1),
-        end_line: selector.as_deref().and_then(selector_line).unwrap_or(1),
-        symbol: selector
-            .as_deref()
-            .and_then(selector_symbol)
-            .unwrap_or_else(|| symbol_from_path(&path))
-            .to_string(),
-        selector,
-        text: hit.document,
-        source: "search-overlay".to_string(),
-        confidence: format!("turso-{}", hit.source),
-    }
 }
 
 fn selector_path(selector: &str) -> Option<&str> {

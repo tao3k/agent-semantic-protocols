@@ -106,6 +106,19 @@ impl AgentSessionRegistry {
         )
     }
 
+    /// Mark an in-flight resident-child dispatch as awaiting a verified rebind.
+    pub fn mark_dispatch_orphaned(
+        &self,
+        request: crate::agent_session_registry::types::AgentSessionDispatchMarkOrphanedRequest<'_>,
+    ) -> Result<AgentSessionDispatchLeaseRecord, String> {
+        block_on_agent_session_registry_async(
+            crate::agent_session_registry::dispatch::turso_mark_dispatch_orphaned(
+                &self.db_path,
+                request,
+            ),
+        )
+    }
+
     /// Generic lookup used by registry CLI commands.
     pub fn lookup_session(
         &self,

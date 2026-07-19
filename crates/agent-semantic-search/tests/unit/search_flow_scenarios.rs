@@ -36,12 +36,15 @@ fn search_flow_source_index_owner_item_graph_chain_is_executable() {
     let owners: Vec<PathBuf> = Vec::new();
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
+    let query = "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match";
+    let query_terms = agent_semantic_search::search_pipe_typed_query_terms("rust", query);
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match",
+        query,
+        query_terms: &query_terms,
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
@@ -263,12 +266,15 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
     let owners: Vec<PathBuf> = Vec::new();
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
+    let query = "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match";
+    let query_terms = agent_semantic_search::search_pipe_typed_query_terms("rust", query);
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match",
+        query,
+        query_terms: &query_terms,
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
@@ -304,12 +310,15 @@ fn search_flow_cold_required_source_index_returns_overlay_skipped() {
     let owners: Vec<PathBuf> = Vec::new();
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
+    let query = "source-index schema requires explicit rebuild SourceIndexLookup";
+    let query_terms = agent_semantic_search::search_pipe_typed_query_terms("rust", query);
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "source-index schema requires explicit rebuild",
+        query,
+        query_terms: &query_terms,
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,

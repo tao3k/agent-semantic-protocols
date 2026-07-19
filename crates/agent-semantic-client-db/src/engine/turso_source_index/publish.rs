@@ -18,6 +18,7 @@ pub(super) async fn publish_turso_source_index_scope(
     schema_version: &str,
     generation_id: &str,
     file_hashes_json: &str,
+    source_snapshot_json: &str,
     selector_fingerprint: &str,
 ) -> Result<(u32, u32), String> {
     let (effective_owner_count, effective_selector_count) = turso_source_index_scope_row_counts(
@@ -38,14 +39,16 @@ pub(super) async fn publish_turso_source_index_scope(
                         schema_version,
                         generation_id,
                         file_hashes_json,
+                        source_snapshot_json,
                         selector_fingerprint,
                         owner_count,
                         selector_count,
                         updated_at_ms
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                     ON CONFLICT(project_root, schema_id, schema_version) DO UPDATE SET
                         generation_id = excluded.generation_id,
                         file_hashes_json = excluded.file_hashes_json,
+                        source_snapshot_json = excluded.source_snapshot_json,
                         selector_fingerprint = excluded.selector_fingerprint,
                         owner_count = excluded.owner_count,
                         selector_count = excluded.selector_count,
@@ -56,6 +59,7 @@ pub(super) async fn publish_turso_source_index_scope(
                         schema_version,
                         generation_id,
                         file_hashes_json,
+                        source_snapshot_json,
                         selector_fingerprint,
                         i64::from(effective_owner_count),
                         i64::from(effective_selector_count),

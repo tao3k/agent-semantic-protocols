@@ -1,0 +1,325 @@
+* CLI is the protocol: search plus query surface
+Selector-seeded pipe contract:
+When an agent already has an exact provider selector and still needs owner-local context terms, the canonical search surface is a selector-seeded pipe command, not a shell-joined query plus owner search:
+#+begin_src shell
+asp <language> search pipe --selector '<provider-selector>' --query '<owner-local terms>' --workspace . --view seeds
+#+end_src
+This packet must bind the exact selector, owner path, and context query into one =actionFrontier=. The primary =recommendedNext= should be the exact parser-owned =query --selector ... --code= action; secondary actions may include =search owner <owner> items --query ...= and a scoped =asp rg= fallback. The rendered packet must not ask agents to use =&&= or manually join separate =asp <language> query= and =asp <language> search owner= commands as one evidence step.
+Search flow selection is evidence-state driven. =search prime= and
+=search pipe= are available protocol surfaces, but they are not a mandatory
+prelude before every read or edit. If the user prompt, hook recovery route,
+prior search packet, failure transcript, or CLI diagnostic already provides an
+exact owner, selector, symbol, dependency, or bounded =recommendedNext= action,
+the agent should start with that provider-owned =query=, =search owner=,
+=search lexical=, =asp fd=, =asp rg=, guide, or dependency route. =search prime=
+is the topology and owner-map entrypoint for an unknown workspace or language
+surface. =search pipe= is the query-set refinement surface for ambiguous or
+multi-axis frontiers after =prime= or another packet has shown that a narrower
+term is needed. A no-hit route should return a compact =noOutput= or
+no-candidates receipt with one bounded next action, not a verbose empty graph.
+
+
+Language-neutral examples use =<lang-harness>=.  The TypeScript implementation
+ships this as =ts-harness=; Rust/Cargo-specific lanes use =rs-harness=.
+Julia is no longer a bin-parity exclusion.  The provider identity is the
+compiled =asp-julia-harness=, with =julia-project-harness.jl= kept as a
+source-provider development fallback.  RFC 008 lets =agent-semantic-client=
+cache validated Julia provider exports in the local DB Engine cache and serve
+repeated searches without restarting Julia when the generation is fresh.  That
+cache is an execution optimization; JuliaSyntax remains the parser authority and
+Rust must not invent Julia parser facts.
+
+The agent sees the language facade commands, with =guide= as the interactive
+entrypoint and =agent doctor --json= as the machine/registry diagnostic surface:
+
+#+begin_src shell
+asp <language> guide --workspace ...                 # provider-owned agent command menu
+asp <language> search <view> ...         # all exploration / location / evidence
+asp <language> query ...                 # parser-owned compact code/query reroutes
+asp <language> check ...                 # policy / style / changed / full
+asp <language> agent doctor --workspace . --json..   # registry/diagnostic packet
+#+end_src
+
+The root =asp search= and =asp query= surfaces are thin language-facade
+routers, not a second provider grammar.  They may remove an explicit
+=--language <id>= or infer one language from the active provider activation:
+=coverage.sourceExtensions= may match an unambiguous path/selector suffix such
+as =src/lib.rs=, and =coverage.configFiles= may match an unambiguous project
+root.  The root facade must not keep a hard-coded Cargo/tsconfig/pyproject
+language table, and it must not parse Cargo workspaces, TypeScript project
+references, Python virtual environments, Julia project layout, or package
+membership; those remain provider responsibilities.  When a root command cannot
+infer one language from activation facts, it must fail with a compact diagnostic
+that asks for =--language= or the explicit =asp <language>= facade.
+
+Unsupported or inactive language facades are a fail-closed discovery boundary,
+not a reason to search through a different active provider.  When a user runs a
+language facade that is not active or not a protocol language id, including root
+forms such as =asp search --language <id> ...= and language forms such as
+=asp <id> search ...= or =asp <id> query ...=, the facade must stop before
+provider execution and emit a structured advisory: the requested facade, the
+active language facades, known protocol facades, and bounded next commands.
+Only an exact or explicitly mapped active facade may be recommended as the next
+=asp <language>= command.  An explicit mapping is a protocol-owned or
+configuration-owned alias, not a derived substring, token, suffix, or hyphen
+component match; =scheme= must not be inferred as =gerbil-scheme= while the
+Gerbil/Scheme provider is still being implemented.  Otherwise the recovery
+route must use
+provider-neutral finder commands such as =asp fd -query ...= or
+=asp rg -query ... <bounded-scope>=, or ask the user to install/activate a
+provider.  Agents must not switch a Gerbil/Scheme, Scheme, or other unsupported
+target-language question into an unrelated TypeScript/Rust/Python search merely
+because that is the only active facade.
+
+#+begin_src shell
+asp search --language rust prime --workspace . --view seeds
+asp query --language typescript --treesitter-query '<pattern>' --workspace .
+asp query crates/agent-semantic-protocol/src/lib.rs --query run --workspace . --code
+#+end_src
+
+The root facade is intentionally additive.  Existing provider-owned guide text,
+registry descriptors, cache receipts, and hook recovery routes continue to use
+the language facade as the canonical shape whenever the active language is
+known.
+
+Language-facade =guide= is the prompt-facing teaching surface.  The non-code
+guide output may carry exemplar metadata such as =topic=, =intent=, =rule=,
+=selector=, comment/code selectors, and copyable next commands.  =guide --code=
+is the opposite surface: it writes only source text selected by the provider,
+normally an adjacent source comment plus one complete function, macro, or use
+block.  It must not render line-protocol rows, selector metadata,
+=primaryExemplar= fields, =|code begin= markers, or compressed pseudo-code.
+Provider-owned flags such as =--topic=, =--intent=, =--role=, =--rule=,
+=--finding=, =--more=, =--level=, and =--limit= are selection controls for the
+same guide surface, not new subcommands.
+
+Non-code guide rendering is also a lightweight performance surface.  =asp
+<language> guide= and =asp <language> search guide= should route to static or
+section-backed guide rows without constructing a project index or importing the
+full search dispatcher.  =guide --code= remains the source-backed guide path and
+may load parser, policy, exemplar, and selector machinery because its output is
+selected source text, not the compact command menu.
+
+Policy and finding driven repair should route through =guide --code= only after
+the non-code guide has exposed the source-backed exemplar selector.  A
+=--rule= or =--finding= value may map a known policy id to a focused topic, for
+example functional data transforms, POO policy repair, or macro runtime-source
+witnesses.  Default code guidance should return one exemplar; =--more= and
+larger =--level= values provide progressive extra examples when the agent needs
+more transfer evidence.
+
+=check= output is also an agent guidance surface.  When a policy finding maps
+to a known guide exemplar, the line-protocol finding detail should expose stable
+machine-readable routing fields such as =guideTopic=, =guideIntent=, and
+=nextCommand=.  The next command should be an executable =asp <language>
+guide --code --rule <rule-id> --intent <intent>= form so an agent can move from
+verification failure to source-backed repair guidance without guessing a topic.
+
+Unlike =search= scopes and =query= selectors, =check <existing-directory>= is a
+project-root shorthand.  The language facade may treat that positional
+directory as the effective check root even when it has no language manifest,
+because downstream generated fixtures and partial packages often need policy
+verification before their package marker exists.  This exception is scoped to
+=check=; search path arguments remain search scopes unless the provider or
+=--workspace= explicitly selects a project root.
+
+For Rust, an explicit positional =check <existing-directory>= MUST bind to the
+nearest enclosing package manifest rooted at that path and MUST NOT be promoted
+to an ancestor Cargo workspace.  An implicit =check= with no positional path
+MAY promote the current directory through Cargo workspace membership.  This
+distinction keeps an explicit package check aligned with the package-local Cargo
+build gate rooted by =CARGO_MANIFEST_DIR=, while preserving workspace-wide checks
+when the caller intentionally relies on the current workspace.  The parser-owned
+Cargo manifest resolver MUST expose these as separate package-root and
+project/workspace-root operations; clients and the shared router MUST NOT infer
+the distinction from path strings after resolution.
+
+When a root or language facade consumes =--workspace <workspace-root>= to choose
+the provider project root and process cwd, that routing flag must be removed
+before invoking the client backend/provider command.  The provider receives the
+normalized search or query argv under the selected cwd; it must not see the same
+relative workspace token again and resolve it a second time.  This keeps
+=asp rust search prime --workspace languages/rust-lang-project-harness --view seeds=
+equivalent to running the Rust provider once in
+=languages/rust-lang-project-harness= with =search prime --view seeds=.
+
+Agent-facing materialized commands, including =nextCommand= rows,
+=actionFrontier= shell commands, guide recipes, hook recovery routes, and
+=asp fd=/=asp rg= finder helper suggestions, must spell project-root selection
+as =--workspace <workspace-root>=.  They must not use a trailing positional
+=.= or generic trailing =<PATH>= as the canonical workspace token.  Positional
+path arguments may remain as compatibility input or as a provider-owned narrow
+search scope, but the prompt-facing command contract must make the workspace
+boundary explicit so agents can replay commands without path-context drift.
+
+Path-like query terms that do not resolve to parser or finder path evidence are
+negative evidence, not candidate selectors. Search output may keep such terms
+in =fd-query= finder commands so the agent can prove or disprove the path, but
+it must not promote them to =ownerItems=, =treeSitterHandles=
+exported-declaration names, or =query --selector= next commands. Compact output
+should expose a selector guard such as =missingPathTerms= so agents treat the
+term as a missing path receipt instead of inventing a file like
+=t/unit-tests.ss= from naming convention.
+Owner item materialization is a compact search surface, not a full structural
+fact dump. =search owner <path> items= must apply a default result budget and
+may expose =--limit <n>= for explicit expansion. Providers should stop
+matching once the displayed budget is full and keep the next action focused on
+the shown selectors; agents that need exhaustive facts should ask for a larger
+limit deliberately instead of letting a real project emit hundreds of item rows
+by default.
+
+Source-language =query --selector= is likewise owner-bounded. A structural
+selector must carry its parser-owned source owner, and a file or range selector
+must identify one explicit source path. A bare symbol such as =selector-from=
+is not an exact selector: resolving it by enumerating source files and parsing
+candidate owners is workspace search. Language providers must reject that form
+before source collection and route discovery to the Rust-owned indexed search
+surface, for example =asp <language> search symbol <symbol> --workspace
+<workspace-root> --view seeds=. After search returns an owner-bearing selector,
+=query --selector <provider-selector> --code= remains the canonical exact read.
+Provider implementations must not hide a whole-workspace symbol scan behind
+manual garbage collection, incremental file reads, or a compatibility fallback.
+
+Document languages are a separate facade class.  =asp org= and =asp md= expose
+parser-owned document structure, not code harness policy.  The executable
+runtime is =asp= with a native =orgize= dependency.  The =orgize= binary remains
+a standalone development/debug CLI, but =asp org= and =asp md= do not require it
+on PATH.  The root =asp= facade owns this stable command routing; Org facts are
+owned by the =orgize= parser and Markdown facts are owned by =comrak= through
+the native =orgize= document provider.
+
+Structural search has the same bounded-interface rule. The default =search structural= packet is a manifest and owner-fan-out surface: it may include required schema handles such as =fileHashes=, =owners=, =symbols=, and =dependencyUsages=, plus aggregate counts and a bounded =nativeSyntaxFactSummaries= preview. It must not emit full owner fact rows, per-family fact maps for every owner, or workspace-scale structural artifacts on the default path. Complete owner facts belong behind =search structural --owner <path> --json=, and full structural artifacts belong behind =--artifact= or =--full=. The =bench --max-interface-ms= gate measures this default interface path and must be kept millisecond-level by bounding projection work, not by raising the threshold.
+Agents should compose search queries from stable semantic anchors first: owner paths, exported symbols, parser node names, dependency names, public API names, policy ids, or test fixture names. Example values and low-information literals such as =A=, =B=, =C=, =xx=, or prose-only “current behavior” terms should remain secondary context after a concrete anchor has been selected. When a user asks whether a syntax form such as an Org priority cookie is supported, the agent should first search for anchors like =headline_priority_node=, =priority_value_len=, =PriorityValue=, or the relevant fixture/test owner, then use examples such as =[#A]= or =[#xx]= only to confirm boundary cases. Providers should surface low-quality query receipts instead of upgrading these literals into owner selectors or dependency names.
+
+#+begin_src shell
+asp org guide --workspace .                 # native orgize document provider through asp
+asp org search prime --workspace . --view seeds
+asp org query --term CUSTOM_ID --workspace . --view metadata
+asp org query --selector org://docs/a.org#headline/section[1] --workspace . --content
+
+asp md guide --workspace .                  # native orgize/comrak document provider through asp
+asp md search prime --workspace . --view seeds
+asp md query --term Project --workspace . --view metadata
+asp md query --selector README.md:1-20 --workspace . --content
+#+end_src
+
+=org/md= support only =guide=, =search=, and =query=.  =check=,
+=ast-patch=, =evidence=, and policy gates are intentionally unsupported for
+document languages.  Their JSON contracts are document-specific:
+=semantic-document-search-packet.v1= for metadata discovery and
+=semantic-document-query-packet.v1= for metadata or filtered element-content
+projections.
+=search= emits document facts such as headings, Org properties, drawers,
+tables, source or export blocks, Markdown links, and Markdown code fences, but
+document content recovery does not use =search owner= or source owner/items
+routes. =query --term <term> --view metadata= returns a bounded document
+metadata frontier. Adding =--content= to an explicit =--selector=, =--term=,
+=--kind=, or =--field= query changes stdout to the pure content of the matched
+document elements; it is still query output and must not become a whole-file
+read. The =--content= renderer is a prompt-compact projection: it collapses
+document whitespace inside each projected element to a single ASCII space,
+trims empty projections, prints one non-empty projection per line without blank
+separators, and emits no body lines when the content projection is empty.
+Document text recovery uses =query --selector <structural-selector> --content=
+and stays a filtered element-content projection, not a whole-file read.
+Structural selectors are parser-owned document identities such as
+=org://docs/a.org#headline/section[1]= or
+=md://README.md#heading/nodevalue-heading[2]=. The public document guide,
+search, query, packet, and next-action contracts must not expose path line
+range selectors. Packet =lineRange= fields are display metadata only and must
+not be rendered as follow-up query commands.
+=--code= remains reserved for source-language providers.
+
+=guide= and =query guide= for document languages must expose the parser-owned
+query vocabulary, not just command names.  The prompt-facing guide should
+include query axes (=--term=, =--selector=, =--kind=, =--field=, =--content=),
+the element map, field maps for each element kind, and common recipes such as
+TODO headings, checked tasks, property lookup, source blocks, paragraph
+content, and range-local element frontiers.  Agents should be able to choose a
+document query from the guide without guessing field names or falling back to
+raw reads.
+
+=search toc= is the document-first repository orientation view.  It uses the
+same provider discovery as =search prime=, but returns only heading facts,
+grouped by document path, with =level=, =title=, structural selector, optional
+display line range, Org TODO/priority or tag fields when present, and a
+selector-query next action for each heading.
+Agents should use it before broad document reads when the task is to understand
+repo documentation structure, README sections, design docs, RFC outlines, or
+Org task hierarchies.  =search toc --json= emits the normal
+=semantic-document-search-packet.v1= shape with =method=search/toc= and
+=view=toc=, while compact output stays optimized for prompt navigation.
+
+=search lexical <term...> --view toc= is the document keyword-to-outline
+composition view.  It uses the same provider-owned document walk as =search
+toc=, applies lexical-style keyword discovery to document facts, then renders the
+TOC only for documents that contain all supplied keywords somewhere in that
+document.  The keywords are document-level selectors for this view, not a
+request to dump matching paragraphs.  Compact output must stay heading-only
+and include selector-query next actions; =--json= emits the same document
+search packet family with =method=search/lexical-toc= and =view=lexical-toc=.  A
+trailing positional =toc= may select the same view for shell-friendly command
+composition, but =--view toc= is the canonical spelling.
+
+Document facades also support the ASP-owned =search pipe= chain.  =asp org
+search pipe <question> --workspace . --view seeds= and =asp md search pipe
+<question> --workspace . --view seeds= must not be forwarded to the
+document-native search view parser as
+=view=pipe=.  The pipe chain uses parser-owned document elements as its first
+candidate source, then projects those element hits into the shared
+graph/frontier surface.  Candidate rows may come from headings, paragraphs,
+properties, blocks, lists, tasks, links, images, or Markdown structural nodes,
+and the next read action for document text is always =asp org|md query
+--selector <structural-selector> --workspace . --content=.  =--view
+graph-turbo-request= emits the
+same graph request boundary used by source-language pipe, with action frontier
+typed facts carrying =capabilityId=query= and =projection=content= rather than
+materialized shell =command=/=argv= fields.  Document-native
+=search toc= and =search lexical ... --view toc= remain separate outline surfaces
+and must not be swallowed by the pipe chain.
+
+Document query no-hit metadata/frontier output is still a protocol surface.  A
+query with =hit=0= must not stop at a count-only receipt.  It must state that
+combined terms/kinds/fields are an intersection, then return bounded next
+actions such as =search lexical= for one term, a single-term =query --term= retry,
+=query guide=, and the selector requirement for =query --selector ... --content=.
+These rows are agent-facing recovery guidance; they must not include raw source
+snippets or pretend that document recovery can run without a selector.
+
+Document facts are a navigation element map, not a full document AST dump.
+The shared packet keeps language-neutral element categories in =kind= and
+parser-native node identity in =sourceKind=.  Provider-specific facts stay in
+=attributes=.  This lets agents query TODO lists, checklists, tables, headings,
+property drawers, links, images, and code blocks without inheriting code search
+owner semantics.
+
+#+begin_src text
+documentFact.kind =
+  heading | property | planning | table | block | list | listItem | task |
+  link | image | frontMatter | thematicBreak | selector
+
+documentFact.sourceKind =
+  Org wrapper or comrak NodeValue variant, e.g. Headline, PropertyDrawer,
+  SyntaxPlanning, SyntaxListItem, NodeValue::Heading, NodeValue::TaskItem
+#+end_src
+
+Org maps its org-elements-like syntax wrappers to the shared element map:
+=Headline= to =heading=, =PropertyDrawer= entries to =property=,
+=SyntaxPlanning= to =planning=, =OrgTable= to =table=, =SourceBlock= and
+=ExportBlock= to =block=, =SyntaxList= to =list=, =SyntaxListItem= to
+=listItem= or =task= when a checkbox is present, and =SyntaxLink= to =link= or
+=image=.  Headline attributes include =level=, =title=, =todo=, =todoType=,
+=priority=, and repeated =tag= values.  List/task attributes include =bullet=,
+=indent=, =checkbox=, =checked=, and optional descriptive =tag=.
+
+Markdown maps comrak nodes to the same shared categories: =Heading=,
+=List=, =Item=, =TaskItem=, =Table=, =CodeBlock=, =Link=, =Image=,
+=FrontMatter=, and =ThematicBreak=.  Markdown paragraphs are intentionally not
+emitted by default search/query metadata because they turn navigation into full
+text indexing; exact paragraph content stays available through selector
+queries.
+
+RFC 007 adds the shared =asp ast-patch= verification path.
+Language providers still own AST adapters, but agents should use the shared
+binary for schema validation, receipts, and Codex-safe dry-run behavior.
+

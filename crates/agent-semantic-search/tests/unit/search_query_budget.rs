@@ -6,11 +6,12 @@ use agent_semantic_search::{
 
 #[test]
 fn search_query_budget_blocks_generic_broad_queries() {
-    let block = search_query_budget_block(
-        "search query budget block generic provider",
-        &[PathBuf::from(".")],
-        false,
-    )
+    let block = search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+        language_id: "rust",
+        query: "search query budget block generic provider",
+        scopes: &[PathBuf::from(".")],
+        explicit_filters: false,
+    })
     .expect("broad generic query should be blocked");
 
     assert_eq!(block.reason, "query-too-broad");
@@ -36,26 +37,38 @@ fn search_query_budget_allows_specific_or_filtered_queries() {
     assert!(specific_search_term("src/lib.rs"));
     assert!(search_terms_budget_block(&terms, &[PathBuf::from(".")], false).is_none());
     assert!(
-        search_query_budget_block(
-            "search query budget block generic provider",
-            &[PathBuf::from(".")],
-            true,
-        )
+        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+            language_id: "rust",
+            query: "search query budget block generic provider",
+            scopes: &[PathBuf::from(".")],
+            explicit_filters: true,
+        })
         .is_none()
     );
 }
 
 #[test]
-fn search_query_budget_requires_a_specific_anchor_for_concept_bundles() {
+fn search_query_budget_uses_typed_evidence_instead_of_character_anchors() {
     let terms = search_query_terms("search performance provider startup preflight");
-    let block = search_terms_budget_block(&terms, &[PathBuf::from(".")], false)
-        .expect("concept-only bundle should be blocked before acquisition");
-
-    assert_eq!(block.reason, "query-needs-specific-anchor");
-    assert_eq!(block.term_count, 5);
-
-    let anchored = search_query_terms("search provider run_language_command");
-    assert!(search_terms_budget_block(&anchored, &[PathBuf::from(".")], false).is_none());
+    assert!(search_terms_budget_block(&terms, &[PathBuf::from(".")], false).is_none());
+    assert!(
+        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+            language_id: "rust",
+            query: "compiler trace module resolution|project references",
+            scopes: &[PathBuf::from(".")],
+            explicit_filters: false,
+        })
+        .is_none()
+    );
+    assert!(
+        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+            language_id: "rust",
+            query: "Tokio runtime Handle::enter context guard lifecycle owner frontier",
+            scopes: &[PathBuf::from(".")],
+            explicit_filters: false,
+        })
+        .is_none()
+    );
 }
 
 #[test]

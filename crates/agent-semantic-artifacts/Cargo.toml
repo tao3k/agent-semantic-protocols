@@ -6,6 +6,7 @@ license = "MIT"
 description = "Content-addressed artifact identity and Merkle root primitives for ASP."
 
 [dependencies]
+agent-semantic-content-identity.workspace = true
 blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true

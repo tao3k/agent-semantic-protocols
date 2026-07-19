@@ -2,8 +2,7 @@ use agent_semantic_client_db::agent_session_registry::AgentSessionInteractiveMen
 
 use super::{
     canonical_resident_target, codex_spawn_agent_metadata_capability, latest_trace_result,
-    main_agent_runtime_rebind_instruction, platform_native_create_action, required_inputs_phrase,
-    runtime_repair_diagnosis,
+    main_agent_runtime_rebind_instruction, platform_native_create_action, runtime_repair_diagnosis,
 };
 
 pub(super) fn print_bootstrap_menu(
@@ -83,7 +82,8 @@ pub(super) fn print_bootstrap_menu(
         );
         println!(
             "repair: retire/archive the drifted child, wait for terminal host status and canonical-path release, then create exactly one replacement with agent_type={}, task_name={}, and fork_turns=none. Codex must load the registered TOML; do not send a natural-language model switch.",
-            menu.host_requirement.managed_agent_kind, menu.host_requirement.managed_agent_kind,
+            menu.host_requirement.managed_agent_kind.as_ref(),
+            menu.host_requirement.managed_agent_kind.as_ref(),
         );
         let canonical_target = canonical_resident_target(&menu.host_requirement);
         println!(
@@ -91,7 +91,7 @@ pub(super) fn print_bootstrap_menu(
             main_agent_runtime_rebind_instruction(
                 &canonical_target,
                 observation,
-                menu.host_requirement.managed_agent_kind,
+                menu.host_requirement.managed_agent_kind.as_ref(),
             )
         );
         println!(
@@ -133,12 +133,12 @@ pub(super) fn print_bootstrap_menu(
     if has_create_choice {
         println!(
             "host-typed-spawn-preflight: tool=collaboration.spawn_agent requiredField=agent_type requiredValue={} genericFieldsInsufficient=task_name,message,fork_turns unavailable=bootstrapBlocked=host-agent-type-unavailable",
-            menu.host_requirement.managed_agent_kind,
+            menu.host_requirement.managed_agent_kind.as_ref(),
         );
         println!(
             "platform-native-create: platform={} managedAgentKind={} action={}",
             menu.host_requirement.platform,
-            menu.host_requirement.managed_agent_kind,
+            menu.host_requirement.managed_agent_kind.as_ref(),
             platform_native_create_action(&menu.host_requirement)
         );
         println!(
@@ -199,4 +199,12 @@ pub(super) fn print_bootstrap_menu(
     println!(
         "lifecycle: after native create, typed replacement, or interrupt, re-enter this pane; never pass child ids, message targets, model claims, or lifecycle status as bootstrap command flags."
     );
+}
+
+fn required_inputs_phrase(required_inputs: usize) -> String {
+    match required_inputs {
+        0 => "no required inputs".to_string(),
+        1 => "1 required input".to_string(),
+        count => format!("{count} required inputs"),
+    }
 }

@@ -49,6 +49,7 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             schema_version TEXT NOT NULL,
             generation_id TEXT NOT NULL,
             file_hashes_json TEXT NOT NULL,
+            source_snapshot_json TEXT NOT NULL DEFAULT '',
             selector_fingerprint TEXT NOT NULL DEFAULT '',
             owner_count INTEGER NOT NULL,
             selector_count INTEGER NOT NULL,
@@ -104,6 +105,20 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             connection,
             "ALTER TABLE asp_source_index_owner_v1 ADD COLUMN term_tokens_json TEXT NOT NULL DEFAULT '[]'",
             "failed to migrate Turso source-index owner token projection",
+        )
+        .await?;
+    }
+    if !turso_table_column_exists(
+        connection,
+        "asp_source_index_scope_v1",
+        "source_snapshot_json",
+    )
+    .await?
+    {
+        execute_turso_statement_with_lock_retry(
+            connection,
+            "ALTER TABLE asp_source_index_scope_v1 ADD COLUMN source_snapshot_json TEXT NOT NULL DEFAULT ''",
+            "failed to migrate Turso source-index source snapshot evidence",
         )
         .await?;
     }
@@ -168,6 +183,15 @@ async fn ensure_turso_source_index_schema(connection: &turso::Connection) -> Res
                 .await
                 .map_err(|error| error.to_string())?;
             connection
+                .query(
+                    "SELECT source_snapshot_json
+                     FROM asp_source_index_scope_v1
+                     LIMIT 1",
+                    (),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            connection
                 .query("SELECT 1 FROM asp_source_index_token_v1 LIMIT 1", ())
                 .await
                 .map_err(|error| error.to_string())?;
@@ -207,6 +231,10 @@ pub async fn refresh_turso_source_index_import(
 ) -> Result<ClientDbSourceIndexRefreshReport, String> {
     let _source_index_write_guard = turso_source_index_access_lock(db_path).write_owned().await;
     let trace_started = std::time::Instant::now();
+    let source_snapshot_json =
+        serde_json::to_string(&request.source_snapshot).map_err(|error| {
+            format!("failed to serialize Turso source-index source snapshot evidence: {error}")
+        })?;
     let import = request.import;
     if import.file_hashes.is_empty() {
         return Err("source index import requires file hash evidence".to_string());
@@ -234,6 +262,7 @@ pub async fn refresh_turso_source_index_import(
         &import,
         &project_root,
         &file_hashes_json,
+        &source_snapshot_json,
         request.file_count,
     )
     .await?
@@ -242,9 +271,14 @@ pub async fn refresh_turso_source_index_import(
         return Ok(refresh);
     }
     source_index_db_trace("reuse-probe-missed", trace_started);
-    let write_stats =
-        write_turso_source_index_rows(&connection, &import, &project_root, &file_hashes_json)
-            .await?;
+    let write_stats = write_turso_source_index_rows(
+        &connection,
+        &import,
+        &project_root,
+        &file_hashes_json,
+        &source_snapshot_json,
+    )
+    .await?;
     source_index_db_trace("rows-written", trace_started);
     let (owner_count, selector_count) = turso_source_index_scope_row_counts(
         &connection,
@@ -284,7 +318,7 @@ pub async fn latest_turso_source_index_file_hashes(
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
 ) -> Result<Option<Vec<ClientCacheFileHash>>, String> {
-    let Some((_, file_hashes_json, _, _)) =
+    let Some((_, file_hashes_json, _, _, _)) =
         latest_turso_source_index_generation(db_path, project_root, schema_id, schema_version)
             .await?
     else {
@@ -301,12 +335,15 @@ pub async fn latest_turso_source_index_stats(
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
 ) -> Result<Option<ClientDbSourceIndexStats>, String> {
-    let Some((generation_id, _, owner_count, selector_count)) =
+    let Some((generation_id, _, source_snapshot_json, owner_count, selector_count)) =
         latest_turso_source_index_generation(db_path, project_root, schema_id, schema_version)
             .await?
     else {
         return Ok(None);
     };
+    let source_snapshot = serde_json::from_str(&source_snapshot_json).map_err(|error| {
+        format!("failed to decode latest Turso source-index source snapshot evidence: {error}")
+    })?;
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
     let normalized_project_root = normalized_project_root(project_root);
@@ -324,6 +361,7 @@ pub async fn latest_turso_source_index_stats(
         generation_id: generation_id.into(),
         owner_count,
         selector_count,
+        source_snapshot,
     }))
 }
 
@@ -333,7 +371,7 @@ pub async fn latest_turso_source_index_scope_files(
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
 ) -> Result<Option<Vec<ClientDbSourceIndexScopeFile>>, String> {
-    let Some((generation_id, _, _, _)) =
+    let Some((generation_id, _, _, _, _)) =
         latest_turso_source_index_generation(db_path, project_root, schema_id, schema_version)
             .await?
     else {
@@ -422,12 +460,13 @@ pub async fn lookup_reusable_turso_source_index_generation(
         || async {
             connection
                 .query(
-                    "SELECT generation_id, owner_count, selector_count
+                    "SELECT generation_id, owner_count, selector_count, source_snapshot_json
                      FROM asp_source_index_scope_v1
                      WHERE project_root = ?1
                        AND schema_id = ?2
   AND schema_version = ?3
   AND file_hashes_json = ?4
+  AND source_snapshot_json <> ''
 ORDER BY updated_at_ms DESC, generation_id DESC
 LIMIT 1",
                     (
@@ -465,6 +504,12 @@ LIMIT 1",
             .map_err(|error| format!("failed to read Turso source-index selector count: {error}"))?
             .max(0)
             .min(i64::from(u32::MAX)) as u32,
+        source_snapshot: serde_json::from_str(&row.get::<String>(3).map_err(|error| {
+            format!("failed to read Turso source-index source snapshot evidence: {error}")
+        })?)
+        .map_err(|error| {
+            format!("failed to decode Turso source-index source snapshot evidence: {error}")
+        })?,
     }))
 }
 
@@ -473,7 +518,7 @@ async fn latest_turso_source_index_generation(
     project_root: &Path,
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
-) -> Result<Option<(String, String, u32, u32)>, String> {
+) -> Result<Option<(String, String, String, u32, u32)>, String> {
     if !db_path.exists() {
         return Ok(None);
     }
@@ -484,11 +529,12 @@ async fn latest_turso_source_index_generation(
         || async {
             connection
                 .query(
-                    "SELECT generation_id, file_hashes_json, owner_count, selector_count
+                    "SELECT generation_id, file_hashes_json, source_snapshot_json, owner_count, selector_count
                      FROM asp_source_index_scope_v1
 WHERE project_root = ?1
   AND schema_id = ?2
   AND schema_version = ?3
+  AND source_snapshot_json <> ''
 ORDER BY updated_at_ms DESC, generation_id DESC
 LIMIT 1",
                     (
@@ -515,11 +561,14 @@ LIMIT 1",
             .map_err(|error| format!("failed to read Turso source-index generation id: {error}"))?,
         row.get::<String>(1)
             .map_err(|error| format!("failed to read Turso source-index file hashes: {error}"))?,
-        row.get::<i64>(2)
+        row.get::<String>(2).map_err(|error| {
+            format!("failed to read Turso source-index source snapshot evidence: {error}")
+        })?,
+        row.get::<i64>(3)
             .map_err(|error| format!("failed to read Turso source-index owner count: {error}"))?
             .max(0)
             .min(i64::from(u32::MAX)) as u32,
-        row.get::<i64>(3)
+        row.get::<i64>(4)
             .map_err(|error| format!("failed to read Turso source-index selector count: {error}"))?
             .max(0)
             .min(i64::from(u32::MAX)) as u32,
@@ -568,6 +617,7 @@ async fn reusable_turso_source_index_generation(
     import: &ClientDbSourceIndexImport,
     project_root: &str,
     file_hashes_json: &str,
+    source_snapshot_json: &str,
     file_count: u32,
 ) -> Result<Option<ClientDbSourceIndexRefreshReport>, String> {
     let selector_fingerprint = turso_source_index_selector_fingerprint(import)?;
@@ -581,14 +631,15 @@ async fn reusable_turso_source_index_generation(
                        AND schema_id = ?2
                        AND schema_version = ?3
                        AND file_hashes_json = ?4
-                       AND selector_fingerprint = ?5
+                       AND source_snapshot_json = ?5
+                       AND selector_fingerprint = ?6
                        AND EXISTS (
                            SELECT 1
                            FROM asp_source_index_layout_v1 AS layout
                            WHERE layout.project_root = asp_source_index_scope_v1.project_root
                              AND layout.schema_id = asp_source_index_scope_v1.schema_id
                              AND layout.schema_version = asp_source_index_scope_v1.schema_version
-                             AND layout.term_projection_version = ?6
+                             AND layout.term_projection_version = ?7
                              AND layout.token_projection_generation_id = asp_source_index_scope_v1.generation_id
                        )
                        AND EXISTS (
@@ -613,6 +664,7 @@ async fn reusable_turso_source_index_generation(
                         import.schema_id.as_str(),
                         import.schema_version.as_str(),
                         file_hashes_json,
+                        source_snapshot_json,
                         selector_fingerprint.as_str(),
                         TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
                     ),

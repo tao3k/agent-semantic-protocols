@@ -225,3 +225,41 @@ pub(super) fn complete_dispatch(
     }
     Ok(())
 }
+
+pub(super) fn mark_dispatch_orphaned(
+    registry: &AgentSessionRegistry,
+    args: &SessionArgs,
+) -> Result<(), String> {
+    let project_id = current_project_session_scope_id(registry)?;
+    let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?
+        .ok_or_else(|| {
+            "dispatch orphan marking requires the current or explicit root session id".to_string()
+        })?;
+    let name = required_non_empty(args.name.as_deref(), "--name")?;
+    let dispatch_identity =
+        required_non_empty(args.dispatch_identity.as_deref(), "--dispatch-identity")?;
+    let command_digest = required_non_empty(args.command_digest.as_deref(), "--command-digest")?;
+    let lease = registry.mark_dispatch_orphaned(
+        agent_semantic_client_db::agent_session_registry::AgentSessionDispatchMarkOrphanedRequest {
+            project_id: &project_id,
+            root_session_id: &root_session_id,
+            name,
+            dispatch_identity,
+            command_digest,
+            now: agent_session_unix_timestamp()?,
+        },
+    )?;
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string(&lease)
+                .map_err(|error| format!("failed to encode dispatch receipt: {error}"))?
+        );
+    } else {
+        println!(
+            "[agent-session-dispatch] action=mark-orphaned identity=\"{}\" status={} attempt={} evidence=\"previous-dispatch-receipt-missing\"",
+            dispatch_identity, lease.status, lease.attempt_count
+        );
+    }
+    Ok(())
+}

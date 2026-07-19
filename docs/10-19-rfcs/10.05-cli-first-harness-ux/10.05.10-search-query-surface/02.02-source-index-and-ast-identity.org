@@ -1,0 +1,312 @@
+** Source-index posting projection uses staged changed-owner membership
+
+Source-index generation reuse MUST bind both file membership and the canonical
+selector projection identity.  The scope stores a stable selector fingerprint
+over owner path, structural selector, semantic fields, query keys, and parser
+payload proof.  Equal file hashes alone MUST NOT reuse a generic generation
+when a language harness supplies parser-owned selectors; equal file and
+selector fingerprints MAY reuse the existing generation without rewriting
+postings.
+
+The published scope count represents the effective canonical projection after
+generic membership and parser-owned overlays are merged.  A generic refresh
+MUST preserve valid parser selectors for unchanged owners and MUST NOT fail
+merely because the effective selector count is greater than the generic import
+count; it still MUST fail when imported selectors are missing.
+
+Version-control object reads are source-access surfaces, not an alternate
+evidence channel.  The declarative hook rule engine MUST deny =git show=, =git
+ls-tree=, =git grep=, =git ls-files=, =git diff=, and the other configured
+object-read commands through the same ASP Explore recovery contract as raw
+source search.  Command parsing owns only shell-stage and argument-vector
+normalization; it MUST NOT embed command/flag policy or maintain a parallel
+raw-search classifier.  Built-in rules are merged by stable rule ID, and a
+project rule with the same ID MAY replace the built-in declaration.
+
+Source-index refresh MUST materialize the changed and removed owner set once
+as indexed staging data before deleting or rebuilding token-owner postings.
+Posting SQL must join that staging relation; it must not repeatedly evaluate a
+JSON owner-membership subquery for every indexed owner or token. This preserves
+incremental refresh semantics while keeping cold refresh proportional to the
+changed owners and their terms. A cold-write budget failure is a failed index
+generation and may not publish the new scope or be hidden by a larger timeout.
+
+Generic source-index refresh owns file membership and hash evidence only. It
+must not approximate whole-file parser coverage by increasing raw text scans.
+Every source-language provider that advertises projection import MUST implement
+=projection <relative-owner> --workspace <root> --json= and return
+=semantic-language-projection= v1. ASP imports that bounded, parser-owned
+receipt when an owner is selected; provider selectors then become the durable
+source-index and EvidenceGraph facts for later symbol lookup. ASP must reject a
+projection capability at activation time when the provider command is absent.
+
+For the internal audited fallback path, the language provider must make explicit
+direct-read selectors useful.  A query
+such as =asp <language> query --from-hook direct-source-read --selector
+src/lib.rs:10:20 --workspace <workspace-root> --code= should return the exact
+bounded source window for that range, not whole-owner item names and not a
+lossy ancestor projection.  Ranges inside an inline module, impl, function, or
+other containing item must preserve the selected source lines instead of
+collapsing to only the ancestor declaration.  This is required for
+test/assertion edits, import/header inspection, enum/impl variant inspection,
+and hook recovery after a denied =sed= / =rtk read= / tool-native read.  The
+root hook only preserves the selector and explicit direct-read reason; native
+parser providers own safe selector validation, read-plan repair, and exact
+source-window rendering.
+
+Providers should exact-match item names first; if no exact item exists, they may
+fall back to contains matching.  A default hit emits parser-owned item metadata,
+read locators, and explicit next actions, but it must not inline compact code:
+
+#+begin_example
+[search-owner] q=src/search/owner_view.rs pkg=. own=1 item=1 itemQuery=render_search_owner
+|query itemQuery=render_search_owner status=hit match=exact item=1 reason=parser-item-exact next=query-code
+|item render_search_owner kind=fn next=symbol:render_search_owner read=src/search/owner_view.rs:22:40
+omit=code,projection-nodes,large-item-text
+avoid=inline-code-in-search,repeat-owner,raw-read
+#+end_example
+
+After an agent has already selected a concrete owner and item query, it may ask
+for pure compact code:
+
+#+begin_src shell
+<lang-harness> search owner <path> items --query 'fun1|fun2|fun3' --code
+#+end_src
+
+The =--code= projection emits only compact parser-owned code projection text.
+It omits the =|owner= / =|item= / =|code= line protocol metadata and is mutually
+exclusive with =--json=.  Providers should keep the default =--query= output
+metadata-bearing because =status=hit=, =match=exact=, and visible fallback
+markers are the accuracy contract for exploration and hook recovery.  =--code=
+is therefore a post-selection token optimization, not a replacement for search
+evidence.
+
+For explicit item query code results, the compact parser-owned projection must
+be produced by the same renderer regardless of transport.  Prompt-facing search
+line protocol must not add =|code text="..."= during default discovery; code
+text belongs to explicit =--code=, =query --code=, or JSON/artifact projection
+surfaces after the agent has selected a concrete item/frontier node.  Providers
+must not apply a second whitespace-only compaction layer at line-render time;
+that hides AST structure and pushes agents back into repeated local reads.
+
+Provider compact code must also preserve literal payload semantics.  Whitespace
+inside Rust raw strings, Python triple-quoted strings, JavaScript template
+literals, Julia string macros, and equivalent language-owned literal regions is
+not syntax trivia.  A provider may compact whitespace only outside such
+payloads, or it must summarize/omit the payload and route the agent to an exact
+read locator.  JSON query packets expose this decision as
+=projection.compactSafety=; line protocol =--code= users see the same compact
+text and must not infer original indentation from it unless
+=compactSafety.whitespacePolicy= is =exact-source=.
+
+Line-protocol =|code= rows may include a parser-owned =nodes= field before
+=text=.  The field is a comma-separated compact node list:
+=id:kind:role:depth:start:end=.  The JSON query renderer must prefer this
+parser-owned node list for =projection.nodes[]= and =expandActions[]=, using
+compact =text= classification only as a fallback when a retired provider does
+not emit =nodes=.  This keeps visible line protocol compact while preventing
+JSON projections from being reconstructed by renderer heuristics.
+Formatter-structural compact may use =role=delimiter= rows for parser-owned
+block boundaries; such rows are not formatter residue when their =nodeId= is
+present in =projection.nodes[]=.
+
+Compact code is not raw source minification.  It is an agent-facing AST
+projection produced by the language-native parser.  The projection may omit
+trivia such as blank lines, comments, and indentation, but it must preserve the
+semantic structure an agent needs to reason about ownership and edits:
+
+- item boundary and exact read locator
+- block nesting and branch ownership
+- return / throw / panic / await / unsafe / mutation markers where the parser
+  can expose them
+- helper calls and hot-block locators when a full item is too large
+
+Rust and TypeScript providers may use token/braces compact syntax because block
+ownership survives in ={ ... }=.  Python, Julia, and indentation-sensitive
+languages must not flatten raw source indentation into ambiguous one-line code.
+They should emit a parser-owned block projection such as =def f(x) { if x > 0
+{ return x } return 0 }= or a semantic outline with hot-block locators.  This
+projection is for agent understanding, not an editable source replacement.
+Exact source remains available through the read locator.
+
+The query response is a progressive reasoning-tree traversal, not a set of
+human display modes.  Providers should select the smallest layer that preserves
+the next decision:
+
+#+begin_example
+owner tree -> item names -> item outline -> compact hot blocks -> exact read for edit
+#+end_example
+
+Compact projection is bidirectional.  The forward direction is native parser
+facts to agent-facing projection: declarations, branches, calls, exits,
+mutation/effect markers, and hot blocks.  The reverse direction is projection
+back to exact provider actions: every important node should carry a stable
+node id plus a read locator or expansion action so the agent can ask for the
+exact block instead of restarting broad search.  The compact text may be lossy
+for token savings, but the projection metadata must explain what was omitted
+and how to expand it.
+
+#+begin_example
+parser AST -> projection.nodes[] -> compact/outline text -> expandActions[] -> exact read
+#+end_example
+
+Formatter-assisted compaction is allowed only after the native parser has
+proved the structure.  The provider may use the language formatter to choose a
+workspace/style-owned source dialect before projection or after an edit
+dry-run, because formatter-normalized text lets the compact renderer remove
+whitespace, blank lines, and local trivia without guessing semantics.  The
+formatter is not the source of AST facts.  It is a safety gate for printable
+text that still follows the native AST.
+
+This intentionally separates formatter language from formatted source.  The
+original purpose of formatters is human readability: indentation, vertical
+spacing, alignment, and style conventions make code comfortable for people to
+scan.  Those same choices waste tokens for an agent.  However, LLMs are trained
+mostly on formatted code, so the formatter's canonical spelling is still a
+useful prior for code understanding.  Compact AST should therefore reuse the
+formatter dialect, not the full formatted layout.  Providers may normalize
+syntax with the formatter, then project the parser facts into a shorter
+agent-facing form that drops human-only layout while keeping grammar,
+ownership, and edit locators.
+
+The protocol must not assume one fixed formatter style.  Different Rust,
+Python, TypeScript, JavaScript, and future provider workspaces may choose
+different formatter tools, versions, line widths, import styles, or plugin
+settings.  Those choices are user/workspace policy.  The provider records the
+formatter profile it discovered and treats the exact style as opaque; the
+shared invariant is that the formatted output still parses to the same
+language-native structure.  The shared query projection schema must not expose
+formatter names or styles as a cross-language enum; formatter profile belongs
+to provider registry/capability metadata or provider-local diagnostics.
+
+Formatter alignment is fail-closed.  If a provider declares that compact output
+uses formatter-normalized syntax, the original parser facts and the formatted
+parser facts must align through native node identity, symbol path, structural
+role, and structural fingerprints.  Token fingerprints may help diagnose
+alignment, but they are not the primary contract because formatter styles are
+not stable across workspaces.  If AST alignment fails, the provider must not
+silently return parser-only compact output as a fallback.  It should emit a
+structured failure or diagnostic receipt and stop the formatter-assisted path.
+Parser-only compact projection is valid only as an explicitly declared
+capability mode before formatter normalization is attempted; it is not a
+recovery path after formatter/core AST disagreement.
+
+The formatter stage is language-owned:
+
+- Rust uses =rustfmt=.
+- Python uses =ruff format= for formatting; =ruff check --fix= is a separate
+  lint-fix or organize-imports capability, not formatting.
+- TypeScript and JavaScript use the workspace-declared formatter from
+  =package.json= or provider registry facts, such as =prettier=, =biome=, or
+  =oxfmt=.
+- Julia uses =JuliaFormatter.jl= as a provider-declared formatter capability
+  behind the Julia facade.
+
+Compact AST output must not break the normal agent edit loop.  The agent reads
+compact projection to understand and choose a target, then expands an exact
+read locator before writing code.  The compact projection is not an editable
+source replacement and must never be the only path back to source.  It is also
+not a text patch context: compact renderers may remove indentation, punctuation
+lines, comments, or formatter layout.  =apply_patch= preimages and other
+text-hunk contexts must come from an exact source window selected by the
+projection's =read=/=exactRead= locator.  A provider that relies on
+formatter-normalized text for maximum compression must still return stable node
+ids, locators, omitted facts, and expansion actions.
+
+Standalone layout punctuation is never a useful compact line.  Lines such as
+=}=, =})=, =});=, =];=, or =,= are formatter/source-layout residue, not
+agent-facing facts.  A provider may keep punctuation inside a semantic line
+when it helps expression understanding, such as =.map((value) => ({=, but it
+must not emit punctuation-only lines as compact code.  If block structure
+matters, it belongs in parser nodes, depth, edges, or exact expand actions.
+
+Compact rendering must also be node-unique: one native AST node id produces at
+most one rendered row in a given projection.  Nested owners, local classes,
+closures, or visitor methods may be summarized under their parent or exposed as
+expandable descendants, but the renderer must not emit the same descendant both
+inline and as a sibling row.
+
+**** AST projection identity and uniqueness
+
+AST projection uniqueness is a protocol invariant, not a renderer preference.
+Within one query/search packet, every projected native AST node must have one
+stable projection identity and at most one primary rendered row.
+
+The provider owns the concrete native identity, but the shared projection
+identity must be derived from parser facts, not text formatting.  A projection
+node identity should include enough provider-owned material to distinguish the
+node within the source fingerprint:
+
+- owner path and owner/item identity
+- native node kind
+- structural role
+- parent projection id or structural parent path
+- source range or parser-owned stable span
+- same-kind ordinal when the language parser requires it
+- optional structural fingerprint for diagnostics
+
+In the packet contract this is not optional metadata.  Every compact projection
+node must carry =nativeId=, =role=, =depth=, =read=, and
+=structuralFingerprint= so the agent can distinguish parser-native identity,
+rendering hierarchy, exact source expansion, and stale/ambiguous projections
+without guessing from formatted text.
+
+Rendered compact rows are views over projection nodes:
+
+- one rendered row has one primary =nodeId=
+- one native AST node may not be rendered as two primary rows
+- child nodes may be referenced inline only as labels, edges, or summaries
+- repeated semantic references such as callee, type, binding, or symbol use are
+  references, not duplicate projection nodes
+- =omitted[]= and =expandActions[]= must reference existing projection node ids
+  or exact read locators instead of re-rendering hidden code
+- owner-local name discovery, fallback candidates, and routing actions such as
+  =owner-names= belong to query/candidate output, not to compact AST
+  =projection.expandActions=
+- every projection action must be executable without guessing: =exact-read=
+  and =hot-block= actions carry a =read= locator; =node-query= actions carry a
+  typed capability/selector route and must target an existing projection node
+  rather than a read locator
+- projection packets do not carry materialized provider =argv= in
+  =expandActions[]=.  Consumers must build =argv= through the trusted
+  materializer from typed action fields and the provider registry, not from
+  rendered compact rows, ARI text, =nextCommand= displays, or ad hoc command
+  templates
+
+Nested owners need an explicit mode.  A provider may either summarize a nested
+function/class/closure under its parent or expose it as a child projection node
+with =parentId= and an expansion action.  It must not do both in the same
+projection.  If a provider cannot assign unique parser-owned projection ids for
+the requested item, it must not claim compact-AST output for that item.  It may
+return a weaker, explicitly declared surface such as owner names or outline,
+but not a duplicate or ambiguous compact AST projection.
+
+This is the core parser loop.  Native parsers should improve the compact
+algorithm and the expansion metadata together: if a provider learns to omit
+large match cases, helper bodies, closures, decorators, or type clauses, it
+must also emit the omitted fact and the next exact read/query action.  A
+projection without reverse navigation is only a display optimization; a
+projection with nodes and expansion actions is an agent reasoning interface.
+Therefore =mode=compact= requires =sourceFingerprint=, =losslessStructure=,
+=exactRead=, =nodes[]=, and =renderedNodeIds[]=.  A provider that cannot
+populate those fields must use a weaker mode such as =outline= or =names=.
+For compact mode, =exactRead= is the same canonical locator as the match-level
+=read= field, and =sourceFingerprint= must bind that locator so stale compact
+projections can be diagnosed without comparing arbitrary formatted text.
+
+An exact small item hit should produce compact AST code.  A broad, mixed, or
+missed query should produce parser-owned names/candidates.  An exact but large
+item should produce semantic outline plus hot-block locators before full compact
+code.  The agent should not have to choose among these layers blindly; provider
+certainty, item size, and token budget decide the projection.  =--code= is the
+explicit override after the agent has selected the item to read.
+
+Python selector queries with an exact file selector plus terms use the
+same parser compact projection as owner item queries.  They must not render a
+second ad-hoc truncated source snippet for matched functions.  Small matched
+items return =save-token-ruff= rows backed by =projection.nodes[]=,
+=renderedRows[]=, =exactRead=, and =expandActions[]=; large or ambiguous ranges
+return a read plan with exact item locators.  Literal-heavy schema fixtures
+should expose parser-owned data-shape rows such as dictionary keys and bounded
+literal values instead of raw =ast.unparse= truncation.
+

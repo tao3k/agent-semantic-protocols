@@ -61,6 +61,13 @@ fn default_activation_records_project_bin_provider_prefix() {
         julia.provider_command_prefix
     );
     assert!(julia.coverage.package_roots.contains(&".".to_string()));
+    assert_eq!(
+        julia
+            .query_pack_descriptor
+            .as_ref()
+            .map(|descriptor| descriptor.descriptor_id.as_str()),
+        Some("julia.query-pack")
+    );
 
     fs::remove_dir_all(root).expect("remove temp root");
 }

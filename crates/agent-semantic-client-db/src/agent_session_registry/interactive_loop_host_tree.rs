@@ -19,7 +19,7 @@ pub fn resident_child_host_tree_audit_required_menu<'a>(
     menu.choices = vec![AgentSessionInteractiveChoice {
         id: "audit-host-agent-tree-before-live-target-rebind",
         label: "Audit the current native host tree before attempting Resume.",
-        platform_action: host_tree_audit_action(menu.name),
+        platform_action: std::borrow::Cow::Borrowed(host_tree_audit_action(menu.name)),
         next_state: AgentSessionLoopState::Classify,
         required_inputs: &["freshHostAgentTreeObservation"],
     }];
@@ -56,7 +56,7 @@ pub fn resident_child_host_tree_observation_menu<'a>(
                 } else {
                     "Resume the host-visible canonical resident child."
                 },
-                platform_action: host_tree_resume_action(menu.name),
+                platform_action: std::borrow::Cow::Owned(host_tree_resume_action(menu.name)),
                 next_state: AgentSessionLoopState::Audit,
                 required_inputs: &["freshSameRootHostTargetObservation"],
             }];
@@ -97,14 +97,35 @@ pub fn resident_child_host_tree_observation_menu<'a>(
             result: "canonical-host-target-absent-registry-orphan-risk",
         },
     ];
+    if typed_spawn_status == Some("present") {
+        menu.choices = vec![AgentSessionInteractiveChoice {
+            id: "probe-hidden-routable-child-before-replacement",
+            label: "Probe the canonical resident target before creating a replacement.",
+            platform_action: std::borrow::Cow::Borrowed(
+                "The native host tree reported the canonical resident target as absent, but list-agents absence is not a definitive reachability proof. Before any replacement, use the main agent's native follow-up surface on the canonical target path. If the follow-up succeeds or native spawn reports the path already exists, record a trusted host ack for the same canonical target and re-enter this pane; do not create a duplicate. Only when the canonical follow-up probe proves the target is not routable may the typed replacement path be audited.",
+            ),
+            next_state: AgentSessionLoopState::Audit,
+            required_inputs: &["canonicalReachabilityProbeReceipt"],
+        }];
+        menu.trace.push(AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Audit,
+            result: "host-tree-absent-canonical-reachability-probe-required",
+        });
+        return menu;
+    }
     menu.choices = match typed_spawn_status {
-        Some("present") => vec![AgentSessionInteractiveChoice {
+        Some("present-after-canonical-probe-miss") => vec![AgentSessionInteractiveChoice {
             id: "create-canonical-typed-child-after-orphaned-owner",
-            label: "Create one canonical typed child after the host-tree miss.",
-            platform_action: orphan_replacement_action(menu.name),
+            label: "Create one canonical typed child after the host-tree and canonical reachability miss.",
+            platform_action: orphan_replacement_action(
+                menu.name,
+                super::interactive_loop_actions::managed_agent_kind(menu.name).as_ref(),
+            )
+            .into(),
             next_state: AgentSessionLoopState::Audit,
             required_inputs: &[
                 "freshHostTreeAbsentObservation",
+                "canonicalReachabilityProbeMiss",
                 "freshTypedSpawnPresentObservation",
             ],
         }],
@@ -113,7 +134,9 @@ pub fn resident_child_host_tree_observation_menu<'a>(
             vec![AgentSessionInteractiveChoice {
                 id: "report-host-typed-spawn-capability-unavailable",
                 label: "Report the local resident-command capability blocker.",
-                platform_action: "Report bootstrapBlocked=host-typed-spawn-unavailable. Do not execute the resident-routed command, create a generic child, use a historical target, or run an inline parser fallback. Unrelated Codex tools remain available.",
+                platform_action: std::borrow::Cow::Borrowed(
+                    "Report bootstrapBlocked=host-typed-spawn-unavailable. Do not execute the resident-routed command, create a generic child, use a historical target, or run an inline parser fallback. Unrelated Codex tools remain available.",
+                ),
                 next_state: AgentSessionLoopState::Blocked,
                 required_inputs: &[
                     "freshHostTreeAbsentObservation",
@@ -124,7 +147,7 @@ pub fn resident_child_host_tree_observation_menu<'a>(
         _ => vec![AgentSessionInteractiveChoice {
             id: "audit-host-typed-spawn-schema",
             label: "Audit typed spawn before replacing the orphaned registry owner.",
-            platform_action: typed_spawn_audit_action(menu.name),
+            platform_action: std::borrow::Cow::Borrowed(typed_spawn_audit_action(menu.name)),
             next_state: AgentSessionLoopState::Classify,
             required_inputs: &["hostTypedSpawnObservation"],
         }],

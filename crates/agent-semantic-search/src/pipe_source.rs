@@ -10,7 +10,6 @@ use crate::pipe_candidates::{SearchPipePathCandidateRequest, collect_search_pipe
 use crate::{
     DocumentSearchCandidate, DocumentSearchCandidateRequest, SearchPipeCandidate,
     SearchPipeCandidateRequest, collect_document_search_candidates, collect_search_pipe_candidates,
-    search_query_terms, search_terms_budget_block,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,6 +35,7 @@ pub struct SearchPipeAutoAcquisitionRequest<'a> {
     pub project_root: &'a Path,
     pub locator_root: &'a Path,
     pub query: &'a str,
+    pub query_terms: &'a [crate::SearchPipeQueryTerm],
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
@@ -47,12 +47,19 @@ pub struct SearchPipeAutoAcquisitionRequest<'a> {
 pub fn collect_search_pipe_auto_acquisition(
     request: SearchPipeAutoAcquisitionRequest<'_>,
 ) -> Result<SearchPipeSourceAcquisition, String> {
-    let source_index =
-        collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
-            intent: request.query,
-            project_root: request.project_root,
-            scopes: request.owners,
-            lookup: request.source_index_lookup,
+    let source_index = search_pipe_source_index_query_gate(request.query_terms)
+        .map(|gate| SearchPipeSourceIndexAcquisition {
+            decision: SearchPipeSourceIndexDecision::QueryGate,
+            gate: Some(gate),
+            candidates: Vec::new(),
+        })
+        .or_else(|| {
+            collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
+                intent: request.query,
+                project_root: request.project_root,
+                scopes: request.owners,
+                lookup: request.source_index_lookup,
+            })
         });
     let frame_route = crate::pipe_source_lexical_frame::plan_pipe_lexical_search_frame(
         request.query,
@@ -76,17 +83,44 @@ pub fn collect_search_pipe_auto_acquisition(
             _ => None,
         })
         .unwrap_or_default();
+    if let Some(source_index) = source_index.as_ref()
+        && source_index_auto_route_is_terminal(source_index.decision, frame_route.acquisition_route)
+    {
+        let source_trace = vec![
+            crate::pipe_source_index_projection::source_index_trace(source_index),
+            crate::pipe_source_lexical_frame::lexical_search_frame_trace(&frame_route),
+            skipped_search_overlay_trace(),
+        ];
+        let candidate_sources = if source_index.decision == SearchPipeSourceIndexDecision::QueryGate
+        {
+            vec!["search-overlay".to_string()]
+        } else {
+            vec!["source-index".to_string()]
+        };
+        return Ok(SearchPipeSourceAcquisition {
+            source_trace,
+            candidate_sources,
+            candidates: lexical_candidates,
+        });
+    }
     let path_started_at = Instant::now();
-    let path_candidates = collect_search_pipe_path_candidates(SearchPipePathCandidateRequest {
-        language_id: request.language_id,
-        project_root: request.project_root,
-        locator_root: request.locator_root,
-        query: request.query,
-        owners: request.owners,
-        ignore_dirs: request.ignore_dirs,
-        include_hidden_dirs: request.include_hidden_dirs,
-        limit: request.limit,
-    })?;
+    let query_gated = source_index.as_ref().is_some_and(|source_index| {
+        source_index.decision == SearchPipeSourceIndexDecision::QueryGate
+    });
+    let path_candidates = if query_gated {
+        Vec::new()
+    } else {
+        collect_search_pipe_path_candidates(SearchPipePathCandidateRequest {
+            language_id: request.language_id,
+            project_root: request.project_root,
+            locator_root: request.locator_root,
+            query: request.query,
+            owners: request.owners,
+            ignore_dirs: request.ignore_dirs,
+            include_hidden_dirs: request.include_hidden_dirs,
+            limit: request.limit,
+        })?
+    };
     let mut candidates = merge_search_pipe_candidates(lexical_candidates, path_candidates.clone());
     let proof_scopes = search_pipe_candidate_scopes(&candidates);
     let proof_scopes = if proof_scopes.is_empty() {
@@ -115,15 +149,17 @@ pub fn collect_search_pipe_auto_acquisition(
         ));
     }
     source_trace.push(crate::pipe_source_lexical_frame::lexical_search_frame_trace(&frame_route));
-    source_trace.push(candidate_trace(
-        "fd-path",
-        &path_candidates,
-        Some(path_started_at.elapsed()),
-    ));
+    if !query_gated {
+        source_trace.push(candidate_trace(
+            "fd-path",
+            &path_candidates,
+            Some(path_started_at.elapsed()),
+        ));
+    }
     let proof_source = if source_index_needs_rescue {
-        "rg-rescue"
+        "search-overlay-rescue"
     } else {
-        "rg-proof"
+        "search-overlay"
     };
     source_trace.push(candidate_trace(
         proof_source,
@@ -132,10 +168,12 @@ pub fn collect_search_pipe_auto_acquisition(
     ));
     candidates = merge_search_pipe_candidates(candidates, proof_candidates);
     let mut candidate_sources = Vec::new();
-    if source_index.is_some() {
+    if source_index.is_some() && !query_gated {
         candidate_sources.push("source-index".to_string());
     }
-    candidate_sources.push("fd-path".to_string());
+    if !query_gated {
+        candidate_sources.push("fd-path".to_string());
+    }
     candidate_sources.push(proof_source.to_string());
     Ok(SearchPipeSourceAcquisition {
         source_trace,
@@ -506,13 +544,6 @@ pub fn collect_search_pipe_source_index_acquisition(
     if !request.scopes.is_empty() {
         return None;
     }
-    if let Some(gate) = source_index_query_gate(request.intent) {
-        return Some(SearchPipeSourceIndexAcquisition {
-            decision: SearchPipeSourceIndexDecision::QueryGate,
-            gate: Some(gate),
-            candidates: Vec::new(),
-        });
-    }
     let lookup = request.lookup?;
     let candidates = lookup
         .candidates
@@ -550,13 +581,50 @@ pub fn collect_search_pipe_source_index_acquisition(
     })
 }
 
-fn source_index_query_gate(intent: &str) -> Option<SearchPipeSourceIndexGate> {
-    let terms = search_query_terms(intent);
-    let block = search_terms_budget_block(&terms, &[], false)?;
+#[must_use]
+pub fn search_pipe_source_index_query_gate(
+    terms: &[crate::SearchPipeQueryTerm],
+) -> Option<SearchPipeSourceIndexGate> {
+    if terms.len() < 2
+        || terms.iter().any(|term| {
+            term.role == crate::SearchPipeTermRole::Symbol
+                || crate::search_pipe_is_path_like_token(&term.raw)
+        })
+    {
+        return None;
+    }
     Some(SearchPipeSourceIndexGate {
-        term_count: block.term_count,
-        generic_term_count: block.generic_terms.len(),
+        term_count: terms.len(),
+        generic_term_count: terms
+            .iter()
+            .filter(|term| term.role != crate::SearchPipeTermRole::Symbol)
+            .count(),
     })
+}
+
+fn source_index_auto_route_is_terminal(
+    decision: SearchPipeSourceIndexDecision,
+    route: crate::LexicalAcquisitionRoute,
+) -> bool {
+    matches!(
+        decision,
+        SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay
+            | SearchPipeSourceIndexDecision::Busy
+            | SearchPipeSourceIndexDecision::ColdRequired
+            | SearchPipeSourceIndexDecision::QueryGate
+    ) || (decision == SearchPipeSourceIndexDecision::DeferBackend
+        && route == crate::LexicalAcquisitionRoute::SourceIndexOwnerEvidence)
+}
+
+fn skipped_search_overlay_trace() -> SearchPipeSourceAcquisitionTrace {
+    SearchPipeSourceAcquisitionTrace {
+        source: "search-overlay".to_string(),
+        status: "skipped".to_string(),
+        matched: 0,
+        missing: 0,
+        normalized: 0,
+        elapsed: None,
+    }
 }
 
 fn intent_terms_all_path_like(intent: &str) -> bool {

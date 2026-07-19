@@ -23,10 +23,10 @@ fn test_root(root_kind: &str, generation: &str, seed: &[u8]) -> ArtifactRootRef 
     )
 }
 
-fn frame_input(
+fn frame_input<T: serde::Serialize>(
     frame_kind: RepairChainFrameKind,
     generation: &str,
-    content: serde_json::Value,
+    content: T,
     parents: Vec<RepairChainParentRef>,
 ) -> RepairChainFrameInput {
     RepairChainFrameInput::new(
@@ -35,7 +35,7 @@ fn frame_input(
         ArtifactWorkspaceId::new("workspace"),
         ArtifactScopeId::new("default"),
         ArtifactGeneration::new(generation),
-        ArtifactJson::new(content),
+        ArtifactJson::from_serializable(&content).expect("repair frame content must serialize"),
         parents,
     )
 }
@@ -50,7 +50,7 @@ fn how_from_frame_links_search_sources_and_graph_roots() {
         "intent": "find owner evidence",
         "selectors": ["crates/agent-semantic-artifacts#repair-chain"],
     });
-    let expected_content_hash = hash_normalized_json(&ArtifactJson::new(content.clone()));
+    let expected_content_hash = hash_normalized_json(&ArtifactJson::from(content.clone()));
     let frame = build_repair_chain_frame(frame_input(
         RepairChainFrameKind::HowFromFrame,
         "how-from-1",

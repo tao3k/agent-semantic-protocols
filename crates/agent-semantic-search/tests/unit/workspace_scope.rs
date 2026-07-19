@@ -4,6 +4,41 @@ use serde_json::json;
 
 use crate::{SemanticWorkspaceScope, SemanticWorkspaceScopeSet};
 
+#[test]
+fn gerbil_scope_identity_requires_exact_gerbil_scheme_language_id() {
+    let mut packet = packet();
+    packet["languageId"] = serde_json::Value::String("gerbil-scheme".to_string());
+    packet["providerId"] = serde_json::Value::String("gslph".to_string());
+    for package in packet["packages"]
+        .as_array_mut()
+        .expect("workspace packages")
+    {
+        package["languageId"] = serde_json::Value::String("gerbil-scheme".to_string());
+    }
+
+    let scope = crate::SemanticWorkspaceScope::from_packet(&packet).expect("gerbil scope");
+    assert!(scope.matches_provider_identity(
+        "gslph",
+        "gerbil-scheme",
+        std::path::Path::new("/work/root")
+    ));
+    assert!(!scope.matches_provider_identity(
+        "gslph",
+        "scheme",
+        std::path::Path::new("/work/root")
+    ));
+    assert!(!scope.matches_provider_identity(
+        "scheme",
+        "gerbil-scheme",
+        std::path::Path::new("/work/root")
+    ));
+    assert!(!scope.matches_provider_identity(
+        "gslph",
+        "gerbil-scheme",
+        std::path::Path::new("/work/other")
+    ));
+}
+
 fn packet() -> serde_json::Value {
     json!({
         "schemaId": "agent.semantic-protocols.semantic-workspace-scope",

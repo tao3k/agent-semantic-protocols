@@ -1,4 +1,4 @@
-use crate::protocol_activation::{ActivatedProvider, HookRuntime};
+use crate::protocol_activation::protocol_activation_manifest::{ActivatedProvider, HookRuntime};
 
 use super::shell::{command_name, is_separator};
 

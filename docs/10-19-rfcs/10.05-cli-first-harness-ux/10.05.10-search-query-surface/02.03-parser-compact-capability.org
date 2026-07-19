@@ -1,0 +1,307 @@
+*** Parser compact capability plan
+
+The Rust, TypeScript, and Python compact lanes must be advanced as native parser
+implementations, not as renderer tricks.  The renderer may choose line protocol,
+JSON, or pure =--code= transport, but it must serialize parser projection nodes
+that already exist in the language provider.  A provider that can only trim
+whitespace has not implemented compact code.  Julia participates through
+JuliaSyntax-owned compact projections and the compiled =asp-julia-harness=
+facade path.
+
+The mainline compact dialects are =save-token-rustfmt= for Rust,
+=save-token-typescript= for TypeScript/JavaScript, and =save-token-ruff= for
+Python.  All three dialects share
+=compactSafety.whitespacePolicy=formatter-structural= and must carry
+=projection.nodes[]=, =renderedRows[]=, =omitted[]=, and =expandActions[]= in
+JSON packets.  Formatter names, versions, plugins, line widths, and workspace
+scripts remain provider-owned metadata; the shared syntax value names the
+compact projection dialect, not a global formatter choice.  Providers that can
+only emit names, outline rows, or formatter-shaped text without reverse
+navigation must report =mode=names= or =mode=outline= rather than partial
+=mode=compact=.
+
+The shared capability ladder is:
+
+1. /Declaration boundary./  Item name, visibility, signature, type-only status,
+   and exact read locator.
+2. /Control flow./  =if=/=else=, =match=/=case=, loops, and branch-local
+   ownership.
+3. /Terminal and effects./  =return=, =break=, =continue=, =throw=/=raise=,
+   =panic=, =await=, =try/?=, =unsafe=, and equivalent language-owned exits.
+4. /Mutation and binding./  Assignment targets, low-value ignored bindings,
+   summarized initializer shape, and member/field mutation when the parser can
+   expose it.
+5. /Calls and macros./  Stable callee names plus bounded argument evidence for
+   high-signal calls without dumping whole expressions.
+6. /Expansion metadata./  Stable node ids, parent ids, exact read locators,
+   omitted facts, and next query/read actions for hot blocks.
+
+The durable plan is:
+
+1. /Snapshot the current parser contract./  Each provider keeps a small fixture
+   project and a stable compact-query snapshot in the language harness that owns
+   the parser output.  The snapshot records the agent-facing =code= projection,
+   =projection.nodes[]=, =omitted[]=, and =expandActions[]=.  It excludes temp
+   roots, timings, and other runtime-only fields.  A compact algorithm change
+   must update this fixture intentionally.  The root repository no longer
+   mirrors parser-compact fixtures or runs provider snapshots; it owns the
+   shared schema, RFC contract, and cross-field validators that language
+   harnesses use to prove compact line output, =semantic-query-packet.v1= JSON,
+   and =parser-compact-token-cost.v1= measurements against the same protocol
+   boundary.
+
+2. /Strengthen native parser facts before renderer rules./  New compact
+   behavior should come from native parser nodes: Rust =syn=, the TypeScript
+   compiler API, Python =ast=, or JuliaSyntax.  Parser facts own branch
+   ownership, call labels, return/raise/throw exits, await/effect markers,
+   mutation targets, decorators, class/member boundaries, and type/signature
+   facts where the language exposes them.  Regex post-processing may normalize
+   display text but must not invent structure.
+
+3. /Keep projection bidirectional./  Every hot node that affects editing must
+   carry a stable =id=, =parentId= when nested, an exact =read= locator, and an
+   executable =expandAction= whose =--selector= equals that exact locator.
+   Selector-code queries with line ranges must return the bounded parser
+   item or source window, not owner top-items.
+
+4. /Add capability tests by language feature./  After the baseline snapshot,
+   add one language-harness snapshot per parser feature class: nested branches,
+   loops, terminal statements, mutation, call/macro summaries,
+   async calls/effects, class/member bodies, decorators or modifiers, large
+   item outline truncation, and selector-range expansion.  These snapshots are
+   the parser compact acceptance tests.  Rust should lock both the pure
+   =--code= projection and the line-protocol =|code text="..."= transport so
+   renderer changes cannot drift away from parser facts.
+
+5. /Measure search-flow impact after snapshots are stable./  Sandtable and
+   real-project runs should compare command count, repeated owner/test search,
+   direct-read reroutes, and query packet size before and after compact parser
+   improvements.  Performance optimizations are accepted only when the snapshot
+   contract stays stable or changes intentionally.
+
+Root hooks must not maintain a parallel read/query engine for the normal flow.
+The =|query= line is the stop/accuracy contract for agents: =status=hit= with
+=match=exact= means the parser selected the requested item; =fallback-contains=
+means the provider had to broaden after no exact item existed, including
+language-owned function-body matching when the requested evidence lives inside
+the code rather than in the symbol name; =status=miss= means the query should
+be corrected rather than followed by raw file search.
+
+Owner-local item discovery has a names-only phase.  Agents should use it when a
+selected owner is known but the exact item names are still uncertain:
+
+#+begin_example
+[search-owner] q=src/command/raw_search.rs pkg=. own=1 item=6 itemQuery=parse_
+|query itemQuery=parse_ status=hit match=fallback-contains item=6 reason=parser-item-fallback output=names next=select-item
+|item parse_ripgrep_like kind=fn read=src/command/raw_search.rs:97:201
+|item parse_fd kind=fn read=src/command/raw_search.rs:311:358
+#+end_example
+
+In names-only mode, providers must not emit =|code= lines.  They should emit
+read locators and a visible =output=names= field so the agent can choose the
+exact follow-up query before requesting compact code.  Names-only hit or mixed
+results should use =next=select-item=.  Misses or weak fallback top-item
+inventories should use =next=revise-query= unless the provider has a
+high-confidence parser-owned replacement item.
+Names-only is explicitly owner-local.  Combining =--names-only= with only
+=--term= or =--query= at workspace scope is ambiguous and must fail fast; the
+widening command for that situation is =search lexical=.
+
+When an owner-local item query misses, the provider should emit bounded
+parser-owned candidates if they can be inferred from the selected owner's item
+index:
+
+#+begin_example
+|query itemQuery=parse_ripgrep_scope status=miss match=none item=0 reason=parser-item-miss output=names candidates=parse_ripgrep_like next=revise-query
+#+end_example
+
+Candidate names must come from parser-owned item names in the requested owner.
+They are query repair evidence, not textual search hits.  A shell-safe repeated
+=--term= form is preferred over unquoted pipe expressions because
+=--query RawSearchScope|terms_for_raw_search= is interpreted by shells as a
+pipeline unless the whole expression is quoted.
+
+Agents must also quote literal query text that contains shell metacharacters.
+Backticks are command substitution in common shells, so a copied documentation
+string such as =Start with `asp <language> guide --workspace .`= must be passed as a
+single-quoted argv literal:
+
+#+begin_src shell
+asp rust search lexical --query-set 'Start with `asp <language> guide --workspace .`' owner tests --workspace . --view seeds
+#+end_src
+
+If the query text itself contains single quotes, the agent should narrow the
+query into separate safe terms or use a provider-documented file/stdin input
+surface rather than interpolating raw prose into a shell command.  Providers
+must treat the received argv term as literal query text and must not ask agents
+to rely on shell escaping side effects.
+
+When provider-native =query --json= is requested for an owner item query, it
+emits =semantic-query-packet.v1= rather than =semantic-search-packet.v1=.  The
+JSON packet uses =queryCoverage= and =candidateItems= for the same repair
+evidence that the line protocol exposes through =|query ... candidates=...=.
+Parser compact snapshots must use this =query --json= form; using
+=search ... --json= records the wrong packet class and hides compact-query
+cost behind search-packet fields.
+
+Julia search uses the shared search packet for search JSON through the facade:
+
+#+begin_src shell
+asp julia search lexical run owner tests --view seeds --json languages/JuliaLangProjectHarness.jl
+#+end_src
+
+The hook wildcard form uses the same packet class when a client needs a cached
+search frontier rather than compact text:
+
+#+begin_src shell
+asp julia query --from-hook direct-source-read \
+    --selector '**/*.jl' \
+    --term render_julia_search_packet \
+    --surface owners,tests \
+    --view seeds \
+    --json languages/JuliaLangProjectHarness.jl
+#+end_src
+
+That packet is for validators, IDEs, and Rust-client cache reuse.  It should
+mirror the compact search line protocol with =owners=, =hits=, =nextActions=,
+=querySet= and =queryCoverage= when terms were provided, =searchSynthesis=,
+optional =nativeSyntaxFacts=, and optional =semanticHandles=.  It does not
+replace the agent-facing compact default, and it must not invent a
+Julia-private search payload.
+
+Providers may additionally expose a =read-packet= query output mode for exact
+selected source windows:
+
+#+begin_src shell
+<lang-harness> query --from-hook direct-source-read --selector <project-path> --view read-packet .
+#+end_src
+
+That mode emits =semantic-read-packet= under the normal
+=agent.semantic-protocols.semantic-language= protocol.  It is provider-owned
+parser transport, not a root hook command.  The packet should only carry
+bounded exact windows that the provider can justify with parser-owned owner,
+item, or syntax facts.  Broad selectors must remain seed/candidate queries.
+
+When the target file has separate staged and unstaged states, =direct-source-read=
+is still the recovery surface.  Providers may accept a source selector such as
+=--source worktree|index|head= and should record the selected layer in the
+=semantic-read-packet= with =sourceVersion=.  =sourceVersion= defaults to
+=worktree=.  =sourceVersion=index= reads the Git index blob for the resolved
+repository-relative path, and =sourceVersion=head= reads the =HEAD= blob.
+Packets should include =repositoryRoot= for nested repositories,
+=gitBlobOid= for Git object reads, and =worktreeHash= for bounded worktree
+source.  Agents must not replace this with raw =git show :path=, raw =git diff=,
+or shell source dumps; if the provider cannot produce the requested source
+version, it should fail with an explicit provider error or emit a read-plan
+repair action rather than silently falling back to a different layer.
+
+=--workspace= is a selector scope flag, not a content-version flag.  Agents use
+it when the selector is workspace-relative, for example
+=crates/<member>/src/file.rs:1:40= while the project root argument is the
+workspace root.  Providers must resolve that path against the workspace root
+before applying source-version selection.  =--source= remains limited to
+choosing =worktree=, =index=, or =head= bytes for the resolved path and must not
+be overloaded to mean workspace-relative lookup.
+The =asp <language>= facade accepts and forwards =--workspace= as a shared query
+flag, but it must not parse language package membership; Rust, TypeScript,
+Python, and Julia providers own the native path-context resolution.
+
+When an owner-scoped item query has no exact or contains match, the provider may
+return a bounded owner-local fallback instead of an empty packet.  The fallback
+must stay parser-owned, scoped to the requested owner, and visibly marked in the
+header, for example =fallback=owner-top-items=.  This is intended for weak
+path-derived hook queries such as =types|Types= or =packet-base|PacketBase=:
+the hook supplies a cheap route, and the language provider chooses a small set
+of top-level declarations that are most useful for compact code inspection.
+Providers that implement this behavior should advertise it on the =search/owner=
+registry descriptor:
+
+#+begin_src json
+{
+  "fallbacks": [
+    {
+      "name": "owner-top-items",
+      "trigger": "item-query-miss",
+      "appliesToPipes": ["items"],
+      "maxItems": 4
+    }
+  ]
+}
+#+end_src
+
+Top-level =query= is also the provider-native syntax intent surface.  It is
+for code-shaped input where the language parser can prove intent before text
+search: =pub use rules=, =fn format_field=, =struct PacketCollections=,
+=#[cfg(test)]=, =import {Foo}=, =def run=, and equivalent language-native
+forms.  Future syntax-intent variants must live under =query= rather than
+=search lexical=.  Providers must route these inputs through a Native Syntax Fact
+Index instead of treating them as plain text.  The compact packet should expose
+the normalized intent and facts:
+
+#+begin_example
+[search-query] q=pub use rules pkg=. intent=syntax.import own=1 fact=1
+|query intent=syntax.import term=rules status=hit routed=native-syntax selected=1
+|fact id=rust:src/lib.rs:4:reexport:rules kind=reexport source=native-parser owner=src/lib.rs line=4 visibility=public name=rules languageKind=use
+[search-graph] mode=query root=. alg=native-syntax-query
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,L:owner,F:fact
+L=owner:path(src/lib.rs)!owner
+F=fact:symbol(rust:src/lib.rs:4:reexport:rules)
+L>{F:contains}
+rank=L,F frontier=L.owner
+#+end_example
+
+The root protocol owns the shared =semantic-native-syntax-fact-index.v1=
+schema.  It defines language-neutral fact identity, kind, owner/location,
+visibility, query keys, relations, and provider extension fields.  Rust,
+TypeScript, Python, Julia, and future providers each own their concrete fact
+builders and language-specific fields under the common schema.  The shared
+schema is intentionally not a lowest-common-denominator AST; it is the
+agent-facing index of facts that can answer search/query flows without raw text
+scans.
+
+The shared fact kind vocabulary must be broad enough for providers to expose
+useful native facts without leaking their AST wholesale.  It therefore includes
+portable items such as =owner=, =module=, =function=, =method=, =struct=,
+=type=, =import=, =export=, =call=, =test=, =doc=, =include=, =field=,
+=binding=, =constant=, =argument=, and =macro=.  Language-specific categories
+stay in =languageKind=, while provider detail, parser text, tags, and
+language-only fields stay under =fields=.
+
+=search lexical= covers fuzzy lexical candidates: source text, owner paths, string
+literals, comments, docs, schema files, generated artifacts, config keys,
+error messages, and other surfaces where parser-native facts are unavailable or
+insufficient.  The default pipeline is =rg+lexical=: =rg= or an equivalent scanner
+builds candidates, then =lexical= or an equivalent headless scorer filters/ranks
+them.  The provider, not the backend, owns project scope, path filtering, owner
+grouping, per-term fairness, deduplication, ranking integration, and compact
+packet rendering.
+
+If the query is code-shaped, =search lexical= must not execute the native syntax
+API on behalf of the caller.  It should return a visible =next=query= action so
+the agent retries through the explicit parser-native API.  If text lies outside
+the provider's local index, the provider may return =next=ingest:<query>= and
+the agent must route external candidates through =search ingest=.
+
+Hook wildcard direct-read recovery uses the =query= surface as the wrapper
+entrypoint, not raw =search lexical=.  When =query --selector= carries
+a broad selector and a code-shaped term such as =ClientReceipt {=, the provider
+must normalize syntax delimiters out of the lexical fallback term set before
+rendering a compact frontier.  The delimiter remains provider-owned query
+context; it must not become an independent fuzzy term or cause prompt-facing
+=|seed= rows to reappear.
+
+=search lexical= must remain lexical/fuzzy search.  It may support match modes
+such as =literal=, =fixed=, =regex=, =word=, =case-folded=, and =fuzzy=, and
+backends/pipelines such as =rg=, =rg+lexical=, =ugrep=, or a provider-maintained
+trigram/indexed lexical engine.  Backend selection should be visible in packets
+through runtime cost/provenance fields, but it should not change the semantic
+contract: parser-owned extraction is still =query=, and lexical candidate
+expansion is still =search lexical= or =search ingest=.
+
+=ast-grep= is not the fuzzy text backend for this lane.  It is a structural
+search/rewrite engine: useful behind =search pattern= recipes or provider-owned
+native-fact builders, but not a replacement for =rg= plus approximate lexical
+matching.  Agents should never be asked to author raw =ast-grep= DSL as a
+general search fallback.
+

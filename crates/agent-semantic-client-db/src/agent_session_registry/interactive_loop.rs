@@ -38,7 +38,7 @@ pub fn resident_child_bootstrap_menu<'a>(
         host_requirement: AgentSessionHostRequirement {
             platform: input.platform,
             resident_child_name: input.name,
-            managed_agent_kind: managed_agent_kind(input.name),
+            managed_agent_kind: super::interactive_loop_actions::managed_agent_kind(input.name),
             required_transport: "message-agent",
             required_outputs: &["childSessionId", "agentMessageTargetId"],
             blocked_when: &[
@@ -77,7 +77,9 @@ fn resident_child_state_and_choices<'a>(
                 vec![AgentSessionInteractiveChoice {
                     id: "audit-resident-candidates",
                     label: "Audit current resident-child candidates before creating anything.",
-                    platform_action: "Run the loop-owned lifecycle audit for this root session and classify registered, rollout-only, stale, duplicate, and orphan-risk ASP children.",
+                    platform_action: std::borrow::Cow::Borrowed(
+                        "Run the loop-owned lifecycle audit for this root session and classify registered, rollout-only, stale, duplicate, and orphan-risk ASP children.",
+                    ),
                     next_state: AgentSessionLoopState::Classify,
                     required_inputs: &["rootSessionId"],
                 }],
@@ -93,35 +95,45 @@ fn resident_child_state_and_choices<'a>(
                 AgentSessionInteractiveChoice {
                     id: "audit-host-agent-tree-for-existing-resident-child",
                     label: "Audit the native host agent tree before creating anything.",
-                    platform_action: "Use the native collaboration list-agents surface as the existence authority. Look for the canonical ASP resident task path, including completed, idle, interrupted, or running instances. Registry absence is not child absence. Do not create a child from this step.",
+                    platform_action: std::borrow::Cow::Borrowed(
+                        "Use the native collaboration list-agents surface as the existence authority. Look for the canonical ASP resident task path, including completed, idle, interrupted, or running instances. Registry absence is not child absence. Do not create a child from this step.",
+                    ),
                     next_state: AgentSessionLoopState::Classify,
                     required_inputs: &["hostAgentTreeSnapshot"],
                 },
                 AgentSessionInteractiveChoice {
                     id: "resume-existing-host-resident-child",
                     label: "Resume the same existing ASP resident child identity.",
-                    platform_action: "Only when the host agent tree contains the canonical ASP resident child, use the native follow-up-task surface on that same canonical target. For a running target, do not create a duplicate; wait for an idle boundary or interrupt only when the main agent intentionally redirects the current turn, then follow up on the same target. Re-enter this pane after the fresh host lifecycle observation so ASP can audit runtime settings and rehydrate the registry.",
+                    platform_action: std::borrow::Cow::Borrowed(
+                        "Only when the host agent tree contains the canonical ASP resident child, use the native follow-up-task surface on that same canonical target. For a running target, do not create a duplicate; wait for an idle boundary or interrupt only when the main agent intentionally redirects the current turn, then follow up on the same target. Re-enter this pane after the fresh host lifecycle observation so ASP can audit runtime settings and rehydrate the registry.",
+                    ),
                     next_state: AgentSessionLoopState::Audit,
                     required_inputs: &["existingResidentChild"],
                 },
                 AgentSessionInteractiveChoice {
                     id: "audit-host-typed-spawn-schema",
                     label: "Audit that the native spawn tool exposes agent_type.",
-                    platform_action: typed_spawn_audit_action(name),
+                    platform_action: std::borrow::Cow::Borrowed(typed_spawn_audit_action(name)),
                     next_state: AgentSessionLoopState::Classify,
                     required_inputs: &["hostTypedSpawnObservation"],
                 },
                 AgentSessionInteractiveChoice {
                     id: "create-managed-resident-child-after-host-tree-miss",
                     label: "Create the configured ASP resident child only after both audits miss.",
-                    platform_action: managed_resident_create_action(name),
+                    platform_action: managed_resident_create_action(
+                        name,
+                        super::interactive_loop_actions::managed_agent_kind(name).as_ref(),
+                    )
+                    .into(),
                     next_state: AgentSessionLoopState::Audit,
                     required_inputs: &["hostTreeNoResidentChild", "typedSpawnAgentSchema"],
                 },
                 AgentSessionInteractiveChoice {
                     id: "report-host-agent-tree-audit-unavailable",
                     label: "Report that the host agent tree cannot be audited.",
-                    platform_action: "If the host exposes no native agent-tree listing surface, report bootstrapBlocked=host-agent-tree-audit-unavailable. Registry and rollout misses are insufficient evidence for Create; do not create or register a replacement.",
+                    platform_action: std::borrow::Cow::Borrowed(
+                        "If the host exposes no native agent-tree listing surface, report bootstrapBlocked=host-agent-tree-audit-unavailable. Registry and rollout misses are insufficient evidence for Create; do not create or register a replacement.",
+                    ),
                     next_state: AgentSessionLoopState::Audit,
                     required_inputs: &["hostTreeAuditGapObserved"],
                 },
@@ -148,14 +160,18 @@ fn resident_child_state_and_choices<'a>(
                 AgentSessionInteractiveChoice {
                     id: "close-stale-resident-child",
                     label: "Close or archive the stale ASP resident child with the host native action.",
-                    platform_action: "Use the host-native close/archive action only when the current host can resolve the existing ASP-managed child. A historical-only child with no native target is already non-rebindable and must not be resumed by ID. Wait for terminal host status or the SubagentStop receipt when a live target exists; do not rotate to another rollout candidate.",
+                    platform_action: std::borrow::Cow::Borrowed(
+                        "Use the host-native close/archive action only when the current host can resolve the existing ASP-managed child. A historical-only child with no native target is already non-rebindable and must not be resumed by ID. Wait for terminal host status or the SubagentStop receipt when a live target exists; do not rotate to another rollout candidate.",
+                    ),
                     next_state: AgentSessionLoopState::Cleanup,
                     required_inputs: &["nativeStopReceiptOrHistoricalTargetAbsent"],
                 },
                 AgentSessionInteractiveChoice {
                     id: "audit-after-cleanup",
                     label: "Re-enter audit after cleanup.",
-                    platform_action: "Run the same interactive loop again so cleanup is followed by Audit and Classify, not direct replacement.",
+                    platform_action: std::borrow::Cow::Borrowed(
+                        "Run the same interactive loop again so cleanup is followed by Audit and Classify, not direct replacement.",
+                    ),
                     next_state: AgentSessionLoopState::Audit,
                     required_inputs: &["rootSessionId"],
                 },
@@ -174,7 +190,9 @@ fn resident_child_state_and_choices<'a>(
             vec![AgentSessionInteractiveChoice {
                 id: "resume-existing-child-for-live-target-rebind",
                 label: "Resume the same existing resident child to establish a live target binding.",
-                platform_action: "Use the main agent's native same-child follow-up/resume surface for the canonical existing managed target, record a fresh same-root host-tree target observation, then immediately re-enter this pane. The binding CAS must combine that verified-live target with the generation's durable typed SubagentStart profile evidence. Preserve the child identity; do not create a replacement, controller sibling, or manually register an id.",
+                platform_action: std::borrow::Cow::Borrowed(
+                    "Use the main agent's native same-child follow-up/resume surface for the canonical existing managed target, record a fresh same-root host-tree target observation, then immediately re-enter this pane. The binding CAS must combine that verified-live target with the generation's durable typed SubagentStart profile evidence. Preserve the child identity; do not create a replacement, controller sibling, or manually register an id.",
+                ),
                 next_state: AgentSessionLoopState::Audit,
                 required_inputs: &["freshSameRootHostTargetObservation"],
             }],
@@ -196,7 +214,9 @@ fn resident_child_state_and_choices<'a>(
             vec![AgentSessionInteractiveChoice {
                 id: "close-stale-resident-child",
                 label: "Close or archive the expired ASP resident child with the host native action.",
-                platform_action: "The registry lease is no longer routable. Close/archive the live target when the host can resolve it, then re-enter Audit. Do not treat an expired binding as Ready and do not rotate to another historical rollout candidate.",
+                platform_action: std::borrow::Cow::Borrowed(
+                    "The registry lease is no longer routable. Close/archive the live target when the host can resolve it, then re-enter Audit. Do not treat an expired binding as Ready and do not rotate to another historical rollout candidate.",
+                ),
                 next_state: AgentSessionLoopState::Cleanup,
                 required_inputs: &["nativeStopReceiptOrExpiredBindingCleanup"],
             }],
@@ -220,7 +240,7 @@ fn resident_child_state_and_choices<'a>(
             vec![AgentSessionInteractiveChoice {
                 id: "resume-existing-child-for-runtime-observation",
                 label: "Resume the same resident child to obtain a fresh runtime observation.",
-                platform_action: runtime_observation_action(name),
+                platform_action: std::borrow::Cow::Borrowed(runtime_observation_action(name)),
                 next_state: AgentSessionLoopState::Audit,
                 required_inputs: &["freshSameRootSubagentStartRuntimeObservation"],
             }],
@@ -257,7 +277,7 @@ fn resident_child_state_and_choices<'a>(
         vec![AgentSessionInteractiveChoice {
             id: "dispatch-resident-command",
             label: "Dispatch the routed command to the configured resident.",
-            platform_action: ready_dispatch_action(name),
+            platform_action: std::borrow::Cow::Borrowed(ready_dispatch_action(name)),
             next_state: AgentSessionLoopState::WaitReceipt,
             required_inputs: &["residentCommand", "dispatchIdentity"],
         }],
@@ -280,14 +300,6 @@ fn resident_child_state_and_choices<'a>(
             },
         ],
     )
-}
-
-fn managed_agent_kind(name: &str) -> &'static str {
-    if name == "asp-testing" {
-        "asp_testing"
-    } else {
-        "asp_explorer"
-    }
 }
 
 fn interactive_session_record<'a>(

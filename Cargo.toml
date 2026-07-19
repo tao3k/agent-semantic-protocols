@@ -19,6 +19,7 @@ exclude = ["languages/orgize", "languages/rust-lang-project-harness"]
 resolver = "2"
 
 [workspace.dependencies]
+agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
 tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "process", "rt", "time"] }
 

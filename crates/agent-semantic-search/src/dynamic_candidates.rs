@@ -34,6 +34,15 @@ pub struct DynamicSearchCandidate {
     pub confidence: String,
 }
 
+/// Dynamic candidates bound to the canonical workspace snapshot searched.
+#[derive(Debug, Clone)]
+pub struct DynamicSearchCandidateCollection {
+    /// Snapshot evidence retained from lexical overlay projection.
+    pub source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+    /// Compact candidates projected from the same snapshot.
+    pub candidates: Vec<DynamicSearchCandidate>,
+}
+
 /// Candidate projected from a pipe ingest stream before protocol rendering.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IngestSearchCandidate {
@@ -61,6 +70,10 @@ pub struct DynamicSearchCandidateRequest<'a> {
     pub terms: &'a [String],
     /// Search roots whose paths were selected by the caller.
     pub search_roots: &'a [Vec<PathBuf>],
+    /// Canonical workspace snapshot selected by the caller.
+    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    /// Digest of the selected provider that owns this projection.
+    pub provider_digest: &'a str,
     /// Maximum candidates returned.
     pub limit: usize,
 }
@@ -79,6 +92,10 @@ pub struct DynamicSearchRootCandidateRequest<'a> {
     pub ignore_dirs: &'a [String],
     /// Hidden directory names that should still be walked.
     pub include_hidden_dirs: &'a [String],
+    /// Canonical workspace snapshot selected by the caller.
+    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    /// Digest of the selected provider that owns this projection.
+    pub provider_digest: &'a str,
     /// Language/provider-owned file predicate.
     pub file_matches: &'a dyn Fn(&Path) -> bool,
     /// Maximum candidates returned.
@@ -108,11 +125,7 @@ pub fn collect_ingest_search_candidates(
 /// search core while letting language providers own file matching.
 pub fn collect_dynamic_lexical_overlay_candidates_from_roots(
     request: DynamicSearchRootCandidateRequest<'_>,
-) -> Result<Vec<DynamicSearchCandidate>, String> {
-    if request.limit == 0 || request.terms.is_empty() {
-        return Ok(Vec::new());
-    }
-
+) -> Result<DynamicSearchCandidateCollection, String> {
     let roots = resolved_owner_roots(request.project_root, request.owners);
     let search_roots = roots
         .iter()
@@ -124,6 +137,8 @@ pub fn collect_dynamic_lexical_overlay_candidates_from_roots(
             locator_root: request.locator_root,
             terms: request.terms,
             search_roots: &search_roots,
+            base_snapshot: request.base_snapshot,
+            provider_digest: request.provider_digest,
             limit: request.limit,
         },
     ))
@@ -194,11 +209,7 @@ fn parse_line_candidate(
 #[must_use]
 pub fn collect_dynamic_lexical_overlay_candidates(
     request: DynamicSearchCandidateRequest<'_>,
-) -> Vec<DynamicSearchCandidate> {
-    if request.limit == 0 || request.terms.is_empty() {
-        return Vec::new();
-    }
-
+) -> DynamicSearchCandidateCollection {
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
     let documents = request
@@ -226,13 +237,15 @@ pub fn collect_dynamic_lexical_overlay_candidates(
         );
     }
 
-    if remaining == 0 || documents.is_empty() {
-        return candidates;
-    }
-
-    for hit in
-        search_lexical_overlay_candidates(request.terms, &documents, per_term_limit, remaining)
-    {
+    let lexical_result = search_lexical_overlay_candidates(
+        request.terms,
+        &documents,
+        request.base_snapshot,
+        request.provider_digest,
+        per_term_limit,
+        remaining,
+    );
+    for hit in lexical_result.candidates {
         if candidates.len() >= request.limit {
             break;
         }
@@ -248,7 +261,10 @@ pub fn collect_dynamic_lexical_overlay_candidates(
         push_candidate(candidate, &mut seen, &mut candidates);
     }
 
-    candidates
+    DynamicSearchCandidateCollection {
+        source_snapshot: lexical_result.source_snapshot,
+        candidates,
+    }
 }
 
 fn resolved_owner_roots(project_root: &Path, owners: &[PathBuf]) -> Vec<PathBuf> {

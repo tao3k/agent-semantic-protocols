@@ -173,6 +173,45 @@ fn native_prime_seed_stdout_does_not_intercept_non_prime_search() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn native_prime_seed_stdout_does_not_intercept_explicit_selector() {
+    let root = temp_project_root("native-prime-selector");
+    let request = ClientRequest::new(ClientMethod::Search, root.clone())
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "prime".to_string(),
+            "--selector".to_string(),
+            "rust://src/lib.rs#item/function/native_prime_gate".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+        ]);
+
+    let stdout = render_native_prime_seed_stdout(&root, &request, false)
+        .expect("native prime explicit selector");
+
+    assert!(stdout.is_none());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn native_prime_seed_stdout_does_not_intercept_explicit_query() {
+    let root = temp_project_root("native-prime-query");
+    let request = ClientRequest::new(ClientMethod::Search, root.clone())
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "prime".to_string(),
+            "--query=native_prime_gate".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+        ]);
+
+    let stdout = render_native_prime_seed_stdout(&root, &request, false)
+        .expect("native prime explicit query");
+
+    assert!(stdout.is_none());
+    let _ = fs::remove_dir_all(root);
+}
+
 fn temp_project_root(name: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!(
         "asp-client-native-prime-{name}-{}",

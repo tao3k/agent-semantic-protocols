@@ -109,6 +109,7 @@ pub(super) fn insert_absent_canonical_target_receipt(
     object: &mut serde_json::Map<String, serde_json::Value>,
     record: Option<&AgentSessionRecord>,
     typed_spawn_status: Option<&str>,
+    canonical_target: &str,
 ) {
     let Some(record) = record else {
         return;
@@ -133,7 +134,7 @@ pub(super) fn insert_absent_canonical_target_receipt(
         serde_json::json!({
             "status": "historical-only-non-rebindable",
             "childSessionId": record.session_id,
-            "canonicalTarget": "/root/asp_explorer",
+            "canonicalTarget": canonical_target,
             "messageTargetStatus": "unbound",
             "registryRoutable": false,
             "reasoningGateEvaluated": false,
@@ -205,3 +206,7 @@ pub(in crate::command) fn maybe_bind_verified_canonical_target(
     .map(Some)
     .map_err(|error| error.to_string())
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_binding.rs"]
+mod agent_session_registry_binding_tests;

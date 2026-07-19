@@ -6,6 +6,8 @@ mod agent_session_registry_args;
 mod agent_session_registry_bootstrap;
 #[path = "agent_session_registry_codex.rs"]
 mod agent_session_registry_codex;
+#[path = "agent_session_registry_command_parts/mod.rs"]
+mod agent_session_registry_command_parts;
 #[path = "agent_session_registry_commands.rs"]
 mod agent_session_registry_commands;
 #[path = "agent_session_registry_dispatch.rs"]
@@ -53,9 +55,11 @@ use agent_session_registry_args::{
     SessionArgs, SessionCommand, agent_usage, session_guide, session_usage,
 };
 use agent_session_registry_codex::run_codex_session_wrapper;
+use agent_session_registry_command_parts::{
+    close_session, gc_sessions, reconcile_sessions, status_session,
+};
 use agent_session_registry_commands::{
-    close_session, gc_sessions, lifecycle_audit_session, list_sessions, reconcile_sessions,
-    register_session, show_session, smoke_session, status_session,
+    lifecycle_audit_session, list_sessions, register_session, show_session, smoke_session,
 };
 use agent_session_registry_state::open_or_create_default_registry;
 use std::{env, path::PathBuf};
@@ -135,6 +139,9 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         SessionCommand::ObserveHostTree => {
             agent_session_registry_host_capability::observe_host_tree(&registry, &args)
         }
+        SessionCommand::ObserveHostAck => {
+            agent_session_registry_host_capability::observe_host_ack(&registry, &args)
+        }
         SessionCommand::DispatchClaim => {
             agent_session_registry_dispatch::claim_dispatch(&registry, &args)
         }
@@ -143,6 +150,9 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         }
         SessionCommand::DispatchComplete => {
             agent_session_registry_dispatch::complete_dispatch(&registry, &args)
+        }
+        SessionCommand::DispatchMarkOrphaned => {
+            agent_session_registry_dispatch::mark_dispatch_orphaned(&registry, &args)
         }
         SessionCommand::Register => register_session(&registry, &args),
         SessionCommand::List => list_sessions(&registry, &args),
@@ -432,7 +442,7 @@ fn sandbox_verification_status(expected: Option<&str>, actual: Option<&str>) -> 
 #[path = "../../tests/unit/agent_session_registry_sandbox.rs"]
 mod sandbox_verification_status_tests;
 
-pub(crate) fn normalized_metadata_with_roles(
+pub(in crate::command::agent_session_registry) fn normalized_metadata_with_roles(
     metadata_json: Option<&str>,
     validation: &SessionValidationReport,
     roles: &[String],

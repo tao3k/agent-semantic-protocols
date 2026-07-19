@@ -98,6 +98,7 @@ pub(super) fn provider(
             .map(|prefix| (*prefix).to_string())
             .collect(),
         search_capabilities: ProviderSearchCapabilities::default(),
+        semantic_facts_descriptor: None,
         policy: HookPolicy::default(),
         routes,
     }

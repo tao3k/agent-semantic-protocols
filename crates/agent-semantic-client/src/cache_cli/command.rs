@@ -707,7 +707,10 @@ fn cache_status_line(
 ) -> &'static str {
     match cache_report.status {
         CacheManifestStatus::Unavailable => "unavailable",
-        CacheManifestStatus::Missing => "missing",
+        CacheManifestStatus::Missing => match db_report {
+            Some(report) if db_report_has_indexed_content(report) => "available",
+            _ => "missing",
+        },
         CacheManifestStatus::Invalid => "invalid",
         CacheManifestStatus::Present => match db_report {
             Some(report)
@@ -719,6 +722,14 @@ fn cache_status_line(
             Some(_) | None => "unimported",
         },
     }
+}
+
+fn db_report_has_indexed_content(report: &ClientDbReport) -> bool {
+    report.status == ClientDbStatus::Present
+        && (report.generation_count > 0
+            || report.source_index_generation_count > 0
+            || report.source_index_owner_count > 0
+            || report.source_index_selector_count > 0)
 }
 
 fn print_db_engine_status(engine_report: Option<&ClientDbEngineReport>) {

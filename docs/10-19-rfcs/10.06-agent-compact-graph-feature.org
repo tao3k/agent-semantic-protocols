@@ -97,6 +97,8 @@ exercise the invariant across every registered language provider.
 
 * Research line and invariants
 
+A projection-independent =StructuralSelector= parser MUST be the single owner of selector syntax: exact language id, owner path, =#item= marker, item kind, and item name. Query projection layers may attach =fromHook= and code/outline/skeleton semantics, while hook policy may restrict accepted selector kinds and require the selected language, but neither layer may split or validate selector text again. Language-family or dialect relationships do not make selector language ids interchangeable: for example, Gerbil selectors use =gerbil-scheme://=, not =scheme://=. A selector is parsed once and the typed value is carried through command-intent matching and trusted materialization.
+
 This RFC is the protocol surface for the research line:
 
 #+begin_src text
@@ -1104,6 +1106,52 @@ Diversity repair remains a top-k coverage guard; it is not a substitute for a
 correct personalization vector.
 
 ** Graph turbo packet boundary
+
+The pre-acquisition query budget MUST admit an explicit multi-clause query pack
+or a query containing a parser-owned typed =Symbol= anchor.  Character-shape
+heuristics such as dots, slashes, digits, hyphens, or underscores are not a
+substitute for typed query evidence.  Flat queries without typed anchors remain
+subject to bounded resource budgets; weak coverage and low cohesion after
+admission are resolved by =queryQuality=, =packageCohesion=, rank, and the action
+frontier rather than a pre-search specific-anchor denial.
+
+The explicit =--view graph-turbo-request= surface MUST serialize the same enriched
+=semantic-graph-turbo-request.v1= packet that would be sent to the graph-turbo
+ranking boundary.  Selecting this view MUST NOT, by itself, suppress bounded
+provider =search semantic-facts= enrichment when semantic intent, provider
+capability/context, and bounded candidates are present.  The view MAY avoid a
+query-free workspace/topology provider call when equivalent validated
+projection or cache facts are already available.  Unsupported providers,
+provider errors, missing context/capability, non-semantic queries, and empty
+bounded candidate sets remain valid empty enrichment outcomes and SHOULD be
+distinguished by an explicit =sourceTrace= reason rather than collapsed into an
+undifferentiated =skipped= state.
+
+Ontology-oriented queries MUST NOT depend on a lexical source hit as the only
+way to establish the bounded candidate frontier for provider semantic facts.
+When lexical and manifest acquisition yield no usable source owner, ASP SHOULD
+project a bounded candidate set from the validated semantic workspace scope:
+package roots and provider-owned source extensions define the admissible scan
+boundary, a fixed document budget bounds discovery, and the ordinary workspace
+admission plus distinct-path provider-fact budget applies before candidates are
+written to provider stdin.  This workspace-topology projection participates in
+the shared candidate-source fan-in and source trace.  It MUST NOT be implemented
+by invoking =search semantic-facts= with empty stdin, because providers may
+interpret empty input as an unbounded project scan.
+
+Provider semantic-facts intent requires compound typed evidence: either at
+least two ontology terms, or one ontology term paired with a typed =Symbol=
+anchor.  A single overloaded natural-language word such as =set=, =list=, or
+=map= MUST NOT by itself activate workspace-topology/provider-facts acquisition.
+
+The router MUST obtain semantic-facts intent axes, fact kinds, packet schema
+references, roles, and trigger terms from the activated provider's versioned
+=semanticFactsDescriptor=.  Shared search owns typed clause/role matching and
+language-neutral axis semantics; it MUST NOT contain a fixed cross-language
+term list.  Provider manifests own language spellings and aliases such as Rust
+=Vec=, Python =list=, TypeScript =Effect=, Julia =Vector=, or Gerbil collection
+forms.  When an activated provider has no descriptor, the router treats
+semantic-facts intent as unavailable rather than guessing from the language ID.
 
 =asp-graph-turbo= is a typed ranking engine for parser-owned graph facts, not a
 compact text protocol.  Its durable output is =semantic-graph-turbo-result.v1=,

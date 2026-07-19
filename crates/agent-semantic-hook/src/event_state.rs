@@ -1,8 +1,8 @@
 //! Append-only hook event state persisted by `asp hook`.
 
-use crate::command::{
-    AspLanguageCommandIntent, classify_asp_language_command_tokens, semantic_shell_tokens,
-};
+use agent_semantic_config::AspCommandIntent;
+
+use crate::command::{classify_asp_language_command_tokens, semantic_shell_tokens};
 use fs2::FileExt;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -554,12 +554,16 @@ pub(crate) fn asp_search_stage(command: &str) -> Option<AspSearchCommandStage> {
 
 pub(crate) fn asp_search_stage_tokens(tokens: &[String]) -> Option<AspSearchCommandStage> {
     let command = classify_asp_language_command_tokens(tokens)?;
-    if command.intent != AspLanguageCommandIntent::Reasoning {
+    if command.intent != AspCommandIntent::Reasoning {
         return None;
     }
-    match command.route.as_str() {
-        "search-prime" => Some(AspSearchCommandStage::Prime(command.language_id)),
-        "search-pipe" => Some(AspSearchCommandStage::Pipe(command.language_id)),
+    match command.route {
+        agent_semantic_config::AspCommandRouteId::Search(route) if route == "prime" => {
+            Some(AspSearchCommandStage::Prime(command.language_id))
+        }
+        agent_semantic_config::AspCommandRouteId::Search(route) if route == "pipe" => {
+            Some(AspSearchCommandStage::Pipe(command.language_id))
+        }
         _ => None,
     }
 }

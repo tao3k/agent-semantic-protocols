@@ -90,6 +90,8 @@ fn runtime_profiles_for_activation_uses_provider_command_prefix() {
             execution: provider.execution,
             provider_command_prefix: provider.provider_command_prefix.clone(),
             search_capabilities: serde_json::Value::default(),
+            semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
+            query_pack_descriptor: provider.query_pack_descriptor.clone(),
             coverage: crate::protocol_activation::ActivationCoverage {
                 package_roots: provider.package_roots.clone(),
                 source_roots: provider.source_roots.clone(),
@@ -195,6 +197,8 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         source_roots: manifest.source.default_source_roots,
         ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
         search_capabilities: ProviderSearchCapabilities::default(),
+        semantic_facts_descriptor: None,
+        query_pack_descriptor: None,
         policy: manifest.policy,
         routes: manifest.routes,
     }
@@ -221,6 +225,8 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
         source_roots: manifest.source.default_source_roots,
         ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
         search_capabilities: ProviderSearchCapabilities::default(),
+        semantic_facts_descriptor: None,
+        query_pack_descriptor: None,
         policy: manifest.policy,
         routes: manifest.routes,
     }

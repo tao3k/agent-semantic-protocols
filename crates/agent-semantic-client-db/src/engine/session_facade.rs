@@ -44,7 +44,9 @@ use super::turso_syntax::{
 impl ClientDbEngineReadSession {
     /// Inspect the opened DB Engine session without exposing its concrete backend type.
     pub fn inspect(&self) -> Result<crate::ClientDbReport, String> {
-        Ok(super::facade::turso_client_db_report(&self.turso_db_path))
+        Ok(super::facade_turso_report::turso_client_db_report(
+            &self.turso_db_path,
+        ))
     }
 
     /// Return matching generation metadata using this already opened DB Engine session.
@@ -158,7 +160,9 @@ impl ClientDbEngineReadSession {
 impl ClientDbEngineWriteSession {
     /// Inspect the opened DB Engine session without exposing its concrete backend type.
     pub fn inspect(&self) -> Result<crate::ClientDbReport, String> {
-        Ok(super::facade::turso_client_db_report(&self.turso_db_path))
+        Ok(super::facade_turso_report::turso_client_db_report(
+            &self.turso_db_path,
+        ))
     }
 
     /// Import one cache manifest through the DB Engine control adapter.

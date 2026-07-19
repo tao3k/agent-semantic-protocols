@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/source-snapshot-evidence.v1.schema.json",
+  "title": "ASP Source Snapshot Evidence v1",
+  "description": "Language-neutral Merkle workspace snapshot and source resolution evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sourceSnapshot", "resolutionEvidence"],
+  "properties": {
+    "sourceSnapshot": {
+      "$ref": "#/$defs/sourceSnapshot"
+    },
+    "resolutionEvidence": {
+      "$ref": "#/$defs/resolutionEvidence"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Lowercase hex BLAKE3 digest over the canonical ASP artifact Merkle input defined by this contract.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "algorithm", "rootDigest", "sourceKind", "leafCount", "providerDigest"],
+      "properties": {
+        "schemaId": {
+          "const": "asp.source-snapshot.v1"
+        },
+        "algorithm": {
+          "const": "blake3-merkle-v1"
+        },
+        "rootDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceKind": {
+          "enum": ["filesystem", "editor-buffer", "git-tree", "derived-overlay"]
+        },
+        "leafCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseRootDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dirtyPathsDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "resolutionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "snapshotRoot", "authority", "state"],
+      "properties": {
+        "schemaId": {
+          "const": "asp.source-resolution.v1"
+        },
+        "snapshotRoot": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority": {
+          "enum": ["live-parser", "content-cache", "derived-index"]
+        },
+        "state": {
+          "enum": [
+            "live-hit",
+            "artifact-cache-hit",
+            "owner-not-in-snapshot",
+            "selector-path-namespace-mismatch",
+            "item-not-in-live-owner",
+            "parser-failed",
+            "index-unavailable",
+            "overlay-invalid",
+            "overlay-base-root-mismatch"
+          ]
+        },
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerBlobDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "parserArtifactDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "indexArtifactDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  }
+}

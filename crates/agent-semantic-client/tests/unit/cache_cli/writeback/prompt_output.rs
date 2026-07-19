@@ -242,7 +242,7 @@ fn prime_seed_prompt_output_writeback_adds_search_output_replay_artifact() {
             ".".to_string(),
         ]);
     let stdout = "[search-prime] root=. alg=fast-prime-frontier-v1\n\
-|decision purpose=decision-primer answer=false code=false capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"\n\
+|decision purpose=decision-primer answer=false code=false capabilities=pipe,lexical,owner-items,selector-code,treesitter-query ladder=pipe>lexical>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"\n\
 aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\
 G>{O:selects}\n\

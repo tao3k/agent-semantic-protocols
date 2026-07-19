@@ -30,6 +30,22 @@ pub(super) struct ProviderGraphFacts {
     pub(super) input_candidates: usize,
     pub(super) fact_candidates: usize,
     pub(super) truncated_candidates: usize,
+    pub(super) descriptor_id: Option<String>,
+    pub(super) descriptor_version: Option<String>,
+    pub(super) matched_axes: Vec<String>,
+    pub(super) matched_terms: Vec<String>,
+}
+
+fn provider_graph_facts_intent_receipt(
+    intent: &agent_semantic_search::SearchPipeSemanticFactsIntentDecision,
+) -> ProviderGraphFacts {
+    ProviderGraphFacts {
+        descriptor_id: Some(intent.descriptor_id.clone()),
+        descriptor_version: Some(intent.descriptor_version.clone()),
+        matched_axes: intent.matched_axes.clone(),
+        matched_terms: intent.matched_terms.clone(),
+        ..ProviderGraphFacts::default()
+    }
 }
 
 pub(super) struct ProviderGraphFactsContext<'a> {
@@ -93,8 +109,32 @@ pub(super) fn collect_provider_workspace_scope(
     let packet: Value = serde_json::from_slice(output.stdout.as_ref())
         .map_err(|error| format!("provider workspace-scope returned invalid JSON: {error}"))?;
     let scope = agent_semantic_search::SemanticWorkspaceScope::from_packet(&packet)?;
+    let expected_root = fs::canonicalize(project_root).map_err(|error| {
+        format!(
+            "provider workspace-scope could not canonicalize project root {}: {error}",
+            project_root.display()
+        )
+    })?;
+    if !provider_workspace_scope_matches_context(&scope, &expected_root, context) {
+        return Err(format!(
+            "provider workspace-scope identity mismatch: expected providerId={} languageId={} discoveryRoot={}",
+            context.provider.provider_id,
+            context.provider.language_id,
+            expected_root.display()
+        ));
+    }
     persist_provider_workspace_scope(project_root, context, &packet);
     Ok(Some(scope))
+}
+
+fn provider_workspace_scope_matches_context(
+    scope: &agent_semantic_search::SemanticWorkspaceScope,
+    expected_root: &Path,
+    context: &ProviderGraphFactsContext<'_>,
+) -> bool {
+    scope.provider_id == context.provider.provider_id
+        && scope.language_id == context.provider.language_id
+        && scope.discovery_root == expected_root
 }
 
 fn load_cached_provider_workspace_scope(
@@ -111,9 +151,7 @@ fn load_cached_provider_workspace_scope(
     let packet = cached.get("packet")?;
     let scope = agent_semantic_search::SemanticWorkspaceScope::from_packet(packet).ok()?;
     let expected_root = fs::canonicalize(project_root).ok()?;
-    if scope.provider_id != context.provider.provider_id
-        || scope.language_id != context.provider.language_id
-        || scope.discovery_root != expected_root
+    if !provider_workspace_scope_matches_context(&scope, &expected_root, context)
         || !scope.anchors.iter().all(|anchor| {
             fs::read(&anchor.path)
                 .ok()
@@ -197,17 +235,23 @@ pub(super) fn collect_provider_graph_facts(
     config: &AspConfig,
     context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<ProviderGraphFacts, String> {
-    let Some(query) = query.filter(|query| query_requests_semantic_facts(query)) else {
-        return Ok(ProviderGraphFacts::default());
-    };
     let Some(context) = context else {
         return Ok(ProviderGraphFacts::default());
     };
     if !context.provider.search_capabilities.semantic_facts {
         return Ok(ProviderGraphFacts::default());
     }
-    if candidates.is_empty() {
+    let Some(query) = query else {
         return Ok(ProviderGraphFacts::default());
+    };
+    let Some(intent) = query_requests_semantic_facts(context.provider, query) else {
+        return Ok(ProviderGraphFacts::default());
+    };
+    if !intent.requested {
+        return Ok(ProviderGraphFacts::default());
+    }
+    if candidates.is_empty() {
+        return Ok(provider_graph_facts_intent_receipt(&intent));
     }
     let fact_candidates = provider_fact_candidates(candidates);
     let input_candidates = candidates.len();
@@ -246,7 +290,7 @@ pub(super) fn collect_provider_graph_facts(
                 input_candidates,
                 fact_candidates: fact_candidates.len(),
                 truncated_candidates,
-                ..ProviderGraphFacts::default()
+                ..provider_graph_facts_intent_receipt(&intent)
             });
         }
     };
@@ -255,13 +299,17 @@ pub(super) fn collect_provider_graph_facts(
             input_candidates,
             fact_candidates: fact_candidates.len(),
             truncated_candidates,
-            ..ProviderGraphFacts::default()
+            ..provider_graph_facts_intent_receipt(&intent)
         });
     }
     let mut facts = provider_graph_facts_from_stdout(output.stdout.as_ref())?;
     facts.input_candidates = input_candidates;
     facts.fact_candidates = fact_candidates.len();
     facts.truncated_candidates = truncated_candidates;
+    facts.descriptor_id = Some(intent.descriptor_id);
+    facts.descriptor_version = Some(intent.descriptor_version);
+    facts.matched_axes = intent.matched_axes;
+    facts.matched_terms = intent.matched_terms;
     Ok(facts)
 }
 
@@ -333,67 +381,86 @@ fn candidate_path_for_provider(project_root: &Path, path: &str) -> String {
     PathBuf::from(path).to_string_lossy().to_string()
 }
 
-pub(super) fn query_requests_semantic_facts(query: &str) -> bool {
-    if query
-        .split_whitespace()
-        .any(term_looks_like_path_or_selector)
-    {
-        return false;
-    }
-    let terms = query_terms(query);
-    if terms.len() < 2 {
-        return false;
-    }
-    terms.into_iter().any(|term| {
-        matches!(
-            term.as_str(),
-            "field"
-                | "fields"
-                | "type"
-                | "types"
-                | "scalar"
-                | "scalars"
-                | "collection"
-                | "collections"
-                | "list"
-                | "lists"
-                | "map"
-                | "maps"
-                | "set"
-                | "sets"
-                | "vec"
-                | "vecdeque"
-                | "hashmap"
-                | "hashset"
-                | "btreemap"
-                | "btreeset"
-                | "concurrency"
-                | "concurrent"
-                | "cancellation"
-                | "interruption"
-                | "resource"
-                | "resources"
-                | "leak"
-                | "leaks"
-                | "queue"
-                | "queues"
-                | "stream"
-                | "streams"
-                | "fiber"
-                | "fibers"
+pub(super) fn query_requests_semantic_facts(
+    provider: &agent_semantic_hook::ActivatedProvider,
+    query: &str,
+) -> Option<agent_semantic_search::SearchPipeSemanticFactsIntentDecision> {
+    let descriptor = provider.semantic_facts_descriptor.as_ref()?;
+    let intent_axes = descriptor
+        .intent_axes
+        .iter()
+        .map(
+            |intent_axis| agent_semantic_search::SearchPipeSemanticFactsIntentAxis {
+                axis: &intent_axis.axis,
+                terms: &intent_axis.terms,
+                roles: &intent_axis.roles,
+            },
         )
-    })
+        .collect::<Vec<_>>();
+    Some(agent_semantic_search::search_pipe_semantic_facts_intent(
+        &provider.language_id,
+        query,
+        agent_semantic_search::SearchPipeSemanticFactsDescriptor {
+            descriptor_id: &descriptor.descriptor_id,
+            descriptor_version: &descriptor.descriptor_version,
+            intent_axes: &intent_axes,
+        },
+    ))
 }
 
-fn term_looks_like_path_or_selector(term: &str) -> bool {
-    term.contains('.') || term.contains('/') || term.contains('\\')
-}
-
-fn query_terms(query: &str) -> Vec<String> {
-    query
-        .split(|character: char| !(character == '_' || character.is_ascii_alphanumeric()))
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect()
+pub(super) fn with_query_pack_descriptor<R>(
+    context: Option<&ProviderGraphFactsContext<'_>>,
+    f: impl FnOnce(Option<agent_semantic_search::SearchPipeQueryPackDescriptor<'_>>) -> R,
+) -> R {
+    let Some(descriptor) =
+        context.and_then(|context| context.provider.query_pack_descriptor.as_ref())
+    else {
+        return f(None);
+    };
+    let term_role_overrides = descriptor
+        .term_role_overrides
+        .iter()
+        .map(
+            |override_| agent_semantic_search::SearchPipeQueryPackTermRoleOverride {
+                term: &override_.term,
+                role: &override_.role,
+                case_sensitive: override_.case_sensitive,
+            },
+        )
+        .collect::<Vec<_>>();
+    let clause_sets = descriptor
+        .recipes
+        .iter()
+        .map(|recipe| {
+            recipe
+                .clauses
+                .iter()
+                .map(|clause| agent_semantic_search::SearchPipeQueryPackClause {
+                    terms: &clause.terms,
+                    roles: &clause.roles,
+                    intent_axes: &clause.intent_axes,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let recipes = descriptor
+        .recipes
+        .iter()
+        .zip(&clause_sets)
+        .map(
+            |(recipe, clauses)| agent_semantic_search::SearchPipeQueryPackRecipe {
+                recipe_id: &recipe.recipe_id,
+                trigger_terms: &recipe.trigger.terms,
+                trigger_match: &recipe.trigger.r#match,
+                clauses,
+            },
+        )
+        .collect::<Vec<_>>();
+    f(Some(agent_semantic_search::SearchPipeQueryPackDescriptor {
+        descriptor_id: &descriptor.descriptor_id,
+        descriptor_version: &descriptor.descriptor_version,
+        language_id: &descriptor.language_id,
+        term_role_overrides: &term_role_overrides,
+        recipes: &recipes,
+    }))
 }

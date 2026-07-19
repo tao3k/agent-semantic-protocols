@@ -126,6 +126,39 @@ fn org_facade_query_covers_org_element_kinds() {
 }
 
 #[test]
+fn org_facade_query_resolves_owner_item_heading_selector() {
+    let root = temp_project_root("org-owner-item-heading-selector-query");
+    std::fs::write(
+        root.join("plan.org"),
+        "* Decision\nKeep selector identity stable.\n\n* Acceptance gates\n- owner-items selector resolves\n",
+    )
+    .expect("write fixture");
+
+    let output = asp_command(&root)
+        .args([
+            "org",
+            "query",
+            "--selector",
+            "org://plan.org#item/heading/acceptance-gates",
+            "--workspace",
+            ".",
+            "--content",
+        ])
+        .output()
+        .expect("run asp org query");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let content = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        content.contains("Acceptance gates") && content.contains("owner-items selector resolves"),
+        "expected heading content from owner-items selector, got: {content:?}"
+    );
+}
+
+#[test]
 fn org_facade_content_projection_deduplicates_list_children() {
     let root = temp_project_root("org-document-content-deduplicates-list");
     let path = write_org_elements_fixture(&root);

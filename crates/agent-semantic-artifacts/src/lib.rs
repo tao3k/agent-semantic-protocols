@@ -4,6 +4,12 @@ mod edge;
 mod identity;
 mod repair_chain;
 
+pub use agent_semantic_content_identity::{
+    ResolutionAuthority, ResolutionEvidence, ResolutionState, SOURCE_RESOLUTION_SCHEMA_ID,
+    SOURCE_SNAPSHOT_ALGORITHM, SOURCE_SNAPSHOT_SCHEMA_ID, SnapshotBoundResolution,
+    SourceSnapshotEvidence, SourceSnapshotKind, WorkspaceSnapshot, provider_digest,
+};
+
 pub use edge::{
     ARTIFACT_EDGE_SCHEMA_ID, ARTIFACT_EDGE_SCHEMA_VERSION, ArtifactRootEdge, ArtifactRootEdgeInput,
     build_artifact_root_edge, hash_artifact_root_edge,

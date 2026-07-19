@@ -23,6 +23,10 @@ mod hook_runtime_agent_session_execution_lane;
 mod hook_runtime_agent_session_identity;
 #[path = "hook_runtime_agent_session_inline_fallback.rs"]
 mod hook_runtime_agent_session_inline_fallback;
+#[path = "hook_runtime_agent_session_pane.rs"]
+mod hook_runtime_agent_session_pane;
+#[path = "hook_runtime_agent_session_payload.rs"]
+mod hook_runtime_agent_session_payload;
 #[path = "hook_runtime_agent_session_presence.rs"]
 mod hook_runtime_agent_session_presence;
 #[path = "hook_runtime_agent_session_profile.rs"]
@@ -46,6 +50,13 @@ use hook_runtime_agent_session_command::{
 };
 use hook_runtime_agent_session_execution_lane::ResidentExecutionLane;
 use hook_runtime_agent_session_inline_fallback::missing_resident_decision;
+use hook_runtime_agent_session_pane::{
+    agent_session_allow_decision, agent_session_route_fields,
+    append_agent_session_recovery_action_fields, render_agent_session_template,
+};
+use hook_runtime_agent_session_payload::{
+    payload_command_strings, payload_evidence_ref, string_field,
+};
 use hook_runtime_agent_session_profile::{
     append_resident_agent_fields, resident_agent_host_action, resident_child_create_action,
 };
@@ -789,7 +800,7 @@ fn append_asp_command_intent_fields(
     );
     fields.insert(
         "aspCommandRoute".to_string(),
-        serde_json::Value::String(parsed.route),
+        serde_json::Value::String(parsed.route.wire_value()),
     );
     fields.insert(
         "languageId".to_string(),
@@ -812,215 +823,6 @@ fn main_session_resident_execution_decision(
 
 fn template_value(key: &'static str, value: impl Into<String>) -> (&'static str, String) {
     (key, value.into())
-}
-
-fn render_agent_session_template(
-    template: Option<&str>,
-    values: &[(&'static str, String)],
-) -> String {
-    let mut rendered = template
-        .unwrap_or("ASP agent session routing template missing. Run `asp sync` and retry.")
-        .to_string();
-    for (key, value) in values {
-        rendered = rendered.replace(&format!("{{{{{key}}}}}"), value);
-    }
-    rendered.trim().to_string()
-}
-
-fn agent_session_route_fields(
-    action: &str,
-    resident_child_name: &str,
-) -> BTreeMap<String, serde_json::Value> {
-    let mut fields = BTreeMap::from([
-        (
-            "agentSessionRoute".to_string(),
-            serde_json::Value::String(resident_child_name.to_string()),
-        ),
-        (
-            "agentSessionLifecycle".to_string(),
-            serde_json::Value::String("resident".to_string()),
-        ),
-        (
-            "agentSessionLoopCommand".to_string(),
-            serde_json::Value::String(format!(
-                "asp agent session bootstrap --name {resident_child_name}"
-            )),
-        ),
-        (
-            "agentSessionTimeoutPolicy".to_string(),
-            serde_json::Value::String("timeout-is-not-duplicate-worker-trigger".to_string()),
-        ),
-        (
-            "agentSessionAction".to_string(),
-            serde_json::Value::String(action.to_string()),
-        ),
-        (
-            "agentSessionSpawnPolicy".to_string(),
-            serde_json::Value::String("registered-profile-valid-child-only".to_string()),
-        ),
-        (
-            "agentSessionValidationPolicy".to_string(),
-            serde_json::Value::String("register-hard-validates-profile".to_string()),
-        ),
-        (
-            "agentSessionInvalidChildAction".to_string(),
-            serde_json::Value::String(
-                "close-native-subagent-or-archive-temporary-thread-and-create-configured-child"
-                    .to_string(),
-            ),
-        ),
-        (
-            "agentSessionDuplicatePolicy".to_string(),
-            serde_json::Value::String(
-                "one-active-resident-child-per-root-session-and-name".to_string(),
-            ),
-        ),
-    ]);
-    append_agent_session_recovery_action_fields(
-        &mut fields,
-        action,
-        resident_child_name,
-        resident_child_name,
-    );
-    fields
-}
-
-fn append_agent_session_recovery_action_fields(
-    fields: &mut BTreeMap<String, serde_json::Value>,
-    action: &str,
-    resident_child_name: &str,
-    resident_role: &str,
-) {
-    let (required_action, next_action, completion_receipt) = match action {
-        "start-resident-child" => (
-            format!("enter-{resident_child_name}-choice-pane"),
-            "choose-one-bootstrap-pane-option".to_string(),
-            format!("{resident_child_name}-choice-pane-receipt"),
-        ),
-        "reuse-resident-child" | "resume-resident-child" => (
-            format!("use-existing-{resident_child_name}-through-pane"),
-            "enter-bootstrap-pane-if-transport-is-not-ready".to_string(),
-            format!("{resident_child_name}-child-command"),
-        ),
-        _ => (
-            format!("enter-{resident_child_name}-choice-pane"),
-            "choose-one-bootstrap-pane-option".to_string(),
-            format!("{resident_child_name}-choice-pane-receipt"),
-        ),
-    };
-
-    fields.insert(
-        "requiredAction".to_string(),
-        serde_json::Value::String(required_action),
-    );
-    fields.insert(
-        "nextAction".to_string(),
-        serde_json::Value::String(next_action),
-    );
-    fields.insert(
-        "targetAgentName".to_string(),
-        serde_json::Value::String(resident_child_name.to_string()),
-    );
-    fields.insert(
-        "targetAgentRole".to_string(),
-        serde_json::Value::String(resident_role.to_string()),
-    );
-    fields.insert(
-        "forbiddenUntilResolved".to_string(),
-        serde_json::Value::String("raw-source-fallback".to_string()),
-    );
-    fields.insert(
-        "completionReceipt".to_string(),
-        serde_json::Value::String(completion_receipt),
-    );
-}
-
-fn agent_session_allow_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    action: &str,
-    message: &str,
-) -> HookDecision {
-    let mut fields = BTreeMap::from([(
-        "agentSessionAction".to_string(),
-        serde_json::Value::String(action.to_string()),
-    )]);
-    append_terminal_execution_fields(&mut fields, action);
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Allow,
-        reason_kind: ReasonKind::None,
-        language_ids: Vec::new(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: payload_command_strings(payload).into_iter().next(),
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message: message.to_string(),
-        fields,
-    }
-}
-
-fn payload_command_strings(payload: &serde_json::Value) -> Vec<String> {
-    let mut commands = Vec::new();
-    collect_payload_command_strings(payload, &mut commands);
-    commands.sort();
-    commands.dedup();
-    commands
-}
-
-fn payload_evidence_ref(payload: &serde_json::Value) -> Option<String> {
-    string_field(
-        payload,
-        &[
-            "evidenceRef",
-            "evidence_ref",
-            "lastEvidenceRef",
-            "last_evidence_ref",
-            "recoveryRef",
-            "recovery_ref",
-        ],
-    )
-}
-
-fn collect_payload_command_strings(value: &serde_json::Value, commands: &mut Vec<String>) {
-    match value {
-        serde_json::Value::Array(values) => {
-            for value in values {
-                collect_payload_command_strings(value, commands);
-            }
-        }
-        serde_json::Value::Object(map) => {
-            for (key, value) in map {
-                match (key.as_str(), value) {
-                    ("command" | "cmd" | "script", serde_json::Value::String(command))
-                        if !command.trim().is_empty() =>
-                    {
-                        commands.push(command.clone());
-                    }
-                    ("command" | "cmd", serde_json::Value::Array(parts)) => {
-                        let command = parts
-                            .iter()
-                            .filter_map(serde_json::Value::as_str)
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        if !command.trim().is_empty() {
-                            commands.push(command);
-                        }
-                    }
-                    _ => collect_payload_command_strings(value, commands),
-                }
-            }
-        }
-        _ => {}
-    }
 }
 
 fn asp_exploration_command(
@@ -1125,28 +927,6 @@ fn restricted_main_session_asp_command(
         });
     }
     None
-}
-
-fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
-    match value {
-        serde_json::Value::Object(map) => {
-            for key in keys {
-                if let Some(value) = map.get(*key).and_then(serde_json::Value::as_str) {
-                    return Some(value.to_string());
-                }
-            }
-            for value in map.values() {
-                if let Some(found) = string_field(value, keys) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-        serde_json::Value::Array(values) => {
-            values.iter().find_map(|value| string_field(value, keys))
-        }
-        _ => None,
-    }
 }
 
 fn unix_timestamp() -> Result<i64, String> {

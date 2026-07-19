@@ -1,23 +1,19 @@
 use agent_semantic_config::{
     HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
     HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientRuleConfig,
-    HookClientRuleMatchConfig, HookClientRuleRouteConfig, default_hook_client_config_template,
-    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
-    load_hook_client_config_file,
+    HookClientRuleMatchConfig, HookClientRuleRouteConfig,
 };
-use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
-use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use std::borrow::Cow;
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::command::path_like_token_matches;
 use crate::hook_config::AspSessionPolicy;
 use crate::hook_config::agent_org_config::compile_agent_org_artifacts_config;
+use crate::hook_config::core_compile::{compile_command_contains, compile_globs};
+use crate::hook_config::core_match_types::{CompiledCommandContains, CompiledPathGlobs};
 use crate::hook_config_agent_org::{
     AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
 };
-use crate::hook_config_global::default_global_client_config_path;
 use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID,
@@ -25,8 +21,7 @@ use crate::protocol::{
     ReasonKind, StdinMode,
 };
 
-use crate::protocol_activation::HookRuntime;
-use crate::provider_manifest::project_agent_config_path;
+use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
 use crate::source_selector::collect_source_selector_matches;
 use crate::tool_action::{ToolAction, subject_for_action};
 
@@ -105,56 +100,6 @@ struct RuleMatch {
     argv_source_exclude_flag_any: Vec<String>,
 }
 
-#[derive(Debug, Default)]
-struct CompiledCommandContains {
-    matcher: Option<AhoCorasick>,
-}
-
-impl CompiledCommandContains {
-    fn is_empty(&self) -> bool {
-        self.matcher.is_none()
-    }
-
-    fn matches(&self, command: &str) -> bool {
-        self.matcher
-            .as_ref()
-            .is_some_and(|matcher| matcher.is_match(command))
-    }
-}
-
-#[derive(Debug, Default)]
-struct CompiledPathGlobs {
-    suffix_ext_any: HashSet<String>,
-    suffix_any: Vec<String>,
-    globset: Option<GlobSet>,
-}
-
-impl CompiledPathGlobs {
-    fn is_empty(&self) -> bool {
-        self.suffix_ext_any.is_empty() && self.suffix_any.is_empty() && self.globset.is_none()
-    }
-
-    fn is_suffix_only(&self) -> bool {
-        (!self.suffix_ext_any.is_empty() || !self.suffix_any.is_empty()) && self.globset.is_none()
-    }
-
-    fn matches(&self, path: &str) -> bool {
-        self.matches_suffix_extension(path)
-            || self.suffix_any.iter().any(|suffix| path.ends_with(suffix))
-            || self
-                .globset
-                .as_ref()
-                .is_some_and(|globset| globset.is_match(path))
-    }
-
-    fn matches_suffix_extension(&self, path: &str) -> bool {
-        let Some(dot_index) = path.rfind('.') else {
-            return false;
-        };
-        self.suffix_ext_any.contains(&path[dot_index..])
-    }
-}
-
 #[derive(Debug)]
 struct RuleRoute {
     provider_id: String,
@@ -163,47 +108,6 @@ struct RuleRoute {
     kind: DecisionRouteKind,
     argv: Vec<String>,
     stdin_mode: Option<StdinMode>,
-}
-
-/// Return the default global hook config path.
-pub fn default_client_config_path(_project_root: &str) -> PathBuf {
-    default_global_client_config_path()
-        .unwrap_or_else(|| PathBuf::from(".agent-semantic-protocols/hooks/config.toml"))
-}
-
-/// Render the seed global hook config file.
-pub fn default_client_config_template() -> String {
-    default_hook_client_config_template()
-}
-
-/// Render the seed global hook config file for active provider source extensions.
-pub fn default_client_config_template_for_source_extensions<I, S>(source_extensions: I) -> String
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    default_hook_client_config_template_for_source_extensions(source_extensions)
-}
-
-/// Load and compile hook config rules.
-pub fn load_client_config(path: &Path) -> Result<ClientHookConfig, String> {
-    let parsed = load_hook_client_config_file(path)?;
-    compile_config(parsed)
-}
-
-/// Load optional user hook config and validate hook-owned project config fields.
-pub fn load_client_config_for_project(
-    path: &Path,
-    project_root: &Path,
-) -> Result<ClientHookConfig, String> {
-    let parsed = if path.is_file() {
-        load_hook_client_config_file(path)?
-    } else {
-        agent_semantic_config::default_hook_client_config_file()?
-    };
-    let agent_config_path = project_agent_config_path(project_root);
-    load_asp_project_config_file(&agent_config_path)?;
-    compile_config(parsed)
 }
 
 impl ClientHookConfig {
@@ -680,7 +584,7 @@ impl RuleRoute {
     }
 }
 
-fn compile_config(config: HookClientConfigFile) -> Result<ClientHookConfig, String> {
+pub(super) fn compile_config(config: HookClientConfigFile) -> Result<ClientHookConfig, String> {
     let contract_fingerprint = config.contract_fingerprint.clone();
     let default_config = agent_semantic_config::default_hook_client_config_file()?;
     let default_agent_session_messages = default_config.agent_session_messages;
@@ -872,99 +776,6 @@ impl From<HookClientConfigStdinMode> for StdinMode {
             HookClientConfigStdinMode::Unknown => Self::Unknown,
         }
     }
-}
-
-fn compile_globs(label: &str, patterns: Vec<String>) -> Result<CompiledPathGlobs, String> {
-    if patterns.is_empty() {
-        return Ok(CompiledPathGlobs::default());
-    }
-    let paired_suffixes = paired_suffix_globs(&patterns);
-    let mut suffix_ext_any = HashSet::new();
-    let mut suffix_any = Vec::new();
-    for suffix in &paired_suffixes {
-        if simple_extension_suffix(suffix) {
-            suffix_ext_any.insert(suffix.clone());
-        } else {
-            suffix_any.push(suffix.clone());
-        }
-    }
-    let mut builder = GlobSetBuilder::new();
-    let mut glob_count = 0usize;
-    for pattern in patterns {
-        if simple_glob_suffix(&pattern)
-            .is_some_and(|suffix| paired_suffixes.iter().any(|existing| existing == suffix))
-        {
-            continue;
-        }
-        let glob = GlobBuilder::new(&pattern)
-            .literal_separator(true)
-            .build()
-            .map_err(|error| format!("invalid {label} pattern `{pattern}`: {error}"))?;
-        builder.add(glob);
-        glob_count += 1;
-    }
-    let globset = if glob_count == 0 {
-        None
-    } else {
-        Some(
-            builder
-                .build()
-                .map_err(|error| format!("failed to compile {label} patterns: {error}"))?,
-        )
-    };
-    Ok(CompiledPathGlobs {
-        suffix_ext_any,
-        suffix_any,
-        globset,
-    })
-}
-
-fn paired_suffix_globs(patterns: &[String]) -> Vec<String> {
-    let mut suffixes = Vec::new();
-    for pattern in patterns {
-        let Some(suffix) = simple_glob_suffix(pattern) else {
-            continue;
-        };
-        let has_pair = patterns.iter().any(|candidate| {
-            candidate != pattern
-                && simple_glob_suffix(candidate).is_some_and(|other| other == suffix)
-        });
-        if has_pair && !suffixes.iter().any(|existing| existing == suffix) {
-            suffixes.push(suffix.to_string());
-        }
-    }
-    suffixes
-}
-
-fn simple_glob_suffix(pattern: &str) -> Option<&str> {
-    let suffix = pattern
-        .strip_prefix("**/*")
-        .or_else(|| pattern.strip_prefix('*'))?;
-    (!suffix.is_empty()
-        && !suffix
-            .chars()
-            .any(|character| matches!(character, '*' | '?' | '[' | ']' | '{' | '}')))
-    .then_some(suffix)
-}
-
-fn simple_extension_suffix(suffix: &str) -> bool {
-    suffix
-        .strip_prefix('.')
-        .is_some_and(|extension| !extension.is_empty() && !extension.contains('.'))
-}
-
-fn compile_command_contains(patterns: Vec<String>) -> Result<CompiledCommandContains, String> {
-    if patterns.is_empty() {
-        return Ok(CompiledCommandContains::default());
-    }
-    AhoCorasickBuilder::new()
-        .ascii_case_insensitive(true)
-        .match_kind(MatchKind::LeftmostFirst)
-        .build(patterns)
-        .map(|matcher| CompiledCommandContains {
-            matcher: Some(matcher),
-        })
-        .map_err(|error| format!("failed to compile commandContainsAny patterns: {error}"))
 }
 
 fn canonical_event(value: &str) -> String {

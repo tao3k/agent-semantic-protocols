@@ -23,6 +23,9 @@ pub const ASP_PROVIDER_ACTIVATION_PATH_ENV: &str = "ASP_PROVIDER_ACTIVATION_PATH
 /// Provider resolved from the project hook activation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolvedProvider {
+    pub manifest_id: String,
+    pub manifest_digest: String,
+    pub namespace: String,
     pub language_id: LanguageId,
     pub provider_id: ProviderId,
     pub binary: String,
@@ -35,6 +38,8 @@ pub struct ResolvedProvider {
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
     pub ignored_path_prefixes: Vec<String>,
+    pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
+    pub semantic_facts_descriptor: Option<agent_semantic_hook::ProviderSemanticFactsDescriptor>,
 }
 
 /// Health status copied from the provider runtime profile.
@@ -82,9 +87,20 @@ impl ResolvedProvider {
     }
 }
 
-impl From<&ActivatedProvider> for ResolvedProvider {
-    fn from(provider: &ActivatedProvider) -> Self {
-        Self {
+impl TryFrom<&ActivatedProvider> for ResolvedProvider {
+    type Error = String;
+
+    fn try_from(provider: &ActivatedProvider) -> Result<Self, Self::Error> {
+        let query_pack = provider.query_pack_descriptor.as_ref().ok_or_else(|| {
+            format!(
+                "activated provider {} is missing required query-pack evidence",
+                provider.manifest_id
+            )
+        })?;
+        Ok(Self {
+            manifest_id: provider.manifest_id.clone(),
+            manifest_digest: provider.manifest_digest.clone(),
+            namespace: provider.namespace.clone(),
             language_id: provider.language_id.clone().into(),
             provider_id: provider.provider_id.clone().into(),
             binary: provider.binary.clone(),
@@ -97,7 +113,9 @@ impl From<&ActivatedProvider> for ResolvedProvider {
             config_files: provider.config_files.clone(),
             source_extensions: provider.source_extensions.clone(),
             ignored_path_prefixes: provider.ignored_path_prefixes.clone(),
-        }
+            query_pack_descriptor: query_pack.clone(),
+            semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
+        })
     }
 }
 
@@ -183,7 +201,7 @@ impl ProviderRegistrySnapshot {
                 .providers
                 .iter()
                 .map(|provider| {
-                    let mut resolved = ResolvedProvider::from(provider);
+                    let mut resolved = ResolvedProvider::try_from(provider)?;
                     if let Some(runtime_profiles) = runtime_profiles.as_ref() {
                         resolved.runtime_command_argv =
                             runtime_profile_command_argv(runtime_profiles, provider);
@@ -198,9 +216,9 @@ impl ProviderRegistrySnapshot {
                             })
                             .map(|profile| profile.health.status.into());
                     }
-                    resolved
+                    Ok(resolved)
                 })
-                .collect(),
+                .collect::<Result<Vec<_>, String>>()?,
         })
     }
 
@@ -293,6 +311,9 @@ fn insert_existing_scope_dir(project_root: &Path, dir: &Path, dirs: &mut BTreeSe
 
 fn provider_fingerprint(provider: &ResolvedProvider) -> String {
     [
+        format!("manifest={}", provider.manifest_id),
+        format!("manifestDigest={}", provider.manifest_digest),
+        format!("namespace={}", provider.namespace),
         format!("language={}", provider.language_id),
         format!("provider={}", provider.provider_id),
         format!("binary={}", provider.binary),
@@ -323,6 +344,30 @@ fn provider_fingerprint(provider: &ResolvedProvider) -> String {
         format!(
             "ignoredPathPrefixes={}",
             provider.ignored_path_prefixes.join("\u{1f}")
+        ),
+        format!(
+            "queryPack={}:{}:{}",
+            provider.query_pack_descriptor.descriptor_id,
+            provider.query_pack_descriptor.descriptor_version,
+            provider.query_pack_descriptor.language_id
+        ),
+        format!(
+            "queryPackRecipes={}",
+            provider
+                .query_pack_descriptor
+                .recipes
+                .iter()
+                .map(|recipe| recipe.recipe_id.as_str())
+                .collect::<Vec<_>>()
+                .join("\u{1f}")
+        ),
+        format!(
+            "semanticSchemas={}",
+            provider
+                .semantic_facts_descriptor
+                .as_ref()
+                .map(|descriptor| descriptor.packet_schema_ids.join("\u{1f}"))
+                .unwrap_or_default()
         ),
     ]
     .join("\u{1e}")

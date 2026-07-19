@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{
+use agent_semantic_config::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientExecutionTransport,
     HookClientResidentAgentConfig, default_hook_client_config_template,
     default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,

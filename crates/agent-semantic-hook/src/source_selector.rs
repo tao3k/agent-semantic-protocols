@@ -1,5 +1,7 @@
 use crate::protocol::{normalize_source_route_selector, normalize_source_selector};
-use crate::protocol_activation::{ActivatedProvider, HookRuntime, SourceSelectorKind};
+use crate::protocol_activation::protocol_activation_manifest::{
+    ActivatedProvider, HookRuntime, ProviderSelectorMatch, SourceSelectorKind,
+};
 
 pub(crate) struct SourceSelectorMatch<'provider> {
     pub(crate) route_selector: String,
@@ -36,7 +38,7 @@ fn matching_blocked_providers<'provider, F>(
     registry: &'provider HookRuntime,
     route_selector: &str,
     should_block: &F,
-) -> Vec<crate::protocol_activation::ProviderSelectorMatch<'provider>>
+) -> Vec<ProviderSelectorMatch<'provider>>
 where
     F: Fn(&ActivatedProvider) -> bool,
 {

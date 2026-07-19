@@ -53,6 +53,17 @@ pub struct WorkspaceCandidateRejection {
 }
 
 impl SemanticWorkspaceScope {
+    pub fn matches_provider_identity(
+        &self,
+        provider_id: &str,
+        language_id: &str,
+        discovery_root: &Path,
+    ) -> bool {
+        self.provider_id == provider_id
+            && self.language_id == language_id
+            && self.discovery_root == discovery_root
+    }
+
     pub fn from_packet(packet: &Value) -> Result<Self, String> {
         require_text(
             packet,

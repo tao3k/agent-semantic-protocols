@@ -1,0 +1,195 @@
+** =query= — first-class parser-native extraction and reroutes
+The =query= facade must classify projection intent before provider fallback.
+Default =query --selector <selector> --code= is parser-owned item-code
+projection, not a file-read API. A bare file selector with =--code= and no
+=--term=/=--query= is ambiguous and must fail before provider execution; it
+must not render whole source and must not fall through to provider fallback. A
+structural item selector with =--code= is an item-code projection and must write
+only the matched item code. A file selector with =--term= or =--query= remains
+an owner-local item query and may render =[search-owner]= locator evidence when
+=--code= is absent. A file selector with =--code= is invalid on the normal
+facade and must fail before provider execution. These cases are mutually
+exclusive parser-owned request types; the facade must not let an exact code
+projection fall through to owner inventory, graph frontier rendering, provider
+fallback, or internal direct-read recovery.
+
+=query --selector <selector> --code= is exact parser-owned code extraction, not
+directory search and not whole-file source transport. The default selector must
+name a parser-owned structural identity such as
+=rust://...#item/function/name=. A file path, line range, or directory path such
+as =crates/foo/src= is not a default exact-code selector, and =--query <terms>=
+does not reinterpret that directory selector as a recursive search scope.
+Facades must fail before provider execution with a bounded diagnostic instead
+of returning an empty or whole-file code projection. The file-selector check is
+driven by the activated provider registry =source_extensions=, not by a
+Rust-only or hard-coded language list, so registered languages such as Gerbil
+Scheme =.ss= files receive the same preflight behavior. Agents that need
+directory-scoped discovery must first use =search lexical=, =search owner=, or
+=search pipe= with explicit =--workspace=, then follow the returned exact
+parser-owned =query --selector ... --code= action.
+Provider-native item query is the default code extraction path for agents:
+
+#+begin_src shell
+<lang-harness> query <project-path> --query <symbol-or-a|b|c>
+<lang-harness> query <project-path> --term <symbol-a> --term <symbol-b> --names-only
+asp <language> search owner <project-path> items --query <symbol-or-term> --workspace <workspace-root> --view seeds
+asp <language> query --selector <parser-owned-uri-or-handle> --workspace <workspace-root> --code
+#+end_src
+
+The language provider owns parser/AST lookup, exact item matching, multi-term
+query expressions, hook reroute normalization, and compact code rendering.
+Workspace-wide lexical or fuzzy discovery is not a =query --names-only= mode:
+agents and hooks must use =search lexical <term> owner tests --view seeds=, adding
+=--workspace <workspace-root>= only when the invocation workspace is not the
+desired root.  Providers should reject
+=query --term <term> --names-only= without an owner selector and print the
+explicit =search lexical= route instead of silently rerouting it.
+
+Owner-local item discovery is also provider-owned when a manifest declares
+=searchCapabilities.ownerItems=true=. The ASP facade may delegate
+=search owner <path> items --query ...= to that provider, but it must not
+silently fall back to Rust item guessing when the requested owner path exists
+under the selected workspace and the provider exits non-zero or emits an empty
+frontier. Existing owner paths are parser facts, not typo recovery. The provider
+must either resolve the indexed owner, parse an explicit existing Gerbil source
+path outside normal scan roots, or fail with a visible diagnostic. Generic
+facade fallback remains only a recovery aid for missing paths or providers that
+do not claim owner-item capability.
+Julia owner-local item query uses this same shared =semantic-query-packet=
+contract for JSON output through the language facade:
+
+#+begin_src shell
+asp julia query src/CliExample.jl --term run --json languages/JuliaLangProjectHarness.jl
+#+end_src
+
+Document-language domain surfaces must be expressed through the normal element
+and field query axes before adding named recipes.  For Org, SDD is a
+property/tag convention, not a separate query primitive: =SDD_KIND=,
+=SDD_STATUS=, =SDD_PARENT=, and =:sdd:= headings must be discoverable with
+=query --kind property --field key=<KEY>=, =query --field value=<VALUE>=, and
+tag/task queries.  =asp org= must not expose SDD, planning, sparse-tree, or
+task-list as top-level document-provider commands; those are recipes over
+AST facts or orgize-local/debug CLI surfaces.  Agents should query
+=SDD_*= properties and task/checklist syntax directly.
+
+Wendao =orgize= migration follows the same adapter-first rule.  Existing
+Wendao client subcommands such as =task-probe=, =task-recover=,
+=task-report=, =orgid-show=, =task-sdd=, =task-archive=, =eval plan=, and
+=eval patch= are not permission to encode a second Org task language inside
+ASP.  The durable migration path is: expose the underlying Org facts through
+=search= and =query= axes first, publish named guide recipes that compose
+those axes, then add thin compatibility subcommands only when they replay the
+same recipe and emit the underlying =asp org query/search= commands as next
+actions.  The canonical migration recipe names are semantic, not retired client
+labels: =sdd-kind-properties= maps to =kind=property= plus =key=SDD_KIND=,
+=org-id-properties= maps to =kind=property= plus =key=ID=, =tagged-tasks=
+maps to =kind=task= plus term/tag fields, and =done-tasks= maps to
+=kind=task= plus =todo=DONE=.  Retired labels such as =sdd-property=,
+=wendao-task-*=, =wendao-orgid-*=, =agent-plan-*=, and =plan-record= must
+not become provider-owned commands or recipes.  Destructive actions such as task archive apply must route through an
+AST-patch or edit-plan contract; they must not be introduced as hidden side
+effects of a search/query adapter.  Safe deletion of the Wendao client surface
+requires parity evidence for the recipe packet, the compatibility shell, and
+the no-hidden-domain-index invariant.
+
+Plan recording follows this boundary: =asp org capture-plan= may render a
+reviewable Org entry and application preconditions, but the implementation is
+semantic-AST owned and non-mutating.  The CLI facade only forwards arguments
+and prints the rendered plan; date parsing, target resolution intent, property
+normalization, and Org entry rendering belong to the Org semantic layer rather
+than to the command-line adapter.  Plan contracts are caller-supplied Org
+properties and body content on ordinary capture kinds such as =task=; the Org
+provider must not hard-code =agent-plan= as a capture kind or render a
+provider-owned agent planning template.
+
+Task and checklist facts must remain distinct at the document query layer.
+Org TODO headlines are =kind=task= facts backed by =sourceKind=Headline=.
+Checkbox list items are =kind=checklistItem= facts backed by
+=sourceKind=SyntaxListItem=.  Markdown task-list items follow the same
+=checklistItem= spelling because they are checklist syntax, not task
+headlines.
+
+For an exact =direct-source-read= selector with =--code=, the provider should
+return a bounded source-preserved local window for that path/range, not owner
+metadata and not compact projection text.  The selector already carries the
+path/range, so =--code= must not repeat =line= or =endLine= metadata or return
+owner seeds.  The rendered lines must preserve the source/formatter shape for
+the selected window, including indentation, blank lines, attributes, semicolons,
+macro payloads, enum variants, and visible block braces.  Parser projection may
+select or repair a read frontier, but it must not be used as the exact-read text
+for this surface.  Rust, TypeScript, Python, and Julia all use their native
+parser facts to bound or repair the selector; Julia uses the =asp julia=
+facade backed by the compiled =asp-julia-harness= and cacheable provider
+artifacts.
+
+=--workspace <workspace-root>= is the only public way to override the
+workspace root for source-language query/code commands.  =--code= is a boolean
+output selector and must never consume or be followed by a project root.  The
+stale shape =query ... --code .= or =query ... --code <root>= is invalid for
+owner item queries, tree-sitter syntax-code queries, selector-code exact reads, and =search owner ... items --query ... --code=.  A selector query
+without =--workspace= resolves against the invocation workspace, selector
+absolute path, or provider-owned workspace inference.
+In public CLI grammar, =workspace= is the root semantic.  Agent-facing paths,
+selectors, and search scopes are workspace-relative unless absolute; package
+roots and project roots are provider-owned narrowing facts, not positional
+root arguments.
+The selected workspace is also the containment boundary.  Root/language facades
+must reject explicit =--workspace= values, positional project roots, selectors,
+cache paths, and provider cwd choices that canonicalize outside the activated
+workspace.  A package root may narrow execution only when it remains under that
+workspace; outside-workspace execution is invalid even if the target path has a
+valid language marker such as =Cargo.toml=.
+
+If the selector is too wide for bounded code transport, the provider returns a
+=read-plan= frontier, not a denial-only outline.  The active contract is
+=semantic-read-packet=: =readPlan.mode= is =range-frontier= or =search-repair=,
+=readPlan.frontier= names executable next actions, and =readPlan.avoid= names forbidden next actions such as =repeat-wide-read=,
+=manual-window-scan=, and =raw-read=.  A range-only plan must use =windows= and
+=frontier= entries; it must not synthesize a fake =symbol= such as
+=local-window=.  Parser-owned symbols are preferred when available, and
+mechanical range splits are only the fallback.  Every prompt-facing frontier
+=code= action must map back to a parser-owned exact item selector:
+
+#+begin_src shell
+asp <language> query --selector <language://path#item/kind/name> --workspace <workspace-root> --code
+#+end_src
+
+ASP owns the compact output-mode boundary across every language facade:
+=frontier= is the default prompt-facing mode, =code= is selected only by
+=--code=, =read-packet= is selected only by =--json --view read-packet=, and
+plain =json= is any other structured packet mode.  In =frontier= mode, providers
+may emit metadata rows such as =|read=, =|item=, =|owner=, omit/avoid facts, and
+exact =read== locators, but they must not emit =|code= rows, =text= fields, or
+any inline source payload.  The ASP client validates this before cache
+write-back and replay so a provider cannot accidentally turn compact frontier
+output into lossy pseudo-source.
+
+For exact selectors without =--code=, the provider stays in =frontier= mode. It
+may return a bounded =read-owner= frontier, return a =read-plan= frontier, or
+normalize to =search owner <path> items= rather than owner seeds.  A
+=read-owner= response must state the selected path, item, line range,
+truncation status, omitted source status, and executable read locators; it must
+not include =|code= rows, =text= fields, cache ids, DB paths, receipt JSON,
+or unbounded adjacent source.  A =read-plan= or item response must keep code
+omitted and provide executable read locators.  If an agent needs source text,
+the next action is an explicit =--code= request or structured
+=--json --view read-packet=.  For exact selectors with a query term, the
+provider should keep the normal item query/code projection path.  Wildcard or
+broad selectors still require concrete terms and should remain bounded
+candidate/seed searches.
+
+Hook route construction must not put line-range selectors into prompt-facing
+routes.  The hook may keep the original range as a diagnostic source locator
+hint and strip =:line[-end]= for language profile matching, but the executable
+route should return to parser-owned owner/item discovery:
+
+#+begin_example
+rtk read src/lib.rs:10:20
+=> asp <language> search owner src/lib.rs items --workspace . --view seeds
+#+end_example
+
+This keeps the recovery route selector-first without letting a line range become
+semantic identity.  The final source read happens only after owner/item
+frontier evidence selects an exact parser-owned item or a bounded audited
+fallback.
+

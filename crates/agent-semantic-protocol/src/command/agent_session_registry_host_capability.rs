@@ -13,6 +13,7 @@ const SCHEMA_VERSION: &str = "1";
 const SOURCE: &str = "native-collaboration-spawn-agent-schema";
 const HOST_TREE_SCHEMA_ID: &str = "agent.semantic-protocols.host-resident-target-observation";
 const HOST_TREE_SOURCE: &str = "native-collaboration-list-agents";
+const HOST_ACK_SOURCE: &str = "native-collaboration-followup-ack";
 const NATIVE_SUBAGENT_START_SOURCE: &str = "codex.subagent-start";
 const TRUSTED_RESIDENT_HOOK_SOURCE: &str = "codex.pre-tool-resident-envelope";
 const NATIVE_SUBAGENT_START_OBSERVATION_TTL_SECONDS: i64 = 300;
@@ -82,7 +83,10 @@ impl HostResidentTargetObservation {
             && matches!(self.target_status.as_str(), "present" | "absent")
             && matches!(
                 self.source.as_str(),
-                HOST_TREE_SOURCE | NATIVE_SUBAGENT_START_SOURCE | TRUSTED_RESIDENT_HOOK_SOURCE
+                HOST_TREE_SOURCE
+                    | HOST_ACK_SOURCE
+                    | NATIVE_SUBAGENT_START_SOURCE
+                    | TRUSTED_RESIDENT_HOOK_SOURCE
             )
             && self.observed_at <= now
             && now <= self.expires_at
@@ -145,6 +149,108 @@ pub(super) fn observe_host_capability(
     }
     Ok(())
 }
+
+pub(super) fn observe_host_ack(
+    registry: &AgentSessionRegistry,
+    args: &SessionArgs,
+) -> Result<(), String> {
+    reject_identity_flags(args, "host ack observation")?;
+
+    let root_session_id = non_empty_env("CODEX_THREAD_ID")?;
+    let resident_name = args.name.as_deref().unwrap_or("asp-explore");
+    let canonical_target = args.canonical_target.as_deref().ok_or_else(|| {
+        "observe-host-ack requires --canonical-target because lane names never infer live targets"
+            .to_string()
+    })?;
+    let expected_agent_type = canonical_codex_agent_type(canonical_target).ok_or_else(|| {
+        format!(
+            "observe-host-ack requires a canonical /root/<agent> target, got {canonical_target}"
+        )
+    })?;
+    let observed_at = unix_timestamp()?;
+    let ttl = args.observation_ttl_seconds;
+    let observation = HostResidentTargetObservation {
+        schema_id: "agent.semantic-protocols.host-resident-target-observation".to_string(),
+        schema_version: "1".to_string(),
+        root_session_id: root_session_id.clone(),
+        resident_name: resident_name.to_string(),
+        target_status: "present".to_string(),
+        canonical_target: Some(canonical_target.to_string()),
+        identity_status: "verified".to_string(),
+        source: HOST_ACK_SOURCE.to_string(),
+        observed_at,
+        expires_at: observed_at + ttl,
+    };
+    write_host_tree_observation(registry, &observation)?;
+
+    let project_root = std::env::current_dir()
+        .map_err(|error| format!("failed to read current directory: {error}"))?;
+    let project_id =
+        super::agent_session_registry_state::project_session_scope_id(registry, &project_root)?;
+    let record = registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
+        project_id: &project_id,
+        session_id: None,
+        root_session_id: Some(root_session_id.as_str()),
+        name: Some(resident_name),
+    })?;
+
+    let registers_resident_child =
+        super::agent_session_registry_bootstrap::binding::maybe_bind_verified_canonical_target(
+            registry,
+            record.as_ref(),
+            true,
+            Some(canonical_target),
+            expected_agent_type,
+            record
+                .as_ref()
+                .and_then(|existing| existing.model.as_deref()),
+            None,
+        )?
+        .is_some();
+
+    if args.json {
+        let mut value = serde_json::to_value(&observation).map_err(|error| error.to_string())?;
+        if let serde_json::Value::Object(ref mut object) = value {
+            object.insert(
+                "registersResidentChild".to_string(),
+                serde_json::Value::Bool(registers_resident_child),
+            );
+            object.insert(
+                "acknowledgementKind".to_string(),
+                serde_json::Value::String("host-native-followup-or-dispatch".to_string()),
+            );
+            if let Some(evidence_ref) = args.evidence_ref.as_deref() {
+                object.insert(
+                    "evidenceRef".to_string(),
+                    serde_json::Value::String(evidence_ref.to_string()),
+                );
+            }
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&value).map_err(|error| error.to_string())?
+        );
+    } else {
+        println!(
+            "[agent-session-host-ack] rootSession=\"{}\" name=\"{}\" canonicalTarget=\"{}\" identityStatus={} source={} acknowledgementKind={} evidenceRef=\"{}\" expiresAt={} registersResidentChild={}",
+            observation.root_session_id,
+            observation.resident_name,
+            observation.canonical_target.as_deref().unwrap_or(""),
+            observation.identity_status,
+            observation.source,
+            "host-native-followup-or-dispatch",
+            args.evidence_ref.as_deref().unwrap_or(""),
+            observation.expires_at,
+            registers_resident_child,
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_host_capability.rs"]
+mod tests;
 
 pub(super) fn observe_host_tree(
     registry: &AgentSessionRegistry,

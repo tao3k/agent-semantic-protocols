@@ -2,7 +2,7 @@
 
 use crate::command::selector_query_route;
 use crate::protocol::DecisionRoute;
-use crate::protocol_activation::HookRuntime;
+use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
 use crate::source_selector::collect_source_selector_matches;
 use serde::Serialize;
 use std::fmt;

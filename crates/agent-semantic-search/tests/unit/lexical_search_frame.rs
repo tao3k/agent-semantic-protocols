@@ -247,12 +247,15 @@ fn lexical_search_frame_trace_skips_overlay_when_source_index_is_selector_ready(
     let owners: Vec<PathBuf> = Vec::new();
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
+    let query = "LexicalSearchFrameRequest plan_lexical_search_frame";
+    let query_terms = agent_semantic_search::search_pipe_typed_query_terms("rust", query);
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "LexicalSearchFrameRequest plan_lexical_search_frame",
+        query,
+        query_terms: &query_terms,
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
@@ -298,12 +301,15 @@ fn lexical_search_frame_uses_source_index_owner_evidence_before_overlay() {
     let owners: Vec<PathBuf> = Vec::new();
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
+    let query = "LexicalSearchFrameRequest plan_lexical_search_frame";
+    let query_terms = agent_semantic_search::search_pipe_typed_query_terms("rust", query);
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "LexicalSearchFrameRequest plan_lexical_search_frame",
+        query,
+        query_terms: &query_terms,
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,

@@ -1,6 +1,7 @@
 //! Activation loading and provider manifest defaults for `agent-semantic-hook`.
 
-use crate::protocol_activation::{HookActivation, HookRuntime, parse_activation};
+use crate::protocol_activation::protocol_activation_manifest::{HookActivation, HookRuntime};
+use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::{
     ProviderCommandSelection, build_default_activation, provider_command_selections,
     provider_manifests,

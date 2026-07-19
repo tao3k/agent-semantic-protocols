@@ -1,5 +1,7 @@
 //! Runtime for the `asp hook` command surface.
 
+#[path = "hook_runtime_activation_failure.rs"]
+mod hook_runtime_activation_failure;
 #[path = "hook_runtime_agent_session.rs"]
 mod hook_runtime_agent_session;
 #[path = "hook_runtime_codex_plugin.rs"]
@@ -8,12 +10,16 @@ mod hook_runtime_codex_plugin;
 mod hook_runtime_codex_plugin_identity;
 #[path = "hook_runtime_config_recovery.rs"]
 mod hook_runtime_config_recovery;
+#[path = "hook_runtime_decision_render.rs"]
+mod hook_runtime_decision_render;
 #[path = "hook_runtime_doctor.rs"]
 mod hook_runtime_doctor;
 #[path = "hook_runtime_install.rs"]
 mod hook_runtime_install;
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
+#[path = "hook_runtime_source_access_materialize.rs"]
+mod hook_runtime_source_access_materialize;
 #[path = "hook_runtime_stdin.rs"]
 mod hook_runtime_stdin;
 #[path = "hook_runtime_subagent.rs"]
@@ -27,26 +33,28 @@ use super::{
 };
 use agent_semantic_client_db::{AgentSessionLookupRequest, AgentSessionRegistry};
 use agent_semantic_hook::{
-    ActiveContextRecord, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
-    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
-    HookClassificationRequest, HookDecision, ReasonKind, append_hook_event_state,
-    apply_repeated_deny_replay, classify_hook_with_config, default_activation_path,
-    default_client_config_path, discover_activation_path, has_recorded_subagent_context,
-    load_activation, load_client_config_for_project, parse_payload, record_active_context,
-    render_platform_response, subagent_deny_message,
+    ActiveContextRecord, DecisionKind, HookClassificationRequest, HookDecision, ReasonKind,
+    append_hook_event_state, apply_repeated_deny_replay, classify_hook_with_config,
+    default_activation_path, default_client_config_path, discover_activation_path,
+    has_recorded_subagent_context, load_activation, load_client_config_for_project, parse_payload,
+    record_active_context, subagent_deny_message,
 };
 use agent_semantic_runtime::project_state_paths;
+use hook_runtime_activation_failure::{
+    activation_failure_main_session_asp_decision, emit_activation_load_failure,
+};
 use hook_runtime_agent_session::{
-    classify_activation_failure_main_session_asp, classify_main_session_asp_exploration,
-    default_asp_session_policy, load_asp_session_policy,
+    classify_main_session_asp_exploration, default_asp_session_policy, load_asp_session_policy,
 };
 use hook_runtime_codex_plugin::codex_project_plugin_hooks_present;
 use hook_runtime_config_recovery::{
     annotate_hook_config_fallback, annotate_target_agent_auto_sync,
 };
+use hook_runtime_decision_render::{emit_decision, emit_hook_runtime_failure};
 use hook_runtime_doctor::run_doctor;
 pub(super) use hook_runtime_install::run_codex_plugin_install_args;
 use hook_runtime_install::run_install;
+use hook_runtime_source_access_materialize::materialize_source_access_deny_message;
 use hook_runtime_stdin::read_hook_stdin_bounded;
 use std::collections::BTreeMap;
 use std::env;
@@ -651,33 +659,6 @@ fn annotate_payload_context(
     Ok(())
 }
 
-fn materialize_source_access_deny_message(
-    decision: &mut HookDecision,
-    hook_config: &agent_semantic_hook::ClientHookConfig,
-) {
-    if decision.decision != DecisionKind::Deny {
-        return;
-    }
-    if hook_selected_resident_execution(decision) {
-        return;
-    }
-    decision
-        .fields
-        .entry("residentChildName".to_string())
-        .or_insert_with(|| {
-            serde_json::Value::String(hook_config.resident_asp_explore_child_name().to_string())
-        });
-    let resident_child_name = hook_config.resident_asp_explore_child_name();
-    if let Ok(serialized) = serde_json::to_value(&*decision)
-        && let Some(message) = super::hook_runtime_source_access::compact_root_source_access_message(
-            &serialized,
-            resident_child_name,
-        )
-    {
-        decision.message = message;
-    }
-}
-
 fn hook_selected_resident_execution(decision: &HookDecision) -> bool {
     decision.fields.contains_key("executionLane")
         && decision
@@ -863,211 +844,10 @@ fn enforce_resident_child_deny_contract(
     Ok(())
 }
 
-fn emit_activation_load_failure(
-    client: &str,
-    event: &str,
-    emit: &str,
-    activation_path: &Path,
-    error: &str,
-    stdin: &str,
-) -> Result<(), String> {
-    eprintln!(
-        "[agent-semantic-hook] activation disabled for this hook event: {}: {error}",
-        activation_path.display()
-    );
-    if let Some(decision) =
-        activation_failure_source_decision(client, event, activation_path, error, stdin)
-    {
-        return emit_decision(emit, &decision);
-    }
-    emit_hook_runtime_failure(
-        client,
-        event,
-        emit,
-        &format!(
-            "Semantic hook activation could not be loaded; allowing tool use so activation can be repaired: {error}"
-        ),
-    )
-}
-
-struct ActivationFailureMainSessionAspDecision {
-    project_root: PathBuf,
-    payload: serde_json::Value,
-    decision: HookDecision,
-}
-
-fn activation_failure_main_session_asp_decision(
-    args: &[String],
-    client: &str,
-    event: &str,
-    stdin: &str,
-) -> Option<ActivationFailureMainSessionAspDecision> {
-    let payload = parse_payload(stdin).ok()?;
-    let project_root = std::env::current_dir().ok()?;
-    let config_path = flag_value(args, "--config")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
-    let asp_session_policy = load_asp_session_policy(&config_path).ok()?;
-    let decision = classify_activation_failure_main_session_asp(
-        &project_root,
-        client,
-        event,
-        &payload,
-        &asp_session_policy,
-    )
-    .ok()
-    .flatten()?;
-    Some(ActivationFailureMainSessionAspDecision {
-        project_root,
-        payload,
-        decision,
-    })
-}
-
-fn activation_failure_source_decision(
-    client: &str,
-    event: &str,
-    activation_path: &Path,
-    error: &str,
-    stdin: &str,
-) -> Option<HookDecision> {
-    let payload: serde_json::Value = serde_json::from_str(stdin).ok()?;
-    let tool_name = string_field(&payload, &["tool_name", "toolName"]).unwrap_or_default();
-    let tool_input = payload
-        .get("tool_input")
-        .or_else(|| payload.get("toolInput"))
-        .or_else(|| payload.get("input"))
-        .unwrap_or(&payload);
-    let mut paths = Vec::new();
-    super::hook_runtime_source_access::collect_activation_path_values(tool_input, &mut paths);
-    let command = string_field(tool_input, &["cmd", "command", "script"]);
-    if command
-        .as_deref()
-        .is_some_and(is_activation_recovery_command)
-    {
-        return None;
-    }
-    if let Some(command) = command.as_deref() {
-        super::hook_runtime_source_access::collect_activation_command_paths(command, &mut paths);
-    }
-    paths.sort();
-    paths.dedup();
-    if paths.is_empty() {
-        return None;
-    }
-
-    let reason_kind =
-        if tool_name.eq_ignore_ascii_case("read") || tool_name.eq_ignore_ascii_case("view") {
-            ReasonKind::DirectSourceRead
-        } else {
-            match command
-                .as_deref()
-                .map(agent_semantic_hook::classify_source_command_intent)
-            {
-                Some(agent_semantic_hook::SourceCommandIntent::DirectRead) => {
-                    ReasonKind::DirectSourceRead
-                }
-                Some(agent_semantic_hook::SourceCommandIntent::ContentDump) => {
-                    ReasonKind::BulkSourceDump
-                }
-                Some(agent_semantic_hook::SourceCommandIntent::Other)
-                | Some(agent_semantic_hook::SourceCommandIntent::VcsDiffReview)
-                | None => return None,
-            }
-        };
-    Some(HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: client.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind,
-        language_ids: Vec::new(),
-        subject: DecisionSubject {
-            tool_name: if tool_name.is_empty() {
-                None
-            } else {
-                Some(tool_name)
-            },
-            command,
-            paths,
-        },
-        routes: Vec::new(),
-        message: format!(
-            "Semantic hook activation could not be loaded from {}; source reads fail closed until activation is repaired: {error}",
-            activation_path.display()
-        ),
-        fields: BTreeMap::new(),
-    })
-}
-
-fn is_activation_recovery_command(command: &str) -> bool {
-    let tokens = agent_semantic_hook::semantic_shell_tokens(command);
-    agent_semantic_hook::asp_invocation_indices(&tokens)
-        .into_iter()
-        .any(
-            |asp_index| match tokens.get(asp_index + 1).map(String::as_str) {
-                Some("sync") => true,
-                Some("hook") => tokens
-                    .get(asp_index + 2)
-                    .is_some_and(|token| token == "doctor"),
-                _ => false,
-            },
-        )
-}
-
-#[cfg(test)]
-#[path = "../../tests/unit/hook_runtime_activation_recovery.rs"]
-mod hook_runtime_activation_recovery_tests;
-
-fn emit_decision(emit: &str, decision: &HookDecision) -> Result<(), String> {
-    let output_value = match emit {
-        "decision" => serde_json::to_value(decision)
-            .map_err(|error| format!("failed to serialize hook decision: {error}"))?,
-        "platform" => render_platform_response(decision)
-            .map_err(|error| format!("failed to render hook response: {error:?}"))?,
-        other => {
-            return Err(format!(
-                "unsupported --emit value: {other}; expected platform or decision"
-            ));
-        }
-    };
-    let output = serde_json::to_string(&output_value)
-        .map_err(|error| format!("failed to serialize hook response: {error}"))?;
-    println!("{output}");
-    Ok(())
-}
-
 fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
     keys.iter()
         .find_map(|key| value.get(*key).and_then(serde_json::Value::as_str))
         .map(str::to_string)
-}
-
-fn emit_hook_runtime_failure(
-    client: &str,
-    event: &str,
-    emit: &str,
-    message: &str,
-) -> Result<(), String> {
-    let decision = HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: client.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Allow,
-        reason_kind: ReasonKind::None,
-        language_ids: Vec::new(),
-        subject: DecisionSubject::default(),
-        routes: Vec::new(),
-        message: message.to_string(),
-        fields: std::collections::BTreeMap::new(),
-    };
-    emit_decision(emit, &decision)
 }
 
 fn activation_relative_project_root(activation_path: &Path, project_root: &str) -> PathBuf {

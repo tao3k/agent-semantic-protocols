@@ -6,6 +6,8 @@ description = "Thin agent semantic client over native semantic language provider
 license = "MIT"
 
 [dependencies]
+agent-semantic-content-identity.workspace = true
+agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
 bytes = { workspace = true }
 ignore = { workspace = true }
 which = { workspace = true }

@@ -97,23 +97,72 @@ fn provider_language_required(command: &str) -> String {
 
 fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
     match ProviderRegistrySnapshot::load(&parsed.activation_root) {
-        Ok(snapshot) => {
-            println!(
-                "[asp-providers] activation={} providers={}",
-                snapshot.activation_path.display(),
-                snapshot.providers.len()
-            );
-            for provider in snapshot.providers {
+        Ok(snapshot) => match parsed.forwarded_args.as_slice() {
+            [command] if command == "list" => {
+                let providers = snapshot
+                    .providers
+                    .iter()
+                    .map(|provider| {
+                        serde_json::json!({
+                            "manifestId": provider.manifest_id,
+                            "manifestDigest": provider.manifest_digest,
+                            "namespace": provider.namespace,
+                            "languageId": provider.language_id.to_string(),
+                            "providerId": provider.provider_id.to_string(),
+                            "queryPackDescriptorId": provider.query_pack_descriptor.descriptor_id,
+                            "queryPackDescriptorVersion": provider.query_pack_descriptor.descriptor_version,
+                            "semanticFactsDescriptorId": provider
+                                .semantic_facts_descriptor
+                                .as_ref()
+                                .map(|descriptor| descriptor.descriptor_id.as_str()),
+                            "packetSchemaIds": provider
+                                .semantic_facts_descriptor
+                                .as_ref()
+                                .map(|descriptor| descriptor.packet_schema_ids.as_slice()),
+                        })
+                    })
+                    .collect::<Vec<_>>();
                 println!(
-                    "|provider language={} provider={} binary={} execution={} packageRoots={}",
-                    provider.language_id,
-                    provider.provider_id,
-                    provider.binary,
-                    provider.execution.as_str(),
-                    provider.package_roots.join(",")
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "activationPath": snapshot.activation_path,
+                        "providers": providers,
+                    }))
+                    .map_err(|error| format!("serialize provider registry evidence: {error}"))?
                 );
             }
-        }
+            [command, language_id] if command == "get" => {
+                let provider = snapshot
+                    .providers
+                    .iter()
+                    .find(|provider| provider.language_id.to_string() == *language_id)
+                    .ok_or_else(|| format!("no activated provider for language `{language_id}`"))?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "activationPath": snapshot.activation_path,
+                        "manifest": {
+                            "manifestId": provider.manifest_id,
+                            "manifestDigest": provider.manifest_digest,
+                            "namespace": provider.namespace,
+                            "languageId": provider.language_id.to_string(),
+                            "providerId": provider.provider_id.to_string(),
+                            "binary": provider.binary,
+                            "execution": provider.execution.as_str(),
+                        },
+                        "queryPackDescriptor": provider.query_pack_descriptor,
+                        "semanticFactsDescriptor": provider.semantic_facts_descriptor,
+                    }))
+                    .map_err(|error| format!("serialize provider manifest evidence: {error}"))?
+                );
+            }
+            _ => {
+                return Err(
+                    "usage: asp providers <list|get <language-id>>; provider evidence requires an explicit operation"
+                        .to_string(),
+                );
+            }
+        },
         Err(error) => {
             println!("[asp-providers] activation=missing providers=0");
             println!("|reason provider-activation-unavailable");

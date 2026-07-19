@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|dispatch-claim|dispatch-execute|dispatch-complete|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -13,9 +13,11 @@ pub(super) enum SessionCommand {
     Bootstrap,
     ObserveHostCapability,
     ObserveHostTree,
+    ObserveHostAck,
     DispatchClaim,
     DispatchExecute,
     DispatchComplete,
+    DispatchMarkOrphaned,
     Register,
     List,
     Show,
@@ -123,6 +125,9 @@ impl SessionArgs {
                 "observe-host-tree" if index == 0 => {
                     parsed.command = SessionCommand::ObserveHostTree;
                 }
+                "observe-host-ack" if index == 0 => {
+                    parsed.command = SessionCommand::ObserveHostAck;
+                }
                 "dispatch-claim" if index == 0 => {
                     parsed.command = SessionCommand::DispatchClaim;
                 }
@@ -131,6 +136,9 @@ impl SessionArgs {
                 }
                 "dispatch-complete" if index == 0 => {
                     parsed.command = SessionCommand::DispatchComplete;
+                }
+                "dispatch-mark-orphaned" | "dispatch-orphan" if index == 0 => {
+                    parsed.command = SessionCommand::DispatchMarkOrphaned;
                 }
                 "register" | "add" | "upsert" if index == 0 => {
                     parsed.command = SessionCommand::Register;
@@ -368,6 +376,13 @@ For present targets, pass the exact canonical path selected by the hook; the lan
 asp agent session observe-host-tree --name <resident-lane> --resident-target-status present --canonical-target /root/<agent>\n\
 asp agent session observe-host-tree --name <resident-lane> --resident-target-status absent",
         ),
+        SessionCommand::ObserveHostAck => Some(
+            "asp agent session observe-host-ack guide\n\
+Record a short-lived acknowledgement that a host-native follow-up or dispatch to the canonical resident target succeeded in the active CODEX_THREAD_ID.\n\
+This receipt never accepts a child id, never creates a resident, and only refreshes an existing same-root resident binding.\n\
+Pass the exact canonical path used by the host-native follow-up; the lane name is never used to infer it.\n\
+asp agent session observe-host-ack --name <resident-lane> --canonical-target /root/<agent> [--evidence-ref <dispatch-or-followup-id>]",
+        ),
         SessionCommand::DispatchClaim => Some(
             "asp agent session dispatch-claim guide\n\
 Atomically claim or poll one exact resident command. Only action=send authorizes a native follow-up; action=wait polls the existing attempt and action=complete forbids replay.\n\
@@ -382,6 +397,11 @@ asp agent session dispatch-execute --name <resident-lane> --root-session-id <roo
             "asp agent session dispatch-complete guide\n\
 Record one terminal compact receipt for an existing dispatch identity. Repeated completion is idempotent and permanently disables replay.\n\
 asp agent session dispatch-complete --name asp-explore --dispatch-identity <id> --command-digest <digest> --evidence-ref <ref>",
+        ),
+        SessionCommand::DispatchMarkOrphaned => Some(
+            "asp agent session dispatch-mark-orphaned guide\n\
+Mark an in-flight resident dispatch as orphaned-awaiting-rebind after the host proves the delivery target disappeared before a terminal receipt was recorded. This does not replay the command; the next verified generation may claim the same dispatch identity once.\n\
+asp agent session dispatch-mark-orphaned --name <resident-lane> --dispatch-identity <id> --command-digest <digest>",
         ),
         SessionCommand::Register => guide.register(),
         SessionCommand::List => guide.list(),

@@ -6,7 +6,9 @@ use crate::protocol::{
     CommandTemplate, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookRoutes,
     PROVIDER_MANIFEST_SCHEMA_ID, PROVIDER_MANIFEST_SCHEMA_VERSION,
 };
-use crate::protocol_activation::{ManifestSourceDefaults, ProviderManifest};
+use crate::protocol_activation::protocol_activation_manifest::{
+    ManifestSourceDefaults, ProviderManifest,
+};
 
 const SCHEMA_REGISTRY_JSON: &str =
     include_str!("../../../schemas/semantic-language-registry.providers.v1.json");

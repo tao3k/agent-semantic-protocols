@@ -30,8 +30,27 @@ pub fn refresh_source_index(
     project_root: &Path,
 ) -> Result<Option<SourceIndexRefreshReport>, String> {
     let trace_started = Instant::now();
+    let cache_report =
+        agent_semantic_client_core::ClientCacheManifest::inspect_project(project_root);
+    source_index_trace("cache-inspected", trace_started);
+    let Some(cache_root) = cache_report.cache_root.as_ref() else {
+        source_index_trace("cache-root-absent-warm-check", trace_started);
+        return Ok(None);
+    };
+    if ClientDbEngine::inspect_client_dir(cache_root).status
+        != agent_semantic_client_core::ClientDbStatus::Present
+    {
+        source_index_trace("db-absent-warm-check", trace_started);
+        return Ok(None);
+    }
     let mut context = SourceIndexRefreshContext::resolve(project_root)?;
     source_index_trace("context-resolved", trace_started);
+    let previous_file_hashes = context.latest_file_hashes(project_root)?;
+    source_index_trace("previous-file-hashes-loaded", trace_started);
+    if previous_file_hashes.is_none() {
+        source_index_trace("generation-absent-warm-check", trace_started);
+        return Ok(None);
+    }
     let dirty_paths = source_index_tracked_worktree_dirty_paths(project_root);
     let tracked_worktree_dirty = dirty_paths.as_ref().map_or(true, |paths| !paths.is_empty());
     if tracked_worktree_dirty {
@@ -40,8 +59,6 @@ pub fn refresh_source_index(
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
     source_index_trace("provider-registry-loaded", trace_started);
     let registry = source_index_scope_evidence(snapshot.evidence(project_root), project_root);
-    let previous_file_hashes = context.latest_file_hashes(project_root)?;
-    source_index_trace("previous-file-hashes-loaded", trace_started);
     if !tracked_worktree_dirty {
         if let Some(report) = try_reuse_source_index_scope(
             &context,
@@ -271,6 +288,15 @@ impl SourceIndexRefreshContext {
             &request.registry.fingerprint,
             request.registry.scope_dirs.iter().map(String::as_str),
         )?;
+        let workspace_snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(
+            file_hashes
+                .iter()
+                .map(|file_hash| (file_hash.path.as_str(), file_hash.sha256.as_str())),
+        );
+        let source_snapshot = workspace_snapshot.evidence(
+            agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+            agent_semantic_artifacts::provider_digest(request.registry.fingerprint.as_bytes()),
+        );
         source_index_trace("generation-file-hashes-built", trace_started);
         let reusable_stats = self.db_session.reusable_source_index_generation(
             request.index_root,
@@ -309,11 +335,13 @@ impl SourceIndexRefreshContext {
                 .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
                     import,
                     file_count: client_db_source_index_file_count(request.files.len()),
+                    source_snapshot: source_snapshot.clone(),
                 })?;
         source_index_trace("generation-turso-imported", trace_started);
         Ok(SourceIndexRefreshReport::from_report(
             self.db_path.clone(),
             report,
+            source_snapshot,
         ))
     }
 }

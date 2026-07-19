@@ -18,8 +18,12 @@ fn normalized_json_hash_ignores_object_key_order() {
     let right = json!({"items": [2, 1], "schemaId": "x", "schemaVersion": "1"});
 
     assert_eq!(
-        hash_normalized_json(&ArtifactJson::new(left)),
-        hash_normalized_json(&ArtifactJson::new(right))
+        hash_normalized_json(
+            &ArtifactJson::from_serializable(&left).expect("left JSON must serialize"),
+        ),
+        hash_normalized_json(
+            &ArtifactJson::from_serializable(&right).expect("right JSON must serialize"),
+        )
     );
 }
 

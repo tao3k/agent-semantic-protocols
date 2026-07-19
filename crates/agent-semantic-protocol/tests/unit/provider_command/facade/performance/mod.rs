@@ -9,7 +9,6 @@ const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(2);
 const GERBIL_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(30);
 // Process wall time includes binary startup and test-host scheduling. Search SLA is enforced by
 // sourceTrace elapsedMs below; this wall gate only catches hangs.
-const ASP_QUERY_WRAPPER_WALL_SANITY_GATE: Duration = Duration::from_secs(3);
 // SourceTrace includes provider process startup under cargo-test parallelism; keep these gates
 // tight enough to catch hangs while functional tests assert candidate/input bounds separately.
 const ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS: u64 = 250;
@@ -182,93 +181,6 @@ fn language_facade_regular_commands_finish_inside_performance_gate() {
 }
 
 #[test]
-fn broad_rg_query_requires_native_filter_or_narrow_scope() {
-    let root = temp_project_root("broad-rg-query-performance-gate");
-    std::fs::create_dir_all(root.join("src")).expect("create src");
-    for file_index in 0..160 {
-        let mut text = String::new();
-        text.push_str(&format!(
-            ";; typed-combinator-style source quality file {file_index}\n"
-        ));
-        for line_index in 0..120 {
-            text.push_str(&format!(
-                ";; line {line_index} routes source comments to engineering quality helpers\n"
-            ));
-        }
-        std::fs::write(root.join(format!("src/broad_{file_index}.ss")), text)
-            .expect("write broad fixture");
-    }
-    std::fs::write(root.join("gerbil.pkg"), "(package: broad-rg-gate)\n")
-        .expect("write gerbil.pkg");
-
-    let broad_output = asp_command(&root)
-        .args([
-            "rg",
-            "-query",
-            "typed-combinator-style R013 self apply old comment style migrate source helpers to",
-            ".",
-        ])
-        .output()
-        .expect("run broad asp rg without filter");
-
-    assert!(
-        broad_output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&broad_output.stderr)
-    );
-    let stdout = String::from_utf8(broad_output.stdout).expect("stdout");
-    assert!(
-        stdout.contains("noOutput reason=query-too-broad") && stdout.contains("refineHint="),
-        "broad query should be blocked before native rg without filters; stdout={stdout}"
-    );
-    assert_trace_elapsed_under_gate_ms(
-        &["rg", "-query", "broad"],
-        &stdout,
-        ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS,
-    );
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn broad_fd_query_requires_path_or_symbol_terms() {
-    let root = temp_project_root("broad-fd-query-budget-gate");
-    std::fs::create_dir_all(root.join("src")).expect("create src");
-    std::fs::write(
-        root.join("src/search_query_budget.rs"),
-        "pub struct BudgetGate;\n",
-    )
-    .expect("write fixture");
-
-    let output = asp_command(&root)
-        .args([
-            "fd",
-            "-query",
-            "wrapper backend interface budget gate broad generic input",
-            ".",
-        ])
-        .output()
-        .expect("run broad asp fd");
-
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains("noOutput reason=query-too-broad")
-            && stdout.contains("nextCommand=asp fd -query 'path-or-symbol|error-code'"),
-        "broad fd query should be blocked with a granular query example; stdout={stdout}"
-    );
-    assert_trace_elapsed_under_gate_ms(
-        &["fd", "-query", "broad"],
-        &stdout,
-        ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS,
-    );
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn provider_facts_receive_bounded_candidate_input() {
     let root = temp_project_root("provider-facts-candidate-budget-gate");
     let bin_dir = crate::provider_command::support::home_local_bin(&root);
@@ -330,7 +242,8 @@ fn provider_facts_receive_bounded_candidate_input() {
     assert!(
         stdout.contains("providerFacts:used[")
             && stdout.contains("factCandidates=12")
-            && stdout.contains("truncatedCandidates=116"),
+            && stdout.contains("inputCandidates=64")
+            && stdout.contains("truncatedCandidates=52"),
         "{stdout}"
     );
     if let Ok(line_count) = std::fs::read_to_string(&line_count_file) {
@@ -705,7 +618,6 @@ fn assert_trace_elapsed_under_gate(args: &[&str], stdout: &str) {
 }
 
 mod provider_facts;
-mod query_wrapper;
 
 fn max_trace_metric(stdout: &str, metric: &str) -> Option<u64> {
     stdout

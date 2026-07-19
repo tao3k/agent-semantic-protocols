@@ -14,9 +14,10 @@ use crate::protocol::{
     HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION,
 };
-use crate::protocol_activation::{
+use crate::protocol_activation::digest::provider_manifest_digest;
+use crate::protocol_activation::protocol_activation_manifest::{
     ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy, HookActivation,
-    ProviderExecution, ProviderManifest, provider_manifest_digest,
+    ProviderExecution, ProviderManifest,
 };
 use crate::provider_registry::schema_registry_provider_manifests;
 
@@ -164,13 +165,69 @@ pub fn project_agent_config_path(project_root: &Path) -> PathBuf {
     project_root.join(".agents").join("asp.toml")
 }
 
+fn validate_source_snapshot_capability(
+    language_id: &str,
+    search_capabilities: &crate::protocol_activation::protocol_activation_manifest::ProviderSearchCapabilities,
+) -> Result<(), String> {
+    let descriptor = search_capabilities
+        .source_snapshot
+        .as_ref()
+        .ok_or_else(|| {
+            format!(
+                "provider `{language_id}` is missing required searchCapabilities.sourceSnapshot descriptor"
+            )
+        })?;
+    let descriptor_id = (!descriptor.descriptor_id.is_empty())
+        .then_some(descriptor.descriptor_id.as_str())
+        .ok_or_else(|| format!("provider `{language_id}` source snapshot descriptorId is empty"))?;
+    for (field, actual, expected) in [
+        (
+            "descriptorVersion",
+            descriptor.descriptor_version.as_str(),
+            "1",
+        ),
+        ("languageId", descriptor.language_id.as_str(), language_id),
+        (
+            "packetSchemaId",
+            descriptor.packet_schema_id.as_str(),
+            "asp.source-snapshot.v1",
+        ),
+        (
+            "algorithm",
+            descriptor.algorithm.as_str(),
+            "blake3-merkle-v1",
+        ),
+        ("authority", descriptor.authority.as_str(), "live-parser"),
+        (
+            "exactSelectorResolution",
+            descriptor.exact_selector_resolution.as_str(),
+            "pinned-live-module-graph",
+        ),
+        (
+            "overlayMode",
+            descriptor.overlay_mode.as_str(),
+            "merkle-delta",
+        ),
+    ] {
+        if actual != expected {
+            return Err(format!(
+                "provider `{language_id}` source snapshot descriptor `{descriptor_id}` requires {field}={expected}, got {actual}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn activate_provider(
     manifest: &ProviderManifest,
     provider_command_prefix: Vec<String>,
     package_roots: Vec<String>,
 ) -> Result<ActivatedProviderConfig, String> {
+    validate_source_snapshot_capability(&manifest.language_id, &manifest.search_capabilities)?;
     Ok(ActivatedProviderConfig {
-        search_capabilities: serde_json::Value::Null,
+        search_capabilities: manifest.search_capabilities.clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
+        query_pack_descriptor: manifest.query_pack_descriptor.clone(),
         manifest_id: manifest.manifest_id.clone(),
         manifest_digest: provider_manifest_digest(manifest)
             .map_err(|error| format!("failed to digest provider manifest: {error:?}"))?,

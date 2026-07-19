@@ -18,8 +18,9 @@ pub(super) fn analyze_search_pipe_quality(
     language_id: &str,
     query: &str,
     candidates: &[Candidate],
+    query_pack_descriptor: Option<agent_semantic_search::SearchPipeQueryPackDescriptor<'_>>,
 ) -> SearchPipeQuality {
-    let clauses = query_clauses(language_id, query);
+    let clauses = query_clauses(language_id, query, query_pack_descriptor);
     let terms = unique_query_terms(&clauses);
     let search_terms = search_terms_from_protocol(&terms);
     let global_matched = matched_terms(&terms, candidates);
@@ -79,8 +80,14 @@ pub(super) fn analyze_search_pipe_quality(
     });
     let parser_handles = parser_handles(language_id, candidates, &terms);
     let overlay_handles = search_overlay_handles(candidates, &terms);
-    let next_query_pack_hint =
-        next_query_pack_hint(&context_terms, &owner_seed_terms, &concept_terms);
+    let next_query_pack_hint = query_pack_descriptor.and_then(|descriptor| {
+        next_query_pack_hint(
+            descriptor,
+            &context_terms,
+            &owner_seed_terms,
+            &concept_terms,
+        )
+    });
     SearchPipeQuality {
         clause_count: clauses.len(),
         query_pack_quality,

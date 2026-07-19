@@ -3,21 +3,33 @@
 use super::search_pipe_model::Candidate;
 use super::search_pipe_query_model::{ClauseCoverage, QueryClause, QueryTerm, TermRole};
 
-pub(super) fn query_clauses(language_id: &str, query: &str) -> Vec<QueryClause> {
-    agent_semantic_search::search_pipe_query_clauses(search_query_clauses_request(
-        language_id,
-        query,
-    ))
-    .into_iter()
-    .map(query_clause_from_search)
-    .collect()
+pub(super) fn query_clauses(
+    language_id: &str,
+    query: &str,
+    query_pack_descriptor: Option<agent_semantic_search::SearchPipeQueryPackDescriptor<'_>>,
+) -> Vec<QueryClause> {
+    let request = search_query_clauses_request(language_id, query);
+    let request = match query_pack_descriptor {
+        Some(descriptor) => request.with_query_pack_descriptor(descriptor),
+        None => request,
+    };
+    agent_semantic_search::search_pipe_query_clauses(request)
+        .into_iter()
+        .map(query_clause_from_search)
+        .collect()
 }
 
-pub(super) fn query_clause_texts(language_id: &str, query: &str) -> Vec<String> {
-    agent_semantic_search::search_pipe_query_clause_texts(search_query_clauses_request(
-        language_id,
-        query,
-    ))
+pub(super) fn query_clause_texts(
+    language_id: &str,
+    query: &str,
+    query_pack_descriptor: Option<agent_semantic_search::SearchPipeQueryPackDescriptor<'_>>,
+) -> Vec<String> {
+    let request = search_query_clauses_request(language_id, query);
+    let request = match query_pack_descriptor {
+        Some(descriptor) => request.with_query_pack_descriptor(descriptor),
+        None => request,
+    };
+    agent_semantic_search::search_pipe_query_clause_texts(request)
 }
 
 pub(super) fn unique_query_terms(clauses: &[QueryClause]) -> Vec<QueryTerm> {
@@ -68,11 +80,13 @@ pub(super) fn role_terms(terms: &[QueryTerm], role: TermRole) -> Vec<String> {
 }
 
 pub(super) fn next_query_pack_hint(
+    descriptor: agent_semantic_search::SearchPipeQueryPackDescriptor<'_>,
     context_terms: &[String],
     owner_seed_terms: &[String],
     concept_terms: &[String],
 ) -> Option<String> {
     agent_semantic_search::search_pipe_next_query_pack_hint(
+        descriptor,
         context_terms,
         owner_seed_terms,
         concept_terms,

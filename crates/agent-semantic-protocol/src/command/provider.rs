@@ -1,5 +1,10 @@
 //! Language provider command facade.
 
+#[path = "provider_facades.rs"]
+mod provider_facades;
+#[path = "provider_usage.rs"]
+mod provider_usage;
+
 use super::document_language_facade;
 use super::graph::GraphTurboReceiptRequest;
 use agent_semantic_hook::{
@@ -33,6 +38,8 @@ use super::search_dependency_seed::{
 use super::search_pipe::{FastSearchContext, is_asp_fast_search, run_asp_fast_search_command};
 use super::search_pipe_meta::run_asp_fast_search_meta_command;
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, query_requests_semantic_facts};
+pub(crate) use provider_facades::{is_language_facade, unsupported_language_facade_message};
+use provider_usage::{guide_usage, provider_guide_args, provider_usage, validate_provider_command};
 
 const SUPPORTED_COMMANDS: &[&str] = &[
     "search",
@@ -58,95 +65,6 @@ macro_rules! restore_env_var {
             },
         }
     };
-}
-
-fn registered_language_facades() -> Vec<String> {
-    let mut facades = agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .map(|manifest| manifest.language_id.to_string())
-        .collect::<Vec<_>>();
-    facades.sort();
-    facades.dedup();
-    facades
-}
-
-fn registered_language_facades_line() -> String {
-    registered_language_facades().join("|")
-}
-
-pub(crate) fn is_language_facade(language_id: &str) -> bool {
-    registered_language_facades()
-        .iter()
-        .any(|facade| facade == language_id)
-}
-
-pub(crate) fn unsupported_language_facade_message(
-    requested_facade: &str,
-    command: Option<&str>,
-    runtime: Option<&HookRuntime>,
-) -> String {
-    let known_facades = registered_language_facades_line();
-    let active_facades = runtime
-        .map(active_language_facades)
-        .filter(|facades| !facades.is_empty());
-    let suggested_facade = runtime.and_then(|runtime| {
-        suggested_language_facade_for_request(requested_facade, &active_language_facades(runtime))
-    });
-    let mut lines = vec![
-        format!("unsupported ASP language facade `{requested_facade}`."),
-        "ASP facades are language IDs, not package or library names.".to_string(),
-        format!("Known language facades: {known_facades}."),
-    ];
-    if let Some(active_facades) = active_facades.as_deref() {
-        lines.push(format!("Active language facades: {active_facades}."));
-    }
-    if let Some(suggested_facade) = suggested_facade.as_deref() {
-        lines.push(format!("Suggested matching facade: {suggested_facade}."));
-    }
-    lines.extend([String::new(), "## Run Next".to_string()]);
-    if let Some(suggested_facade) = suggested_facade.as_deref() {
-        let command = command.unwrap_or("guide");
-        lines.push(format!("asp {suggested_facade} {command} ..."));
-    } else {
-        lines.extend([
-            "asp providers".to_string(),
-            "asp fd -query '<path-or-language-term>' '.'".to_string(),
-            "asp rg -query '<feature-term>' '<bounded-scope>'".to_string(),
-        ]);
-    }
-    lines.extend([
-        String::new(),
-        "## Rules".to_string(),
-        "Only run `asp <language> search|query` when the facade is listed and matches the target language.".to_string(),
-        "Do not switch to an unrelated active facade just because it is the only provider in this repository.".to_string(),
-        "For unsupported target-language files, use provider-neutral finder commands or install/activate a matching provider.".to_string(),
-    ]);
-    lines.join("\n")
-}
-
-fn active_language_facades(runtime: &HookRuntime) -> String {
-    runtime
-        .providers
-        .iter()
-        .map(|provider| provider.language_id.as_str())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>()
-        .join("|")
-}
-
-fn suggested_language_facade_for_request(
-    requested_facade: &str,
-    active_facades: &str,
-) -> Option<String> {
-    if requested_facade.eq_ignore_ascii_case("effect")
-        && active_facades
-            .split('|')
-            .any(|facade| facade == "typescript")
-    {
-        return Some("typescript".to_string());
-    }
-    None
 }
 
 fn load_activation_for_language_message() -> Option<HookRuntime> {
@@ -957,37 +875,6 @@ fn load_activation(path: &Path, invocation_root: &Path) -> Result<HookRuntime, S
     load_or_sync_activation(path, invocation_root)
 }
 
-fn validate_provider_command(args: &[String]) -> Result<(), String> {
-    let Some(command) = args.first().map(String::as_str) else {
-        return Err(provider_usage());
-    };
-    let supported = if command == "agent" {
-        args.get(1)
-            .is_some_and(|subcommand| matches!(subcommand.as_str(), "doctor"))
-    } else {
-        SUPPORTED_COMMANDS.contains(&command)
-    };
-    if supported {
-        Ok(())
-    } else {
-        Err(provider_usage())
-    }
-}
-
-fn is_guide(args: &[String]) -> bool {
-    args.first().is_some_and(|command| command == "guide")
-}
-
-fn provider_guide_args(language_id: &str, args: &[String]) -> Vec<String> {
-    if matches!(language_id, "python" | "typescript") && is_guide(args) {
-        let mut rewritten = vec!["agent".to_string(), "guide".to_string()];
-        rewritten.extend(args.iter().skip(1).cloned());
-        rewritten
-    } else {
-        args.to_vec()
-    }
-}
-
 fn is_help(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
@@ -1022,7 +909,8 @@ fn fast_search_needs_provider_context(
         return provider.search_capabilities.semantic_facts
             && args
                 .get(2)
-                .is_some_and(|query| query_requests_semantic_facts(query));
+                .and_then(|query| query_requests_semantic_facts(provider, query))
+                .is_some_and(|decision| decision.requested);
     }
     if matches!(args.first().map(String::as_str), Some("search"))
         && matches!(args.get(1).map(String::as_str), Some("owner"))
@@ -1032,7 +920,9 @@ fn fast_search_needs_provider_context(
     }
     if matches!(args.get(1).map(String::as_str), Some("ingest")) {
         return provider.search_capabilities.semantic_facts
-            && provider_flag_value(args, "--query").is_some_and(query_requests_semantic_facts);
+            && provider_flag_value(args, "--query")
+                .and_then(|query| query_requests_semantic_facts(provider, query))
+                .is_some_and(|decision| decision.requested);
     }
     false
 }
@@ -1104,17 +994,4 @@ fn is_guide_help(args: &[String]) -> bool {
             .iter()
             .skip(1)
             .any(|arg| arg == "--help" || arg == "-h")
-}
-
-fn provider_usage() -> String {
-    format!(
-        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|projection|agent doctor|ast-patch|evidence> ...\nprojection: import --owner <relative-owner-path> --workspace <root>\nsearch: pipe|lexical|deps|dependency|ingest|failure|reasoning|owner|guide|prime\nsearch deps: current manifest dependency topology and dependency-owned next actions",
-        registered_language_facades_line()
-    )
-}
-
-fn guide_usage(language_id: &str) -> String {
-    format!(
-        "usage: asp {language_id} guide [--help] [--workspace <root>]\n\nPrints the low-frequency provider-owned agent tool map.\nUse `asp {language_id} search guide --workspace .`, `asp {language_id} query guide --workspace .`, or `asp {language_id} query guide treesitter --workspace .` for focused reference guides."
-    )
 }

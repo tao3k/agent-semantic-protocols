@@ -141,6 +141,7 @@ pub fn agent_session_message_target_is_live_bound(
         Some(
             "codex.subagent-start"
                 | "native-collaboration-list-agents"
+                | "native-collaboration-followup-ack"
                 | "codex-typed-subagent-start-plus-native-host-tree"
                 | "codex-rollout-session-meta-plus-native-host-tree"
                 | "codex-locked-generation-profile-plus-native-host-tree"
@@ -495,6 +496,22 @@ pub struct AgentSessionDispatchCompleteRequest<'a> {
     pub command_digest: &'a str,
     /// Compact terminal evidence reference.
     pub evidence_ref: &'a str,
+    /// Mutation timestamp supplied by the caller.
+    pub now: i64,
+}
+
+/// Request for marking an in-flight resident dispatch as waiting for rebind.
+pub struct AgentSessionDispatchMarkOrphanedRequest<'a> {
+    /// Stable project scope that owns the registry row.
+    pub project_id: &'a str,
+    /// Root Codex session id for the resident topology.
+    pub root_session_id: &'a str,
+    /// Stable resident registry lane name.
+    pub name: &'a str,
+    /// Logical dispatch identity.
+    pub dispatch_identity: &'a str,
+    /// Digest of the exact command payload.
+    pub command_digest: &'a str,
     /// Mutation timestamp supplied by the caller.
     pub now: i64,
 }

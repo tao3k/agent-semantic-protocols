@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-source-query-result.v1.schema.json",
+  "title": "ASP Exact Source Query Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "selector",
+    "ownerPath",
+    "resolvedOwnerPath",
+    "itemKind",
+    "itemName",
+    "sourceSnapshot",
+    "resolutionEvidence"
+  ],
+  "properties": {
+    "schemaId": { "const": "asp.exact-source-query-result.v1" },
+    "selector": { "type": "string", "minLength": 1 },
+    "ownerPath": { "type": "string", "minLength": 1 },
+    "resolvedOwnerPath": { "type": "string", "minLength": 1 },
+    "itemKind": { "type": "string", "minLength": 1 },
+    "itemName": { "type": "string", "minLength": 1 },
+    "sourceSnapshot": {
+      "$ref": "source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
+    },
+    "resolutionEvidence": {
+      "$ref": "source-snapshot-evidence.v1.schema.json#/$defs/resolutionEvidence"
+    },
+    "code": { "type": "string" }
+  }
+}
+

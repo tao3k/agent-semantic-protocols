@@ -346,6 +346,19 @@ pub struct ClientDbSourceIndexStats {
     pub generation_id: CacheGenerationId,
     pub owner_count: u32,
     pub selector_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+}
+
+impl ClientDbSourceIndexRefreshResult {
+    pub fn source_snapshot(&self) -> &agent_semantic_content_identity::SourceSnapshotEvidence {
+        &self.source_snapshot
+    }
+
+    /// Content address for the disposable index projection of this source snapshot.
+    #[must_use]
+    pub fn index_artifact_digest(&self) -> &str {
+        &self.index_artifact_digest
+    }
 }
 
 /// Request for applying a source-index import to the DB.
@@ -353,6 +366,7 @@ pub struct ClientDbSourceIndexStats {
 pub struct ClientDbSourceIndexRefreshRequest {
     pub import: ClientDbSourceIndexImport,
     pub file_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 /// DB-owned refresh result for source-index generation writes.
@@ -380,31 +394,27 @@ pub struct ClientDbSourceIndexRefreshResult {
     pub file_count: u32,
     pub owner_count: u32,
     pub selector_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub index_artifact_digest: String,
 }
 
 impl ClientDbSourceIndexRefreshResult {
     #[must_use]
-    pub fn from_stats(
-        db_path: impl Into<PathBuf>,
-        stats: ClientDbSourceIndexStats,
-        file_count: usize,
-        reused_generation: bool,
-    ) -> Self {
-        Self {
-            db_path: db_path.into(),
-            generation_id: stats.generation_id,
-            reused_generation,
-            file_count: client_db_source_index_file_count(file_count),
-            owner_count: stats.owner_count,
-            selector_count: stats.selector_count,
-        }
-    }
-
-    #[must_use]
     pub fn from_report(
         db_path: impl Into<PathBuf>,
         report: ClientDbSourceIndexRefreshReport,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Self {
+        let index_artifact_digest = agent_semantic_content_identity::hash_derived_artifact_key(
+            agent_semantic_content_identity::DerivedArtifactKeyInput {
+                artifact_kind: "source-index",
+                schema_id: "asp.source-index-artifact.v1",
+                snapshot_root: &source_snapshot.root_digest,
+                provider_digest: &source_snapshot.provider_digest,
+                parameters: &[],
+            },
+        )
+        .value;
         Self {
             db_path: db_path.into(),
             generation_id: report.generation_id,
@@ -412,6 +422,8 @@ impl ClientDbSourceIndexRefreshResult {
             file_count: report.file_count,
             owner_count: report.owner_count,
             selector_count: report.selector_count,
+            source_snapshot,
+            index_artifact_digest,
         }
     }
 }

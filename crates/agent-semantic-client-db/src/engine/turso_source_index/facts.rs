@@ -28,6 +28,7 @@ pub(super) async fn write_turso_source_index_rows(
     import: &ClientDbSourceIndexImport,
     project_root: &str,
     file_hashes_json: &str,
+    source_snapshot_json: &str,
 ) -> Result<TursoSourceIndexWriteStats, String> {
     let cold_write_started = std::time::Instant::now();
     let transaction_started = std::sync::atomic::AtomicBool::new(false);
@@ -161,6 +162,7 @@ pub(super) async fn write_turso_source_index_rows(
             import.schema_version.as_str(),
             physical_generation_id,
             file_hashes_json,
+            source_snapshot_json,
             selector_fingerprint.as_str(),
         )
         .await?;

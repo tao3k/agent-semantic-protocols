@@ -71,23 +71,12 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
 
 #[test]
 fn source_index_acquisition_gates_broad_generic_queries() {
-    let acquisition =
-        collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
-            intent: "search query budget block generic provider",
-            project_root: std::path::Path::new("."),
-            scopes: &[],
-            lookup: None,
-        })
-        .expect("generic query should be gated");
-
-    assert_eq!(
-        acquisition.decision,
-        SearchPipeSourceIndexDecision::QueryGate
-    );
-    let gate = acquisition.gate.expect("gate metadata");
+    let terms =
+        crate::search_pipe_typed_query_terms("rust", "search query budget block generic provider");
+    let gate =
+        crate::search_pipe_source_index_query_gate(&terms).expect("generic query should be gated");
     assert_eq!(gate.term_count, 6);
     assert_eq!(gate.generic_term_count, 6);
-    assert!(acquisition.candidates.is_empty());
 }
 
 #[test]

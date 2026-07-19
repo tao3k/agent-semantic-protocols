@@ -59,10 +59,19 @@ fn is_prime_seed_search(request: &ClientRequest) -> bool {
             .first()
             .is_some_and(|arg| arg == "prime")
         && has_seed_view(&request.forwarded_args)
+        && !has_explicit_prime_filter(&request.forwarded_args)
         && !request
             .forwarded_args
             .iter()
             .any(|arg| arg == "--json" || arg == "--code" || arg == "items" || arg == "ingest")
+}
+
+fn has_explicit_prime_filter(args: &[String]) -> bool {
+    args.iter().any(|arg| {
+        matches!(arg.as_str(), "--selector" | "--query")
+            || arg.starts_with("--selector=")
+            || arg.starts_with("--query=")
+    })
 }
 
 fn has_seed_view(args: &[String]) -> bool {

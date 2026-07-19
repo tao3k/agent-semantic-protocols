@@ -370,6 +370,24 @@ fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() {
         "pub fn topology_membership_report_chain_request_policy() {}\n",
     )
     .expect("write report chain source");
+    std::fs::create_dir_all(root.join("crates/app/src/semantic_sandtable/lifecycle-v1"))
+        .expect("create lifecycle v1 source dir");
+    std::fs::create_dir_all(root.join("crates/app/src/semantic_sandtable/docs"))
+        .expect("create lifecycle docs source dir");
+    std::fs::write(
+        root.join(
+            "crates/app/src/semantic_sandtable/docs/10-15-02-codex-resident-agent-lifecycle-v1.rs",
+        ),
+        "pub fn codex_resident_agent_lifecycle_v1() {}\n",
+    )
+    .expect("write lifecycle v1 source");
+    std::fs::write(
+        root.join(
+            "crates/app/src/semantic_sandtable/docs/10-15-02-codex-resident-agent-lifecycle-v1.rs",
+        ),
+        "pub fn codex_resident_agent_lifecycle_v2() {}\n",
+    )
+    .expect("write lifecycle v2 source");
     let activation_path = write_rust_activation_with_ignored_prefixes(&root, &[]);
     let _activation_env = EnvVarGuard::set(
         ASP_PROVIDER_ACTIVATION_PATH_ENV,
@@ -404,6 +422,25 @@ fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() {
             .any(|candidate| candidate.path == "crates/app/src/semantic_sandtable/surface.rs"),
         "{:?}",
         result.candidates
+    );
+
+    let versioned_alias = lookup_source_index_for_language(
+        &root,
+        Some(&LanguageId::from("rust")),
+        "10.15.02-codex-resident-agent-lifecycle-v2.org",
+        8,
+    )
+    .expect("lookup lifecycle v2 alias source index");
+
+    assert_eq!(versioned_alias.state.as_str(), "hit");
+    assert!(
+        versioned_alias
+            .candidates
+            .iter()
+            .any(|candidate| candidate.path
+                == "crates/app/src/semantic_sandtable/docs/10-15-02-codex-resident-agent-lifecycle-v1.rs"),
+        "{:?}",
+        versioned_alias.candidates
     );
     let _ = std::fs::remove_dir_all(root);
 }

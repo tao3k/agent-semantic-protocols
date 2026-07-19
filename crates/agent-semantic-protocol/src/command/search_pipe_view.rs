@@ -73,7 +73,12 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
     };
     let candidates = display_candidates.as_slice();
     let graph_query_clauses = query
-        .map(|query| query_clause_texts(language_id, query))
+        .map(|query| {
+            super::search_pipe_provider_facts::with_query_pack_descriptor(
+                provider_context,
+                |descriptor| query_clause_texts(language_id, query, descriptor),
+            )
+        })
         .unwrap_or_default();
     match view {
         "graph-turbo-request" => {
@@ -129,7 +134,12 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             reject_non_graph_turbo_receipt(frontier_receipt)?;
             print!("{}", render_ingest_frontier(candidates, pipes));
             if include_pipe_plan && let Some(query) = query {
-                let quality = analyze_search_pipe_quality(language_id, query, candidates);
+                let quality = super::search_pipe_provider_facts::with_query_pack_descriptor(
+                    provider_context,
+                    |descriptor| {
+                        analyze_search_pipe_quality(language_id, query, candidates, descriptor)
+                    },
+                );
                 print_search_pipe_header(SearchPipeHeader {
                     surface,
                     language_id,
@@ -208,7 +218,12 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         graph_query_clauses,
     } = request;
     let quality_started_at = Instant::now();
-    let quality = query.map(|query| analyze_search_pipe_quality(language_id, query, candidates));
+    let quality = query.map(|query| {
+        super::search_pipe_provider_facts::with_query_pack_descriptor(
+            provider_context,
+            |descriptor| analyze_search_pipe_quality(language_id, query, candidates, descriptor),
+        )
+    });
     let quality_elapsed = quality_started_at.elapsed();
     let graph_started_at = Instant::now();
     let request_packet = graph_turbo_request(&GraphTurboSearchPipeRequest {
@@ -417,9 +432,7 @@ fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
     }
     println!("sourceTrace={}", compact_source_trace(source_trace));
     println!("{}", quality.handles_line());
-    println!(
-        "nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector"
-    );
+    println!("nextClasses=search-deps,owner-items,treesitter-query,query-selector");
 }
 
 fn shell_quote(value: &str) -> String {

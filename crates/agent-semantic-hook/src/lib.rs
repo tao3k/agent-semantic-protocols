@@ -18,7 +18,7 @@ mod codex_project_trust;
 mod codex_trust;
 mod command;
 pub use command::{
-    AspLanguageCommand, AspLanguageCommandIntent, SourceCommandIntent, asp_invocation_indices,
+    AspLanguageCommand, SourceCommandIntent, asp_invocation_indices,
     classify_asp_language_command_tokens, classify_asp_language_command_tokens_with_policy,
     classify_source_command_intent, semantic_shell_tokens,
 };
@@ -90,12 +90,15 @@ pub use protocol::{
     PROVIDER_MANIFEST_SCHEMA_VERSION, ReasonKind, StdinMode, parse_payload,
     render_platform_response, subagent_deny_message,
 };
-pub(crate) use protocol_activation::SourceSelectorKind;
-pub use protocol_activation::{
+pub use protocol_activation::digest::provider_manifest_digest;
+pub(crate) use protocol_activation::protocol_activation_manifest::SourceSelectorKind;
+pub use protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
     HookActivation, HookRuntime, ManifestSourceDefaults, ProviderExecution, ProviderManifest,
-    ProviderSearchCapabilities, parse_activation, provider_manifest_digest,
+    ProviderQueryPackDescriptor, ProviderSearchCapabilities, ProviderSemanticFactsDescriptor,
+    ProviderSemanticFactsIntentAxis,
 };
+pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{
     ProviderCommandSelection, build_default_activation, builtin_provider_manifests,
     project_agent_config_path, provider_command_selections,
