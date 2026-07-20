@@ -1,14 +1,14 @@
 [package]
 name = "agent-semantic-tree-sitter"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 
 [dependencies]
 agent-semantic-tree-sitter-runtime = { version = "0.1.0", path = "../agent-semantic-tree-sitter-runtime" }
 tree-sitter = { workspace = true }
 
 [build-dependencies]
-rust-lang-project-harness = { workspace = true }
+asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
 rust-lang-project-harness = { workspace = true }

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.dev/schemas/provider-query-pack-descriptor.v1.schema.json",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-query-pack-descriptor.v1.schema.json",
   "title": "Provider Query Pack Descriptor v1",
   "type": "object",
   "additionalProperties": false,

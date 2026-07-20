@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::project_client_cache_dir_read_only;
+use agent_semantic_content_identity::SourceSnapshotEvidence;
 
 use agent_semantic_client_core::{LanguageId, state_core::TURSO_BACKEND};
 
@@ -28,17 +29,20 @@ impl ClientDbEngine {
     /// Read one owner's projection readiness and selector nodes from read-only Turso state.
     pub fn lookup_graph_owner_read_model_from_project(
         project_root: &Path,
+        source_snapshot: &SourceSnapshotEvidence,
         owner_path: &str,
         language_id: Option<&LanguageId>,
         limit: u32,
     ) -> Result<crate::engine::turso_evidence_graph::TursoClientDbGraphOwnerReadModel, String> {
         let client_dir = project_client_cache_dir_read_only(project_root)?;
         let db_path = Self::turso_path_for_client_dir(client_dir);
+        let source_snapshot = source_snapshot.clone();
         let owner_path = owner_path.to_string();
         let language_id = language_id.cloned();
         block_on_db_engine_async(async move {
             crate::engine::turso_evidence_graph::lookup_turso_graph_owner_read_model(
                 &db_path,
+                &source_snapshot,
                 &owner_path,
                 language_id.as_ref().map(LanguageId::as_str),
                 limit,
@@ -58,28 +62,8 @@ impl ClientDbEngine {
             language_id: request.language_id,
             query_keys: request.query_keys,
             limit: request.limit,
-        })
-    }
-
-    /// Read parser-owned selector nodes for one owner from a project's read-only DB state.
-    pub fn lookup_graph_owner_selectors_from_project(
-        project_root: &Path,
-        owner_path: &str,
-        language_id: Option<&LanguageId>,
-        limit: u32,
-    ) -> Result<Vec<crate::engine::TursoClientDbGraphEntity>, String> {
-        let client_dir = project_client_cache_dir_read_only(project_root)?;
-        let db_path = Self::turso_path_for_client_dir(client_dir);
-        let owner_path = owner_path.to_string();
-        let language_id = language_id.cloned();
-        block_on_db_engine_async(async move {
-            crate::engine::turso_evidence_graph::lookup_turso_graph_owner_selectors(
-                &db_path,
-                &owner_path,
-                language_id.as_ref().map(LanguageId::as_str),
-                limit,
-            )
-            .await
+            expected_snapshot_root: request.expected_snapshot_root,
+            expected_index_artifact_digest: request.expected_index_artifact_digest,
         })
     }
 
@@ -106,6 +90,8 @@ impl ClientDbEngine {
         };
         let language_id = request.language_id.cloned();
         let limit = request.limit;
+        let expected_snapshot_root = request.expected_snapshot_root.to_string();
+        let expected_index_artifact_digest = request.expected_index_artifact_digest.to_string();
         block_on_db_engine_async(async move {
             lookup_source_index_read_model_at_path(
                 db_path,
@@ -113,6 +99,8 @@ impl ClientDbEngine {
                 query.as_str(),
                 language_id.as_ref(),
                 limit,
+                expected_snapshot_root.as_str(),
+                expected_index_artifact_digest.as_str(),
             )
             .await
         })
@@ -121,6 +109,7 @@ impl ClientDbEngine {
     /// Lookup source-index candidates from the active Turso EvidenceGraph read model.
     pub async fn lookup_source_index_read_model(
         &self,
+        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         query: &str,
         language_id: Option<&LanguageId>,
         limit: u32,
@@ -132,12 +121,25 @@ impl ClientDbEngine {
                 TURSO_BACKEND
             ));
         }
+        let expected_index_artifact_digest =
+            agent_semantic_content_identity::hash_derived_artifact_key(
+                agent_semantic_content_identity::DerivedArtifactKeyInput {
+                    artifact_kind: "source-index",
+                    schema_id: "asp.source-index-artifact.v1",
+                    snapshot_root: &source_snapshot.root_digest,
+                    provider_digest: &source_snapshot.provider_digest,
+                    parameters: &[],
+                },
+            )
+            .value;
         lookup_source_index_read_model_at_path(
             self.db_path().to_path_buf(),
             None,
             query,
             language_id,
             limit,
+            &source_snapshot.root_digest,
+            &expected_index_artifact_digest,
         )
         .await
     }
@@ -145,32 +147,30 @@ impl ClientDbEngine {
     /// Lookup source-index candidates from a resolved client directory's Turso read model.
     pub async fn lookup_source_index_read_model_from_client_dir(
         client_dir: impl AsRef<Path>,
+        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         query: &str,
         language_id: Option<&LanguageId>,
         limit: u32,
     ) -> Result<ClientDbSourceIndexLookupResult, String> {
+        let expected_index_artifact_digest =
+            agent_semantic_content_identity::hash_derived_artifact_key(
+                agent_semantic_content_identity::DerivedArtifactKeyInput {
+                    artifact_kind: "source-index",
+                    schema_id: "asp.source-index-artifact.v1",
+                    snapshot_root: &source_snapshot.root_digest,
+                    provider_digest: &source_snapshot.provider_digest,
+                    parameters: &[],
+                },
+            )
+            .value;
         lookup_source_index_read_model_at_path(
             Self::turso_path_for_client_dir(client_dir),
             None,
             query,
             language_id,
             limit,
-        )
-        .await
-    }
-
-    /// Read parser-owned selector nodes for one owner from an isolated client directory.
-    pub async fn lookup_graph_owner_selectors_from_client_dir(
-        client_dir: impl AsRef<Path>,
-        owner_path: &str,
-        language_id: Option<&LanguageId>,
-        limit: u32,
-    ) -> Result<Vec<crate::engine::TursoClientDbGraphEntity>, String> {
-        crate::engine::turso_evidence_graph::lookup_turso_graph_owner_selectors(
-            &Self::turso_path_for_client_dir(client_dir),
-            owner_path,
-            language_id.map(LanguageId::as_str),
-            limit,
+            &source_snapshot.root_digest,
+            &expected_index_artifact_digest,
         )
         .await
     }
@@ -178,12 +178,14 @@ impl ClientDbEngine {
     /// Read one owner's projection readiness and selector nodes from an isolated client directory.
     pub async fn lookup_graph_owner_read_model_from_client_dir(
         client_dir: impl AsRef<Path>,
+        source_snapshot: &SourceSnapshotEvidence,
         owner_path: &str,
         language_id: Option<&LanguageId>,
         limit: u32,
     ) -> Result<crate::engine::turso_evidence_graph::TursoClientDbGraphOwnerReadModel, String> {
         crate::engine::turso_evidence_graph::lookup_turso_graph_owner_read_model(
             &Self::turso_path_for_client_dir(client_dir),
+            source_snapshot,
             owner_path,
             language_id.map(LanguageId::as_str),
             limit,
@@ -201,6 +203,33 @@ fn source_index_lookup_result(
         db_path,
         state,
         candidates,
+        source_snapshot: None,
+        index_artifact_digest: None,
+    }
+}
+
+fn source_index_lookup_result_for_snapshot(
+    db_path: PathBuf,
+    state: ClientDbSourceIndexLookupState,
+    candidates: Vec<crate::ClientDbSourceIndexCandidate>,
+    source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> ClientDbSourceIndexLookupResult {
+    let index_artifact_digest = agent_semantic_content_identity::hash_derived_artifact_key(
+        agent_semantic_content_identity::DerivedArtifactKeyInput {
+            artifact_kind: "source-index",
+            schema_id: "asp.source-index-artifact.v1",
+            snapshot_root: &source_snapshot.root_digest,
+            provider_digest: &source_snapshot.provider_digest,
+            parameters: &[],
+        },
+    )
+    .value;
+    ClientDbSourceIndexLookupResult {
+        db_path,
+        state,
+        candidates,
+        source_snapshot: Some(source_snapshot),
+        index_artifact_digest: Some(index_artifact_digest),
     }
 }
 
@@ -219,6 +248,8 @@ async fn lookup_source_index_read_model_at_path(
     query: &str,
     language_id: Option<&LanguageId>,
     limit: u32,
+    expected_snapshot_root: &str,
+    expected_index_artifact_digest: &str,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
     if !crate::engine::turso::turso_client_db_exists(&db_path) {
         return Ok(source_index_lookup_result(
@@ -275,13 +306,6 @@ async fn lookup_source_index_read_model_at_path(
                 }
                 Err(error) => return Err(error),
             };
-        if !candidates.is_empty() {
-            return Ok(source_index_lookup_result(
-                db_path,
-                ClientDbSourceIndexLookupState::Hit,
-                candidates,
-            ));
-        }
         Some(candidates)
     } else {
         None
@@ -306,7 +330,7 @@ async fn lookup_source_index_read_model_at_path(
                 return Ok(source_index_lookup_result(db_path, state, Vec::new()));
             }
             Err(error) if is_turso_source_index_schema_missing_error(&error) => {
-                let state = if turso_source_index_precanonical_storage_exists(&connection).await? {
+                let state = if turso_source_index_namespace_exists(&connection).await? {
                     ClientDbSourceIndexLookupState::ColdRequired
                 } else {
                     ClientDbSourceIndexLookupState::EmptyIndex
@@ -318,6 +342,39 @@ async fn lookup_source_index_read_model_at_path(
             }
             Err(error) => return Err(error),
         };
+    let persisted_snapshot = match serde_json::from_str::<
+        agent_semantic_content_identity::SourceSnapshotEvidence,
+    >(&scope.source_snapshot_json)
+    {
+        Ok(snapshot) => snapshot,
+        Err(_) => {
+            return Ok(source_index_lookup_result(
+                db_path,
+                ClientDbSourceIndexLookupState::ColdRequired,
+                Vec::new(),
+            ));
+        }
+    };
+    let persisted_index_artifact_digest =
+        agent_semantic_content_identity::hash_derived_artifact_key(
+            agent_semantic_content_identity::DerivedArtifactKeyInput {
+                artifact_kind: "source-index",
+                schema_id: "asp.source-index-artifact.v1",
+                snapshot_root: &persisted_snapshot.root_digest,
+                provider_digest: &persisted_snapshot.provider_digest,
+                parameters: &[],
+            },
+        )
+        .value;
+    if persisted_snapshot.root_digest != expected_snapshot_root
+        || persisted_index_artifact_digest != expected_index_artifact_digest
+    {
+        return Ok(source_index_lookup_result(
+            db_path,
+            ClientDbSourceIndexLookupState::ColdRequired,
+            Vec::new(),
+        ));
+    }
     let candidates = match requested_scope_candidates {
         Some(candidates) => candidates,
         None => match query_turso_source_index_candidates_with_connection(
@@ -345,10 +402,11 @@ async fn lookup_source_index_read_model_at_path(
         Err(error) => return Err(error),
     };
     if candidates.is_empty() && !owner_rows_exist {
-        return Ok(source_index_lookup_result(
+        return Ok(source_index_lookup_result_for_snapshot(
             db_path,
             ClientDbSourceIndexLookupState::EmptyIndex,
             Vec::new(),
+            persisted_snapshot,
         ));
     }
     let state = if candidates.is_empty() {
@@ -356,13 +414,12 @@ async fn lookup_source_index_read_model_at_path(
     } else {
         ClientDbSourceIndexLookupState::Hit
     };
-    Ok(source_index_lookup_result(db_path, state, candidates))
-}
-
-async fn turso_source_index_precanonical_storage_exists(
-    connection: &turso::Connection,
-) -> Result<bool, String> {
-    turso_table_exists(connection, "asp_source_index_generation").await
+    Ok(source_index_lookup_result_for_snapshot(
+        db_path,
+        state,
+        candidates,
+        persisted_snapshot,
+    ))
 }
 
 async fn turso_source_index_lookup_schema_current(
@@ -441,4 +498,19 @@ async fn turso_source_index_owner_rows_exist(
         .await
         .map_err(|error| format!("failed to read Turso source-index owner rows: {error}"))?
         .is_some())
+}
+async fn turso_source_index_namespace_exists(
+    connection: &turso::Connection,
+) -> Result<bool, String> {
+    for table in [
+        "asp_source_index_scope_v1",
+        "asp_source_index_owner_v1",
+        "asp_source_index_layout_v1",
+        "asp_source_index_token_owner_v1",
+    ] {
+        if turso_table_exists(connection, table).await? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

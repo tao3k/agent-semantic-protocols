@@ -1,8 +1,7 @@
 use std::path::Path;
 
 use agent_semantic_client_core::{
-    CacheExportMethod, ClientMethod, ClientRequest, LanguageId, ProviderExecution, ProviderId,
-    ResolvedProvider,
+    CacheExportMethod, ClientMethod, ClientRequest, ResolvedProvider,
 };
 
 use super::{
@@ -67,20 +66,7 @@ fn syntax_query_cache_provenance_records_builtin_catalog_abi_plan() {
 
 #[test]
 fn tree_sitter_request_fingerprint_changes_when_compiled_abi_plan_changes() {
-    let provider = ResolvedProvider {
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        binary: "rs-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: vec![".".to_string()],
-        source_roots: vec!["src".to_string()],
-        config_files: vec!["Cargo.toml".to_string()],
-        source_extensions: vec!["rs".to_string()],
-        ignored_path_prefixes: Vec::new(),
-    };
+    let provider = crate::test_support::resolved_provider("rust");
     let export_method = CacheExportMethod::from("query/tree-sitter");
     let function_fingerprint = exact_request_fingerprint(
         &provider,
@@ -152,7 +138,7 @@ fn selector_code_query_uses_code_export_method_not_direct_source_read() {
 }
 
 #[test]
-fn split_from_hook_direct_source_read_keeps_audit_method() {
+fn split_from_hook_direct_source_read_uses_query_code_method() {
     let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         "--from-hook".to_string(),
         "direct-source-read".to_string(),
@@ -167,13 +153,12 @@ fn split_from_hook_direct_source_read_keeps_audit_method() {
         request_export_method(&request)
             .expect("export method")
             .as_str(),
-        "query/direct-source-read"
+        "query/code"
     );
-    assert!(request.is_hook_direct_source_read());
 }
 
 #[test]
-fn inline_from_hook_direct_source_read_keeps_audit_method() {
+fn inline_from_hook_direct_source_read_uses_query_code_method() {
     let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         "--from-hook=direct-source-read".to_string(),
         "--selector".to_string(),
@@ -187,9 +172,8 @@ fn inline_from_hook_direct_source_read_keeps_audit_method() {
         request_export_method(&request)
             .expect("export method")
             .as_str(),
-        "query/direct-source-read"
+        "query/code"
     );
-    assert!(request.is_hook_direct_source_read());
     assert!(request.is_source_content_output());
 }
 
@@ -312,18 +296,5 @@ fn search_request_fingerprint_ignores_trailing_workspace_markers() {
 }
 
 fn rust_provider() -> ResolvedProvider {
-    ResolvedProvider {
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        binary: "rs-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: vec![".".to_string()],
-        source_roots: vec!["src".to_string()],
-        config_files: vec!["Cargo.toml".to_string()],
-        source_extensions: vec!["rs".to_string()],
-        ignored_path_prefixes: Vec::new(),
-    }
+    crate::test_support::resolved_provider("rust")
 }

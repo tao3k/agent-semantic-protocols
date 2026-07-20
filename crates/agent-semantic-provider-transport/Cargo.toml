@@ -1,7 +1,7 @@
 [package]
 name = "agent-semantic-provider-transport"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "Tokio process transport for external ASP language providers."
 license = "MIT"
 
@@ -17,7 +17,7 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [build-dependencies]
-rust-lang-project-harness = { workspace = true }
+asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

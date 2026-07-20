@@ -109,6 +109,8 @@ pub fn collect_search_pipe_scope_topology_acquisition(
             missing: visited.saturating_sub(matched),
             normalized: visited,
             elapsed: Some(started.elapsed()),
+            source_snapshot: None,
+            artifact_digest: None,
         }],
     })
 }

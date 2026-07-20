@@ -35,10 +35,6 @@ pub(super) fn turso_client_db_report(db_path: &Path) -> ClientDbReport {
         syntax_row_generation_count: counts.syntax_replays,
         syntax_row_match_count: counts.syntax_row_matches,
         syntax_row_capture_count: counts.syntax_row_captures,
-        structural_index_generation_count: counts.structural_index_generations,
-        structural_index_owner_count: counts.structural_index_owners,
-        structural_index_symbol_count: counts.structural_index_symbols,
-        structural_index_dependency_usage_count: counts.structural_index_dependency_usages,
         source_index_generation_count: counts.source_index_generations,
         source_index_owner_count: counts.source_index_owners,
         source_index_selector_count: counts.source_index_selectors,
@@ -60,10 +56,6 @@ struct TursoClientDbCounts {
     syntax_replays: u32,
     syntax_row_matches: u32,
     syntax_row_captures: u32,
-    structural_index_generations: u32,
-    structural_index_owners: u32,
-    structural_index_symbols: u32,
-    structural_index_dependency_usages: u32,
     source_index_generations: u32,
     source_index_owners: u32,
     source_index_selectors: u32,
@@ -80,19 +72,6 @@ fn turso_client_db_counts(db_path: &Path) -> Result<TursoClientDbCounts, String>
             syntax_replays: count_turso_rows_or_zero(&connection, "asp_syntax_query_replay").await,
             syntax_row_matches: syntax_row_counts.matches,
             syntax_row_captures: syntax_row_counts.captures,
-            structural_index_generations: count_turso_structural_generations_or_zero(&connection)
-                .await,
-            structural_index_owners: count_turso_graph_kind_or_zero(
-                &connection,
-                "structural-owner",
-            )
-            .await,
-            structural_index_symbols: count_turso_graph_kind_or_zero(&connection, "symbol").await,
-            structural_index_dependency_usages: count_turso_graph_kind_or_zero(
-                &connection,
-                "dependency-usage",
-            )
-            .await,
             source_index_generations: count_turso_rows_or_zero(
                 &connection,
                 "asp_source_index_scope_v1",
@@ -191,49 +170,6 @@ async fn count_turso_source_index_selector_rows_or_zero(connection: &turso::Conn
             .unwrap_or(0),
         _ => 0,
     }
-}
-
-async fn count_turso_graph_kind_or_zero(connection: &turso::Connection, kind: &str) -> u32 {
-    count_turso_graph_kind(connection, kind).await.unwrap_or(0)
-}
-
-async fn count_turso_graph_kind(connection: &turso::Connection, kind: &str) -> Result<u32, String> {
-    count_turso_query(
-        connection,
-        "SELECT COUNT(*) FROM asp_graph_entity WHERE kind = ?1",
-        [kind],
-    )
-    .await
-    .or_else(|error| {
-        if error.contains("no such table") {
-            Ok(0)
-        } else {
-            Err(error)
-        }
-    })
-}
-
-async fn count_turso_structural_generations_or_zero(connection: &turso::Connection) -> u32 {
-    count_turso_structural_generations(connection)
-        .await
-        .unwrap_or(0)
-}
-
-async fn count_turso_structural_generations(connection: &turso::Connection) -> Result<u32, String> {
-    let structural_entities = count_turso_query(
-        connection,
-        "SELECT COUNT(*) FROM asp_graph_entity WHERE kind IN ('structural-owner', 'symbol', 'dependency-usage')",
-        (),
-    )
-    .await
-    .or_else(|error| {
-        if error.contains("no such table") {
-            Ok(0)
-        } else {
-            Err(error)
-        }
-    })?;
-    Ok((structural_entities > 0) as u32)
 }
 
 async fn count_turso_query<P>(

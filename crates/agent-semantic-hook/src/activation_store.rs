@@ -106,6 +106,8 @@ fn activation_matches_provider_command_selections(
     activation: &HookActivation,
     current_selections: &[ProviderCommandSelection],
 ) -> bool {
+    let current_registry_digest = crate::provider_registry::semantic_registry_digest();
+    let manifests = provider_manifests();
     activation.providers.len() == current_selections.len()
         && activation
             .providers
@@ -119,6 +121,18 @@ fn activation_matches_provider_command_selections(
                     && provider.binary == selection.binary
                     && provider.execution == selection.execution
                     && provider.provider_command_prefix == selection.provider_command_prefix
+                    && provider.semantic_registry_digest == current_registry_digest
+                    && manifests
+                        .iter()
+                        .find(|manifest| {
+                            manifest.manifest_id == provider.manifest_id
+                                && manifest.language_id == provider.language_id
+                                && manifest.provider_id == provider.provider_id
+                        })
+                        .and_then(|manifest| {
+                            crate::provider_registry::materialize_provider_routes(manifest).ok()
+                        })
+                        .is_some_and(|routes| routes == provider.routes)
             })
 }
 

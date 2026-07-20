@@ -4,7 +4,6 @@ use super::HookClientAspCommandIntentPolicyConfig;
 pub enum AspCommandIntent {
     Reasoning,
     ExactEvidence,
-    DirectReadFallback,
     InvalidEvidence,
 }
 
@@ -13,7 +12,6 @@ impl AspCommandIntent {
         match self {
             Self::Reasoning => "reasoning",
             Self::ExactEvidence => "exact-evidence",
-            Self::DirectReadFallback => "direct-read-fallback",
             Self::InvalidEvidence => "invalid-evidence",
         }
     }
@@ -25,7 +23,6 @@ pub enum AspCommandRouteId {
     Search(String),
     QueryReasoning,
     QuerySelector,
-    QueryDirectReadFallback,
 }
 
 impl AspCommandRouteId {
@@ -35,7 +32,6 @@ impl AspCommandRouteId {
             Self::Search(route) => format!("search-{route}"),
             Self::QueryReasoning => "query-reasoning".to_string(),
             Self::QuerySelector => "query-selector".to_string(),
-            Self::QueryDirectReadFallback => "query-direct-read-fallback".to_string(),
         }
     }
 }
@@ -152,22 +148,6 @@ fn classify_query(
 ) -> Option<AspCommandIntentMatch> {
     let selector = option_value(tokens, "--selector").map(str::to_string);
     let parsed_selector = selector.as_deref().and_then(StructuralSelector::parse);
-
-    if option_value(tokens, "--from-hook").is_some_and(|value| {
-        policy
-            .direct_read_fallback
-            .from_hook_values
-            .iter()
-            .any(|configured| configured == value)
-    }) {
-        return Some(AspCommandIntentMatch {
-            language_id,
-            intent: AspCommandIntent::DirectReadFallback,
-            route: AspCommandRouteId::QueryDirectReadFallback,
-            selector,
-            parsed_selector,
-        });
-    }
 
     if tokens.iter().any(|token| {
         policy

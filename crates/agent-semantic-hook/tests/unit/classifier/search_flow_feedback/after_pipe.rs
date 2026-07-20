@@ -192,7 +192,7 @@ fn pre_tool_allows_first_search_pipe_after_new_user_prompt_boundary() {
 }
 
 #[test]
-fn pre_tool_allows_bounded_low_priority_direct_source_read_after_pipe() {
+fn pre_tool_denies_bounded_direct_source_read_without_resident_evidence() {
     let project_root = temp_project_root("asp-hook-bounded-direct-read-after-pipe");
     append_hook_event_state(
         &project_root,
@@ -222,8 +222,11 @@ fn pre_tool_allows_bounded_low_priority_direct_source_read_after_pipe() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Allow);
-    assert!(!decision.fields.contains_key("hookFeedback"));
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.fields["hookFeedback"],
+        "invalid-evidence-query-denied"
+    );
     let _ = fs::remove_dir_all(project_root);
 }
 

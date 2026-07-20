@@ -2,10 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_config::{
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientExecutionTransport,
-    HookClientResidentAgentConfig, default_hook_client_config_template,
-    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
-    load_hook_client_config_file,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientDecisionMaterializer,
+    HookClientExecutionTransport, HookClientResidentAgentConfig,
+    default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
+    hook_client_contract_fingerprint, load_asp_project_config_file, load_hook_client_config_file,
 };
 
 fn resident_agent<'a>(
@@ -53,7 +53,7 @@ commandPrefixes = ["cargo clippy", "cargo fmt", "ruff check"]
     );
     assert_eq!(
         config.contract_fingerprint.as_deref(),
-        Some(crate::hook_client_contract_fingerprint().as_str())
+        Some(hook_client_contract_fingerprint().as_str())
     );
     assert_eq!(config.agents.resident_agents.len(), 3);
 
@@ -97,7 +97,7 @@ fn default_template_round_trips_through_config_parser() {
     );
     assert_eq!(
         config.contract_fingerprint.as_deref(),
-        Some(crate::hook_client_contract_fingerprint().as_str())
+        Some(hook_client_contract_fingerprint().as_str())
     );
     assert!(config.experimental.is_empty());
     assert!(config.agent_org_artifacts.is_none());
@@ -233,7 +233,7 @@ fn default_template_round_trips_through_config_parser() {
     assert!(
         matches!(
             prompt_strategy_rule.decision_materializer,
-            Some(crate::HookClientDecisionMaterializer::PromptSearchStrategy)
+            Some(HookClientDecisionMaterializer::PromptSearchStrategy)
         ),
         "prompt strategy materializer: {:?}",
         prompt_strategy_rule.decision_materializer
@@ -290,13 +290,6 @@ fn default_template_round_trips_through_config_parser() {
             .exact_evidence
             .selector_kinds,
         ["item"]
-    );
-    assert_eq!(
-        config
-            .asp_command_intent_policy
-            .direct_read_fallback
-            .from_hook_values,
-        ["direct-source-read"]
     );
     assert!(
         config

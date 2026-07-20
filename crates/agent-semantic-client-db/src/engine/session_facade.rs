@@ -359,11 +359,13 @@ impl ClientDbEngineWriteSession {
         &mut self,
         generation: &ClientCacheGeneration,
         packet_bytes: &[u8],
+        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Result<(), String> {
         let import = parse_structural_index_packet_import(generation, packet_bytes)?;
         let db_path = self.turso_db_path.clone();
+        let source_snapshot = source_snapshot.clone();
         block_on_db_engine_async(async move {
-            persist_structural_index_read_model_at_path(&db_path, &import)
+            persist_structural_index_read_model_at_path(&db_path, &import, &source_snapshot)
                 .await
                 .map(|_| ())
         })

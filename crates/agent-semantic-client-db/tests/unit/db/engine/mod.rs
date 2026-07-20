@@ -30,6 +30,7 @@ use serde_json::json;
 include!("artifact_events.rs");
 include!("artifact_graph.rs");
 include!("bootstrap.rs");
+include!("corrupt_cache.rs");
 include!("contract.rs");
 include!("write_session.rs");
 

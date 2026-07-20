@@ -161,3 +161,4 @@ fn lexical_rejects_single_seed_before_provider_spawn() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+use super::assert_builtin_graph_route;

@@ -188,7 +188,10 @@ fn global_codex_plugin_cache_skill_path() -> Result<PathBuf, String> {
         .join(codex_plugin_skill_relative_path()))
 }
 
-#[cfg(not(test))]
+// This helper is used by the production healthcheck module. The integration
+// test harness also mounts this module in isolation, where that caller is not
+// present.
+#[allow(dead_code)]
 pub(crate) fn active_codex_plugin_skill_path(
     project_root: &Path,
 ) -> Result<Option<PathBuf>, String> {

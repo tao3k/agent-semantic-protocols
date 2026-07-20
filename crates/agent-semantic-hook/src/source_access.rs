@@ -1,6 +1,5 @@
 //! Codex-internal source access decision packet models.
 
-use crate::command::selector_query_route;
 use crate::protocol::DecisionRoute;
 use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
 use crate::source_selector::collect_source_selector_matches;
@@ -336,18 +335,14 @@ pub struct SourceAccessExplicitReadInput {
 /// Named input for source-like shell output suppression.
 #[derive(Debug)]
 pub struct SourceAccessShellEgressSuppressedInput {
-    /// Language id for the suppressed source path.
-    pub language_id: String,
-    /// Provider that should handle the semantic query route.
-    pub provider_id: SourceAccessProviderId,
+    /// Typed provider discovery route for recovering parser-owned identity.
+    pub route: DecisionRoute,
     /// Shell command whose output was suppressed.
     pub command: String,
     /// Source path that appeared in command output.
     pub path: String,
     /// Digest of the suppressed output.
     pub output_digest: String,
-    /// Replacement provider command argv.
-    pub route_argv: Vec<String>,
 }
 
 /// Named input for provider-authorized compact source access.
@@ -398,8 +393,9 @@ impl SourceAccessDecision {
 
     /// Builds an egress-suppression packet for source-like shell output.
     pub fn shell_egress_suppressed(input: SourceAccessShellEgressSuppressedInput) -> Self {
-        let language_id = input.language_id;
-        let provider_id = input.provider_id;
+        let route = SourceAccessRoute::from(input.route);
+        let language_id = route.language_id.clone();
+        let provider_id = route.provider_id.clone();
         let path = input.path;
         Self {
             schema_id: SOURCE_ACCESS_DECISION_SCHEMA_ID,
@@ -424,14 +420,10 @@ impl SourceAccessDecision {
                 output_digest: Some(input.output_digest),
                 ..SourceAccessSubject::default()
             },
-            routes: vec![SourceAccessRoute {
-                language_id,
-                provider_id,
-                binary: "asp".to_string(),
-                kind: SourceAccessRouteKind::Query,
-                argv: input.route_argv,
-            }],
-            message: format!("bulk-source-dump suppressed; use provider query for {path}"),
+            routes: vec![route],
+            message: format!(
+                "bulk-source-dump suppressed; use provider discovery to materialize a structural selector for {path}"
+            ),
             notes: Vec::new(),
         }
     }
@@ -506,15 +498,26 @@ pub fn codex_shell_egress_suppression_decision(
     })
     .into_iter()
     .next()?;
-    let route = selector_query_route(matched.provider, path);
+    let route = match matched.kind {
+        SourceSelectorKind::ExactPath => matched.provider.route_from_template(
+            DecisionRouteKind::Owner,
+            &matched.provider.routes.owner,
+            Some(&matched.route_selector),
+            None,
+        ),
+        SourceSelectorKind::Pattern => matched.provider.route_from_template(
+            DecisionRouteKind::Lexical,
+            &matched.provider.routes.lexical,
+            Some(&matched.route_selector),
+            Some(&matched.route_selector),
+        ),
+    };
     Some(SourceAccessDecision::shell_egress_suppressed(
         SourceAccessShellEgressSuppressedInput {
-            language_id: route.language_id,
-            provider_id: route.provider_id.into(),
+            route,
             command: command.into(),
             path: path.to_string(),
             output_digest: output_digest.into(),
-            route_argv: route.argv,
         },
     ))
 }
@@ -541,3 +544,4 @@ impl From<DecisionRoute> for SourceAccessRoute {
         }
     }
 }
+use crate::{DecisionRouteKind, SourceSelectorKind};

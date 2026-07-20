@@ -4,14 +4,10 @@ use agent_semantic_hook::{
     HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, ReasonKind,
 };
 
-use super::hook_runtime_agent_session_pane::{
-    agent_session_route_fields, render_agent_session_template,
+use crate::command::hook_runtime::hook_runtime_agent_session::{
+    AspSessionPolicy, agent_session_route_fields, append_resident_agent_fields,
+    render_agent_session_template, resident_child_create_action, string_field, template_value,
 };
-use super::hook_runtime_agent_session_payload::string_field;
-use super::hook_runtime_agent_session_profile::{
-    append_resident_agent_fields, resident_child_create_action,
-};
-use super::{AspSessionPolicy, template_value};
 
 pub(super) fn registry_lookup_for_route_child<T>(
     result: Result<Option<T>, String>,
@@ -35,7 +31,7 @@ fn registry_unavailable_for_route_child(error: &str) -> bool {
         || error.contains("failed locking file")
 }
 
-pub(super) fn session_start_reuse_decision(
+pub(in crate::command::hook_runtime::hook_runtime_agent_session) fn session_start_reuse_decision(
     platform: &str,
     event: &str,
     payload: &serde_json::Value,
@@ -80,8 +76,8 @@ pub(super) fn session_start_reuse_decision(
         protocol_version: HOOK_PROTOCOL_VERSION,
         platform: platform.to_string(),
         event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::RawBroadSearch,
+        decision: DecisionKind::Allow,
+        reason_kind: ReasonKind::None,
         language_ids: Vec::new(),
         subject: DecisionSubject {
             tool_name: string_field(payload, &["tool_name", "toolName"]),
@@ -94,7 +90,7 @@ pub(super) fn session_start_reuse_decision(
     }
 }
 
-pub(super) fn session_start_resume_existing_decision(
+pub(in crate::command::hook_runtime::hook_runtime_agent_session) fn session_start_resume_existing_decision(
     platform: &str,
     event: &str,
     payload: &serde_json::Value,

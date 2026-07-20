@@ -15,20 +15,28 @@ pub struct SearchQueryBudgetRequest<'a> {
     pub query: &'a str,
     pub scopes: &'a [PathBuf],
     pub explicit_filters: bool,
+    pub query_pack_descriptor: crate::search_pipe_query_pack::SearchPipeQueryPackDescriptor<'a>,
 }
 
 #[must_use]
 pub fn search_query_budget_block(
     request: SearchQueryBudgetRequest<'_>,
 ) -> Option<SearchQueryBudgetBlock> {
-    let clauses = crate::search_pipe_query_clauses(crate::SearchPipeQueryClausesRequest::new(
-        crate::SearchPipeLanguageId::new(request.language_id),
-        crate::SearchPipeQueryText::new(request.query),
-    ));
+    let clauses = crate::search_pipe_query_clauses(
+        crate::SearchPipeQueryClausesRequest::new(
+            crate::SearchPipeLanguageId::new(request.language_id),
+            crate::SearchPipeQueryText::new(request.query),
+        )
+        .with_query_pack_descriptor(request.query_pack_descriptor),
+    );
     let has_typed_anchor = clauses.len() >= 2
-        || crate::search_pipe_typed_query_terms(request.language_id, request.query)
-            .iter()
-            .any(|term| matches!(term.role, crate::SearchPipeTermRole::Symbol));
+        || crate::search_pipe_typed_query_terms(
+            request.language_id,
+            request.query,
+            request.query_pack_descriptor,
+        )
+        .iter()
+        .any(|term| matches!(term.role, crate::SearchPipeTermRole::Symbol));
     if has_typed_anchor {
         return None;
     }

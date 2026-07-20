@@ -1,30 +1,15 @@
 //! Source-index and structural-index DB Engine facade methods.
 
-use std::collections::BTreeSet;
 use std::path::Path;
 
-use agent_semantic_client_core::{
-    LanguageId, ProviderId, project_client_cache_dir_read_only, state_core::TURSO_BACKEND,
-};
-
 use crate::evidence_graph::{source_index_evidence_graph, structural_index_evidence_graph};
-use crate::source_index::{
-    ClientDbSourceIndexCandidate, ClientDbSourceIndexClientDirLookupRequest,
-    ClientDbSourceIndexImport, ClientDbSourceIndexProjectLookupRequest,
-    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSelectorPayloadProof,
-    ClientDbSourceIndexSourceKind,
-};
+use crate::source_index::{ClientDbSourceIndexImport, ClientDbSourceIndexRefreshRequest};
 use crate::structural_index::ClientDbStructuralIndexImport;
 
 use crate::engine::facade::{ClientDbEngine, block_on_db_engine_async};
-use crate::engine::turso::{connect_turso_client_db_read_only, turso_table_exists};
-use crate::engine::turso_evidence_graph::{
-    TursoClientDbEvidenceGraphPersistReport, persist_turso_evidence_graph,
-};
-use crate::engine::turso_lock_policy::is_turso_lock_error;
+use crate::engine::turso_evidence_graph::TursoClientDbEvidenceGraphPersistReport;
 use crate::engine::turso_search::upsert_turso_search_documents;
 use crate::engine::turso_source_index::refresh_turso_source_index_import;
-use crate::engine::turso_statement::run_turso_operation_with_lock_retry;
 use crate::engine::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
 };
@@ -50,7 +35,8 @@ impl ClientDbEngine {
         let graph = source_index_evidence_graph(import);
         db_engine_trace("source-index-graph-built", trace_started);
         let graph_report =
-            crate::engine::persist_turso_evidence_graph(self.db_path(), &graph).await?;
+            crate::engine::persist_turso_evidence_graph(self.db_path(), &graph, source_snapshot)
+                .await?;
         let search_document_count = refresh.owner_count as usize;
         Ok(source_index_read_model_report(
             graph_report,
@@ -100,8 +86,9 @@ impl ClientDbEngine {
     pub async fn persist_structural_index_read_model(
         &self,
         import: &ClientDbStructuralIndexImport,
+        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Result<ClientDbEngineStructuralIndexReadModelReport, String> {
-        persist_structural_index_read_model_at_path(self.db_path(), import).await
+        persist_structural_index_read_model_at_path(self.db_path(), import, source_snapshot).await
     }
 }
 
@@ -126,7 +113,8 @@ async fn persist_language_projection_read_model_at_path(
     let graph = crate::source_index::language_projection::language_projection_evidence_graph(
         import, projection,
     )?;
-    let graph_report = crate::engine::persist_turso_evidence_graph(db_path, &graph).await?;
+    let graph_report =
+        crate::engine::persist_turso_evidence_graph(db_path, &graph, source_snapshot).await?;
     db_engine_trace(
         "language-projection-evidence-graph-persisted",
         trace_started,
@@ -154,6 +142,7 @@ fn source_index_read_model_report(
     ClientDbEngineSourceIndexReadModelReport {
         graph_entity_count: graph_report.entity_count,
         graph_edge_count: graph_report.edge_count,
+        graph_artifact_digest: graph_report.graph_artifact_digest,
         search_document_count,
     }
 }
@@ -198,6 +187,7 @@ async fn persist_structural_index_search_documents_at_path(
 pub(in crate::engine) async fn persist_structural_index_read_model_at_path(
     db_path: &Path,
     import: &ClientDbStructuralIndexImport,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Result<ClientDbEngineStructuralIndexReadModelReport, String> {
     let _refresh_write_guard = structural_index_refresh_write_lock()
         .clone()
@@ -209,7 +199,7 @@ pub(in crate::engine) async fn persist_structural_index_read_model_at_path(
     db_engine_trace("structural-index-bootstrap", trace_started);
     let graph = structural_index_evidence_graph(import);
     db_engine_trace("structural-index-graph-built", trace_started);
-    let graph_report = persist_turso_evidence_graph(db_path, &graph).await?;
+    crate::persist_turso_evidence_graph(db_path, &graph, source_snapshot).await?;
     db_engine_trace("structural-index-graph-persisted", trace_started);
     let search_document_count = persist_structural_index_search_documents_at_path(
         db_path,
@@ -218,10 +208,7 @@ pub(in crate::engine) async fn persist_structural_index_read_model_at_path(
     )
     .await?;
     db_engine_trace("structural-index-search-documents-persisted", trace_started);
-    Ok(structural_index_read_model_report(
-        graph_report,
-        search_document_count,
-    ))
+    Ok(structural_index_read_model_report(search_document_count))
 }
 
 fn structural_index_refresh_write_lock() -> &'static std::sync::Arc<tokio::sync::Semaphore> {
@@ -231,12 +218,9 @@ fn structural_index_refresh_write_lock() -> &'static std::sync::Arc<tokio::sync:
 }
 
 fn structural_index_read_model_report(
-    graph_report: TursoClientDbEvidenceGraphPersistReport,
     search_document_count: usize,
 ) -> ClientDbEngineStructuralIndexReadModelReport {
     ClientDbEngineStructuralIndexReadModelReport {
-        graph_entity_count: graph_report.entity_count,
-        graph_edge_count: graph_report.edge_count,
         search_document_count,
     }
 }

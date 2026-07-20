@@ -91,7 +91,7 @@ fn builder_rollout_miss_create_choice_never_falls_back_to_explorer() {
 }
 
 #[test]
-fn builder_orphan_replacement_never_falls_back_to_explorer() {
+fn builder_orphan_requires_probe_before_canonical_replacement() {
     let record = active_record(Some("gpt-5.4-mini"), Some("child"));
     let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
         platform: "codex",
@@ -115,13 +115,11 @@ fn builder_orphan_replacement_never_falls_back_to_explorer() {
     assert_eq!(repair.choices.len(), 1);
     assert_eq!(
         repair.choices[0].id,
-        "create-canonical-typed-child-after-orphaned-owner"
+        "probe-hidden-routable-child-before-replacement"
     );
 
     let action = repair.choices[0].platform_action.as_ref();
-    assert!(action.contains("agent_type=asp_builder"));
-    assert!(action.contains("task_name=asp_builder"));
-    assert!(action.contains("/root/asp_builder"));
-    assert!(!action.contains("agent_type=asp_explorer"));
-    assert!(!action.contains("/root/asp_explorer"));
+    assert!(action.contains("canonical target path"));
+    assert!(action.contains("do not create a duplicate"));
+    assert!(!action.contains("agent_type="));
 }

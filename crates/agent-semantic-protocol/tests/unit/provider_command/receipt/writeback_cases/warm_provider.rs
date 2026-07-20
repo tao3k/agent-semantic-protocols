@@ -1,9 +1,11 @@
+use super::syntax_replay::attach_cache_file_hashes;
 use crate::provider_command::receipt::fixtures::valid_manifest;
 use crate::provider_command::receipt::writeback::support::{
     PRIME_DECISION_LINE, shell_single_quote,
 };
 use crate::provider_command::support;
 use serde_json::Value;
+
 #[test]
 fn client_search_receipt_reports_warm_provider_when_matching_generation_exists() {
     let root = support::temp_project_root("client-search-receipt-warm-provider");

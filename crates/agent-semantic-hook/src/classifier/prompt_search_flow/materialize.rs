@@ -6,7 +6,7 @@ use agent_semantic_config::AspCommandIntent;
 
 use crate::command::{AspLanguageCommand, classify_asp_language_command_tokens_with_policy};
 use crate::event_state::{
-    AspDirectSourceReadShape, asp_query_direct_source_read_shape_tokens, prompt_asp_command_count,
+    AspDirectSourceReadShape, asp_query_direct_source_read_shape_tokens,
     prompt_search_flow_after_prime,
 };
 use crate::{HookDecision, HookRuntime, OperationIntent, ToolAction, payload_string};
@@ -84,7 +84,7 @@ pub(crate) fn materialize_prompt_search_strategy_decision(
         return Some(decision);
     }
     if asp_command.intent == AspCommandIntent::Reasoning
-        && let Some(decision) = classify_prompt_asp_command_budget(
+        && let Some(decision) = budget::classify_prompt_asp_command_budget(
             registry,
             platform,
             event,
@@ -124,7 +124,6 @@ fn classify_prompt_search_flow_feedback(
     let outcome =
         feedback::evaluate_prompt_search_feedback(feedback::PromptSearchFeedbackRequest {
             route: &asp_command.route,
-            intent: asp_command.intent,
             same_language: asp_command.language_id == feedback_language_id,
             saw_pipe,
             repeated_pipe: pipe_command_tokens
@@ -157,24 +156,4 @@ fn asp_agent_session_command_tokens(command_tokens: &[String]) -> bool {
 
 fn is_asp_command_token(token: &str) -> bool {
     token == "asp" || token.ends_with("/asp") || token.ends_with("\\asp.exe")
-}
-
-fn classify_prompt_asp_command_budget(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Option<HookDecision> {
-    let command_count = prompt_asp_command_count(
-        std::path::Path::new(&registry.project_root),
-        session_id,
-        transcript_path,
-    )
-    .ok()?;
-    let budget = budget::exhausted_asp_command_budget(command_count)?;
-    Some(decision::exhausted_asp_command_budget_decision(
-        platform, event, action, &budget,
-    ))
 }

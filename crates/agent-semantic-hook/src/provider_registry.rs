@@ -3,8 +3,8 @@
 use serde::Deserialize;
 
 use crate::protocol::{
-    CommandTemplate, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookRoutes,
-    PROVIDER_MANIFEST_SCHEMA_ID, PROVIDER_MANIFEST_SCHEMA_VERSION,
+    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, PROVIDER_MANIFEST_SCHEMA_ID,
+    PROVIDER_MANIFEST_SCHEMA_VERSION,
 };
 use crate::protocol_activation::protocol_activation_manifest::{
     ManifestSourceDefaults, ProviderManifest,
@@ -12,6 +12,11 @@ use crate::protocol_activation::protocol_activation_manifest::{
 
 const SCHEMA_REGISTRY_JSON: &str =
     include_str!("../../../schemas/semantic-language-registry.providers.v1.json");
+
+pub fn semantic_registry_digest() -> String {
+    let digest = <sha2::Sha256 as sha2::Digest>::digest(SCHEMA_REGISTRY_JSON.as_bytes());
+    format!("sha256:{digest:x}")
+}
 
 const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
     include_str!(
@@ -53,7 +58,7 @@ pub(crate) fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
         .languages
         .into_iter()
         .map(|language| {
-            language_manifests
+            let manifest = language_manifests
                 .iter()
                 .find(|manifest| {
                     manifest.language_id == language.language_id
@@ -65,9 +70,84 @@ pub(crate) fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
                         "missing language provider manifest for registry language `{}` provider `{}`",
                         language.language_id, language.provider_id
                     )
-                })
+                });
+            assert_eq!(
+                language.query_pack_descriptor, manifest.query_pack_descriptor,
+                "registry queryPackDescriptor drift for language `{}` provider `{}`",
+                language.language_id, language.provider_id
+            );
+            manifest
         })
         .collect()
+}
+
+fn resolve_route_invocation(
+    language: &LanguageRegistration,
+    method: &str,
+) -> Result<crate::protocol::CommandTemplate, String> {
+    let mut matches = language
+        .method_descriptors
+        .iter()
+        .filter(|descriptor| descriptor.method == method);
+    let descriptor = matches.next().ok_or_else(|| {
+        format!(
+            "semantic registry has no method descriptor `{method}` for language `{}` provider `{}`",
+            language.language_id, language.provider_id
+        )
+    })?;
+    if matches.next().is_some() {
+        return Err(format!(
+            "semantic registry has duplicate method descriptor `{method}` for language `{}` provider `{}`",
+            language.language_id, language.provider_id
+        ));
+    }
+    Ok(descriptor.invocation.clone())
+}
+
+pub fn materialize_provider_routes(
+    manifest: &ProviderManifest,
+) -> Result<crate::protocol::HookRoutes, String> {
+    let registry = schema_registry();
+    let language = registry
+        .languages
+        .iter()
+        .find(|language| {
+            language.language_id == manifest.language_id
+                && language.provider_id == manifest.provider_id
+        })
+        .ok_or_else(|| {
+            format!(
+                "semantic registry has no language `{}` provider `{}`",
+                manifest.language_id, manifest.provider_id
+            )
+        })?;
+    if language.binary != manifest.binary {
+        return Err(format!(
+            "semantic registry binary `{}` does not match manifest binary `{}` for language `{}` provider `{}`",
+            language.binary, manifest.binary, manifest.language_id, manifest.provider_id
+        ));
+    }
+
+    let bindings = &manifest.route_bindings;
+    let optional = |method: &Option<String>| {
+        method
+            .as_deref()
+            .map(|method| resolve_route_invocation(language, method))
+            .transpose()
+    };
+    Ok(crate::protocol::HookRoutes {
+        prime: resolve_route_invocation(language, &bindings.prime)?,
+        owner: resolve_route_invocation(language, &bindings.owner)?,
+        lexical: resolve_route_invocation(language, &bindings.lexical)?,
+        query: optional(&bindings.query)?,
+        ingest: resolve_route_invocation(language, &bindings.ingest)?,
+        check_changed: resolve_route_invocation(language, &bindings.check_changed)?,
+        dependency_topology: optional(&bindings.dependency_topology)?,
+        dependency_topology_metadata: optional(&bindings.dependency_topology_metadata)?,
+        workspace_scope: optional(&bindings.workspace_scope)?,
+        export_index: optional(&bindings.export_index)?,
+        guide: optional(&bindings.guide)?,
+    })
 }
 
 fn language_provider_manifests() -> Vec<ProviderManifest> {
@@ -100,7 +180,6 @@ fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {
     manifest.protocol_version = HOOK_PROTOCOL_VERSION.to_string();
     manifest.manifest_version = env!("CARGO_PKG_VERSION").to_string();
     normalize_source_defaults(&mut manifest.source);
-    normalize_hook_routes(&mut manifest.routes);
 }
 
 fn normalize_source_defaults(source: &mut ManifestSourceDefaults) {
@@ -113,34 +192,6 @@ fn normalize_source_defaults(source: &mut ManifestSourceDefaults) {
             source
                 .default_ignored_path_prefixes
                 .push(prefix.to_string());
-        }
-    }
-}
-
-fn normalize_hook_routes(routes: &mut HookRoutes) {
-    normalize_command_template(&mut routes.prime);
-    normalize_command_template(&mut routes.owner);
-    normalize_command_template(&mut routes.lexical);
-    if let Some(query) = routes.query.as_mut() {
-        normalize_command_template(query);
-    }
-    normalize_command_template(&mut routes.ingest);
-    normalize_command_template(&mut routes.check_changed);
-    if let Some(export_index) = routes.export_index.as_mut() {
-        normalize_command_template(export_index);
-    }
-    if let Some(workspace_scope) = routes.workspace_scope.as_mut() {
-        normalize_command_template(workspace_scope);
-    }
-    if let Some(guide) = routes.guide.as_mut() {
-        normalize_command_template(guide);
-    }
-}
-
-fn normalize_command_template(template: &mut CommandTemplate) {
-    for argument in &mut template.argv {
-        if argument == "." {
-            *argument = "{projectRoot}".to_string();
         }
     }
 }
@@ -161,4 +212,14 @@ struct SemanticLanguageRegistry {
 struct LanguageRegistration {
     language_id: String,
     provider_id: String,
+    binary: String,
+    method_descriptors: Vec<SemanticMethodDescriptor>,
+    query_pack_descriptor: crate::ProviderQueryPackDescriptor,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SemanticMethodDescriptor {
+    method: String,
+    invocation: crate::protocol::CommandTemplate,
 }

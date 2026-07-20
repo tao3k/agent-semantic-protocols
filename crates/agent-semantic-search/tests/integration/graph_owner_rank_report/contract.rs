@@ -4,6 +4,7 @@ use agent_semantic_search::{
 
 #[test]
 fn graph_owner_rank_report_is_public_and_constructible() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let report = rank_graph_owner_report(GraphOwnerRankRequest {
         candidates: vec![
             GraphOwnerRankCandidate::new(
@@ -23,6 +24,7 @@ fn graph_owner_rank_report_is_public_and_constructible() {
         ],
         query_terms: vec!["dynamicOverlay".to_string()],
         submodule_paths: vec!["languages/rust".to_string()],
+        source_snapshot: fixture.evidence.clone(),
     });
 
     let top = report

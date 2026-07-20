@@ -34,30 +34,6 @@ pub(crate) fn assert_search_candidate_contract_benchmark_contract(benchmark: &Sh
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
-pub(crate) fn assert_query_wrapper_source_index_bridge_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("query-wrapper-source-index-bridge")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
-pub(crate) fn assert_query_wrapper_render_hint_projection_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("query-wrapper-render-hint-projection")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
 pub(crate) fn assert_search_owner_source_index_trace_benchmark_contract(
     benchmark: &SharedBenchmarkToml,
     expected_fallback_reason: &str,
@@ -72,18 +48,6 @@ pub(crate) fn assert_search_owner_source_index_trace_benchmark_contract(
         benchmark.fallback_reason.as_deref(),
         Some(expected_fallback_reason)
     );
-}
-
-pub(crate) fn assert_query_wrapper_clause_normalization_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("query-wrapper-clause-normalization")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
 pub(crate) fn assert_search_query_budget_benchmark_contract(benchmark: &SharedBenchmarkToml) {
@@ -266,8 +230,5 @@ pub(super) fn assert_runtime_timeout_policy_benchmark_contract(benchmark: &Share
     assert_eq!(benchmark.max_stdout_bytes, Some(1024));
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
-const _: fn(&SharedBenchmarkToml) = assert_query_wrapper_source_index_bridge_benchmark_contract;
-const _: fn(&SharedBenchmarkToml) = assert_query_wrapper_render_hint_projection_benchmark_contract;
 const _: fn(&SharedBenchmarkToml, &str) = assert_search_owner_source_index_trace_benchmark_contract;
-const _: fn(&SharedBenchmarkToml) = assert_query_wrapper_clause_normalization_benchmark_contract;
 const _: fn(&SharedBenchmarkToml) = assert_search_query_budget_benchmark_contract;

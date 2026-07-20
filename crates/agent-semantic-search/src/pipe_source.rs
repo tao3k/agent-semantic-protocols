@@ -14,6 +14,7 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeSearchOverlayAcquisition {
+    pub source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
     pub candidates: Vec<SearchPipeCandidate>,
     pub elapsed: Duration,
 }
@@ -26,6 +27,8 @@ pub struct SearchPipeSearchOverlayAcquisitionRequest<'a> {
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
+    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub provider_digest: &'a str,
     pub require_multi_clause: bool,
     pub limit: usize,
 }
@@ -39,6 +42,8 @@ pub struct SearchPipeAutoAcquisitionRequest<'a> {
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
+    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub provider_digest: &'a str,
     pub require_multi_clause: bool,
     pub limit: usize,
     pub source_index_lookup: Option<&'a SearchPipeSourceIndexLookup>,
@@ -52,6 +57,8 @@ pub fn collect_search_pipe_auto_acquisition(
             decision: SearchPipeSourceIndexDecision::QueryGate,
             gate: Some(gate),
             candidates: Vec::new(),
+            source_snapshot: None,
+            index_artifact_digest: None,
         })
         .or_else(|| {
             collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
@@ -137,6 +144,8 @@ pub fn collect_search_pipe_auto_acquisition(
             owners: &proof_scopes,
             ignore_dirs: request.ignore_dirs,
             include_hidden_dirs: request.include_hidden_dirs,
+            base_snapshot: request.base_snapshot,
+            provider_digest: request.provider_digest,
             require_multi_clause: request.require_multi_clause,
             limit: request.limit,
         },
@@ -216,7 +225,7 @@ pub fn collect_search_pipe_search_overlay_acquisition(
     request: SearchPipeSearchOverlayAcquisitionRequest<'_>,
 ) -> Result<SearchPipeSearchOverlayAcquisition, String> {
     let started_at = Instant::now();
-    let candidates = collect_search_pipe_candidates(SearchPipeCandidateRequest {
+    let collection = collect_search_pipe_candidates(SearchPipeCandidateRequest {
         language_id: request.language_id,
         project_root: request.project_root,
         locator_root: request.locator_root,
@@ -224,11 +233,14 @@ pub fn collect_search_pipe_search_overlay_acquisition(
         owners: request.owners,
         ignore_dirs: request.ignore_dirs,
         include_hidden_dirs: request.include_hidden_dirs,
+        base_snapshot: request.base_snapshot,
+        provider_digest: request.provider_digest,
         require_multi_clause: request.require_multi_clause,
         limit: request.limit,
     })?;
     Ok(SearchPipeSearchOverlayAcquisition {
-        candidates,
+        source_snapshot: collection.source_snapshot,
+        candidates: collection.candidates,
         elapsed: started_at.elapsed(),
     })
 }
@@ -241,6 +253,8 @@ pub struct SearchPipeFailureAcquisitionRequest<'a> {
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
     pub limit: usize,
+    pub base_snapshot: &'a agent_semantic_content_identity::WorkspaceSnapshot,
+    pub provider_digest: &'a str,
 }
 
 pub fn collect_search_pipe_failure_acquisition(
@@ -257,6 +271,8 @@ pub fn collect_search_pipe_failure_acquisition(
         ignore_dirs: request.ignore_dirs,
         include_hidden_dirs: request.include_hidden_dirs,
         limit: request.limit,
+        base_snapshot: request.base_snapshot,
+        provider_digest: request.provider_digest,
     })
 }
 
@@ -338,6 +354,8 @@ pub struct SearchPipeSourceAcquisitionTrace {
     pub missing: usize,
     pub normalized: usize,
     pub elapsed: Option<Duration>,
+    pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    pub artifact_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -357,6 +375,8 @@ pub struct SearchPipeDocumentAcquisitionRequest<'a> {
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
     pub search_overlay_limit: usize,
+    pub base_snapshot: &'a agent_semantic_content_identity::WorkspaceSnapshot,
+    pub provider_digest: &'a str,
 }
 
 pub fn collect_search_pipe_document_acquisition(
@@ -376,6 +396,8 @@ pub fn collect_search_pipe_document_acquisition(
                 ignore_dirs: request.ignore_dirs,
                 include_hidden_dirs: request.include_hidden_dirs,
                 limit: request.search_overlay_limit,
+                base_snapshot: request.base_snapshot,
+                provider_digest: request.provider_digest,
             })
         }
     }
@@ -394,6 +416,8 @@ fn document_auto_acquisition(
         ignore_dirs: request.ignore_dirs,
         include_hidden_dirs: request.include_hidden_dirs,
         limit: request.search_overlay_limit,
+        base_snapshot: request.base_snapshot,
+        provider_digest: request.provider_digest,
     })
 }
 
@@ -426,6 +450,8 @@ fn document_element_acquisition(
             missing: usize::from(candidates.is_empty()),
             normalized: collection.matched_count,
             elapsed: None,
+            source_snapshot: None,
+            artifact_digest: None,
         }],
         candidate_sources: vec!["document-element".to_string()],
         candidates,
@@ -481,6 +507,8 @@ fn candidate_trace(
         missing: usize::from(candidates.is_empty()),
         normalized: candidates.len(),
         elapsed,
+        source_snapshot: None,
+        artifact_digest: None,
     }
 }
 
@@ -506,6 +534,8 @@ pub struct SearchPipeSelectorPayloadProof {
 pub struct SearchPipeSourceIndexLookup {
     pub state: String,
     pub candidates: Vec<SearchPipeSourceIndexCandidate>,
+    pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    pub index_artifact_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -529,6 +559,8 @@ pub struct SearchPipeSourceIndexAcquisition {
     pub decision: SearchPipeSourceIndexDecision,
     pub gate: Option<SearchPipeSourceIndexGate>,
     pub candidates: Vec<SearchPipeCandidate>,
+    pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    pub index_artifact_digest: Option<String>,
 }
 
 pub struct SearchPipeSourceIndexAcquisitionRequest<'a> {
@@ -578,6 +610,8 @@ pub fn collect_search_pipe_source_index_acquisition(
         decision,
         gate: None,
         candidates,
+        source_snapshot: lookup.source_snapshot.clone(),
+        index_artifact_digest: lookup.index_artifact_digest.clone(),
     })
 }
 
@@ -624,6 +658,8 @@ fn skipped_search_overlay_trace() -> SearchPipeSourceAcquisitionTrace {
         missing: 0,
         normalized: 0,
         elapsed: None,
+        source_snapshot: None,
+        artifact_digest: None,
     }
 }
 

@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_actions::{SearchPipeActionRequest, render_action_next_command};
-use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_quality_model::SearchPipeQuality;
 use super::{search_pipe_model::Candidate, search_pipe_projection::candidate_executable_selector};
 
@@ -16,7 +15,7 @@ pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) scopes: &'a [PathBuf],
     pub(super) query: &'a str,
     pub(super) candidates: &'a [Candidate],
-    pub(super) precomputed_quality: Option<SearchPipeQuality>,
+    pub(super) quality: SearchPipeQuality,
     pub(super) ranked_compact: Option<&'a str>,
     pub(super) read_memory_selectors: &'a [String],
     pub(super) dependency_action_targets: &'a [String],
@@ -30,13 +29,12 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         scopes,
         query,
         candidates,
-        precomputed_quality,
+        quality,
         ranked_compact,
         read_memory_selectors,
         dependency_action_targets,
     } = request;
-    let mut quality = precomputed_quality
-        .unwrap_or_else(|| analyze_search_pipe_quality(language_id, query, candidates));
+    let mut quality = quality;
     let projected_selector_actions = rank_projected_selector_actions(
         query,
         &quality,
@@ -65,7 +63,6 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         locator_root,
         scopes,
         quality: &quality,
-        candidates,
         ranked_compact,
         selector_actions: &actions,
         read_memory_selectors,

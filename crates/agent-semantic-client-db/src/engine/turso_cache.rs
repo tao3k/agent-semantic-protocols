@@ -285,8 +285,35 @@ pub async fn invalidate_turso_cache_generations_for_project(
     project_root: &Path,
 ) -> Result<u32, String> {
     let _operation_lock = acquire_turso_operation_lock(db_path, "cache-generation-invalidate")?;
-    let connection = connect_turso_client_db(db_path).await?;
-    bootstrap_turso_client_cache_schema(&connection).await?;
+    let initial_connection = async {
+        let connection = connect_turso_client_db(db_path).await?;
+        bootstrap_turso_client_cache_schema(&connection).await?;
+        Ok::<_, String>(connection)
+    }
+    .await;
+    let connection = match initial_connection {
+        Ok(connection) => connection,
+        Err(open_or_bootstrap_error) => {
+            reset_corrupt_turso_cache_files(db_path).map_err(|reset_error| {
+                format!(
+                    "failed to reset derived Turso cache after open/bootstrap error `{open_or_bootstrap_error}`: {reset_error}"
+                )
+            })?;
+            let connection = connect_turso_client_db(db_path).await.map_err(|retry_error| {
+                format!(
+                    "failed to recreate derived Turso cache after open/bootstrap error `{open_or_bootstrap_error}`: {retry_error}"
+                )
+            })?;
+            bootstrap_turso_client_cache_schema(&connection)
+                .await
+                .map_err(|retry_error| {
+                    format!(
+                        "failed to bootstrap recreated Turso cache after open/bootstrap error `{open_or_bootstrap_error}`: {retry_error}"
+                    )
+                })?;
+            connection
+        }
+    };
     let project_root = normalized_project_root(project_root);
     let count = execute_turso_operation_with_lock_retry(
         || async {
@@ -302,6 +329,25 @@ pub async fn invalidate_turso_cache_generations_for_project(
     )
     .await?;
     Ok(count.min(u64::from(u32::MAX)) as u32)
+}
+
+fn reset_corrupt_turso_cache_files(db_path: &Path) -> Result<(), String> {
+    let mut paths = vec![db_path.to_path_buf()];
+    for suffix in ["-wal", "-shm", "-tshm"] {
+        let mut sidecar = db_path.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        paths.push(std::path::PathBuf::from(sidecar));
+    }
+    for path in paths {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!("failed to remove `{}`: {error}", path.display()));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Return recent matching cache generations from the active Turso read model.

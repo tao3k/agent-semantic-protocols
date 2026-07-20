@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "semantic-search-prime.v1.schema.json",
+  "title": "Semantic Search Prime Packet v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspace",
+    "algorithm",
+    "searchCapabilities",
+    "queryPack",
+    "evidenceState",
+    "owners",
+    "frontierActions",
+    "entries",
+    "omit",
+    "avoid"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "semantic-search-prime.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspace": {
+      "$ref": "#/$defs/workspace"
+    },
+    "algorithm": {
+      "const": "owner-rank-frontier"
+    },
+    "searchCapabilities": {
+      "$ref": "#/$defs/providerSearchCapabilities"
+    },
+    "queryPack": {
+      "$ref": "#/$defs/queryPack"
+    },
+    "evidenceState": {
+      "enum": ["unknown-workspace"]
+    },
+    "owners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/owner"
+      }
+    },
+    "frontierActions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/frontierAction"
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "omit": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "avoid": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "providerSearchCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerItems",
+        "semanticFacts",
+        "dependencyTopology",
+        "dependencyTopologyMetadata",
+        "workspaceScope"
+      ],
+      "properties": {
+        "ownerItems": { "type": "boolean" },
+        "semanticFacts": { "type": "boolean" },
+        "dependencyTopology": { "type": "boolean" },
+        "dependencyTopologyMetadata": { "type": "boolean" },
+        "workspaceScope": { "type": "boolean" },
+        "sourceSnapshot": {
+          "$ref": "#/$defs/providerSourceSnapshotDescriptor"
+        }
+      }
+    },
+    "providerSourceSnapshotDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "descriptorId",
+        "descriptorVersion",
+        "languageId",
+        "packetSchemaId",
+        "exactSourcePacketSchemaId",
+        "sourceOverlaySchemaId",
+        "derivedArtifactEvidenceSchemaId",
+        "algorithm",
+        "authority",
+        "exactSelectorResolution",
+        "overlayMode"
+      ],
+      "properties": {
+        "descriptorId": { "type": "string", "minLength": 1 },
+        "descriptorVersion": { "type": "string", "minLength": 1 },
+        "languageId": { "type": "string", "minLength": 1 },
+        "packetSchemaId": { "type": "string", "minLength": 1 },
+        "exactSourcePacketSchemaId": { "type": "string", "minLength": 1 },
+        "sourceOverlaySchemaId": { "type": "string", "minLength": 1 },
+        "derivedArtifactEvidenceSchemaId": { "type": "string", "minLength": 1 },
+        "algorithm": { "type": "string", "minLength": 1 },
+        "authority": { "type": "string", "minLength": 1 },
+        "exactSelectorResolution": { "type": "string", "minLength": 1 },
+        "overlayMode": { "type": "string", "minLength": 1 }
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root"],
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "queryPack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "descriptorId",
+        "descriptorVersion",
+        "descriptorDigest",
+        "languageId",
+        "recipeIds"
+      ],
+      "properties": {
+        "descriptorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "descriptorVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "descriptorDigest": {
+          "type": "string",
+          "pattern": "^blake3:[0-9a-f]{64}$"
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "semanticFactsDescriptorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recipeIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^O([2-9]|[1-9][0-9]+)?$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "frontierAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "targetRole", "executable", "constraints"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^A[1-9][0-9]*$"
+        },
+        "kind": {
+          "enum": ["owner-map"]
+        },
+        "requiredCapability": {
+          "enum": [
+            "ownerItems",
+            "semanticFacts",
+            "dependencyTopology",
+            "dependencyTopologyMetadata",
+            "workspaceScope",
+            "sourceSnapshot"
+          ]
+        },
+        "targetRole": {
+          "enum": ["path"]
+        },
+        "projection": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executable": {
+          "type": "boolean"
+        },
+        "constraints": {
+          "$ref": "#/$defs/actionConstraints"
+        }
+      }
+    },
+    "actionConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["avoid"],
+      "properties": {
+        "codePolicy": {
+          "enum": ["disabled", "selector-required"]
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

@@ -1,12 +1,11 @@
 //! ASP-owned client DB engine facade.
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, ClientCacheGeneration, ClientCacheManifest,
-    ClientDbJournalMode, ClientDbStatus, LanguageId, ProviderId,
+    LanguageId, ProviderId,
     state_core::{ResolvedState, STATE_LAYOUT_VERSION, STATE_MANIFEST_FILE, TURSO_BACKEND},
 };
 use serde::Serialize;
@@ -17,13 +16,12 @@ use crate::structural_index::parse_structural_index_packet_import;
 use crate::types::{
     ClientDbArtifactEdge, ClientDbArtifactEvent, ClientDbArtifactGraphCompactRender,
     ClientDbArtifactRepairChainFrame, ClientDbArtifactRoot, ClientDbProofReceipt,
-    ClientDbProviderCommandSelection, ClientDbReport, ClientDbRuntimePragmas,
-    ClientDbSyntaxQueryLookup, ClientDbSyntaxQueryReplay,
+    ClientDbProviderCommandSelection, ClientDbReport, ClientDbSyntaxQueryLookup,
+    ClientDbSyntaxQueryReplay,
 };
 
 use super::contract::{ClientDbBackend, ClientDbEngineBackend, ClientDbEngineFeatures};
 use super::source_index_facade::persist_structural_index_read_model_at_path;
-use super::turso::connect_turso_client_db;
 use super::turso::{TursoClientDbEngineBackend, TursoClientDbEngineReport};
 use super::turso_artifact::{lookup_turso_artifact_events, upsert_turso_artifact_events};
 use super::turso_artifact_graph::{
@@ -36,7 +34,6 @@ use super::turso_cache::{
     invalidate_turso_cache_generations_for_project, prune_turso_cache_generations_to_manifest,
     upsert_turso_cache_generations,
 };
-use super::turso_lock_policy::TURSO_CLIENT_DB_BUSY_TIMEOUT_MS;
 use super::turso_provider_command::{
     lookup_turso_provider_command_selections, replace_turso_provider_command_selections,
 };
@@ -182,6 +179,7 @@ where
 pub struct ClientDbEngineSourceIndexReadModelReport {
     pub graph_entity_count: usize,
     pub graph_edge_count: usize,
+    pub graph_artifact_digest: String,
     pub search_document_count: usize,
 }
 
@@ -189,8 +187,6 @@ pub struct ClientDbEngineSourceIndexReadModelReport {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbEngineStructuralIndexReadModelReport {
-    pub graph_entity_count: usize,
-    pub graph_edge_count: usize,
     pub search_document_count: usize,
 }
 
@@ -408,6 +404,7 @@ impl ClientDbEngine {
         client_dir: impl AsRef<Path>,
         generation: &ClientCacheGeneration,
         packet_bytes: &[u8],
+        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Result<(), String> {
         let client_dir = client_dir.as_ref().to_path_buf();
         fs::create_dir_all(&client_dir).map_err(|error| {
@@ -418,8 +415,9 @@ impl ClientDbEngine {
         })?;
         let import = parse_structural_index_packet_import(generation, packet_bytes)?;
         let db_path = Self::turso_path_for_client_dir(&client_dir);
+        let source_snapshot = source_snapshot.clone();
         block_on_db_engine_async(async move {
-            persist_structural_index_read_model_at_path(&db_path, &import)
+            persist_structural_index_read_model_at_path(&db_path, &import, &source_snapshot)
                 .await
                 .map(|_| ())
         })
@@ -509,7 +507,6 @@ impl ClientDbEngine {
         }
         let project_root = project_root.as_ref().to_path_buf();
         block_on_db_engine_async(async move {
-            bootstrap_turso_client_db(&db_path).await?;
             invalidate_turso_cache_generations_for_project(&db_path, &project_root).await
         })
     }

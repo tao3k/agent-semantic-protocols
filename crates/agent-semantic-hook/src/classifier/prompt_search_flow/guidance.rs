@@ -1,8 +1,6 @@
-use super::feedback::LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES;
-
 pub(super) fn query_projection_flag(language_id: &str) -> &'static str {
     if matches!(language_id, "md" | "org") {
-        "--content"
+        "--verbatim"
     } else {
         "--code"
     }
@@ -43,7 +41,7 @@ pub(super) fn search_flow_feedback_message(
             "Follow the previous `recommendedNext` / `nextCommand` from the pipe output."
                 .to_string(),
             format!(
-                "Use `asp {language_id} search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace . --view seeds`, `asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>`, `asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>`, or `asp {language_id} query --selector '<language>://<owner>#item/<kind>/<name>' --workspace <workspace-root> {projection_flag}`."
+                "Use the typed `recommendedNext` action, an owner-items query, or `asp {language_id} query --selector '<language>://<owner>#item/<kind>/<name>' --workspace <workspace-root> {projection_flag}`."
             ),
             String::new(),
             "## Rules".to_string(),
@@ -54,21 +52,19 @@ pub(super) fn search_flow_feedback_message(
             ),
         ]
         .join("\n"),
-        "direct-source-read-after-pipe" => [
+        "invalid-source-projection-after-pipe" => [
             heading.to_string(),
-            "`--from-hook direct-source-read` is a low-priority exact-window fallback after a route frontier, not the first code extraction path."
+            "Source projection requires one exact parser-owned structural selector."
                 .to_string(),
             String::new(),
             "## Run Next".to_string(),
             format!(
-                "asp {language_id} query --from-hook direct-source-read --selector <path:start-end> --workspace <workspace-root> {projection_flag}"
+                "asp {language_id} query --selector '<language>://<owner>#item/<kind>/<name>' --workspace <workspace-root> {projection_flag}"
             ),
             String::new(),
             "## Rules".to_string(),
-            format!("A direct-source-read fallback is allowed only after owner/query/syntax/read-plan evidence when the selector is an exact bounded range of {LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES} lines or fewer."),
-            format!(
-                "For file-wide or broad ranges, follow locator/frontier commands and extract with ordinary `query --selector {projection_flag}` or a read-plan frontier."
-            ),
+            "Do not reconstruct path ranges or bypass parser-owned identity.".to_string(),
+            format!("Follow locator/frontier evidence and materialize only with exact `query --selector {projection_flag}`."),
         ]
         .join("\n"),
         _ => [

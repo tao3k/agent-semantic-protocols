@@ -27,6 +27,25 @@ fn gerbil_selector_requires_the_exact_gerbil_scheme_language_id() {
 }
 
 #[test]
+fn document_verbatim_selector_is_exact_evidence() {
+    let policy = HookClientAspCommandIntentPolicyConfig::default();
+    let matched = classify_asp_language_command(
+        "org".to_string(),
+        &tokens(&[
+            "query",
+            "--selector",
+            "org://docs/guide.org#paragraph/paragraph/document[1]/paragraph[1]",
+            "--verbatim",
+        ]),
+        &policy,
+    )
+    .expect("classify exact Org selector");
+
+    assert_eq!(matched.intent, AspCommandIntent::ExactEvidence);
+    assert_eq!(matched.route, AspCommandRouteId::QuerySelector);
+}
+
+#[test]
 fn generic_scheme_selector_is_cross_language_for_gerbil_scheme() {
     let policy = HookClientAspCommandIntentPolicyConfig::default();
     let matched = classify_asp_language_command(

@@ -249,6 +249,14 @@ sourceLocatorHintShownForExactCodeActions>=1
 - no per-file item listings (use source_large + next=items instead)
 #+end_src
 
+** Native prime typed packet and query-pack capability authority
+
+Native prime MUST construct and validate =semantic-search-prime.v1= before rendering stdout. Its algorithm and frontier actions are typed packet fields; compact rows are projections only. Semantic capabilities come from the activated provider query-pack descriptor for the selected language and MUST NOT be inferred from language names or restored as Rust literals such as =fd-query= and =rg-query=. Registration or activation that omits the required descriptor fails closed before prime becomes routable.
+
+Search capability availability comes from the activated provider's typed =ProviderSearchCapabilities= record. Query-pack descriptor identity and recipe ids are recorded separately as composition provenance and action recipes; recipe ids and term roles are not capabilities. Each frontier action references a typed search capability when it requires provider support and references a recipe id separately when it selects query composition. Missing provider capability evidence, an unknown capability reference, or an unknown recipe reference fails closed.
+
+Owner discovery remains provider-owned. Executable argv is a separate materialization of a typed action and is not a capability identifier, packet key, or fallback authority.
+
 ** Prime output format with drill-verified fields
 
 Medium package (Tokio):

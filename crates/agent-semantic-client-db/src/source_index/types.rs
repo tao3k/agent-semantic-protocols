@@ -1,7 +1,6 @@
 //! Public value types for DB Engine-owned source index rows.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
@@ -17,37 +16,37 @@ pub const CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH: &str = "@scope/re
 pub const CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
-static LAST_SOURCE_INDEX_GENERATION_NANOS: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-
-#[must_use]
-pub fn client_db_source_index_generation_id() -> CacheGenerationId {
-    let observed_nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0) as u64;
-    let nanos = loop {
-        let previous =
-            LAST_SOURCE_INDEX_GENERATION_NANOS.load(std::sync::atomic::Ordering::Acquire);
-        let candidate = observed_nanos.max(previous.saturating_add(1));
-        if LAST_SOURCE_INDEX_GENERATION_NANOS
-            .compare_exchange_weak(
-                previous,
-                candidate,
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-            )
-            .is_ok()
-        {
-            break candidate;
-        }
-    };
-    CacheGenerationId::from(format!("source-index-{nanos}"))
-}
-
 #[must_use]
 pub fn client_db_source_index_file_count(file_count: usize) -> u32 {
     file_count.min(u32::MAX as usize) as u32
+}
+
+/// Content address of the disposable source-index projection for one snapshot.
+#[must_use]
+pub fn client_db_source_index_artifact_digest(
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> String {
+    agent_semantic_content_identity::hash_derived_artifact_key(
+        agent_semantic_content_identity::DerivedArtifactKeyInput {
+            artifact_kind: "source-index",
+            schema_id: "asp.source-index-artifact.v1",
+            snapshot_root: &source_snapshot.root_digest,
+            provider_digest: &source_snapshot.provider_digest,
+            parameters: &[],
+        },
+    )
+    .value
+}
+
+/// Deterministic generation identity; there is deliberately no timestamp fallback.
+#[must_use]
+pub fn client_db_source_index_generation_id_for_snapshot(
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> CacheGenerationId {
+    CacheGenerationId::from(format!(
+        "source-index-{}",
+        client_db_source_index_artifact_digest(source_snapshot)
+    ))
 }
 
 #[must_use]
@@ -295,6 +294,8 @@ pub struct ClientDbSourceIndexLookupResult {
     pub db_path: PathBuf,
     pub state: ClientDbSourceIndexLookupState,
     pub candidates: Vec<ClientDbSourceIndexCandidate>,
+    pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    pub index_artifact_digest: Option<String>,
 }
 
 /// Request for looking up source-index candidates through a project state root.
@@ -304,6 +305,8 @@ pub struct ClientDbSourceIndexProjectLookupRequest<'a> {
     pub language_id: Option<&'a LanguageId>,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
+    pub expected_snapshot_root: &'a str,
+    pub expected_index_artifact_digest: &'a str,
 }
 
 /// Request for looking up source-index candidates from an already resolved
@@ -314,6 +317,8 @@ pub struct ClientDbSourceIndexClientDirLookupRequest<'a> {
     pub language_id: Option<&'a LanguageId>,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
+    pub expected_snapshot_root: &'a str,
+    pub expected_index_artifact_digest: &'a str,
 }
 
 /// DB-owned source-index candidate lookup result without path projection.

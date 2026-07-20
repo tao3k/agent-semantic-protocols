@@ -58,6 +58,8 @@ pub(crate) fn source_index_trace(
             .filter(|candidate| source_index_candidate_ready(candidate))
             .count(),
         elapsed: None,
+        source_snapshot: acquisition.source_snapshot.clone(),
+        artifact_digest: acquisition.index_artifact_digest.clone(),
     }
 }
 

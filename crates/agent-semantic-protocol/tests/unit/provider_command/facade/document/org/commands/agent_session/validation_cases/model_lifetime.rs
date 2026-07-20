@@ -1,10 +1,10 @@
-use crate::provider_command::support::{asp_command, temp_project_root};
-use crate::unit::provider_command::facade::document::org::commands::agent_session::support::{
+use crate::provider_command::facade::document::org::commands::agent_session::support::{
     write_codex_asp_explorer_fixture_with_actual_agent_path,
     write_codex_asp_explorer_fixture_with_actual_profile,
     write_codex_asp_explorer_fixture_with_default_agent_role,
     write_codex_asp_explorer_fixture_without_agent_path,
 };
+use crate::provider_command::support::{asp_command, temp_project_root};
 
 #[test]
 fn asp_agent_session_treats_configured_fallback_model_as_non_ready_drift() {

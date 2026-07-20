@@ -66,6 +66,13 @@ pub(in super::super) fn claude_fixture() -> PathBuf {
     )
     .expect("write fake provider");
     make_executable(&provider_path);
+    crate::provider_command::support::write_activation(
+        &root,
+        &[crate::provider_command::support::provider(
+            "rust",
+            Vec::new(),
+        )],
+    );
     write_test_codex_plugin(&root);
     write_fake_codex_cli(&bin_dir);
     root

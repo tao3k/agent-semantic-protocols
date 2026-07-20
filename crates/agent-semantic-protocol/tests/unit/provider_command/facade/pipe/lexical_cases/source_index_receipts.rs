@@ -1,5 +1,7 @@
+use crate::provider_command::facade::pipe::lexical::support::refresh_source_index;
 use crate::provider_command::support;
-use crate::unit::provider_command::facade::pipe::lexical::support::refresh_source_index;
+
+use serde_json::Value;
 
 #[test]
 fn lexical_seeds_use_source_index_when_warm() {
@@ -199,3 +201,4 @@ fn lexical_scoped_root_outputs_workspace_relative_replayable_locators() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+use super::assert_builtin_graph_route;

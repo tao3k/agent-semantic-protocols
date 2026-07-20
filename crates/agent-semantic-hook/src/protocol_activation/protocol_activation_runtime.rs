@@ -59,10 +59,33 @@ fn resolve_activation(
                 activated.manifest_id, expected_digest, activated.manifest_digest
             )));
         }
+        let expected_registry_digest = crate::provider_registry::semantic_registry_digest();
+        if activated.semantic_registry_digest != expected_registry_digest {
+            return Err(AgentHookError::InvalidActivationConfig(format!(
+                "semantic registry digest drift for {}: expected {}, got {}",
+                activated.manifest_id, expected_registry_digest, activated.semantic_registry_digest
+            )));
+        }
+        let expected_routes = crate::provider_registry::materialize_provider_routes(manifest)
+            .map_err(|error| {
+                AgentHookError::InvalidActivationConfig(format!(
+                    "failed to materialize provider routes for {}: {error}",
+                    activated.manifest_id
+                ))
+            })?;
+        if activated.routes != expected_routes {
+            return Err(AgentHookError::InvalidActivationConfig(format!(
+                "provider route drift for {}",
+                activated.manifest_id
+            )));
+        }
         if activated.language_id != manifest.language_id
             || activated.provider_id != manifest.provider_id
             || activated.binary != manifest.binary
             || activated.execution != manifest.execution
+            || activated.search_capabilities != manifest.search_capabilities
+            || activated.semantic_facts_descriptor != manifest.semantic_facts_descriptor
+            || activated.query_pack_descriptor != manifest.query_pack_descriptor
         {
             return Err(AgentHookError::InvalidActivationConfig(format!(
                 "provider activation does not match manifest identity: {}",
@@ -77,17 +100,19 @@ fn resolve_activation(
             binary: activated.binary.clone(),
             execution: activated.execution,
             provider_command_prefix: activated.provider_command_prefix.clone(),
+            execution_command_digest: activated.execution_command_digest.clone(),
             namespace: manifest.namespace.clone(),
             package_roots: activated.coverage.package_roots.clone(),
             source_extensions: activated.coverage.source_extensions.clone(),
             config_files: activated.coverage.config_files.clone(),
             source_roots: activated.coverage.source_roots.clone(),
             ignored_path_prefixes: activated.coverage.ignored_path_prefixes.clone(),
-            search_capabilities: manifest.search_capabilities.clone(),
-            semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
-            query_pack_descriptor: manifest.query_pack_descriptor.clone(),
+            search_capabilities: activated.search_capabilities.clone(),
+            semantic_facts_descriptor: activated.semantic_facts_descriptor.clone(),
+            query_pack_descriptor: activated.query_pack_descriptor.clone(),
             policy: manifest.policy.clone(),
-            routes: manifest.routes.clone(),
+            semantic_registry_digest: activated.semantic_registry_digest.clone(),
+            routes: activated.routes.clone(),
         });
     }
     Ok(HookRuntime {
@@ -103,6 +128,11 @@ impl HookActivation {
             "schemaVersion",
             &self.schema_version,
             HOOK_ACTIVATION_SCHEMA_VERSION,
+        )?;
+        expect_field(
+            "schemaAuthority",
+            &self.schema_authority,
+            crate::protocol::CANONICAL_SCHEMA_AUTHORITY,
         )?;
         expect_field("protocolId", &self.protocol_id, HOOK_PROTOCOL_ID)?;
         expect_field(

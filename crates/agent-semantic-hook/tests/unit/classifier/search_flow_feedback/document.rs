@@ -49,7 +49,7 @@ fn pre_tool_denies_unbounded_document_explicit_read_after_pipe() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(
         decision.fields["hookFeedback"],
-        "direct-source-read-after-pipe"
+        "invalid-source-projection-after-pipe"
     );
     assert!(decision.routes.is_empty());
     let _ = fs::remove_dir_all(project_root);

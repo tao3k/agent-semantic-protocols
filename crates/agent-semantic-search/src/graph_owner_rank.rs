@@ -148,11 +148,17 @@ pub fn ranked_graph_owner_paths_with_topology(
     candidates: &[GraphProjectionCandidate],
     query_terms: &[String],
     workspace_root: Option<&Path>,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Vec<String> {
     let submodule_paths = workspace_root
         .map(graph_project_submodule_paths)
         .unwrap_or_default();
-    ranked_graph_owner_paths_for_submodule_paths(candidates, query_terms, &submodule_paths)
+    ranked_graph_owner_paths_for_submodule_paths(
+        candidates,
+        query_terms,
+        &submodule_paths,
+        source_snapshot,
+    )
 }
 
 /// Rank graph-owner candidates and return a complete Rust score report.
@@ -165,14 +171,30 @@ pub fn rank_graph_owner_report(request: GraphOwnerRankRequest) -> GraphOwnerRank
         &request.submodule_paths,
     );
     ranks.sort_unstable_by(owner_rank_compare);
+    let mut candidate_descriptors = request
+        .candidates
+        .iter()
+        .map(|candidate| {
+            [
+                candidate.path.as_str(),
+                candidate.symbol.as_str(),
+                candidate.text.as_str(),
+                candidate.source.as_str(),
+                candidate.confidence.as_str(),
+            ]
+            .join("\0")
+        })
+        .collect::<Vec<_>>();
+    candidate_descriptors.sort_unstable();
+    let candidates_digest =
+        agent_semantic_content_identity::hash_blob(candidate_descriptors.join("\0\0").as_bytes())
+            .value;
     let query_digest =
         agent_semantic_content_identity::hash_blob(query_axes.join("\0").as_bytes()).value;
     let mut submodule_paths = request.submodule_paths.clone();
     submodule_paths.sort_unstable();
-    let submodule_digest = agent_semantic_content_identity::hash_blob(
-        submodule_paths.join("\0").as_bytes(),
-    )
-    .value;
+    let submodule_digest =
+        agent_semantic_content_identity::hash_blob(submodule_paths.join("\0").as_bytes()).value;
     let graph_artifact_digest = agent_semantic_content_identity::hash_derived_artifact_key(
         agent_semantic_content_identity::DerivedArtifactKeyInput {
             artifact_kind: "graph-owner-rank",
@@ -180,6 +202,7 @@ pub fn rank_graph_owner_report(request: GraphOwnerRankRequest) -> GraphOwnerRank
             snapshot_root: &request.source_snapshot.root_digest,
             provider_digest: &request.source_snapshot.provider_digest,
             parameters: &[
+                ("candidatesDigest", candidates_digest.as_str()),
                 ("queryAxesDigest", query_digest.as_str()),
                 ("submodulePathsDigest", submodule_digest.as_str()),
             ],

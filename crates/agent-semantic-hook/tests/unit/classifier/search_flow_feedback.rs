@@ -170,8 +170,11 @@ fn pre_tool_denies_explicit_read_before_pipe() {
     );
 
     assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.fields["hookFeedback"], "read-before-pipe");
-    assert_eq!(decision.fields["aspCommandIntent"], "direct-read-fallback");
+    assert_eq!(
+        decision.fields["hookFeedback"],
+        "invalid-evidence-query-denied"
+    );
+    assert_eq!(decision.fields["aspCommandIntent"], "invalid-evidence");
     assert!(decision.routes.is_empty());
     let _ = fs::remove_dir_all(project_root);
 }
@@ -366,10 +369,7 @@ fn document_runtime_for_project(project_root: &std::path::Path) -> HookRuntime {
 
 fn markdown_provider() -> ActivatedProvider {
     provider(
-        "md",
-        "orgize",
-        "asp",
-        "agent.semantic-protocols.languages.md.orgize",
+        &builtin_provider_manifest("md", "orgize"),
         &[".md", ".markdown"],
         &[],
         &["."],
@@ -471,3 +471,4 @@ fn allowed_prompt_decision(
         fields,
     }
 }
+use super::builtin_provider_manifest;

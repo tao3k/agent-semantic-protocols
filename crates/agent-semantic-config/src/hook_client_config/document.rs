@@ -477,7 +477,3 @@ impl Default for HookClientAgentOrgArtifactsArchiveWarningConfig {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/hook_client_config.rs"]
-mod hook_client_config_tests;

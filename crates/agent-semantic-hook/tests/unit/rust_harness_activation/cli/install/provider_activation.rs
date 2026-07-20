@@ -35,18 +35,6 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
             .iter()
             .any(|provider| provider.language_id == "python")
     );
-    assert!(
-        registry
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == "org")
-    );
-    assert!(
-        registry
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == "md")
-    );
     let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
     let python_profile = runtime_profiles
         .providers
@@ -247,10 +235,10 @@ fn cli_install_writes_executable_python_ingest_route() {
             "py-harness",
             "search",
             "ingest",
-            "items",
+            "owner",
             "tests",
             "--workspace",
-            "{projectRoot}",
+            "{workspace}",
             "--view",
             "seeds"
         ]

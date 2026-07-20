@@ -1,5 +1,4 @@
-#[path = "../../src/identity.rs"]
-mod identity;
+use agent_semantic_artifacts as identity;
 
 use identity::{
     ARTIFACT_IDENTITY_SCHEMA_ID, ARTIFACT_IDENTITY_SCHEMA_VERSION, ArtifactChildRef,

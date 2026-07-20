@@ -12,6 +12,20 @@ fn rust_search_facade_fans_out_multiple_trailing_scope_roots() {
         .expect("create protocol scope");
     write_echo_provider(&bin_dir, "rs-harness", "rs");
     write_activation(&root, &[provider("rust", Vec::new())]);
+    let activation_path =
+        agent_semantic_config::project_activation_path(&root).expect("activation path");
+    let activation = std::fs::read_to_string(&activation_path).expect("read activation");
+    let activation =
+        agent_semantic_hook::parse_hook_activation(&activation).expect("parse activation");
+    let rust_provider = activation
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "rust")
+        .expect("rust provider activation");
+    assert!(
+        !rust_provider.query_pack_descriptor.descriptor_id.is_empty(),
+        "rust provider activation must carry query-pack descriptor"
+    );
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))

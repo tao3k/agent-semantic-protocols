@@ -244,7 +244,7 @@ pub(super) fn collect_provider_graph_facts(
     let Some(query) = query else {
         return Ok(ProviderGraphFacts::default());
     };
-    let Some(intent) = query_requests_semantic_facts(context.provider, query) else {
+    let Some(intent) = query_requests_semantic_facts(context.provider, query)? else {
         return Ok(ProviderGraphFacts::default());
     };
     if !intent.requested {
@@ -384,8 +384,10 @@ fn candidate_path_for_provider(project_root: &Path, path: &str) -> String {
 pub(super) fn query_requests_semantic_facts(
     provider: &agent_semantic_hook::ActivatedProvider,
     query: &str,
-) -> Option<agent_semantic_search::SearchPipeSemanticFactsIntentDecision> {
-    let descriptor = provider.semantic_facts_descriptor.as_ref()?;
+) -> Result<Option<agent_semantic_search::SearchPipeSemanticFactsIntentDecision>, String> {
+    let Some(descriptor) = provider.semantic_facts_descriptor.as_ref() else {
+        return Ok(None);
+    };
     let intent_axes = descriptor
         .intent_axes
         .iter()
@@ -397,26 +399,35 @@ pub(super) fn query_requests_semantic_facts(
             },
         )
         .collect::<Vec<_>>();
-    Some(agent_semantic_search::search_pipe_semantic_facts_intent(
-        &provider.language_id,
-        query,
-        agent_semantic_search::SearchPipeSemanticFactsDescriptor {
-            descriptor_id: &descriptor.descriptor_id,
-            descriptor_version: &descriptor.descriptor_version,
-            intent_axes: &intent_axes,
-        },
-    ))
+    with_activated_provider_query_pack_descriptor(provider, |query_pack_descriptor| {
+        Some(agent_semantic_search::search_pipe_semantic_facts_intent(
+            &provider.language_id,
+            query,
+            query_pack_descriptor,
+            agent_semantic_search::SearchPipeSemanticFactsDescriptor {
+                descriptor_id: &descriptor.descriptor_id,
+                descriptor_version: &descriptor.descriptor_version,
+                intent_axes: &intent_axes,
+            },
+        ))
+    })
 }
 
 pub(super) fn with_query_pack_descriptor<R>(
     context: Option<&ProviderGraphFactsContext<'_>>,
-    f: impl FnOnce(Option<agent_semantic_search::SearchPipeQueryPackDescriptor<'_>>) -> R,
-) -> R {
-    let Some(descriptor) =
-        context.and_then(|context| context.provider.query_pack_descriptor.as_ref())
-    else {
-        return f(None);
-    };
+    f: impl FnOnce(agent_semantic_search::SearchPipeQueryPackDescriptor<'_>) -> R,
+) -> Result<R, String> {
+    let provider = context.map(|context| context.provider).ok_or_else(|| {
+        "provider query-pack descriptor is required for parser-owned search".to_string()
+    })?;
+    with_activated_provider_query_pack_descriptor(provider, f)
+}
+
+fn with_activated_provider_query_pack_descriptor<R>(
+    provider: &agent_semantic_hook::ActivatedProvider,
+    f: impl FnOnce(agent_semantic_search::SearchPipeQueryPackDescriptor<'_>) -> R,
+) -> Result<R, String> {
+    let descriptor = &provider.query_pack_descriptor;
     let term_role_overrides = descriptor
         .term_role_overrides
         .iter()
@@ -456,7 +467,7 @@ pub(super) fn with_query_pack_descriptor<R>(
             },
         )
         .collect::<Vec<_>>();
-    f(Some(agent_semantic_search::SearchPipeQueryPackDescriptor {
+    Ok(f(agent_semantic_search::SearchPipeQueryPackDescriptor {
         descriptor_id: &descriptor.descriptor_id,
         descriptor_version: &descriptor.descriptor_version,
         language_id: &descriptor.language_id,

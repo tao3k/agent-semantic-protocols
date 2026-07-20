@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-provider-doctor.v1.schema.json",
+  "title": "Semantic Provider Doctor Envelope v2",
+  "description": "Strict bootstrap envelope returned by a provider's `agent doctor --json` command. The embedded registry is independently validated as semantic language registry v2.",
+  "type": "object",
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "schemaAuthority",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "binary",
+    "execution",
+    "registrySchemaId",
+    "registrySchemaVersion",
+    "registry",
+    "registryDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-provider-doctor"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "schemaAuthority": {
+      "type": "string",
+      "const": "https://tao3k.github.io/agent-semantic-protocols/schemas/"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "binary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution": {
+      "$ref": "#/$defs/providerExecution"
+    },
+    "registrySchemaId": {
+      "const": "agent.semantic-protocols.semantic-language-registry"
+    },
+    "registrySchemaVersion": {
+      "const": "1"
+    },
+    "registry": {
+      "$ref": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-language-registry.v1.schema.json"
+    },
+    "registryDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "SHA-256 digest of the RFC 8785 JSON Canonicalization Scheme (JCS) bytes of the registry property. JSON Schema cannot compute this digest; the doctor-v2 consumer MUST verify it."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "providerExecution": {
+      "enum": [
+        "external-process",
+        "embedded"
+      ]
+    }
+  }
+}

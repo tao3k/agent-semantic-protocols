@@ -8,9 +8,11 @@ use agent_semantic_runtime::{
 };
 
 use super::agent_session_registry_args::SessionArgs;
+use super::agent_session_registry_command_parts::registered_session_is_reusable;
 use super::agent_session_registry_lifetime::resolve_session_lifetime;
 use super::agent_session_registry_render::{
-    SessionStatusReport, escape_field, print_json_report, print_session_row, print_status_report,
+    SessionStatusReport, escape_field, print_json_report, print_reuse_session, print_session_row,
+    print_status_report,
 };
 use super::agent_session_registry_rollout_activity::rollout_activity_report;
 use super::agent_session_registry_rollout_adopt::{
@@ -166,7 +168,7 @@ pub(super) fn lifecycle_audit_session(
     super::agent_session_registry_lifecycle_audit::lifecycle_audit_session(registry, args)
 }
 
-fn stale_invalid_session_should_be_idle(
+pub(in crate::command::agent_session_registry) fn stale_invalid_session_should_be_idle(
     record: &AgentSessionRecord,
     now: i64,
 ) -> Result<bool, String> {

@@ -188,7 +188,7 @@ pub(super) fn print_bootstrap_menu(
         println!("  do: {}", choice.platform_action);
         println!(
             "  expect: {}",
-            required_inputs_phrase(choice.required_inputs)
+            required_inputs_phrase(choice.required_inputs.len())
         );
         println!("  after: {:?}", choice.next_state);
         println!();

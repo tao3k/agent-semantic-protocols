@@ -95,86 +95,109 @@ fn provider_language_required(command: &str) -> String {
     )
 }
 
+fn provider_contract_status(
+    manifest: &agent_semantic_hook::ProviderManifest,
+) -> (&'static str, Vec<String>) {
+    let errors = agent_semantic_hook::validate_provider_manifest_contract(manifest);
+    let status = if errors.is_empty() {
+        "valid"
+    } else {
+        "invalid"
+    };
+    (status, errors)
+}
+
 fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
-    match ProviderRegistrySnapshot::load(&parsed.activation_root) {
-        Ok(snapshot) => match parsed.forwarded_args.as_slice() {
-            [command] if command == "list" => {
-                let providers = snapshot
-                    .providers
-                    .iter()
-                    .map(|provider| {
-                        serde_json::json!({
-                            "manifestId": provider.manifest_id,
-                            "manifestDigest": provider.manifest_digest,
-                            "namespace": provider.namespace,
-                            "languageId": provider.language_id.to_string(),
-                            "providerId": provider.provider_id.to_string(),
-                            "queryPackDescriptorId": provider.query_pack_descriptor.descriptor_id,
-                            "queryPackDescriptorVersion": provider.query_pack_descriptor.descriptor_version,
-                            "semanticFactsDescriptorId": provider
-                                .semantic_facts_descriptor
-                                .as_ref()
-                                .map(|descriptor| descriptor.descriptor_id.as_str()),
-                            "packetSchemaIds": provider
-                                .semantic_facts_descriptor
-                                .as_ref()
-                                .map(|descriptor| descriptor.packet_schema_ids.as_slice()),
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({
-                        "activationPath": snapshot.activation_path,
-                        "providers": providers,
-                    }))
-                    .map_err(|error| format!("serialize provider registry evidence: {error}"))?
-                );
-            }
-            [command, language_id] if command == "get" => {
-                let provider = snapshot
-                    .providers
-                    .iter()
-                    .find(|provider| provider.language_id.to_string() == *language_id)
-                    .ok_or_else(|| format!("no activated provider for language `{language_id}`"))?;
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({
-                        "activationPath": snapshot.activation_path,
-                        "manifest": {
-                            "manifestId": provider.manifest_id,
-                            "manifestDigest": provider.manifest_digest,
-                            "namespace": provider.namespace,
-                            "languageId": provider.language_id.to_string(),
-                            "providerId": provider.provider_id.to_string(),
-                            "binary": provider.binary,
-                            "execution": provider.execution.as_str(),
-                        },
-                        "queryPackDescriptor": provider.query_pack_descriptor,
-                        "semanticFactsDescriptor": provider.semantic_facts_descriptor,
-                    }))
-                    .map_err(|error| format!("serialize provider manifest evidence: {error}"))?
-                );
-            }
-            _ => {
-                return Err(
-                    "usage: asp providers <list|get <language-id>>; provider evidence requires an explicit operation"
-                        .to_string(),
-                );
-            }
-        },
-        Err(error) => {
-            println!("[asp-providers] activation=missing providers=0");
-            println!("|reason provider-activation-unavailable");
-            println!("|cmd install=asp install plugin --codex .");
-            println!("|cmd guide=asp guide");
-            eprintln!("[asp-providers] activation unavailable: {error}");
+    let requested_language = match parsed.forwarded_args.as_slice() {
+        [command] if command == "list" => None,
+        [command, language_id] if command == "get" => Some(language_id.as_str()),
+        _ => {
+            return Err(
+                "usage: asp providers <list|get <language-id>>; provider evidence requires an explicit operation"
+                    .to_string(),
+            );
         }
+    };
+    let manifests = agent_semantic_hook::builtin_provider_manifests();
+    let activation = ProviderRegistrySnapshot::load(&parsed.activation_root);
+    let activation_evidence = |language_id: &str, provider_id: &str| match &activation {
+        Ok(snapshot) => {
+            let provider = snapshot.providers.iter().find(|provider| {
+                provider.language_id.to_string() == language_id
+                    && provider.provider_id.to_string() == provider_id
+            });
+            serde_json::json!({
+                "status": if provider.is_some() { "activated" } else { "not-activated" },
+                "activationPath": snapshot.activation_path,
+                "provider": provider.map(|provider| serde_json::json!({
+                    "manifestId": provider.manifest_id,
+                    "manifestDigest": provider.manifest_digest,
+                    "binary": provider.binary,
+                    "execution": provider.execution.as_str(),
+                })),
+            })
+        }
+        Err(error) => serde_json::json!({
+            "status": "unavailable",
+            "reasonKind": "provider-registry-unavailable",
+            "message": error,
+        }),
+    };
+
+    if let Some(language_id) = requested_language {
+        let manifest = manifests
+            .iter()
+            .find(|manifest| manifest.language_id == language_id)
+            .ok_or_else(|| format!("no builtin provider manifest for language `{language_id}`"))?;
+        let query_pack_descriptor = &manifest.query_pack_descriptor;
+        let (contract_status, contract_errors) = provider_contract_status(manifest);
+        let manifest_digest = agent_semantic_hook::provider_manifest_digest(manifest)
+            .map_err(|error| format!("digest builtin provider manifest: {error}"))?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "manifest": manifest,
+                "manifestDigest": manifest_digest,
+                "queryPackDescriptor": query_pack_descriptor,
+                "searchCapabilities": manifest.search_capabilities,
+                "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+                "contractStatus": contract_status,
+                "contractErrors": contract_errors,
+                "activation": activation_evidence(&manifest.language_id, &manifest.provider_id),
+            }))
+            .map_err(|error| format!("serialize provider manifest evidence: {error}"))?
+        );
+    } else {
+        let providers = manifests
+            .iter()
+            .map(|manifest| {
+                let query_pack_descriptor = &manifest.query_pack_descriptor;
+                let (contract_status, contract_errors) = provider_contract_status(manifest);
+                let manifest_digest = agent_semantic_hook::provider_manifest_digest(manifest)
+                    .map_err(|error| format!("digest builtin provider manifest: {error}"))?;
+                Ok(serde_json::json!({
+                    "manifest": manifest,
+                    "manifestDigest": manifest_digest,
+                    "queryPackDescriptor": query_pack_descriptor,
+                    "searchCapabilities": manifest.search_capabilities,
+                    "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+                    "contractStatus": contract_status,
+                    "contractErrors": contract_errors,
+                    "activation": activation_evidence(&manifest.language_id, &manifest.provider_id),
+                }))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({ "providers": providers }))
+                .map_err(|error| format!("serialize provider registry evidence: {error}"))?
+        );
     }
     Ok(())
 }
 
 fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
+    validate_doctor_args(&parsed)?;
     match ProviderRegistrySnapshot::load(&parsed.activation_root) {
         Ok(snapshot) => println!(
             "[asp-doctor] status=ok backend=local activation={} providers={} server=not-required",
@@ -197,6 +220,19 @@ fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
     println!("{}", crate::tools_cli::tools_summary_line());
     println!("|cloud status=disabled reason=local-default privateServer=optional");
     Ok(())
+}
+
+const DOCTOR_USAGE: &str = "usage: asp doctor\nrooted health: asp tools doctor [PROJECT_ROOT]";
+
+fn validate_doctor_args(parsed: &ParsedArgs) -> Result<(), String> {
+    if parsed.forwarded_args.is_empty()
+        && !parsed.receipt_json
+        && parsed.frontier_receipt_out.is_none()
+    {
+        Ok(())
+    } else {
+        Err(DOCTOR_USAGE.to_string())
+    }
 }
 
 fn run_cloud(parsed: ParsedArgs) -> Result<(), String> {

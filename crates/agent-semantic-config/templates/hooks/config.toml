@@ -99,13 +99,10 @@ queryFlags = ["--term"]
 unprojectedQuery = true
 
 [aspCommandIntentPolicy.exactEvidence]
-queryProjectionFlags = ["--code", "--content", "--names-only"]
+queryProjectionFlags = ["--code", "--content", "--verbatim", "--names-only"]
 queryProjectionViews = ["metadata"]
 selectorKinds = ["item"]
 requireSameLanguage = true
-
-[aspCommandIntentPolicy.directReadFallback]
-fromHookValues = ["direct-source-read"]
 
 [aspCommandIntentPolicy.invalidEvidence]
 rejectProjectedQueryWithoutExactSelector = true

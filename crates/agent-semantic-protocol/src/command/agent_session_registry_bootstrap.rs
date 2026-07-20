@@ -2,18 +2,15 @@
 //! owns evidence verdicts, and target absence precedes runtime readiness.
 
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_client_db::AgentSessionRecord;
 use agent_semantic_client_db::agent_session_registry::{
-    AgentSessionInteractiveMenu, AgentSessionLookupRequest, AgentSessionRegistry,
-    ResidentChildBootstrapMenuInput, resident_child_bootstrap_menu,
+    AgentSessionLookupRequest, AgentSessionRegistry, ResidentChildBootstrapMenuInput,
+    agent_session_unix_timestamp, resident_child_bootstrap_menu,
     resident_child_live_transport_gate, resident_child_runtime_repair_menu,
     resident_child_runtime_verified_menu,
 };
 
 use super::{SessionArgs, project_session_scope_id, resolved_root_session_id};
-use agent_semantic_client_db::agent_session_registry::AgentSessionHostRequirement;
 #[path = "agent_session_registry_binding.rs"]
 pub(in crate::command) mod binding;
 #[path = "agent_session_registry_bootstrap_parts/choice_construction.rs"]
@@ -45,7 +42,7 @@ pub(super) fn bootstrap_session(
     let name = args.name.as_deref().unwrap_or("asp-explore");
     reject_resident_child_bootstrap(registry, &project_id, name)?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
-    let now = unix_timestamp()?;
+    let now = agent_session_unix_timestamp()?;
     let host_typed_spawn_observation = root_session_id
         .as_deref()
         .map(|root_session_id| {

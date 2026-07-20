@@ -1,4 +1,7 @@
-use crate::unit::provider_command::facade::pipe::pipe_frontier::rust_dependency_topology::support::{assert_manifest_dependency, rust_dependency_graph_request_payload, write_dependency_topology_provider};
+use crate::provider_command::facade::pipe::pipe_frontier::rust_dependency_topology::support::{
+    assert_manifest_dependency, rust_dependency_graph_request_payload,
+    write_dependency_topology_provider,
+};
 use crate::provider_command::support;
 #[test]
 fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
@@ -36,6 +39,7 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
             Vec::new(),
         )],
     );
+    use crate::provider_command::facade::pipe::assert_graph_turbo_request_contract;
 
     let output = support::asp_command(&root)
         .env("PATH", support::prepend_path(&bin_dir))
@@ -134,3 +138,4 @@ fn search_pipe_graph_request_reuses_cached_manifest_dependency_seed() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+use serde_json::Value;

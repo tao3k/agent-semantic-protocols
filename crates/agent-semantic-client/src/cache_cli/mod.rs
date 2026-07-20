@@ -7,7 +7,6 @@ mod request;
 pub(crate) use request::search_cache_forwarded_args;
 mod structural_index_import;
 mod writeback;
-mod writeback_analysis_metadata;
 mod writeback_artifact_events;
 mod writeback_common;
 mod writeback_generation;

@@ -1,8 +1,6 @@
 //! Source-access, direct-read, and raw-search classifier routes.
 
-use crate::command::{
-    CommandIntent, command_intent, search_query_route_for_selector, selector_query_route,
-};
+use crate::command::{CommandIntent, command_intent};
 use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
 use crate::{
     ActivatedProvider, DecisionRoute, DecisionRouteKind, HookDecision, HookRuntime,
@@ -405,60 +403,19 @@ fn direct_read_route(
     selector_kind: SourceSelectorKind,
 ) -> DecisionRoute {
     match selector_kind {
-        SourceSelectorKind::ExactPath => direct_read_query_route(provider, path),
-        SourceSelectorKind::Pattern => {
-            let route_context = provider.route_path_context(path);
-            search_query_route_for_selector(
-                provider,
-                &route_context.selector,
-                &route_context.project_root,
-                &[],
-            )
-            .unwrap_or_else(|| {
-                provider.route_from_template(
-                    DecisionRouteKind::Prime,
-                    &provider.routes.prime,
-                    None,
-                    None,
-                )
-            })
-        }
+        SourceSelectorKind::ExactPath => provider.route_from_template(
+            DecisionRouteKind::Owner,
+            &provider.routes.owner,
+            Some(path),
+            Some(path),
+        ),
+        SourceSelectorKind::Pattern => provider.route_from_template(
+            DecisionRouteKind::Lexical,
+            &provider.routes.lexical,
+            Some(path),
+            Some(path),
+        ),
     }
-}
-
-fn direct_read_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
-    let route_context = provider.route_path_context(path);
-    let selector = route_context.selector;
-    let workspace = route_context.project_root;
-    let mut route = provider
-        .routes
-        .query
-        .as_ref()
-        .map(|template| {
-            provider.route_from_template(
-                DecisionRouteKind::Query,
-                template,
-                Some(&selector),
-                Some(&workspace),
-            )
-        })
-        .unwrap_or_else(|| selector_query_route(provider, path));
-    let output_flag = match route.language_id.as_str() {
-        "md" | "markdown" | "org" => "--content",
-        _ => "--code",
-    };
-    route.kind = DecisionRouteKind::Query;
-    route.argv = vec![
-        route.binary.clone(),
-        route.language_id.clone(),
-        "query".to_string(),
-        "--selector".to_string(),
-        selector,
-        "--workspace".to_string(),
-        workspace,
-        output_flag.to_string(),
-    ];
-    route
 }
 
 fn source_access_ingest_route(provider: &ActivatedProvider) -> DecisionRoute {

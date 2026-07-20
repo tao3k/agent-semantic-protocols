@@ -26,8 +26,17 @@ pub(super) fn asp_search_candidate_contract_cold_functional_path_stays_inside_sc
         },
         &terms,
     );
+    let base_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+        "src/lib.rs",
+        "a".repeat(64),
+    )]);
     let overlay_hits = agent_semantic_search::search_lexical_overlay(
-        agent_semantic_search::LexicalOverlaySearchRequest::new("overlay fixture").document(
+        agent_semantic_search::LexicalOverlaySearchRequest::new(
+            "overlay fixture",
+            base_snapshot,
+            "b".repeat(64),
+        )
+        .document(
             agent_semantic_search::LexicalOverlayDocument::new(
                 "src/lib.rs",
                 "rust://src/lib.rs#item/function/overlay_fixture",
@@ -37,7 +46,7 @@ pub(super) fn asp_search_candidate_contract_cold_functional_path_stays_inside_sc
         ),
     );
     let overlay_candidate = agent_semantic_search::lexical_overlay_hit_to_search_candidate(
-        &overlay_hits[0],
+        &overlay_hits.hits[0],
         "session-1/base-1",
     );
     let ranked_candidates = agent_semantic_search::merge_search_candidates(vec![

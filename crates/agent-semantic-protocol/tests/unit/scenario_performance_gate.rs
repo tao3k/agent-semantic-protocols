@@ -48,7 +48,5 @@ mod search_frame;
 mod search_pipe_gates;
 #[path = "scenario_performance_gate/shared.rs"]
 mod shared;
-#[path = "scenario_performance_gate/source_index.rs"]
-mod source_index;
 #[path = "scenario_performance_gate/turso_pressure.rs"]
 mod turso_pressure;

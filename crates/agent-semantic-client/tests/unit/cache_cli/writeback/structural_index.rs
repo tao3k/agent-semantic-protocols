@@ -15,6 +15,14 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
         .expect("cache test lock");
     let root = temp_root("structural-index-writeback");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src")).expect("create source directory");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn parse_config(input: &str) -> &str { input }\n",
+    )
+    .expect("write lib source");
+    std::fs::write(root.join("src/unchanged.rs"), "fn cached_helper() {}\n")
+        .expect("write unchanged source");
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join("activation.json"),
         providers: vec![rust_provider()],
@@ -78,10 +86,23 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
         .expect("cache test lock");
     let root = temp_root("gerbil-structural-index-writeback");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src/commands")).expect("create source directory");
+    std::fs::write(
+        root.join("src/commands/search.ss"),
+        "(def (search-main) #t)\n",
+    )
+    .expect("write source file");
+    let mut provider = gerbil_scheme_provider();
+    provider.source_roots = vec!["src".to_string()];
+    provider.source_extensions = vec!["ss".to_string()];
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join("activation.json"),
-        providers: vec![gerbil_scheme_provider()],
+        providers: vec![provider],
     };
+    let current_snapshot =
+        crate::source_index::current_source_index_snapshot_with_registry(&root, &snapshot)
+            .expect("capture current Gerbil source snapshot");
+    assert!(current_snapshot.source_snapshot.leaf_count > 0);
     let request = ClientRequest::new(ClientMethod::Search, &root)
         .with_language(LanguageId::from("gerbil-scheme"))
         .with_forwarded_args(vec!["structural".to_string(), "--json".to_string()]);

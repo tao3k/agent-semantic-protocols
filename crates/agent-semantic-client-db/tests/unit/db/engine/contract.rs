@@ -91,6 +91,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         engine.inspect_backend().status,
         agent_semantic_client_db::ClientDbStatus::Missing
     );
+    let expected_snapshot_root = "a".repeat(64);
+    let expected_index_artifact_digest = "b".repeat(64);
     let source_index_lookup = ClientDbEngine::lookup_source_index_from_client_dir(
         agent_semantic_client_db::ClientDbSourceIndexClientDirLookupRequest {
             client_dir: &state.paths.client_dir,
@@ -98,6 +100,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
             language_id: None,
             query_keys: Vec::new(),
             limit: 8,
+            expected_snapshot_root: &expected_snapshot_root,
+            expected_index_artifact_digest: &expected_index_artifact_digest,
         },
     )
     .expect("lookup missing source-index control DB");
@@ -118,6 +122,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
                 language_id: None,
                 query_keys: Vec::new(),
                 limit: 8,
+                expected_snapshot_root: &expected_snapshot_root,
+                expected_index_artifact_digest: &expected_index_artifact_digest,
             },
         )
         .expect("lookup missing source-index control DB from project root");

@@ -14,7 +14,6 @@ use crate::types::normalized_project_root;
 
 use crate::engine::{
     turso::connect_turso_client_db,
-    turso::turso_table_column_exists,
     turso_operation_lock::acquire_turso_operation_lock,
     turso_statement::{
         execute_turso_statement_with_lock_retry, run_turso_operation_with_lock_retry,
@@ -26,22 +25,6 @@ pub(in crate::engine) const TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION: i64 = 3;
 pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
     connection: &turso::Connection,
 ) -> Result<(), String> {
-    super::schema_layout::retire_noncanonical_posting_layout(connection).await?;
-    if !turso_table_column_exists(connection, "asp_source_index_owner_v1", "generation_id").await? {
-        for table in [
-            "asp_source_index_token_owner_v1",
-            "asp_source_index_owner_v1",
-            "asp_source_index_layout_v1",
-            "asp_source_index_scope_v1",
-        ] {
-            execute_turso_statement_with_lock_retry(
-                connection,
-                &format!("DROP TABLE IF EXISTS {table}"),
-                "failed to retire pre-release non-generational source-index schema",
-            )
-            .await?;
-        }
-    }
     for statement in [
         "CREATE TABLE IF NOT EXISTS asp_source_index_scope_v1 (
             project_root TEXT NOT NULL,
@@ -98,63 +81,10 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
         )
         .await?;
     }
-    if !turso_table_column_exists(connection, "asp_source_index_owner_v1", "term_tokens_json")
-        .await?
-    {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "ALTER TABLE asp_source_index_owner_v1 ADD COLUMN term_tokens_json TEXT NOT NULL DEFAULT '[]'",
-            "failed to migrate Turso source-index owner token projection",
-        )
-        .await?;
-    }
-    if !turso_table_column_exists(
-        connection,
-        "asp_source_index_scope_v1",
-        "source_snapshot_json",
-    )
-    .await?
-    {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "ALTER TABLE asp_source_index_scope_v1 ADD COLUMN source_snapshot_json TEXT NOT NULL DEFAULT ''",
-            "failed to migrate Turso source-index source snapshot evidence",
-        )
-        .await?;
-    }
-    if !turso_table_column_exists(
-        connection,
-        "asp_source_index_scope_v1",
-        "selector_fingerprint",
-    )
-    .await?
-    {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "ALTER TABLE asp_source_index_scope_v1 ADD COLUMN selector_fingerprint TEXT NOT NULL DEFAULT ''",
-            "failed to migrate Turso source-index selector fingerprint",
-        )
-        .await?;
-    }
-    if !turso_table_column_exists(
-        connection,
-        "asp_source_index_layout_v1",
-        "token_projection_generation_id",
-    )
-    .await?
-    {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "ALTER TABLE asp_source_index_layout_v1 ADD COLUMN token_projection_generation_id TEXT NOT NULL DEFAULT ''",
-            "failed to migrate Turso source-index token projection generation",
-        )
-        .await?;
-    }
 
     for statement in [
         "CREATE INDEX IF NOT EXISTS asp_source_index_owner_v1_lookup_idx
             ON asp_source_index_owner_v1(project_root, schema_id, schema_version, generation_id, language_id, owner_path)",
-        "DROP INDEX IF EXISTS asp_source_index_token_owner_v1_token_idx",
     ] {
         execute_turso_statement_with_lock_retry(
             connection,
@@ -167,15 +97,25 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
 }
 
 async fn ensure_turso_source_index_schema(connection: &turso::Connection) -> Result<bool, String> {
-    match run_turso_operation_with_lock_retry(
+    match validate_turso_source_index_schema(connection).await {
+        Ok(()) => Ok(false),
+        Err(error) if error.contains("no such table") || error.contains("no such column") => {
+            reset_turso_source_index_schema(connection).await?;
+            bootstrap_turso_source_index_schema(connection).await?;
+            validate_turso_source_index_schema(connection).await?;
+            Ok(true)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn validate_turso_source_index_schema(connection: &turso::Connection) -> Result<(), String> {
+    run_turso_operation_with_lock_retry(
         || async {
             connection
-                .query("SELECT 1 FROM asp_source_index_layout_v1 LIMIT 1", ())
-                .await
-                .map_err(|error| error.to_string())?;
-            connection
                 .query(
-                    "SELECT token_projection_generation_id
+                    "SELECT project_root, schema_id, schema_version,
+                            term_projection_version, token_projection_generation_id
                      FROM asp_source_index_layout_v1
                      LIMIT 1",
                     (),
@@ -184,7 +124,21 @@ async fn ensure_turso_source_index_schema(connection: &turso::Connection) -> Res
                 .map_err(|error| error.to_string())?;
             connection
                 .query(
-                    "SELECT source_snapshot_json
+                    "SELECT project_root, schema_id, schema_version, generation_id,
+                            file_hash, owner_path, language_id, provider_id, source_kind,
+                            line_count, query_keys_json, selector_facts_json,
+                            term_tokens_json, selector_count
+                     FROM asp_source_index_owner_v1
+                     LIMIT 1",
+                    (),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            connection
+                .query(
+                    "SELECT project_root, schema_id, schema_version, generation_id,
+                            file_hashes_json, source_snapshot_json, selector_fingerprint,
+                            owner_count, selector_count, updated_at_ms
                      FROM asp_source_index_scope_v1
                      LIMIT 1",
                     (),
@@ -192,25 +146,37 @@ async fn ensure_turso_source_index_schema(connection: &turso::Connection) -> Res
                 .await
                 .map_err(|error| error.to_string())?;
             connection
-                .query("SELECT 1 FROM asp_source_index_token_v1 LIMIT 1", ())
-                .await
-                .map_err(|error| error.to_string())?;
-            connection
-                .query("SELECT 1 FROM asp_source_index_token_owner_v1 LIMIT 1", ())
+                .query(
+                    "SELECT project_root, schema_id, schema_version, generation_id,
+                            token, owner_path
+                     FROM asp_source_index_token_owner_v1
+                     LIMIT 1",
+                    (),
+                )
                 .await
                 .map_err(|error| error.to_string())
         },
         "failed to inspect Turso source-index schema layout",
     )
-    .await
-    {
-        Ok(_) => Ok(false),
-        Err(error) if error.contains("no such table") || error.contains("no such column") => {
-            bootstrap_turso_source_index_schema(connection).await?;
-            Ok(true)
-        }
-        Err(error) => Err(error),
+    .await?;
+    Ok(())
+}
+
+async fn reset_turso_source_index_schema(connection: &turso::Connection) -> Result<(), String> {
+    for table in [
+        "asp_source_index_token_owner_v1",
+        "asp_source_index_owner_v1",
+        "asp_source_index_layout_v1",
+        "asp_source_index_scope_v1",
+    ] {
+        execute_turso_statement_with_lock_retry(
+            connection,
+            &format!("DROP TABLE IF EXISTS {table}"),
+            "failed to reset noncanonical Turso source-index schema",
+        )
+        .await?;
     }
+    Ok(())
 }
 
 fn source_index_db_trace(stage: &str, started: std::time::Instant) {
@@ -245,10 +211,10 @@ pub async fn refresh_turso_source_index_import(
     source_index_db_trace("base-bootstrap-complete", trace_started);
     let connection = connect_turso_client_db(db_path).await?;
     source_index_db_trace("write-connection-open", trace_started);
-    let source_index_schema_migrated = ensure_turso_source_index_schema(&connection).await?;
+    let source_index_schema_rebuilt = ensure_turso_source_index_schema(&connection).await?;
     source_index_db_trace(
-        if source_index_schema_migrated {
-            "source-index-schema-migrated"
+        if source_index_schema_rebuilt {
+            "source-index-schema-rebuilt"
         } else {
             "source-index-schema-verified"
         },

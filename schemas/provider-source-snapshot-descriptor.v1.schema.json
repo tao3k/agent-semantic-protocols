@@ -11,6 +11,8 @@
     "languageId",
     "packetSchemaId",
     "exactSourcePacketSchemaId",
+    "sourceOverlaySchemaId",
+    "derivedArtifactEvidenceSchemaId",
     "algorithm",
     "authority",
     "exactSelectorResolution",
@@ -33,6 +35,12 @@
     },
     "exactSourcePacketSchemaId": {
       "const": "asp.exact-source-query-result.v1"
+    },
+    "sourceOverlaySchemaId": {
+      "const": "asp.source-overlay.v1"
+    },
+    "derivedArtifactEvidenceSchemaId": {
+      "const": "asp.derived-source-artifact-evidence.v1"
     },
     "algorithm": {
       "const": "blake3-merkle-v1"

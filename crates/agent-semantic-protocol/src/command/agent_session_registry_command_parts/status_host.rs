@@ -24,9 +24,10 @@ use crate::command::agent_session_registry::agent_session_registry_validation::{
     validate_recent_session_profile, validate_session_profile,
 };
 use crate::command::agent_session_registry::normalized_metadata_with_roles;
+use crate::command::agent_session_registry::stale_invalid_session_should_be_idle;
 use std::path::Path;
 
-pub(super) fn status_session(
+pub(in crate::command::agent_session_registry) fn status_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
     project_root: &Path,
@@ -291,7 +292,7 @@ pub(super) fn status_session(
     print_status_report(report, args.json)
 }
 
-pub(super) fn registered_session_is_reusable(
+pub(in crate::command::agent_session_registry) fn registered_session_is_reusable(
     registry: &AgentSessionRegistry,
     record: &AgentSessionRecord,
     now: i64,

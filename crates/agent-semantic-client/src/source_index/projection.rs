@@ -6,7 +6,7 @@ use agent_semantic_client_core::{SemanticSchemaId, SemanticSchemaVersion};
 use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
     ClientDbLanguageProjection, ClientDbLanguageProjectionImportRequest,
-    client_db_source_index_generation_id, source_index_import_from_language_projection,
+    source_index_import_from_language_projection,
 };
 
 /// Result of validating and importing one parser-owned language projection.
@@ -31,24 +31,15 @@ pub fn import_language_projection(
     let previous_file_hashes =
         db_session.latest_source_index_file_hashes(project_root, &schema_id, &schema_version)?;
     let registry_fingerprint = language_projection_registry_fingerprint(&projection);
-    let import =
+    let prepared =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
-            generation_id: client_db_source_index_generation_id(),
             project_root: project_root.to_path_buf(),
             previous_file_hashes: previous_file_hashes.clone(),
             registry_fingerprint: registry_fingerprint.clone(),
             projection: projection.clone(),
         })?;
-    let workspace_snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(
-        import
-            .file_hashes
-            .iter()
-            .map(|file_hash| (file_hash.path.as_str(), file_hash.sha256.as_str())),
-    );
-    let source_snapshot = workspace_snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
-        agent_semantic_artifacts::provider_digest(registry_fingerprint.as_bytes()),
-    );
+    let import = prepared.source_index;
+    let source_snapshot = prepared.source_snapshot;
     if db_session
         .reusable_source_index_generation(
             project_root,

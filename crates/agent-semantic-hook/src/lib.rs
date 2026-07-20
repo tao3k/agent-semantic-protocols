@@ -39,6 +39,7 @@ mod protocol_activation;
 mod provider_manifest;
 mod provider_registry;
 pub use provider_registry::registered_language_ids;
+pub use provider_registry::{materialize_provider_routes, semantic_registry_digest};
 mod runtime_profile;
 pub mod source_access;
 mod source_dump_range;
@@ -83,12 +84,12 @@ pub use hook_config::{
 };
 pub use hook_config_global::default_global_client_config_path;
 pub use protocol::{
-    ActionPolicy, AgentHookError, CommandTemplate, DecisionKind, DecisionRoute, DecisionRouteKind,
-    DecisionSubject, HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION,
-    HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
-    HookDecision, HookPolicy, HookRoutes, PROVIDER_MANIFEST_SCHEMA_ID,
-    PROVIDER_MANIFEST_SCHEMA_VERSION, ReasonKind, StdinMode, parse_payload,
-    render_platform_response, subagent_deny_message,
+    ActionPolicy, AgentHookError, CANONICAL_SCHEMA_AUTHORITY, CommandTemplate, DecisionKind,
+    DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_ACTIVATION_SCHEMA_ID,
+    HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
+    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, HookPolicy, HookRoutes,
+    PROVIDER_MANIFEST_SCHEMA_ID, PROVIDER_MANIFEST_SCHEMA_VERSION, ReasonKind, StdinMode,
+    parse_payload, render_platform_response, subagent_deny_message,
 };
 pub use protocol_activation::digest::provider_manifest_digest;
 pub(crate) use protocol_activation::protocol_activation_manifest::SourceSelectorKind;
@@ -101,7 +102,7 @@ pub use protocol_activation::protocol_activation_manifest::{
 pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{
     ProviderCommandSelection, build_default_activation, builtin_provider_manifests,
-    project_agent_config_path, provider_command_selections,
+    project_agent_config_path, provider_command_selections, validate_provider_manifest_contract,
 };
 pub use runtime_profile::{
     RUNTIME_PROFILES_PROTOCOL_ID, RUNTIME_PROFILES_PROTOCOL_VERSION, RUNTIME_PROFILES_SCHEMA_ID,
@@ -120,3 +121,5 @@ pub use read_only_subagent::{
     HookSubagentPermissionContext, classify_read_only_subagent_receipt,
     classify_read_only_subagent_write,
 };
+#[cfg(test)]
+extern crate self as agent_semantic_hook;

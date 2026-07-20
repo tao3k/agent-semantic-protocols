@@ -31,6 +31,7 @@ pub struct ResolvedProvider {
     pub binary: String,
     pub execution: ProviderExecution,
     pub provider_command_prefix: Vec<String>,
+    pub execution_command_digest: String,
     pub runtime_command_argv: Option<Vec<String>>,
     pub runtime_profile_status: Option<RuntimeProfileStatus>,
     pub package_roots: Vec<String>,
@@ -38,6 +39,7 @@ pub struct ResolvedProvider {
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
     pub ignored_path_prefixes: Vec<String>,
+    pub search_capabilities: agent_semantic_hook::ProviderSearchCapabilities,
     pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
     pub semantic_facts_descriptor: Option<agent_semantic_hook::ProviderSemanticFactsDescriptor>,
 }
@@ -91,12 +93,6 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
     type Error = String;
 
     fn try_from(provider: &ActivatedProvider) -> Result<Self, Self::Error> {
-        let query_pack = provider.query_pack_descriptor.as_ref().ok_or_else(|| {
-            format!(
-                "activated provider {} is missing required query-pack evidence",
-                provider.manifest_id
-            )
-        })?;
         Ok(Self {
             manifest_id: provider.manifest_id.clone(),
             manifest_digest: provider.manifest_digest.clone(),
@@ -106,6 +102,7 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             binary: provider.binary.clone(),
             execution: provider.execution,
             provider_command_prefix: provider.provider_command_prefix.clone(),
+            execution_command_digest: provider.execution_command_digest.clone(),
             runtime_command_argv: None,
             runtime_profile_status: None,
             package_roots: provider.package_roots.clone(),
@@ -113,7 +110,8 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             config_files: provider.config_files.clone(),
             source_extensions: provider.source_extensions.clone(),
             ignored_path_prefixes: provider.ignored_path_prefixes.clone(),
-            query_pack_descriptor: query_pack.clone(),
+            search_capabilities: provider.search_capabilities.clone(),
+            query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
         })
     }
@@ -346,28 +344,19 @@ fn provider_fingerprint(provider: &ResolvedProvider) -> String {
             provider.ignored_path_prefixes.join("\u{1f}")
         ),
         format!(
-            "queryPack={}:{}:{}",
-            provider.query_pack_descriptor.descriptor_id,
-            provider.query_pack_descriptor.descriptor_version,
-            provider.query_pack_descriptor.language_id
+            "searchCapabilities={}",
+            serde_json::to_string(&provider.search_capabilities)
+                .expect("search-capabilities serialization must be infallible")
         ),
         format!(
-            "queryPackRecipes={}",
-            provider
-                .query_pack_descriptor
-                .recipes
-                .iter()
-                .map(|recipe| recipe.recipe_id.as_str())
-                .collect::<Vec<_>>()
-                .join("\u{1f}")
+            "queryPackDescriptor={}",
+            serde_json::to_string(&provider.query_pack_descriptor)
+                .expect("query-pack descriptor serialization must be infallible")
         ),
         format!(
-            "semanticSchemas={}",
-            provider
-                .semantic_facts_descriptor
-                .as_ref()
-                .map(|descriptor| descriptor.packet_schema_ids.join("\u{1f}"))
-                .unwrap_or_default()
+            "semanticFactsDescriptor={}",
+            serde_json::to_string(&provider.semantic_facts_descriptor)
+                .expect("semantic-facts descriptor serialization must be infallible")
         ),
     ]
     .join("\u{1e}")

@@ -7,10 +7,6 @@ use super::request::{has_tree_sitter_query, request_export_method};
 pub(super) fn request_prompt_output_writeback_method(
     request: &ClientRequest,
 ) -> Option<CacheExportMethod> {
-    if request.is_hook_direct_source_read() {
-        return None;
-    }
-
     match request.method {
         ClientMethod::Search if is_replayable_search_prompt_output(&request.forwarded_args) => {
             request_export_method(request)

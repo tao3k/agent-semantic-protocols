@@ -35,3 +35,36 @@ impl Drop for IsolatedAspStateHome {
         }
     }
 }
+pub(super) fn resolved_provider() -> crate::ResolvedProvider {
+    let manifest = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == "rust")
+        .expect("builtin Rust provider manifest");
+    let manifest_digest =
+        agent_semantic_hook::provider_manifest_digest(&manifest).expect("Rust manifest digest");
+    let routes =
+        agent_semantic_hook::materialize_provider_routes(&manifest).expect("Rust provider routes");
+    let provider = agent_semantic_hook::ActivatedProvider {
+        manifest_id: manifest.manifest_id,
+        manifest_digest,
+        language_id: manifest.language_id,
+        provider_id: manifest.provider_id,
+        binary: manifest.binary,
+        execution: manifest.execution,
+        provider_command_prefix: vec!["rs-harness".to_string()],
+        namespace: manifest.namespace,
+        package_roots: vec![".".to_string()],
+        source_extensions: manifest.source.default_extensions,
+        config_files: manifest.source.default_config_files,
+        source_roots: manifest.source.default_source_roots,
+        ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+        search_capabilities: manifest.search_capabilities,
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+        query_pack_descriptor: manifest.query_pack_descriptor,
+        semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
+        policy: manifest.policy,
+        routes,
+    };
+
+    crate::ResolvedProvider::try_from(&provider).expect("canonical activated Rust provider")
+}

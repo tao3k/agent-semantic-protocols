@@ -1,4 +1,4 @@
-use agent_semantic_client_db::agent_session_registry::interactive_loop::AgentSessionHostRequirement;
+use agent_semantic_client_db::agent_session_registry::AgentSessionHostRequirement;
 use agent_semantic_client_db::{AgentSessionRecord, AgentSessionRegistry};
 
 pub(super) fn reject_resident_child_bootstrap(
@@ -10,11 +10,11 @@ pub(super) fn reject_resident_child_bootstrap(
         .map_err(|error| format!("failed to read current directory: {error}"))?;
     let runtime_session = agent_semantic_runtime::current_agent_runtime_session();
     let non_root_session = runtime_session.as_ref().is_some_and(|session| {
-        crate::command::agent_session_registry_state::current_root_session_id()
+        crate::command::agent_session_registry::agent_session_registry_state::current_root_session_id()
             .is_some_and(|root_session_id| root_session_id != session.id)
     });
     if non_root_session
-        || crate::command::agent_session_registry_state::current_resident_child_identity_proof(
+        || crate::command::agent_session_registry::agent_session_registry_state::current_resident_child_identity_proof(
             &project_root,
             name,
             "",

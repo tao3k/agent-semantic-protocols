@@ -38,9 +38,8 @@ pub use turso::{
 };
 pub use turso_evidence_graph::{
     TURSO_EDGE_TABLE, TURSO_ENTITY_TABLE, TursoClientDbEvidenceGraphPersistReport,
-    TursoClientDbGraphEdge, TursoClientDbGraphEntity, list_turso_graph_edges,
-    list_turso_graph_entities, persist_turso_evidence_graph, upsert_turso_graph_edge,
-    upsert_turso_graph_entity,
+    TursoClientDbGraphEdge, TursoClientDbGraphEntity, graph_artifact_digest_for_snapshot,
+    list_turso_graph_edges, list_turso_graph_entities, persist_turso_evidence_graph,
 };
 pub use turso_route_receipt::{
     TursoClientDbRouteReceipt, list_turso_route_receipts, upsert_turso_route_receipt,

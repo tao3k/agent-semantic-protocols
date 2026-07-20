@@ -10,3 +10,5 @@ mod selector_code;
 mod source_index_receipts;
 #[path = "lexical_cases/support.rs"]
 mod support;
+
+use graph_routes::assert_builtin_graph_route;

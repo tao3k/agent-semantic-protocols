@@ -9,6 +9,14 @@ use agent_semantic_client_db::{
 
 #[test]
 fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
+    let snapshot = agent_semantic_content_identity::SourceSnapshotEvidence::new(
+        "sha256:test-source-snapshot",
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        1,
+        "sha256:test-provider",
+    );
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot);
     let lookup =
         search_pipe_source_index_lookup_from_client_result(ClientDbSourceIndexLookupResult {
             db_path: PathBuf::from("live/client/client.turso"),
@@ -28,6 +36,8 @@ fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
                     bounded: true,
                 }),
             }],
+            source_snapshot: Some(snapshot.clone()),
+            index_artifact_digest: Some(index_artifact_digest.clone()),
         });
 
     let proof = lookup.candidates[0].selector_proof.as_ref().unwrap();
@@ -37,4 +47,6 @@ fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
     );
     assert_eq!(proof.payload_kind, "code");
     assert!(proof.bounded);
+    assert_eq!(lookup.source_snapshot, Some(snapshot));
+    assert_eq!(lookup.index_artifact_digest, Some(index_artifact_digest));
 }

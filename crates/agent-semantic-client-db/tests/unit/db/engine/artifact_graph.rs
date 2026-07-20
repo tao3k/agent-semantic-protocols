@@ -8,6 +8,38 @@ use agent_semantic_client_db::{
 };
 
 #[test]
+fn graph_artifact_digest_invalidates_on_snapshot_or_provider_change() {
+    let initial = agent_semantic_content_identity::SourceSnapshotEvidence::new(
+        "a".repeat(64),
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        1,
+        "b".repeat(64),
+    );
+    let mut changed_provider = initial.clone();
+    changed_provider.provider_digest = "c".repeat(64);
+    let mut changed_snapshot = initial.clone();
+    changed_snapshot.root_digest = "d".repeat(64);
+
+    let initial_digest =
+        agent_semantic_client_db::engine::graph_artifact_digest_for_snapshot(&initial);
+    assert_eq!(
+        agent_semantic_client_db::engine::graph_artifact_digest_for_snapshot(&initial),
+        initial_digest,
+        "the same pinned authority must have a stable graph identity"
+    );
+    assert_ne!(
+        agent_semantic_client_db::engine::graph_artifact_digest_for_snapshot(&changed_provider),
+        initial_digest,
+        "provider identity is part of the graph artifact key"
+    );
+    assert_ne!(
+        agent_semantic_client_db::engine::graph_artifact_digest_for_snapshot(&changed_snapshot),
+        initial_digest,
+        "Merkle snapshot root is part of the graph artifact key"
+    );
+}
+
+#[test]
 fn db_engine_artifact_graph_persists_repair_chain_and_proof_receipt() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -164,7 +196,7 @@ fn repair_frame(
         ArtifactWorkspaceId::new(state.workspace.workspace_id.to_string()),
         ArtifactScopeId::new(state.scope_id.to_string()),
         ArtifactGeneration::new(generation),
-        ArtifactJson::new(content),
+        ArtifactJson::from_serializable(&content).expect("serialize repair frame content"),
         parents,
     ))
 }

@@ -30,17 +30,6 @@ fn exact_selector_inventory_routes_to_main_direct_fetch() {
 }
 
 #[test]
-fn asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate() {
-    super::source_index::asp_source_index_search_pipe_warm_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_gate() {
-    super::source_index::asp_source_index_lookup_adapter_cold_functional_path_stays_inside_scenario_gate(
-    );
-}
-
-#[test]
 fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate() {
     super::graph_rank::asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate();
 }
@@ -131,6 +120,11 @@ fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_inside_scenari
 }
 
 #[test]
+fn asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate() {
+    super::search_pipe_gates::asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate();
+}
+
+#[test]
 fn asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_scenario_gate() {
     super::runtime_gates::asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_scenario_gate();
 }
@@ -174,11 +168,6 @@ fn asp_turso_source_index_refresh_lookup_pressure_stays_inside_scenario_gate() {
 #[test]
 fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate() {
     super::overlay_and_provider_gates::asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_gate();
-}
-
-#[test]
-fn asp_lexical_source_index_warm_path_stays_inside_scenario_gate() {
-    super::source_index::asp_lexical_source_index_warm_path_stays_inside_scenario_gate();
 }
 
 #[test]

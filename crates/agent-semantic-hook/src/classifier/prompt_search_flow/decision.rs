@@ -22,20 +22,15 @@ pub(super) fn search_flow_feedback_decision(
             "repeat-prime-before-pipe",
             "ASP hook denied repeated `search prime` before `search pipe`.",
         ),
-        feedback::PromptSearchFeedback::ReadBeforePipe => (
-            AspCommandIntent::DirectReadFallback,
-            "read-before-pipe",
-            "ASP hook denied code/direct read before `search pipe`.",
-        ),
         feedback::PromptSearchFeedback::RepeatSearchPipe => (
             AspCommandIntent::Reasoning,
             "repeat-search-pipe",
             "ASP hook denied exact replay of `search pipe` in the same prompt.",
         ),
         feedback::PromptSearchFeedback::DirectSourceReadAfterPipe => (
-            AspCommandIntent::DirectReadFallback,
-            "direct-source-read-after-pipe",
-            "ASP hook denied broad manual `direct-source-read` after `search pipe`.",
+            AspCommandIntent::InvalidEvidence,
+            "invalid-source-projection-after-pipe",
+            "ASP hook denied broad manual direct source read after `search pipe`.",
         ),
     };
     let mut fields = std::collections::BTreeMap::new();

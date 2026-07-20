@@ -355,37 +355,6 @@ where
     ))
 }
 
-pub(super) async fn turso_table_column_exists(
-    connection: &turso::Connection,
-    table_name: &str,
-    column: &str,
-) -> Result<bool, String> {
-    let statement = format!("PRAGMA table_info({table_name})");
-    let mut rows = run_turso_operation_with_lock_retry(
-        || async {
-            connection
-                .query(statement.as_str(), ())
-                .await
-                .map_err(|error| error.to_string())
-        },
-        &format!("failed to inspect Turso table {table_name}"),
-    )
-    .await?;
-    while let Some(row) = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read Turso table {table_name} schema: {error}"))?
-    {
-        let name = row
-            .get::<String>(1)
-            .map_err(|error| format!("failed to read Turso table {table_name} column: {error}"))?;
-        if name == column {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
 pub(super) async fn turso_table_exists(
     connection: &turso::Connection,
     table_name: &str,

@@ -47,7 +47,7 @@ pub(crate) fn run_language_command_with_config(
     }
     if is_document_command(command) {
         let _generic_session_env = GenericSessionEnvGuard::remove_for(language_id);
-        let document_args = normalize_document_command_args(language_id, command, args)?;
+        let document_args = args.to_vec();
         return agent::run_document_command_with_walk_config(
             document_language(language_id)?,
             document_args,
@@ -68,104 +68,6 @@ pub(crate) fn run_language_command_with_config(
     }
 
     unreachable!("document commands are returned above")
-}
-
-fn normalize_document_command_args(
-    language_id: &str,
-    command: &str,
-    args: &[String],
-) -> Result<Vec<String>, String> {
-    if language_id == "org" && command == "query" {
-        return normalize_org_query_item_selector_args(args);
-    }
-    Ok(args.to_vec())
-}
-
-fn normalize_org_query_item_selector_args(args: &[String]) -> Result<Vec<String>, String> {
-    let Some(selector_index) = args.iter().position(|arg| arg == "--selector") else {
-        return Ok(args.to_vec());
-    };
-    let Some(selector) = args.get(selector_index + 1) else {
-        return Ok(args.to_vec());
-    };
-    let Some(range_selector) = org_item_heading_selector_to_line_range(selector)? else {
-        return Ok(args.to_vec());
-    };
-
-    let mut normalized = args.to_vec();
-    normalized[selector_index + 1] = range_selector;
-    Ok(normalized)
-}
-
-fn org_item_heading_selector_to_line_range(selector: &str) -> Result<Option<String>, String> {
-    let Some(rest) = selector.strip_prefix("org://") else {
-        return Ok(None);
-    };
-    let Some((path, fragment)) = rest.split_once('#') else {
-        return Ok(None);
-    };
-    let Some(slug) = fragment.strip_prefix("item/heading/") else {
-        return Ok(None);
-    };
-    if path.is_empty() || slug.is_empty() {
-        return Ok(None);
-    }
-
-    let source = std::fs::read_to_string(path)
-        .map_err(|err| format!("failed to resolve Org item selector `{selector}`: {err}"))?;
-    let Some((start_line, end_line)) = org_heading_slug_line_range(&source, slug) else {
-        return Ok(None);
-    };
-    Ok(Some(format!("{path}:{start_line}-{end_line}")))
-}
-
-fn org_heading_slug_line_range(source: &str, expected_slug: &str) -> Option<(usize, usize)> {
-    let mut heading: Option<(usize, usize)> = None;
-    let mut last_line = 0;
-
-    for (index, line) in source.lines().enumerate() {
-        let line_no = index + 1;
-        last_line = line_no;
-        let Some((level, title)) = org_heading_level_and_title(line) else {
-            continue;
-        };
-        if let Some((start_line, start_level)) = heading {
-            if level <= start_level {
-                return Some((start_line, line_no.saturating_sub(1).max(start_line)));
-            }
-        }
-        if org_heading_slug(title) == expected_slug {
-            heading = Some((line_no, level));
-        }
-    }
-
-    heading.map(|(start_line, _)| (start_line, last_line.max(start_line)))
-}
-
-fn org_heading_level_and_title(line: &str) -> Option<(usize, &str)> {
-    let stars = line.chars().take_while(|ch| *ch == '*').count();
-    if stars == 0 {
-        return None;
-    }
-    let title = line.get(stars..)?.strip_prefix(' ')?;
-    Some((stars, title.trim()))
-}
-
-fn org_heading_slug(title: &str) -> String {
-    let mut slug = String::new();
-    let mut pending_dash = false;
-    for ch in title.chars().flat_map(char::to_lowercase) {
-        if ch.is_ascii_alphanumeric() {
-            if pending_dash && !slug.is_empty() {
-                slug.push('-');
-            }
-            slug.push(ch);
-            pending_dash = false;
-        } else if ch.is_whitespace() || ch == '-' || ch == '_' {
-            pending_dash = true;
-        }
-    }
-    slug
 }
 
 struct GenericSessionEnvGuard {

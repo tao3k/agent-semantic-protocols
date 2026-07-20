@@ -8,6 +8,7 @@ use std::os::unix::fs::PermissionsExt;
 mod activation_bin;
 mod activation_sync;
 mod builtin;
+mod provider_manifest_contract;
 mod provider_query_pack_descriptor;
 mod provider_semantic_facts_descriptor;
 

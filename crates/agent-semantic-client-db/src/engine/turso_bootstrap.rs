@@ -4,10 +4,9 @@ use std::path::Path;
 
 use super::turso::{
     TursoClientDbEngineReport, bootstrap_turso_schema_version, connect_turso_client_db,
-    prepare_turso_client_db_path, turso_bootstrap_report, turso_table_column_exists,
+    prepare_turso_client_db_path, turso_bootstrap_report,
 };
 use super::turso_cache::bootstrap_turso_client_cache_schema;
-use super::turso_evidence_graph::TURSO_ENTITY_TABLE;
 use super::turso_operation_lock::acquire_turso_operation_lock;
 use super::turso_statement::execute_turso_statement_with_lock_retry;
 use super::turso_syntax::bootstrap_turso_syntax_query_schema;
@@ -42,8 +41,18 @@ pub(super) async fn bootstrap_turso_client_search_schema(
     connection: &turso::Connection,
 ) -> Result<(), String> {
     for statement in [
-        "CREATE TABLE IF NOT EXISTS asp_graph_entity (
-            id TEXT PRIMARY KEY,
+        "DROP TABLE IF EXISTS asp_graph_edge",
+        "DROP TABLE IF EXISTS asp_graph_entity",
+        "CREATE TABLE IF NOT EXISTS asp_graph_artifact (
+            graph_artifact_digest TEXT PRIMARY KEY,
+            snapshot_root TEXT NOT NULL,
+            provider_digest TEXT NOT NULL,
+            source_snapshot_json TEXT NOT NULL,
+            schema_id TEXT NOT NULL
+        )",
+        "CREATE TABLE IF NOT EXISTS asp_graph_artifact_entity (
+            graph_artifact_digest TEXT NOT NULL,
+            id TEXT NOT NULL,
             kind TEXT NOT NULL,
             semantic_kind TEXT,
             label TEXT NOT NULL,
@@ -51,13 +60,15 @@ pub(super) async fn bootstrap_turso_client_search_schema(
             path TEXT,
             language_id TEXT,
             provider_id TEXT,
-            query_keys_json TEXT NOT NULL DEFAULT '[]'
+            query_keys_json TEXT NOT NULL DEFAULT '[]',
+            PRIMARY KEY(graph_artifact_digest, id)
         )",
-        "CREATE TABLE IF NOT EXISTS asp_graph_edge (
+        "CREATE TABLE IF NOT EXISTS asp_graph_artifact_edge (
+            graph_artifact_digest TEXT NOT NULL,
             from_id TEXT NOT NULL,
             to_id TEXT NOT NULL,
             kind TEXT NOT NULL,
-            PRIMARY KEY(from_id, to_id, kind)
+            PRIMARY KEY(graph_artifact_digest, from_id, to_id, kind)
         )",
         "CREATE TABLE IF NOT EXISTS asp_search_document (
             namespace TEXT NOT NULL,
@@ -100,14 +111,12 @@ pub(super) async fn bootstrap_turso_client_search_schema(
         .await?;
     }
 
-    ensure_turso_graph_entity_columns(connection).await?;
-
     for statement in [
-        "CREATE INDEX IF NOT EXISTS asp_graph_entity_kind_idx ON asp_graph_entity(kind)",
-        "CREATE INDEX IF NOT EXISTS asp_graph_entity_language_idx ON asp_graph_entity(kind, language_id)",
-        "CREATE INDEX IF NOT EXISTS asp_graph_entity_owner_selector_idx ON asp_graph_entity(kind, path, language_id)",
-        "CREATE INDEX IF NOT EXISTS asp_graph_edge_kind_idx ON asp_graph_edge(kind)",
-        "CREATE INDEX IF NOT EXISTS asp_graph_edge_to_idx ON asp_graph_edge(to_id)",
+        "CREATE INDEX IF NOT EXISTS asp_graph_artifact_entity_kind_idx ON asp_graph_artifact_entity(graph_artifact_digest, kind)",
+        "CREATE INDEX IF NOT EXISTS asp_graph_artifact_entity_language_idx ON asp_graph_artifact_entity(graph_artifact_digest, kind, language_id)",
+        "CREATE INDEX IF NOT EXISTS asp_graph_artifact_entity_owner_selector_idx ON asp_graph_artifact_entity(graph_artifact_digest, kind, path, language_id)",
+        "CREATE INDEX IF NOT EXISTS asp_graph_artifact_edge_kind_idx ON asp_graph_artifact_edge(graph_artifact_digest, kind)",
+        "CREATE INDEX IF NOT EXISTS asp_graph_artifact_edge_to_idx ON asp_graph_artifact_edge(graph_artifact_digest, to_id)",
         "CREATE INDEX IF NOT EXISTS asp_search_document_entity_idx ON asp_search_document(entity_id)",
         "CREATE INDEX IF NOT EXISTS asp_search_document_fts_idx ON asp_search_document USING fts (document, selector)",
         "CREATE INDEX IF NOT EXISTS asp_overlay_document_session_idx ON asp_overlay_document(repo_id, workspace_id, session_id)",
@@ -121,29 +130,6 @@ pub(super) async fn bootstrap_turso_client_search_schema(
             "failed to bootstrap Turso search schema",
         )
         .await?;
-    }
-    Ok(())
-}
-
-async fn ensure_turso_graph_entity_columns(connection: &turso::Connection) -> Result<(), String> {
-    for (column, definition) in [
-        ("selector", "TEXT"),
-        ("semantic_kind", "TEXT"),
-        ("path", "TEXT"),
-        ("language_id", "TEXT"),
-        ("provider_id", "TEXT"),
-        ("query_keys_json", "TEXT NOT NULL DEFAULT '[]'"),
-    ] {
-        if !turso_table_column_exists(connection, TURSO_ENTITY_TABLE, column).await? {
-            let statement =
-                format!("ALTER TABLE {TURSO_ENTITY_TABLE} ADD COLUMN {column} {definition}");
-            execute_turso_statement_with_lock_retry(
-                connection,
-                statement.as_str(),
-                "failed to converge Turso graph entity column",
-            )
-            .await?;
-        }
     }
     Ok(())
 }

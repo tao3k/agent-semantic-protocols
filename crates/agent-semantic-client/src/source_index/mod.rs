@@ -3,7 +3,10 @@
 mod api;
 mod projection;
 
+pub(crate) use api::current_runtime_source_index_snapshot;
+pub(crate) use api::current_source_index_snapshot_with_registry;
 pub use api::rebuild_source_index;
+pub use api::{CurrentSourceIndexSnapshot, current_source_index_snapshot};
 pub use projection::{LanguageProjectionImportReport, import_language_projection};
 mod collect;
 mod config;

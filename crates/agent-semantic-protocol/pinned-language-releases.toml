@@ -4,7 +4,8 @@ repo = "tao3k/rust-lang-project-harness"
 version = "v0.1.2"
 downloadBaseUrl = "https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2"
 binary = "rs-harness"
-workspaceBinary = "languages/rust-lang-project-harness/target/release/rs-harness"
+workspaceArtifact = { root = "languages/rust-lang-project-harness/target/release/rs-harness", entrypoint = "." }
+workspaceBuild = { program = "cargo", args = ["build", "--locked", "--release", "--manifest-path", "Cargo.toml", "--features", "cli", "--bin", "rs-harness"], workingDirectory = "languages/rust-lang-project-harness", derivedPaths = ["languages/rust-lang-project-harness/target"] }
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
@@ -17,8 +18,8 @@ repo = "tao3k/typescript-lang-project-harness"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/tao3k/typescript-lang-project-harness/releases/download/v0.1.0"
 binary = "ts-harness"
-workspaceBinary = "languages/typescript-lang-project-harness/dist/src/cli/main.js"
-workspaceInstall = "symlink"
+workspaceArtifact = { root = "languages/typescript-lang-project-harness/dist/provider", entrypoint = "ts-harness.mjs", launch = { program = "node", args = ["ts-harness.mjs"], argsRelativeToArtifact = true } }
+workspaceBuild = { program = "npm", args = ["run", "build"], workingDirectory = "languages/typescript-lang-project-harness", derivedPaths = ["languages/typescript-lang-project-harness/dist"] }
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
@@ -30,7 +31,8 @@ repo = "tao3k/python-lang-project-harness"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/tao3k/python-lang-project-harness/releases/download/v0.1.0"
 binary = "py-harness"
-workspaceBinary = "languages/python-lang-project-harness/.venv/bin/py-harness"
+workspaceArtifact = { root = "languages/python-lang-project-harness/.venv", entrypoint = "bin/py-harness", launch = { program = "bin/python3", programRelativeToArtifact = true, args = ["bin/py-harness"], argsRelativeToArtifact = true } }
+workspaceBuild = { program = "uv", args = ["sync", "--frozen", "--no-editable"], workingDirectory = "languages/python-lang-project-harness", derivedPaths = ["languages/python-lang-project-harness/.venv"] }
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
@@ -42,7 +44,8 @@ repo = "JuliaCN/JuliaLangProjectHarness.jl"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/JuliaCN/JuliaLangProjectHarness.jl/releases/download/v0.1.0"
 binary = "asp-julia-harness"
-workspaceBinary = "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness"
+workspaceArtifact = { root = "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness", entrypoint = "." }
+workspaceBuild = { program = "./juliac/build_provider.sh", args = [], workingDirectory = "languages/JuliaLangProjectHarness.jl", derivedPaths = ["languages/JuliaLangProjectHarness.jl/build"], env = { ASP_JULIA_BUILD_DIR = "build/juliac-asp-local", ASP_JULIA_ALLOW_WRAPPER_FALLBACK = "0" } }
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",

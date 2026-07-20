@@ -24,9 +24,10 @@ use crate::command::agent_session_registry::agent_session_registry_validation::{
     validate_recent_session_profile, validate_session_profile,
 };
 use crate::command::agent_session_registry::normalized_metadata_with_roles;
+use crate::command::agent_session_registry::stale_invalid_session_should_be_idle;
 use std::path::Path;
 
-pub(super) fn close_session(
+pub(in crate::command::agent_session_registry) fn close_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
@@ -52,7 +53,7 @@ pub(super) fn close_session(
     }
 }
 
-pub(super) fn gc_sessions(
+pub(in crate::command::agent_session_registry) fn gc_sessions(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {
@@ -95,7 +96,7 @@ pub(super) fn gc_sessions(
     }
 }
 
-pub(super) fn reconcile_sessions(
+pub(in crate::command::agent_session_registry) fn reconcile_sessions(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
 ) -> Result<(), String> {

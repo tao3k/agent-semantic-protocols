@@ -11,8 +11,6 @@ pub struct HookClientAspCommandIntentPolicyConfig {
     #[serde(default)]
     pub exact_evidence: HookClientAspExactEvidenceIntentConfig,
     #[serde(default)]
-    pub direct_read_fallback: HookClientAspDirectReadFallbackIntentConfig,
-    #[serde(default)]
     pub invalid_evidence: HookClientAspInvalidEvidenceIntentConfig,
 }
 
@@ -22,7 +20,6 @@ impl Default for HookClientAspCommandIntentPolicyConfig {
             control_plane: HookClientAspControlPlaneIntentConfig::default(),
             reasoning: HookClientAspReasoningIntentConfig::default(),
             exact_evidence: HookClientAspExactEvidenceIntentConfig::default(),
-            direct_read_fallback: HookClientAspDirectReadFallbackIntentConfig::default(),
             invalid_evidence: HookClientAspInvalidEvidenceIntentConfig::default(),
         }
     }
@@ -93,22 +90,6 @@ impl Default for HookClientAspExactEvidenceIntentConfig {
             query_projection_views: default_asp_exact_evidence_projection_views(),
             selector_kinds: default_asp_exact_selector_kinds(),
             require_same_language: true,
-        }
-    }
-}
-
-/// Explicit hook provenance values that authorize a bounded direct-read fallback.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookClientAspDirectReadFallbackIntentConfig {
-    #[serde(default = "default_asp_direct_read_from_hook_values")]
-    pub from_hook_values: Vec<String>,
-}
-
-impl Default for HookClientAspDirectReadFallbackIntentConfig {
-    fn default() -> Self {
-        Self {
-            from_hook_values: default_asp_direct_read_from_hook_values(),
         }
     }
 }
@@ -186,7 +167,7 @@ fn default_asp_reasoning_query_flags() -> Vec<String> {
 }
 
 fn default_asp_exact_evidence_projection_flags() -> Vec<String> {
-    ["--code", "--content", "--names-only"]
+    ["--code", "--content", "--verbatim", "--names-only"]
         .into_iter()
         .map(str::to_string)
         .collect()
@@ -198,11 +179,4 @@ fn default_asp_exact_evidence_projection_views() -> Vec<String> {
 
 fn default_asp_exact_selector_kinds() -> Vec<String> {
     ["item"].into_iter().map(str::to_string).collect()
-}
-
-fn default_asp_direct_read_from_hook_values() -> Vec<String> {
-    ["direct-source-read"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
 }

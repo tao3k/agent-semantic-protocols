@@ -6,7 +6,6 @@ use agent_semantic_hook::{
     HookRuntime, builtin_provider_manifests, default_client_config_template, parse_hook_activation,
     provider_manifest_digest,
 };
-use serde_json::json;
 
 pub(super) fn asp_command() -> Command {
     if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
@@ -107,30 +106,42 @@ pub(super) fn root_owned_rust_activation_json() -> String {
         .find(|manifest| manifest.language_id == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
-    serde_json::to_string_pretty(&json!({
-        "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
-        "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
-        "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
-        "generatedBy": {"runtime": "asp", "version": "test"},
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "providerCommandPrefix": [],
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": ["src", "tests", "crates", "examples", "benches"],
-                "configFiles": ["Cargo.toml", "Cargo.lock"],
-                "sourceExtensions": [".rs"],
-                "ignoredPathPrefixes": [".cache", ".direnv", ".git", ".idea", ".jj", ".run", ".vscode", "node_modules", "target", ".codex/harness-state", ".codex/rs-harness"]
-            }
-        }]
-    }))
-    .expect("serialize root-owned rust activation")
+    let routes = agent_semantic_hook::materialize_provider_routes(&manifest).expect("rust routes");
+    let activation = agent_semantic_hook::HookActivation {
+        schema_id: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
+        schema_version: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: "https://tao3k.github.io/agent-semantic-protocols/schemas/".to_string(),
+        protocol_id: agent_semantic_hook::HOOK_PROTOCOL_ID.to_string(),
+        protocol_version: agent_semantic_hook::HOOK_PROTOCOL_VERSION.to_string(),
+        project_root: ".".to_string(),
+        generated_by: agent_semantic_hook::ActivationGeneratedBy {
+            runtime: "asp".to_string(),
+            version: "test".to_string(),
+        },
+        generated_at: None,
+        providers: vec![agent_semantic_hook::ActivatedProviderConfig {
+            manifest_id: manifest.manifest_id,
+            manifest_digest,
+            language_id: manifest.language_id,
+            provider_id: manifest.provider_id,
+            binary: manifest.binary,
+            execution: manifest.execution,
+            provider_command_prefix: Vec::new(),
+            search_capabilities: manifest.search_capabilities,
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+            query_pack_descriptor: manifest.query_pack_descriptor,
+            semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
+            routes,
+            coverage: agent_semantic_hook::ActivationCoverage {
+                package_roots: vec![".".to_string()],
+                source_roots: manifest.source.default_source_roots,
+                config_files: manifest.source.default_config_files,
+                source_extensions: manifest.source.default_extensions,
+                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+            },
+        }],
+    };
+    serde_json::to_string_pretty(&activation).expect("serialize root-owned rust activation")
 }
 
 pub(super) fn write_root_owned_rust_activation(root: &std::path::Path) -> PathBuf {

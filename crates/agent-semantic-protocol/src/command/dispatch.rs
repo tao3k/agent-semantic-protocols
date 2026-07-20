@@ -17,7 +17,7 @@ use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
 use super::install_provider::run_install_command;
 use super::paths::run_paths_command;
-use super::provider::run_language_command;
+use super::provider_dispatch::run_language_command;
 use super::root_language_facade::run_root_language_facade;
 use super::run_protocol_version_command;
 use super::source_access::run_source_access_command;

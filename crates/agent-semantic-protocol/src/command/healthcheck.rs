@@ -1,6 +1,5 @@
 //! Runtime healthcheck for project-local ASP state.
 
-#[cfg(not(test))]
 use super::hook_runtime::active_codex_plugin_skill_path;
 use super::protocol_binary::{protocol_binary_artifact_digest, protocol_binary_on_path};
 use agent_semantic_config::{PRJ_CACHE_HOME_ENV, ProjectRuntimeLayout, project_runtime_layout};
@@ -26,14 +25,9 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let activation = check_activation(Some(&activation_path));
     let activation_runtime = check_activation_runtime(Some(&activation_path), context.cwd());
     let binary = check_binary();
-    #[cfg(not(test))]
-    let plugin_skill_path = active_codex_plugin_skill_path(&options.project_root)
-        .ok()
-        .flatten();
-    #[cfg(test)]
-    let plugin_skill_path: Option<std::path::PathBuf> = None;
+    let skill = check_skill(&options.project_root);
 
-    let mut issues = collect_layout_issues(&layout, plugin_skill_path.as_deref());
+    let mut issues = collect_layout_issues(&layout, &skill);
     collect_read_issue(
         &mut issues,
         "missing-activation",
@@ -54,7 +48,7 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
             &activation,
             &activation_runtime,
             &binary,
-            plugin_skill_path.as_deref(),
+            &skill,
             &issues,
         )?;
     } else {
@@ -65,7 +59,7 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
             &activation,
             &activation_runtime,
             &binary,
-            plugin_skill_path.as_deref(),
+            &skill,
             &issues,
         );
     }
@@ -117,6 +111,15 @@ struct HealthIssue {
     severity: &'static str,
     code: &'static str,
     message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillHealthReceipt {
+    authority: &'static str,
+    path: Option<PathBuf>,
+    status: &'static str,
+    error: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -238,7 +241,7 @@ fn same_binary_artifact(left: &Path, right: &Path) -> bool {
 
 fn collect_layout_issues(
     layout: &ProjectRuntimeLayout,
-    plugin_skill_path: Option<&Path>,
+    skill: &SkillHealthReceipt,
 ) -> Vec<HealthIssue> {
     let mut issues = Vec::new();
     if layout.git_toplevel.is_none() {
@@ -262,17 +265,41 @@ fn collect_layout_issues(
         "git toplevel .agents directory is missing",
         fs_status(layout.agents_dir.as_deref(), FsKind::Dir),
     );
-    let project_skill_status = fs_status(layout.agent_skill_path.as_deref(), FsKind::File);
-    let plugin_skill_status = fs_status(plugin_skill_path, FsKind::File);
-    if project_skill_status != "ok" && plugin_skill_status != "ok" {
-        collect_file_issue(
-            &mut issues,
+    match skill.status {
+        "ok" => {}
+        "missing" => issues.push(error(
             "missing-agent-skill",
-            "no active agent-semantic-protocols skill is materialized",
-            plugin_skill_status,
-        );
+            "active plugin-installed agent-semantic-protocols skill is missing".to_owned(),
+        )),
+        _ => issues.push(error(
+            "invalid-agent-skill",
+            skill
+                .error
+                .clone()
+                .unwrap_or_else(|| "failed to resolve active plugin-installed skill".to_owned()),
+        )),
     }
     issues
+}
+
+fn check_skill(project_root: &Path) -> SkillHealthReceipt {
+    match active_codex_plugin_skill_path(project_root) {
+        Ok(path) => {
+            let status = fs_status(path.as_deref(), FsKind::File);
+            SkillHealthReceipt {
+                authority: "plugin-installed",
+                path,
+                status,
+                error: None,
+            }
+        }
+        Err(error) => SkillHealthReceipt {
+            authority: "plugin-installed",
+            path: None,
+            status: "invalid",
+            error: Some(error.to_string()),
+        },
+    }
 }
 
 fn collect_file_issue(
@@ -375,7 +402,7 @@ fn print_compact(
     activation: &ActivationCheck,
     activation_runtime: &ActivationRuntimeCheck,
     binary: &BinaryCheck,
-    plugin_skill_path: Option<&Path>,
+    skill: &SkillHealthReceipt,
     issues: &[HealthIssue],
 ) {
     println!(
@@ -400,14 +427,11 @@ fn print_compact(
         fs_status(layout.agents_dir.as_deref(), FsKind::Dir)
     );
     println!(
-        "|path agentsSkill={} status={}",
-        display_opt(layout.agent_skill_path.as_deref()),
-        fs_status(layout.agent_skill_path.as_deref(), FsKind::File)
-    );
-    println!(
-        "|path pluginSkill={} status={}",
-        display_opt(plugin_skill_path),
-        fs_status(plugin_skill_path, FsKind::File)
+        "|skill authority={} path={} status={} error={}",
+        skill.authority,
+        display_opt(skill.path.as_deref()),
+        skill.status,
+        skill.error.as_deref().unwrap_or("none")
     );
     println!(
         "|path activation={} status={} providers={}",
@@ -455,7 +479,7 @@ fn print_json(
     activation: &ActivationCheck,
     activation_runtime: &ActivationRuntimeCheck,
     binary: &BinaryCheck,
-    plugin_skill_path: Option<&Path>,
+    skill: &SkillHealthReceipt,
     issues: &[HealthIssue],
 ) -> Result<(), String> {
     let providers = activation_runtime
@@ -494,10 +518,9 @@ fn print_json(
         },
         "paths": {
             "agentsDir": path_report(layout.agents_dir.as_deref(), fs_status(layout.agents_dir.as_deref(), FsKind::Dir), None, None),
-            "agentsSkill": path_report(layout.agent_skill_path.as_deref(), fs_status(layout.agent_skill_path.as_deref(), FsKind::File), None, None),
-            "pluginSkill": path_report(plugin_skill_path, fs_status(plugin_skill_path, FsKind::File), None, None),
             "activation": path_report(Some(activation_path), activation.status, activation.provider_count, activation.error.as_deref()),
         },
+        "skill": skill,
         "activationRuntime": {
             "status": activation_runtime.status,
             "providerCount": activation_runtime.provider_count,

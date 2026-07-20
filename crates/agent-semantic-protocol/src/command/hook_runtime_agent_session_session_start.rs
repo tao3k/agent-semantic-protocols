@@ -27,6 +27,8 @@ use super::{
 };
 use hook_runtime_agent_session_session_start_route::{
     registry_lookup_for_route_child, session_start_bootstrap_decision,
+};
+pub(super) use hook_runtime_agent_session_session_start_route::{
     session_start_resume_existing_decision, session_start_reuse_decision,
 };
 

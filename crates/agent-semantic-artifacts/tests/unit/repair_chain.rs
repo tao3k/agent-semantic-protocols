@@ -50,7 +50,9 @@ fn how_from_frame_links_search_sources_and_graph_roots() {
         "intent": "find owner evidence",
         "selectors": ["crates/agent-semantic-artifacts#repair-chain"],
     });
-    let expected_content_hash = hash_normalized_json(&ArtifactJson::from(content.clone()));
+    let expected_content_hash = hash_normalized_json(
+        &ArtifactJson::from_serializable(&content).expect("test artifact JSON should serialize"),
+    );
     let frame = build_repair_chain_frame(frame_input(
         RepairChainFrameKind::HowFromFrame,
         "how-from-1",

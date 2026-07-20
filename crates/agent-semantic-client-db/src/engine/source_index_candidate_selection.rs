@@ -15,7 +15,6 @@ use super::source_index_query_scoring::{
     SOURCE_INDEX_READ_MODEL_MAX_CANDIDATES, SOURCE_INDEX_READ_MODEL_MAX_TERMS,
     source_index_structured_candidate_score,
 };
-use super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
 use super::turso_statement::run_turso_operation_with_lock_retry;
 
 pub(super) fn decode_turso_source_index_canonical_selectors(
@@ -80,7 +79,7 @@ pub(super) async fn resolve_turso_source_index_lookup_scope(
                 || async {
                     connection
                         .query(
-                            "SELECT scope.project_root, scope.schema_id, scope.schema_version, scope.generation_id
+                            "SELECT scope.project_root, scope.schema_id, scope.schema_version, scope.generation_id, scope.source_snapshot_json
                          FROM asp_source_index_scope_v1 AS scope
                          JOIN asp_source_index_layout_v1 AS layout
                            ON layout.project_root = scope.project_root
@@ -111,7 +110,7 @@ pub(super) async fn resolve_turso_source_index_lookup_scope(
                 || async {
                     connection
                         .query(
-                            "SELECT scope.project_root, scope.schema_id, scope.schema_version, scope.generation_id
+                            "SELECT scope.project_root, scope.schema_id, scope.schema_version, scope.generation_id, scope.source_snapshot_json
                          FROM asp_source_index_scope_v1 AS scope
                          JOIN asp_source_index_layout_v1 AS layout
                            ON layout.project_root = scope.project_root
@@ -151,6 +150,9 @@ pub(super) async fn resolve_turso_source_index_lookup_scope(
         generation_id: row
             .get::<String>(3)
             .map_err(|error| format!("failed to read Turso source-index generation id: {error}"))?,
+        source_snapshot_json: row.get::<String>(4).map_err(|error| {
+            format!("failed to read Turso source-index source snapshot evidence: {error}")
+        })?,
     };
     if rows
         .next()

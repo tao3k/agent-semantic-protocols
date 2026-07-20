@@ -25,6 +25,7 @@ use serde_json::Value;
 pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
+    pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     pub(super) locator_root: &'a Path,
     pub(super) cache_home: &'a Path,
     pub(super) surface: &'a str,
@@ -48,6 +49,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
     let SearchPipeViewRequest {
         language_id,
         project_root,
+        source_snapshot,
         locator_root,
         cache_home,
         surface,
@@ -79,6 +81,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 |descriptor| query_clause_texts(language_id, query, descriptor),
             )
         })
+        .transpose()?
         .unwrap_or_default();
     match view {
         "graph-turbo-request" => {
@@ -86,11 +89,11 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 surface,
                 language_id,
                 dependency_root: project_root,
+                source_snapshot,
                 cache_home,
                 query,
                 query_clauses: &graph_query_clauses,
                 candidates,
-                precomputed_quality: None,
                 pipes,
                 source,
                 candidate_sources,
@@ -110,6 +113,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             print!("{request}");
         }
         "seeds" => render_search_pipe_seeds_view(SearchPipeSeedsViewRequest {
+            source_snapshot,
             language_id,
             project_root,
             locator_root,
@@ -139,7 +143,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                     |descriptor| {
                         analyze_search_pipe_quality(language_id, query, candidates, descriptor)
                     },
-                );
+                )?;
                 print_search_pipe_header(SearchPipeHeader {
                     surface,
                     language_id,
@@ -160,7 +164,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         scopes,
                         query,
                         candidates,
-                        precomputed_quality: Some(quality.clone()),
+                        quality: quality.clone(),
                         ranked_compact: None,
                         read_memory_selectors,
                         dependency_action_targets: &[],
@@ -175,6 +179,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
 struct SearchPipeSeedsViewRequest<'a> {
     language_id: &'a str,
     project_root: &'a Path,
+    source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     locator_root: &'a Path,
     cache_home: &'a Path,
     surface: &'a str,
@@ -197,6 +202,7 @@ struct SearchPipeSeedsViewRequest<'a> {
 fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Result<(), String> {
     let render_started_at = Instant::now();
     let SearchPipeSeedsViewRequest {
+        source_snapshot,
         language_id,
         project_root,
         locator_root,
@@ -218,23 +224,27 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         graph_query_clauses,
     } = request;
     let quality_started_at = Instant::now();
-    let quality = query.map(|query| {
-        super::search_pipe_provider_facts::with_query_pack_descriptor(
-            provider_context,
-            |descriptor| analyze_search_pipe_quality(language_id, query, candidates, descriptor),
-        )
-    });
+    let quality = query
+        .map(|query| {
+            super::search_pipe_provider_facts::with_query_pack_descriptor(
+                provider_context,
+                |descriptor| {
+                    analyze_search_pipe_quality(language_id, query, candidates, descriptor)
+                },
+            )
+        })
+        .transpose()?;
     let quality_elapsed = quality_started_at.elapsed();
     let graph_started_at = Instant::now();
     let request_packet = graph_turbo_request(&GraphTurboSearchPipeRequest {
         surface,
         language_id,
         dependency_root: project_root,
+        source_snapshot,
         cache_home,
         query,
         query_clauses: graph_query_clauses,
         candidates,
-        precomputed_quality: quality.as_ref(),
         pipes,
         source,
         candidate_sources,
@@ -281,7 +291,9 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
                 scopes,
                 query,
                 candidates,
-                precomputed_quality: quality.clone(),
+                quality: quality
+                    .clone()
+                    .expect("quality is computed whenever a query exists"),
                 ranked_compact: ranked_compact.as_deref(),
                 read_memory_selectors,
                 dependency_action_targets: &dependency_action_targets,
@@ -426,7 +438,12 @@ fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
         quality.query_pack_quality,
         shell_quote(query)
     );
-    println!("{}", quality.query_terms_line(language_id, query));
+    let query_terms = if quality.query_terms.is_empty() {
+        "-".to_string()
+    } else {
+        quality.query_terms.join(",")
+    };
+    println!("queryTerms={query_terms}");
     for line in quality.lines() {
         println!("{line}");
     }

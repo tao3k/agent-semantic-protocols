@@ -10,6 +10,7 @@ use crate::protocol::{HookPolicy, HookRoutes};
 pub struct HookActivation {
     pub schema_id: String,
     pub schema_version: String,
+    pub schema_authority: String,
     pub protocol_id: String,
     pub protocol_version: String,
     pub project_root: String,
@@ -19,9 +20,9 @@ pub struct HookActivation {
     pub providers: Vec<ActivatedProviderConfig>,
 }
 
+/// Runtime and version that generated a project activation.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Runtime and version that generated a project activation.
 pub struct ActivationGeneratedBy {
     pub runtime: String,
     pub version: String,
@@ -43,12 +44,13 @@ pub struct ActivatedProviderConfig {
     pub execution: ProviderExecution,
     #[serde(default)]
     pub provider_command_prefix: Vec<String>,
-    #[serde(default)]
+    pub execution_command_digest: String,
     pub search_capabilities: ProviderSearchCapabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query_pack_descriptor: Option<ProviderQueryPackDescriptor>,
+    pub query_pack_descriptor: ProviderQueryPackDescriptor,
+    pub semantic_registry_digest: String,
+    pub routes: HookRoutes,
     pub coverage: ActivationCoverage,
 }
 
@@ -105,41 +107,37 @@ pub struct ProviderManifest {
     #[serde(default)]
     pub execution: ProviderExecution,
     pub source: ManifestSourceDefaults,
-    #[serde(default)]
     pub search_capabilities: ProviderSearchCapabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query_pack_descriptor: Option<ProviderQueryPackDescriptor>,
+    pub query_pack_descriptor: ProviderQueryPackDescriptor,
     pub policy: HookPolicy,
-    pub routes: HookRoutes,
+    pub route_bindings: crate::protocol::HookRouteBindings,
 }
 
 /// Provider-owned search surfaces that ASP may delegate instead of approximating.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderSearchCapabilities {
-    #[serde(default)]
     pub owner_items: bool,
-    #[serde(default)]
     pub semantic_facts: bool,
-    #[serde(default)]
     pub dependency_topology: bool,
-    #[serde(default)]
     pub dependency_topology_metadata: bool,
-    #[serde(default)]
     pub workspace_scope: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source_snapshot: Option<ProviderSourceSnapshotDescriptor>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderSourceSnapshotDescriptor {
     pub descriptor_id: String,
     pub descriptor_version: String,
     pub language_id: String,
     pub packet_schema_id: String,
+    pub exact_source_packet_schema_id: String,
+    pub source_overlay_schema_id: String,
+    pub derived_artifact_evidence_schema_id: String,
     pub algorithm: String,
     pub authority: String,
     pub exact_selector_resolution: String,
@@ -246,6 +244,7 @@ pub struct ActivatedProvider {
     pub binary: String,
     pub execution: ProviderExecution,
     pub provider_command_prefix: Vec<String>,
+    pub execution_command_digest: String,
     pub namespace: String,
     pub package_roots: Vec<String>,
     pub source_extensions: Vec<String>,
@@ -254,7 +253,8 @@ pub struct ActivatedProvider {
     pub ignored_path_prefixes: Vec<String>,
     pub search_capabilities: ProviderSearchCapabilities,
     pub semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
-    pub query_pack_descriptor: Option<ProviderQueryPackDescriptor>,
+    pub query_pack_descriptor: ProviderQueryPackDescriptor,
+    pub semantic_registry_digest: String,
     pub policy: HookPolicy,
     pub routes: HookRoutes,
 }

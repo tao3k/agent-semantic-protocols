@@ -14,10 +14,11 @@ pub use language_projection::{
     CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_ID, CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_VERSION,
     CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_ID, CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_VERSION,
     ClientDbLanguageProjection, ClientDbLanguageProjectionHarness,
-    ClientDbLanguageProjectionImportRequest, ClientDbLanguageProjectionItem,
-    ClientDbLanguageProjectionNodeKind, ClientDbLanguageProjectionNodeRef,
-    ClientDbLanguageProjectionOwner, ClientDbLanguageProjectionRelation,
-    ClientDbLanguageProjectionSource, ClientDbLanguageProjectionSourceKind,
+    ClientDbLanguageProjectionImport, ClientDbLanguageProjectionImportRequest,
+    ClientDbLanguageProjectionItem, ClientDbLanguageProjectionNodeKind,
+    ClientDbLanguageProjectionNodeRef, ClientDbLanguageProjectionOwner,
+    ClientDbLanguageProjectionRelation, ClientDbLanguageProjectionSource,
+    ClientDbLanguageProjectionSourceKind,
 };
 pub use types::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
@@ -34,6 +35,7 @@ pub use types::{
     ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
     ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSelectorPayloadProof,
     ClientDbSourceIndexSource, ClientDbSourceIndexSourceKind, ClientDbSourceIndexStats,
-    client_db_source_index_file_count, client_db_source_index_generation_id,
+    client_db_source_index_artifact_digest, client_db_source_index_file_count,
+    client_db_source_index_generation_id_for_snapshot,
     client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
 };

@@ -9,11 +9,13 @@ use std::collections::BTreeMap;
 /// Schema identifier for semantic hook project activations.
 pub const HOOK_ACTIVATION_SCHEMA_ID: &str = "agent.semantic-protocols.hook.activation";
 /// Schema version for semantic hook project activations.
-pub const HOOK_ACTIVATION_SCHEMA_VERSION: &str = "1";
+pub const HOOK_ACTIVATION_SCHEMA_VERSION: &str = "4";
 /// Schema identifier for static semantic hook provider manifests.
 pub const PROVIDER_MANIFEST_SCHEMA_ID: &str = "agent.semantic-protocols.hook.provider-manifest";
 /// Schema version for static semantic hook provider manifests.
-pub const PROVIDER_MANIFEST_SCHEMA_VERSION: &str = "1";
+pub const PROVIDER_MANIFEST_SCHEMA_VERSION: &str = "4";
+pub const CANONICAL_SCHEMA_AUTHORITY: &str =
+    "https://tao3k.github.io/agent-semantic-protocols/schemas/";
 /// Schema identifier for shared hook decision packets.
 pub const HOOK_DECISION_SCHEMA_ID: &str = "agent.semantic-protocols.hook.decision";
 /// Schema version for shared hook decision packets.
@@ -78,9 +80,8 @@ fn action_blocks(action: ActionPolicy) -> bool {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Command templates that route denied tool use into semantic search.
 pub struct HookRoutes {
     pub prime: CommandTemplate,
     pub owner: CommandTemplate,
@@ -102,6 +103,28 @@ pub struct HookRoutes {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookRouteBindings {
+    pub prime: String,
+    pub owner: String,
+    pub lexical: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    pub ingest: String,
+    pub check_changed: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_topology: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_topology_metadata: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_index: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guide: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Argument template for a provider-owned semantic search command.
 pub struct CommandTemplate {
@@ -230,6 +253,45 @@ pub enum AgentHookError {
     InvalidActivationConfig(String),
     InvalidPayload(serde_json::Error),
     InvalidOutput(serde_json::Error),
+}
+
+impl AgentHookError {
+    #[must_use]
+    pub const fn reason_kind(&self) -> &'static str {
+        match self {
+            Self::InvalidActivation(_) => "invalid-activation",
+            Self::InvalidActivationConfig(_) => "invalid-activation-config",
+            Self::InvalidPayload(_) => "invalid-payload",
+            Self::InvalidOutput(_) => "invalid-output",
+        }
+    }
+
+    #[must_use]
+    pub fn message(&self) -> String {
+        match self {
+            Self::InvalidActivation(error) => format!("invalid activation JSON: {error}"),
+            Self::InvalidActivationConfig(message) => message.clone(),
+            Self::InvalidPayload(error) => format!("invalid hook payload JSON: {error}"),
+            Self::InvalidOutput(error) => format!("invalid hook output JSON: {error}"),
+        }
+    }
+}
+
+impl std::fmt::Display for AgentHookError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.reason_kind(), self.message())
+    }
+}
+
+impl std::error::Error for AgentHookError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidActivation(error)
+            | Self::InvalidPayload(error)
+            | Self::InvalidOutput(error) => Some(error),
+            Self::InvalidActivationConfig(_) => None,
+        }
+    }
 }
 
 /// Parse a platform hook payload as JSON.

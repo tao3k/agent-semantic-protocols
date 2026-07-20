@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.local/schemas/semantic-language-registry.v1.schema.json",
-  "title": "Semantic Language Registry",
-  "description": "Language-server-style provider registry for semantic language protocol implementations.",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-language-registry.v1.schema.json",
+  "title": "Semantic Language Registry v2",
+  "description": "Language-server-style provider registry with authoritative hook invocation templates.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -60,74 +60,44 @@
         "agent"
       ]
     },
-    "outputSchemaId": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_.-]*$"
-    },
-    "namespace": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
-    },
     "providerExecution": {
-      "type": "string",
       "enum": [
         "external-process",
         "embedded"
       ]
     },
-    "capabilityDescriptor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "languageId",
-        "namespace",
-        "name"
-      ],
-      "properties": {
-        "languageId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "namespace": {
-          "$ref": "#/$defs/identifier"
-        },
-        "name": {
-          "$ref": "#/$defs/identifier"
-        }
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     },
-    "fallbackDescriptor": {
+    "commandTemplate": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "name",
-        "trigger"
+        "argv"
       ],
       "properties": {
-        "name": {
-          "$ref": "#/$defs/identifier"
-        },
-        "trigger": {
-          "enum": [
-            "query-miss",
-            "item-query-miss",
-            "path-only-owner"
-          ]
-        },
-        "appliesToPipes": {
+        "argv": {
           "type": "array",
-          "uniqueItems": true,
+          "minItems": 1,
           "items": {
-            "$ref": "#/$defs/identifier"
+            "type": "string",
+            "minLength": 1
           }
         },
-        "maxItems": {
-          "type": "integer",
-          "minimum": 1
+        "stdinMode": {
+          "enum": [
+            "none",
+            "pipe-candidates",
+            "pipe-diff",
+            "unknown"
+          ]
         }
       }
     },
     "benchmarkInvocation": {
-      "description": "Provider-owned public ASP search invocation for the large-library runtime gate.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -137,7 +107,6 @@
       ],
       "properties": {
         "args": {
-          "description": "Arguments relative to `asp <language>`, with named corpus placeholders such as {workspace}, {owner}, {query}, and {dependency}.",
           "type": "array",
           "minItems": 2,
           "items": {
@@ -190,7 +159,8 @@
         "namespace",
         "methods",
         "methodDescriptors",
-        "schemas"
+        "schemas",
+        "queryPackDescriptor"
       ],
       "properties": {
         "languageId": {
@@ -214,7 +184,8 @@
           }
         },
         "namespace": {
-          "$ref": "#/$defs/namespace"
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
         },
         "displayName": {
           "type": "string",
@@ -231,7 +202,6 @@
         "methodDescriptors": {
           "type": "array",
           "minItems": 1,
-          "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/methodDescriptor"
           }
@@ -241,316 +211,20 @@
           "items": {
             "$ref": "#/$defs/schemaRegistration"
           }
+        },
+        "queryPackDescriptor": {
+          "$ref": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-query-pack-descriptor.v1.schema.json"
         }
       }
     },
     "methodDescriptor": {
       "type": "object",
-      "additionalProperties": false,
       "required": [
         "method",
         "command",
         "supportsJson",
-        "supportsCompact"
-      ],
-      "allOf": [
-      {
-        "if": {
-          "properties": {
-            "method": { "const": "guide" }
-          },
-          "required": ["method"]
-        },
-        "then": {
-          "properties": {
-            "command": { "const": "guide" }
-          },
-          "not": {
-            "required": ["view"]
-          }
-        }
-      },
-      {
-        "if": {
-          "properties": {
-            "method": {
-                "pattern": "^search/"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "required": [
-              "view",
-              "outputSchemaIds",
-              "requiresQuery",
-              "acceptsStdin",
-              "supportsPackageScope"
-            ],
-            "properties": {
-              "command": {
-                "const": "search"
-              },
-              "outputSchemaIds": {
-                "minItems": 1
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^query(?:/|$)"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "required": [
-              "outputSchemaIds"
-            ],
-            "properties": {
-              "command": {
-                "const": "query"
-              },
-              "outputSchemaIds": {
-                "minItems": 1
-              }
-            },
-            "not": {
-              "required": [
-                "view"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^check/"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "properties": {
-              "command": {
-                "const": "check"
-              }
-            },
-            "not": {
-              "required": [
-                "view"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^agent/"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "properties": {
-              "command": {
-                "const": "agent"
-              }
-            },
-            "not": {
-              "required": [
-                "view"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^proof/"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "required": [
-              "outputSchemaIds"
-            ],
-            "properties": {
-              "command": {
-                "const": "proof"
-              },
-              "outputSchemaIds": {
-                "minItems": 1
-              }
-            },
-            "not": {
-              "required": [
-                "view"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^review/"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "required": [
-              "outputSchemaIds"
-            ],
-            "properties": {
-              "command": {
-                "const": "review"
-              },
-              "outputSchemaIds": {
-                "minItems": 1
-              }
-            },
-            "not": {
-              "required": [
-                "view"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^evidence/"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "required": [
-              "outputSchemaIds"
-            ],
-            "properties": {
-              "command": {
-                "const": "evidence"
-              },
-              "outputSchemaIds": {
-                "minItems": 1
-              }
-            },
-            "not": {
-              "required": [
-                "view"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^verification/"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "properties": {
-              "command": {
-                "const": "verification"
-              }
-            },
-            "not": {
-              "required": [
-                "view"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^ast-patch/"
-              }
-            },
-            "required": [
-              "method"
-            ]
-          },
-          "then": {
-            "required": [
-              "outputSchemaIds",
-              "mutationAvailable"
-            ],
-            "properties": {
-              "command": {
-                "const": "ast-patch"
-              },
-              "outputSchemaIds": {
-                "minItems": 1
-              },
-              "mutationAvailable": {
-                "type": "boolean"
-              }
-            },
-            "not": {
-              "required": [
-                "view"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "method": {
-                "pattern": "^agent/"
-              },
-              "supportsJson": {
-                "const": true
-              }
-            },
-            "required": [
-              "method",
-              "supportsJson"
-            ]
-          },
-          "then": {
-            "required": [
-              "outputSchemaIds"
-            ],
-            "properties": {
-              "outputSchemaIds": {
-                "minItems": 1
-              }
-            }
-          }
-        }
+        "supportsCompact",
+        "invocation"
       ],
       "properties": {
         "method": {
@@ -559,376 +233,20 @@
         "command": {
           "$ref": "#/$defs/command"
         },
-        "view": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "outputSchemaIds": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/outputSchemaId"
-          }
-        },
-        "packetSchemas": {
-          "type": "array",
-          "description": "Short packet schema names advertised by this method, for example semantic-tree-sitter-query.v1.",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]+\\.v[0-9]+$"
-          }
-        },
-        "requiresQuery": {
-          "type": "boolean"
-        },
-        "acceptsStdin": {
-          "type": "boolean"
-        },
-        "supportsPackageScope": {
-          "type": "boolean"
+        "invocation": {
+          "$ref": "#/$defs/commandTemplate"
         },
         "benchmarkInvocation": {
           "$ref": "#/$defs/benchmarkInvocation"
-        },
-        "supportsQuerySet": {
-          "type": "boolean"
-        },
-        "queryInputForms": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-          "selector",
-          "code-shaped",
-          "catalog-id",
-          "s-expression",
-          "term",
-          "kind",
-          "field",
-          "metadata",
-          "content"
-        ]
-          }
-        },
-        "adapterModes": {
-          "description": "Tree-sitter-compatible query projection modes supported by this method.",
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "native-projection",
-              "hybrid",
-              "tree-sitter-runtime",
-              "codeql-query",
-              "cached-replay"
-            ]
-          }
-        },
-        "sourceAuthorities": {
-          "description": "Authorities that may prove query packets emitted by this method.",
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "native-parser",
-              "native-parser-adapter",
-              "tree-sitter-runtime",
-              "codeql",
-              "hybrid",
-              "cached-provider-export"
-            ]
-          }
-        },
-        "executionBackends": {
-          "description": "Query execution engines this method can use while preserving the advertised packet shape. CodeQL is optional and must still render through frontier-first packets.",
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "native-parser",
-              "tree-sitter-runtime",
-              "codeql",
-              "hybrid",
-              "cached-replay"
-            ]
-          }
-        },
-        "renderProfiles": {
-          "description": "Prompt-facing render contracts this method can produce without changing the query packet shape.",
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "compact-graph-frontier",
-              "corpus-locator",
-              "flow-lite-frontier",
-              "owner-local-projection"
-            ]
-          }
-        },
-        "queryCatalogs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/queryCatalogDescriptor"
-          }
-        },
-        "grammarId": {
-          "type": "string",
-          "pattern": "^tree-sitter-[a-z][a-z0-9_-]*$"
-        },
-        "grammarProfileVersion": {
-          "type": "string",
-          "minLength": 1
-        },
-        "grammarProfileSchema": {
-          "type": "string",
-          "pattern": "^semantic-tree-sitter-grammar-profile\\.v[0-9]+$"
-        },
-        "grammarProfilePath": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*\\.json$",
-          "description": "Canonical grammar profile path/handle. When the provider embeds profile source, this is not a downstream filesystem requirement."
-        },
-        "supportedPredicates": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "#eq?",
-              "#any-eq?",
-              "#any-of?",
-              "#match?",
-              "#any-match?",
-              "#not-eq?",
-              "#not-match?"
-            ]
-          }
-        },
-        "unsupportedPredicates": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "#eq?",
-              "#any-eq?",
-              "#any-of?",
-              "#match?",
-              "#any-match?",
-              "#not-eq?",
-              "#not-match?"
-            ]
-          }
-        },
-        "cacheReplay": {
-          "type": "boolean"
-        },
-        "codeOutput": {
-          "$ref": "#/$defs/codeOutputDescriptor"
-        },
-        "unsupportedPatternBehavior": {
-          "description": "Provider response for unsupported tree-sitter-compatible pattern shapes. Providers must not silently fall back to raw search.",
-          "enum": [
-            "diagnostic",
-            "empty-frontier"
-          ]
-        },
-        "acceptedQuerySetSelectors": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "exact-set",
-              "prefix-set",
-              "lexical-set",
-              "stdin-path-set"
-            ]
-          }
-        },
-        "querySetScopes": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "project",
-              "package",
-              "owner"
-            ]
-          }
-        },
-        "acceptedPipes": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]*$"
-          }
-        },
-        "capabilities": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/capabilityDescriptor"
-          }
-        },
-        "ingestRequiredFor": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/capabilityDescriptor"
-          }
-        },
-        "fallbacks": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/fallbackDescriptor"
-          }
-        },
-        "clients": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/identifier"
-          }
-        },
-        "requiredOptions": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "input": {
-          "type": "string",
-          "minLength": 1
-        },
-        "outputModes": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-                "frontier",
-                "json",
-                "code",
-                "names",
-              "outline",
-              "read-packet"
-            ]
-          }
         },
         "supportsJson": {
           "type": "boolean"
         },
         "supportsCompact": {
           "type": "boolean"
-        },
-        "mutationAvailable": {
-          "type": "boolean"
         }
-      }
-    },
-    "queryCatalogDescriptor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "id",
-        "path",
-        "captures"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_.-]*$"
-        },
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*\\.scm$",
-          "description": "Canonical catalog path/handle. When sourceDelivery is provider-binary-embedded, this is not a downstream filesystem requirement."
-        },
-        "captures": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
-          }
-        },
-        "nodeTypes": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          }
-        },
-        "fields": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          }
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
-        },
-        "fingerprint": {
-          "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$",
-          "description": "Content fingerprint for the canonical .scm catalog source embedded by the provider."
-        },
-        "sourceDelivery": {
-          "enum": [
-            "provider-binary-embedded"
-          ],
-          "description": "How the provider makes this canonical .scm source available to downstream clients. provider-binary-embedded means the provider binary carries the source and does not require package source files on the target machine."
-        }
-      }
-    },
-    "codeOutputDescriptor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "mode",
-        "multiMatch",
-        "requires"
-      ],
-      "properties": {
-        "mode": {
-          "enum": [
-            "pure-code"
-          ]
-        },
-        "multiMatch": {
-          "enum": [
-            "deny",
-            "allow",
-            "require-limit",
-            "first-only"
-          ]
-        },
-        "requires": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "exact-selector",
-              "unique-predicate",
-              "unique-match",
-              "--limit",
-              "--first"
-            ]
-          }
-        }
-      }
+      },
+      "additionalProperties": true
     }
   }
 }

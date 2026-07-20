@@ -227,7 +227,7 @@ esac
     let _ = std::fs::remove_dir_all(root);
 }
 
-fn attach_cache_file_hashes(packet: &str) -> String {
+pub(super) fn attach_cache_file_hashes(packet: &str) -> String {
     let mut packet: Value = serde_json::from_str(packet).expect("packet JSON");
     packet["cache"] = serde_json::json!({
         "fileHashes": [

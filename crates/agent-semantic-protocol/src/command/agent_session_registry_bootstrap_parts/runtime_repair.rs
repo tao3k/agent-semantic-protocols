@@ -1,4 +1,4 @@
-use agent_semantic_client_db::agent_session_registry::interactive_loop::AgentSessionInteractiveMenu;
+use agent_semantic_client_db::agent_session_registry::AgentSessionInteractiveMenu;
 
 pub(super) fn main_agent_runtime_rebind_instruction(
     canonical_target: &str,

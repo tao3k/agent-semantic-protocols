@@ -1,5 +1,18 @@
 ** Wire contract: semantic language registry + shared =semantic-search= JSON Schema
 *** Provider-owned query pack descriptor
+
+Every parser-owned search view MUST receive the descriptor from its activated
+provider, including plain =search lexical= requests that do not require
+dependency topology or semantic facts. Carrying provider contract context is
+independent from starting a provider process: execution remains plan-driven,
+but query composition MUST NOT drop the descriptor merely because the current
+plan can use only the local Merkle snapshot and parser projection.
+
+Workspace-scope capability names are provider-owned contract values. =cargo-workspace-membership= denotes Rust/Cargo membership evidence, while =package-manager-workspace-scope= denotes language-neutral package-manager workspace-scope search evidence. Every emitted capability name MUST validate against the active package-local capability schema; the common registry schema continues to own descriptor shape rather than a global cross-language name enum.
+
+Language registration and activation are part of the query-pack authority chain, not compatibility surfaces. The provider manifest, language registry record, serialized activation, and resolved runtime provider MUST carry the same required typed descriptor and canonical content identity. Missing, omitted, or drifted descriptors MUST fail closed before the language becomes routable; activation resolution MUST NOT restore descriptor content from an embedded Rust manifest.
+
+The breaking cutover uses versioned provider-manifest, language-registry, and hook-activation schemas. The active runtime accepts only the new versions; it does not retain v1 parsing, optional descriptor fields, aliases, or automatic descriptor backfill.
 Every registered source-language harness MUST publish a versioned query-pack descriptor. The
 descriptor is separate from semantic-facts production: a language such as =gerbil-scheme= may
 publish lexical query composition even before it supports =search/semantic-facts=. Document-only
@@ -124,9 +137,9 @@ selector-backed source with free-form prose.  =guide --code --selector
 <exact-selector>= is pure source extraction after the provider has already
 exposed a guidance selector.
 
-The agent-prefixed guide spelling is retired for prompt-facing flows.
-Providers may keep compatibility aliases for old tests or manual debugging,
-but registry output, generated skills, hook recovery messages, and new RFC
+The agent-prefixed guide spelling is physically removed.
+Compatibility aliases and their tests or manual-debug entry points MUST be physically removed;
+registry output, generated skills, hook recovery messages, tests, and RFC
 examples must use =guide= as the main command name and keep
 =query guide treesitter .= as a low-frequency reference.
 This keeps the low-frequency tool map stable and prevents agents from reading

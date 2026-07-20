@@ -4,12 +4,17 @@
 //! deterministic hashing, and source-snapshot evidence. Public APIs remain available
 //! from the crate root while each implementation branch retains a single owner.
 
+mod derived_artifact_evidence;
 mod domain;
 mod hashing;
 mod model;
 mod source_snapshot;
 mod value;
 
+pub use derived_artifact_evidence::{
+    DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION, DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID,
+    DerivedArtifactAuthorityState, DerivedSourceArtifactEvidence, DerivedSourceArtifactKind,
+};
 pub use domain::{
     ARTIFACT_IDENTITY_SCHEMA_ID, ARTIFACT_IDENTITY_SCHEMA_VERSION, EDGE_DOMAIN_V1,
     HASH_ALGORITHM_BLAKE3, JSON_DOMAIN_V1, LEAF_DOMAIN_V1, NODE_DOMAIN_V1, ROOT_DOMAIN_V1,
@@ -31,6 +36,10 @@ pub use value::{
     ArtifactGeneration, ArtifactHash, ArtifactJson, ArtifactKind, ArtifactRepoId, ArtifactScopeId,
     ArtifactWorkspaceId,
 };
+#[cfg(test)]
+#[path = "../tests/unit/derived_artifact_evidence.rs"]
+mod derived_artifact_evidence_tests;
+
 #[cfg(test)]
 #[path = "../tests/unit/source_snapshot.rs"]
 mod source_snapshot_tests;

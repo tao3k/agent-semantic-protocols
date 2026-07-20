@@ -2,8 +2,8 @@ use crate::cache_cli::{generation_file_hashes_match, provider_cache_probe};
 use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard, artifacts_root_from_cache_root};
 use agent_semantic_client_core::{
     CacheArtifactId, CacheExportMethod, CacheStatus, ClientCacheFileHash, ClientCacheGeneration,
-    ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderExecution, ProviderId,
-    ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId,
+    ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderRegistrySnapshot,
+    ResolvedProvider, SemanticSchemaId,
 };
 use agent_semantic_client_db::{ClientDbEngine, ClientDbGenerationHit};
 use serde_json::json;
@@ -71,20 +71,18 @@ fn retired_file_hashes_without_metadata_fail_to_parse() {
 }
 
 #[test]
-fn hook_direct_source_read_bypasses_cache_probe() {
-    let root = temp_root("hook-direct-source-read-no-probe");
+fn document_verbatim_bypasses_cache_probe() {
+    let root = temp_root("document-verbatim-no-probe");
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
         providers: vec![rust_provider()],
     };
     let request = ClientRequest::new(ClientMethod::Query, &root)
-        .with_language(LanguageId::from("rust"))
+        .with_language(LanguageId::from("org"))
         .with_forwarded_args(vec![
-            "--from-hook".to_string(),
-            "direct-source-read".to_string(),
             "--selector".to_string(),
-            "src/lib.rs:1:12".to_string(),
-            "--code".to_string(),
+            "org://plan.org#paragraph/paragraph/document[1]/paragraph[1]".to_string(),
+            "--verbatim".to_string(),
             ".".to_string(),
         ]);
 
@@ -218,7 +216,7 @@ fn generation_hit(
 ) -> ClientDbGenerationHit {
     ClientDbGenerationHit {
         language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
+        provider_id: agent_semantic_client_core::ProviderId::from("rs-harness"),
         project_root: root.to_path_buf(),
         export_method: CacheExportMethod::from("query/tree-sitter"),
         schema_ids: vec![SemanticSchemaId::from(
@@ -345,18 +343,5 @@ fn write_search_packet_artifact(cache_root: &std::path::Path, file_name: &str, q
 }
 
 fn rust_provider() -> ResolvedProvider {
-    ResolvedProvider {
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        binary: "rs-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: vec![".".to_string()],
-        source_roots: vec!["src".to_string()],
-        config_files: vec!["Cargo.toml".to_string()],
-        source_extensions: vec!["rs".to_string()],
-        ignored_path_prefixes: Vec::new(),
-    }
+    crate::test_support::resolved_provider("rust")
 }

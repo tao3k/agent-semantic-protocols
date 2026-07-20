@@ -1,18 +1,12 @@
 //! Codex rollout JSONL session index parser.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
     fs,
-    io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     process::Command,
-    time::UNIX_EPOCH,
 };
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-use crate::CodexRolloutSessionMetadata;
 
 pub(crate) fn codex_rollout_paths_for_session_id(
     sessions_dir: &Path,

@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use agent_semantic_client::lookup_search_pipe_source_index_for_language;
-use agent_semantic_client_db::{ClientDbEngine, TursoClientDbSearchHit};
 use agent_semantic_search::{
     SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
     SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
@@ -62,11 +61,13 @@ pub(super) fn parse_source_spec(value: &str) -> Result<SourceSpec, String> {
 pub(super) fn collect_search_pipe_candidates(
     language_id: &str,
     project_root: &Path,
+    current_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
     locator_root: &Path,
     intent: &str,
     scopes: &[PathBuf],
     source: SourceSpec,
     config: &AspConfig,
+    provider_context: Option<&super::search_pipe_provider_facts::ProviderGraphFactsContext<'_>>,
     require_multi_clause: bool,
 ) -> Result<CandidateAcquisition, String> {
     if let Some(language) = document_language(language_id) {
@@ -78,14 +79,21 @@ pub(super) fn collect_search_pipe_candidates(
             scopes,
             source,
             config,
+            current_snapshot,
         );
     }
-    let query_clauses = agent_semantic_search::search_pipe_query_clauses(
-        agent_semantic_search::SearchPipeQueryClausesRequest::new(
-            agent_semantic_search::SearchPipeLanguageId::new(language_id),
-            agent_semantic_search::SearchPipeQueryText::new(intent),
-        ),
-    );
+    let query_clauses = super::search_pipe_provider_facts::with_query_pack_descriptor(
+        provider_context,
+        |descriptor| {
+            agent_semantic_search::search_pipe_query_clauses(
+                agent_semantic_search::SearchPipeQueryClausesRequest::new(
+                    agent_semantic_search::SearchPipeLanguageId::new(language_id),
+                    agent_semantic_search::SearchPipeQueryText::new(intent),
+                )
+                .with_query_pack_descriptor(descriptor),
+            )
+        },
+    )?;
     let query_terms = agent_semantic_search::search_pipe_unique_query_terms(&query_clauses);
     match source {
         SourceSpec::Auto => auto_candidates(
@@ -96,7 +104,9 @@ pub(super) fn collect_search_pipe_candidates(
             scopes,
             config,
             require_multi_clause,
+            query_clauses.len(),
             &query_terms,
+            current_snapshot,
         ),
         SourceSpec::SearchOverlay => search_overlay_candidates(
             language_id,
@@ -106,6 +116,7 @@ pub(super) fn collect_search_pipe_candidates(
             scopes,
             config,
             require_multi_clause,
+            current_snapshot,
         ),
         SourceSpec::Provider => provider_candidates(),
         SourceSpec::Ingest => ingest_candidates(project_root, locator_root),
@@ -120,6 +131,7 @@ fn collect_document_search_pipe_candidates(
     scopes: &[PathBuf],
     source: SourceSpec,
     config: &AspConfig,
+    current_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
 ) -> Result<CandidateAcquisition, String> {
     match source {
         SourceSpec::Auto | SourceSpec::Provider | SourceSpec::SearchOverlay => {
@@ -134,6 +146,8 @@ fn collect_document_search_pipe_candidates(
                     ignore_dirs: &config.search.ignore_dirs,
                     include_hidden_dirs: &config.search.include_hidden_dirs,
                     search_overlay_limit: PIPE_CANDIDATE_LINE_LIMIT,
+                    base_snapshot: &current_snapshot.workspace_snapshot,
+                    provider_digest: &current_snapshot.source_snapshot.provider_digest,
                 })?;
             Ok(candidate_acquisition_from_search(acquisition))
         }
@@ -166,15 +180,18 @@ fn auto_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
     require_multi_clause: bool,
+    query_clause_count: usize,
     query_terms: &[agent_semantic_search::SearchPipeQueryTerm],
+    current_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
 ) -> Result<CandidateAcquisition, String> {
     let language = agent_semantic_client::LanguageId::from(language_id);
-    let source_index_query = source_index_lookup_query(language_id, intent);
+    let source_index_query = source_index_lookup_query(intent, query_clause_count, query_terms);
     let source_index_query_gated = scopes.is_empty()
         && agent_semantic_search::search_pipe_source_index_query_gate(query_terms).is_some();
     let source_index_lookup = if scopes.is_empty() && !source_index_query_gated {
         Some(lookup_search_pipe_source_index_for_language(
             project_root,
+            &current_snapshot.source_snapshot,
             Some(&language),
             &source_index_query,
             PIPE_CANDIDATE_LINE_LIMIT as u32,
@@ -194,18 +211,23 @@ fn auto_candidates(
         require_multi_clause,
         limit: PIPE_CANDIDATE_LINE_LIMIT,
         source_index_lookup: source_index_lookup.as_ref(),
+        base_snapshot: &current_snapshot.workspace_snapshot,
+        provider_digest: &current_snapshot.source_snapshot.provider_digest,
     })?;
     Ok(candidate_acquisition_from_search(acquisition))
 }
 
-fn source_index_lookup_query(language_id: &str, intent: &str) -> String {
-    let clauses = super::search_pipe_query_pack::query_clauses(language_id, intent);
-    if clauses.len() < 2 {
+fn source_index_lookup_query(
+    intent: &str,
+    query_clause_count: usize,
+    query_terms: &[agent_semantic_search::SearchPipeQueryTerm],
+) -> String {
+    if query_clause_count < 2 {
         return intent.to_string();
     }
-    super::search_pipe_query_pack::unique_query_terms(&clauses)
-        .into_iter()
-        .map(|term| term.raw)
+    query_terms
+        .iter()
+        .map(|term| term.raw.as_str())
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -289,8 +311,25 @@ fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSou
         trace.missing,
         trace.normalized,
     );
+    let mut fields = std::collections::BTreeMap::new();
     if let Some(elapsed) = trace.elapsed {
-        source_trace = source_trace.with_fields(elapsed_fields(elapsed));
+        fields.extend(elapsed_fields(elapsed));
+    }
+    if let Some(source_snapshot) = trace.source_snapshot {
+        fields.insert(
+            "sourceSnapshot".to_owned(),
+            serde_json::to_value(source_snapshot)
+                .expect("SourceSnapshotEvidence must serialize to JSON"),
+        );
+    }
+    if let Some(artifact_digest) = trace.artifact_digest {
+        fields.insert(
+            "indexArtifactDigest".to_owned(),
+            serde_json::Value::String(artifact_digest),
+        );
+    }
+    if !fields.is_empty() {
+        source_trace = source_trace.with_fields(fields);
     }
     source_trace
 }
@@ -303,6 +342,7 @@ fn search_overlay_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
     require_multi_clause: bool,
+    current_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
 ) -> Result<CandidateAcquisition, String> {
     let acquisition = collect_search_pipe_search_overlay_acquisition(
         SearchPipeSearchOverlayAcquisitionRequest {
@@ -315,6 +355,8 @@ fn search_overlay_candidates(
             include_hidden_dirs: &config.search.include_hidden_dirs,
             require_multi_clause,
             limit: PIPE_CANDIDATE_LINE_LIMIT,
+            base_snapshot: &current_snapshot.workspace_snapshot,
+            provider_digest: &current_snapshot.source_snapshot.provider_digest,
         },
     )?;
     let candidates = acquisition
@@ -330,40 +372,6 @@ fn search_overlay_candidates(
         ],
         candidates,
     })
-}
-
-fn selector_path(selector: &str) -> Option<&str> {
-    selector
-        .split_once('#')
-        .map(|(path, _)| path)
-        .or_else(|| selector.split_once(':').map(|(path, _)| path))
-        .filter(|path| !path.is_empty())
-}
-
-fn selector_line(selector: &str) -> Option<usize> {
-    selector
-        .split(':')
-        .nth(1)
-        .and_then(|line| line.parse::<usize>().ok())
-}
-
-fn selector_symbol(selector: &str) -> Option<&str> {
-    selector
-        .rsplit('/')
-        .next()
-        .filter(|symbol| !symbol.is_empty())
-}
-
-fn symbol_from_path(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
-}
-
-fn display_locator_path(locator_root: &Path, path: &str) -> String {
-    let path = Path::new(path);
-    path.strip_prefix(locator_root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
 }
 
 fn candidate_route_source(_candidates: &[Candidate]) -> &'static str {

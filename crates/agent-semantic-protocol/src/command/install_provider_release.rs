@@ -1,24 +1,5 @@
 //! Shared release metadata for provider installation.
 
-use serde::Deserialize;
-
-#[derive(Clone, Copy, Debug, Default, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub(super) enum WorkspaceInstallMode {
-    #[default]
-    Copy,
-    Symlink,
-}
-
-impl WorkspaceInstallMode {
-    pub(super) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Copy => "copy",
-            Self::Symlink => "symlink",
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub(super) struct ProviderReleaseSpec {
     pub(super) language_id: String,
@@ -30,7 +11,8 @@ pub(super) struct ProviderReleaseSpec {
     pub(super) archive_prefix: String,
     pub(super) archive_binary: String,
     pub(super) require_native_binary: bool,
-    pub(super) workspace_binary: Option<String>,
-    pub(super) workspace_install: WorkspaceInstallMode,
+    pub(super) workspace_artifact:
+        Option<super::install_provider_workspace_artifact::WorkspaceArtifactSpec>,
+    pub(super) workspace_build: Option<super::install_provider::WorkspaceBuildSpec>,
     pub(super) supported_targets: Vec<String>,
 }

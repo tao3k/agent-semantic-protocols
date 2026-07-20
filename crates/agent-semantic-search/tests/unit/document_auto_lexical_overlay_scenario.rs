@@ -17,6 +17,7 @@ const SCENARIO_ROOT: &str = concat!(
 
 #[test]
 fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let scenario = fs::read_to_string(Path::new(SCENARIO_ROOT).join("scenario.toml"))
         .expect("read scenario manifest");
     let benchmark = fs::read_to_string(Path::new(SCENARIO_ROOT).join("benchmark.toml"))
@@ -51,6 +52,8 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
             ignore_dirs: &ignore_dirs,
             include_hidden_dirs: &include_hidden_dirs,
             search_overlay_limit: 16,
+            base_snapshot: &fixture.workspace,
+            provider_digest: fixture.provider_digest.as_str(),
         })
         .expect("collect auto document candidates");
     let elapsed = started_at.elapsed();
@@ -87,6 +90,8 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
             ignore_dirs: &ignore_dirs,
             include_hidden_dirs: &include_hidden_dirs,
             search_overlay_limit: 16,
+            base_snapshot: &fixture.workspace,
+            provider_digest: fixture.provider_digest.as_str(),
         })
         .expect("collect provider document candidates");
     assert_eq!(

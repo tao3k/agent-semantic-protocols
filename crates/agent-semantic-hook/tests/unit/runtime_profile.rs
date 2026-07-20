@@ -1,9 +1,10 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use crate::protocol_activation::{
-    ActivatedProvider, HookActivation, HookRuntime, ProviderSearchCapabilities,
-    provider_manifest_digest,
+use crate::protocol_activation::digest::provider_manifest_digest;
+use crate::protocol_activation::protocol_activation_manifest::{
+    ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
+    HookActivation, HookRuntime,
 };
 use crate::provider_manifest::provider_manifests;
 
@@ -73,26 +74,30 @@ fn runtime_profiles_for_activation_uses_provider_command_prefix() {
     let activation = HookActivation {
         schema_id: crate::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: crate::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: crate::protocol::CANONICAL_SCHEMA_AUTHORITY.to_string(),
         protocol_id: crate::HOOK_PROTOCOL_ID.to_string(),
         protocol_version: crate::HOOK_PROTOCOL_VERSION.to_string(),
         project_root: root.display().to_string(),
-        generated_by: crate::protocol_activation::ActivationGeneratedBy {
+        generated_by: ActivationGeneratedBy {
             runtime: "asp".to_string(),
             version: "test".to_string(),
         },
         generated_at: None,
-        providers: vec![crate::protocol_activation::ActivatedProviderConfig {
+        providers: vec![ActivatedProviderConfig {
             manifest_id: provider.manifest_id.clone(),
             manifest_digest: provider.manifest_digest.clone(),
             language_id: provider.language_id.clone(),
             provider_id: provider.provider_id.clone(),
-            binary: provider.binary.clone(),
-            execution: provider.execution,
-            provider_command_prefix: provider.provider_command_prefix.clone(),
-            search_capabilities: serde_json::Value::default(),
+        binary: provider.binary.clone(),
+        execution: provider.execution,
+        provider_command_prefix: provider.provider_command_prefix.clone(),
+        execution_command_digest: provider.execution_command_digest.clone(),
+        search_capabilities: provider.search_capabilities.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
-            coverage: crate::protocol_activation::ActivationCoverage {
+            semantic_registry_digest: provider.semantic_registry_digest.clone(),
+            routes: provider.routes.clone(),
+            coverage: ActivationCoverage {
                 package_roots: provider.package_roots.clone(),
                 source_roots: provider.source_roots.clone(),
                 config_files: provider.config_files.clone(),
@@ -182,6 +187,8 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         .find(|manifest| manifest.language_id == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
+    let semantic_registry_digest = crate::semantic_registry_digest();
+    let routes = crate::materialize_provider_routes(&manifest).expect("provider routes");
     ActivatedProvider {
         manifest_id: manifest.manifest_id,
         manifest_digest,
@@ -196,11 +203,12 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         config_files: manifest.source.default_config_files,
         source_roots: manifest.source.default_source_roots,
         ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
-        search_capabilities: ProviderSearchCapabilities::default(),
-        semantic_facts_descriptor: None,
-        query_pack_descriptor: None,
+        search_capabilities: manifest.search_capabilities,
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+        query_pack_descriptor: manifest.query_pack_descriptor,
+        semantic_registry_digest,
         policy: manifest.policy,
-        routes: manifest.routes,
+        routes,
     }
 }
 
@@ -210,6 +218,8 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
         .find(|manifest| manifest.language_id == "gerbil-scheme")
         .expect("gerbil manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
+    let semantic_registry_digest = crate::semantic_registry_digest();
+    let routes = crate::materialize_provider_routes(&manifest).expect("provider routes");
     ActivatedProvider {
         manifest_id: manifest.manifest_id,
         manifest_digest,
@@ -224,11 +234,12 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
         config_files: manifest.source.default_config_files,
         source_roots: manifest.source.default_source_roots,
         ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
-        search_capabilities: ProviderSearchCapabilities::default(),
-        semantic_facts_descriptor: None,
-        query_pack_descriptor: None,
+        search_capabilities: manifest.search_capabilities,
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+        query_pack_descriptor: manifest.query_pack_descriptor,
+        semantic_registry_digest,
         policy: manifest.policy,
-        routes: manifest.routes,
+        routes,
     }
 }
 

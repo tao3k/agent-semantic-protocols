@@ -19,6 +19,8 @@ defect.
 
 * Contract
 
+Warm requests reuse the current generation without a write only when a complete current provider feed obtained for the request proves identical membership, file hashes, provider identity, and selector fingerprints. Registry evidence, a persisted generation digest, or an incomplete dirty-path set alone MUST NOT prove equivalence.
+
 Each published generation remains a complete immutable snapshot.  Its physical
 materialization is incremental:
 

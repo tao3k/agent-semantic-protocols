@@ -10,6 +10,8 @@ pub fn assert_asp_rust_project_harness_member_policy_from_env(package_name: &str
         panic!("no ASP Rust project harness member policy registered for {package_name}")
     });
     let harness_config = member_policy.to_harness_config();
-    let downstream_policy = RustProjectHarnessDownstreamPolicy::new(package_name, harness_config);
+    let verification_label = member_policy.verification_label.unwrap_or(package_name);
+    let downstream_policy =
+        RustProjectHarnessDownstreamPolicy::new(verification_label, harness_config);
     assert_rust_project_harness_downstream_policy_from_env(&downstream_policy);
 }

@@ -15,9 +15,6 @@ use super::locator_artifact::maybe_write_search_output_artifact;
 use super::locator_artifact::search_output_file_hashes;
 use super::probe::{ProviderCacheProbe, provider_cache_probe};
 use super::request::{request_export_method, selected_provider_for_request};
-use super::writeback_analysis_metadata::{
-    AnalysisMetadataArtifactWriteback, maybe_write_analysis_metadata_artifact,
-};
 use super::writeback_artifact_events::{
     ArtifactEventWriteback, ArtifactKind, artifact_events_for_writeback,
 };
@@ -210,7 +207,14 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         };
         let structural_generation =
             if matches!(artifact_kind, ArtifactKind::SemanticStructuralIndex) {
-                Some(generation.clone())
+                let source_snapshot =
+                    crate::source_index::current_source_index_snapshot_with_registry(
+                        project_root,
+                        snapshot,
+                    )
+                    .ok()?
+                    .source_snapshot;
+                Some((generation.clone(), source_snapshot))
             } else {
                 None
             };
@@ -260,21 +264,6 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             command_artifact_bytes = Some(command_artifact.len().min(u64::MAX as usize) as u64);
             fs::write(command_artifact_path, command_artifact).ok()?;
         }
-        let analysis_metadata_artifact =
-            maybe_write_analysis_metadata_artifact(AnalysisMetadataArtifactWriteback {
-                cache_root,
-                generation: &mut generation,
-                source_artifact_id: &artifact_id,
-                source_artifact_kind: artifact_kind,
-                provider,
-                project_root,
-                request,
-                export_method: &export_method,
-                artifact_bytes: &artifact_bytes,
-                rendered_stdout: stdout,
-                provider_commands,
-                writeback_provider_commands: &writeback_provider_commands,
-            });
         let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
         upsert_generation(&mut manifest, generation);
         write_cache_manifest(manifest_path, &manifest).ok()?;
@@ -287,12 +276,6 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             artifact_bytes: artifact_bytes.len().min(u64::MAX as usize) as u64,
             command_artifact_id: command_artifact_id.as_ref().map(CacheArtifactId::as_str),
             command_artifact_bytes,
-            analysis_metadata_artifact_id: analysis_metadata_artifact
-                .as_ref()
-                .map(|(artifact_id, _)| artifact_id.as_str()),
-            analysis_metadata_artifact_bytes: analysis_metadata_artifact
-                .as_ref()
-                .map(|(_, bytes)| *bytes),
             provider,
             project_root,
             export_method: &export_method,
@@ -313,11 +296,12 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             .ok()?;
             db_write_count += 1;
         }
-        if let Some(structural_generation) = structural_generation {
+        if let Some((structural_generation, source_snapshot)) = structural_generation {
             ClientDbEngine::import_semantic_structural_index_refresh_packet_from_client_dir(
                 cache_root,
                 &structural_generation,
                 &artifact_bytes,
+                &source_snapshot,
             )
             .ok()?;
             db_write_count += 1;
@@ -369,21 +353,6 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     fs::create_dir_all(artifact_path.parent()?).ok()?;
     fs::write(&artifact_path, packet_bytes).ok()?;
     maybe_write_search_output_artifact(cache_root, &mut generation, rendered_stdout);
-    let analysis_metadata_artifact =
-        maybe_write_analysis_metadata_artifact(AnalysisMetadataArtifactWriteback {
-            cache_root,
-            generation: &mut generation,
-            source_artifact_id: &artifact_id,
-            source_artifact_kind: ArtifactKind::SearchPacket,
-            provider,
-            project_root,
-            request,
-            export_method: &export_method,
-            artifact_bytes: packet_bytes,
-            rendered_stdout,
-            provider_commands: &[],
-            writeback_provider_commands: &[],
-        });
     let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
@@ -396,12 +365,6 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
         artifact_bytes: packet_bytes.len().min(u64::MAX as usize) as u64,
         command_artifact_id: None,
         command_artifact_bytes: None,
-        analysis_metadata_artifact_id: analysis_metadata_artifact
-            .as_ref()
-            .map(|(artifact_id, _)| artifact_id.as_str()),
-        analysis_metadata_artifact_bytes: analysis_metadata_artifact
-            .as_ref()
-            .map(|(_, bytes)| *bytes),
         provider,
         project_root,
         export_method: &export_method,
@@ -448,21 +411,6 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
     let artifact_path = replay_artifact_path(cache_root, &artifact_id, "query/", ".json")?;
     fs::create_dir_all(artifact_path.parent()?).ok()?;
     fs::write(&artifact_path, packet_bytes).ok()?;
-    let analysis_metadata_artifact =
-        maybe_write_analysis_metadata_artifact(AnalysisMetadataArtifactWriteback {
-            cache_root,
-            generation: &mut generation,
-            source_artifact_id: &artifact_id,
-            source_artifact_kind: ArtifactKind::QueryPacket,
-            provider,
-            project_root,
-            request,
-            export_method: &export_method,
-            artifact_bytes: packet_bytes,
-            rendered_stdout: &[],
-            provider_commands: &[],
-            writeback_provider_commands: &[],
-        });
     let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
@@ -475,12 +423,6 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
         artifact_bytes: packet_bytes.len().min(u64::MAX as usize) as u64,
         command_artifact_id: None,
         command_artifact_bytes: None,
-        analysis_metadata_artifact_id: analysis_metadata_artifact
-            .as_ref()
-            .map(|(artifact_id, _)| artifact_id.as_str()),
-        analysis_metadata_artifact_bytes: analysis_metadata_artifact
-            .as_ref()
-            .map(|(_, bytes)| *bytes),
         provider,
         project_root,
         export_method: &export_method,

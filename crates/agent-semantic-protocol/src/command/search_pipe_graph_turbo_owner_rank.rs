@@ -8,6 +8,7 @@ pub(super) fn graph_owner_rank_report_with_topology(
     candidates: &[Candidate],
     query_terms: &[String],
     workspace_root: Option<&Path>,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> agent_semantic_search::GraphOwnerRankReport {
     let projection_candidates = candidates
         .iter()
@@ -33,5 +34,6 @@ pub(super) fn graph_owner_rank_report_with_topology(
             .collect(),
         query_terms: query_terms.to_vec(),
         submodule_paths,
+        source_snapshot: source_snapshot.clone(),
     })
 }

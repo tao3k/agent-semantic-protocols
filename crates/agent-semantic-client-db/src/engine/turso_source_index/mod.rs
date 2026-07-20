@@ -6,7 +6,6 @@ mod prepare;
 mod projection;
 mod publish;
 mod readiness;
-mod schema_layout;
 mod trace;
 mod transaction;
 

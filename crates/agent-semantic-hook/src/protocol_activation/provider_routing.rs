@@ -129,9 +129,9 @@ impl ActivatedProvider {
             .argv
             .iter()
             .map(|arg| {
-                arg.replace("{path}", route_path)
+                arg.replace("{owner}", route_path)
                     .replace("{query}", query.unwrap_or(""))
-                    .replace("{projectRoot}", project_root)
+                    .replace("{workspace}", project_root)
             })
             .collect();
         let argv = self.agent_facade_argv_from_provider_argv(argv);

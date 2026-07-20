@@ -131,8 +131,14 @@ pub(super) fn asp_search_pipe_query_pack_cold_functional_path_stays_inside_scena
     assert_search_pipe_query_pack_benchmark_contract(&benchmark);
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
 
-    let query =
-        "src/runtime.rs packages/runtime-search SearchRouter CacheStatus concurrency through owner";
+    let query = "src/runtime.rs packages/runtime-search | SearchRouter CacheStatus | concurrency";
+    let query_pack_descriptor = agent_semantic_search::SearchPipeQueryPackDescriptor {
+        descriptor_id: "scenario-query-pack",
+        descriptor_version: "1",
+        language_id: "rust",
+        term_role_overrides: &[],
+        recipes: &[],
+    };
     let candidates = vec![agent_semantic_search::SearchPipeQueryPackCandidate {
         path: "src/runtime.rs".to_string(),
         symbol: "SearchRouter".to_string(),
@@ -144,13 +150,15 @@ pub(super) fn asp_search_pipe_query_pack_cold_functional_path_stays_inside_scena
         agent_semantic_search::SearchPipeQueryClausesRequest::new(
             agent_semantic_search::SearchPipeLanguageId::new("rust"),
             agent_semantic_search::SearchPipeQueryText::new(query),
-        ),
+        )
+        .with_query_pack_descriptor(query_pack_descriptor),
     );
     let clause_texts = agent_semantic_search::search_pipe_query_clause_texts(
         agent_semantic_search::SearchPipeQueryClausesRequest::new(
             agent_semantic_search::SearchPipeLanguageId::new("rust"),
             agent_semantic_search::SearchPipeQueryText::new(query),
-        ),
+        )
+        .with_query_pack_descriptor(query_pack_descriptor),
     );
     let terms = agent_semantic_search::search_pipe_unique_query_terms(&clauses);
     let coverages = agent_semantic_search::search_pipe_clause_coverages(&clauses, &candidates);
@@ -277,12 +285,6 @@ pub(super) fn asp_search_pipe_quality_decision_cold_functional_path_stays_inside
         &weak_terms,
         &risks,
     );
-    let fd_query = agent_semantic_search::search_pipe_fd_query_terms(
-        &terms,
-        &weak_terms,
-        &strong_matched,
-        &risks,
-    );
     let elapsed = started_at.elapsed();
     let elapsed_ms = elapsed.as_millis();
 
@@ -291,10 +293,9 @@ pub(super) fn asp_search_pipe_quality_decision_cold_functional_path_stays_inside
     assert!(risks.iter().any(|risk| risk == "package-drift"));
     assert!(risks.iter().any(|risk| risk == "weak-camelcase-match"));
     assert_eq!(quality, "low");
-    assert_eq!(fd_query.as_deref(), Some("SearchRouter"));
     assert!(
         elapsed_ms <= max_total_ms,
-        "search pipe quality decision cold functional path exceeded benchmark max_total={} observed={}ms risks={risks:?} quality={quality} fd_query={fd_query:?}",
+        "search pipe quality decision cold functional path exceeded benchmark max_total={} observed={}ms risks={risks:?} quality={quality}",
         benchmark.max_total,
         elapsed_ms
     );
@@ -307,8 +308,7 @@ pub(super) fn asp_search_pipe_quality_decision_cold_functional_path_stays_inside
         "workspace": ".",
         "command": [
             "agent_semantic_search::search_pipe_quality_risks",
-            "agent_semantic_search::search_pipe_query_pack_quality",
-            "agent_semantic_search::search_pipe_fd_query_terms"
+            "agent_semantic_search::search_pipe_query_pack_quality"
         ],
         "phase": "cold",
         "expected": {
@@ -330,7 +330,6 @@ pub(super) fn asp_search_pipe_quality_decision_cold_functional_path_stays_inside
             "nativeFinderElapsed": "0us",
             "riskCount": risks.len(),
             "quality": quality,
-            "fdQuery": fd_query,
             "firstRoute": "search-pipe-quality-decision",
             "executedRoutes": ["search-pipe-quality-decision"],
             "stdoutBytes": 0,
@@ -467,4 +466,47 @@ pub(super) fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_ins
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["declarationMatch"], true);
     assert_eq!(performance_gate["observed"]["compoundMatch"], true);
+}
+
+pub(super) fn asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_search_query_budget_cold_functional_path");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    super::contracts::assert_search_query_budget_benchmark_contract(&benchmark);
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let descriptor = agent_semantic_search::SearchPipeQueryPackDescriptor {
+        descriptor_id: "test.empty-query-pack",
+        descriptor_version: "1",
+        language_id: "rust",
+        term_role_overrides: &[],
+        recipes: &[],
+    };
+    let request = agent_semantic_search::SearchQueryBudgetRequest {
+        language_id: "rust",
+        query: "source access",
+        scopes: &[],
+        explicit_filters: false,
+        query_pack_descriptor: descriptor,
+    };
+
+    let started_at = Instant::now();
+    let block = agent_semantic_search::search_query_budget_block(request)
+        .expect("an unanchored generic query must be rejected before provider execution");
+    let elapsed = started_at.elapsed();
+    let elapsed_ms = elapsed.as_millis();
+
+    assert_eq!(block.reason, "query-too-broad");
+    assert_eq!(block.generic_terms, vec!["source", "access"]);
+    assert_eq!(block.term_count, 2);
+    assert!(
+        elapsed_ms <= max_total_ms,
+        "search query budget cold functional path exceeded benchmark max_total={} observed={}ms block={block:?}",
+        benchmark.max_total,
+        elapsed_ms
+    );
 }

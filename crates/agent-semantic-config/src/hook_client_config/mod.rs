@@ -27,8 +27,8 @@ pub use document::{
 };
 pub use intent_policy::{
     HookClientAspCommandIntentPolicyConfig, HookClientAspControlPlaneIntentConfig,
-    HookClientAspDirectReadFallbackIntentConfig, HookClientAspExactEvidenceIntentConfig,
-    HookClientAspInvalidEvidenceIntentConfig, HookClientAspReasoningIntentConfig,
+    HookClientAspExactEvidenceIntentConfig, HookClientAspInvalidEvidenceIntentConfig,
+    HookClientAspReasoningIntentConfig,
 };
 pub use routing::{
     HookClientConfigDecision, HookClientConfigReasonKind, HookClientConfigRouteKind,

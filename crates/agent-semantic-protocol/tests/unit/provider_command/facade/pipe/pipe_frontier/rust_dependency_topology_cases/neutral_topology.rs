@@ -1,5 +1,5 @@
+use crate::provider_command::facade::pipe::pipe_frontier::rust_dependency_topology::support::assert_manifest_dependency;
 use crate::provider_command::support;
-use crate::unit::provider_command::facade::pipe::pipe_frontier::rust_dependency_topology::support::assert_manifest_dependency;
 #[test]
 fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     let root = support::temp_project_root("search-pipe-project-topology");
@@ -38,6 +38,7 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     .expect("write submodule source");
     support::write_marker_provider(&bin_dir, "rs-harness", &marker);
     support::write_activation(&root, &[support::provider("rust", Vec::new())]);
+    use crate::provider_command::facade::pipe::assert_graph_turbo_request_contract;
 
     let output = support::asp_command(&root)
         .env("PATH", support::prepend_path(&bin_dir))
@@ -286,3 +287,4 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+use serde_json::Value;

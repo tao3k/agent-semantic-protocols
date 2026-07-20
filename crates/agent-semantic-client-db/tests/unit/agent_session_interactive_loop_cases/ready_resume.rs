@@ -112,7 +112,7 @@ fn host_tree_absent_with_typed_spawn_allows_one_canonical_replacement() {
         agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
             menu,
             "absent",
-            Some("present"),
+            Some("present-after-canonical-probe-miss"),
         );
 
     assert_eq!(repair.state, AgentSessionLoopState::Audit);

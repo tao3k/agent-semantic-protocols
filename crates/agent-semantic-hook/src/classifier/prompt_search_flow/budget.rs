@@ -1,6 +1,30 @@
+use crate::event_state::prompt_asp_command_count;
+use crate::tool_action::ToolAction;
+use crate::{HookDecision, HookRuntime};
+
 pub(super) struct ExhaustedAspCommandBudget {
     pub(super) command_count: usize,
     pub(super) max_commands: usize,
+}
+
+pub(super) fn classify_prompt_asp_command_budget(
+    registry: &HookRuntime,
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    session_id: Option<&str>,
+    transcript_path: Option<&str>,
+) -> Option<HookDecision> {
+    let command_count = prompt_asp_command_count(
+        std::path::Path::new(&registry.project_root),
+        session_id,
+        transcript_path,
+    )
+    .ok()?;
+    let budget = exhausted_asp_command_budget(command_count)?;
+    Some(super::decision::exhausted_asp_command_budget_decision(
+        platform, event, action, &budget,
+    ))
 }
 
 pub(super) fn exhausted_asp_command_budget(

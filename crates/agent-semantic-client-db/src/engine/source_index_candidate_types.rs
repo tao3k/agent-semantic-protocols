@@ -11,6 +11,7 @@ pub(super) struct TursoSourceIndexLookupScope {
     pub(super) schema_id: String,
     pub(super) schema_version: String,
     pub(super) generation_id: String,
+    pub(super) source_snapshot_json: String,
 }
 
 #[derive(serde::Deserialize)]

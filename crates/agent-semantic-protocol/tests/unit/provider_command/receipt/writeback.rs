@@ -8,3 +8,5 @@ mod support;
 mod syntax_replay;
 #[path = "writeback_cases/warm_provider.rs"]
 mod warm_provider;
+
+use syntax_replay::attach_cache_file_hashes;

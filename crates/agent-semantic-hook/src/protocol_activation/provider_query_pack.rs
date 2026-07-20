@@ -7,7 +7,7 @@ use super::protocol_activation_manifest::ProviderManifest;
 use std::collections::BTreeSet;
 
 /// Validate the provider-owned query-pack descriptor contract.
-pub(super) fn validate_query_pack_descriptor(
+pub(crate) fn validate_query_pack_descriptor(
     manifest: &ProviderManifest,
 ) -> Result<(), AgentHookError> {
     let invalid = |reason: &str| {
@@ -16,10 +16,7 @@ pub(super) fn validate_query_pack_descriptor(
             manifest.manifest_id
         ))
     };
-    let descriptor = manifest
-        .query_pack_descriptor
-        .as_ref()
-        .ok_or_else(|| invalid("descriptor is required for every active provider"))?;
+    let descriptor = &manifest.query_pack_descriptor;
     if descriptor.descriptor_id.trim().is_empty()
         || descriptor.descriptor_version != "1"
         || descriptor.language_id != manifest.language_id
@@ -88,7 +85,7 @@ pub(super) fn validate_query_pack_descriptor(
     Ok(())
 }
 
-pub(super) fn validate_semantic_facts_descriptor(
+pub(crate) fn validate_semantic_facts_descriptor(
     manifest: &ProviderManifest,
 ) -> Result<(), AgentHookError> {
     let Some(descriptor) = manifest.semantic_facts_descriptor.as_ref() else {

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 #[test]
 fn search_flow_source_index_owner_item_graph_chain_is_executable() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let lookup = SearchPipeSourceIndexLookup {
         state: "hit".to_string(),
@@ -37,7 +38,9 @@ fn search_flow_source_index_owner_item_graph_chain_is_executable() {
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
     let query = "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match";
-    let query_terms = agent_semantic_search::search_pipe_typed_query_terms("rust", query);
+    let query_terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        agent_semantic_search::search_pipe_typed_query_terms("rust", query, descriptor)
+    });
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
@@ -51,6 +54,8 @@ fn search_flow_source_index_owner_item_graph_chain_is_executable() {
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("source-index evidence graph chain acquisition");
 
@@ -258,6 +263,7 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
 
 #[test]
 fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let lookup = SearchPipeSourceIndexLookup {
         state: "busy".to_string(),
@@ -267,7 +273,9 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
     let query = "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match";
-    let query_terms = agent_semantic_search::search_pipe_typed_query_terms("rust", query);
+    let query_terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        agent_semantic_search::search_pipe_typed_query_terms("rust", query, descriptor)
+    });
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
@@ -281,6 +289,8 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("busy source-index should short-circuit without overlay");
 
@@ -302,6 +312,7 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
 
 #[test]
 fn search_flow_cold_required_source_index_returns_overlay_skipped() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let lookup = SearchPipeSourceIndexLookup {
         state: "cold-required".to_string(),
@@ -311,7 +322,9 @@ fn search_flow_cold_required_source_index_returns_overlay_skipped() {
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
     let query = "source-index schema requires explicit rebuild SourceIndexLookup";
-    let query_terms = agent_semantic_search::search_pipe_typed_query_terms("rust", query);
+    let query_terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        agent_semantic_search::search_pipe_typed_query_terms("rust", query, descriptor)
+    });
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
@@ -325,6 +338,8 @@ fn search_flow_cold_required_source_index_returns_overlay_skipped() {
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("cold-required source-index should short-circuit without overlay");
 

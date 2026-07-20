@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/exact-source-query-result.v1.schema.json",
-  "title": "ASP Exact Source Query Result v1",
+  "title": "ASP exact source query result v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -30,4 +30,3 @@
     "code": { "type": "string" }
   }
 }
-

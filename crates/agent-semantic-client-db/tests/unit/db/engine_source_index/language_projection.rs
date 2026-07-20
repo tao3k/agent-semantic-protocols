@@ -1,21 +1,18 @@
 use std::fs;
 
-use agent_semantic_client_core::{CacheGenerationId, LanguageId};
+use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_db::{
     ClientDbEngine, ClientDbLanguageProjection, ClientDbLanguageProjectionImportRequest,
     source_index_import_from_language_projection,
+};
+use agent_semantic_content_identity::{
+    DerivedArtifactAuthorityState, SourceSnapshotEvidence, SourceSnapshotKind,
 };
 
 use super::temp_root;
 
 #[tokio::test(flavor = "current_thread")]
 async fn harness_projection_imports_without_source_text_projection() {
-    use agent_semantic_client_db::{
-        CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, ClientDbSourceIndexImportFile,
-        ClientDbSourceIndexImportRequest, ClientDbSourceIndexRefreshRequest,
-        ClientDbSourceIndexSource, build_source_index_import,
-    };
-
     let client_dir = temp_root("db-language-projection-client");
     let project_root = temp_root("db-language-projection-project");
     let source_path = project_root.join("src/projection.ss");
@@ -41,92 +38,154 @@ async fn harness_projection_imports_without_source_text_projection() {
     .expect("decode language projection");
     let import =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
-            generation_id: CacheGenerationId::from("language-projection-turso"),
             project_root: project_root.clone(),
             previous_file_hashes: None,
             registry_fingerprint: "language-projection-registry".to_string(),
             projection: projection.clone(),
         })
         .expect("assemble language projection import");
-    assert_eq!(import.owners.len(), 1);
-    assert_eq!(import.selectors.len(), 1);
-    assert_eq!(import.selectors[0].start_line, 0);
-    assert_eq!(import.selectors[0].end_line, 0);
-
-    let generic_import = build_source_index_import(ClientDbSourceIndexImportRequest {
-        generation_id: CacheGenerationId::from("language-projection-generic-turso"),
-        project_root: project_root.clone(),
-        schema_id: import.schema_id.clone(),
-        schema_version: import.schema_version.clone(),
-        selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
-        file_hashes: import.file_hashes.clone(),
-        files: vec![ClientDbSourceIndexImportFile {
-            relative_path: "src/projection.ss".to_string(),
-            language_id: LanguageId::from("gerbil-scheme"),
-            provider_id: import.owners[0]
-                .provider_id
-                .clone()
-                .expect("parser projection provider id"),
-            text: "(def (run) 1)\n".to_string(),
-            selectors: Vec::new(),
-        }],
-    })
-    .expect("build generic source-index import before parser projection");
-    let generic_report = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: generic_import,
-            file_count: 1,
-        },
-    )
-    .expect("persist generic source-index import before parser projection");
-    assert_eq!(generic_report.selector_count, 1);
+    let source_snapshot = import.source_snapshot.clone();
+    assert_eq!(
+        import.source_index.generation_id,
+        agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+            &source_snapshot,
+        ),
+    );
+    let import_counts = (
+        import.source_index.file_hashes.len(),
+        import.source_index.owners.len(),
+        import.source_index.selectors.len(),
+    );
+    assert_eq!(
+        import.source_index.file_hashes.len(),
+        source_snapshot.leaf_count,
+        "language projection source-index counts={import_counts:?}"
+    );
+    assert_eq!(
+        import.source_index.owners.len(),
+        1,
+        "language projection source-index counts={import_counts:?}"
+    );
+    assert_eq!(
+        import.source_index.selectors.len(),
+        1,
+        "language projection source-index counts={import_counts:?}"
+    );
+    assert_eq!(import.source_index.selectors[0].start_line, 0);
+    assert_eq!(import.source_index.selectors[0].end_line, 0);
+    assert_eq!(
+        import.source_index.owners[0]
+            .provider_id
+            .as_ref()
+            .map(|id| id.as_str()),
+        Some("gerbil-scheme-language-project-harness"),
+    );
 
     let report = ClientDbEngine::persist_language_projection_read_model_from_client_dir(
         &client_dir,
-        &import,
+        &import.source_index,
         &projection,
+        &source_snapshot,
     )
     .expect("persist language projection import");
     assert_eq!(report.graph_entity_count, 3);
     assert_eq!(report.graph_edge_count, 2);
+    assert!(!report.graph_artifact_digest.is_empty());
     let language_id = LanguageId::from("gerbil-scheme");
-    let graph_selectors = ClientDbEngine::lookup_graph_owner_selectors_from_client_dir(
-        &client_dir,
-        "src/projection.ss",
-        Some(&language_id),
-        8,
-    )
-    .await
-    .expect("lookup imported graph selector");
-    assert_eq!(graph_selectors.len(), 1);
-    assert_eq!(graph_selectors[0].label, "run");
-    assert_eq!(
-        graph_selectors[0].semantic_kind.as_deref(),
-        Some("function")
-    );
-    assert_eq!(
-        graph_selectors[0].selector.as_deref(),
-        Some("gerbil-scheme://src/projection.ss#item/function/run")
-    );
     let graph_owner = ClientDbEngine::lookup_graph_owner_read_model_from_client_dir(
         &client_dir,
+        &source_snapshot,
         "src/projection.ss",
         Some(&language_id),
         8,
     )
     .await
     .expect("lookup imported graph owner read model");
-    assert!(graph_owner.projection_ready);
-    assert_eq!(graph_owner.selector_nodes, graph_selectors);
+    assert_eq!(
+        graph_owner.artifact_evidence.authority_state,
+        DerivedArtifactAuthorityState::Current
+    );
+    assert!(graph_owner.owner_present);
+    assert_eq!(graph_owner.selector_nodes.len(), 1);
+    assert_eq!(graph_owner.selector_nodes[0].label, "run");
+    assert_eq!(
+        graph_owner.selector_nodes[0].semantic_kind.as_deref(),
+        Some("function")
+    );
+    assert_eq!(
+        graph_owner.selector_nodes[0].selector.as_deref(),
+        Some("gerbil-scheme://src/projection.ss#item/function/run")
+    );
+    assert_eq!(
+        graph_owner
+            .artifact_evidence
+            .resolved_artifact_digest
+            .as_deref(),
+        Some(report.graph_artifact_digest.as_str())
+    );
+    assert_eq!(
+        graph_owner.artifact_evidence.source_snapshot,
+        source_snapshot
+    );
+    let stale_snapshot = SourceSnapshotEvidence::new(
+        "c".repeat(64),
+        SourceSnapshotKind::Filesystem,
+        1,
+        source_snapshot.provider_digest.clone(),
+    );
+    let stale_owner = ClientDbEngine::lookup_graph_owner_read_model_from_client_dir(
+        &client_dir,
+        &stale_snapshot,
+        "src/projection.ss",
+        Some(&language_id),
+        8,
+    )
+    .await
+    .expect("stale graph artifact must degrade without returning selectors");
+    assert_eq!(
+        stale_owner.artifact_evidence.authority_state,
+        DerivedArtifactAuthorityState::Stale
+    );
+    assert!(!stale_owner.owner_present);
+    assert!(stale_owner.selector_nodes.is_empty());
+    assert_eq!(
+        stale_owner.artifact_evidence.source_snapshot,
+        stale_snapshot
+    );
+    assert!(
+        stale_owner
+            .artifact_evidence
+            .resolved_artifact_digest
+            .is_none()
+    );
+
+    let missing_client_dir = temp_root("db-language-projection-missing-client");
+    let missing_owner = ClientDbEngine::lookup_graph_owner_read_model_from_client_dir(
+        &missing_client_dir,
+        &source_snapshot,
+        "src/projection.ss",
+        Some(&language_id),
+        8,
+    )
+    .await
+    .expect("missing graph cache must remain a non-authoritative cache miss");
+    assert_eq!(
+        missing_owner.artifact_evidence.authority_state,
+        DerivedArtifactAuthorityState::Missing
+    );
+    assert!(!missing_owner.owner_present);
+    assert!(missing_owner.selector_nodes.is_empty());
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &source_snapshot,
         "run",
         Some(&language_id),
         8,
     )
     .await
     .expect("lookup imported projection");
+    assert_eq!(lookup.source_snapshot.as_ref(), Some(&source_snapshot));
+    assert!(lookup.index_artifact_digest.is_some());
     let proof = lookup
         .candidates
         .iter()
@@ -147,5 +206,6 @@ async fn harness_projection_imports_without_source_text_projection() {
     assert_eq!(candidate.selector_kind.as_deref(), Some("function"));
 
     let _ = fs::remove_dir_all(client_dir);
+    let _ = fs::remove_dir_all(missing_client_dir);
     let _ = fs::remove_dir_all(project_root);
 }

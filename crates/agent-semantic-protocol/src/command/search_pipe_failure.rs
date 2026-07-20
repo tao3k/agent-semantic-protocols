@@ -38,6 +38,8 @@ pub(super) fn run_search_failure_command(
     if message.trim().is_empty() {
         return Err("search failure requires non-empty failure text".to_string());
     }
+    let current_snapshot =
+        agent_semantic_client::source_index::current_source_index_snapshot(project_root)?;
     let acquisition =
         collect_search_pipe_failure_acquisition(SearchPipeFailureAcquisitionRequest {
             language_id,
@@ -47,6 +49,8 @@ pub(super) fn run_search_failure_command(
             ignore_dirs: &config.search.ignore_dirs,
             include_hidden_dirs: &config.search.include_hidden_dirs,
             limit: PIPE_CANDIDATE_LINE_LIMIT,
+            base_snapshot: &current_snapshot.workspace_snapshot,
+            provider_digest: &current_snapshot.source_snapshot.provider_digest,
         })?;
     let candidates = acquisition
         .candidates

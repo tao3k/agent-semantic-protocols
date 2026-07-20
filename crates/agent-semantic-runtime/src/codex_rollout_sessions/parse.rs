@@ -1,19 +1,16 @@
 //! Codex rollout JSONL session index parser.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
     fs,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
-    process::Command,
+    path::Path,
     time::UNIX_EPOCH,
 };
 
 use serde_json::Value;
 
-use super::types::{CodexRolloutActivityHeartbeat, CodexRolloutActivityReport};
+use super::types::CodexRolloutActivityReport;
 
-use crate::CodexRolloutSessionMetadata;
 
 const ROLLOUT_INDEX_HEADER_LINE_LIMIT: usize = 32;
 const ROLLOUT_INDEX_ACTIVITY_TAIL_BYTES: u64 = 256 * 1024;

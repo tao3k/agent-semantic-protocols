@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_next_command_line};
 use super::search_pipe_action_model::PipeAction;
-use super::search_pipe_model::Candidate;
 use super::search_pipe_quality_model::SearchPipeQuality;
 
 #[derive(Clone, Copy)]
@@ -14,7 +13,6 @@ pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) locator_root: &'a Path,
     pub(super) scopes: &'a [PathBuf],
     pub(super) quality: &'a SearchPipeQuality,
-    pub(super) candidates: &'a [Candidate],
     pub(super) ranked_compact: Option<&'a str>,
     pub(super) selector_actions: &'a [PipeAction],
     pub(super) read_memory_selectors: &'a [String],
@@ -38,15 +36,9 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
     }
     let mut pushed_preferred_owner_items = false;
     if request.quality.package_cohesion == "low"
-        && let Some(handle) = preferred_owner_items_handle(request.quality, request.candidates)
-        && let Some((owner, query)) = handle.split_once(':')
+        && let Some(action) = owner_items_action_from_quality(request, scope_arg)
     {
-        actions.push(owner_items_action(
-            request.language_id,
-            scope_arg,
-            owner,
-            query,
-        ));
+        actions.push(action);
         pushed_preferred_owner_items = true;
     }
     if request.quality.allow_query_selector
@@ -58,22 +50,16 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         actions.push(query_code_action(request, action));
     }
     if !pushed_preferred_owner_items
-        && let Some(handle) = preferred_owner_items_handle(request.quality, request.candidates)
-        && let Some((owner, query)) = handle.split_once(':')
+        && let Some(action) = owner_items_action_from_quality(request, scope_arg)
     {
-        actions.push(owner_items_action(
-            request.language_id,
-            scope_arg,
-            owner,
-            query,
-        ));
+        actions.push(action);
     }
     if let Some(handle) = tree_sitter_action_handle(request.quality, request.ranked_compact) {
         let recipe = handle_field(&handle, "recipe").map(str::to_string);
         let names = handle_field(&handle, "names").map(|names| {
             names
                 .split('|')
-                .filter(|name| usable_query_term(name))
+                .filter(|name| !name.is_empty())
                 .map(ToOwned::to_owned)
                 .collect::<Vec<_>>()
         });
@@ -186,58 +172,26 @@ fn selector_matches_seen(seen: &str, candidate: &str) -> bool {
     seen_path == candidate_path && seen_start <= candidate_start && candidate_end <= seen_end
 }
 
-fn preferred_owner_items_handle(
-    quality: &SearchPipeQuality,
-    _candidates: &[Candidate],
-) -> Option<String> {
-    let owner = quality
-        .best_owner
-        .as_ref()
-        .map(|coverage| coverage.owner.as_str())?;
-    let mut terms = Vec::new();
-    terms.extend(quality.strong_matched.iter().cloned());
-    terms.extend(quality.owner_seed_terms.iter().cloned());
-    terms.extend(quality.concept_terms.iter().cloned());
-    let query = unique_terms_without_weak_natural(terms, 6)?.join("|");
-    Some(format!("{owner}:{query}"))
-}
-
-fn unique_terms_without_weak_natural(terms: Vec<String>, limit: usize) -> Option<Vec<String>> {
-    let mut unique = Vec::new();
-    for term in terms {
-        if !usable_query_term(&term) || weak_natural_action_term(&term) {
-            continue;
-        }
-        if !unique.iter().any(|existing| existing == &term) {
-            unique.push(term);
-        }
-        if unique.len() >= limit {
-            break;
-        }
-    }
-    (!unique.is_empty()).then_some(unique)
-}
-
-fn usable_query_term(term: &str) -> bool {
-    let trimmed = term.trim();
-    trimmed.len() >= 2
-        && trimmed
-            .chars()
-            .any(|character| character.is_ascii_alphanumeric())
-}
-
-fn weak_natural_action_term(term: &str) -> bool {
-    matches!(
-        term.trim().to_ascii_lowercase().as_str(),
-        "the" | "and" | "or" | "for" | "with" | "from" | "this" | "that"
-    )
+fn owner_items_action_from_quality(
+    request: &SearchPipeActionRequest<'_>,
+    scope_arg: &str,
+) -> Option<ActionNode> {
+    let owner = request.quality.best_owner.as_ref()?.owner.as_str();
+    let query = request
+        .quality
+        .owner_seed_terms
+        .iter()
+        .chain(request.quality.strong_matched.iter())
+        .chain(request.quality.concept_terms.iter())
+        .take(6)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("|");
+    (!query.is_empty()).then(|| owner_items_action(request.language_id, scope_arg, owner, &query))
 }
 
 fn tree_sitter_action_handle(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String> {
-    let fields = compact_symbols(compact, "field")
-        .into_iter()
-        .filter(|symbol| usable_query_term(symbol))
-        .collect::<Vec<_>>();
+    let fields = compact_symbols(compact, "field");
     if !fields.is_empty() {
         return Some(format!(
             "recipe=interface-fields,names={}",

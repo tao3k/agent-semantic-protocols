@@ -13,7 +13,12 @@ mod search_command_preflight;
 mod search_flow_scenarios;
 #[path = "unit/search_query_budget.rs"]
 mod search_query_budget;
+#[path = "unit/source_snapshot_fixture.rs"]
+mod source_snapshot_fixture;
 #[path = "unit/syntax_query_replay.rs"]
 mod syntax_query_replay;
 #[path = "unit/unit_test_smoke.rs"]
 mod unit_test_smoke;
+
+#[path = "unit/query_pack_fixture.rs"]
+mod query_pack_fixture;

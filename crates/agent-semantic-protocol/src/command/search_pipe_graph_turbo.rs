@@ -18,10 +18,6 @@ use super::{
     search_pipe_graph_turbo_seed::{has_package_path_candidate, query_owner_seed_paths},
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
     search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsContext},
-    search_pipe_quality::analyze_search_pipe_quality,
-    search_pipe_quality_model::SearchPipeQuality,
-    search_pipe_query_evidence::{is_high_value_term, strong_match},
-    search_pipe_query_pack::{query_clauses, unique_query_terms},
     search_pipe_seed_decision::SeedPhaseDecision,
     search_pipe_surfaces::{
         include_deps, include_items, include_owner_context, include_tests, include_topology,
@@ -36,11 +32,11 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) surface: &'a str,
     pub(super) language_id: &'a str,
     pub(super) dependency_root: &'a Path,
+    pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     pub(super) cache_home: &'a Path,
     pub(super) query: Option<&'a str>,
     pub(super) query_clauses: &'a [String],
     pub(super) candidates: &'a [Candidate],
-    pub(super) precomputed_quality: Option<&'a SearchPipeQuality>,
     pub(super) pipes: &'a [String],
     pub(super) source: &'a str,
     pub(super) candidate_sources: &'a [String],
@@ -67,12 +63,12 @@ pub(super) fn render_graph_turbo_request(
 pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let language_id = request.language_id;
     let dependency_root = request.dependency_root;
+    let source_snapshot = request.source_snapshot;
     let cache_home = request.cache_home;
     let surface = request.surface;
     let query = request.query;
     let query_clauses = request.query_clauses;
     let candidates = request.candidates;
-    let precomputed_quality = request.precomputed_quality;
     let pipes = request.pipes;
     let source = request.source;
     let candidate_sources = request.candidate_sources;
@@ -105,19 +101,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         }
     }
 
-    let computed_quality = if precomputed_quality.is_none() {
-        query
-            .filter(|query| !query.trim().is_empty())
-            .map(|query| analyze_search_pipe_quality(language_id, query, candidates))
-    } else {
-        None
-    };
-    let quality_for_query = precomputed_quality.or(computed_quality.as_ref());
-    let augmented_candidates = if quality_for_query.is_some_and(allow_query_anchor_candidates) {
-        query_anchor_candidates(language_id, query, candidates)
-    } else {
-        candidates.to_vec()
-    };
+    let augmented_candidates = candidates.to_vec();
     let query_terms = query.map(query_terms).unwrap_or_default();
     let graph_candidates = sparse_graph_candidates(&augmented_candidates, query);
     let query_adjustment_policy = query_adjustment_policy_from_env();
@@ -130,6 +114,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         &graph_candidates,
         &query_terms,
         topology_membership_enabled.then_some(dependency_root),
+        source_snapshot,
     );
     let owners = owner_rank_report
         .ranked_owners
@@ -456,12 +441,6 @@ fn graph_route_score(score: &agent_semantic_search::GraphOwnerRankScore) -> Valu
     })
 }
 
-fn allow_query_anchor_candidates(quality: &SearchPipeQuality) -> bool {
-    quality.query_pack_quality != "low"
-        && quality.package_cohesion != "low"
-        && quality.weak_terms.is_empty()
-}
-
 fn provider_context_for_dependency_seed<'a>(
     surface: &str,
     language_id: &str,
@@ -479,61 +458,6 @@ fn provider_context_for_dependency_seed<'a>(
             candidate_usage_dependency_matches_query(language_id, candidates, query)
         });
     search_pipe_dependency_query.then_some(context)
-}
-
-fn query_anchor_candidates(
-    language_id: &str,
-    query: Option<&str>,
-    candidates: &[Candidate],
-) -> Vec<Candidate> {
-    let Some(query) = query.filter(|query| !query.trim().is_empty()) else {
-        return candidates.to_vec();
-    };
-    let terms = unique_query_terms(&query_clauses(language_id, query));
-    let mut augmented = candidates.to_vec();
-    let mut seen = augmented
-        .iter()
-        .map(|candidate| {
-            (
-                candidate.path.clone(),
-                candidate.line,
-                candidate.symbol.to_ascii_lowercase(),
-            )
-        })
-        .collect::<HashSet<_>>();
-    for term in terms.iter().filter(|term| is_high_value_term(term)) {
-        if augmented
-            .iter()
-            .any(|candidate| candidate.symbol == term.raw || candidate.symbol == term.lower)
-        {
-            continue;
-        }
-        let Some(source_candidate) = candidates
-            .iter()
-            .find(|candidate| strong_match(language_id, candidate, term))
-        else {
-            continue;
-        };
-        let key = (
-            source_candidate.path.clone(),
-            source_candidate.line,
-            term.lower.clone(),
-        );
-        if !seen.insert(key) {
-            continue;
-        }
-        augmented.push(Candidate {
-            path: source_candidate.path.clone(),
-            line: source_candidate.line,
-            end_line: source_candidate.end_line,
-            symbol: term.raw.clone(),
-            selector: None,
-            text: source_candidate.text.clone(),
-            source: "query-anchor".to_string(),
-            confidence: "query-anchor".to_string(),
-        });
-    }
-    augmented
 }
 
 fn query_adjustment_policy_from_env() -> Option<Value> {

@@ -2,8 +2,7 @@
 
 use agent_semantic_config::HookClientAspCommandIntentPolicyConfig;
 use agent_semantic_hook::{
-    AspLanguageCommandIntent, asp_invocation_indices,
-    classify_asp_language_command_tokens_with_policy, semantic_shell_tokens,
+    asp_invocation_indices, classify_asp_language_command_tokens_with_policy, semantic_shell_tokens,
 };
 
 pub(super) fn command_requires_resident_child(
@@ -15,7 +14,6 @@ pub(super) fn command_requires_resident_child(
         |index| match classify_main_session_asp_command(&tokens, index, intent_policy) {
             MainSessionAspCommandClass::ControlPlane
             | MainSessionAspCommandClass::ExactEvidenceRead
-            | MainSessionAspCommandClass::DirectReadFallback
             | MainSessionAspCommandClass::InvalidEvidence => false,
             MainSessionAspCommandClass::ReasoningFlow => true,
             MainSessionAspCommandClass::Unknown => false,
@@ -27,7 +25,6 @@ pub(super) fn command_requires_resident_child(
 pub(super) enum MainSessionAspCommandClass {
     ControlPlane,
     ExactEvidenceRead,
-    DirectReadFallback,
     InvalidEvidence,
     ReasoningFlow,
     Unknown,
@@ -54,14 +51,13 @@ pub(super) fn classify_main_session_asp_command(
         classify_asp_language_command_tokens_with_policy(&tokens[asp_index..], intent_policy)
     {
         return match command.intent {
-            AspLanguageCommandIntent::ExactEvidence => {
+            agent_semantic_config::AspCommandIntent::ExactEvidence => {
                 MainSessionAspCommandClass::ExactEvidenceRead
             }
-            AspLanguageCommandIntent::Reasoning => MainSessionAspCommandClass::ReasoningFlow,
-            AspLanguageCommandIntent::DirectReadFallback => {
-                MainSessionAspCommandClass::DirectReadFallback
+            agent_semantic_config::AspCommandIntent::Reasoning => {
+                MainSessionAspCommandClass::ReasoningFlow
             }
-            AspLanguageCommandIntent::InvalidEvidence => {
+            agent_semantic_config::AspCommandIntent::InvalidEvidence => {
                 MainSessionAspCommandClass::InvalidEvidence
             }
         };

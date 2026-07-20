@@ -1,7 +1,7 @@
 [package]
 name = "agent-semantic-artifacts"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 license = "MIT"
 description = "Content-addressed artifact identity and Merkle root primitives for ASP."
 

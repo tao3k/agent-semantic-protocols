@@ -21,8 +21,15 @@ fn healthcheck_reports_git_cache_agents_and_activation_runtime() {
     assert!(stdout.contains(&format!("gitToplevel={}", git_toplevel.display())));
     assert!(stdout.contains("cacheSource=git-toplevel"));
     assert!(stdout.contains("|env PRJ_CACHE_HOME=unset"));
-    assert!(stdout.contains("|path agentsSkill="));
-    assert!(stdout.contains("status=ok"));
+    let plugin_skill = root.join(
+        "codex-home/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org",
+    );
+    assert!(stdout.contains(&format!(
+        "|skill authority=plugin-installed path={} status=ok error=none",
+        plugin_skill.display()
+    )));
+    assert!(!stdout.contains("agentsSkill="));
+    assert!(!stdout.contains("pluginSkill="));
     assert!(stdout.contains(&format!("|path activation={}", activation_path.display())));
     assert!(stdout.contains("providers=1"));
     assert!(stdout.contains("|activationRuntime status=ok providers=1"));
@@ -53,6 +60,11 @@ fn healthcheck_json_reports_project_runtime_layout() {
     assert_eq!(value["activationRuntime"]["providerCount"], json!(1));
     assert_eq!(value["providers"][0]["languageId"], json!("rust"));
     assert_eq!(value["env"]["PRJ_CACHE_HOME"], Value::Null);
+    assert_eq!(value["skill"]["authority"], json!("plugin-installed"));
+    assert_eq!(value["skill"]["status"], json!("ok"));
+    assert_eq!(value["skill"]["error"], Value::Null);
+    assert!(value["paths"].get("agentsSkill").is_none());
+    assert!(value["paths"].get("pluginSkill").is_none());
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -87,10 +99,81 @@ fn healthcheck_accepts_enabled_global_codex_plugin_skill() {
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
     assert!(stdout.contains(&format!(
-        "|path pluginSkill={} status=ok",
+        "|skill authority=plugin-installed path={} status=ok error=none",
         plugin_skill.display()
     )));
     assert!(!stdout.contains("warn code=missing-agent-skill"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn healthcheck_rejects_stray_project_skill_when_plugin_skill_is_missing() {
+    let root = temp_project_root("healthcheck-stray-project-skill");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    let project_skill = root.join(".agents/skills/agent-semantic-protocols/SKILL.org");
+    std::fs::create_dir_all(project_skill.parent().expect("project skill parent"))
+        .expect("create project skill parent");
+    std::fs::write(project_skill, "#+TITLE: stray checkout skill\n")
+        .expect("write stray project skill");
+    let provider = write_executable(&root, "rs-harness");
+    write_activation(&root, &provider);
+    let codex_home = root.join("codex-home");
+    std::fs::create_dir_all(&codex_home).expect("create Codex home");
+    std::fs::write(
+        codex_home.join("config.toml"),
+        "[plugins.\"asp-codex-plugin@asp-project\"]\nenabled = true\n",
+    )
+    .expect("write enabled Codex plugin config");
+
+    let output = run_healthcheck(&root, &["."], &[]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let stdout = stdout(&output);
+    assert!(
+        stdout.contains("|skill authority=plugin-installed path=missing status=missing error=none")
+    );
+    assert!(stdout.contains("error code=missing-agent-skill"));
+    assert!(!stdout.contains("agentsSkill="));
+    assert!(!stdout.contains("pluginSkill="));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn healthcheck_json_reports_plugin_skill_resolver_error() {
+    let root = temp_project_root("healthcheck-plugin-skill-resolver-error");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join(".agents")).expect("create agents dir");
+    let provider = write_executable(&root, "rs-harness");
+    write_activation(&root, &provider);
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command
+        .current_dir(&root)
+        .arg("healthcheck")
+        .args(["--json", "."]);
+    command.env_remove("PRJ_CACHE_HOME");
+    command.env_remove("CODEX_HOME");
+    command.env_remove("HOME");
+    let output = command
+        .output()
+        .expect("run asp healthcheck without Codex home");
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: Value = serde_json::from_str(&stdout(&output)).expect("parse healthcheck JSON");
+    assert_eq!(value["skill"]["authority"], json!("plugin-installed"));
+    assert_eq!(value["skill"]["path"], Value::Null);
+    assert_eq!(value["skill"]["status"], json!("invalid"));
+    assert_eq!(
+        value["skill"]["error"],
+        json!("missing CODEX_HOME and HOME; cannot locate Codex config")
+    );
+    assert!(value["issues"].as_array().is_some_and(|issues| {
+        issues.iter().any(|issue| {
+            issue["code"] == json!("invalid-agent-skill")
+                && issue["message"]
+                    == json!("missing CODEX_HOME and HOME; cannot locate Codex config")
+        })
+    }));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -151,6 +234,19 @@ fn prepared_project(name: &str) -> PathBuf {
     let skill_dir = root.join(".agents/skills/agent-semantic-protocols");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
     std::fs::write(skill_dir.join("SKILL.org"), "#+TITLE: test skill\n").expect("write skill");
+    let codex_home = root.join("codex-home");
+    std::fs::create_dir_all(&codex_home).expect("create Codex home");
+    std::fs::write(
+        codex_home.join("config.toml"),
+        "[plugins.\"asp-codex-plugin@asp-project\"]\nenabled = true\n",
+    )
+    .expect("write enabled Codex plugin config");
+    let plugin_skill = codex_home.join(
+        "plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org",
+    );
+    std::fs::create_dir_all(plugin_skill.parent().expect("plugin skill parent"))
+        .expect("create plugin skill parent");
+    std::fs::write(plugin_skill, "#+TITLE: plugin skill\n").expect("write plugin skill");
     root
 }
 
@@ -209,6 +305,7 @@ fn run_healthcheck(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output 
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command.current_dir(root).arg("healthcheck").args(args);
     command.env_remove("PRJ_CACHE_HOME");
+    command.env("CODEX_HOME", root.join("codex-home"));
     for (key, value) in envs {
         command.env(key, value);
     }

@@ -59,6 +59,8 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 .find(|manifest| manifest.language_id == spec.language_id)
                 .unwrap_or_else(|| panic!("missing manifest for {}", spec.language_id));
             let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
+            let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
+                .expect("materialize provider routes");
             let provider = json!({
                 "manifestId": manifest.manifest_id,
                 "manifestDigest": manifest_digest,
@@ -67,6 +69,11 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 "binary": manifest.binary,
                 "execution": manifest.execution,
                 "providerCommandPrefix": spec.command_prefix,
+                "searchCapabilities": manifest.search_capabilities,
+                "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+                "queryPackDescriptor": manifest.query_pack_descriptor,
+                "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
+                "routes": routes,
                 "coverage": {
                     "packageRoots": [package_root.clone()],
                     "sourceRoots": manifest.source.default_source_roots,
@@ -81,6 +88,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
     let activation = json!({
         "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
         "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
+        "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
         "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": root.display().to_string(),

@@ -117,10 +117,6 @@ fn validate_asp_command_intent_policy(
             "aspCommandIntentPolicy.exactEvidence.selectorKinds[]",
             &policy.exact_evidence.selector_kinds,
         ),
-        (
-            "aspCommandIntentPolicy.directReadFallback.fromHookValues[]",
-            &policy.direct_read_fallback.from_hook_values,
-        ),
     ] {
         if values.iter().any(|value| value.trim().is_empty()) {
             return Err(format!("{label} must not contain empty values"));

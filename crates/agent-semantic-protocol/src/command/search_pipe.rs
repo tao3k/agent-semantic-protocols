@@ -51,6 +51,7 @@ pub(super) struct FastSearchContext<'a> {
     pub(super) config: &'a AspConfig,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
+    pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
@@ -137,6 +138,7 @@ pub(super) fn run_asp_fast_search_command(
                 config: context.config,
                 provider_context: context.provider_context,
                 frontier_receipt: context.frontier_receipt,
+                source_snapshot: context.source_snapshot,
             },
         );
     }
@@ -156,21 +158,8 @@ fn is_search_ingest(args: &[String]) -> bool {
 }
 
 fn is_search_lexical(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("search"))
-        && matches!(args.get(1).map(String::as_str), Some("lexical"))
-        && has_search_lexical_query(args)
-        && has_supported_fast_search_view(args)
-        && !args.iter().any(|arg| arg == "--json")
-        && !args
-            .iter()
-            .any(|arg| matches!(arg.as_str(), "--query-set" | "--owner" | "--dependency"))
-}
-
-fn has_search_lexical_query(args: &[String]) -> bool {
-    args.get(2).is_some_and(|query| !query.starts_with('-'))
-        || args
-            .windows(2)
-            .any(|window| window[0] == "--query" && !window[1].trim().is_empty())
+    parse_lexical_args(args)
+        .is_ok_and(|request| matches!(request.view.as_str(), "seeds" | "graph-turbo-request"))
 }
 
 fn is_search_failure(args: &[String]) -> bool {
@@ -252,13 +241,18 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     }
     let budget_scopes = search_pipe_budget_scopes(&pipe_args);
     if pipe_args.view != "graph-turbo-request"
-        && let Some(block) =
-            search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
-                language_id: context.language_id,
-                query: &pipe_args.seed_query,
-                scopes: &budget_scopes,
-                explicit_filters: false,
-            })
+        && let Some(block) = super::search_pipe_provider_facts::with_query_pack_descriptor(
+            context.provider_context,
+            |query_pack_descriptor| {
+                search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+                    language_id: context.language_id,
+                    query: &pipe_args.seed_query,
+                    scopes: &budget_scopes,
+                    explicit_filters: false,
+                    query_pack_descriptor,
+                })
+            },
+        )?
     {
         print_search_query_budget_block(
             "search-pipe",
@@ -276,6 +270,8 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         context.config,
         context.provider_context,
     )?;
+    let current_snapshot =
+        agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
     let mut acquisition =
         dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
             language_id: context.language_id,
@@ -289,18 +285,26 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
             collect_search_pipe_candidates(
                 context.language_id,
                 &project_root,
+                &current_snapshot,
                 context.locator_root,
                 &pipe_args.seed_query,
                 &pipe_args.scopes,
                 pipe_args.source,
                 context.config,
+                context.provider_context,
                 true,
             )
         })?;
-    if super::search_pipe_provider_facts::query_requests_semantic_facts(
-        context.language_id,
-        &pipe_args.seed_query,
-    ) {
+    let query_requests_semantic_facts = if let Some(provider_context) = context.provider_context {
+        super::search_pipe_provider_facts::query_requests_semantic_facts(
+            provider_context.provider,
+            &pipe_args.seed_query,
+        )?
+        .is_some()
+    } else {
+        false
+    };
+    if query_requests_semantic_facts {
         if let Some(scope) = workspace_scope.as_ref() {
             let topology_acquisition =
                 super::search_pipe_source::collect_workspace_scope_topology_acquisition(
@@ -342,6 +346,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: &project_root,
+        source_snapshot: &current_snapshot.source_snapshot,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-pipe",
@@ -411,10 +416,6 @@ fn admit_search_pipe_candidates(
     );
 }
 
-#[cfg(test)]
-#[path = "../../tests/unit/search_pipe_workspace_scope.rs"]
-mod workspace_scope_admission_tests;
-
 fn resolved_search_pipe_source(source: SourceSpec, acquisition: &CandidateAcquisition) -> String {
     acquisition
         .candidate_sources
@@ -464,15 +465,20 @@ fn print_search_query_budget_block(
     );
     println!(
         "nextCommand={}",
-        search_budget_next_command(query, workspace, scopes)
+        search_budget_next_command(language_id, query, workspace, scopes)
     );
     println!(
-        "refineHint=use path-or-symbol terms first; example: asp fd -query 'path-or-symbol|error-code' --workspace <scope>"
+        "refineHint=use typed path-or-symbol clauses first; example: asp {language_id} search lexical 'path-or-symbol|error-code' --workspace <scope> --view seeds"
     );
     println!("avoid=repeat-search-pipe,broad-lexical,raw-read,raw-rg,workspace-wide-rg");
 }
 
-fn search_budget_next_command(query: &str, workspace: Option<&Path>, scopes: &[PathBuf]) -> String {
+fn search_budget_next_command(
+    language_id: &str,
+    query: &str,
+    workspace: Option<&Path>,
+    scopes: &[PathBuf],
+) -> String {
     let terms = super::search_query_budget::search_query_terms(query)
         .into_iter()
         .filter(|term| specific_search_term(term))
@@ -489,7 +495,7 @@ fn search_budget_next_command(query: &str, workspace: Option<&Path>, scopes: &[P
         .or_else(|| workspace.map(|workspace| workspace.display().to_string()))
         .unwrap_or_else(|| "<scope>".to_string());
     format!(
-        "asp fd -query '{}' --workspace {}",
+        "asp {language_id} search lexical '{}' --workspace {} --view seeds",
         query,
         shell_arg(&scope)
     )
@@ -741,6 +747,8 @@ fn run_search_ingest_command(
     }
     let candidates =
         parse_ingest_candidates(context.project_root, context.locator_root, stdin.as_slice());
+    let current_snapshot =
+        agent_semantic_client::source_index::current_source_index_snapshot(context.project_root)?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         context.project_root,
@@ -752,6 +760,7 @@ fn run_search_ingest_command(
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: context.project_root,
+        source_snapshot: &current_snapshot.source_snapshot,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-ingest",
@@ -789,14 +798,18 @@ fn run_search_lexical_command(
             "search lexical supports --view seeds; GraphRouter is selected by the built-in route wrapper".to_string(),
         );
     }
-    if let Some(block) =
-        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
-            language_id: context.language_id,
-            query: &pipe_args.query,
-            scopes: &pipe_args.owners,
-            explicit_filters: false,
-        })
-    {
+    if let Some(block) = super::search_pipe_provider_facts::with_query_pack_descriptor(
+        context.provider_context,
+        |query_pack_descriptor| {
+            search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+                language_id: context.language_id,
+                query: &pipe_args.query,
+                scopes: &pipe_args.owners,
+                explicit_filters: false,
+                query_pack_descriptor,
+            })
+        },
+    )? {
         print_search_query_budget_block(
             "search-lexical",
             context.language_id,
@@ -812,14 +825,18 @@ fn run_search_lexical_command(
         context.locator_root,
         pipe_args.workspace.as_deref(),
     );
+    let current_snapshot =
+        agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
     let acquisition = collect_search_pipe_candidates(
         context.language_id,
         &project_root,
+        &current_snapshot,
         context.locator_root,
         &pipe_args.query,
         &pipe_args.owners,
         SourceSpec::Auto,
         context.config,
+        context.provider_context,
         false,
     )?;
     let provider_facts = collect_provider_graph_facts(
@@ -838,6 +855,7 @@ fn run_search_lexical_command(
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: &project_root,
+        source_snapshot: &current_snapshot.source_snapshot,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-lexical",

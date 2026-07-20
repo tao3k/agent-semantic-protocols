@@ -9,18 +9,25 @@ use crate::{
 fn search_pipe_query_pack_splits_broad_queries_into_stable_clauses() {
     let query =
         "src/runtime.rs packages/runtime-search SearchRouter CacheStatus concurrency through owner";
-    let clauses = search_pipe_query_clauses(
-        crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
-            crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
-            crate::search_pipe_query_pack::SearchPipeQueryText::new(query),
-        ),
-    );
-    let clause_texts = search_pipe_query_clause_texts(
-        crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
-            crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
-            crate::search_pipe_query_pack::SearchPipeQueryText::new(query),
-        ),
-    );
+    let clauses = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        search_pipe_query_clauses(
+            crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
+                crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
+                crate::search_pipe_query_pack::SearchPipeQueryText::new(query),
+            )
+            .with_query_pack_descriptor(descriptor),
+        )
+    });
+    let clause_texts =
+        crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+            search_pipe_query_clause_texts(
+                crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
+                    crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
+                    crate::search_pipe_query_pack::SearchPipeQueryText::new(query),
+                )
+                .with_query_pack_descriptor(descriptor),
+            )
+        });
 
     assert_eq!(
         clause_texts,
@@ -60,7 +67,14 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
     };
 
     let explicit_axes =
-        crate::search_pipe_semantic_facts_intent("python", "list|collection fields", descriptor);
+        crate::query_pack_fixture::with_typescript_query_pack("python", |query_pack| {
+            crate::search_pipe_semantic_facts_intent(
+                "python",
+                "list|collection fields",
+                query_pack,
+                descriptor,
+            )
+        });
     assert!(explicit_axes.requested);
     assert_eq!(
         explicit_axes.matched_axes,
@@ -68,25 +82,50 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
     );
 
     let symbol_anchor =
-        crate::search_pipe_semantic_facts_intent("rust", "Snapshot fields", descriptor);
+        crate::query_pack_fixture::with_typescript_query_pack("rust", |query_pack| {
+            crate::search_pipe_semantic_facts_intent(
+                "rust",
+                "Snapshot fields",
+                query_pack,
+                descriptor,
+            )
+        });
     assert!(symbol_anchor.requested);
     assert_eq!(symbol_anchor.matched_terms, vec!["fields".to_owned()]);
 
     assert!(
-        !crate::search_pipe_semantic_facts_intent(
-            "rust",
-            "low cohesion rg query set command scope package",
-            descriptor,
-        )
+        !crate::query_pack_fixture::with_typescript_query_pack("rust", |query_pack| {
+            crate::search_pipe_semantic_facts_intent(
+                "rust",
+                "low cohesion rg query set command scope package",
+                query_pack,
+                descriptor,
+            )
+        })
         .requested
     );
     assert!(
-        !crate::search_pipe_semantic_facts_intent("python", "list workflow cache", descriptor,)
-            .requested
+        !crate::query_pack_fixture::with_typescript_query_pack("python", |query_pack| {
+            crate::search_pipe_semantic_facts_intent(
+                "python",
+                "list workflow cache",
+                query_pack,
+                descriptor,
+            )
+        })
+        .requested
     );
 
     assert!(
-        !crate::search_pipe_semantic_facts_intent("rust", "vec collection", descriptor,).requested
+        !crate::query_pack_fixture::with_typescript_query_pack("rust", |query_pack| {
+            crate::search_pipe_semantic_facts_intent(
+                "rust",
+                "vec collection",
+                query_pack,
+                descriptor,
+            )
+        })
+        .requested
     );
     let rust_collection_terms = vec!["vec".to_owned(), "collection".to_owned()];
     let rust_axes = [crate::SearchPipeSemanticFactsIntentAxis {
@@ -95,15 +134,18 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
         roles: &[],
     }];
     assert!(
-        crate::search_pipe_semantic_facts_intent(
-            "rust",
-            "vec collection",
-            crate::SearchPipeSemanticFactsDescriptor {
-                descriptor_id: "rust.semantic-facts",
-                descriptor_version: "1",
-                intent_axes: &rust_axes,
-            },
-        )
+        crate::query_pack_fixture::with_typescript_query_pack("rust", |query_pack| {
+            crate::search_pipe_semantic_facts_intent(
+                "rust",
+                "vec collection",
+                query_pack,
+                crate::SearchPipeSemanticFactsDescriptor {
+                    descriptor_id: "rust.semantic-facts",
+                    descriptor_version: "1",
+                    intent_axes: &rust_axes,
+                },
+            )
+        })
         .requested
     );
 }
@@ -145,11 +187,6 @@ fn search_pipe_query_pack_keeps_explicit_clauses_and_roles() {
         crate::search_pipe_query_pack::SearchPipeLanguageId::new("typescript"),
         crate::search_pipe_query_pack::SearchPipeQueryText::new("Effect Stream|Queue backpressure"),
     );
-    let generic_terms = search_pipe_unique_query_terms(&search_pipe_query_clauses(request));
-    assert!(
-        search_pipe_role_terms(&generic_terms, SearchPipeTermRole::Context).is_empty(),
-        "provider-specific roles must not leak into the generic query composer"
-    );
     let clauses = search_pipe_query_clauses(request.with_query_pack_descriptor(descriptor));
     let terms = search_pipe_unique_query_terms(&clauses);
 
@@ -175,12 +212,15 @@ fn search_pipe_query_pack_keeps_explicit_clauses_and_roles() {
 
 #[test]
 fn search_pipe_clause_coverage_matches_candidate_evidence() {
-    let clauses = search_pipe_query_clauses(
-        crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
-            crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
-            crate::search_pipe_query_pack::SearchPipeQueryText::new("SearchRouter CacheStatus"),
-        ),
-    );
+    let clauses = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        search_pipe_query_clauses(
+            crate::search_pipe_query_pack::SearchPipeQueryClausesRequest::new(
+                crate::search_pipe_query_pack::SearchPipeLanguageId::new("rust"),
+                crate::search_pipe_query_pack::SearchPipeQueryText::new("SearchRouter CacheStatus"),
+            )
+            .with_query_pack_descriptor(descriptor),
+        )
+    });
     let candidates = vec![SearchPipeQueryPackCandidate {
         path: "src/router.rs".to_string(),
         symbol: "SearchRouter".to_string(),

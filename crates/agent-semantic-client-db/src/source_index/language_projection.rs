@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
-use agent_semantic_client_core::{CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId};
+use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
 use serde::Deserialize;
 
 use super::types::{
@@ -115,11 +115,17 @@ pub enum ClientDbLanguageProjectionNodeKind {
 /// Generic lifecycle input for importing parser-owned projection facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbLanguageProjectionImportRequest {
-    pub generation_id: CacheGenerationId,
     pub project_root: PathBuf,
     pub previous_file_hashes: Option<Vec<ClientCacheFileHash>>,
     pub registry_fingerprint: String,
     pub projection: ClientDbLanguageProjection,
+}
+
+/// Content-addressed language projection prepared for source-index persistence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbLanguageProjectionImport {
+    pub source_index: super::types::ClientDbSourceIndexImport,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 /// Rows derived from parser facts without reading or parsing language source text.

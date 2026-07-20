@@ -6,30 +6,32 @@ use super::search_pipe_query_model::{ClauseCoverage, QueryClause, QueryTerm, Ter
 pub(super) fn query_clauses(
     language_id: &str,
     query: &str,
-    query_pack_descriptor: Option<agent_semantic_search::SearchPipeQueryPackDescriptor<'_>>,
+    query_pack_descriptor: agent_semantic_search::SearchPipeQueryPackDescriptor<'_>,
 ) -> Vec<QueryClause> {
-    let request = search_query_clauses_request(language_id, query);
-    let request = match query_pack_descriptor {
-        Some(descriptor) => request.with_query_pack_descriptor(descriptor),
-        None => request,
-    };
-    agent_semantic_search::search_pipe_query_clauses(request)
-        .into_iter()
-        .map(query_clause_from_search)
-        .collect()
+    agent_semantic_search::search_pipe_query_clauses(
+        agent_semantic_search::SearchPipeQueryClausesRequest::new(
+            agent_semantic_search::SearchPipeLanguageId::new(language_id),
+            agent_semantic_search::SearchPipeQueryText::new(query),
+        )
+        .with_query_pack_descriptor(query_pack_descriptor),
+    )
+    .into_iter()
+    .map(query_clause_from_search)
+    .collect()
 }
 
 pub(super) fn query_clause_texts(
     language_id: &str,
     query: &str,
-    query_pack_descriptor: Option<agent_semantic_search::SearchPipeQueryPackDescriptor<'_>>,
+    query_pack_descriptor: agent_semantic_search::SearchPipeQueryPackDescriptor<'_>,
 ) -> Vec<String> {
-    let request = search_query_clauses_request(language_id, query);
-    let request = match query_pack_descriptor {
-        Some(descriptor) => request.with_query_pack_descriptor(descriptor),
-        None => request,
-    };
-    agent_semantic_search::search_pipe_query_clause_texts(request)
+    agent_semantic_search::search_pipe_query_clause_texts(
+        agent_semantic_search::SearchPipeQueryClausesRequest::new(
+            agent_semantic_search::SearchPipeLanguageId::new(language_id),
+            agent_semantic_search::SearchPipeQueryText::new(query),
+        )
+        .with_query_pack_descriptor(query_pack_descriptor),
+    )
 }
 
 pub(super) fn unique_query_terms(clauses: &[QueryClause]) -> Vec<QueryTerm> {
@@ -141,14 +143,4 @@ fn search_role_from_protocol(role: TermRole) -> agent_semantic_search::SearchPip
         TermRole::Concept => agent_semantic_search::SearchPipeTermRole::Concept,
         TermRole::Symbol => agent_semantic_search::SearchPipeTermRole::Symbol,
     }
-}
-
-fn search_query_clauses_request<'a>(
-    language_id: &'a str,
-    query: &'a str,
-) -> agent_semantic_search::SearchPipeQueryClausesRequest<'a> {
-    agent_semantic_search::SearchPipeQueryClausesRequest::new(
-        agent_semantic_search::SearchPipeLanguageId::new(language_id),
-        agent_semantic_search::SearchPipeQueryText::new(query),
-    )
 }

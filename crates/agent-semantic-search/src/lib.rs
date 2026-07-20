@@ -181,16 +181,16 @@ pub use search_pipe_evidence::{
 };
 pub use search_pipe_quality::{
     SearchPipeCohesionTerm, is_search_pipe_package_axis_term, search_pipe_candidate_packages,
-    search_pipe_fd_owner_axis_term, search_pipe_fd_query_terms, search_pipe_missing_path_terms,
-    search_pipe_owner_seed_terms, search_pipe_package_cohesion, search_pipe_package_key,
-    search_pipe_quality_risks, search_pipe_query_pack_quality,
+    search_pipe_missing_path_terms, search_pipe_owner_seed_terms, search_pipe_package_cohesion,
+    search_pipe_package_key, search_pipe_quality_risks, search_pipe_query_pack_quality,
 };
 pub use search_pipe_query_pack::{
     SearchPipeClauseCoverage, SearchPipeLanguageId, SearchPipeQueryClause,
-    SearchPipeQueryClausesRequest, SearchPipeQueryPackCandidate, SearchPipeQueryTerm,
-    SearchPipeQueryText, SearchPipeSemanticFactsDescriptor, SearchPipeSemanticFactsIntentAxis,
-    SearchPipeSemanticFactsIntentDecision, SearchPipeTermRole, search_pipe_clause_coverages,
-    search_pipe_is_path_like_token, search_pipe_next_query_pack_hint,
+    SearchPipeQueryClausesRequest, SearchPipeQueryPackCandidate, SearchPipeQueryPackClause,
+    SearchPipeQueryPackDescriptor, SearchPipeQueryPackRecipe, SearchPipeQueryPackTermRoleOverride,
+    SearchPipeQueryTerm, SearchPipeQueryText, SearchPipeSemanticFactsDescriptor,
+    SearchPipeSemanticFactsIntentAxis, SearchPipeSemanticFactsIntentDecision, SearchPipeTermRole,
+    search_pipe_clause_coverages, search_pipe_is_path_like_token, search_pipe_next_query_pack_hint,
     search_pipe_query_candidate_matches_term, search_pipe_query_clause_texts,
     search_pipe_query_clauses, search_pipe_role_terms, search_pipe_typed_query_terms,
     search_pipe_unique_query_terms,
@@ -314,14 +314,14 @@ mod source_index_rank_tests;
 #[cfg(test)]
 #[path = "../tests/unit/workspace_scope.rs"]
 mod workspace_scope_tests;
-pub use search_pipe_quality::QueryWrapperCandidate;
-pub use search_pipe_quality::QueryWrapperSearchSourceIndexTrace;
-pub use search_pipe_quality::QueryWrapperSearchSurface;
-pub use search_pipe_quality::QueryWrapperSourceIndexLookup;
-pub use search_pipe_quality::query_wrapper_clauses;
-pub use search_pipe_quality::query_wrapper_owner_candidates;
-pub use search_pipe_quality::query_wrapper_package_clusters_from_paths;
-pub use search_pipe_quality::query_wrapper_rg_scope_next;
-pub use search_pipe_quality::query_wrapper_source_index_trace_projection;
-pub use search_pipe_quality::query_wrapper_unique_clause_terms;
 pub use search_pipe_query_pack::search_pipe_semantic_facts_intent;
+#[cfg(test)]
+#[path = "../tests/unit/source_snapshot_fixture.rs"]
+mod source_snapshot_fixture;
+
+#[cfg(test)]
+extern crate self as agent_semantic_search;
+
+#[cfg(test)]
+#[path = "../tests/unit/query_pack_fixture.rs"]
+mod query_pack_fixture;

@@ -898,6 +898,7 @@ fn source_index_refresh_request_remains_db_engine_owned() {
     let request = ClientDbSourceIndexRefreshRequest {
         file_count: 1,
         import,
+        source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
     };
     assert_eq!(request.file_count, 1);
     assert_eq!(

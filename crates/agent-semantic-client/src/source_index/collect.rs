@@ -18,10 +18,7 @@ pub(super) fn collect_source_index_files(
         SOURCE_INDEX_FILE_LIMIT,
     ) {
         Ok(files) => files,
-        Err(err)
-            if err.starts_with("missing provider source-scope facts:")
-                && snapshot_has_document_provider(snapshot) =>
-        {
+        Err(err) if err.starts_with("missing provider source-scope facts:") => {
             collect_activation_scope_fallback_files(
                 project_root,
                 snapshot,
@@ -40,15 +37,6 @@ pub(super) fn collect_source_index_files(
             selector_receipts: Vec::new(),
         })
         .collect())
-}
-
-fn snapshot_has_document_provider(snapshot: &ProviderRegistrySnapshot) -> bool {
-    snapshot.providers.iter().any(|provider| {
-        matches!(
-            provider.language_id.to_string().as_str(),
-            "org" | "md" | "markdown"
-        )
-    })
 }
 
 fn collect_activation_scope_fallback_files(

@@ -1,25 +1,15 @@
 //! Codex rollout JSONL session index parser.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs,
-    io::{BufRead, BufReader, Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
-    process::Command,
-    time::UNIX_EPOCH,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-use crate::CodexRolloutSessionMetadata;
 
-use super::parse::{parse_rollout_file_at_path, rollout_index_sample_lines};
+use super::parse::parse_rollout_file_at_path;
 use super::paths::{
     codex_rollout_paths_for_session_id, codex_sessions_dir, rg_rollout_paths_for_session_id,
 };
 use super::topology::{
-    collect_structured_subagent_spawn_evidence, rollout_topology_lines,
+    rollout_topology_lines,
     spawned_agent_ids_for_rollout, spawned_agent_paths_for_rollout,
     thread_spawn_child_session_ids_for_rollout,
 };

@@ -21,7 +21,8 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
 
     let ignore_dirs = vec!["target".to_string()];
     let include_hidden_dirs = Vec::new();
-    let candidates = collect_search_pipe_candidates(SearchPipeCandidateRequest {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let collection = collect_search_pipe_candidates(SearchPipeCandidateRequest {
         language_id: "rust",
         project_root: &root,
         locator_root: &root,
@@ -29,10 +30,13 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
         owners: &[],
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
         limit: 16,
         require_multi_clause: false,
     })
     .expect("collect pipe candidates");
+    let candidates = collection.candidates;
 
     assert!(
         candidates
@@ -52,6 +56,7 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
     let root = temp_root("asp-pipe-candidates-empty");
     let ignore_dirs = Vec::new();
     let include_hidden_dirs = Vec::new();
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let error = collect_search_pipe_candidates(SearchPipeCandidateRequest {
         language_id: "rust",
         project_root: &root,
@@ -60,6 +65,8 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
         owners: &[],
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
         limit: 16,
         require_multi_clause: false,
     })
@@ -71,8 +78,13 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
 
 #[test]
 fn source_index_acquisition_gates_broad_generic_queries() {
-    let terms =
-        crate::search_pipe_typed_query_terms("rust", "search query budget block generic provider");
+    let terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        crate::search_pipe_typed_query_terms(
+            "rust",
+            "search query budget block generic provider",
+            descriptor,
+        )
+    });
     let gate =
         crate::search_pipe_source_index_query_gate(&terms).expect("generic query should be gated");
     assert_eq!(gate.term_count, 6);

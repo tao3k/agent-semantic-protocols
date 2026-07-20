@@ -150,6 +150,15 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
         .cache_root
         .expect("cache root");
     let gerbil_language = LanguageId::from("gerbil-scheme");
+    let index_owner = agent_semantic_client_core::ProviderId::from("asp-structural-index");
+    let baseline = crate::source_index::refresh_runtime_source_index(
+        &root,
+        &checkout_dir,
+        &gerbil_language,
+        &index_owner,
+    )
+    .expect("reuse unchanged runtime source generation");
+    assert!(baseline.reused_generation);
     let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
         ClientDbSourceIndexClientDirLookupRequest {
             client_dir: &cache_root,
@@ -157,10 +166,12 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
             language_id: Some(&gerbil_language),
             query_keys: vec![ClientDbSourceIndexQueryKey::from("runtime")],
             limit: 8,
+            expected_snapshot_root: &baseline.source_snapshot.root_digest,
+            expected_index_artifact_digest: &baseline.index_artifact_digest,
         },
     )
     .expect("lookup runtime source index");
-    assert_eq!(lookup.candidates.len(), 1);
+    assert_eq!(lookup.candidates.len(), 1, "lookup={lookup:?}");
     assert_eq!(lookup.candidates[0].path, "runtime.ss");
     assert_eq!(
         lookup.candidates[0]
@@ -170,6 +181,47 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
             .as_str(),
         "asp-structural-index"
     );
+
+    std::fs::write(
+        checkout_dir.join("added-runtime.ss"),
+        "(def (fresh-runtime-term) #t)\n",
+    )
+    .expect("add runtime source without dirty hint");
+    let refreshed = crate::source_index::refresh_runtime_source_index(
+        &root,
+        &checkout_dir,
+        &gerbil_language,
+        &index_owner,
+    )
+    .expect("refresh runtime source after adding file");
+    assert!(!refreshed.reused_generation);
+    assert_ne!(baseline.generation_id, refreshed.generation_id);
+
+    let added_lookup = ClientDbEngine::lookup_source_index_from_client_dir(
+        ClientDbSourceIndexClientDirLookupRequest {
+            client_dir: &cache_root,
+            indexed_project_root: &checkout_dir,
+            language_id: Some(&gerbil_language),
+            query_keys: vec![ClientDbSourceIndexQueryKey::from("fresh-runtime-term")],
+            limit: 8,
+            expected_snapshot_root: &refreshed.source_snapshot.root_digest,
+            expected_index_artifact_digest: &refreshed.index_artifact_digest,
+        },
+    )
+    .expect("lookup newly added runtime source");
+    assert_eq!(added_lookup.candidates.len(), 1);
+    assert_eq!(added_lookup.candidates[0].path, "added-runtime.ss");
+
+    let stable = crate::source_index::refresh_runtime_source_index(
+        &root,
+        &checkout_dir,
+        &gerbil_language,
+        &index_owner,
+    )
+    .expect("reuse stable runtime source generation");
+    assert!(stable.reused_generation);
+    assert_eq!(refreshed.generation_id, stable.generation_id);
+
     run_cache(
         &root,
         Some(&gerbil_language),
@@ -180,6 +232,8 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
             "runtime".to_string(),
             "--index-root".to_string(),
             checkout_dir.display().to_string(),
+            "--index-owner".to_string(),
+            "asp-structural-index".to_string(),
         ],
         false,
     )
@@ -194,6 +248,8 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
             "definitely-missing-runtime-symbol".to_string(),
             "--index-root".to_string(),
             checkout_dir.display().to_string(),
+            "--index-owner".to_string(),
+            "asp-structural-index".to_string(),
         ],
         false,
     )
@@ -252,6 +308,12 @@ fn cache_import_replays_structural_index_artifact_into_db() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("structural-index-import");
+    std::fs::create_dir_all(root.join("src")).expect("create source directory");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn cache_imported_symbol() {}\n",
+    )
+    .expect("write source file");
     let cache_report = ClientCacheManifest::inspect_project(&root);
     let cache_root = cache_report.cache_root.clone().expect("cache root");
     let manifest_path = cache_report.manifest_path.clone().expect("manifest path");

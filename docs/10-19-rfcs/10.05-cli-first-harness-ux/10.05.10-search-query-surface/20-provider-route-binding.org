@@ -1,0 +1,95 @@
+#+title: Provider Registry Owned Hook Route Binding
+
+* Status
+
+Required breaking architecture for the typed search surface.
+
+* Single authority
+** Canonical JSON Schema authority epoch
+
+The active contract epoch uses =https://tao3k.github.io/agent-semantic-protocols/schemas/= as its sole JSON Schema authority. Every schema =$id= and every inter-schema =$ref= published by this epoch MUST be an absolute URI rooted at that authority. Relative references, =agent-semantic-protocols.local=, =agent-semantic-protocols.dev=, URI aliases, dual IDs, and compatibility fallback are invalid.
+
+The epoch consists of =provider-query-pack-descriptor.v2=, =semantic-language-registry.v3=, =semantic-provider-doctor.v3=, =provider-manifest.v4=, and =hook-activation.v4=. New runtimes MUST publish, accept, and persist only those versions. Earlier schema documents remain immutable historical records, but the active runtime MUST NOT publish, accept, dual-read, or synthesize them.
+
+The doctor-v3 envelope embeds a registry-v3 packet and records =sha256(JCS(registry))= outside the hashed member. Install and sync MUST independently validate the doctor, registry, query-pack descriptor, manifest, activation, canonical authority, provider identity, executable identity, and digest before route materialization. Any older version, non-canonical schema identity, relative reference, identity drift, or digest mismatch fails closed before activation.
+
+The active provider semantic-language registry is the only authority for public
+search and query invocation arguments. A hook provider manifest MUST bind each
+route role to a semantic method id. It MUST NOT duplicate an argv template.
+
+Install and sync MUST resolve a real provider executable prefix from the
+provider manifest and project configuration, append the protocol-owned
+=agent doctor --json= suffix, and execute that handshake exactly once per
+selected provider. The suffix is shared protocol grammar, not a semantic
+registry method descriptor, and implementations MUST NOT reconstruct it as a
+language-specific command such as =asp <language> agent doctor --json=.
+
+The doctor response MUST use the independent =semantic-provider-doctor.v2=
+envelope. Its =registry= member is a semantic language registry v2 packet and
+its =registryDigest= is =sha256(JCS(registry))= over only that member. Keeping
+the digest outside the hashed registry prevents circular self-hashing. After
+validation, the resulting materialized routes and verified registry digest are
+persisted in activation state. Hook request handling reads that activation
+state and never reconstructs provider grammar from language-specific strings.
+
+* Breaking contract
+** Provider execution identity
+
+Every activated provider MUST persist an =executionCommandDigest= using the =sha256:<lowercase-hex>= representation. The digest input is domain-separated as =asp-provider-execution-v1= and length-delimited. It includes the ordered full provider command-prefix argv. For every argv component that resolves to a regular file, it additionally includes that file's canonical path and exact bytes. Activation fails closed when a referenced execution artifact cannot be read. Hashing only a path, only the manifest, or only the argv strings is invalid.
+
+The activation authority MUST pass the persisted digest to the provider process as =ASP_PROVIDER_EXECUTION_COMMAND_DIGEST=. Provider packets that carry execution evidence MUST echo that exact value. The dispatcher MUST compare the raw captured packet with activation before releasing stdout; missing or mismatched evidence is a protocol error. Runtime dispatch MUST NOT recompute a weaker identity or silently accept an older activation without this field.
+
+Each hook-bound method descriptor MUST contain an =invocation= property whose
+value is the language-neutral =CommandTemplate=: required =argv= and optional
+=stdinMode=. The =invocation= property is the sole authority used to materialize
+hook routes. =benchmarkInvocation= remains benchmark-only and MUST NOT be used
+as a compatibility fallback or as a source for hook routing.
+
+Provider manifest v3 contains =routeBindings= and no authoritative
+=routes.<role>.argv=. Hook activation v3 contains the materialized routes and a
+=semanticRegistryDigest=. Semantic language registry v2 makes invocation
+arguments mandatory for every hook-bound method.
+
+The doctor handshake is an independent bootstrap contract and MUST NOT be
+declared as a method inside the registry it acquires. The doctor-v2 envelope
+MUST identify its schema and protocol, the selected language, provider, binary,
+and execution mode, and the embedded registry schema version. Install and sync
+MUST fail closed on a v1 doctor response, schema mismatch, language, provider,
+binary, or execution identity mismatch, or registry digest mismatch. They MUST
+NOT fall back to an embedded registry snapshot or a language-specific doctor
+command.
+
+The active implementation MUST NOT dual-read provider manifest v2 or hook
+activation v2. It MUST NOT accept ={path}= or ={projectRoot}= aliases. Existing
+installations must run sync to produce v3 activation; stale v2 state fails
+closed with an explicit contract-version error.
+
+* Activation algorithm
+For steps 6 and 7, resolution MUST require the descriptor's
+=invocation: CommandTemplate= and materialization MUST use only
+=invocation.argv= and =invocation.stdinMode=.
+
+1. Resolve the manifest-owned provider executable prefix and active binary
+   identity.
+2. Append the protocol-owned =agent doctor --json= suffix without adding
+   language-specific command grammar.
+3. Execute the doctor handshake exactly once per selected provider during
+   install or sync.
+4. Validate the =semantic-provider-doctor.v2= envelope and its embedded
+   semantic language registry v2 packet.
+5. Verify =sha256(JCS(registry))= and cross-check the language, provider,
+   binary, execution mode, and registry contract identity.
+6. Resolve every manifest route binding to exactly one method descriptor.
+7. Materialize canonical ={owner}=, ={workspace}=, ={query}= and
+   ={dependency}= placeholders from its invocation arguments.
+8. Hash the normalized bound registry and materialized routes.
+9. Persist activation v3 with the verified registry digest and routes.
+10. Recompute during sync; any binary, registry, binding, or route digest drift
+    invalidates reuse.
+
+* Runtime invariant
+Runtime route dispatch consumes only activation-v3 materialized routes and MUST
+never execute provider doctor or reacquire a semantic registry. Query projection
+is available only after a parser-owned structural selector exists. Denied raw
+source access returns Owner or Lexical discovery; it never fabricates a
+path-range selector or provider-private query grammar.

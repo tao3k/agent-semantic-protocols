@@ -65,9 +65,7 @@ pub(crate) fn search_cache_forwarded_args(args: &[String]) -> std::borrow::Cow<'
 
 fn query_export_method(request: &ClientRequest) -> String {
     let args = &request.forwarded_args;
-    if request.is_hook_direct_source_read() {
-        "query/direct-source-read".to_string()
-    } else if has_tree_sitter_query(args) {
+    if has_tree_sitter_query(args) {
         "query/tree-sitter".to_string()
     } else if is_selector_code_query(args) {
         "query/code".to_string()

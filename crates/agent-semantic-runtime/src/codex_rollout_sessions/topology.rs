@@ -3,19 +3,14 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::{BufRead, BufReader, Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
-    process::Command,
-    time::UNIX_EPOCH,
+    io::{BufRead, BufReader},
+    path::Path,
 };
 
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::CodexRolloutSessionMetadata;
 
 use super::parse::first_json_string;
-use super::types::CodexRolloutSessionIndex;
 
 pub(super) fn thread_spawn_child_session_ids_for_rollout(
     lines: &[String],

@@ -25,7 +25,6 @@ mod hook_runtime_stdin;
 #[path = "hook_runtime_subagent.rs"]
 mod hook_runtime_subagent;
 
-#[cfg(not(test))]
 pub(super) use hook_runtime_skill::active_codex_plugin_skill_path;
 
 use super::{
@@ -416,21 +415,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     if let Err(error) = append_hook_event_state(&project_root, &decision) {
         eprintln!("[agent-semantic-hook] failed to update hook state: {error}");
     }
-    let output_value = match emit {
-        "decision" => serde_json::to_value(&decision)
-            .map_err(|error| format!("failed to serialize hook decision: {error}"))?,
-        "platform" => render_platform_response(&decision)
-            .map_err(|error| format!("failed to render hook response: {error:?}"))?,
-        other => {
-            return Err(format!(
-                "unsupported --emit value: {other}; expected platform or decision"
-            ));
-        }
-    };
-    let output = serde_json::to_string(&output_value)
-        .map_err(|error| format!("failed to serialize hook response: {error}"))?;
-    println!("{output}");
-    Ok(())
+    emit_decision(emit, &decision)
 }
 
 fn classify_read_only_resident_write(
@@ -971,3 +956,4 @@ fn positionals(args: &[String]) -> Vec<&str> {
     }
     values
 }
+use agent_semantic_hook::render_platform_response;

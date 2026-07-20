@@ -74,6 +74,12 @@ fn shell_egress_command_requires_command_and_output_digest() {
         "src/lib.rs",
     ]))
     .expect_err("missing output digest should fail");
-    assert!(missing_command.contains("requires --command"));
-    assert!(missing_digest.contains("requires --output-digest"));
+    assert!(
+        missing_command.contains("requires --command"),
+        "missing command error: {missing_command}"
+    );
+    assert!(
+        missing_digest.contains("requires --output-digest"),
+        "missing digest error: {missing_digest}"
+    );
 }

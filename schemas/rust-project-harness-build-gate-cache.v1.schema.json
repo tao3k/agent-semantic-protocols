@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/rust-project-harness-build-gate-cache.v1.schema.json",
+  "title": "Rust Project Harness Build Gate Cache v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "cacheKey",
+    "snapshot",
+    "payloadDigest",
+    "report",
+    "verificationPlan",
+    "downstreamPolicyReceipt",
+    "dependencyBaselineReceipts"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.rust-project-harness.build-gate-cache"
+    },
+    "schemaVersion": { "const": "1" },
+    "cacheKey": { "$ref": "#/$defs/integrityRef" },
+    "snapshot": { "$ref": "#/$defs/snapshot" },
+    "payloadDigest": { "$ref": "#/$defs/integrityRef" },
+    "report": {
+      "type": "object",
+      "required": [
+        "modules",
+        "findings",
+        "root_paths",
+        "blocking_severities",
+        "project_scope",
+        "workspace_member_scopes"
+      ]
+    },
+    "verificationPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tasks"],
+      "properties": {
+        "project_root": { "type": ["string", "array"] },
+        "tasks": { "type": "array" },
+        "report_obligations": { "type": "array" },
+        "skill_descriptors": { "type": "array" }
+      }
+    },
+    "downstreamPolicyReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id",
+        "schema_version",
+        "gate_label",
+        "dependency_baseline_packages",
+        "active_verification_task_count",
+        "performance_task_count",
+        "stability_task_count",
+        "performance_report_obligation",
+        "stability_report_obligation",
+        "report_obligations"
+      ]
+    },
+    "dependencyBaselineReceipts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dependencyBaselineReceipt" }
+    }
+  },
+  "$defs": {
+    "integrityRef": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "fileCount", "byteCount", "files"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/integrityRef" },
+        "fileCount": { "type": "integer", "minimum": 0 },
+        "byteCount": { "type": "integer", "minimum": 0 },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/snapshotFile" }
+        }
+      }
+    },
+    "snapshotFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "byteCount", "contentDigest"],
+      "properties": {
+        "path": { "type": ["string", "array"] },
+        "byteCount": { "type": "integer", "minimum": 0 },
+        "contentDigest": { "$ref": "#/$defs/integrityRef" }
+      }
+    },
+    "dependencyBaselineReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "source_contains"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "source_contains": { "type": "string" }
+      }
+    }
+  }
+}

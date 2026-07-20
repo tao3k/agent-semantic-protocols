@@ -483,6 +483,8 @@ parses as behavior.
 
 * Dependency topology cache boundary
 
+A dependency-topology cache hit is authoritative only when the current invocation recomputes the manifest and lockfile fingerprints and validates every contributing source-file hash committed by the packet. If any fingerprint is missing or mismatched, the cache state is =stale=, contributes no dependency nodes or semantic negatives, and routes to the explicit provider/feed refresh path. A previously validated packet or unchanged provider-registry fingerprint MUST NOT authorize reuse.
+
 Graph-turbo may consume dependency topology as schema-owned evidence, but it
 must not cache source text as a ranking shortcut.  The stable cache boundary is
 manifest and lockfile state plus parser-owned usage locators:
@@ -906,6 +908,53 @@ tests remain separate: =busy= is reserved for a real Turso lock conflict, while
 =cold-required= means the persisted read model needs an explicit write-side
 rebuild.
 
+** Merkle graph artifact authority
+
+EvidenceGraph persistence is a disposable, content-addressed projection of a
+pinned source snapshot. It is never mutable workspace truth. Every graph write
+MUST receive =SourceSnapshotEvidence= and derive its artifact identity with the
+shared BLAKE3 derived-artifact key over at least:
+
+#+begin_src text
+artifactKind = evidence-graph
+schemaId = asp.evidence-graph-artifact.v1
+snapshotRoot = sourceSnapshot.rootDigest
+providerDigest = sourceSnapshot.providerDigest
+#+end_src
+
+Entity and edge identity MUST be scoped by that graph artifact digest. A path,
+language id, node id, or selector is not sufficient isolation. Implementations
+MUST NOT upsert different snapshots into one unversioned graph table, and a
+reader MUST NOT query graph facts without the pinned source snapshot.
+
+Graph lookup returns exactly one authority state:
+
+- =current=: the expected artifact exists, its persisted source snapshot is
+  byte-for-byte equivalent to the requested evidence, and only rows belonging
+  to that artifact may be returned;
+- =missing=: no graph artifact has been materialized in the derived cache;
+- =stale=: graph artifacts exist, but none is authoritative for the requested
+  snapshot or the persisted evidence does not match it.
+
+=missing= and =stale= return no graph-owned selectors. They request explicit
+projection import or rebuild and never become =no-owner-item-match= or another
+deterministic semantic negative. Exact selector resolution remains owned by
+=snapshotRoot -> path leaf -> blobDigest -> parser artifact=; graph cache state
+has no veto over that chain.
+
+Legacy unscoped =asp_graph_entity= and =asp_graph_edge= storage is removed at
+write-side bootstrap because it is a disposable cache. The canonical storage
+uses graph-artifact metadata plus artifact-scoped entity and edge tables. A
+structural packet import that cannot supply =SourceSnapshotEvidence= MUST NOT
+persist an EvidenceGraph projection; generation labels or timestamps are not
+substitutes for snapshot authority.
+
+Compact graph receipts expose =authority=, =snapshotRoot=, and
+=graphArtifactDigest=. JSON search traces carry the typed source snapshot and
+artifact digest. The shared contract is
+=derived-source-artifact-evidence.v2=, whose expected digest is available in
+all states and whose resolved digest is available only for =current=.
+
 ** Exact structural selector boundary
 
 An exact code read is a parser-owned operation, not a file, line-range, or
@@ -1104,6 +1153,14 @@ record drift, repeated search loops, and first-action quality, but the fix
 belongs in the graph ranking prior before rank/diversity/frontier projection.
 Diversity repair remains a top-k coverage guard; it is not a substitute for a
 correct personalization vector.
+
+** Native prime packet boundary
+
+=semantic-search-prime.v1= is the authority for native prime discovery. The provider constructs a typed packet containing workspace identity, the stable =owner-rank-frontier= algorithm, semantic capability identifiers, evidence state, owners, typed frontier actions, entries, omissions, and avoid constraints. Capability identifiers describe semantic operations rather than executable spellings such as =fd-query= or =rg-query=. Compact =rank=, =frontier=, and =recommendedNext= rows are projections of this packet and MUST NOT introduce a second command grammar or hardcoded Rust-only fallback. Executable argv, when available, is materialized separately from typed action fields.
+
+Search capability availability is the activated provider's typed =ProviderSearchCapabilities= record. The packet binds query-pack descriptor identity and recipe ids separately as composition provenance; recipes and term roles are not capabilities. Every frontier action =requiredCapability= MUST resolve to the typed search-capability record, while any selected =recipeId= MUST resolve to the query-pack recipe set. Missing capability evidence and unresolved capability or recipe references are invalid packets.
+
+The shared schema is defined before provider implementation. Rust owns acquisition and rendering but not the packet vocabulary; other language providers register the same action/capability contract through their harness manifests and activation query packs. A missing or invalid packet is an explicit capability state, not permission to restore =native-fd-prime-frontier-v1=.
 
 ** Graph turbo packet boundary
 

@@ -7,12 +7,8 @@
   "additionalProperties": false,
   "required": ["sourceSnapshot", "resolutionEvidence"],
   "properties": {
-    "sourceSnapshot": {
-      "$ref": "#/$defs/sourceSnapshot"
-    },
-    "resolutionEvidence": {
-      "$ref": "#/$defs/resolutionEvidence"
-    }
+    "sourceSnapshot": { "$ref": "#/$defs/sourceSnapshot" },
+    "resolutionEvidence": { "$ref": "#/$defs/resolutionEvidence" }
   },
   "$defs": {
     "digest": {
@@ -26,31 +22,16 @@
       "additionalProperties": false,
       "required": ["schemaId", "algorithm", "rootDigest", "sourceKind", "leafCount", "providerDigest"],
       "properties": {
-        "schemaId": {
-          "const": "asp.source-snapshot.v1"
-        },
-        "algorithm": {
-          "const": "blake3-merkle-v1"
-        },
-        "rootDigest": {
-          "$ref": "#/$defs/digest"
-        },
+        "schemaId": { "const": "asp.source-snapshot.v1" },
+        "algorithm": { "const": "blake3-merkle-v1" },
+        "rootDigest": { "$ref": "#/$defs/digest" },
         "sourceKind": {
           "enum": ["filesystem", "editor-buffer", "git-tree", "derived-overlay"]
         },
-        "leafCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "baseRootDigest": {
-          "$ref": "#/$defs/digest"
-        },
-        "providerDigest": {
-          "$ref": "#/$defs/digest"
-        },
-        "dirtyPathsDigest": {
-          "$ref": "#/$defs/digest"
-        }
+        "leafCount": { "type": "integer", "minimum": 0 },
+        "baseRootDigest": { "$ref": "#/$defs/digest" },
+        "providerDigest": { "$ref": "#/$defs/digest" },
+        "dirtyPathsDigest": { "$ref": "#/$defs/digest" }
       }
     },
     "resolutionEvidence": {
@@ -58,15 +39,9 @@
       "additionalProperties": false,
       "required": ["schemaId", "snapshotRoot", "authority", "state"],
       "properties": {
-        "schemaId": {
-          "const": "asp.source-resolution.v1"
-        },
-        "snapshotRoot": {
-          "$ref": "#/$defs/digest"
-        },
-        "authority": {
-          "enum": ["live-parser", "content-cache", "derived-index"]
-        },
+        "schemaId": { "const": "asp.source-resolution.v1" },
+        "snapshotRoot": { "$ref": "#/$defs/digest" },
+        "authority": { "enum": ["live-parser", "content-cache", "derived-index"] },
         "state": {
           "enum": [
             "live-hit",
@@ -80,19 +55,11 @@
             "overlay-base-root-mismatch"
           ]
         },
-        "ownerPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "ownerBlobDigest": {
-          "$ref": "#/$defs/digest"
-        },
-        "parserArtifactDigest": {
-          "$ref": "#/$defs/digest"
-        },
-        "indexArtifactDigest": {
-          "$ref": "#/$defs/digest"
-        }
+        "ownerPath": { "type": "string", "minLength": 1 },
+        "ownerBlobDigest": { "$ref": "#/$defs/digest" },
+        "parserArtifactDigest": { "$ref": "#/$defs/digest" },
+        "indexArtifactDigest": { "$ref": "#/$defs/digest" },
+        "reason": { "type": "string", "minLength": 1 }
       }
     }
   }

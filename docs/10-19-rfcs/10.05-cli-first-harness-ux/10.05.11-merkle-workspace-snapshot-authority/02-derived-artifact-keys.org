@@ -1,0 +1,47 @@
+#+TITLE: Merkle keys for disposable parser, index, and graph artifacts
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Normative and breaking.
+
+* Authority rule
+
+The expected snapshot root MUST be computed for the current invocation from complete current workspace membership and content-hash evidence. A persisted generation root, provider-registry fingerprint, timestamp, or caller-supplied dirty-path hint is not freshness authority. Dirty-path hints MAY reduce refresh work only after the complete current snapshot proves that the selected artifact remains authoritative.
+
+Parser artifacts, source indexes, postings, dependency graphs, compact graphs,
+and graph ranks are disposable projections. None is source authority. Every
+stored or emitted projection MUST carry a derived artifact digest whose input
+includes:
+
+- the artifact family and versioned payload schema;
+- the complete WorkspaceSnapshot root;
+- provider/parser identity;
+- all build parameters that can change the result.
+
+Query-time cache lookup MUST supply the expected snapshot root. A missing or
+mismatched artifact is a cache miss and MUST route to a pinned live provider;
+it MUST NOT become =item-not-found= evidence.
+
+* Shared derivation
+
+All Rust components use
+=agent_semantic_content_identity::hash_derived_artifact_key=. Parameters are
+sorted by name/value before hashing. Index and graph implementations MUST NOT
+invent generation IDs, DB row IDs, timestamps, or branch names as substitute
+source identities.
+
+* Evidence
+
+External packets use =asp.derived-source-artifact-evidence.v1=. The packet
+contains the full source snapshot evidence, artifact family, artifact digest,
+and =cacheDisposition=disposable=. A consumer can delete the artifact and
+rebuild it solely from the pinned source snapshot and provider contract.
+
+Snapshot-authority lookups use
+=asp.derived-source-artifact-evidence.v2=. Version 2 separates the expected
+artifact digest from the resolved digest and reports =current=, =missing=, or
+=stale=. Only =current= may carry =resolvedArtifactDigest=. The
+=evidence-graph= artifact kind binds persisted graph entity and edge shards to
+the same source snapshot contract; =missing= or =stale= cache state never
+authorizes a semantic negative.

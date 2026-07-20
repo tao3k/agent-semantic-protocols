@@ -36,23 +36,28 @@ fn explicit_fs_read_allows_source_bytes() {
 fn shell_egress_suppression_records_hidden_subprocess_output() {
     let decision =
         SourceAccessDecision::shell_egress_suppressed(SourceAccessShellEgressSuppressedInput {
-            language_id: "rust".to_string(),
-            provider_id: "rs-harness".into(),
+            route: agent_semantic_hook::DecisionRoute {
+                language_id: "rust".to_string(),
+                provider_id: "rs-harness".to_string(),
+                binary: "asp".to_string(),
+                kind: agent_semantic_hook::DecisionRouteKind::Owner,
+                argv: vec![
+                    "asp".into(),
+                    "rust".into(),
+                    "search".into(),
+                    "owner".into(),
+                    "src/lib.rs".into(),
+                    "items".into(),
+                    "--workspace".into(),
+                    ".".into(),
+                    "--view".into(),
+                    "seeds".into(),
+                ],
+                stdin_mode: None,
+            },
             command: "sed -n '1,120p' src/lib.rs".to_string(),
             path: "src/lib.rs".to_string(),
             output_digest: "sha256:source-like-output".to_string(),
-            route_argv: vec![
-                "asp".into(),
-                "rust".into(),
-                "query".into(),
-                "--from-hook".into(),
-                "direct-source-read".into(),
-                "--selector".into(),
-                "src/lib.rs".into(),
-                "--workspace".into(),
-                ".".into(),
-                "--code".into(),
-            ],
         });
     let value = serde_json::to_value(decision).expect("serializes");
 
@@ -65,6 +70,14 @@ fn shell_egress_suppression_records_hidden_subprocess_output() {
         value["subject"]["outputDigest"],
         "sha256:source-like-output"
     );
+    assert_eq!(value["routes"][0]["kind"], "owner");
+    assert_eq!(value["routes"][0]["argv"][2], "search");
+    assert_eq!(value["routes"][0]["argv"][3], "owner");
+    let argv = value["routes"][0]["argv"].as_array().expect("route argv");
+    assert!(!argv.iter().any(|arg| matches!(
+        arg.as_str(),
+        Some("query" | "--from-hook" | "--code" | "--content")
+    )));
 }
 
 #[test]
@@ -148,6 +161,14 @@ fn codex_shell_egress_policy_suppresses_activated_source_output() {
     assert_eq!(value["sourceBytesReturned"], true);
     assert_eq!(value["modelVisibleBytesReturned"], false);
     assert_eq!(value["providerId"], "ts-harness");
+    assert_eq!(value["routes"][0]["kind"], "owner");
+    assert_eq!(value["routes"][0]["argv"][2], "search");
+    assert_eq!(value["routes"][0]["argv"][3], "owner");
+    let argv = value["routes"][0]["argv"].as_array().expect("route argv");
+    assert!(!argv.iter().any(|arg| matches!(
+        arg.as_str(),
+        Some("query" | "--from-hook" | "--code" | "--content")
+    )));
 }
 
 #[test]

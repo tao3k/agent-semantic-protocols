@@ -63,7 +63,12 @@ fn codex_global_activation_uses_cwd_repo_registry_for_session_reuse() {
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000031")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("allow"));
+    assert_eq!(
+        decision["decision"].as_str(),
+        Some("allow"),
+        "decision: {}",
+        serde_json::to_string_pretty(&decision).expect("serialize decision")
+    );
     assert_eq!(
         decision["fields"]["agentSessionAction"].as_str(),
         Some("reuse-resident-child"),

@@ -47,6 +47,8 @@ pub struct GraphOwnerItemRenderRequest<'a> {
     pub owner_path: &'a str,
     pub query: &'a str,
     pub route: &'a GraphOwnerItemRoute,
+    pub snapshot_root: &'a str,
+    pub graph_artifact_digest: &'a str,
 }
 
 /// Request for owner-local ranking over parser-owned graph selector nodes.
@@ -95,6 +97,10 @@ pub fn render_graph_owner_item_frontier(request: GraphOwnerItemRenderRequest<'_>
         "[search-owner] q={} owner={} selector=items alg=graph-turbo-owner-items\n",
         request.query, request.owner_path
     );
+    output.push_str(&format!(
+        "authority=derived-index snapshotRoot={} graphArtifactDigest={}\n",
+        request.snapshot_root, request.graph_artifact_digest
+    ));
     let GraphOwnerItemRoute::Hit(items) = request.route else {
         output.push_str("reason=no-owner-item-match\n");
         output.push_str("entries=owner-query(O,Q=>turso-evidence-graph)\n");

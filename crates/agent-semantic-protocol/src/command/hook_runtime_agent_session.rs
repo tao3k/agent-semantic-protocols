@@ -131,7 +131,6 @@ impl AspSessionPolicy {
         ) {
             hook_runtime_agent_session_command::MainSessionAspCommandClass::ControlPlane
             | hook_runtime_agent_session_command::MainSessionAspCommandClass::ExactEvidenceRead
-            | hook_runtime_agent_session_command::MainSessionAspCommandClass::DirectReadFallback
             | hook_runtime_agent_session_command::MainSessionAspCommandClass::InvalidEvidence => {
                 true
             }

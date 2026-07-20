@@ -10,6 +10,7 @@ mod agent_session_registry_codex;
 mod agent_session_registry_command_parts;
 #[path = "agent_session_registry_commands.rs"]
 mod agent_session_registry_commands;
+pub(in crate::command::agent_session_registry) use agent_session_registry_commands::stale_invalid_session_should_be_idle;
 #[path = "agent_session_registry_dispatch.rs"]
 mod agent_session_registry_dispatch;
 #[path = "agent_session_registry_host_capability.rs"]

@@ -18,7 +18,13 @@ members = [
 exclude = ["languages/orgize", "languages/rust-lang-project-harness"]
 resolver = "2"
 
+[workspace.package]
+edition = "2024"
+
 [workspace.dependencies]
+agent-semantic-hook = { path = "crates/agent-semantic-hook" }
+jsonschema = { version = "0.48.1", default-features = false }
+aho-corasick = "1.1.4"
 agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
 tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "process", "rt", "time"] }
@@ -27,11 +33,14 @@ blake3 = "1"
 bstr = "1"
 bytes = "1"
 criterion = "0.8.2"
+figment = "0.10.19"
 futures-util = "0.3"
 fs2 = "0.4"
 globset = "0.4"
 ignore = { version = "0.4.26", features = ["simd-accel"] }
+insta = "1"
 orgize = { path = "languages/orgize", features = ["md"] }
+proc-macro2 = "1"
 libc = "0.2"
 memchr = "2"
 rust-lang-project-harness = { path = "languages/rust-lang-project-harness", default-features = false }
@@ -40,12 +49,16 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 sha2 = "0.10"
+streaming-iterator = "0.1"
+syn = "2"
 tokio-util = { version = "0.7", features = ["codec"] }
 toml = "0.9"
 tracing = "0.1"
 tree-sitter = "0.26"
 tree-sitter-bash = "0.25"
-turso = { version = "0.7.0-pre.18", default-features = false, features = ["fts"] }
+turso = { version = "0.7.0", default-features = false, features = ["fts"] }
+turso_sdk_kit = "=0.7.0"
+uuid = "1.23.4"
 which = "8"
 
 [profile.release]

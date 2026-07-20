@@ -33,6 +33,7 @@ pub(super) struct SearchOwnerItemsFastContext<'a> {
     pub(super) config: &'a AspConfig,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
+    pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 struct OwnerItemsSearchState<'a> {
@@ -44,6 +45,7 @@ struct OwnerItemsSearchState<'a> {
     provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     owner: &'a Path,
     locator_root: &'a Path,
+    source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 impl<'a> OwnerItemsSearchState<'a> {
@@ -62,6 +64,7 @@ impl<'a> OwnerItemsSearchState<'a> {
             provider_context: context.provider_context,
             owner,
             locator_root: context.locator_root,
+            source_snapshot: context.source_snapshot,
         }
     }
 
@@ -162,14 +165,19 @@ pub(super) fn run_search_owner_items_query_command(
         OwnerItemsSearchState::new(args, context, &owner_query_args.owner, owner_project_root);
     emit_source_index_trace(&state)?;
     if state.language_id == "gerbil-scheme" {
-        print!(
-            "{}",
-            super::gerbil_graph_owner_items::render_gerbil_graph_owner_items(
-                &state.owner_project_root,
-                state.owner,
-                &owner_query_args.query,
-            )?
-        );
+        let rendered = super::search_pipe_provider_facts::with_query_pack_descriptor(
+            state.provider_context,
+            |query_pack_descriptor| {
+                super::gerbil_graph_owner_items::render_gerbil_graph_owner_items(
+                    &state.owner_project_root,
+                    state.source_snapshot,
+                    state.owner,
+                    &owner_query_args.query,
+                    query_pack_descriptor,
+                )
+            },
+        )??;
+        print!("{rendered}");
         return Ok(());
     }
     if state.try_dynamic_owner_items(&owner_query_args)? {

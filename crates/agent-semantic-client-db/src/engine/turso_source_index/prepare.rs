@@ -174,14 +174,7 @@ pub(super) async fn prepare_turso_source_index_rows(
         .map(|owner| owner.owner_path.as_str())
         .collect::<std::collections::BTreeSet<_>>();
     let requested_generation_id = import.generation_id.as_str().to_string();
-    let physical_generation_id = match active_generation.as_ref() {
-        Some((active_generation_id, _)) if active_generation_id == &requested_generation_id => {
-            crate::source_index::client_db_source_index_generation_id()
-                .as_str()
-                .to_string()
-        }
-        _ => requested_generation_id,
-    };
+    let physical_generation_id = requested_generation_id;
     let selector_projection_unchanged = projection_ready
         && active_generation
             .as_ref()

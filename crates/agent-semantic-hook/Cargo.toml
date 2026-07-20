@@ -1,14 +1,14 @@
 [package]
 name = "agent-semantic-hook"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "Root semantic agent hook runtime for provider manifests and project activations."
 license = "MIT"
 
 [dependencies]
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
-aho-corasick = "1.1.4"
+aho-corasick.workspace = true
 fs2 = { workspace = true }
 globset = { workspace = true }
 serde = { workspace = true }

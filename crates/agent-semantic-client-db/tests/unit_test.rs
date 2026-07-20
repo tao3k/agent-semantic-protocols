@@ -16,7 +16,7 @@ mod db_engine_source_index;
 mod db_gerbil_dependency_index;
 #[path = "unit/env.rs"]
 mod env;
-#[path = "unit/db/source_index_lookup_migration.rs"]
-mod source_index_lookup_migration;
+#[path = "unit/db/snapshot_fixture.rs"]
+mod snapshot_fixture;
 #[path = "unit/db/source_index_refresh_perf.rs"]
 mod source_index_refresh_perf;

@@ -1,5 +1,5 @@
+use crate::provider_command::facade::pipe::pipe_frontier::rust_dependency_topology::support::assert_provider_topology_marker;
 use crate::provider_command::support;
-use crate::unit::provider_command::facade::pipe::pipe_frontier::rust_dependency_topology::support::assert_provider_topology_marker;
 #[test]
 fn search_pipe_graph_request_uses_provider_declared_project_topology_markers() {
     let cases = [
@@ -40,6 +40,7 @@ fn search_pipe_graph_request_uses_provider_declared_project_topology_markers() {
             "(package: topology-fixture\n depend: (\"git.cons.io/example/pkg\"))\n",
         ),
     ];
+    use crate::provider_command::facade::pipe::assert_graph_turbo_request_contract;
 
     for (
         language,
@@ -86,3 +87,4 @@ fn search_pipe_graph_request_uses_provider_declared_project_topology_markers() {
         let _ = std::fs::remove_dir_all(root);
     }
 }
+use serde_json::Value;

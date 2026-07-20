@@ -6,11 +6,14 @@ use agent_semantic_search::{
 
 #[test]
 fn search_query_budget_blocks_generic_broad_queries() {
-    let block = search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
-        language_id: "rust",
-        query: "search query budget block generic provider",
-        scopes: &[PathBuf::from(".")],
-        explicit_filters: false,
+    let block = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+            language_id: "rust",
+            query: "search query budget block generic provider",
+            scopes: &[PathBuf::from(".")],
+            explicit_filters: false,
+            query_pack_descriptor: descriptor,
+        })
     })
     .expect("broad generic query should be blocked");
 
@@ -37,11 +40,14 @@ fn search_query_budget_allows_specific_or_filtered_queries() {
     assert!(specific_search_term("src/lib.rs"));
     assert!(search_terms_budget_block(&terms, &[PathBuf::from(".")], false).is_none());
     assert!(
-        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
-            language_id: "rust",
-            query: "search query budget block generic provider",
-            scopes: &[PathBuf::from(".")],
-            explicit_filters: true,
+        crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+            search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+                language_id: "rust",
+                query: "search query budget block generic provider",
+                scopes: &[PathBuf::from(".")],
+                explicit_filters: true,
+                query_pack_descriptor: descriptor,
+            })
         })
         .is_none()
     );
@@ -52,20 +58,26 @@ fn search_query_budget_uses_typed_evidence_instead_of_character_anchors() {
     let terms = search_query_terms("search performance provider startup preflight");
     assert!(search_terms_budget_block(&terms, &[PathBuf::from(".")], false).is_none());
     assert!(
-        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
-            language_id: "rust",
-            query: "compiler trace module resolution|project references",
-            scopes: &[PathBuf::from(".")],
-            explicit_filters: false,
+        crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+            search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+                language_id: "rust",
+                query: "compiler trace module resolution|project references",
+                scopes: &[PathBuf::from(".")],
+                explicit_filters: false,
+                query_pack_descriptor: descriptor,
+            })
         })
         .is_none()
     );
     assert!(
-        search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
-            language_id: "rust",
-            query: "Tokio runtime Handle::enter context guard lifecycle owner frontier",
-            scopes: &[PathBuf::from(".")],
-            explicit_filters: false,
+        crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+            search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+                language_id: "rust",
+                query: "Tokio runtime Handle::enter context guard lifecycle owner frontier",
+                scopes: &[PathBuf::from(".")],
+                explicit_filters: false,
+                query_pack_descriptor: descriptor,
+            })
         })
         .is_none()
     );

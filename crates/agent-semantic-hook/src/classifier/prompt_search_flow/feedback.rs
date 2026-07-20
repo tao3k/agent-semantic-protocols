@@ -1,4 +1,4 @@
-use agent_semantic_config::{AspCommandIntent, AspCommandRouteId};
+use agent_semantic_config::AspCommandRouteId;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum DirectSourceReadScope {
@@ -10,14 +10,12 @@ pub(super) enum DirectSourceReadScope {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PromptSearchFeedback {
     RepeatPrimeBeforePipe,
-    ReadBeforePipe,
     RepeatSearchPipe,
     DirectSourceReadAfterPipe,
 }
 
 pub(super) struct PromptSearchFeedbackRequest<'a> {
     pub route: &'a AspCommandRouteId,
-    pub intent: AspCommandIntent,
     pub same_language: bool,
     pub saw_pipe: bool,
     pub repeated_pipe: bool,
@@ -36,9 +34,6 @@ pub(super) fn evaluate_prompt_search_feedback(
     if !request.saw_pipe {
         if request.same_language && search_route == Some("prime") {
             return Some(PromptSearchFeedback::RepeatPrimeBeforePipe);
-        }
-        if request.intent == AspCommandIntent::DirectReadFallback {
-            return Some(PromptSearchFeedback::ReadBeforePipe);
         }
         return None;
     }

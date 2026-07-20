@@ -11,7 +11,6 @@ const ARTIFACT_EVENT_DIRS: &[&str] = &[
     "query",
     "search",
     "search-output",
-    "analysis-metadata",
     "semantic-tree-sitter-query",
 ];
 
@@ -99,9 +98,6 @@ fn artifact_path_events(
         "search" => packet_artifact_event(artifact_dir, path, "search", workspace_root),
         "search-output" => text_artifact_event(artifact_dir, path, "search-output", workspace_root)
             .map(|event| vec![event]),
-        "analysis-metadata" => {
-            packet_artifact_event(artifact_dir, path, "analysis-metadata", workspace_root)
-        }
         "semantic-tree-sitter-query" => {
             packet_artifact_event(artifact_dir, path, "tree-sitter-query", workspace_root)
         }
@@ -383,9 +379,6 @@ fn command_method(argv: &[String]) -> String {
         return format!("search/{}", surface.unwrap_or("unknown"));
     }
     if argv.iter().any(|arg| arg == "query") {
-        if command_is_direct_source_read(argv) {
-            return "query/direct-source-read".to_string();
-        }
         if command_is_tree_sitter_query(argv) {
             return "query/tree-sitter".to_string();
         }
@@ -416,9 +409,6 @@ fn command_target(argv: &[String]) -> String {
 }
 
 fn command_query(argv: &[String]) -> String {
-    if command_is_direct_source_read(argv) {
-        return option_value(argv, "--term").unwrap_or("").to_string();
-    }
     if command_is_tree_sitter_query(argv) {
         return tree_sitter_query_input(argv).unwrap_or("").to_string();
     }
@@ -433,11 +423,6 @@ fn command_query(argv: &[String]) -> String {
     } else {
         String::new()
     }
-}
-
-fn command_is_direct_source_read(argv: &[String]) -> bool {
-    argv.iter().any(|arg| arg == "--from-hook")
-        && argv.iter().any(|arg| arg == "direct-source-read")
 }
 
 fn command_is_selector_code_query(argv: &[String]) -> bool {

@@ -142,7 +142,7 @@ fn cli_doctor_syncs_generated_activation_drift() {
             "search",
             "prime",
             "--workspace",
-            "{projectRoot}",
+            "{workspace}",
             "--view",
             "seeds"
         ]

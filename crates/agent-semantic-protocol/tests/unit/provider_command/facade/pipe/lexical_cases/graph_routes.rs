@@ -1,5 +1,5 @@
+use crate::provider_command::facade::pipe::assert_graph_turbo_request_contract;
 use crate::provider_command::support;
-use crate::unit::provider_command::facade::pipe::assert_graph_turbo_request_contract;
 use serde_json::Value;
 
 #[test]
@@ -203,7 +203,7 @@ fn typescript_lexical_default_view_uses_shared_graph_turbo_ranker() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-fn assert_builtin_graph_route(stdout: &str, symbol: &str) {
+pub(super) fn assert_builtin_graph_route(stdout: &str, symbol: &str) {
     assert!(
         stdout.starts_with("[graph-route] profile=owner-query"),
         "{stdout}"

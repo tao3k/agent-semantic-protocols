@@ -13,6 +13,7 @@ use super::{
 async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
     let client_dir = temp_root("db-engine-source-index-canonical-snapshot-client");
     let project_root = temp_root("db-engine-source-index-canonical-snapshot-project");
+    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
         generation_id: CacheGenerationId::from("source-index-canonical-snapshot-turso"),
         project_root: project_root.clone(),
@@ -39,11 +40,13 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
         ClientDbSourceIndexRefreshRequest {
             import: source_index_import,
             file_count: 1,
+            source_snapshot: source_snapshot.clone(),
         },
     )
     .expect("write canonical source-index snapshot");
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &source_snapshot,
         "canonical_snapshot_fixture",
         Some(&LanguageId::from("rust")),
         8,
@@ -65,6 +68,8 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
     let client_dir = temp_root("db-engine-source-index-scope-binding-client");
     let project_a = temp_root("db-engine-source-index-scope-binding-project-a");
     let project_b = temp_root("db-engine-source-index-scope-binding-project-b");
+    let source_snapshot_a = crate::snapshot_fixture::source_snapshot_evidence_for(10);
+    let source_snapshot_b = crate::snapshot_fixture::source_snapshot_evidence_for(20);
     let import_a = build_source_index_import(ClientDbSourceIndexImportRequest {
         generation_id: CacheGenerationId::from("source-index-scope-a"),
         project_root: project_a.clone(),
@@ -107,16 +112,35 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
         }],
     })
     .expect("build project B source-index import");
-    for import in [import_a, import_b] {
-        ClientDbEngine::refresh_source_index_import_from_client_dir(
-            &client_dir,
-            ClientDbSourceIndexRefreshRequest {
-                import,
-                file_count: 1,
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        ClientDbSourceIndexRefreshRequest {
+            import: import_a,
+            file_count: 1,
+            source_snapshot: source_snapshot_a.clone(),
+        },
+    )
+    .expect("write project A scoped source-index snapshot");
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
+        &client_dir,
+        ClientDbSourceIndexRefreshRequest {
+            import: import_b,
+            file_count: 1,
+            source_snapshot: source_snapshot_b,
+        },
+    )
+    .expect("write project B scoped source-index snapshot");
+    let expected_index_artifact_digest =
+        agent_semantic_content_identity::hash_derived_artifact_key(
+            agent_semantic_content_identity::DerivedArtifactKeyInput {
+                artifact_kind: "source-index",
+                schema_id: "asp.source-index-artifact.v1",
+                snapshot_root: &source_snapshot_a.root_digest,
+                provider_digest: &source_snapshot_a.provider_digest,
+                parameters: &[],
             },
         )
-        .expect("write scoped source-index snapshot");
-    }
+        .value;
 
     let language_id = LanguageId::from("rust");
     let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
@@ -126,6 +150,8 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
             language_id: Some(&language_id),
             query_keys: vec!["scope_a_symbol".into()],
             limit: 8,
+            expected_snapshot_root: source_snapshot_a.root_digest.as_str(),
+            expected_index_artifact_digest: expected_index_artifact_digest.as_str(),
         },
     )
     .expect("lookup project A scope");

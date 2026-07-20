@@ -13,12 +13,13 @@ const SEMANTIC_STRUCTURAL_INDEX_SCHEMA_ID: &str =
 pub(super) fn import_structural_index_artifacts(
     cache_root: &Path,
     manifest: &ClientCacheManifest,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Result<u64, String> {
     manifest
         .generations
         .iter()
         .try_fold(0, |count, generation| {
-            import_structural_index_generation(cache_root, generation)
+            import_structural_index_generation(cache_root, generation, source_snapshot)
                 .map(|imported| if imported { count + 1 } else { count })
         })
 }
@@ -26,6 +27,7 @@ pub(super) fn import_structural_index_artifacts(
 fn import_structural_index_generation(
     cache_root: &Path,
     generation: &ClientCacheGeneration,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Result<bool, String> {
     let Some(artifact_path) = structural_index_artifact_path(cache_root, generation)? else {
         return Ok(false);
@@ -40,6 +42,7 @@ fn import_structural_index_generation(
         cache_root,
         generation,
         &packet_bytes,
+        source_snapshot,
     )
     .map_err(|error| {
         format!(

@@ -17,6 +17,7 @@ pub struct SourceIndexLookupRequest<'a> {
     pub language_id: Option<&'a LanguageId>,
     pub query: &'a str,
     pub limit: u32,
+    pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 /// Request for looking up source-index owners from an already resolved client
@@ -28,6 +29,13 @@ pub struct SourceIndexClientCacheLookupRequest<'a> {
     pub language_id: Option<&'a LanguageId>,
     pub query: &'a str,
     pub limit: u32,
+    pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+}
+
+fn source_index_artifact_digest(
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> String {
+    agent_semantic_client_db::client_db_source_index_artifact_digest(source_snapshot)
 }
 
 /// Request for source-index lookup with an optional warm search planner.
@@ -42,15 +50,17 @@ pub struct SourceIndexClientCachePlannerLookupRequest<'a> {
 /// Lookup source-index owners from the client DB for one project root.
 pub fn lookup_source_index(
     project_root: &Path,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
     limit: u32,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
-    lookup_source_index_for_language(project_root, None, query, limit)
+    lookup_source_index_for_language(project_root, source_snapshot, None, query, limit)
 }
 
 /// Lookup source-index owners from the client DB for one language scope.
 pub fn lookup_source_index_for_language(
     project_root: &Path,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     language_id: Option<&LanguageId>,
     query: &str,
     limit: u32,
@@ -61,6 +71,7 @@ pub fn lookup_source_index_for_language(
         language_id,
         query,
         limit,
+        source_snapshot,
     })
 }
 
@@ -69,6 +80,7 @@ pub fn lookup_source_index_for_language(
 pub fn lookup_source_index_in_cache(
     request: SourceIndexLookupRequest<'_>,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
+    let expected_index_artifact_digest = source_index_artifact_digest(request.source_snapshot);
     let lookup = ClientDbEngine::lookup_source_index_from_project(
         ClientDbSourceIndexProjectLookupRequest {
             cache_project_root: request.cache_project_root,
@@ -76,6 +88,8 @@ pub fn lookup_source_index_in_cache(
             language_id: request.language_id,
             query_keys: source_index_lookup_query_keys(request.query),
             limit: request.limit,
+            expected_snapshot_root: &request.source_snapshot.root_digest,
+            expected_index_artifact_digest: &expected_index_artifact_digest,
         },
     )?;
     let lookup = rank_source_index_lookup_result(lookup, request.query);
@@ -92,6 +106,7 @@ pub fn lookup_source_index_in_cache(
 pub fn lookup_source_index_in_client_cache_dir(
     request: SourceIndexClientCacheLookupRequest<'_>,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
+    let expected_index_artifact_digest = source_index_artifact_digest(request.source_snapshot);
     let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
         ClientDbSourceIndexClientDirLookupRequest {
             client_dir: request.cache_root,
@@ -99,6 +114,8 @@ pub fn lookup_source_index_in_client_cache_dir(
             language_id: request.language_id,
             query_keys: source_index_lookup_query_keys(request.query),
             limit: request.limit,
+            expected_snapshot_root: &request.source_snapshot.root_digest,
+            expected_index_artifact_digest: &expected_index_artifact_digest,
         },
     )?;
     let lookup = rank_source_index_lookup_result(lookup, request.query);
@@ -166,6 +183,8 @@ fn source_index_file_locator_lookup(
         db_path: base_lookup.db_path.clone(),
         state: agent_semantic_client_db::ClientDbSourceIndexLookupState::Hit,
         candidates,
+        source_snapshot: base_lookup.source_snapshot.clone(),
+        index_artifact_digest: base_lookup.index_artifact_digest.clone(),
     })
 }
 

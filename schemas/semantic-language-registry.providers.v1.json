@@ -1,16 +1,219 @@
 {
-  "registryId": "agent.semantic-protocols.semantic-language-registry",
-  "registryVersion": "1",
-  "protocolId": "agent.semantic-protocols.semantic-language",
-  "protocolVersion": "1",
   "languages": [
     {
-      "languageId": "rust",
-      "providerId": "rs-harness",
       "binary": "rs-harness",
-      "execution": "external-process",
-      "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
       "displayName": "Rust Harness",
+      "execution": "external-process",
+      "languageId": "rust",
+      "methodDescriptors": [
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/prime",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "prime",
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/owner",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "owner",
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "search",
+              "owner",
+              "{owner}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/lexical",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "lexical",
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "search",
+              "lexical",
+              "{query}",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "codeOutput": {
+            "mode": "pure-code",
+            "multiMatch": "deny",
+            "requires": [
+              "exact-selector"
+            ]
+          },
+          "command": "query",
+          "method": "query/direct-source-read",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-query-packet"
+          ],
+          "packetSchemas": [
+            "semantic-query-packet.v1",
+            "semantic-read-packet.v1"
+          ],
+          "queryInputForms": [
+            "selector"
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "{owner}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": true,
+          "command": "search",
+          "method": "search/semantic-facts",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-fact-graph"
+          ],
+          "packetSchemas": [
+            "semantic-fact-graph.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "semantic-facts",
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "search",
+              "semantic-facts",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        },
+        {
+          "command": "check",
+          "method": "check/changed",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-verification-receipt"
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "check",
+              "--changed",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "command": "guide",
+          "method": "guide",
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "guide",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "method": "search/ingest",
+          "command": "search",
+          "view": "ingest",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "requiresQuery": false,
+          "acceptsStdin": true,
+          "supportsPackageScope": true,
+          "supportsJson": true,
+          "supportsCompact": true,
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "search",
+              "ingest",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        }
+      ],
       "methods": [
         "search/prime",
         "search/owner",
@@ -21,155 +224,348 @@
         "check/changed",
         "guide"
       ],
-      "methodDescriptors": [
-        {
-          "method": "search/prime",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "prime",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/owner",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "owner",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/lexical",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "lexical",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "query/direct-source-read",
-          "command": "query",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-query-packet.v1",
-            "semantic-read-packet.v1"
-          ],
-          "queryInputForms": [
-            "selector"
-          ],
-          "codeOutput": {
-            "mode": "pure-code",
-            "multiMatch": "deny",
-            "requires": [
-              "exact-selector"
-            ]
+      "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+      "providerId": "rs-harness",
+      "queryPackDescriptor": {
+        "descriptorId": "rust.query-pack",
+        "descriptorVersion":"1",
+        "languageId": "rust",
+        "recipes": [
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "concurrency"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "concurrency",
+                  "runtime",
+                  "scheduling"
+                ]
+              }
+            ],
+            "recipeId": "rust-concurrency-runtime",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "concurrency",
+                "runtime",
+                "scheduling"
+              ]
+            }
           },
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-query-packet"
-          ]
-        },
-        {
-          "method": "search/semantic-facts",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-fact-graph.v1"
-          ],
-          "view": "semantic-facts",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-fact-graph"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": true,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "check/changed",
-          "command": "check",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-verification-receipt"
-          ]
-        },
-        {
-          "method": "guide",
-          "command": "guide",
-          "supportsJson": false,
-          "supportsCompact": true
-        }
-      ],
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "resource-lifecycle"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "scope",
+                  "lifecycle",
+                  "drop"
+                ]
+              }
+            ],
+            "recipeId": "rust-resource-lifecycle",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "scope",
+                "lifecycle",
+                "drop"
+              ]
+            }
+          },
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "collection",
+                  "stream"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "queue",
+                  "stream",
+                  "backpressure"
+                ]
+              }
+            ],
+            "recipeId": "rust-stream-backpressure",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "queue",
+                "stream",
+                "backpressure"
+              ]
+            }
+          }
+        ],
+        "semanticFactsDescriptorId": "rust.semantic-facts",
+        "termRoleOverrides": []
+      },
       "schemas": [
         {
+          "path": "schemas/semantic-search-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-search-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-query-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-query-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-query-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-read-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-read-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-read-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/software-criterion-catalog.v1.schema.json",
           "schemaId": "agent.semantic-protocols.software-criterion-catalog",
-          "schemaVersion": "1",
-          "path": "schemas/software-criterion-catalog.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/software-criterion-extension-report.v1.schema.json",
           "schemaId": "agent.semantic-protocols.software-criterion-extension-report",
-          "schemaVersion": "1",
-          "path": "schemas/software-criterion-extension-report.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-fact-graph.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-graph",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-fact-graph.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-fact-ontology.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-fact-ontology.v1.schema.json"
+          "schemaVersion": "1"
         }
       ]
     },
     {
-      "languageId": "typescript",
-      "providerId": "ts-harness",
       "binary": "ts-harness",
-      "execution": "external-process",
-      "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
       "displayName": "TypeScript Harness",
+      "execution": "external-process",
+      "languageId": "typescript",
+      "methodDescriptors": [
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/prime",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "prime",
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/owner",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "owner",
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "search",
+              "owner",
+              "{owner}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/lexical",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "lexical",
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "search",
+              "lexical",
+              "{query}",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "codeOutput": {
+            "mode": "pure-code",
+            "multiMatch": "deny",
+            "requires": [
+              "exact-selector"
+            ]
+          },
+          "command": "query",
+          "method": "query/direct-source-read",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-query-packet"
+          ],
+          "packetSchemas": [
+            "semantic-query-packet.v1",
+            "semantic-read-packet.v1"
+          ],
+          "queryInputForms": [
+            "selector"
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "{owner}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": true,
+          "command": "search",
+          "method": "search/semantic-facts",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-fact-graph"
+          ],
+          "packetSchemas": [
+            "semantic-fact-graph.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "semantic-facts",
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "search",
+              "semantic-facts",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        },
+        {
+          "command": "check",
+          "method": "check/changed",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-verification-receipt"
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "check",
+              "--changed",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "command": "guide",
+          "method": "guide",
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "guide",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "method": "search/ingest",
+          "command": "search",
+          "view": "ingest",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "requiresQuery": false,
+          "acceptsStdin": true,
+          "supportsPackageScope": true,
+          "supportsJson": true,
+          "supportsCompact": true,
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "search",
+              "ingest",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        }
+      ],
       "methods": [
         "search/prime",
         "search/owner",
@@ -180,155 +576,373 @@
         "check/changed",
         "guide"
       ],
-      "methodDescriptors": [
-        {
-          "method": "search/prime",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "prime",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/owner",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "owner",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/lexical",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "lexical",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "query/direct-source-read",
-          "command": "query",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-query-packet.v1",
-            "semantic-read-packet.v1"
-          ],
-          "queryInputForms": [
-            "selector"
-          ],
-          "codeOutput": {
-            "mode": "pure-code",
-            "multiMatch": "deny",
-            "requires": [
-              "exact-selector"
-            ]
+      "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+      "providerId": "ts-harness",
+      "queryPackDescriptor": {
+        "descriptorId": "typescript.query-pack",
+        "descriptorVersion":"1",
+        "languageId": "typescript",
+        "recipes": [
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "concurrency"
+                ],
+                "roles": [
+                  "symbol",
+                  "concept"
+                ],
+                "terms": [
+                  "Effect",
+                  "runtime",
+                  "scheduling"
+                ]
+              }
+            ],
+            "recipeId": "typescript-effect-runtime",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "Effect",
+                "runtime",
+                "scheduling"
+              ]
+            }
           },
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-query-packet"
-          ]
-        },
-        {
-          "method": "search/semantic-facts",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-fact-graph.v1"
-          ],
-          "view": "semantic-facts",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-fact-graph"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": true,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "check/changed",
-          "command": "check",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-verification-receipt"
-          ]
-        },
-        {
-          "method": "guide",
-          "command": "guide",
-          "supportsJson": false,
-          "supportsCompact": true
-        }
-      ],
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "resource-lifecycle"
+                ],
+                "roles": [
+                  "symbol",
+                  "concept"
+                ],
+                "terms": [
+                  "Scope",
+                  "lifecycle"
+                ]
+              }
+            ],
+            "recipeId": "typescript-scope-lifecycle",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "Scope",
+                "lifecycle"
+              ]
+            }
+          },
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "collection",
+                  "stream"
+                ],
+                "roles": [
+                  "symbol",
+                  "concept"
+                ],
+                "terms": [
+                  "Queue",
+                  "Stream",
+                  "backpressure"
+                ]
+              }
+            ],
+            "recipeId": "typescript-stream-backpressure",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "Queue",
+                "Stream",
+                "backpressure"
+              ]
+            }
+          }
+        ],
+        "semanticFactsDescriptorId": "typescript.semantic-facts",
+        "termRoleOverrides": [
+          {
+            "caseSensitive": true,
+            "role": "symbol",
+            "term": "Effect"
+          },
+          {
+            "caseSensitive": true,
+            "role": "symbol",
+            "term": "Scope"
+          },
+          {
+            "caseSensitive": true,
+            "role": "symbol",
+            "term": "Queue"
+          },
+          {
+            "caseSensitive": true,
+            "role": "symbol",
+            "term": "Stream"
+          }
+        ]
+      },
       "schemas": [
         {
+          "path": "schemas/semantic-search-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-search-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-query-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-query-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-query-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-read-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-read-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-read-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/software-criterion-catalog.v1.schema.json",
           "schemaId": "agent.semantic-protocols.software-criterion-catalog",
-          "schemaVersion": "1",
-          "path": "schemas/software-criterion-catalog.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/software-criterion-extension-report.v1.schema.json",
           "schemaId": "agent.semantic-protocols.software-criterion-extension-report",
-          "schemaVersion": "1",
-          "path": "schemas/software-criterion-extension-report.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-fact-graph.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-graph",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-fact-graph.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-fact-ontology.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-fact-ontology.v1.schema.json"
+          "schemaVersion": "1"
         }
       ]
     },
     {
-      "languageId": "python",
-      "providerId": "py-harness",
       "binary": "py-harness",
-      "execution": "external-process",
-      "namespace": "agent.semantic-protocols.languages.python.py-harness",
       "displayName": "Python Harness",
+      "execution": "external-process",
+      "languageId": "python",
+      "methodDescriptors": [
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/prime",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "prime",
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/owner",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "owner",
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "search",
+              "owner",
+              "{owner}",
+              "items",
+              "--query",
+              "{query}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/lexical",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "lexical",
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "search",
+              "lexical",
+              "{query}",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "codeOutput": {
+            "mode": "pure-code",
+            "multiMatch": "deny",
+            "requires": [
+              "exact-selector"
+            ]
+          },
+          "command": "query",
+          "method": "query/direct-source-read",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-query-packet"
+          ],
+          "packetSchemas": [
+            "semantic-query-packet.v1",
+            "semantic-read-packet.v1"
+          ],
+          "queryInputForms": [
+            "selector"
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "{owner}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": true,
+          "command": "search",
+          "method": "search/semantic-facts",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-fact-graph"
+          ],
+          "packetSchemas": [
+            "semantic-fact-graph.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "semantic-facts",
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "search",
+              "semantic-facts",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        },
+        {
+          "command": "check",
+          "method": "check/changed",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-verification-receipt"
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "check",
+              "--changed",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "command": "guide",
+          "method": "guide",
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "guide",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "method": "search/ingest",
+          "command": "search",
+          "view": "ingest",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "requiresQuery": false,
+          "acceptsStdin": true,
+          "supportsPackageScope": true,
+          "supportsJson": true,
+          "supportsCompact": true,
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "search",
+              "ingest",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        }
+      ],
       "methods": [
         "search/prime",
         "search/owner",
@@ -339,155 +953,344 @@
         "check/changed",
         "guide"
       ],
-      "methodDescriptors": [
-        {
-          "method": "search/prime",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "prime",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/owner",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "owner",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/lexical",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "lexical",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "query/direct-source-read",
-          "command": "query",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-query-packet.v1",
-            "semantic-read-packet.v1"
-          ],
-          "queryInputForms": [
-            "selector"
-          ],
-          "codeOutput": {
-            "mode": "pure-code",
-            "multiMatch": "deny",
-            "requires": [
-              "exact-selector"
-            ]
+      "namespace": "agent.semantic-protocols.languages.python.py-harness",
+      "providerId": "py-harness",
+      "queryPackDescriptor": {
+        "descriptorId": "python.query-pack",
+        "descriptorVersion":"1",
+        "languageId": "python",
+        "recipes": [
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "concurrency"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "asyncio",
+                  "task",
+                  "scheduling"
+                ]
+              }
+            ],
+            "recipeId": "python-asyncio-runtime",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "asyncio",
+                "task",
+                "scheduling"
+              ]
+            }
           },
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-query-packet"
-          ]
-        },
-        {
-          "method": "search/semantic-facts",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-fact-graph.v1"
-          ],
-          "view": "semantic-facts",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-fact-graph"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": true,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "check/changed",
-          "command": "check",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-verification-receipt"
-          ]
-        },
-        {
-          "method": "guide",
-          "command": "guide",
-          "supportsJson": false,
-          "supportsCompact": true
-        }
-      ],
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "resource-lifecycle"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "contextmanager",
+                  "resource",
+                  "lifecycle"
+                ]
+              }
+            ],
+            "recipeId": "python-context-lifecycle",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "contextmanager",
+                "resource",
+                "lifecycle"
+              ]
+            }
+          },
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "collection",
+                  "stream"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "queue",
+                  "async-generator",
+                  "backpressure"
+                ]
+              }
+            ],
+            "recipeId": "python-stream-backpressure",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "queue",
+                "async-generator",
+                "backpressure"
+              ]
+            }
+          }
+        ],
+        "semanticFactsDescriptorId": "python.semantic-facts",
+        "termRoleOverrides": []
+      },
       "schemas": [
         {
+          "path": "schemas/semantic-search-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-search-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-query-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-query-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-query-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-read-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-read-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-read-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/software-criterion-catalog.v1.schema.json",
           "schemaId": "agent.semantic-protocols.software-criterion-catalog",
-          "schemaVersion": "1",
-          "path": "schemas/software-criterion-catalog.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/software-criterion-extension-report.v1.schema.json",
           "schemaId": "agent.semantic-protocols.software-criterion-extension-report",
-          "schemaVersion": "1",
-          "path": "schemas/software-criterion-extension-report.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-fact-graph.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-graph",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-fact-graph.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-fact-ontology.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-fact-ontology.v1.schema.json"
+          "schemaVersion": "1"
         }
       ]
     },
     {
-      "languageId": "julia",
-      "providerId": "julia-lang-project-harness",
       "binary": "asp-julia-harness",
-      "execution": "external-process",
-      "namespace": "agent.semantic-protocols.languages.julia.julia-lang-project-harness",
       "displayName": "Julia Harness",
+      "execution": "external-process",
+      "languageId": "julia",
+      "methodDescriptors": [
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/prime",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "prime",
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/owner",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "owner",
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "search",
+              "owner",
+              "{owner}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/lexical",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "lexical",
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "search",
+              "lexical",
+              "{query}",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/query",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-query-packet.v1"
+          ],
+          "queryInputForms": [
+            "selector"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "query",
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "{owner}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": true,
+          "command": "search",
+          "method": "search/semantic-facts",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-fact-graph"
+          ],
+          "packetSchemas": [
+            "semantic-fact-graph.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "semantic-facts",
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "search",
+              "semantic-facts",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        },
+        {
+          "command": "check",
+          "method": "check/changed",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-verification-receipt"
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "check",
+              "--changed",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "command": "guide",
+          "method": "guide",
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "guide",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "method": "search/ingest",
+          "command": "search",
+          "view": "ingest",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "requiresQuery": false,
+          "acceptsStdin": true,
+          "supportsPackageScope": true,
+          "supportsJson": true,
+          "supportsCompact": true,
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "search",
+              "ingest",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        }
+      ],
       "methods": [
         "search/prime",
         "search/owner",
@@ -498,146 +1301,467 @@
         "check/changed",
         "guide"
       ],
-      "methodDescriptors": [
-        {
-          "method": "search/prime",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "prime",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/owner",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "owner",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/lexical",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "lexical",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/query",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-query-packet.v1"
-          ],
-          "queryInputForms": [
-            "selector"
-          ],
-          "view": "query",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/semantic-facts",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-fact-graph.v1"
-          ],
-          "view": "semantic-facts",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-fact-graph"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": true,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "check/changed",
-          "command": "check",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-verification-receipt"
-          ]
-        },
-        {
-          "method": "guide",
-          "command": "guide",
-          "supportsJson": false,
-          "supportsCompact": true
-        }
-      ],
+      "namespace": "agent.semantic-protocols.languages.julia.julia-lang-project-harness",
+      "providerId": "julia-lang-project-harness",
+      "queryPackDescriptor": {
+        "descriptorId": "julia.query-pack",
+        "descriptorVersion":"1",
+        "languageId": "julia",
+        "recipes": [
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "concurrency"
+                ],
+                "roles": [
+                  "symbol",
+                  "concept"
+                ],
+                "terms": [
+                  "Task",
+                  "schedule",
+                  "concurrency"
+                ]
+              }
+            ],
+            "recipeId": "julia-task-runtime",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "Task",
+                "schedule",
+                "concurrency"
+              ]
+            }
+          },
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "collection",
+                  "stream"
+                ],
+                "roles": [
+                  "symbol",
+                  "concept"
+                ],
+                "terms": [
+                  "Channel",
+                  "stream",
+                  "backpressure"
+                ]
+              }
+            ],
+            "recipeId": "julia-channel-stream",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "Channel",
+                "stream",
+                "backpressure"
+              ]
+            }
+          },
+          {
+            "clauses": [
+              {
+                "intentAxes": [
+                  "resource-lifecycle"
+                ],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "open",
+                  "do",
+                  "lifecycle"
+                ]
+              }
+            ],
+            "recipeId": "julia-resource-lifecycle",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "open",
+                "do",
+                "lifecycle"
+              ]
+            }
+          }
+        ],
+        "semanticFactsDescriptorId": "julia.semantic-facts",
+        "termRoleOverrides": [
+          {
+            "caseSensitive": true,
+            "role": "symbol",
+            "term": "Task"
+          },
+          {
+            "caseSensitive": true,
+            "role": "symbol",
+            "term": "Channel"
+          }
+        ]
+      },
       "schemas": [
         {
+          "path": "schemas/semantic-search-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-search-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-query-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-query-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-query-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/software-criterion-catalog.v1.schema.json",
           "schemaId": "agent.semantic-protocols.software-criterion-catalog",
-          "schemaVersion": "1",
-          "path": "schemas/software-criterion-catalog.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/software-criterion-extension-report.v1.schema.json",
           "schemaId": "agent.semantic-protocols.software-criterion-extension-report",
-          "schemaVersion": "1",
-          "path": "schemas/software-criterion-extension-report.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-fact-graph.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-graph",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-fact-graph.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-fact-ontology.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-fact-ontology.v1.schema.json"
+          "schemaVersion": "1"
         }
       ]
     },
     {
-      "languageId": "gerbil-scheme",
-      "providerId": "gerbil-scheme-harness",
       "binary": "gslph",
-      "execution": "external-process",
-      "namespace": "agent.semantic-protocols.languages.gerbil-scheme.gerbil-scheme-harness",
       "displayName": "Gerbil Scheme Harness",
+      "execution": "external-process",
+      "languageId": "gerbil-scheme",
+      "methodDescriptors": [
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/prime",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": true,
+          "supportsJson": false,
+          "supportsPackageScope": true,
+          "view": "prime",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/owner",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": false,
+          "supportsPackageScope": true,
+          "view": "owner",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "owner",
+              "{owner}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/lexical",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "packetSchemas": [
+            "semantic-search-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": false,
+          "supportsPackageScope": true,
+          "view": "lexical",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "lexical",
+              "{query}",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/pattern",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-extension-pattern-mapping"
+          ],
+          "packetSchemas": [
+            "semantic-extension-pattern-mapping.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "pattern",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "pattern",
+              "{query}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/runtime-source",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-runtime-source-acquisition"
+          ],
+          "packetSchemas": [
+            "semantic-runtime-source-acquisition.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "runtime-source",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "runtime-source",
+              "{query}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/compiler-evidence",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-language-evidence"
+          ],
+          "packetSchemas": [
+            "semantic-language-evidence.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "compiler-evidence",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "compiler-evidence",
+              "{query}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/proof",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-type-proof"
+          ],
+          "packetSchemas": [
+            "semantic-type-proof.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "proof",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "proof",
+              "{query}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/compare",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-compare-packet"
+          ],
+          "packetSchemas": [
+            "semantic-compare-packet.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "compare",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "compare",
+              "{query}",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
+        },
+        {
+          "codeOutput": {
+            "mode": "pure-code",
+            "multiMatch": "deny",
+            "requires": [
+              "exact-selector"
+            ]
+          },
+          "command": "query",
+          "method": "query/direct-source-read",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-query-packet"
+          ],
+          "packetSchemas": [
+            "semantic-query-packet.v1",
+            "semantic-read-packet.v1"
+          ],
+          "queryInputForms": [
+            "selector"
+          ],
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": [
+              "gslph",
+              "query",
+              "{owner}",
+              "--term",
+              "{query}",
+              "--workspace",
+              "{workspace}",
+              "--names-only"
+            ]
+          }
+        },
+        {
+          "command": "check",
+          "method": "check/changed",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-verification-receipt"
+          ],
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": [
+              "gslph",
+              "check",
+              "--changed",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "command": "guide",
+          "method": "guide",
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": [
+              "gslph",
+              "agent",
+              "guide",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "method": "search/ingest",
+          "command": "search",
+          "view": "ingest",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "requiresQuery": false,
+          "acceptsStdin": true,
+          "supportsPackageScope": true,
+          "supportsJson": true,
+          "supportsCompact": true,
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "ingest",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
+        }
+      ],
       "methods": [
         "search/prime",
         "search/owner",
@@ -652,290 +1776,232 @@
         "check/changed",
         "guide"
       ],
-      "methodDescriptors": [
-        {
-          "method": "search/prime",
-          "command": "search",
-          "supportsJson": false,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "prime",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/owner",
-          "command": "search",
-          "supportsJson": false,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "owner",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/lexical",
-          "command": "search",
-          "supportsJson": false,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-search-packet.v1"
-          ],
-          "view": "lexical",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-search-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/pattern",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-extension-pattern-mapping.v1"
-          ],
-          "view": "pattern",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-extension-pattern-mapping"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/runtime-source",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-runtime-source-acquisition.v1"
-          ],
-          "view": "runtime-source",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-runtime-source-acquisition"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/compiler-evidence",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-language-evidence.v1"
-          ],
-          "view": "compiler-evidence",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-language-evidence"
-          ],
-          "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/proof",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-type-proof.v1"
-          ],
-          "view": "proof",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-type-proof"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/compare",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-compare-packet.v1"
-          ],
-          "view": "compare",
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-compare-packet"
-          ],
-          "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "query/direct-source-read",
-          "command": "query",
-          "supportsJson": false,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-query-packet.v1",
-            "semantic-read-packet.v1"
-          ],
-          "queryInputForms": [
-            "selector"
-          ],
-          "codeOutput": {
-            "mode": "pure-code",
-            "multiMatch": "deny",
-            "requires": [
-              "exact-selector"
-            ]
+      "namespace": "agent.semantic-protocols.languages.gerbil-scheme.gerbil-scheme-harness",
+      "providerId": "gerbil-scheme-harness",
+      "queryPackDescriptor": {
+        "descriptorId": "gerbil-scheme.query-pack",
+        "descriptorVersion":"1",
+        "languageId": "gerbil-scheme",
+        "recipes": [
+          {
+            "clauses": [
+              {
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "fiber",
+                  "thread",
+                  "scheduling"
+                ]
+              }
+            ],
+            "recipeId": "gerbil-fiber-runtime",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "fiber",
+                "thread",
+                "scheduling"
+              ]
+            }
           },
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-query-packet"
-          ]
-        },
-        {
-          "method": "check/changed",
-          "command": "check",
-          "supportsJson": false,
-          "supportsCompact": true,
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-verification-receipt"
-          ]
-        },
-        {
-          "method": "guide",
-          "command": "guide",
-          "supportsJson": false,
-          "supportsCompact": true
-        }
-      ],
+          {
+            "clauses": [
+              {
+                "roles": [
+                  "symbol",
+                  "concept"
+                ],
+                "terms": [
+                  "dynamic-wind",
+                  "resource",
+                  "lifecycle"
+                ]
+              }
+            ],
+            "recipeId": "gerbil-dynamic-wind-lifecycle",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "dynamic-wind",
+                "resource",
+                "lifecycle"
+              ]
+            }
+          },
+          {
+            "clauses": [
+              {
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "channel",
+                  "stream",
+                  "backpressure"
+                ]
+              }
+            ],
+            "recipeId": "gerbil-channel-stream",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "channel",
+                "stream",
+                "backpressure"
+              ]
+            }
+          }
+        ],
+        "termRoleOverrides": []
+      },
       "schemas": [
         {
+          "path": "schemas/semantic-search-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-search-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-query-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-query-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-query-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-read-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-read-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-read-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-extension-pattern-mapping.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-extension-pattern-mapping",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-extension-pattern-mapping.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-runtime-source-acquisition.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-runtime-source-acquisition",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-runtime-source-acquisition.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-language-evidence.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-language-evidence",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-language-evidence.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-type-proof.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-type-proof",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-type-proof.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-compare-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-compare-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-compare-packet.v1.schema.json"
+          "schemaVersion": "1"
         }
       ]
     },
     {
-      "languageId": "org",
-      "providerId": "orgize",
-      "binary": "asp",
-      "execution": "embedded",
-      "namespace": "agent.semantic-protocols.languages.org.orgize",
+      "binary": "orgize",
       "displayName": "Org Document Provider",
-      "methods": [
-        "search/prime",
-        "search/toc",
-        "search/lexical",
-        "query/document",
-        "guide"
-      ],
+      "execution": "external-process",
+      "languageId": "org",
       "methodDescriptors": [
         {
+          "acceptsStdin": false,
+          "command": "search",
           "method": "search/prime",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-search-packet.v1"
-          ],
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-search-packet"
           ],
+          "packetSchemas": [
+            "semantic-document-search-packet.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
           "view": "prime",
-          "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
+          "invocation": {
+            "argv": [
+              "asp",
+              "org",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
         },
         {
+          "acceptsStdin": false,
+          "command": "search",
           "method": "search/toc",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-search-packet.v1"
-          ],
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-search-packet"
           ],
-          "view": "toc",
+          "packetSchemas": [
+            "semantic-document-search-packet.v1"
+          ],
           "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "toc",
+          "invocation": {
+            "argv": [
+              "asp",
+              "org",
+              "search",
+              "owner",
+              "{owner}",
+              "items",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
         },
         {
-          "method": "search/lexical",
+          "acceptsStdin": false,
           "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-search-packet.v1"
-          ],
+          "method": "search/lexical",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-search-packet"
           ],
-          "view": "lexical",
+          "packetSchemas": [
+            "semantic-document-search-packet.v1"
+          ],
           "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "lexical",
+          "invocation": {
+            "argv": [
+              "asp",
+              "org",
+              "search",
+              "lexical",
+              "{query}",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
         },
         {
-          "method": "query/document",
           "command": "query",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-query-packet.v1"
-          ],
+          "method": "query/document",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-query-packet"
+          ],
+          "packetSchemas": [
+            "semantic-document-query-packet.v1"
           ],
           "queryInputForms": [
             "selector",
@@ -944,101 +2010,297 @@
             "field",
             "metadata",
             "content"
-          ]
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "asp",
+              "org",
+              "query",
+              "--term",
+              "{query}",
+              "--view",
+              "metadata",
+              "{workspace}"
+            ]
+          }
         },
         {
-          "method": "guide",
           "command": "guide",
+          "method": "guide",
+          "supportsCompact": true,
           "supportsJson": false,
-          "supportsCompact": true
+          "invocation": {
+            "argv": [
+              "asp",
+              "org",
+              "guide",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "method": "search/ingest",
+          "command": "search",
+          "view": "ingest",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "requiresQuery": false,
+          "acceptsStdin": true,
+          "supportsPackageScope": true,
+          "supportsJson": true,
+          "supportsCompact": true,
+          "invocation": {
+            "argv": [
+              "asp",
+              "org",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
         }
       ],
+      "methods": [
+        "search/prime",
+        "search/toc",
+        "search/lexical",
+        "query/document",
+        "guide",
+        "search/ingest"
+      ],
+      "namespace": "agent.semantic-protocols.languages.org.orgize",
+      "providerId": "orgize",
+      "queryPackDescriptor": {
+        "descriptorId": "org.query-pack",
+        "descriptorVersion":"1",
+        "languageId": "org",
+        "recipes": [
+          {
+            "clauses": [
+              {
+                "intentAxes": [],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "task",
+                  "planning",
+                  "scheduled",
+                  "deadline",
+                  "closed"
+                ]
+              }
+            ],
+            "recipeId": "org-task-planning",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "task",
+                "planning",
+                "scheduled",
+                "deadline",
+                "closed"
+              ]
+            }
+          },
+          {
+            "clauses": [
+              {
+                "intentAxes": [],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "heading",
+                  "property",
+                  "tag",
+                  "title"
+                ]
+              }
+            ],
+            "recipeId": "org-document-structure",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "heading",
+                "property",
+                "tag",
+                "title"
+              ]
+            }
+          }
+        ],
+        "termRoleOverrides": [
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "heading"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "task"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "property"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "planning"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "table"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "block"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "list"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "link"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "image"
+          }
+        ]
+      },
       "schemas": [
         {
+          "path": "schemas/semantic-document-search-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-document-search-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-document-search-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-document-query-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-document-query-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-document-query-packet.v1.schema.json"
+          "schemaVersion": "1"
         }
       ]
     },
     {
-      "languageId": "md",
-      "providerId": "orgize",
-      "binary": "asp",
-      "execution": "embedded",
-      "namespace": "agent.semantic-protocols.languages.md.orgize",
+      "binary": "orgize",
       "displayName": "Markdown Document Provider",
-      "methods": [
-        "search/prime",
-        "search/toc",
-        "search/lexical",
-        "query/document",
-        "guide"
-      ],
+      "execution": "external-process",
+      "languageId": "md",
       "methodDescriptors": [
         {
+          "acceptsStdin": false,
+          "command": "search",
           "method": "search/prime",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-search-packet.v1"
-          ],
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-search-packet"
           ],
+          "packetSchemas": [
+            "semantic-document-search-packet.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
           "view": "prime",
-          "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
+          "invocation": {
+            "argv": [
+              "asp",
+              "md",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
         },
         {
+          "acceptsStdin": false,
+          "command": "search",
           "method": "search/toc",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-search-packet.v1"
-          ],
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-search-packet"
           ],
-          "view": "toc",
+          "packetSchemas": [
+            "semantic-document-search-packet.v1"
+          ],
           "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "toc",
+          "invocation": {
+            "argv": [
+              "asp",
+              "md",
+              "search",
+              "owner",
+              "{owner}",
+              "items",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
         },
         {
-          "method": "search/lexical",
+          "acceptsStdin": false,
           "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-search-packet.v1"
-          ],
+          "method": "search/lexical",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-search-packet"
           ],
-          "view": "lexical",
+          "packetSchemas": [
+            "semantic-document-search-packet.v1"
+          ],
           "requiresQuery": true,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
+          "supportsCompact": true,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "lexical",
+          "invocation": {
+            "argv": [
+              "asp",
+              "md",
+              "search",
+              "lexical",
+              "{query}",
+              "owner",
+              "tests",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ]
+          }
         },
         {
-          "method": "query/document",
           "command": "query",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-query-packet.v1"
-          ],
+          "method": "query/document",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-query-packet"
+          ],
+          "packetSchemas": [
+            "semantic-document-query-packet.v1"
           ],
           "queryInputForms": [
             "selector",
@@ -1047,27 +2309,182 @@
             "field",
             "metadata",
             "content"
-          ]
+          ],
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": [
+              "asp",
+              "md",
+              "query",
+              "--term",
+              "{query}",
+              "--view",
+              "metadata",
+              "{workspace}"
+            ]
+          }
         },
         {
-          "method": "guide",
           "command": "guide",
+          "method": "guide",
+          "supportsCompact": true,
           "supportsJson": false,
-          "supportsCompact": true
+          "invocation": {
+            "argv": [
+              "asp",
+              "md",
+              "guide",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "method": "search/ingest",
+          "command": "search",
+          "view": "ingest",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "requiresQuery": false,
+          "acceptsStdin": true,
+          "supportsPackageScope": true,
+          "supportsJson": true,
+          "supportsCompact": true,
+          "invocation": {
+            "argv": [
+              "asp",
+              "md",
+              "search",
+              "prime",
+              "--workspace",
+              "{workspace}",
+              "--view",
+              "seeds"
+            ],
+            "stdinMode": "pipe-candidates"
+          }
         }
       ],
+      "methods": [
+        "search/prime",
+        "search/toc",
+        "search/lexical",
+        "query/document",
+        "guide",
+        "search/ingest"
+      ],
+      "namespace": "agent.semantic-protocols.languages.md.orgize",
+      "providerId": "orgize",
+      "queryPackDescriptor": {
+        "descriptorId": "md.query-pack",
+        "descriptorVersion":"1",
+        "languageId": "md",
+        "recipes": [
+          {
+            "clauses": [
+              {
+                "intentAxes": [],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "markdownheading",
+                  "markdownparagraph",
+                  "frontmatter",
+                  "thematicbreak"
+                ]
+              }
+            ],
+            "recipeId": "md-document-structure",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "markdownheading",
+                "markdownparagraph",
+                "frontmatter",
+                "thematicbreak"
+              ]
+            }
+          },
+          {
+            "clauses": [
+              {
+                "intentAxes": [],
+                "roles": [
+                  "concept"
+                ],
+                "terms": [
+                  "taskitem",
+                  "checklistitem",
+                  "link",
+                  "image",
+                  "codeblock"
+                ]
+              }
+            ],
+            "recipeId": "md-task-content",
+            "trigger": {
+              "match": "any",
+              "terms": [
+                "taskitem",
+                "checklistitem",
+                "link",
+                "image",
+                "codeblock"
+              ]
+            }
+          }
+        ],
+        "termRoleOverrides": [
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "markdownheading"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "markdownparagraph"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "codeblock"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "taskitem"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "frontmatter"
+          },
+          {
+            "caseSensitive": false,
+            "role": "concept",
+            "term": "thematicbreak"
+          }
+        ]
+      },
       "schemas": [
         {
+          "path": "schemas/semantic-document-search-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-document-search-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-document-search-packet.v1.schema.json"
+          "schemaVersion": "1"
         },
         {
+          "path": "schemas/semantic-document-query-packet.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-document-query-packet",
-          "schemaVersion": "1",
-          "path": "schemas/semantic-document-query-packet.v1.schema.json"
+          "schemaVersion": "1"
         }
       ]
     }
-  ]
+  ],
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "registryId": "agent.semantic-protocols.semantic-language-registry",
+  "registryVersion": "1"
 }

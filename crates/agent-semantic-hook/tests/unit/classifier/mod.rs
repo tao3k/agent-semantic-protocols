@@ -1,7 +1,4 @@
-use agent_semantic_hook::{
-    ActivatedProvider, CommandTemplate, HookPolicy, HookRoutes, HookRuntime, ProviderExecution,
-    ProviderSearchCapabilities, StdinMode,
-};
+use agent_semantic_hook::{ActivatedProvider, CommandTemplate, HookRoutes, HookRuntime, StdinMode};
 
 mod activation_contract;
 mod platform;
@@ -29,42 +26,34 @@ pub(crate) fn registry() -> HookRuntime {
     }
 }
 
+pub(super) fn builtin_provider_manifest(language_id: &str, provider_id: &str) -> ProviderManifest {
+    builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == language_id && manifest.provider_id == provider_id)
+        .unwrap_or_else(|| {
+            panic!(
+                "missing canonical provider manifest language={language_id} provider={provider_id}"
+            )
+        })
+}
+
 pub(super) fn typescript_provider() -> ActivatedProvider {
+    let manifest = builtin_provider_manifest("typescript", "ts-harness");
+    let routes =
+        agent_semantic_hook::materialize_provider_routes(&manifest).expect("TypeScript routes");
     provider(
-        "typescript",
-        "ts-harness",
-        "ts-harness",
-        "agent.semantic-protocols.languages.typescript.ts-harness",
+        &manifest,
         &[".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"],
         &["package.json", "tsconfig.json"],
         &["src", "tests"],
         &["node_modules", "dist"],
-        provider_routes(
-            "ts-harness",
-            Some(command(&[
-                "asp",
-                "typescript",
-                "query",
-                "--selector",
-                "{selector}",
-                "{termArgs}",
-                "--surface",
-                "owners,tests",
-                "--workspace",
-                ".",
-                "--view",
-                "seeds",
-            ])),
-        ),
+        routes,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn provider(
-    language_id: &str,
-    provider_id: &str,
-    binary: &str,
-    namespace: &str,
+    manifest: &ProviderManifest,
     source_extensions: &[&str],
     config_files: &[&str],
     source_roots: &[&str],
@@ -72,14 +61,15 @@ pub(super) fn provider(
     routes: HookRoutes,
 ) -> ActivatedProvider {
     ActivatedProvider {
-        manifest_id: namespace.to_string(),
-        manifest_digest: "sha256:test".to_string(),
-        language_id: language_id.to_string(),
-        provider_id: provider_id.to_string(),
-        binary: binary.to_string(),
-        execution: ProviderExecution::ExternalProcess,
+        manifest_id: manifest.manifest_id.clone(),
+        manifest_digest: provider_manifest_digest(manifest)
+            .expect("digest canonical provider manifest"),
+        language_id: manifest.language_id.clone(),
+        provider_id: manifest.provider_id.clone(),
+        binary: manifest.binary.clone(),
+        execution: manifest.execution,
         provider_command_prefix: Vec::new(),
-        namespace: namespace.to_string(),
+        namespace: manifest.namespace.clone(),
         package_roots: vec![".".to_string()],
         source_extensions: source_extensions
             .iter()
@@ -97,9 +87,11 @@ pub(super) fn provider(
             .iter()
             .map(|prefix| (*prefix).to_string())
             .collect(),
-        search_capabilities: ProviderSearchCapabilities::default(),
-        semantic_facts_descriptor: None,
-        policy: HookPolicy::default(),
+        search_capabilities: manifest.search_capabilities.clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
+        query_pack_descriptor: manifest.query_pack_descriptor.clone(),
+        semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
+        policy: manifest.policy.clone(),
         routes,
     }
 }
@@ -128,3 +120,4 @@ pub(super) fn provider_routes(binary: &str, query: Option<CommandTemplate>) -> H
         guide: Some(command(&[binary, "agent", "guide", "."])),
     }
 }
+use agent_semantic_hook::{ProviderManifest, builtin_provider_manifests, provider_manifest_digest};
