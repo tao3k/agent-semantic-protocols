@@ -1,6 +1,5 @@
 //! Source-access, direct-read, and raw-search classifier routes.
 
-use crate::command::{CommandIntent, command_intent};
 use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
 use crate::{
     ActivatedProvider, DecisionRoute, DecisionRouteKind, HookDecision, HookRuntime,
@@ -9,7 +8,6 @@ use crate::{
 };
 
 use super::decision::deny_for_action;
-use super::inline_source_read;
 use super::recovery::source_access_recovery_message;
 
 pub(super) fn classify_direct_read_action(
@@ -188,139 +186,6 @@ pub(super) fn classify_direct_read_action(
     ))
 }
 
-pub(super) struct SourceReadCommandRequest<'a> {
-    pub(super) registry: &'a HookRuntime,
-    pub(super) platform: &'a str,
-    pub(super) event: &'a str,
-    pub(super) action: &'a ToolAction,
-    pub(super) command: &'a str,
-    pub(super) tokens: &'a [String],
-    pub(super) semantic_ast_patch_enabled: bool,
-    pub(super) recovery_prompt: &'a CompiledRecoveryPromptConfig,
-}
-
-pub(super) fn classify_source_read_command(
-    request: SourceReadCommandRequest<'_>,
-) -> Option<HookDecision> {
-    let intent = command_intent(request.tokens);
-    if intent == CommandIntent::VcsDiffReview {
-        return None;
-    }
-    if intent == CommandIntent::DirectRead {
-        let matches = collect_direct_source_read_matches(
-            request.registry,
-            request.action.paths.iter().map(String::as_str),
-        );
-        if !matches.is_empty() {
-            return Some(direct_source_read_decision(
-                request.platform,
-                request.event,
-                request.action,
-                matches,
-                request.semantic_ast_patch_enabled,
-                request.recovery_prompt,
-            ));
-        }
-    }
-    let mut inline_source_read_paths =
-        inline_source_read::source_read_paths(request.command, request.tokens);
-    if intent == CommandIntent::ContentDump {
-        for path in &request.action.paths {
-            if !inline_source_read_paths
-                .iter()
-                .any(|candidate| candidate == path)
-            {
-                inline_source_read_paths.push(path.clone());
-            }
-        }
-    }
-    append_selector_base_paths_for_ranges(&mut inline_source_read_paths);
-    if !inline_source_read_paths.is_empty() {
-        let matches = collect_content_dump_matches(
-            request.registry,
-            inline_source_read_paths.iter().map(String::as_str),
-        );
-        if !matches.is_empty() {
-            return Some(content_dump_decision(
-                request.platform,
-                request.event,
-                request.action,
-                matches,
-                Some(inline_source_read_paths),
-                request.semantic_ast_patch_enabled,
-                request.recovery_prompt,
-            ));
-        }
-    }
-
-    match intent {
-        CommandIntent::DirectRead | CommandIntent::ContentDump => None,
-        _ => None,
-    }
-}
-
-fn append_selector_base_paths_for_ranges(selectors: &mut Vec<String>) {
-    for selector in selectors.clone() {
-        if let Some(base) = selector_without_line_range(&selector)
-            && !selectors.iter().any(|selector| selector == base)
-        {
-            selectors.push(base.to_string());
-        }
-    }
-}
-
-fn selector_without_line_range(selector: &str) -> Option<&str> {
-    let (base, suffix) = selector.rsplit_once(':')?;
-    if suffix.chars().all(|character| character.is_ascii_digit()) {
-        let (base, start) = base.rsplit_once(':')?;
-        return start
-            .chars()
-            .all(|character| character.is_ascii_digit())
-            .then_some(base);
-    }
-    let (start, end) = suffix.split_once('-')?;
-    (!start.is_empty()
-        && !end.is_empty()
-        && start.chars().all(|character| character.is_ascii_digit())
-        && end.chars().all(|character| character.is_ascii_digit()))
-    .then_some(base)
-}
-
-fn content_dump_decision(
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    matches: Vec<DirectReadMatch<'_>>,
-    subject_paths: Option<Vec<String>>,
-    semantic_ast_patch_enabled: bool,
-    recovery_prompt: &CompiledRecoveryPromptConfig,
-) -> HookDecision {
-    let routes = direct_read_routes(&matches);
-    let providers = providers_from_matches(&matches);
-    let message = source_access_recovery_message(
-        platform,
-        "bulk-source-dump",
-        &providers,
-        &routes,
-        semantic_ast_patch_enabled,
-        recovery_prompt,
-    );
-    let mut subject = subject_for_action(action);
-    if let Some(paths) = subject_paths {
-        subject.paths = paths;
-    }
-    deny_for_action(
-        platform,
-        event,
-        ReasonKind::BulkSourceDump,
-        action,
-        direct_read_language_ids(&matches),
-        subject,
-        routes,
-        message,
-    )
-}
-
 type DirectReadMatch<'provider> = SourceSelectorMatch<'provider>;
 
 fn direct_source_read_decision(
@@ -363,19 +228,6 @@ where
 {
     collect_source_selector_matches(registry, paths, |provider| {
         provider.policy.blocks_direct_source_read()
-    })
-}
-
-fn collect_content_dump_matches<'provider, I, S>(
-    registry: &'provider HookRuntime,
-    paths: I,
-) -> Vec<DirectReadMatch<'provider>>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    collect_source_selector_matches(registry, paths, |provider| {
-        provider.policy.blocks_bulk_source_dump()
     })
 }
 

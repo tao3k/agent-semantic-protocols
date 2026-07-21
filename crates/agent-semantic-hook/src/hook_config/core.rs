@@ -799,20 +799,7 @@ fn command_name_tokens(tokens: &[String]) -> impl Iterator<Item = &str> {
 }
 
 fn command_stage_matches_argv_prefix(tokens: &[String], prefix: &[String]) -> bool {
-    tokens
-        .split(|token| is_shell_stage_separator(token))
-        .any(|stage| {
-            stage.len() >= prefix.len()
-                && stage
-                    .iter()
-                    .zip(prefix)
-                    .enumerate()
-                    .all(|(index, (actual, expected))| {
-                        actual.eq_ignore_ascii_case(expected)
-                            || (index == 0
-                                && command_token_basename(actual).eq_ignore_ascii_case(expected))
-                    })
-        })
+    crate::command_match::command_stage_matches_prefix(tokens, prefix).routes_protected()
 }
 
 fn command_token_basename(token: &str) -> &str {

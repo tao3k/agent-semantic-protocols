@@ -127,3 +127,96 @@ fn builtin_source_argv_rule_matches_command_names_not_harness_subcommands() {
 
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn builtin_materialization_rule_is_permanent_and_source_scoped() {
+    let config = ClientHookConfig::default();
+    let registry = registry();
+    let source_payload = json!({
+        "session_id": "permanent-source-deny",
+        "transcript_path": "/tmp/permanent-source-deny.jsonl",
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "sed -n 1p crates/agent-semantic-hook/src/hook_config/core.rs"
+        }
+    });
+
+    for _ in 0..2 {
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &registry,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &source_payload,
+        });
+        assert_eq!(decision.decision, DecisionKind::Deny);
+        assert_eq!(
+            decision
+                .fields
+                .get("configRuleId")
+                .and_then(|id| id.as_str()),
+            Some("deny-uncontrolled-source-materialization-commands")
+        );
+    }
+
+    let non_source_decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "sed -n 1p /dev/null"}
+        }),
+    });
+    assert_eq!(non_source_decision.decision, DecisionKind::Allow);
+}
+
+#[test]
+fn builtin_inline_materialization_rules_use_config_and_source_paths() {
+    let config = ClientHookConfig::default();
+    let registry = registry();
+
+    for (command, expected_rule) in [
+        (
+            "python -c \"open('crates/agent-semantic-hook/src/hook_config/core.rs').read()\"",
+            "deny-uncontrolled-python-inline-source-materialization",
+        ),
+        (
+            "node -e \"require('fs').readFileSync('crates/agent-semantic-hook/src/hook_config/core.rs')\"",
+            "deny-uncontrolled-javascript-inline-source-materialization",
+        ),
+    ] {
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &registry,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &json!({
+                "tool_name": "Bash",
+                "tool_input": {"command": command}
+            }),
+        });
+        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
+        assert_eq!(
+            decision
+                .fields
+                .get("configRuleId")
+                .and_then(|id| id.as_str()),
+            Some(expected_rule),
+            "{command}"
+        );
+    }
+
+    let non_source_decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "python -c \"open('/dev/null').read()\""}
+        }),
+    });
+    assert_eq!(non_source_decision.decision, DecisionKind::Allow);
+}

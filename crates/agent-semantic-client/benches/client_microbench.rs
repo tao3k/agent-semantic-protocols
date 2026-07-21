@@ -46,6 +46,101 @@ fn source_index_lookup_hot_path(c: &mut Criterion) {
         });
     });
     let _ = fs::remove_dir_all(root);
+    source_index_merkle_db_scenario(c);
+}
+
+fn source_index_merkle_db_scenario(c: &mut Criterion) {
+    let root = source_index_bench_root();
+    let source_snapshot = prepare_source_index_bench_db(&root);
+    let cache_root = project_client_cache_dir(&root).expect("client cache dir");
+    let language_id = LanguageId::from("rust");
+    let base_snapshot = source_index_bench_workspace_snapshot(512);
+    let mut revision = 0_u64;
+
+    let mut group = c.benchmark_group("source_index_merkle_db_scenario");
+    group.bench_function("cold_refresh_then_exact_lookup", |b| {
+        b.iter_batched(
+            source_index_bench_root,
+            |cold_root| {
+                let cold_snapshot = prepare_source_index_bench_db(&cold_root);
+                let result = lookup_source_index_for_language(
+                    black_box(&cold_root),
+                    black_box(&cold_snapshot),
+                    Some(black_box(&language_id)),
+                    black_box("bench_symbol_255"),
+                    black_box(8),
+                )
+                .expect("cold refresh then exact lookup");
+                assert_eq!(result.candidates.len(), 1);
+                black_box(result);
+                let _ = fs::remove_dir_all(cold_root);
+            },
+            criterion::BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("warm_exact_lookup", |b| {
+        b.iter(|| {
+            let result = lookup_source_index_for_language(
+                black_box(&root),
+                black_box(&source_snapshot),
+                Some(black_box(&language_id)),
+                black_box("bench_symbol_255"),
+                black_box(8),
+            )
+            .expect("warm lookup source index");
+            assert_eq!(result.candidates.len(), 1);
+            black_box(result);
+        });
+    });
+    group.bench_function("single_leaf_overlay_refresh_then_lookup", |b| {
+        b.iter(|| {
+            revision += 1;
+            let edited_hash = source_index_bench_file_hash(255, revision);
+            let edited_snapshot = base_snapshot.with_overlay_delta(
+                [("src/owner_255.rs", edited_hash)],
+                std::iter::empty::<&str>(),
+            );
+            let edited_evidence = edited_snapshot.evidence(
+                agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+                "1".repeat(64),
+            );
+            ClientDbEngine::refresh_source_index_import_from_client_dir(
+                black_box(&cache_root),
+                ClientDbSourceIndexRefreshRequest {
+                    import: source_index_bench_import_with_revision(&root, Some((255, revision))),
+                    file_count: 512,
+                    source_snapshot: edited_evidence.clone(),
+                },
+            )
+            .expect("refresh edited source index");
+            let result = lookup_source_index_for_language(
+                black_box(&root),
+                black_box(&edited_evidence),
+                Some(black_box(&language_id)),
+                black_box("bench_symbol_255"),
+                black_box(8),
+            )
+            .expect("lookup edited source index");
+            assert_eq!(result.candidates.len(), 1);
+            black_box((edited_snapshot.root_digest(), result));
+        });
+    });
+    group.finish();
+
+    let _ = fs::remove_dir_all(root);
+}
+
+fn source_index_bench_workspace_snapshot(
+    file_count: usize,
+) -> agent_semantic_content_identity::WorkspaceSnapshot {
+    agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes((0..file_count).map(
+        |index| {
+            (
+                format!("src/owner_{index}.rs"),
+                source_index_bench_file_hash(index, 0),
+            )
+        },
+    ))
 }
 
 fn prepare_source_index_bench_db(
@@ -54,16 +149,10 @@ fn prepare_source_index_bench_db(
     fs::create_dir_all(root.join(".git")).expect("create project marker");
     let cache_root = project_client_cache_dir(root).expect("client cache dir");
     fs::create_dir_all(&cache_root).expect("create client cache dir");
-    let source_snapshot = agent_semantic_content_identity::SourceSnapshotEvidence {
-        schema_id: agent_semantic_content_identity::SOURCE_SNAPSHOT_SCHEMA_ID.to_string(),
-        algorithm: agent_semantic_content_identity::SOURCE_SNAPSHOT_ALGORITHM.to_string(),
-        root_digest: "0".repeat(64),
-        source_kind: agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        leaf_count: 512,
-        base_root_digest: None,
-        provider_digest: "1".repeat(64),
-        dirty_paths_digest: None,
-    };
+    let source_snapshot = source_index_bench_workspace_snapshot(512).evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        "1".repeat(64),
+    );
     ClientDbEngine::refresh_source_index_import_from_client_dir(
         &cache_root,
         ClientDbSourceIndexRefreshRequest {
@@ -77,6 +166,13 @@ fn prepare_source_index_bench_db(
 }
 
 fn source_index_bench_import(root: &Path) -> ClientDbSourceIndexImport {
+    source_index_bench_import_with_revision(root, None)
+}
+
+fn source_index_bench_import_with_revision(
+    root: &Path,
+    edited_owner: Option<(usize, u64)>,
+) -> ClientDbSourceIndexImport {
     let owners = (0..512)
         .map(|index| ClientDbSourceIndexOwner {
             owner_path: ClientDbSourceIndexPath::new(format!("src/owner_{index}.rs")),
@@ -95,15 +191,28 @@ fn source_index_bench_import(root: &Path) -> ClientDbSourceIndexImport {
         project_root: root.to_path_buf(),
         schema_id: SemanticSchemaId::from("agent.semantic-protocols.source-index"),
         schema_version: SemanticSchemaVersion::from("1"),
-        file_hashes: vec![ClientCacheFileHash {
-            path: "Cargo.toml".to_string(),
-            sha256: "0".repeat(64),
-            byte_len: 0,
-            mtime_ms: 0,
-        }],
+        file_hashes: (0..512)
+            .map(|index| {
+                let revision = edited_owner
+                    .filter(|(owner_index, _)| *owner_index == index)
+                    .map_or(0, |(_, revision)| revision);
+                ClientCacheFileHash {
+                    path: format!("src/owner_{index}.rs"),
+                    sha256: source_index_bench_file_hash(index, revision),
+                    byte_len: 24,
+                    mtime_ms: revision,
+                }
+            })
+            .collect(),
         owners,
         selectors: Vec::new(),
     }
+}
+
+fn source_index_bench_file_hash(index: usize, revision: u64) -> String {
+    blake3::hash(format!("bench-owner-{index}-revision-{revision}").as_bytes())
+        .to_hex()
+        .to_string()
 }
 
 fn source_index_bench_root() -> PathBuf {

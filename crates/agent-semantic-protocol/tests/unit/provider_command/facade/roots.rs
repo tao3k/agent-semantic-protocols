@@ -233,6 +233,90 @@ fn gerbil_query_facade_allows_explicit_workspace_outside_activation_workspace() 
 }
 
 #[test]
+fn rust_query_rebases_root_selector_to_workspace_member() {
+    let root = temp_project_root("rust-query-workspace-member-selector");
+    let bin_dir = root.join(".bin");
+    let member = root.join("languages/member");
+    std::fs::create_dir_all(member.join("src")).expect("create member source");
+    std::fs::write(
+        member.join("Cargo.toml"),
+        "[package]\nname = \"member\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write member manifest");
+    std::fs::write(member.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n")
+        .expect("write member source");
+    write_echo_provider(&bin_dir, "rs-harness", "rs");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "query",
+            "--selector",
+            "rust://languages/member/src/lib.rs#item/function/value",
+            "--workspace",
+            root.to_str().expect("root utf8"),
+            "--code",
+        ])
+        .output()
+        .expect("run asp rust query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        "rs args=[query][--selector][rust://src/lib.rs#item/function/value][--code]\n"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn rust_query_runs_workspace_member_selector_from_member_root() {
+    let root = temp_project_root("rust-query-workspace-member-cwd");
+    let bin_dir = root.join(".bin");
+    let member = root.join("languages/member");
+    std::fs::create_dir_all(member.join("src")).expect("create member source");
+    std::fs::write(
+        member.join("Cargo.toml"),
+        "[package]\nname = \"member\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write member manifest");
+    std::fs::write(member.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n")
+        .expect("write member source");
+    write_pwd_provider(&bin_dir, "rs-harness");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "query",
+            "--selector",
+            "rust://languages/member/src/lib.rs#item/function/value",
+            "--workspace",
+            root.to_str().expect("root utf8"),
+            "--code",
+        ])
+        .output()
+        .expect("run asp rust query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert_eq!(std::path::Path::new(stdout.trim()), member);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn rust_search_facade_does_not_treat_positional_path_as_project_root() {
     let root = temp_project_root("rust-search-facade-positional-workspace-boundary");
     let bin_dir = root.join(".bin");

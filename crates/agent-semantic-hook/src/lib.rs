@@ -124,3 +124,5 @@ pub use read_only_subagent::{
 };
 #[cfg(test)]
 extern crate self as agent_semantic_hook;
+#[doc(hidden)]
+pub use agent_semantic_command_match as command_match;

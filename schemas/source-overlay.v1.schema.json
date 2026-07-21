@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schemaId", "sourceKind", "changes"],
   "properties": {
-    "schemaId": { "const": "asp.source-overlay.v1" },
+    "schemaId": { "const": "asp.exact-source-snapshot-envelope.v1" },
     "sourceKind": { "const": "editor-buffer" },
     "baseRootDigest": { "$ref": "#/$defs/digest" },
     "changes": {

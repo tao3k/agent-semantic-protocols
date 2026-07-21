@@ -55,6 +55,26 @@ fn workspace_build_paths_reject_parent_traversal() {
 }
 
 #[test]
+fn workspace_build_env_expands_pinned_workspace_root() {
+    let build = super::WorkspaceBuildSpec {
+        program: "gxi".to_string(),
+        args: Vec::new(),
+        working_directory: "languages/gerbil".to_string(),
+        derived_paths: vec!["languages/gerbil/target".to_string()],
+        env: std::collections::BTreeMap::from([(
+            "HOME".to_string(),
+            "${ASP_WORKSPACE_ROOT}/languages/gerbil/target/home".to_string(),
+        )]),
+    };
+    let rendered =
+        super::rendered_workspace_build_env(&build, std::path::Path::new("/immutable/source-root"));
+    assert_eq!(
+        rendered.get("HOME").map(String::as_str),
+        Some("/immutable/source-root/languages/gerbil/target/home")
+    );
+}
+
+#[test]
 fn workspace_artifact_tree_copy_preserves_merkle_root() {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -113,6 +133,71 @@ fn workspace_artifact_tree_copy_preserves_merkle_root() {
         )
         .expect("snapshot mutated artifact");
     assert_ne!(source_snapshot.root_digest, mutated_snapshot.root_digest);
+    let _ = std::fs::remove_dir_all(temp);
+}
+
+#[test]
+fn pinned_workspace_snapshot_isolated_from_live_edits() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let temp = std::env::temp_dir().join(format!(
+        "asp-pinned-workspace-source-{}-{nonce}",
+        std::process::id()
+    ));
+    let live = temp.join("live");
+    let pinned = temp.join("pinned");
+    let derived = live.join("target");
+    std::fs::create_dir_all(live.join("src")).expect("create live source");
+    std::fs::create_dir_all(&derived).expect("create derived path");
+    std::fs::write(live.join("src/lib.rs"), b"pub fn value() -> u8 { 1 }\n")
+        .expect("write live source");
+    std::fs::write(derived.join("ignored"), b"derived\n").expect("write derived output");
+
+    let before = super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
+        &live,
+        &[derived],
+        "provider-digest",
+    )
+    .expect("capture workspace snapshot");
+    super::super::install_provider_workspace_source::copy_workspace_snapshot_leaves(
+        &live, &pinned, &before,
+    )
+    .expect("materialize pinned source");
+
+    std::fs::write(live.join("src/lib.rs"), b"pub fn value() -> u8 { 2 }\n")
+        .expect("edit live source after pinning");
+    let pinned_snapshot =
+        super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
+            &pinned,
+            &[],
+            "provider-digest",
+        )
+        .expect("capture pinned snapshot");
+    let live_after =
+        super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
+            &live,
+            &[live.join("target")],
+            "provider-digest",
+        )
+        .expect("capture edited live source");
+    assert_eq!(
+        before.evidence.root_digest,
+        pinned_snapshot.evidence.root_digest
+    );
+    assert_ne!(before.evidence.root_digest, live_after.evidence.root_digest);
+
+    std::fs::write(pinned.join("src/lib.rs"), b"pub fn value() -> u8 { 3 }\n")
+        .expect("mutate pinned build source");
+    let pinned_after =
+        super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
+            &pinned,
+            &[],
+            "provider-digest",
+        )
+        .expect("capture mutated pinned source");
+    assert_eq!(before.changed_paths(&pinned_after), vec!["src/lib.rs"]);
     let _ = std::fs::remove_dir_all(temp);
 }
 

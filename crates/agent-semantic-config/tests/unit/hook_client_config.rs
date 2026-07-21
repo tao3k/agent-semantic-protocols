@@ -209,7 +209,7 @@ fn default_template_round_trips_through_config_parser() {
             "just test"
         ]
     );
-    assert_eq!(config.rules.len(), 6);
+    assert_eq!(config.rules.len(), 9);
     assert_eq!(
         config
             .rules
@@ -222,6 +222,9 @@ fn default_template_round_trips_through_config_parser() {
             "materialize-apply-patch-policy",
             "materialize-source-access-policy",
             "deny-uncontrolled-source-search-commands",
+            "deny-uncontrolled-source-materialization-commands",
+            "deny-uncontrolled-python-inline-source-materialization",
+            "deny-uncontrolled-javascript-inline-source-materialization",
             "deny-uncontrolled-git-source-reads",
         ]
     );
@@ -485,7 +488,7 @@ entrySkillPath = "/tmp/asp-state/org/templates/ASP_ORG_SKILL.org"
 }
 
 #[test]
-fn template_source_extensions_do_not_generate_user_rules() {
+fn template_source_extensions_generate_declarative_materialization_rule() {
     let root = temp_root("hook-client-template-extensions");
     let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
@@ -507,8 +510,20 @@ fn template_source_extensions_do_not_generate_user_rules() {
             "materialize-apply-patch-policy",
             "materialize-source-access-policy",
             "deny-uncontrolled-source-search-commands",
+            "deny-uncontrolled-source-materialization-commands",
+            "deny-uncontrolled-python-inline-source-materialization",
+            "deny-uncontrolled-javascript-inline-source-materialization",
             "deny-uncontrolled-git-source-reads",
         ]
+    );
+    let materialization_rule = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "deny-uncontrolled-source-materialization-commands")
+        .expect("materialization rule");
+    assert_eq!(
+        materialization_rule.match_config.argv_source_glob_any,
+        ["*.ss", "**/*.ss", "*.scm", "**/*.scm", "*.sld", "**/*.sld"]
     );
     let _ = fs::remove_dir_all(root);
 }

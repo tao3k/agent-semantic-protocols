@@ -1,0 +1,60 @@
+#+title: Workspace Member Source Scope
+#+startup: overview
+
+* Status
+
+Accepted v1 clarification. This module defines how a language provider joins its
+typed workspace topology into the canonical source snapshot. It does not add a
+new protocol version.
+
+* Problem
+
+A provider manifest may declare conventional source roots such as =src=,
+=crates=, and =tests= while the package manager declares valid workspace members
+outside those directories. Candidate discovery can see those packages through
+workspace topology even when snapshot acquisition omits them. That split makes
+owner discovery, exact projection, graph facts, and writeback refer to different
+source universes.
+
+* Canonical v1 scope
+
+The source snapshot admission set is the normalized union of:
+
+- the provider manifest's =defaultSourceRoots=;
+- every included package root in the provider-owned workspace topology receipt.
+
+Package roots excluded by the package manager remain excluded. Snapshot code
+must consume the same typed workspace receipt used by topology and must not
+rescan package manifests or hardcode repository-specific directories.
+
+All admitted roots are workspace-relative, separator-normalized to =/=, sorted
+bytewise, and deduplicated before acquisition. A root escaping the workspace or
+a symlink escaping an admitted package fails closed.
+
+* Snapshot and topology join
+
+Workspace topology is not merely an extra candidate source. Before candidate
+merge, its included package roots extend the canonical snapshot acquisition
+scope. Every candidate, owner, graph fact, and exact projection produced from a
+workspace member must carry the same pinned source snapshot authority.
+
+A merge input with candidates but without snapshot evidence cannot silently
+extend a pinned result. It must first be acquired under the base snapshot and
+must preserve the =baseSourceSnapshot= / =resultSourceSnapshot= continuity
+contract.
+
+* Descriptor contract
+
+The Rust provider's =rust.source-snapshot= descriptor uses
+=sourceSnapshotEnvelopeSchemaId=asp.exact-source-snapshot-envelope.v1=. The
+previous overlay delta contract is not the snapshot envelope identity and is no
+longer part of the provider-facing descriptor.
+
+* Acceptance
+
+- A Cargo workspace member outside =src=, =crates=, and =tests= is present in
+  the canonical snapshot, owner index, and typed facts.
+- A Cargo-excluded package is absent from all three surfaces.
+- Topology candidates cannot enter a result with =source_snapshot=None=.
+- No package-root name such as =build-support= appears as a semantic exception.
+- The manifest descriptor validates against the shared v1 provider schema.

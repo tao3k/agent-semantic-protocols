@@ -11,7 +11,7 @@
     "languageId",
     "packetSchemaId",
     "exactSourcePacketSchemaId",
-    "sourceOverlaySchemaId",
+    "sourceSnapshotEnvelopeSchemaId",
     "derivedArtifactEvidenceSchemaId",
     "algorithm",
     "authority",
@@ -36,8 +36,8 @@
     "exactSourcePacketSchemaId": {
       "const": "asp.exact-source-query-result.v1"
     },
-    "sourceOverlaySchemaId": {
-      "const": "asp.source-overlay.v1"
+    "sourceSnapshotEnvelopeSchemaId": {
+      "const": "asp.exact-source-snapshot-envelope.v1"
     },
     "derivedArtifactEvidenceSchemaId": {
       "const": "asp.derived-source-artifact-evidence.v1"

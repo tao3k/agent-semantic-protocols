@@ -52,6 +52,8 @@ const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../../templates/
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientConfigFile {
+    #[serde(default, rename = "wrapper_match")]
+    pub wrapper_match: WrapperMatchMode,
     #[serde(default)]
     pub schema_id: Option<String>,
     #[serde(default)]
@@ -81,6 +83,7 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
 }
+
 
 /// Optional hook recovery prompt template and per-client agent-flow fragments.
 #[derive(Debug, Default, Deserialize)]
@@ -476,4 +479,10 @@ impl Default for HookClientAgentOrgArtifactsArchiveWarningConfig {
             max_reported_files: default_agent_org_artifacts_archive_warning_max_reported_files(),
         }
     }
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WrapperMatchMode {
+    #[default]
+    Enable,
 }

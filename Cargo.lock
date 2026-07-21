@@ -134,6 +134,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-semantic-command-match"
+version = "0.1.0"
+
+[[package]]
 name = "agent-semantic-config"
 version = "0.1.0"
 dependencies = [
@@ -156,6 +160,7 @@ dependencies = [
 name = "agent-semantic-hook"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-command-match",
  "agent-semantic-config",
  "agent-semantic-runtime",
  "aho-corasick",
@@ -243,6 +248,23 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "agent-semantic-rust-policy-types"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "agent-semantic-rust-policy-verifier"
+version = "0.1.0"
+dependencies = [
+ "agent-semantic-rust-policy-types",
+ "serde_json",
 ]
 
 [[package]]

@@ -8,8 +8,7 @@ use super::agent_org_artifacts::with_agent_org_artifact_recovery;
 use super::decision::{allow, deny_for_action};
 use super::recovery::command_line;
 use super::source_access_routes::{
-    SourceReadCommandRequest, classify_direct_read_action, classify_source_read_command,
-    direct_read_language_ids, direct_read_routes,
+    classify_direct_read_action, direct_read_language_ids, direct_read_routes,
 };
 use crate::event_state::missing_search_pipe_after_prime;
 use crate::{
@@ -336,35 +335,18 @@ pub(crate) fn materialize_source_access_decision(
     platform: &str,
     event: &str,
     action: &ToolAction,
-    tokens: Option<&[String]>,
+    _tokens: Option<&[String]>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &crate::hook_recovery_prompt::CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
-    if let Some(decision) = classify_direct_read_action(
+    classify_direct_read_action(
         registry,
         platform,
         event,
         action,
         semantic_ast_patch_enabled,
         recovery_prompt,
-    ) {
-        return Some(decision);
-    }
-    let command = action.command.as_deref()?;
-    let tokens = tokens?;
-    if !crate::command::asp_invocation_indices(tokens).is_empty() {
-        return None;
-    }
-    classify_source_read_command(SourceReadCommandRequest {
-        registry,
-        platform,
-        event,
-        action,
-        command,
-        tokens,
-        semantic_ast_patch_enabled,
-        recovery_prompt,
-    })
+    )
 }
 
 fn classify_apply_patch_command(

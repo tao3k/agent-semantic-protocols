@@ -14,7 +14,6 @@ pub use asp::{
     AspLanguageCommand, asp_invocation_indices, classify_asp_language_command_tokens,
     classify_asp_language_command_tokens_with_policy,
 };
-pub(crate) use intent::{CommandIntent, command_intent};
 pub(crate) use provider_candidates::{command_source_paths, path_like_token_matches};
 pub(crate) use query::infer_query_from_path;
 pub(crate) use search_json::search_json_route;

@@ -165,7 +165,7 @@
         "languageId",
         "packetSchemaId",
         "exactSourcePacketSchemaId",
-        "sourceOverlaySchemaId",
+        "sourceSnapshotEnvelopeSchemaId",
         "derivedArtifactEvidenceSchemaId",
         "algorithm",
         "authority",
@@ -193,7 +193,7 @@
           "type": "string",
           "minLength": 1
         },
-        "sourceOverlaySchemaId": {
+        "sourceSnapshotEnvelopeSchemaId": {
           "type": "string",
           "minLength": 1
         },

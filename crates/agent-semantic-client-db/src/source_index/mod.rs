@@ -5,6 +5,11 @@ pub(crate) mod language_projection;
 mod text;
 mod types;
 
+pub use agent_semantic_content_identity::exact_selector_cache::{
+    ExactSelectorMerkleLookupKeyV1, ExactSelectorMerkleMissV1,
+    ExactSelectorProjectionRecordV1 as ClientDbExactSelectorProjectionV1,
+    ExactSelectorWarmHitV1 as ClientDbExactSelectorWarmHitV1, ExactSelectorWarmSideEffectsV1,
+};
 pub use import::{
     assemble_source_index_import, build_source_index_import, source_index_file_hashes,
     source_index_import_from_language_projection, source_index_import_with_file_hashes,

@@ -2,6 +2,7 @@
 # Hook defaults are compiled into the runtime; this file exposes the user-level
 # overrides that should be easy to audit.
 schemaId = "@CLIENT_HOOK_CONFIG_SCHEMA_ID@"
+wrapper_match = "enable"
 schemaVersion = "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@"
 protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
@@ -50,6 +51,47 @@ message = "Uncontrolled source search is denied. Route the evidence task to the 
 
 [rules.match]
 argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["git", "ls-files"], ["git", "ls-tree"]]
+
+[[rules]]
+id = "deny-uncontrolled-source-materialization-commands"
+priority = 10001
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Direct source materialization is permanently denied. Consume parser-owned ASP evidence; recovery receipts never authorize raw source reads."
+
+[rules.match]
+argvPrefixAny = [["cat"], ["sed"], ["head"], ["tail"], ["awk"], ["nl"], ["less"], ["more"], ["bat"], ["strings"], ["xxd"], ["od"], ["cut"], ["sort"], ["uniq"], ["wc"], ["jq"], ["perl"], ["python"], ["python3"], ["ruby"], ["node"], ["dd"]]
+argvSourceGlobAny = [
+@ARGV_SOURCE_GLOBS@
+]
+
+[[rules]]
+id = "deny-uncontrolled-python-inline-source-materialization"
+priority = 10002
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Inline Python source materialization is permanently denied. Consume parser-owned ASP evidence; recovery receipts never authorize raw source reads."
+
+[rules.match]
+argvPrefixAny = [["python"], ["python3"], ["uv", "run", "python"], ["uv", "run", "python3"], ["bash"], ["sh"], ["zsh"]]
+commandContainsAny = [".read_text(", ".read_bytes(", "open(", ".read("]
+pathGlobAny = [
+@ARGV_SOURCE_GLOBS@
+]
+
+[[rules]]
+id = "deny-uncontrolled-javascript-inline-source-materialization"
+priority = 10003
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Inline JavaScript source materialization is permanently denied. Consume parser-owned ASP evidence; recovery receipts never authorize raw source reads."
+
+[rules.match]
+argvPrefixAny = [["node"], ["bun"], ["deno"], ["bash"], ["sh"], ["zsh"]]
+commandContainsAny = ["readFileSync(", ".readFile(", "readFile("]
+pathGlobAny = [
+@ARGV_SOURCE_GLOBS@
+]
 
 [[rules]]
 id = "deny-uncontrolled-git-source-reads"

@@ -1,0 +1,150 @@
+#+title: Merkle Exact Selector Warm Path v1
+#+startup: overview
+
+* Status
+
+Proposed for v1 implementation.  This module refines the existing CLI-first
+search, source-snapshot, source-index, and exact-selector contracts.  It does
+not introduce a v2 contract.
+
+* Problem
+
+The workspace already computes a root digest and per-path file digests, and the
+client database already stores structural-selector lookups and payload proofs.
+Those facts do not currently terminate the warm query control flow.
+
+A warm exact-selector query may still:
+
+- start a language provider or parser;
+- publish provider source blobs to the content store;
+- open or rewrite the Turso client database and DB Engine manifest;
+- rebuild source-index material that is already content-addressed.
+
+Consequently, data that looks cached is not an executable cache hit.  Exact
+query and owner projection remain seconds-scale and can fail because a writer
+is unavailable even when the requested projection already exists.
+
+* v1 Merkle identity chain
+
+Every stored exact projection MUST be addressed and proven by one typed chain:
+
+#+begin_example
+workspaceRootDigest
+  -> ownerSubtreeDigest
+  -> sourceBlobDigest
+  -> parserFactDigest
+  -> structuralSelector
+  -> projectionDigest
+#+end_example
+
+The identities have these responsibilities:
+
+- =workspaceRootDigest= commits to the normalized workspace membership and all
+  tracked owner leaves.
+- =ownerSubtreeDigest= commits to one owner and its parser-relevant inputs.  An
+  unrelated owner change MUST NOT invalidate it.
+- =ownerInclusionProof= carries the ordered left/right sibling path needed to
+  verify the owner subtree against =workspaceRootDigest= without scanning the
+  workspace.
+- =sourceBlobDigest= commits to the exact source bytes consumed by the parser.
+- =parserFactDigest= commits to language id, parser/query-pack identity,
+  parser version, source blob, and normalized parser facts.
+- =structuralSelector= is the parser-owned item identity.  Display line ranges
+  and source locator hints are not cache keys.
+- =projectionDigest= commits to the exact projected payload and projection
+  mode.
+
+The shared v1 payload proof MUST carry all six identities.  A missing identity
+is a cache miss, never an invitation to infer from command text, line ranges,
+or a previous generation number.
+
+The v1 source Merkle chain uses =blake3-256=.  Binary release artifact digests
+may use SHA-256, but artifact identity and source Merkle identity are separate
+typed fields and MUST NOT be substituted for one another merely because both
+render as 64 lowercase hexadecimal characters.
+
+=parserFactDigest= and =projectionDigest= use domain-separated BLAKE3 input.
+Each digest input is encoded as an unsigned 64-bit big-endian byte length
+followed by the exact bytes.  The hash begins with the length-prefixed domain
+string and the unsigned 64-bit big-endian part count.  The v1 domains are
+=asp.parser-fact.v1= and =asp.exact-projection.v1= respectively.  This encoding
+is shared contract behavior, not a Rust-provider implementation detail.
+
+* Warm query control flow
+
+For an exact parser-owned selector, dispatch MUST execute in this order:
+
+1. rebase the selector to its workspace member;
+2. obtain the current workspace root and owner subtree proof without starting
+   a provider;
+3. look up the selector proof in the client source index;
+4. validate the complete Merkle chain and projection digest;
+5. return the stored typed projection on a valid hit;
+6. only on a typed miss or invalid proof, invoke provider acquisition and
+   publish a replacement proof atomically.
+
+The valid-hit path MUST NOT call provider execution, spawn a parser, publish a
+content-store blob, open a write transaction, or rewrite a DB manifest.
+
+Cache miss and proof failure MUST be distinct receipts.  A writer or parser
+failure after a typed miss MUST NOT corrupt or delete the last valid immutable
+snapshot.
+
+* Mutation and activation
+
+Build and install produce an immutable binary, activation, query-pack identity,
+and source-snapshot descriptor set.  The set is validated before one atomic
+active-pointer switch.  Refresh is the pointer switch; compilation, provider
+discovery, indexing, and deep health probes are not refresh operations.
+
+Incremental writeback MUST build new owner leaves and Merkle parents beside the
+active snapshot, validate every digest, and publish the new root last.  Readers
+observe either the old complete root or the new complete root, never a mixed
+generation.
+
+* Performance and scenario acceptance
+
+The benchmark suite MUST separate cold acquisition from warm read performance.
+
+Warm exact-selector scenarios:
+
+- same selector and unchanged workspace;
+- unrelated-owner edit;
+- same owner with unchanged source but a different shell wrapper;
+- process restart with an already materialized immutable snapshot;
+- concurrent reader while a new root is being prepared.
+
+For every valid warm hit:
+
+- =parserProcessCount= MUST equal 0;
+- =contentStoreWriteCount= MUST equal 0;
+- =tursoWriteCount= MUST equal 0;
+- =manifestWriteCount= MUST equal 0;
+- returned =workspaceRootDigest=, =ownerSubtreeDigest=,
+  =parserFactDigest=, and =projectionDigest= MUST be present;
+- p95 lookup latency MUST be at most 10 milliseconds on the fixed local
+  benchmark fixture.
+
+Cold acquisition is a separate scenario with its own receipt.  Increasing a
+timeout is not an optimization and MUST NOT change either budget.
+
+The wrapper match engine remains a zero-dependency consumer-side hot path.  Its
+fixed budget is 50 microseconds for one prefix and 1 millisecond for a 128-rule
+route.  Merkle lookup MUST NOT run on command matching itself; it accelerates
+the exact evidence query selected after routing.
+
+* Required implementation edges
+
+The v1 implementation is incomplete until all of these edges exist:
+
+- source-snapshot root -> owner subtree proof;
+- owner subtree proof -> source blob digest;
+- source blob + parser/query-pack identity -> parser fact digest;
+- selector lookup proof -> complete Merkle chain;
+- complete proof -> immutable projection payload;
+- exact query dispatch -> validated lookup before provider execution;
+- typed miss -> provider acquisition -> atomic new-root publication;
+- warm benchmark -> explicit no-parser and no-write counters.
+
+The range-based direct-read path is not a substitute for this contract and
+MUST remain separate from structural-selector lookup.

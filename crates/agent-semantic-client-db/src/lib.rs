@@ -79,6 +79,10 @@ pub use source_index::{
     source_index_file_hashes, source_index_import_from_language_projection,
     source_index_import_with_file_hashes, source_index_relative_path, source_index_scope_dirs,
 };
+pub use source_index::{
+    ClientDbExactSelectorProjectionV1, ClientDbExactSelectorWarmHitV1,
+    ExactSelectorMerkleLookupKeyV1, ExactSelectorMerkleMissV1, ExactSelectorWarmSideEffectsV1,
+};
 pub use structural_index::{
     ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,
     ClientDbStructuralIndexLookup, ClientDbStructuralIndexRefreshPlan,

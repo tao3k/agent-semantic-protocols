@@ -27,11 +27,14 @@ pub fn load_or_sync_activation(
 ) -> Result<HookRuntime, String> {
     if is_generated_activation_path_for_project(activation_path, project_root) {
         return sync_activation(project_root, activation_path).or_else(|sync_error| {
-            load_activation(activation_path).map_err(|load_error| {
-                format!(
-                    "{load_error}; failed to sync generated activation {}: {sync_error}",
-                    activation_path.display()
-                )
+            runtime_from_current_default_activation(project_root).or_else(|runtime_error| {
+                load_activation(activation_path).map_err(|load_error| {
+                    format!(
+                        "{load_error}; failed to sync generated activation {}: {sync_error}; \
+                         failed to build in-memory generated activation: {runtime_error}",
+                        activation_path.display()
+                    )
+                })
             })
         });
     }
@@ -155,6 +158,11 @@ fn activation_matches_current_manifest_coverage(activation: &HookActivation) -> 
 fn sync_activation(project_root: &Path, activation_path: &Path) -> Result<HookRuntime, String> {
     let sync = load_or_refresh_default_activation(activation_path, project_root)?;
     activation_to_runtime(&sync.activation)
+}
+
+fn runtime_from_current_default_activation(project_root: &Path) -> Result<HookRuntime, String> {
+    let activation = build_default_activation(project_root)?;
+    activation_to_runtime(&activation)
 }
 
 fn activation_to_runtime(activation: &HookActivation) -> Result<HookRuntime, String> {

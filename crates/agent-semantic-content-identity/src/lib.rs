@@ -58,6 +58,8 @@ mod store_tests;
 #[path = "../tests/unit/hashing.rs"]
 mod hashing_tests;
 
+pub mod exact_selector_cache;
+pub mod exact_selector_merkle;
 #[cfg(test)]
 #[path = "../tests/unit/overlay.rs"]
 mod overlay_tests;

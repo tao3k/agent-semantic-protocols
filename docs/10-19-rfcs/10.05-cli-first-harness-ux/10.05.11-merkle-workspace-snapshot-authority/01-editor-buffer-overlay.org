@@ -9,7 +9,7 @@ out-of-band fallback and MUST NOT be merged through a source-index database.
 
 * Input contract
 
-The public input is =asp.source-overlay.v1=. A delta contains an optional
+The public input is =asp.exact-source-snapshot-envelope.v1=. A delta contains an optional
 =baseRootDigest= CAS guard and ordered-independent changes keyed by normalized
 workspace-relative path. An upsert carries the complete UTF-8 buffer. A delete
 removes the path from the derived snapshot.

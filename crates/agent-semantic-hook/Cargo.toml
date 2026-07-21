@@ -24,3 +24,5 @@ asp-rust-project-harness-policy.workspace = true
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
+[dependencies.agent-semantic-command-match]
+path = "../agent-semantic-command-match"

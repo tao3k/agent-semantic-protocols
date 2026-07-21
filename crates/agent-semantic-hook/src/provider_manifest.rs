@@ -223,9 +223,9 @@ fn validate_source_snapshot_capability(
             "asp.exact-source-query-result.v1",
         ),
         (
-            "sourceOverlaySchemaId",
-            descriptor.source_overlay_schema_id.as_str(),
-            "asp.source-overlay.v1",
+            "sourceSnapshotEnvelopeSchemaId",
+            descriptor.source_snapshot_envelope_schema_id.as_str(),
+            "asp.exact-source-snapshot-envelope.v1",
         ),
         (
             "derivedArtifactEvidenceSchemaId",

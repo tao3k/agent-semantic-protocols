@@ -1,0 +1,124 @@
+#+title: Hook Wrapper Command Normalization
+#+startup: overview
+
+* Status
+
+Accepted P0 v1 contract. This clarification strengthens the existing hook
+matcher; it does not introduce another schema version or a command-specific
+compatibility path.
+
+* Problem
+
+A rule for =cargo test= must have the same result for a bare executable, an
+absolute executable path, and a configured command wrapper. Matching only the
+literal argv prefix lets these forms escape the policy route:
+
+#+begin_example
+/Users/example/.cargo/bin/cargo test ...
+env PROFILE=ci cargo test ...
+direnv exec . cargo test ...
+rtk test /Users/example/.cargo/bin/cargo test ...
+#+end_example
+
+Adding path-specific patterns is not a fix. It duplicates policy, misses the
+next wrapper, and makes routing depend on a developer's installation layout.
+
+* Configuration contract
+
+The canonical hook =config.toml= requires wrapper matching to be enabled by
+default:
+
+#+begin_src toml
+wrapper_match = "enable"
+#+end_src
+
+=enable= means every command rule is evaluated against the original argv and
+the matcher-derived normalized command candidates. There is one rule engine;
+normalization must not create a second Cargo, test, search, or source-access
+classifier.
+
+The default template and installed user configuration carry the same explicit
+value. Absence is invalid for the new architecture; there is no legacy fallback
+mode.
+
+* Normalized command candidates
+
+Normalization is deterministic, bounded, and lexical so hook latency does not
+depend on filesystem resolution.
+
+1. Preserve the original token vector for audit receipts.
+2. Canonicalize an executable token to its final path component. Thus
+   =/a/b/cargo= and =cargo= expose the same executable identity to rules.
+3. Unwrap only wrapper grammars declared by the shared matcher contract. Each
+   grammar returns an inner token vector; the same normalization and rule
+   evaluation run recursively on it.
+4. Stop at a fixed nesting and token budget. Budget exhaustion fails closed for
+   protected routes and is visible in the decision receipt.
+5. Never execute, resolve, or inspect the target binary while matching.
+
+Environment assignments, =env=, =direnv exec=, RTK command carriers, and shell
+command carriers are wrapper grammars rather than command-specific exceptions.
+Quoted shell bodies must be parsed by the existing shell argv parser; substring
+search is not an authority boundary.
+
+* Matching semantics
+
+=argvPrefixAny= and other command predicates evaluate over every normalized
+candidate. A rule matches when any candidate matches, while the receipt records
+the candidate depth and wrapper chain that produced the decision. Later allow
+rules cannot override a deny or mandatory route found at an inner depth.
+
+For =cargo test=, all of these candidates therefore select the same
+=asp_testing= route:
+
+- =cargo test ...=;
+- an absolute or relative path whose executable basename is =cargo=;
+- a configured wrapper whose normalized inner command is either form.
+
+* Security and performance invariants
+
+- No realpath, symlink traversal, process spawn, or PATH lookup occurs in the
+  matcher.
+- A basename match is only rule evidence; it does not prove binary provenance.
+- Wrapper recursion and shell parsing are bounded and allocation-conscious.
+- The original argv, normalized argv, wrapper chain, and selected config rule
+  ID are present in the decision receipt.
+- Warm matching remains millisecond-scale and does not call a language provider.
+
+* Acceptance
+
+- Bare and absolute-path =cargo test= commands produce the same =asp_testing=
+  route and rule ID.
+- =env=, =direnv exec=, and configured RTK carriers cannot bypass that route.
+- Nested wrapper depth exhaustion fails closed with a typed reason.
+- A benign executable whose argument merely contains the text =cargo test= does
+  not match.
+- No Cargo/test special case exists outside configuration and wrapper grammar.
+* Fixed performance contract
+
+The matcher benchmark compiles the same pure matcher owner without compiling
+the protocol workspace.  Build-graph time is not matcher latency and MUST NOT
+be hidden by a larger timeout.
+
+The v1 acceptance scenarios are fixed:
+
+- bare command
+- absolute executable path
+- =env= wrapper and assignment
+- =direnv exec= wrapper
+- =rtk= wrapper, including an absolute wrapped executable
+- a later shell stage
+- quoted-text negative control
+- the bounded worst-case candidate frontier
+- a 128-rule routing set
+
+For one prefix match, p95 MUST be at most 50 microseconds.  For a 128-rule
+routing set, p95 MUST be at most 1 millisecond.  Candidate or token budget
+exhaustion MUST select protected routing and MUST NOT become an execution-lane
+escape.
+
+Active artifact refresh is a different scenario from building an artifact.
+Installation MUST place the binary and activation contract under an immutable
+artifact identity, validate the pair, and atomically switch the active pointer.
+Compilation, provider discovery, and deep health probing MUST NOT be counted as
+refresh work or performed on the command-match hot path.

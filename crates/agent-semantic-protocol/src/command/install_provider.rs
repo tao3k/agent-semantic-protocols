@@ -304,31 +304,13 @@ pub(super) struct WorkspaceBuildReceipt {
 
 #[derive(Debug)]
 pub(super) struct MaterializedWorkspaceArtifact {
+    pub(super) source_cas_root: PathBuf,
+    pub(super) build_root: PathBuf,
     pub(super) workspace_root: PathBuf,
     pub(super) workspace_entrypoint: PathBuf,
     pub(super) entrypoint_relative: PathBuf,
     pub(super) launch:
         Option<super::install_provider_workspace_artifact::WorkspaceArtifactLaunchSpec>,
-}
-
-#[derive(Debug)]
-struct WorkspaceBuildSnapshot {
-    evidence: agent_semantic_content_identity::SourceSnapshotEvidence,
-    leaves: std::collections::BTreeMap<String, String>,
-}
-
-impl WorkspaceBuildSnapshot {
-    fn changed_paths(&self, next: &Self) -> Vec<String> {
-        self.leaves
-            .keys()
-            .chain(next.leaves.keys())
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .filter(|path| self.leaves.get(*path) != next.leaves.get(*path))
-            .take(32)
-            .cloned()
-            .collect()
-    }
 }
 
 pub(super) fn resolve_workspace_relative_path(
@@ -370,80 +352,30 @@ fn workspace_build_recipe_digest(
     Ok(agent_semantic_content_identity::hash_blob(&payload).value)
 }
 
-fn capture_workspace_build_snapshot(
-    project_root: &Path,
-    derived_paths: &[PathBuf],
-    provider_digest: &str,
-) -> Result<WorkspaceBuildSnapshot, String> {
-    let mut walker = ignore::WalkBuilder::new(project_root);
-    let derived_paths = derived_paths.to_vec();
-    walker
-        .hidden(false)
-        .ignore(true)
-        .git_ignore(true)
-        .git_global(false)
-        .git_exclude(true)
-        .parents(true)
-        .follow_links(false)
-        .filter_entry(move |entry| {
-            entry.file_name() != ".git"
-                && !derived_paths
-                    .iter()
-                    .any(|derived| entry.path().starts_with(derived))
-        });
-    let mut file_hashes = Vec::new();
-    for entry in walker.build() {
-        let entry = entry.map_err(|error| {
-            format!(
-                "failed to walk workspace source snapshot under {}: {error}",
-                project_root.display()
+fn rendered_workspace_build_env(
+    build: &WorkspaceBuildSpec,
+    workspace_root: &Path,
+) -> std::collections::BTreeMap<String, String> {
+    let workspace_root = workspace_root.to_string_lossy();
+    build
+        .env
+        .iter()
+        .map(|(name, value)| {
+            (
+                name.clone(),
+                value.replace("${ASP_WORKSPACE_ROOT}", &workspace_root),
             )
-        })?;
-        if !entry
-            .file_type()
-            .is_some_and(|file_type| file_type.is_file())
-        {
-            continue;
-        }
-        let relative = entry.path().strip_prefix(project_root).map_err(|error| {
-            format!(
-                "failed to normalize workspace snapshot path {}: {error}",
-                entry.path().display()
-            )
-        })?;
-        let normalized = relative.to_string_lossy().replace('\\', "/");
-        let bytes = fs::read(entry.path()).map_err(|error| {
-            format!(
-                "failed to read workspace snapshot leaf {}: {error}",
-                entry.path().display()
-            )
-        })?;
-        file_hashes.push((
-            normalized,
-            agent_semantic_content_identity::hash_blob(&bytes).value,
-        ));
-    }
-    file_hashes.sort_by(|left, right| left.0.cmp(&right.0));
-    let leaves = file_hashes
-        .into_iter()
-        .collect::<std::collections::BTreeMap<_, _>>();
-    let snapshot =
-        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(leaves.clone());
-    Ok(WorkspaceBuildSnapshot {
-        evidence: snapshot.evidence(
-            agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-            provider_digest.to_string(),
-        ),
-        leaves,
-    })
+        })
+        .collect()
 }
 
 fn materialize_workspace_provider_binary(
     spec: &super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor,
     project_root: &Path,
+    state: &agent_semantic_runtime::ProjectRuntimeState,
 ) -> Result<(MaterializedWorkspaceArtifact, WorkspaceBuildReceipt), String> {
     let artifact = spec.workspace_artifact.clone();
-    let workspace_artifact_root =
+    let live_workspace_artifact_root =
         resolve_workspace_relative_path(project_root, &artifact.root, "workspaceArtifact.root")?;
     let build = &spec.workspace_build;
     if build.program.trim().is_empty() {
@@ -462,16 +394,16 @@ fn materialize_workspace_provider_binary(
             spec.provider_id
         ));
     }
-    let working_directory = resolve_workspace_relative_path(
+    let live_working_directory = resolve_workspace_relative_path(
         project_root,
         &build.working_directory,
         "workingDirectory",
     )?;
-    if !working_directory.is_dir() {
+    if !live_working_directory.is_dir() {
         return Err(format!(
             "provider {} workspaceBuild working directory is missing at {}",
             spec.provider_id,
-            working_directory.display()
+            live_working_directory.display()
         ));
     }
     let derived_paths = build
@@ -481,26 +413,63 @@ fn materialize_workspace_provider_binary(
         .collect::<Result<Vec<_>, _>>()?;
     if !derived_paths
         .iter()
-        .any(|derived| workspace_artifact_root.starts_with(derived))
+        .any(|derived| live_workspace_artifact_root.starts_with(derived))
     {
         return Err(format!(
             "provider {} workspaceArtifact.root {} must be contained by one workspaceBuild.derivedPaths boundary",
             spec.provider_id,
-            workspace_artifact_root.display()
+            live_workspace_artifact_root.display()
         ));
     }
     let build_recipe_digest = workspace_build_recipe_digest(spec, build)?;
     let before =
         capture_workspace_build_snapshot(project_root, &derived_paths, &build_recipe_digest)?;
-    let mut command = std::process::Command::new(&build.program);
+    let source_cas_root = materialize_workspace_source_cas(state, project_root, &before)?;
+    let sandbox = materialize_workspace_build_sandbox(
+        state,
+        &spec.provider_id,
+        &build_recipe_digest,
+        &source_cas_root,
+        &before,
+    )?;
+    let working_directory = resolve_workspace_relative_path(
+        &sandbox.root,
+        &build.working_directory,
+        "workingDirectory",
+    )?;
+    fs::create_dir_all(&working_directory).map_err(|error| {
+        format!(
+            "failed to create pinned workspace build directory {}: {error}",
+            working_directory.display()
+        )
+    })?;
+    let workspace_artifact_root =
+        resolve_workspace_relative_path(&sandbox.root, &artifact.root, "workspaceArtifact.root")?;
+    let derived_paths = build
+        .derived_paths
+        .iter()
+        .map(|path| resolve_workspace_relative_path(&sandbox.root, path, "derivedPaths"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let configured_program = Path::new(&build.program);
+    let build_program = if configured_program.is_absolute() {
+        configured_program
+            .strip_prefix(project_root)
+            .map(|relative| sandbox.root.join(relative))
+            .unwrap_or_else(|_| configured_program.to_path_buf())
+    } else {
+        configured_program.to_path_buf()
+    };
+    let mut command = std::process::Command::new(&build_program);
     command
         .args(&build.args)
         .current_dir(&working_directory)
-        .envs(&build.env);
+        .env("ASP_WORKSPACE_ROOT", &sandbox.root)
+        .envs(rendered_workspace_build_env(build, &sandbox.root));
     let status = command.status().map_err(|error| {
         format!(
             "failed to start workspace build for provider {} with program `{}`: {error}",
-            spec.provider_id, build.program
+            spec.provider_id,
+            build_program.display()
         )
     })?;
     if !status.success() {
@@ -510,13 +479,13 @@ fn materialize_workspace_provider_binary(
         ));
     }
     let after =
-        capture_workspace_build_snapshot(project_root, &derived_paths, &build_recipe_digest)?;
+        capture_workspace_build_snapshot(&sandbox.root, &derived_paths, &build_recipe_digest)?;
     if before.evidence.root_digest != after.evidence.root_digest
         || before.evidence.leaf_count != after.evidence.leaf_count
     {
         let changed_paths = before.changed_paths(&after).join(",");
         return Err(format!(
-            "workspace source changed while provider {} was building: beforeRoot={} afterRoot={} changedPaths={changed_paths}; retry from one stable WorkspaceSnapshot",
+            "pinned workspace source changed inside provider {} build sandbox: beforeRoot={} afterRoot={} changedPaths={changed_paths}",
             spec.provider_id, before.evidence.root_digest, after.evidence.root_digest
         ));
     }
@@ -569,15 +538,18 @@ fn materialize_workspace_provider_binary(
     }
     let artifact_snapshot = capture_workspace_artifact_snapshot(&workspace_artifact_root)?;
     let entrypoint_sha256 = sha256_file(&workspace_entrypoint)?;
+    let build_root = sandbox.persist();
     Ok((
         MaterializedWorkspaceArtifact {
+            source_cas_root,
+            build_root,
             workspace_root: workspace_artifact_root,
             workspace_entrypoint,
             entrypoint_relative,
             launch: artifact.launch,
         },
         WorkspaceBuildReceipt {
-            source_snapshot: after.evidence,
+            source_snapshot: before.evidence,
             build_recipe_digest,
             artifact_digest: artifact_snapshot.root_digest,
             artifact_leaf_count: artifact_snapshot.leaf_count,
@@ -593,9 +565,9 @@ fn install_workspace_provider_binary(
     target: &str,
     install_target: &ProviderBinaryInstallTarget,
 ) -> Result<(), String> {
-    let (workspace_artifact, build_receipt) =
-        materialize_workspace_provider_binary(spec, project_root)?;
     let state = project_runtime_state(project_root)?;
+    let (workspace_artifact, build_receipt) =
+        materialize_workspace_provider_binary(spec, project_root, &state)?;
     let runtime_artifact = state.runtime_bin_dir.join(&spec.binary);
     let installed = install_workspace_artifact_from_cas(
         spec,
@@ -604,7 +576,10 @@ fn install_workspace_provider_binary(
         &build_receipt,
         &runtime_artifact,
         &install_target.path,
-    )?;
+    );
+    let cleanup = remove_workspace_snapshot_tree(&workspace_artifact.build_root);
+    let installed = installed?;
+    cleanup?;
     let provider_lock_dir = ensure_project_provider_lock_dir(project_root)?;
     let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     write_provider_lock(
@@ -640,10 +615,11 @@ fn install_workspace_provider_binary(
     )?;
     let org_state_sync = org_capture::run_org_state_sync(project_root)?;
     println!(
-        "[asp-install] provider={} language={} installMode=develop-workspace source=workspace-build binary={} workspaceArtifact={} workspaceEntrypoint={} immutableArtifact={} immutableEntrypoint={} installedPath={} runtimeArtifact={} installTargetSource={} runtimeBinDir={} sourceSnapshotRoot={} sourceSnapshotAlgorithm={} sourceLeafCount={} providerDigest={} buildRecipeDigest={} artifactDigest={} artifactLeafCount={} artifactEntrypointSha256={} installedEntrypointDigest={} sha256={} launcherDigest={} lock={} orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} installMode=develop-workspace source=workspace-build binary={} workspaceSourceCAS={} workspaceArtifact={} workspaceEntrypoint={} immutableArtifact={} immutableEntrypoint={} installedPath={} runtimeArtifact={} installTargetSource={} runtimeBinDir={} sourceSnapshotRoot={} sourceSnapshotAlgorithm={} sourceLeafCount={} providerDigest={} buildRecipeDigest={} artifactDigest={} artifactLeafCount={} artifactEntrypointSha256={} installedEntrypointDigest={} sha256={} launcherDigest={} lock={} orgState={} orgStateSync={}",
         spec.provider_id,
         language_id,
         spec.binary,
+        workspace_artifact.source_cas_root.display(),
         workspace_artifact.workspace_root.display(),
         workspace_artifact.workspace_entrypoint.display(),
         installed.cas_root.display(),
@@ -866,3 +842,7 @@ fn install_plugin_usage() -> String {
 #[cfg(test)]
 #[path = "../../tests/unit/install_provider.rs"]
 mod install_provider_tests;
+use super::install_provider_workspace_source::{
+    capture_workspace_build_snapshot, materialize_workspace_build_sandbox,
+    materialize_workspace_source_cas, remove_workspace_snapshot_tree,
+};

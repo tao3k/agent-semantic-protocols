@@ -222,7 +222,7 @@ agent-tools-install-jl bin_dir="":
 
 # Develop mode: build and install the Gerbil Scheme provider from this checkout.
 agent-tools-install-gerbil bin_dir="":
-    @just agent-tools-build-gerbil "{{bin_dir}}"
+    @just agent-tools-install-language gerbil-scheme "{{bin_dir}}"
 
 agent-tools-build-gerbil bin_dir="":
     @set -e; \

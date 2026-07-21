@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "build-support/asp-rust-project-harness-policy",
+    "crates/agent-semantic-rust-policy-types",
+    "crates/agent-semantic-rust-policy-verifier",
     "crates/agent-semantic-artifacts",
     "crates/agent-semantic-config",
     "crates/agent-semantic-runtime",

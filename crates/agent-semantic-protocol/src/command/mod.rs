@@ -33,6 +33,7 @@ mod install_provider_target;
 mod install_provider_workspace_artifact;
 mod install_provider_workspace_cas;
 mod install_provider_workspace_descriptor;
+mod install_provider_workspace_source;
 mod language_owner_items;
 mod language_projection_import;
 mod org_archive;
