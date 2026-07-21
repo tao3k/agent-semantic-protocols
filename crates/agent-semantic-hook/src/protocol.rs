@@ -9,11 +9,11 @@ use std::collections::BTreeMap;
 /// Schema identifier for semantic hook project activations.
 pub const HOOK_ACTIVATION_SCHEMA_ID: &str = "agent.semantic-protocols.hook.activation";
 /// Schema version for semantic hook project activations.
-pub const HOOK_ACTIVATION_SCHEMA_VERSION: &str = "4";
+pub const HOOK_ACTIVATION_SCHEMA_VERSION: &str = "1";
 /// Schema identifier for static semantic hook provider manifests.
 pub const PROVIDER_MANIFEST_SCHEMA_ID: &str = "agent.semantic-protocols.hook.provider-manifest";
 /// Schema version for static semantic hook provider manifests.
-pub const PROVIDER_MANIFEST_SCHEMA_VERSION: &str = "4";
+pub const PROVIDER_MANIFEST_SCHEMA_VERSION: &str = "1";
 pub const CANONICAL_SCHEMA_AUTHORITY: &str =
     "https://tao3k.github.io/agent-semantic-protocols/schemas/";
 /// Schema identifier for shared hook decision packets.

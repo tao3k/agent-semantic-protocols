@@ -223,7 +223,12 @@ fn lexical_search_frame_warm_path_stays_inside_scenario_gate() {
 fn lexical_search_frame_trace_skips_overlay_when_source_index_is_selector_ready() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/lexical_search_frame.rs".to_string(),
@@ -289,7 +294,12 @@ fn lexical_search_frame_trace_skips_overlay_when_source_index_is_selector_ready(
 fn lexical_search_frame_uses_source_index_owner_evidence_before_overlay() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/lexical_search_frame.rs".to_string(),

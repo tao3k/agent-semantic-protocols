@@ -1,0 +1,120 @@
+#+TITLE: RFC 10.06.01 - Merkle Root-Node GraphRouter Authority
+#+STATUS: accepted
+
+* Status
+
+Accepted. This is a breaking pre-release architecture. No compatibility path or
+legacy graph index is retained.
+
+* Decision
+
+The workspace-wide BLAKE3 Merkle snapshot is the sole source authority for
+source lookup, exact selectors, dynamic overlay, and graph routing.
+
+GraphRouter may persist an index only for the selected root node at
+=depth = 0=. It must not persist adjacency, reachability, ranking, or graph
+closure for =depth > 0=. Even a =0..2= persisted graph window is rejected
+because agent-coding workspaces change too quickly for those derived relations
+to remain authoritative.
+
+* Root-node index contract
+
+The depth-zero index is a locator, not a stored graph. A row binds the current
+=asp.source-snapshot.v1= root and canonical selector to:
+
+- normalized owner path
+- current source-leaf digest
+- parser artifact digest
+- provider digest
+- canonical node identity and kind
+
+The workspace root is language-neutral. Provider digest participates in the
+derived artifact key, never in the workspace Merkle root.
+
+No row may be read unless the query transaction pins the same workspace root.
+A root mismatch is a cache miss or typed snapshot mismatch, never a best-effort
+fallback to an older index.
+
+* Dynamic graph routing
+
+GraphRouter starts from the selected depth-zero node and expands every edge at
+query time against the pinned snapshot. A referenced target is resolved as a
+new depth-zero node before its outgoing claims are considered. Route depth is
+therefore a query budget, not an index depth.
+
+Parser-owned node and raw-reference artifacts may be reused from immutable CAS
+when their source-leaf digest, provider digest, schema identifier, and artifact
+kind match. CAS reuse is not a graph index: no cross-node route, transitive
+closure, or ranking result is materialized as durable workspace truth.
+
+Per-query route state may use an ephemeral in-memory or Turso transaction-local
+working set. It must disappear when the pinned query snapshot is released.
+
+* Dynamic overlay authority
+
+An editor overlay is a child Merkle snapshot produced from explicit deltas:
+
+- edit or create: normalized path to BLAKE3 content digest
+- delete: normalized-path tombstone
+- rename: delete old path plus add new path
+
+Dirty events update the Merkle authority before any provider or language file
+filter runs. Rust, Markdown, and every other provider consume the same immutable
+snapshot evidence packet and then acquire their own candidates.
+
+A full workspace reconcile is a cold bootstrap and recovery adapter only. It is
+not the steady-state query path. The resident authority must apply trusted file
+watcher and editor-buffer deltas incrementally.
+
+* Turso 0.7 native boundary
+
+Turso is the native transactional catalog for pinned roots, depth-zero locator
+rows, immutable artifact references, leases, and reachability-based CAS
+garbage-collection metadata. The query transaction pins one root and all
+locator reads are constrained by that root.
+
+There is no SQLite compatibility schema, legacy migration path, durable graph
+closure table, or provider-private overlay index. Native MVCC and prepared
+statement paths are the implementation baseline.
+
+* Exact selector semantics
+
+An exact selector resolves its owner in the pinned Merkle snapshot, loads the
+parser artifact for that exact leaf, and resolves the item from parser-owned
+structure. Methods are searched inside implementation owners; an unqualified
+method name resolves only when unique, while a duplicate produces typed
+ambiguity with qualified alternatives.
+
+Failure states remain distinct:
+
+- owner is absent from the pinned snapshot
+- current leaf exists but its parser artifact is cold
+- item is absent from the current parser artifact
+- selector is ambiguous
+- provider or snapshot digest mismatches
+
+No failure may silently consult an older database generation.
+
+* Version contract
+
+All contracts introduced or completed by this RFC remain version 1, including
+=asp.source-snapshot.v1=, =asp.rust.parse-artifact.v1=, graph request packets,
+root-node locator artifacts, and route receipts. Stabilization extends v1; it
+does not create v2, v3, or v4 schemas.
+
+* Acceptance
+
+- Rust and Markdown searches over the same workspace state emit the same
+  workspace root, base root, dirty-path digest, and leaf count.
+- Provider filtering cannot change the workspace root.
+- Editing file content changes its Merkle leaf and the overlay root.
+- Create, delete, rename, provider-digest change, and cross-root cases have
+  explicit tests and typed outcomes.
+- Durable storage contains only depth-zero locators and immutable CAS metadata;
+  no depth-positive graph index or closure table exists.
+- Repeated routing may reuse matching CAS artifacts but recomputes route
+  expansion for the pinned snapshot.
+- Exact method selectors resolve from the current parser artifact, including
+  qualified ambiguity handling.
+- Develop installation and black-box acceptance use Justfile targets; =asp
+  install= remains reserved for locked release artifacts.

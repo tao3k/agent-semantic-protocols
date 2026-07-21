@@ -44,112 +44,6 @@ fn unsupported_apple_intel_target_is_rejected() {
 }
 
 #[test]
-fn every_workspace_provider_has_an_explicit_non_shell_build_recipe() {
-    for language in ["rust", "typescript", "python", "julia"] {
-        let spec = super::provider_release(language).expect("pinned provider release");
-        let artifact = spec
-            .workspace_artifact
-            .as_ref()
-            .unwrap_or_else(|| panic!("{language} workspace artifact"));
-        assert!(!artifact.root.trim().is_empty(), "{language} artifact root");
-        assert!(
-            !artifact.entrypoint.trim().is_empty(),
-            "{language} artifact entrypoint"
-        );
-        let build = spec
-            .workspace_build
-            .as_ref()
-            .unwrap_or_else(|| panic!("{language} workspace build recipe"));
-        assert!(!build.program.trim().is_empty(), "{language} build program");
-        let program_name = std::path::Path::new(&build.program)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .expect("workspace build program name");
-        assert!(
-            !matches!(program_name, "sh" | "bash" | "zsh" | "fish"),
-            "{language} must not use a command shell"
-        );
-        super::resolve_workspace_relative_path(
-            std::path::Path::new("/workspace"),
-            &build.working_directory,
-            "workingDirectory",
-        )
-        .expect("project-relative working directory");
-        assert!(
-            !build.derived_paths.is_empty(),
-            "{language} derived path boundary"
-        );
-        for path in &build.derived_paths {
-            super::resolve_workspace_relative_path(
-                std::path::Path::new("/workspace"),
-                path,
-                "derivedPaths",
-            )
-            .expect("project-relative derived path");
-        }
-        let artifact_root = super::resolve_workspace_relative_path(
-            std::path::Path::new("/workspace"),
-            &artifact.root,
-            "workspaceArtifact.root",
-        )
-        .expect("project-relative artifact root");
-        assert!(
-            build
-                .derived_paths
-                .iter()
-                .any(|derived| artifact_root.starts_with(
-                    super::resolve_workspace_relative_path(
-                        std::path::Path::new("/workspace"),
-                        derived,
-                        "derivedPaths",
-                    )
-                    .expect("project-relative derived path")
-                )),
-            "{language} artifact root must be inside one derived path"
-        );
-        if let Some(launch) = &artifact.launch {
-            let program_name = std::path::Path::new(&launch.program)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .expect("artifact launch program name");
-            assert!(
-                !matches!(program_name, "sh" | "bash" | "zsh" | "fish"),
-                "{language} launch must not delegate provider behavior to a shell"
-            );
-        }
-    }
-    let rust = super::provider_release("rust").expect("rust release");
-    let args = &rust.workspace_build.expect("rust build recipe").args;
-    assert!(args.iter().any(|arg| arg == "--locked"));
-    assert!(args.iter().any(|arg| arg == "--release"));
-    assert!(args.iter().any(|arg| arg == "cli"));
-    assert!(args.iter().any(|arg| arg == "rs-harness"));
-
-    let typescript = super::provider_release("typescript").expect("typescript release");
-    let typescript_artifact = typescript
-        .workspace_artifact
-        .expect("typescript workspace artifact");
-    assert!(typescript_artifact.root.ends_with("dist/provider"));
-    assert_eq!(typescript_artifact.entrypoint, "ts-harness.mjs");
-    let typescript_launch = typescript_artifact
-        .launch
-        .expect("typescript launch recipe");
-    assert_eq!(typescript_launch.program, "node");
-    assert!(typescript_launch.args_relative_to_artifact);
-
-    let python = super::provider_release("python").expect("python release");
-    let python_build = python.workspace_build.expect("python build recipe");
-    assert!(python_build.args.iter().any(|arg| arg == "--no-editable"));
-    let python_launch = python
-        .workspace_artifact
-        .expect("python workspace artifact")
-        .launch
-        .expect("python launch recipe");
-    assert!(python_launch.program_relative_to_artifact);
-    assert!(python_launch.args_relative_to_artifact);
-}
-
-#[test]
 fn workspace_build_paths_reject_parent_traversal() {
     let error = super::resolve_workspace_relative_path(
         std::path::Path::new("/workspace"),
@@ -264,4 +158,24 @@ fn corrupted_workspace_artifact_cas_is_rematerialized_from_merkle_source() {
     assert_eq!(expected.root_digest, repaired.root_digest);
     assert_eq!(expected.leaf_count, repaired.leaf_count);
     let _ = std::fs::remove_dir_all(temp);
+}
+
+#[test]
+fn resolves_provider_owned_workspace_descriptors_through_manifests() {
+    let cases = [
+        ("rust", "rs-harness", "rs-harness"),
+        ("typescript", "ts-harness", "ts-harness"),
+        ("python", "py-harness", "py-harness"),
+        ("julia", "julia-lang-project-harness", "asp-julia-harness"),
+        ("gerbil-scheme", "gerbil-scheme-harness", "gslph"),
+        ("org", "orgize", "orgize"),
+        ("md", "orgize", "orgize"),
+    ];
+
+    for (language_id, provider_id, binary) in cases {
+        let descriptor = super::super::install_provider_workspace_descriptor::workspace_install_descriptor_for_language(language_id)
+            .unwrap_or_else(|error| panic!("{language_id}: {error}"));
+        assert_eq!(descriptor.provider_id, provider_id);
+        assert_eq!(descriptor.binary, binary);
+    }
 }

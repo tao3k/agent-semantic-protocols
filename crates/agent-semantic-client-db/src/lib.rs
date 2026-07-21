@@ -6,12 +6,22 @@ pub mod agent_session_registry;
 pub use agent_session_registry::{
     AgentSessionModelObservationRef, AgentSessionModelObservationSource,
 };
+pub mod artifact_pointer_store;
 mod dependency_index;
 pub mod engine;
-mod evidence_graph;
 mod source_index;
+pub mod storage_contract;
+pub mod storage_performance_receipt;
 mod structural_index;
 mod syntax_query;
+pub mod turso_agent_storage;
+pub mod turso_cdc_storage;
+pub mod turso_encrypted_storage;
+mod turso_mvcc_keyset;
+mod turso_mvcc_maintenance;
+pub mod turso_mvcc_store;
+mod turso_mvcc_typed;
+pub mod turso_sync_storage;
 mod types;
 
 pub use agent_semantic_client_core::ClientDbStatus;
@@ -37,17 +47,8 @@ pub use engine::{
 };
 pub use engine::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
-    TURSO_BOOTSTRAP_TABLE, TURSO_EDGE_TABLE, TURSO_ENTITY_TABLE, TURSO_OVERLAY_DOCUMENT_TABLE,
-    TURSO_ROUTE_RECEIPT_TABLE, TURSO_SEARCH_DOCUMENT_TABLE,
-    TursoClientDbEvidenceGraphPersistReport, TursoClientDbGraphEdge, TursoClientDbGraphEntity,
-    TursoClientDbOverlayDocument, TursoClientDbRouteReceipt, TursoClientDbSearchDocument,
-    TursoClientDbSearchHit, list_turso_graph_edges, list_turso_graph_entities,
-    persist_turso_evidence_graph, upsert_turso_route_receipt,
-};
-pub use evidence_graph::{
-    CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_ID, CLIENT_DB_EVIDENCE_GRAPH_SCHEMA_VERSION,
-    ClientDbEvidenceGraph, ClientDbEvidenceGraphEdge, ClientDbEvidenceGraphNode,
-    source_index_evidence_graph, structural_index_evidence_graph,
+    TURSO_BOOTSTRAP_TABLE, TursoClientDbSearchDocument, TursoClientDbSearchHit,
+    TursoClientDbSearchResult, TursoClientDbSearchState,
 };
 pub use source_index::{
     CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_ID, CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_VERSION,

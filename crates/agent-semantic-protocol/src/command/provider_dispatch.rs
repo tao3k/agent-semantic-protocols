@@ -5,9 +5,7 @@ use super::provider_usage;
 
 use super::document_language_facade;
 use super::graph::GraphTurboReceiptRequest;
-use agent_semantic_hook::{
-    runtime_profiles_for_runtime,
-};
+use agent_semantic_hook::runtime_profiles_for_runtime;
 use agent_semantic_runtime::project_state_paths;
 use std::env;
 use std::path::Path;
@@ -322,10 +320,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if is_asp_fast_search(&provider_args) {
         let current_snapshot =
             agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
-        let provider_context_allowed = (!document_owner_items_search
-            || !provider_invokes_asp_facade(language_id, provider, &config))
-            && !(language_id == "gerbil-scheme"
-                && search_owner_items_owner_path(&provider_args).is_some());
+        let provider_context_allowed = !document_owner_items_search
+            || !provider_invokes_asp_facade(language_id, provider, &config);
         if provider_context_allowed && fast_search_needs_provider_context(&provider_args, provider)?
         {
             let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
@@ -344,6 +340,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                     config: &config,
                     provider_context: Some(&provider_context),
                     frontier_receipt: frontier_receipt.as_ref(),
+                    source_index_snapshot: &current_snapshot,
                     source_snapshot: &current_snapshot.source_snapshot,
                 },
             );
@@ -358,6 +355,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 config: &config,
                 provider_context: None,
                 frontier_receipt: frontier_receipt.as_ref(),
+                source_index_snapshot: &current_snapshot,
                 source_snapshot: &current_snapshot.source_snapshot,
             },
         );
@@ -402,9 +400,25 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             &cache_home,
         );
     }
+    let mut provider_argv = provider_process_args(&provider_args);
+    if is_provider_owned_structural_code_query(language_id, &provider_args) {
+        let snapshot =
+            agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
+        let envelope =
+            agent_semantic_client::source_index::publish_provider_source_snapshot_envelope(
+                &snapshot,
+                &provider.provider_id,
+                &provider.source_extensions,
+                &cache_home,
+            )?;
+        provider_argv.extend([
+            "--source-snapshot-envelope".to_string(),
+            envelope.display().to_string(),
+        ]);
+    }
     for invocation in provider_invocations(
         provider,
-        &provider_process_args(&provider_args),
+        &provider_argv,
         &project_root,
         &runtime_profiles,
         &config,
@@ -451,7 +465,6 @@ use super::provider_activation::{
 };
 use super::provider_execution::provider_process_args;
 use super::provider_selector::{
-    is_provider_owned_structural_code_query,
-    reject_manifest_source_selector_query_code, reject_registered_source_selector_query,
-    reject_search_file_workspace,
+    is_provider_owned_structural_code_query, reject_manifest_source_selector_query_code,
+    reject_registered_source_selector_query, reject_search_file_workspace,
 };

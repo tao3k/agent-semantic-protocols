@@ -1,9 +1,7 @@
 use super::prepare::TursoSourceIndexOwnerRow;
 
 const TURSO_SOURCE_INDEX_OWNER_WINDOW_PER_TOKEN: usize = 128;
-use crate::engine::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-};
+use crate::engine::turso_statement::{execute_turso_operation, execute_turso_statement};
 
 const TURSO_SOURCE_INDEX_OWNER_BATCH_SIZE: usize = 128;
 
@@ -70,7 +68,7 @@ pub(super) async fn write_turso_source_index_owner_rows(
                 turso::Value::Integer(row.selector_count),
             ]);
         }
-        execute_turso_operation_with_lock_retry(
+        execute_turso_operation(
             || async {
                 connection
                     .execute(statement.as_str(), params.clone())
@@ -99,7 +97,7 @@ pub(super) async fn refresh_turso_source_index_posting_projection(
     }
     let owner_paths_json = serde_json::to_string(owner_paths)
         .map_err(|error| format!("failed to encode Turso source-index posting owners: {error}"))?;
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "CREATE TEMP TABLE IF NOT EXISTS asp_source_index_changed_membership_v1 (
             owner_path TEXT NOT NULL PRIMARY KEY
@@ -107,7 +105,7 @@ pub(super) async fn refresh_turso_source_index_posting_projection(
         "failed to create Turso source-index changed membership staging table",
     )
     .await?;
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "DELETE FROM asp_source_index_changed_membership_v1",
         "failed to clear Turso source-index changed membership staging table",
@@ -141,7 +139,7 @@ pub(super) async fn refresh_turso_source_index_posting_projection(
         .collect::<Vec<_>>();
     let posting_rows_json = serde_json::to_string(&posting_rows)
         .map_err(|error| format!("failed to encode Turso source-index postings: {error}"))?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -156,7 +154,7 @@ pub(super) async fn refresh_turso_source_index_posting_projection(
         "failed to stage Turso source-index changed membership",
     )
     .await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -177,7 +175,7 @@ pub(super) async fn refresh_turso_source_index_posting_projection(
         "failed to clear Turso source-index postings",
     )
     .await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(

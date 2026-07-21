@@ -12,6 +12,7 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoStructuralIndexSearchHit {
     pub document_id: String,
+    pub generation: String,
     pub selector: Option<String>,
     pub document: String,
 }
@@ -19,6 +20,7 @@ pub struct TursoStructuralIndexSearchHit {
 /// Request for collecting stable Turso structural-index candidates.
 pub struct TursoStructuralIndexCandidateRequest<'a> {
     pub project_root: &'a Path,
+    pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     pub query: &'a str,
     pub limit: u32,
 }
@@ -40,6 +42,7 @@ pub async fn collect_turso_structural_index_ranked_candidates_async(
     let engine = ClientDbEngine::resolve(request.project_root)?;
     collect_turso_structural_index_ranked_candidates_from_engine_async(
         &engine,
+        request.source_snapshot,
         request.query,
         request.limit,
     )
@@ -49,13 +52,15 @@ pub async fn collect_turso_structural_index_ranked_candidates_async(
 /// Async implementation for callers that already own a resolved DB Engine.
 pub async fn collect_turso_structural_index_ranked_candidates_from_engine_async(
     engine: &ClientDbEngine,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
     limit: u32,
 ) -> Result<Vec<RankedSearchCandidate>, String> {
     if query.trim().is_empty() || limit == 0 {
         return Ok(Vec::new());
     }
-    let hits = search_turso_structural_index_documents(engine, query, limit).await?;
+    let hits =
+        search_turso_structural_index_documents(engine, source_snapshot, query, limit).await?;
     let terms = source_index_lookup_terms(query);
     Ok(merge_search_candidates(
         hits.iter()
@@ -67,26 +72,32 @@ pub async fn collect_turso_structural_index_ranked_candidates_from_engine_async(
 /// Query stable structural-index documents without exposing DB adapter rows to callers.
 pub async fn search_turso_structural_index_documents(
     engine: &ClientDbEngine,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
     limit: u32,
 ) -> Result<Vec<TursoStructuralIndexSearchHit>, String> {
-    let hits = engine
-        .search_structural_index_documents(query, limit)
+    let result = engine
+        .search_structural_index_documents(source_snapshot, query, limit)
         .await?;
-    Ok(hits
+    Ok(result
+        .hits
         .into_iter()
-        .filter_map(turso_hit_to_structural_index_hit)
+        .filter_map(|hit| {
+            turso_hit_to_structural_index_hit(hit, source_snapshot.root_digest.as_str())
+        })
         .collect())
 }
 
 fn turso_hit_to_structural_index_hit(
     hit: TursoClientDbSearchHit,
+    generation: &str,
 ) -> Option<TursoStructuralIndexSearchHit> {
-    if hit.source() != "stable" || !hit.document_id().starts_with("structural-index:") {
+    if !hit.document_id().starts_with("structural-index:") {
         return None;
     }
     Some(TursoStructuralIndexSearchHit {
         document_id: hit.document_id().to_string(),
+        generation: generation.to_string(),
         selector: hit.selector().map(ToString::to_string),
         document: hit.document().to_string(),
     })

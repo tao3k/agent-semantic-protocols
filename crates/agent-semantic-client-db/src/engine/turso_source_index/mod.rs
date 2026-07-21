@@ -7,7 +7,6 @@ mod projection;
 mod publish;
 mod readiness;
 mod trace;
-mod transaction;
 
 pub(super) use core::turso_source_index_access_lock;
 pub use core::{
@@ -15,3 +14,4 @@ pub use core::{
     latest_turso_source_index_stats, lookup_reusable_turso_source_index_generation,
     refresh_turso_source_index_import,
 };
+mod transaction;

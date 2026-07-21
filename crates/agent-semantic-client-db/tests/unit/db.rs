@@ -13,8 +13,7 @@ use agent_semantic_client_db::{
     ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
     ClientDbSourceIndexImportRequest, ClientDbSourceIndexRefreshRequest,
     ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource, build_source_index_import,
-    client_db_source_index_file_count, source_index_evidence_graph, source_index_relative_path,
-    source_index_scope_dirs,
+    client_db_source_index_file_count, source_index_relative_path, source_index_scope_dirs,
 };
 
 use crate::env::ENV_LOCK;
@@ -856,15 +855,6 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
             .query_keys
             .iter()
             .any(|key| key.as_str() == "turso_source_index_fixture")
-    );
-
-    let graph = source_index_evidence_graph(&import);
-    assert!(graph.nodes.iter().any(|node| node.kind == "source-owner"));
-    assert!(
-        graph
-            .nodes
-            .iter()
-            .any(|node| { node.selector.as_deref() == Some("rust://src/lib.rs#file") })
     );
 
     let _ = std::fs::remove_dir_all(root);

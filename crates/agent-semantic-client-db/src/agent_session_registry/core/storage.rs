@@ -12,10 +12,7 @@ use crate::engine::{
         TURSO_CLIENT_DB_BUSY_TIMEOUT_MS, TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS, is_turso_lock_error,
         turso_lock_retry_delay,
     },
-    turso_statement::{
-        execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-        run_turso_operation_with_lock_retry,
-    },
+    turso_statement::{execute_turso_operation, execute_turso_statement, run_turso_operation},
 };
 
 use super::bootstrap::dedupe_turso_agent_sessions_by_session_id;
@@ -250,7 +247,7 @@ fn prepare_turso_agent_session_registry_path(db_path: &Path) -> Result<PathBuf, 
 
 async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Result<(), String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "CREATE TABLE IF NOT EXISTS asp_agent_sessions (
             project_id TEXT NOT NULL DEFAULT 'default',
@@ -302,7 +299,7 @@ async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Result<(), Stri
         "CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_session
             ON asp_agent_sessions(project_id, session_id)",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             &connection,
             statement,
             "failed to initialize Turso session registry schema",
@@ -318,7 +315,7 @@ async fn ensure_turso_agent_sessions_project_id_column(
     if turso_agent_sessions_column_exists(connection, "project_id").await? {
         return Ok(());
     }
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "ALTER TABLE asp_agent_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'",
         "failed to migrate Turso session registry project_id",
@@ -333,7 +330,7 @@ async fn ensure_turso_agent_sessions_message_target_id_column(
     if turso_agent_sessions_column_exists(connection, "message_target_id").await? {
         return Ok(());
     }
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "ALTER TABLE asp_agent_sessions ADD COLUMN message_target_id TEXT",
         "failed to migrate Turso session registry message_target_id",
@@ -358,7 +355,7 @@ async fn ensure_turso_agent_sessions_model_observation_columns(
             continue;
         }
         let statement = format!("ALTER TABLE asp_agent_sessions ADD COLUMN {column} {definition}");
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             &statement,
             "failed to migrate Turso session registry columns",
@@ -372,7 +369,7 @@ async fn turso_agent_sessions_column_exists(
     connection: &turso::Connection,
     expected_column: &str,
 ) -> Result<bool, String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query("PRAGMA table_info(asp_agent_sessions)", ())
@@ -409,7 +406,7 @@ pub(super) async fn turso_claim_resident_session(
     request: AgentSessionRegisterRequest<'_>,
 ) -> Result<AgentSessionRecord, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -497,7 +494,7 @@ async fn turso_register_session_once(
     request: &AgentSessionRegisterRequest<'_>,
 ) -> Result<AgentSessionRecord, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -518,7 +515,7 @@ async fn turso_register_session_once(
         "failed to clear stale Turso session mapping",
     )
     .await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -644,7 +641,7 @@ pub(in crate::agent_session_registry) async fn turso_session_by_name(
     let connection = connect_turso_agent_session_registry(db_path).await?;
     let sql =
         super::record::select_sql("WHERE project_id = ?1 AND root_session_id = ?2 AND name = ?3");
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(&sql, (project_id, root_session_id, name))
@@ -687,7 +684,7 @@ pub(super) async fn turso_query_sessions(
     };
     let mut rows = match (root_session_id, name) {
         (Some(root_session_id), Some(name)) => {
-            run_turso_operation_with_lock_retry(
+            run_turso_operation(
                 || async {
                     connection
                         .query(&sql, (project_id, root_session_id, name))
@@ -699,7 +696,7 @@ pub(super) async fn turso_query_sessions(
             .await?
         }
         (Some(root_session_id), None) => {
-            run_turso_operation_with_lock_retry(
+            run_turso_operation(
                 || async {
                     connection
                         .query(&sql, (project_id, root_session_id))
@@ -711,7 +708,7 @@ pub(super) async fn turso_query_sessions(
             .await?
         }
         (None, Some(name)) => {
-            run_turso_operation_with_lock_retry(
+            run_turso_operation(
                 || async {
                     connection
                         .query(&sql, (project_id, name))
@@ -723,7 +720,7 @@ pub(super) async fn turso_query_sessions(
             .await?
         }
         (None, None) => {
-            run_turso_operation_with_lock_retry(
+            run_turso_operation(
                 || async {
                     connection
                         .query(&sql, [project_id])
@@ -753,7 +750,7 @@ pub(super) async fn turso_session_by_id(
 ) -> Result<Option<AgentSessionRecord>, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
     let sql = super::record::select_sql("WHERE project_id = ?1 AND session_id = ?2");
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(&sql, (project_id, session_id))
@@ -779,7 +776,7 @@ pub(super) async fn turso_session_by_id_any_project(
 ) -> Result<Option<AgentSessionRecord>, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
     let sql = super::record::select_sql("WHERE session_id = ?1 ORDER BY updated_at DESC LIMIT 1");
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(&sql, (session_id,))
@@ -805,7 +802,7 @@ pub(super) async fn turso_session_for_root_session_id_any_project(
     let connection = connect_turso_agent_session_registry(db_path).await?;
     let sql =
         super::record::select_sql("WHERE root_session_id = ?1 ORDER BY updated_at DESC LIMIT 1");
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(&sql, (root_session_id,))
@@ -829,7 +826,7 @@ pub(super) async fn turso_record_tool_event(
     request: AgentSessionToolEventRequest<'_>,
 ) -> Result<bool, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    let updated = execute_turso_operation_with_lock_retry(
+    let updated = execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -865,7 +862,7 @@ pub(super) async fn turso_update_session_status(
     now: i64,
 ) -> Result<bool, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    let changes = execute_turso_operation_with_lock_retry(
+    let changes = execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -894,7 +891,7 @@ pub(super) async fn turso_set_archived_status(
     now: i64,
 ) -> Result<bool, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    let changes = execute_turso_operation_with_lock_retry(
+    let changes = execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -921,7 +918,7 @@ pub(super) async fn turso_delete_session(
     session_id: &str,
 ) -> Result<bool, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    let changes = execute_turso_operation_with_lock_retry(
+    let changes = execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -939,7 +936,7 @@ pub(super) async fn turso_delete_session(
 
 pub(super) async fn turso_refresh_expired_sessions(db_path: &Path, now: i64) -> Result<(), String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    let mut expired_rows = run_turso_operation_with_lock_retry(
+    let mut expired_rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -971,7 +968,7 @@ pub(super) async fn turso_refresh_expired_sessions(db_path: &Path, now: i64) -> 
         return Ok(());
     };
 
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(

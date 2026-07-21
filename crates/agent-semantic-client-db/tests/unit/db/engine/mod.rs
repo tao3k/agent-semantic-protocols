@@ -3,7 +3,7 @@ use std::{
     ffi::{OsStr, OsString},
     fs,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     sync::{Arc, Barrier},
     thread,
 };
@@ -28,10 +28,24 @@ use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbBackend, ClientDbE
 use serde_json::json;
 
 include!("artifact_events.rs");
-include!("artifact_graph.rs");
 include!("bootstrap.rs");
 include!("corrupt_cache.rs");
 include!("contract.rs");
+include!("turso_mvcc_store.rs");
+include!("artifact_pointer.rs");
+include!("artifact_pointer_domains.rs");
+include!("artifact_pointer_crash.rs");
+include!("turso_sync_storage.rs");
+include!("turso_sync_server_e2e.rs");
+include!("turso_cdc_storage.rs");
+include!("turso_encrypted_storage.rs");
+include!("storage_performance_receipt.rs");
+include!("storage_contract.rs");
+include!("turso_agent_storage.rs");
+
+mod turso_mvcc_keyset_tests {
+    include!("turso_mvcc_keyset.rs");
+}
 include!("write_session.rs");
 
 fn temp_root(label: &str) -> PathBuf {

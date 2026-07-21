@@ -6,8 +6,6 @@ use std::{
     process::Command,
 };
 
-
-
 pub(crate) fn codex_rollout_paths_for_session_id(
     sessions_dir: &Path,
     session_id: &str,

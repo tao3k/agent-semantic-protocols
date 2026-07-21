@@ -9,7 +9,6 @@ use std::{
 
 use serde_json::Value;
 
-
 use super::parse::first_json_string;
 
 pub(super) fn thread_spawn_child_session_ids_for_rollout(

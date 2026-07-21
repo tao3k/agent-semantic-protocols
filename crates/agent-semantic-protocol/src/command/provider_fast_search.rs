@@ -2,10 +2,10 @@
 
 use agent_semantic_hook::ActivatedProvider;
 
-
 pub(super) fn fast_search_needs_provider_context(
     args: &[String],
     _provider: &ActivatedProvider,
 ) -> Result<bool, String> {
-    Ok(matches!(args.first().map(String::as_str), Some("search")))
+    Ok(matches!(args.first().map(String::as_str), Some("search"))
+        || super::search_pipe::is_parser_owned_treesitter_query(args))
 }

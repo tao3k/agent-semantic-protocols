@@ -1,7 +1,7 @@
 use super::core::{
     TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION, turso_source_index_scope_row_counts,
 };
-use crate::engine::turso_statement::execute_turso_operation_with_lock_retry;
+use crate::engine::turso_statement::execute_turso_operation;
 
 fn unix_time_ms() -> i64 {
     std::time::SystemTime::now()
@@ -29,10 +29,10 @@ pub(super) async fn publish_turso_source_index_scope(
         generation_id,
     )
     .await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
-            connection
-                .execute(
+            let mut statement = connection
+                .prepare_cached(
                     "INSERT INTO asp_source_index_scope_v1 (
                         project_root,
                         schema_id,
@@ -53,29 +53,32 @@ pub(super) async fn publish_turso_source_index_scope(
                         owner_count = excluded.owner_count,
                         selector_count = excluded.selector_count,
                         updated_at_ms = excluded.updated_at_ms",
-                    (
-                        project_root,
-                        schema_id,
-                        schema_version,
-                        generation_id,
-                        file_hashes_json,
-                        source_snapshot_json,
-                        selector_fingerprint,
-                        i64::from(effective_owner_count),
-                        i64::from(effective_selector_count),
-                        unix_time_ms(),
-                    ),
                 )
+                .await
+                .map_err(|error| error.to_string())?;
+            statement
+                .execute((
+                    project_root,
+                    schema_id,
+                    schema_version,
+                    generation_id,
+                    file_hashes_json,
+                    source_snapshot_json,
+                    selector_fingerprint,
+                    i64::from(effective_owner_count),
+                    i64::from(effective_selector_count),
+                    unix_time_ms(),
+                ))
                 .await
                 .map_err(|error| error.to_string())
         },
         "failed to publish Turso source-index snapshot scope",
     )
     .await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
-            connection
-                .execute(
+            let mut statement = connection
+                .prepare_cached(
                     "INSERT INTO asp_source_index_layout_v1 (
                         project_root,
                         schema_id,
@@ -86,14 +89,17 @@ pub(super) async fn publish_turso_source_index_scope(
                     ON CONFLICT(project_root, schema_id, schema_version) DO UPDATE SET
                         term_projection_version = excluded.term_projection_version,
                         token_projection_generation_id = excluded.token_projection_generation_id",
-                    (
-                        project_root,
-                        schema_id,
-                        schema_version,
-                        TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
-                        generation_id,
-                    ),
                 )
+                .await
+                .map_err(|error| error.to_string())?;
+            statement
+                .execute((
+                    project_root,
+                    schema_id,
+                    schema_version,
+                    TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
+                    generation_id,
+                ))
                 .await
                 .map_err(|error| error.to_string())
         },

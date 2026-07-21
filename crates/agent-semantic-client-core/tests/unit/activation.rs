@@ -3,7 +3,6 @@ use agent_semantic_hook::{
     HOOK_PROTOCOL_VERSION, RuntimeProviderHealthStatus, builtin_provider_manifests,
     provider_manifest_digest,
 };
-use serde_json::json;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -216,6 +215,7 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
     let activation = agent_semantic_hook::HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
         protocol_id: HOOK_PROTOCOL_ID.to_string(),
         protocol_version: HOOK_PROTOCOL_VERSION.to_string(),
         project_root: ".".to_string(),
@@ -232,6 +232,7 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
             binary: manifest.binary,
             execution: manifest.execution,
             provider_command_prefix: vec!["missing-python-provider-prefix".to_string()],
+            execution_command_digest: "test-execution-command-digest".to_string(),
             search_capabilities: manifest.search_capabilities,
             semantic_facts_descriptor: manifest.semantic_facts_descriptor,
             query_pack_descriptor: manifest.query_pack_descriptor,
@@ -290,6 +291,7 @@ fn explicit_activation_path_keeps_requested_project_root() {
     let activation = agent_semantic_hook::HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
         protocol_id: HOOK_PROTOCOL_ID.to_string(),
         protocol_version: HOOK_PROTOCOL_VERSION.to_string(),
         project_root: expected_project_root.clone(),
@@ -306,6 +308,7 @@ fn explicit_activation_path_keeps_requested_project_root() {
             binary: manifest.binary,
             execution: manifest.execution,
             provider_command_prefix: vec!["py-harness".to_string()],
+            execution_command_digest: "test-execution-command-digest".to_string(),
             search_capabilities: manifest.search_capabilities,
             semantic_facts_descriptor: manifest.semantic_facts_descriptor,
             query_pack_descriptor: manifest.query_pack_descriptor,

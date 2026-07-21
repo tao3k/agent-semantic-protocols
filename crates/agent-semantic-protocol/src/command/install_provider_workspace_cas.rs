@@ -7,11 +7,11 @@ use super::install_provider::{
     MaterializedWorkspaceArtifact, WorkspaceBuildReceipt, resolve_workspace_relative_path,
 };
 use super::install_provider_archive::{install_executable_entrypoint, sha256_file};
-use super::install_provider_release::ProviderReleaseSpec;
 use super::install_provider_workspace_artifact::{
     WorkspaceArtifactLaunchSpec, capture_workspace_artifact_snapshot, copy_workspace_artifact_tree,
     remove_workspace_artifact_path,
 };
+use super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor;
 
 #[derive(Debug)]
 pub(super) struct InstalledWorkspaceEntrypoint {
@@ -23,7 +23,7 @@ pub(super) struct InstalledWorkspaceEntrypoint {
 }
 
 pub(super) fn install_workspace_artifact_from_cas(
-    spec: &ProviderReleaseSpec,
+    spec: &ProviderWorkspaceInstallDescriptor,
     state: &agent_semantic_runtime::ProjectRuntimeState,
     artifact: &MaterializedWorkspaceArtifact,
     receipt: &WorkspaceBuildReceipt,
@@ -34,7 +34,7 @@ pub(super) fn install_workspace_artifact_from_cas(
         .protocol_home
         .join("runtime")
         .join("provider-artifacts")
-        .join(&spec.language_id);
+        .join(&spec.provider_id);
     fs::create_dir_all(&cas_parent)
         .map_err(|error| format!("failed to create {}: {error}", cas_parent.display()))?;
     let cas_root = cas_parent.join(&receipt.artifact_digest);
@@ -62,7 +62,7 @@ pub(super) fn install_workspace_artifact_from_cas(
             .protocol_home
             .join("runtime")
             .join("provider-launchers")
-            .join(&spec.language_id)
+            .join(&spec.provider_id)
             .join(&launcher_digest)
             .join(&spec.binary);
         install_immutable_launcher(&launcher_path, &launcher)?;
@@ -147,14 +147,14 @@ fn verify_workspace_artifact_cas(
 
 #[cfg(unix)]
 fn render_workspace_artifact_launcher(
-    spec: &ProviderReleaseSpec,
+    spec: &ProviderWorkspaceInstallDescriptor,
     cas_root: &Path,
     launch: &WorkspaceArtifactLaunchSpec,
 ) -> Result<Vec<u8>, String> {
     if launch.program.trim().is_empty() {
         return Err(format!(
             "provider {} workspaceArtifact.launch.program must not be empty",
-            spec.language_id
+            spec.provider_id
         ));
     }
     let program_name = Path::new(&launch.program)
@@ -164,7 +164,7 @@ fn render_workspace_artifact_launcher(
     if matches!(program_name, "sh" | "bash" | "zsh" | "fish") {
         return Err(format!(
             "provider {} workspaceArtifact.launch must name the provider runtime, not a command shell",
-            spec.language_id
+            spec.provider_id
         ));
     }
     let program = if launch.program_relative_to_artifact {
@@ -176,7 +176,7 @@ fn render_workspace_artifact_launcher(
         if !path.is_file() {
             return Err(format!(
                 "provider {} artifact-relative launch program is missing at {}",
-                spec.language_id,
+                spec.provider_id,
                 path.display()
             ));
         }
@@ -192,7 +192,7 @@ fn render_workspace_artifact_launcher(
             if !path.exists() {
                 return Err(format!(
                     "provider {} artifact-relative launch argument is missing at {}",
-                    spec.language_id,
+                    spec.provider_id,
                     path.display()
                 ));
             }
@@ -207,7 +207,7 @@ fn render_workspace_artifact_launcher(
 
 #[cfg(not(unix))]
 fn render_workspace_artifact_launcher(
-    spec: &ProviderReleaseSpec,
+    spec: &ProviderWorkspaceInstallDescriptor,
     _cas_root: &Path,
     _launch: &WorkspaceArtifactLaunchSpec,
 ) -> Result<Vec<u8>, String> {

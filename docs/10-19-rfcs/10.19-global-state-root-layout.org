@@ -19,9 +19,9 @@ When unset, ASP uses:
 $HOME/.agent-semantic-protocols
 #+end_src
 
-=PRJ_CACHE_HOME= is not part of the State Core v2 contract. The project-local
+=PRJ_CACHE_HOME= is not part of the State Core v1 contract. The project-local
 =<git-toplevel>/.cache/agent-semantic-protocol= path is diagnostic evidence
-only. =asp state locate= may report that it exists, but v2 implementations must
+only. =asp state locate= may report that it exists, but v1 implementations must
 not read it as a fallback, copy data from it, or silently migrate it.
 
 * Identity model
@@ -95,7 +95,7 @@ analysis material consumed by Python, Julia, or other downstream tooling.
 * Manifest contract
 =live/client/manifest.json= is written by the owning State Core/DB Engine
 service, not by command code. It records:
-- =stateLayoutVersion= =state-v2=;
+- =stateLayoutVersion= =state-v1=;
 - =backend= =turso=;
 - =futureBackend= =turso= while the report schema still carries that field;
 - repo/workspace/scope ids;
@@ -176,7 +176,7 @@ The CLI must call the State Core service. It must not compose paths itself.
 - =PRJ_CACHE_HOME= does not affect State Core;
 - manifest JSON includes layout/backend/ids/DB/artifact paths;
 - =asp state locate --json= validates against
-  =schemas/semantic-state-locate-report.v2.schema.json=;
+  =schemas/semantic-state-locate-report.v1.schema.json=;
 - no command-layer path helper reconstructs State Core v2 paths directly.
 * Implementation checkpoint: M0 DB/cache identity closure
 The M0 DB/cache closure keeps State Core as the source of path truth:

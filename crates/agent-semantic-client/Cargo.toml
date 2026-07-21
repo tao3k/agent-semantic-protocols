@@ -6,6 +6,7 @@ description = "Thin agent semantic client over native semantic language provider
 license = "MIT"
 
 [dependencies]
+blake3.workspace = true
 agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
 bytes = { workspace = true }
@@ -31,6 +32,10 @@ asp-rust-project-harness-policy.workspace = true
 
 [[bench]]
 name = "client_microbench"
+harness = false
+
+[[bench]]
+name = "provider_runtime_storage"
 harness = false
 
 [build-dependencies]

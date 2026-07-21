@@ -112,6 +112,8 @@ pub fn collect_search_pipe_scope_topology_acquisition(
             source_snapshot: None,
             artifact_digest: None,
         }],
+        source_snapshot: None,
+        artifact_digest: None,
     })
 }
 

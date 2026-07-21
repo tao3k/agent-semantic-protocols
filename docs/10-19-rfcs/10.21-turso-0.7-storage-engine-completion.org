@@ -1,0 +1,226 @@
+#+title: Turso 0.7 Storage Engine Completion
+#+author: ASP Contributors
+#+date: 2026-07-20
+#+startup: overview
+
+* Status
+
+Implementing.
+
+This RFC supersedes any interpretation of
+=10.20-turso-0.7-concurrency-profiles.org= as a complete storage-engine
+delivery.  RFC 10.20 is Phase 1 evidence for an isolated append-heavy MVCC
+primitive.  This RFC owns completion of the backend-neutral storage boundary,
+production adoption, Turso 0.7 profile matrix, domain semantics, lifecycle,
+and performance evidence.
+
+* Source decision
+
+The storage boundary follows the workload and evidence requirements in the
+Marlin Agent Core RFC =40.160-turso-agent-storage-engine.org=, translated into
+ASP-owned crates and schemas.  The durable dependency direction is:
+
+#+begin_src text
+agent-semantic-client-db
+  |- backend-neutral contracts and reference backend
+  |- Turso profiles and existing client DB authorities
+  `- domain adapters
+        ^
+        |
+agent-semantic-client / agent-semantic-protocol (runtime consumers)
+#+end_src
+
+Storage domain dependencies MUST remain under =crates/=.  Language providers
+under =languages/= MUST NOT depend on storage-domain or content-identity
+implementations merely to satisfy workspace alignment.
+
+* Completion decision
+
+ASP SHALL expose a backend-neutral =AgentStorage= contract and three explicit
+local Turso profiles:
+
+1. =compatibility-immediate= uses the native Turso transaction lifecycle and
+   preserves multiprocess/FTS authorities where required.
+2. =mvcc-concurrent= uses a single-process, FTS-free authority with
+   =journal_mode=mvcc= and =BEGIN CONCURRENT=.
+3. =mvcc-concurrent-passive-checkpoint= adds Turso 0.7 passive checkpointing
+   and owns checkpoint, recovery, database-growth, and bounded-memory gates.
+
+Optimization profile and transaction mode are separate typed fields.  A
+profile MUST NOT imply transaction semantics through an undocumented string.
+No benchmark may establish a globally fastest profile.
+
+* Backend-neutral contract
+
+=agent-semantic-client-db= owns:
+
+- =AgentStorage=;
+- =StorageOptimizationProfile=;
+- =StorageTransactionMode=;
+- =StoragePartitionKey=;
+- =SessionEventBatch= and =SessionEventBatchWriteReceipt=;
+- typed storage error codes, retryability, retry budget, retry count, and final
+  transaction state;
+- typed keyset requests and pages;
+- checkpoint, recovery, local/sync authority, and storage-stat receipts.
+
+The reference in-memory backend MUST preflight duplicate event identities and
+commit or reject the complete batch while holding one authority lock.  Turso
+backends MUST retry the complete transaction and MUST NOT expose partially
+persisted batches.
+
+* Partition and transaction invariants
+
+- Session/runtime writes are append-oriented and partitioned by explicit
+  repository, workspace, scope, session, agent, turn, and event identities.
+- One atomic append batch contains one storage partition.
+- Non-overlapping partitions may progress concurrently.
+- Cross-partition batches, hot global counters, global allocation sequences,
+  and synchronous global rollups are forbidden from the concurrent hot path.
+- Busy, locked, snapshot, conflict, and schema-conflict failures are typed.
+- Retry uses a bounded attempt budget, exponential backoff, bounded jitter, and
+  a complete rollback before the next attempt.
+- Dropped or abandoned write statements MUST leave the transaction aborted and
+  observable through the receipt.
+
+* Domain authorities
+
+** Sessions and runtime
+
+Session, hook, model-route, tool, visibility, and execution events are
+append-only.  Projection completes before persistence so a storage backend does
+not own agent semantics.  Coordination writes are restricted to leases,
+claims, merge proposals, and accepted pointers.
+
+** Artifacts
+
+Artifact bytes and metadata are immutable and content-addressed.  Provenance
+includes producer session, agent, event, artifact kind, digest, media type, and
+source-gate evidence.  Mutable names are compare-and-swap pointers.  Losing
+artifacts survive pointer conflicts and remain addressable evidence.
+
+** Memory and topology
+
+Memory and topology proposals, decisions, accepts, rejects, and supersedes are
+append-only.  Accepted state is a projection.  Recall counters are events or
+partition-local shards rather than hot mutable rows.
+
+** Coordination
+
+Lease, claim, merge, and accepted-pointer records have their own contention
+profile.  A 16-way compare-and-swap storm is an acceptance owner and MUST NOT
+be represented as an append-only success case.
+
+* Reads and pagination
+
+Session, visibility, artifact-pointer, memory-proposal, and topology list APIs
+use typed keyset pages.  Each request has a stable persisted tie-break cursor,
+=limit <= 1000=, and a =limit + 1= backend fetch.  =OFFSET= is forbidden for
+production list APIs.
+
+* Turso 0.7 ownership
+
+The Turso adapter MUST evaluate and expose only features relevant to the named
+ASP workload.  Internal Turso optimizations are inherited from the pinned
+version, but they are not ASP completion evidence without a workload receipt.
+
+The adapter owns:
+
+- =experimental_mvcc_passive_checkpoint= for its explicit profile;
+- native =Immediate= transactions for compatibility batches;
+- =BEGIN CONCURRENT= for concurrent MVCC batches;
+- long-lived per-lane connections and bounded prepared-statement shape caches;
+- connection, lane, queue, batch, retry, and timeout budgets;
+- checkpoint triggering, checkpoint latency, database bytes, recovery latency,
+  and reopen evidence;
+- evaluation of runtime-registrable I/O backends without making a custom I/O
+  implementation mandatory before benchmark evidence justifies it;
+- explicit cache/page/memory settings when supported by the stable public API;
+- version and builder-feature attestation in every optimization receipt.
+
+MVCC and multiprocess WAL MUST NOT be co-enabled.  FTS/custom index authorities
+remain outside MVCC until Turso provides a supported combination and ASP adds a
+separate migration receipt.
+
+* Sync, CDC, and encryption
+
+Local storage is the default.  Remote sync is explicit push, pull, checkpoint,
+and stats work; it is never an implicit background side effect.  Local-only
+authorities MUST NOT fabricate remote WAL or network counters.
+
+CDC requires a separate non-MVCC audit authority.  Encryption requires a
+separate security RFC, secret-provider ownership, key rotation and reopen
+tests, and measured read/write overhead.  Neither feature may be enabled by an
+undocumented builder flag.
+
+* Schema lifecycle
+
+The active authority is =DevelopmentBaseline=.  A released V1 schema is
+forbidden until records, indexes, reopen behavior, pagination cursors, and
+upgrade policy are frozen together.  Before that freeze there is no synthetic
+migration table.  After the freeze, migrations require typed reader/writer
+compatibility ranges, idempotent migration identities, resumable checkpoints,
+and rollback or forward-only policy.
+
+* Performance and evidence gates
+
+Every named scenario records cold and warm phases where applicable.  Receipts
+include event, artifact, visibility, reopen, read, checkpoint, push, and pull
+timing; p50, p95, and p99 latency; RSS median and peak; database bytes;
+operation, retry, conflict, compare-and-swap, and checkpoint counts; exact
+optimization profile; transaction mode; Turso version; and execution digest.
+
+The minimum matrix is:
+
+1. atomic append plus reopen;
+2. duplicate identity whole-batch rollback;
+3. one-lane safety and four-lane non-overlapping partitions;
+4. =compatibility-immediate=, =mvcc-concurrent=, and
+   =mvcc-concurrent-passive-checkpoint= on the same workload;
+5. 16-way compare-and-swap contention;
+6. 1 MiB artifact payload;
+7. bounded vector recall;
+8. concurrent reader/writer and mixed client-database pressure;
+9. checkpoint growth, reopen recovery, and long-duration bounded-memory
+   ingestion;
+10. isolated real remote sync when credentials and network authority exist.
+
+Benchmark output MUST be persisted as typed storage artifacts and Harness
+evidence.  Zero selected tests are not acceptance.
+
+* Rollout
+
+** Phase 1: isolated MVCC primitive
+
+RFC 10.20, =TursoMvccStore=, four physical shards, long-lived lanes,
+parameterized multi-row inserts, rollback, retry, reopen, and the current
+Criterion comparison are landed.
+
+** Phase 2: shared contract and profiles
+
+Land backend-neutral contract modules inside =agent-semantic-client-db= with
+reference in-memory semantics, typed schemas, Turso adapters, passive
+checkpoint, typed retry, and checkpoint receipts.  Do not create a parallel
+storage crate with overlapping ownership.
+
+** Phase 3: production adoption
+
+Route real session/runtime and artifact owners through =AgentStorage=.  Preserve
+the existing multiprocess/FTS authority for incompatible workloads.  Remove no
+legacy path until dual-write or replay evidence proves semantic equivalence.
+
+** Phase 4: domains and reads
+
+Land artifact CAS, memory/topology/coordination semantics, typed keyset pages,
+and schema lifecycle receipts.
+
+** Phase 5: sync, security, and evidence closure
+
+Land explicit sync, separate CDC evaluation, encryption RFC, full performance
+matrix, persisted benchmark artifacts, and cold downstream Harness gates.
+
+* Completion rule
+
+This RFC is complete only when every rollout phase has parser-visible owners,
+green contract tests, a production call chain, and typed performance evidence.
+A public storage primitive plus a microbenchmark is not completion.

@@ -23,6 +23,15 @@ fn activation_provider(
         .into_iter()
         .find(|manifest| manifest.language_id == language_id && manifest.provider_id == provider_id)
         .expect("canonical builtin provider manifest");
+    let provider_command_prefix = vec![
+        std::env::current_exe()
+            .expect("resolve test executable")
+            .display()
+            .to_string(),
+    ];
+    let execution_command_digest =
+        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
+            .expect("digest provider execution command");
     ActivatedProviderConfig {
         manifest_id: manifest.manifest_id.clone(),
         manifest_digest: agent_semantic_hook::provider_manifest_digest(&manifest)
@@ -31,7 +40,8 @@ fn activation_provider(
         provider_id: manifest.provider_id.clone(),
         binary: binary.to_string(),
         execution: manifest.execution,
-        provider_command_prefix: vec![binary.to_string()],
+        execution_command_digest,
+        provider_command_prefix,
         search_capabilities: manifest.search_capabilities.clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
         query_pack_descriptor: manifest.query_pack_descriptor.clone(),

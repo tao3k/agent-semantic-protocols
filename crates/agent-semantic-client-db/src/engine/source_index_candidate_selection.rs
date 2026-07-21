@@ -15,7 +15,7 @@ use super::source_index_query_scoring::{
     SOURCE_INDEX_READ_MODEL_MAX_CANDIDATES, SOURCE_INDEX_READ_MODEL_MAX_TERMS,
     source_index_structured_candidate_score,
 };
-use super::turso_statement::run_turso_operation_with_lock_retry;
+use super::turso_statement::run_turso_operation;
 
 pub(super) fn decode_turso_source_index_canonical_selectors(
     selector_facts_json: &str,
@@ -75,7 +75,7 @@ pub(super) async fn resolve_turso_source_index_lookup_scope(
 ) -> Result<Option<TursoSourceIndexLookupScope>, String> {
     let mut rows = match requested_scope {
         Some(scope) => {
-            run_turso_operation_with_lock_retry(
+            run_turso_operation(
                 || async {
                     connection
                         .query(
@@ -106,7 +106,7 @@ pub(super) async fn resolve_turso_source_index_lookup_scope(
             .await?
         }
         None => {
-            run_turso_operation_with_lock_retry(
+            run_turso_operation(
                 || async {
                     connection
                         .query(
@@ -225,7 +225,7 @@ pub(super) async fn query_turso_source_index_snapshot_candidates_for_scope_with_
     let mut seen_owner_paths = BTreeSet::new();
     let mut candidates = Vec::<(usize, ClientDbSourceIndexCandidate)>::new();
     for term in terms {
-        let mut rows = run_turso_operation_with_lock_retry(
+        let mut rows = run_turso_operation(
             || async {
                 match scope {
                     TursoSourceIndexCandidateScope::Resolved(scope) => connection

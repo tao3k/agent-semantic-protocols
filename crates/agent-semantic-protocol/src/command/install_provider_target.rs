@@ -33,9 +33,21 @@ pub(super) fn resolve_provider_binary_invocation(
 ) -> Result<ProviderBinaryInvocation, String> {
     let home_bin = home_local_bin_required(provider_binary, home_dir, language_id)?;
     if !home_bin.is_file() {
+        let has_locked_release = super::install_provider::has_pinned_language_release(language_id)?;
+        let (install_mode, next_command) = if has_locked_release {
+            (
+                "locked-release",
+                format!("asp install language {language_id}"),
+            )
+        } else {
+            (
+                "develop-workspace-only",
+                format!("just agent-tools-install-language {language_id}"),
+            )
+        };
         return Err(format!(
-            "provider binary `{provider_binary}` for language `{language_id}` must be installed at {}; run `asp install language {language_id}`",
-            home_bin.display()
+            "[asp-provider-unavailable] state=provider-binary-missing language={language_id} binary={provider_binary} expectedPath={} installMode={install_mode} nextCommand={next_command}",
+            home_bin.display(),
         ));
     }
     Ok(ProviderBinaryInvocation {

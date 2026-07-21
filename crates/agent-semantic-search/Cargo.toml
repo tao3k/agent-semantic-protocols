@@ -23,6 +23,7 @@ license = "MIT"
 
 [dependencies]
 agent-semantic-content-identity.workspace = true
+blake3.workspace = true
 agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
 globset.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }

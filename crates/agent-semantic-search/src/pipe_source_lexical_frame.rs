@@ -2,11 +2,8 @@
 
 use crate::{
     LexicalSearchFrameCandidate, LexicalSearchFrameRequest, LexicalSearchFrameRoute,
-    SearchPipeCandidate,
-    pipe_source::{
-        SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
-        SearchPipeSourceIndexDecision,
-    },
+    SearchPipeCandidate, SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
+    SearchPipeSourceIndexDecision,
 };
 
 pub(crate) fn plan_pipe_lexical_search_frame(

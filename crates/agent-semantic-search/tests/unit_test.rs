@@ -1,8 +1,6 @@
 #[path = "unit/dynamic_owner_items.rs"]
 mod dynamic_owner_items;
 
-#[path = "unit/graph_owner_item_route.rs"]
-mod graph_owner_item_route;
 #[path = "unit/lexical_search_frame.rs"]
 mod lexical_search_frame;
 #[path = "unit/pipe_source_query_gate.rs"]
@@ -17,6 +15,8 @@ mod search_query_budget;
 mod source_snapshot_fixture;
 #[path = "unit/syntax_query_replay.rs"]
 mod syntax_query_replay;
+#[path = "unit/turso_overlay_search.rs"]
+mod turso_overlay_search;
 #[path = "unit/unit_test_smoke.rs"]
 mod unit_test_smoke;
 

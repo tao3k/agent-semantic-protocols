@@ -158,7 +158,7 @@ pub fn structural_index_hit_to_search_candidate(
         },
         selector: hit.selector.clone(),
         owner_path: None,
-        generation: structural_index_generation(hit.document_id.as_str()),
+        generation: Some(hit.generation.clone()),
         overlay_namespace: None,
         score: matched_terms.len() as f32,
         field_hits: vec![FieldHit {
@@ -304,16 +304,6 @@ fn structural_index_hit_matches_term(hit: &TursoStructuralIndexSearchHit, term: 
                     .to_ascii_lowercase()
                     .contains(normalized_term.as_str())
             }))
-}
-
-fn structural_index_generation(document_id: &str) -> Option<String> {
-    let mut parts = document_id.splitn(3, ':');
-    match (parts.next(), parts.next()) {
-        (Some("structural-index"), Some(generation)) if !generation.is_empty() => {
-            Some(generation.to_string())
-        }
-        _ => None,
-    }
 }
 
 fn contains_executable_line_identity(value: &str) -> bool {

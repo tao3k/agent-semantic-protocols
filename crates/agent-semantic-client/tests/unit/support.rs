@@ -76,7 +76,15 @@ pub(super) fn resolved_provider(language_id: &str) -> agent_semantic_client_core
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
         .unwrap_or_else(|error| panic!("{language_id} provider routes: {error}"));
-    let provider_command_prefix = vec![manifest.binary.clone()];
+    let provider_command_prefix = vec![
+        std::env::current_exe()
+            .unwrap_or_else(|error| panic!("current test executable: {error}"))
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let execution_command_digest =
+        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
+            .unwrap_or_else(|error| panic!("{language_id} execution command digest: {error}"));
     let provider = agent_semantic_hook::ActivatedProvider {
         manifest_id: manifest.manifest_id,
         manifest_digest,
@@ -85,6 +93,7 @@ pub(super) fn resolved_provider(language_id: &str) -> agent_semantic_client_core
         binary: manifest.binary,
         execution: manifest.execution,
         provider_command_prefix,
+        execution_command_digest,
         namespace: manifest.namespace,
         package_roots: vec![".".to_string()],
         source_extensions: manifest.source.default_extensions,

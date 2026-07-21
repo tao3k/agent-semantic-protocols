@@ -24,14 +24,14 @@ mod lexical_search_frame;
 mod owner_items_source_index_trace;
 mod pipe_candidates;
 mod pipe_source;
+mod pipe_source_document_acquisition;
+mod pipe_source_index_acquisition;
 mod pipe_source_index_projection;
 mod pipe_source_lexical_frame;
-mod scope_topology_candidates;
-pub use pipe_source::SearchPipeSelectorPayloadProof;
-mod graph_owner_item_route;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
 mod query_packet_replay;
+mod scope_topology_candidates;
 mod search_candidate;
 mod search_language_files;
 mod search_lexical_replay;
@@ -43,12 +43,6 @@ mod search_pipe_query_pack;
 mod search_query_budget;
 mod search_subagent_receipt;
 mod source_index_lookup;
-
-pub use graph_owner_item_route::{
-    GraphOwnerItemEvidence, GraphOwnerItemRenderRequest, GraphOwnerItemRoute,
-    GraphOwnerItemRouteRequest, GraphSemanticKind, rank_graph_owner_items,
-    render_graph_owner_item_frontier,
-};
 
 mod source_index_rank;
 pub use source_index_rank::{
@@ -127,13 +121,15 @@ pub use pipe_source::{
     SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
     SearchPipeFailureAcquisitionRequest, SearchPipeSearchOverlayAcquisition,
     SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
-    SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
+    SearchPipeSourceAcquisitionTrace, SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
+    collect_search_pipe_document_acquisition, collect_search_pipe_failure_acquisition,
+    collect_search_pipe_search_overlay_acquisition, failure_candidate_query,
+};
+pub use pipe_source_index_acquisition::{
+    SearchPipeSelectorPayloadProof, SearchPipeSourceIndexAcquisition,
     SearchPipeSourceIndexAcquisitionRequest, SearchPipeSourceIndexCandidate,
     SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate, SearchPipeSourceIndexLookup,
-    SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
-    collect_search_pipe_document_acquisition, collect_search_pipe_failure_acquisition,
-    collect_search_pipe_search_overlay_acquisition, collect_search_pipe_source_index_acquisition,
-    failure_candidate_query, search_pipe_source_index_query_gate,
+    collect_search_pipe_source_index_acquisition, search_pipe_source_index_query_gate,
 };
 pub use prompt_output_replay::{
     PromptOutputFingerprintRequest, PromptOutputReplayRequest, is_prime_seed_search_request,
@@ -225,8 +221,9 @@ pub use syntax_query_replay::{
     render_semantic_tree_sitter_query_stdout,
 };
 pub use turso_overlay_search::{
-    TursoOverlaySearchDocument, TursoOverlaySearchHit, bootstrap_turso_overlay_search_store,
-    search_turso_overlay_documents, upsert_turso_overlay_search_document,
+    TursoOverlaySearchDocument, TursoOverlaySearchHit, TursoOverlaySearchScope,
+    bootstrap_turso_overlay_search_store, replace_turso_overlay_search_document_generation,
+    search_turso_overlay_documents,
 };
 pub use workspace_scope::{
     SemanticWorkspaceAnchor, SemanticWorkspacePackage, SemanticWorkspaceScope,

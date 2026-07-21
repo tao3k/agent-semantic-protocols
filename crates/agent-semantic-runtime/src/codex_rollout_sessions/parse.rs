@@ -11,7 +11,6 @@ use serde_json::Value;
 
 use super::types::CodexRolloutActivityReport;
 
-
 const ROLLOUT_INDEX_HEADER_LINE_LIMIT: usize = 32;
 const ROLLOUT_INDEX_ACTIVITY_TAIL_BYTES: u64 = 256 * 1024;
 pub(crate) fn parse_rollout_file_at_path(

@@ -57,26 +57,6 @@ pub struct ClientDbEngineFeatures {
     pub(crate) sync: bool,
     /// Backend can encrypt persisted data.
     pub(crate) encryption: bool,
-    /// Backend can coordinate multi-process WAL access.
-    pub(crate) multi_process_wal: bool,
-    /// ASP serializes DB writes before they enter the backend.
-    pub(crate) serialized_writer_slot: bool,
-    /// Busy timeout applied to Turso connections and statements.
-    pub(crate) busy_timeout_ms: u64,
-    /// Number of open-lock retry attempts before surfacing contention.
-    pub(crate) open_lock_retry_attempts: usize,
-    /// Base delay in milliseconds for open-lock retry backoff.
-    pub(crate) open_lock_retry_base_ms: u64,
-    /// Maximum delay in milliseconds for open-lock retry backoff.
-    pub(crate) open_lock_retry_max_ms: u64,
-    /// Number of statement-lock retry attempts before surfacing contention.
-    pub(crate) statement_lock_retry_attempts: usize,
-    /// ASP wraps DB operations in a process-local operation lock.
-    pub(crate) operation_lock: bool,
-    /// Number of operation-lock retry attempts before surfacing contention.
-    pub(crate) operation_lock_retry_attempts: usize,
-    /// Delay in milliseconds between operation-lock retry attempts.
-    pub(crate) operation_lock_retry_ms: u64,
     /// Backend read/write behavior is based on MVCC semantics.
     pub(crate) mvcc: bool,
     /// Backend supports begin-concurrent style optimistic writes.

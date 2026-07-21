@@ -7,10 +7,8 @@ use crate::syntax_query::syntax_query_replay_and_selector_from_packet_import;
 use crate::types::{ClientDbSyntaxQueryLookup, ClientDbSyntaxQueryReplay};
 
 use super::turso::connect_turso_client_db;
-use super::turso_operation_lock::acquire_turso_operation_lock;
 use super::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-    run_turso_operation_with_lock_retry,
+    execute_turso_operation, execute_turso_statement, run_turso_operation,
 };
 
 /// Bootstrap Turso syntax replay table used by DB Engine syntax replay lookup.
@@ -31,7 +29,7 @@ pub async fn bootstrap_turso_syntax_query_schema(
         "CREATE INDEX IF NOT EXISTS asp_syntax_query_replay_lookup_idx
             ON asp_syntax_query_replay(language_id, provider_id, project_root, query_ast_fingerprint, selector, updated_at_ms)",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             statement,
             "failed to bootstrap Turso syntax query schema",
@@ -49,13 +47,12 @@ pub async fn upsert_turso_syntax_query_replay(
 ) -> Result<(), String> {
     let (replay, selector) =
         syntax_query_replay_and_selector_from_packet_import(generation, packet_bytes)?;
-    let _operation_lock = acquire_turso_operation_lock(db_path, "syntax-query-replay-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_syntax_query_schema(&connection).await?;
     let replay_json = serde_json::to_string(&replay)
         .map_err(|error| format!("failed to serialize Turso syntax replay: {error}"))?;
     let project_root = crate::types::normalized_project_root(Path::new(&generation.project_root));
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -108,7 +105,7 @@ pub async fn lookup_turso_syntax_query_replay(
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_syntax_query_schema(&connection).await?;
     let project_root = crate::types::normalized_project_root(&lookup.project_root);
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -152,10 +149,9 @@ pub async fn lookup_turso_syntax_query_replay(
 
 /// Flush syntax replay rows from the active Turso read model.
 pub async fn flush_turso_syntax_query_replay(db_path: &Path) -> Result<u32, String> {
-    let _operation_lock = acquire_turso_operation_lock(db_path, "syntax-query-replay-flush")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_syntax_query_schema(&connection).await?;
-    let count = execute_turso_operation_with_lock_retry(
+    let count = execute_turso_operation(
         || async {
             connection
                 .execute("DELETE FROM asp_syntax_query_replay", ())

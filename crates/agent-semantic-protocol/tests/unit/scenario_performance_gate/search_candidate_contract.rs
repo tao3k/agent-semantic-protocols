@@ -30,20 +30,22 @@ pub(super) fn asp_search_candidate_contract_cold_functional_path_stays_inside_sc
         "src/lib.rs",
         "a".repeat(64),
     )]);
-    let overlay_hits = agent_semantic_search::search_lexical_overlay(
-        agent_semantic_search::LexicalOverlaySearchRequest::new(
-            "overlay fixture",
-            base_snapshot,
+    let source_snapshot = base_snapshot
+        .with_overlay([("src/lib.rs", "c".repeat(64))])
+        .evidence(
+            agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer,
             "b".repeat(64),
-        )
-        .document(
-            agent_semantic_search::LexicalOverlayDocument::new(
-                "src/lib.rs",
-                "rust://src/lib.rs#item/function/overlay_fixture",
-                "overlay_fixture",
-            )
-            .search_text("dynamic overlay fixture owner"),
-        ),
+        );
+    let overlay_hits = agent_semantic_search::search_lexical_overlay(
+        agent_semantic_search::LexicalOverlaySearchRequest::new("overlay fixture", source_snapshot)
+            .document(
+                agent_semantic_search::LexicalOverlayDocument::new(
+                    "src/lib.rs",
+                    "rust://src/lib.rs#item/function/overlay_fixture",
+                    "overlay_fixture",
+                )
+                .search_text("dynamic overlay fixture owner"),
+            ),
     );
     let overlay_candidate = agent_semantic_search::lexical_overlay_hit_to_search_candidate(
         &overlay_hits.hits[0],

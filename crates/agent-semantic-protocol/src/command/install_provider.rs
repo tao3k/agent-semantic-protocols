@@ -22,9 +22,7 @@ use super::org_capture;
 #[cfg(test)]
 use super::install_provider_archive::{checksum_name, parse_sha256_checksum};
 
-use super::install_provider_workspace_artifact::{
-    WorkspaceArtifactSpec, capture_workspace_artifact_snapshot,
-};
+use super::install_provider_workspace_artifact::capture_workspace_artifact_snapshot;
 use super::install_provider_workspace_cas::install_workspace_artifact_from_cas;
 
 const PINNED_LANGUAGE_RELEASES_TOML: &str = include_str!("../../pinned-language-releases.toml");
@@ -45,8 +43,6 @@ struct PinnedLanguageReleaseEntry {
     archive_prefix: Option<String>,
     archive_binary: Option<String>,
     require_native_binary: Option<bool>,
-    workspace_artifact: Option<WorkspaceArtifactSpec>,
-    workspace_build: Option<WorkspaceBuildSpec>,
     supported_targets: Vec<String>,
 }
 
@@ -125,28 +121,46 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let Some(language_id) = args.first().map(String::as_str) else {
         return Err(usage());
     };
-    let spec = provider_release(language_id)?;
+    if matches!(language_id, "help" | "--help" | "-h") {
+        return Err(usage());
+    }
     let install_args = parse_install_args(&args[1..])?;
-    let rev = spec.release_version.as_str();
     let target = match install_args.target {
         Some(target) => target,
         None => host_target_triple().ok_or_else(|| {
             "failed to infer host target; pass --target <target-triple>".to_string()
         })?,
     };
-    validate_target(&spec, &target)?;
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let project_root = absolute_project_root(&invocation_root, &install_args.project_root);
+    if install_args.from_workspace {
+        let descriptor = super::install_provider_workspace_descriptor::workspace_install_descriptor_for_language(
+            language_id,
+        )?;
+        let provider_binary = binary_file_name(&descriptor.binary, &target);
+        let install_target = resolve_provider_binary_install_target(
+            language_id,
+            &provider_binary,
+            home_dir().as_deref(),
+        )?;
+        return install_workspace_provider_binary(
+            &descriptor,
+            language_id,
+            &project_root,
+            &target,
+            &install_target,
+        );
+    }
+    let spec = provider_release(language_id)?;
+    let rev = spec.release_version.as_str();
+    validate_target(&spec, &target)?;
     let provider_binary = binary_file_name(&spec.binary, &target);
     let install_target = resolve_provider_binary_install_target(
         &spec.language_id,
         &provider_binary,
         home_dir().as_deref(),
     )?;
-    if install_args.from_workspace {
-        return install_workspace_provider_binary(&spec, &project_root, &target, &install_target);
-    }
     let provider_lock_dir = ensure_project_provider_lock_dir(&install_args.project_root)?;
     let provider_package_dir = provider_lock_dir
         .join(&spec.language_id)
@@ -176,15 +190,16 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         install_executable_entrypoint(&installed_entrypoint, &runtime_artifact)?;
     }
     let installed = runtime_artifact;
-    let lock_path = provider_lock_dir.join(format!("{}.lock.toml", spec.language_id));
+    let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     write_provider_lock(
         &lock_path,
         &ProviderInstallLock {
             schema_id: "asp.provider-install-lock.v1",
             language_id: &spec.language_id,
             provider_id: &spec.provider_id,
-            repo: &spec.repo,
-            rev,
+            source_kind: "release",
+            repo: Some(&spec.repo),
+            rev: Some(rev),
             target: &target,
             binary: &spec.binary,
             installed_path: &installed,
@@ -206,7 +221,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     )?;
     let org_state_sync = org_capture::run_org_state_sync(&project_root)?;
     println!(
-        "[asp-install] provider={} language={} rev={} target={} binary={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} installMode=locked-release rev={} target={} binary={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
         spec.provider_id,
         spec.language_id,
         rev,
@@ -341,7 +356,7 @@ pub(super) fn resolve_workspace_relative_path(
 }
 
 fn workspace_build_recipe_digest(
-    spec: &ProviderReleaseSpec,
+    spec: &super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor,
     build: &WorkspaceBuildSpec,
 ) -> Result<String, String> {
     let mut payload = serde_json::to_vec(build)
@@ -424,28 +439,17 @@ fn capture_workspace_build_snapshot(
 }
 
 fn materialize_workspace_provider_binary(
-    spec: &ProviderReleaseSpec,
+    spec: &super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor,
     project_root: &Path,
 ) -> Result<(MaterializedWorkspaceArtifact, WorkspaceBuildReceipt), String> {
-    let artifact = spec.workspace_artifact.as_ref().map_or_else(
-        || Err(format!(
-            "provider {} has no configured workspace artifact; add workspaceArtifact to its pinned release entry before using --from-workspace",
-            spec.language_id
-        )),
-        |artifact| Ok(artifact.clone()),
-    )?;
+    let artifact = spec.workspace_artifact.clone();
     let workspace_artifact_root =
         resolve_workspace_relative_path(project_root, &artifact.root, "workspaceArtifact.root")?;
-    let build = spec.workspace_build.as_ref().ok_or_else(|| {
-        format!(
-            "provider {} has no workspaceBuild recipe; copy-only workspace installation is not supported",
-            spec.language_id
-        )
-    })?;
+    let build = &spec.workspace_build;
     if build.program.trim().is_empty() {
         return Err(format!(
             "provider {} workspaceBuild program must not be empty",
-            spec.language_id
+            spec.provider_id
         ));
     }
     let program_name = Path::new(&build.program)
@@ -455,7 +459,7 @@ fn materialize_workspace_provider_binary(
     if matches!(program_name, "sh" | "bash" | "zsh" | "fish") {
         return Err(format!(
             "provider {} workspaceBuild must use an executable plus argv, not a shell interpreter",
-            spec.language_id
+            spec.provider_id
         ));
     }
     let working_directory = resolve_workspace_relative_path(
@@ -466,7 +470,7 @@ fn materialize_workspace_provider_binary(
     if !working_directory.is_dir() {
         return Err(format!(
             "provider {} workspaceBuild working directory is missing at {}",
-            spec.language_id,
+            spec.provider_id,
             working_directory.display()
         ));
     }
@@ -481,7 +485,7 @@ fn materialize_workspace_provider_binary(
     {
         return Err(format!(
             "provider {} workspaceArtifact.root {} must be contained by one workspaceBuild.derivedPaths boundary",
-            spec.language_id,
+            spec.provider_id,
             workspace_artifact_root.display()
         ));
     }
@@ -496,13 +500,13 @@ fn materialize_workspace_provider_binary(
     let status = command.status().map_err(|error| {
         format!(
             "failed to start workspace build for provider {} with program `{}`: {error}",
-            spec.language_id, build.program
+            spec.provider_id, build.program
         )
     })?;
     if !status.success() {
         return Err(format!(
             "workspace build failed for provider {} with status {status}",
-            spec.language_id
+            spec.provider_id
         ));
     }
     let after =
@@ -513,13 +517,13 @@ fn materialize_workspace_provider_binary(
         let changed_paths = before.changed_paths(&after).join(",");
         return Err(format!(
             "workspace source changed while provider {} was building: beforeRoot={} afterRoot={} changedPaths={changed_paths}; retry from one stable WorkspaceSnapshot",
-            spec.language_id, before.evidence.root_digest, after.evidence.root_digest
+            spec.provider_id, before.evidence.root_digest, after.evidence.root_digest
         ));
     }
     let workspace_artifact_metadata = fs::symlink_metadata(&workspace_artifact_root).map_err(|error| {
         format!(
             "workspace build for provider {} completed without producing configured artifact root {}: {error}",
-            spec.language_id,
+            spec.provider_id,
             workspace_artifact_root.display()
         )
     })?;
@@ -536,14 +540,14 @@ fn materialize_workspace_provider_binary(
     {
         return Err(format!(
             "provider {} workspaceArtifact.entrypoint must be artifact-relative without parent traversal: {}",
-            spec.language_id, artifact.entrypoint
+            spec.provider_id, artifact.entrypoint
         ));
     }
     let workspace_entrypoint = if workspace_artifact_metadata.file_type().is_file() {
         if artifact.entrypoint != "." {
             return Err(format!(
                 "provider {} single-file workspaceArtifact.entrypoint must be `.`",
-                spec.language_id
+                spec.provider_id
             ));
         }
         workspace_artifact_root.clone()
@@ -552,14 +556,14 @@ fn materialize_workspace_provider_binary(
     } else {
         return Err(format!(
             "provider {} workspaceArtifact.root has unsupported type at {}",
-            spec.language_id,
+            spec.provider_id,
             workspace_artifact_root.display()
         ));
     };
     if !workspace_entrypoint.is_file() {
         return Err(format!(
             "workspace build for provider {} completed without producing configured entrypoint {}",
-            spec.language_id,
+            spec.provider_id,
             workspace_entrypoint.display()
         ));
     }
@@ -583,7 +587,8 @@ fn materialize_workspace_provider_binary(
 }
 
 fn install_workspace_provider_binary(
-    spec: &ProviderReleaseSpec,
+    spec: &super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor,
+    language_id: &str,
     project_root: &Path,
     target: &str,
     install_target: &ProviderBinaryInstallTarget,
@@ -601,15 +606,16 @@ fn install_workspace_provider_binary(
         &install_target.path,
     )?;
     let provider_lock_dir = ensure_project_provider_lock_dir(project_root)?;
-    let lock_path = provider_lock_dir.join(format!("{}.lock.toml", spec.language_id));
+    let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     write_provider_lock(
         &lock_path,
         &ProviderInstallLock {
             schema_id: "asp.provider-install-lock.v1",
-            language_id: &spec.language_id,
+            language_id,
             provider_id: &spec.provider_id,
-            repo: &spec.repo,
-            rev: &spec.release_version,
+            source_kind: "workspace",
+            repo: None,
+            rev: None,
             target,
             binary: &spec.binary,
             installed_path: &runtime_artifact,
@@ -634,9 +640,9 @@ fn install_workspace_provider_binary(
     )?;
     let org_state_sync = org_capture::run_org_state_sync(project_root)?;
     println!(
-        "[asp-install] provider={} language={} source=workspace-build binary={} workspaceArtifact={} workspaceEntrypoint={} immutableArtifact={} immutableEntrypoint={} installedPath={} runtimeArtifact={} installTargetSource={} runtimeBinDir={} sourceSnapshotRoot={} sourceSnapshotAlgorithm={} sourceLeafCount={} providerDigest={} buildRecipeDigest={} artifactDigest={} artifactLeafCount={} artifactEntrypointSha256={} installedEntrypointDigest={} sha256={} launcherDigest={} lock={} orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} installMode=develop-workspace source=workspace-build binary={} workspaceArtifact={} workspaceEntrypoint={} immutableArtifact={} immutableEntrypoint={} installedPath={} runtimeArtifact={} installTargetSource={} runtimeBinDir={} sourceSnapshotRoot={} sourceSnapshotAlgorithm={} sourceLeafCount={} providerDigest={} buildRecipeDigest={} artifactDigest={} artifactLeafCount={} artifactEntrypointSha256={} installedEntrypointDigest={} sha256={} launcherDigest={} lock={} orgState={} orgStateSync={}",
         spec.provider_id,
-        spec.language_id,
+        language_id,
         spec.binary,
         workspace_artifact.workspace_root.display(),
         workspace_artifact.workspace_entrypoint.display(),
@@ -672,8 +678,7 @@ fn required_value<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'
 }
 
 fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
-    let mut manifest: PinnedLanguageReleaseManifest = toml::from_str(PINNED_LANGUAGE_RELEASES_TOML)
-        .map_err(|error| format!("failed to parse pinned language releases: {error}"))?;
+    let mut manifest = pinned_language_release_manifest()?;
     let Some(entry) = manifest.languages.remove(language_id) else {
         let supported = manifest
             .languages
@@ -682,7 +687,7 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
             .collect::<Vec<_>>()
             .join(", ");
         return Err(format!(
-            "unsupported provider language `{language_id}`; pinned languages: {supported}"
+            "[asp-install-error] state=locked-release-unavailable installMode=locked-release language={language_id} reason=language-not-pinned pinnedLanguages={supported}"
         ));
     };
     Ok(ProviderReleaseSpec {
@@ -694,11 +699,20 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
         archive_prefix: entry.archive_prefix.unwrap_or_else(|| entry.binary.clone()),
         archive_binary: entry.archive_binary.unwrap_or_else(|| entry.binary.clone()),
         require_native_binary: entry.require_native_binary.unwrap_or(false),
-        workspace_artifact: entry.workspace_artifact,
-        workspace_build: entry.workspace_build,
         binary: entry.binary,
         supported_targets: entry.supported_targets,
     })
+}
+
+pub(super) fn has_pinned_language_release(language_id: &str) -> Result<bool, String> {
+    Ok(pinned_language_release_manifest()?
+        .languages
+        .contains_key(language_id))
+}
+
+fn pinned_language_release_manifest() -> Result<PinnedLanguageReleaseManifest, String> {
+    toml::from_str(PINNED_LANGUAGE_RELEASES_TOML)
+        .map_err(|error| format!("failed to parse pinned language releases: {error}"))
 }
 
 fn host_target_triple() -> Option<String> {
@@ -732,8 +746,9 @@ struct ProviderInstallLock<'a> {
     schema_id: &'a str,
     language_id: &'a str,
     provider_id: &'a str,
-    repo: &'a str,
-    rev: &'a str,
+    source_kind: &'a str,
+    repo: Option<&'a str>,
+    rev: Option<&'a str>,
     target: &'a str,
     binary: &'a str,
     installed_path: &'a Path,
@@ -755,19 +770,27 @@ struct ProviderInstallLock<'a> {
 
 fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<(), String> {
     let mut contents = format!(
-        "schemaId = \"{}\"\nlanguage = \"{}\"\nprovider = \"{}\"\nrepo = \"{}\"\nrev = \"{}\"\ntarget = \"{}\"\nbinary = \"{}\"\ninstalledPath = \"{}\"\npackagePath = \"{}\"\nsha256 = \"{}\"\nsource = \"{}\"\n",
+        "schemaId = \"{}\"\nlanguage = \"{}\"\nprovider = \"{}\"\nsourceKind = \"{}\"\n",
         toml_escape(lock.schema_id),
         toml_escape(lock.language_id),
         toml_escape(lock.provider_id),
-        toml_escape(lock.repo),
-        toml_escape(lock.rev),
+        toml_escape(lock.source_kind),
+    );
+    if let Some(repo) = lock.repo {
+        contents.push_str(&format!("repo = \"{}\"\n", toml_escape(repo)));
+    }
+    if let Some(rev) = lock.rev {
+        contents.push_str(&format!("rev = \"{}\"\n", toml_escape(rev)));
+    }
+    contents.push_str(&format!(
+        "target = \"{}\"\nbinary = \"{}\"\ninstalledPath = \"{}\"\npackagePath = \"{}\"\nsha256 = \"{}\"\nsource = \"{}\"\n",
         toml_escape(lock.target),
         toml_escape(lock.binary),
         toml_escape(&lock.installed_path.display().to_string()),
         toml_escape(&lock.package_path.display().to_string()),
         toml_escape(lock.sha256),
         toml_escape(&lock.source),
-    );
+    ));
     if let Some(value) = lock.source_snapshot_root {
         contents.push_str(&format!(
             "sourceSnapshotRoot = \"{}\"\n",
@@ -829,7 +852,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>] [--from-workspace]\n       language provider releases are pinned by asp by default; --from-workspace deploys the configured workspace artifact to the ASP runtime home and its canonical $HOME/.local/bin entrypoint".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)".to_string()
 }
 
 fn install_hook_usage() -> String {

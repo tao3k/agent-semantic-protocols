@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-provider-doctor.v1.schema.json",
-  "title": "Semantic Provider Doctor Envelope v2",
-  "description": "Strict bootstrap envelope returned by a provider's `agent doctor --json` command. The embedded registry is independently validated as semantic language registry v2.",
+  "title": "Semantic Provider Doctor Envelope v1",
+  "description": "Strict bootstrap envelope returned by a provider's `agent doctor --json` command. The embedded registry is independently validated as semantic language registry v1.",
   "type": "object",
   "required": [
     "schemaId",
@@ -63,7 +63,7 @@
     "registryDigest": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$",
-      "description": "SHA-256 digest of the RFC 8785 JSON Canonicalization Scheme (JCS) bytes of the registry property. JSON Schema cannot compute this digest; the doctor-v2 consumer MUST verify it."
+      "description": "SHA-256 digest of the RFC 8785 JSON Canonicalization Scheme (JCS) bytes of the registry property. JSON Schema cannot compute this digest; the doctor-v1 consumer MUST verify it."
     }
   },
   "additionalProperties": false,

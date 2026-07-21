@@ -70,10 +70,8 @@ pub struct DynamicSearchCandidateRequest<'a> {
     pub terms: &'a [String],
     /// Search roots whose paths were selected by the caller.
     pub search_roots: &'a [Vec<PathBuf>],
-    /// Canonical workspace snapshot selected by the caller.
-    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
-    /// Digest of the selected provider that owns this projection.
-    pub provider_digest: &'a str,
+    /// Canonical workspace snapshot selected before language candidate filtering.
+    pub source_snapshot: &'a agent_semantic_artifacts::SourceSnapshotEvidence,
     /// Maximum candidates returned.
     pub limit: usize,
 }
@@ -126,6 +124,10 @@ pub fn collect_ingest_search_candidates(
 pub fn collect_dynamic_lexical_overlay_candidates_from_roots(
     request: DynamicSearchRootCandidateRequest<'_>,
 ) -> Result<DynamicSearchCandidateCollection, String> {
+    let source_snapshot = request.base_snapshot.evidence(
+        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        request.provider_digest,
+    );
     let roots = resolved_owner_roots(request.project_root, request.owners);
     let search_roots = roots
         .iter()
@@ -137,8 +139,7 @@ pub fn collect_dynamic_lexical_overlay_candidates_from_roots(
             locator_root: request.locator_root,
             terms: request.terms,
             search_roots: &search_roots,
-            base_snapshot: request.base_snapshot,
-            provider_digest: request.provider_digest,
+            source_snapshot: &source_snapshot,
             limit: request.limit,
         },
     ))
@@ -240,8 +241,7 @@ pub fn collect_dynamic_lexical_overlay_candidates(
     let lexical_result = search_lexical_overlay_candidates(
         request.terms,
         &documents,
-        request.base_snapshot,
-        request.provider_digest,
+        request.source_snapshot,
         per_term_limit,
         remaining,
     );
@@ -459,11 +459,12 @@ fn append_overlay_path_candidates(
 fn lexical_overlay_document(locator_root: &Path, path: &Path) -> Option<LexicalOverlayDocument> {
     let display = display_path(locator_root, path);
     let bytes = fs::read(path).ok()?;
+    let source_hash = blake3::hash(&bytes).to_hex().to_string();
     let source_text = String::from_utf8_lossy(&bytes).into_owned();
     Some(
         LexicalOverlayDocument::new(display.clone(), display.clone(), symbol_from_text(&display))
             .kind("owner")
-            .source_hash("workspace-dirty")
+            .source_hash(source_hash)
             .search_text(source_text),
     )
 }

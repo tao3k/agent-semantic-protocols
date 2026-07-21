@@ -125,7 +125,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             && candidate.source_kind.as_str() == "turso-source-index"),
         "lookup={lookup:?}"
     );
-    assert!(client_dir.join("client.turso").exists());
+    assert!(client_dir.join("facts.turso").exists());
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
 }
@@ -441,11 +441,12 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
 
     let hits = ClientDbEngine::search_source_index_documents_from_client_dir(
         &client_dir,
+        &source_snapshot,
         "source_index_fts_fixture",
         8,
     )
     .expect("search source-index documents through Turso stable search lane");
-    assert!(hits.is_empty(), "hits={hits:?}");
+    assert!(hits.hits.is_empty(), "hits={hits:?}");
 
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
@@ -853,7 +854,7 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
     let project_root = temp_root("db-engine-source-index-canonical-schema-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     fs::create_dir_all(&client_dir).expect("create client dir");
-    let db_path = client_dir.join("client.turso");
+    let db_path = client_dir.join("facts.turso");
     {
         let db_path_string = db_path.display().to_string();
         let database = turso::Builder::new_local(&db_path_string)

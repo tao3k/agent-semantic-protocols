@@ -107,6 +107,15 @@ pub(super) fn root_owned_rust_activation_json() -> String {
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest).expect("rust routes");
+    let provider_command_prefix = vec![
+        std::env::current_exe()
+            .expect("resolve test executable")
+            .display()
+            .to_string(),
+    ];
+    let execution_command_digest =
+        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
+            .expect("digest provider execution command");
     let activation = agent_semantic_hook::HookActivation {
         schema_id: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
@@ -126,7 +135,8 @@ pub(super) fn root_owned_rust_activation_json() -> String {
             provider_id: manifest.provider_id,
             binary: manifest.binary,
             execution: manifest.execution,
-            provider_command_prefix: Vec::new(),
+            provider_command_prefix,
+            execution_command_digest,
             search_capabilities: manifest.search_capabilities,
             semantic_facts_descriptor: manifest.semantic_facts_descriptor,
             query_pack_descriptor: manifest.query_pack_descriptor,

@@ -2,10 +2,6 @@
 
 use std::future::Future;
 
-use super::turso_lock_policy::{
-    TURSO_CLIENT_DB_STATEMENT_LOCK_RETRY_ATTEMPTS, is_turso_lock_error, turso_lock_retry_delay,
-};
-
 macro_rules! execute_turso_prepared_statement_with_lock_retry {
     ($statement:expr, $params:expr, $context:expr $(,)?) => {{
         let context = $context;
@@ -40,8 +36,8 @@ macro_rules! execute_turso_prepared_statement_with_lock_retry {
 
 pub(crate) use execute_turso_prepared_statement_with_lock_retry;
 
-/// Run one Turso operation with the DB Engine lock retry policy.
-pub(crate) async fn run_turso_operation_with_lock_retry<T, F, Fut>(
+/// Run one Turso operation and preserve its native failure boundary.
+pub(crate) async fn run_turso_operation<T, F, Fut>(
     mut operation: F,
     context: &str,
 ) -> Result<T, String>
@@ -49,29 +45,13 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, String>>,
 {
-    let mut last_lock_error = None;
-    for attempt in 0..TURSO_CLIENT_DB_STATEMENT_LOCK_RETRY_ATTEMPTS {
-        match operation().await {
-            Ok(count) => return Ok(count),
-            Err(message) => {
-                let message = format!("{context}: {message}");
-                if !is_turso_lock_error(&message) {
-                    return Err(message);
-                }
-                last_lock_error = Some(message);
-            }
-        }
-        tokio::time::sleep(turso_lock_retry_delay(attempt)).await;
-    }
-    Err(format!(
-        "{} after {} retry attempts",
-        last_lock_error.unwrap_or_else(|| context.to_string()),
-        TURSO_CLIENT_DB_STATEMENT_LOCK_RETRY_ATTEMPTS
-    ))
+    operation()
+        .await
+        .map_err(|message| format!("{context}: {message}"))
 }
 
-/// Execute one Turso statement with the DB Engine lock retry policy.
-pub(crate) async fn execute_turso_operation_with_lock_retry<F, Fut>(
+/// Execute one Turso operation without replaying partial transaction work.
+pub(crate) async fn execute_turso_operation<F, Fut>(
     operation: F,
     context: &str,
 ) -> Result<u64, String>
@@ -79,7 +59,7 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<u64, String>>,
 {
-    run_turso_operation_with_lock_retry(operation, context).await
+    run_turso_operation(operation, context).await
 }
 
 /// Execute one mutating Turso statement and report whether it changed storage.
@@ -97,7 +77,7 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<u64, String>>,
 {
-    run_turso_operation_with_lock_retry(
+    run_turso_operation(
         || {
             let operation = operation();
             async move {
@@ -135,13 +115,13 @@ async fn read_turso_total_changes(connection: &turso::Connection) -> Result<u64,
         .map_err(|_| format!("SELECT total_changes() returned a negative count: {changes}"))
 }
 
-/// Execute a schema/control statement with the DB Engine Turso lock policy.
-pub(crate) async fn execute_turso_statement_with_lock_retry(
+/// Execute a schema/control statement once and surface Turso's native error.
+pub(crate) async fn execute_turso_statement(
     connection: &turso::Connection,
     statement: &str,
     context: &str,
 ) -> Result<(), String> {
-    run_turso_operation_with_lock_retry(
+    run_turso_operation(
         || async {
             connection
                 .execute(statement, ())

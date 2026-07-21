@@ -93,7 +93,12 @@ fn source_index_acquisition_gates_broad_generic_queries() {
 
 #[test]
 fn source_index_acquisition_defers_backend_for_path_like_miss() {
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "miss".to_string(),
         candidates: Vec::new(),
     };
@@ -119,7 +124,12 @@ fn source_index_acquisition_quarantines_stale_candidates_and_defers_overlay() {
     let root = std::env::temp_dir().join(format!("asp-source-index-drift-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("create drift fixture root");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "crates/agent-semantic-client/src/search_pipe_source.rs".to_string(),
@@ -167,7 +177,12 @@ fn source_index_acquisition_keeps_existing_rows_inventory_only() {
     std::fs::create_dir_all(&source_dir).expect("create inventory fixture source dir");
     std::fs::write(source_dir.join("lib.rs"), "pub fn current_owner() {}\n")
         .expect("write inventory fixture source");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/lib.rs".to_string(),
@@ -209,7 +224,12 @@ fn source_index_acquisition_uses_bounded_payload_proof_as_selector_ready() {
     std::fs::create_dir_all(&source_dir).expect("create ready fixture source dir");
     std::fs::write(source_dir.join("lib.rs"), "pub fn current_owner() {}\n")
         .expect("write ready fixture source");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/lib.rs".to_string(),
@@ -269,4 +289,4 @@ fn temp_root(prefix: &str) -> std::path::PathBuf {
             .as_nanos()
     ))
 }
-use crate::pipe_source::SearchPipeSelectorPayloadProof;
+use crate::SearchPipeSelectorPayloadProof;

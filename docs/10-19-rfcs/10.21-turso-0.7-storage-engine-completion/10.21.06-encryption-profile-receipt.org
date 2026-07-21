@@ -1,0 +1,63 @@
+#+title: Turso 0.7 Explicit Encryption Profile Receipt
+#+date: 2026-07-20
+
+* Boundary
+
+Local at-rest encryption is an explicit opt-in profile inside
+=agent-semantic-client-db=.  It is not enabled on the default Immediate, MVCC,
+CDC, or sync profile.  Keys are length/hex validated for the selected cipher,
+their =Debug= representation is redacted, and no key material is serialized
+into the file receipt.
+
+The checked-in schema
+=schemas/turso-encryption-file-receipt.v1.schema.json= records only cipher,
+database/WAL/SHM sizes, plaintext probe length, and whether that probe was found
+in any on-disk artifact.
+
+* Fixed scenario tests
+
+Command:
+
+#+begin_src sh
+direnv exec . cargo test -p agent-semantic-client-db turso_encrypted_storage -- --nocapture
+#+end_src
+
+Result: =2 passed; 0 failed=.
+
+The checked-in scenarios prove:
+
+- malformed keys fail before opening and valid-key debug output is redacted;
+- an AEGIS-256 database writes and reopens with the correct key;
+- the plaintext marker does not occur in the database, WAL, or SHM bytes after
+  flush;
+- a different valid-length key cannot read the stored plaintext.
+
+* Fixed benchmark
+
+Smoke command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench turso_encryption_profile -- --test
+#+end_src
+
+Result: all four registered scenarios succeeded.
+
+Measurement command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench turso_encryption_profile
+#+end_src
+
+Result on the local 2026-07-20 checkout:
+
+| Scenario | Criterion interval | Throughput interval | Outliers |
+|----------+--------------------+---------------------+----------|
+| AEGIS-256 append 32 x 1 KiB | 72.681--93.417 ms | 342.55--440.28 elem/s | 1/20 high severe |
+| plain append 32 x 1 KiB | 280.10--540.41 us | 59.214--114.25 Kelem/s | none reported |
+| AEGIS-256 keyset read 100 | 387.15--551.09 us | 181.46--258.30 Kelem/s | 1/20 high severe |
+| plain keyset read 100 | 131.47--171.58 us | 582.83--760.63 Kelem/s | none reported |
+
+The result is deliberately not described as a free optimization: on this
+checkout the encrypted write path is orders of magnitude slower than the plain
+comparison.  Encryption therefore remains an explicit security/performance
+tradeoff and must not silently replace the high-throughput local profile.

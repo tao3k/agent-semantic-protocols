@@ -9,6 +9,7 @@ pub mod cli;
 mod cli_args;
 mod compact_mode;
 mod provider_method;
+pub mod provider_runtime_storage;
 mod search_history;
 pub mod source_index;
 mod syntax_query_preflight;
@@ -68,6 +69,9 @@ mod compact_mode_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_method.rs"]
 mod provider_method_tests;
+#[cfg(test)]
+#[path = "../tests/unit/provider_runtime_storage.rs"]
+mod provider_runtime_storage_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_history.rs"]
 mod search_history_tests;

@@ -1,17 +1,45 @@
 use agent_semantic_client_db::{
-    ClientDbEngine, TursoClientDbOverlayDocument, TursoClientDbSearchHit,
+    ClientDbEngine, TursoClientDbSearchDocument, TursoClientDbSearchHit,
 };
+
+/// Stable identity for one transient overlay search generation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TursoOverlaySearchScope {
+    repo_id: String,
+    workspace_id: String,
+    session_id: String,
+}
+
+impl TursoOverlaySearchScope {
+    #[must_use]
+    pub fn new(
+        repo_id: impl Into<String>,
+        workspace_id: impl Into<String>,
+        session_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            repo_id: repo_id.into(),
+            workspace_id: workspace_id.into(),
+            session_id: session_id.into(),
+        }
+    }
+
+    fn namespace(&self) -> String {
+        format!(
+            "overlay:{}:{}:{}",
+            self.repo_id, self.workspace_id, self.session_id
+        )
+    }
+}
 
 /// Search-owned document for a transient Turso overlay namespace.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoOverlaySearchDocument {
-    pub(crate) repo_id: String,
-    pub(crate) workspace_id: String,
-    pub(crate) session_id: String,
-    pub(crate) base_generation: String,
-    pub(crate) document_id: String,
-    pub(crate) selector: Option<String>,
-    pub(crate) document: String,
+    scope: TursoOverlaySearchScope,
+    base_generation: String,
+    document_id: String,
+    selector: Option<String>,
+    document: String,
 }
 
 impl TursoOverlaySearchDocument {
@@ -27,14 +55,17 @@ impl TursoOverlaySearchDocument {
         document: impl Into<String>,
     ) -> Self {
         Self {
-            repo_id: repo_id.into(),
-            workspace_id: workspace_id.into(),
-            session_id: session_id.into(),
+            scope: TursoOverlaySearchScope::new(repo_id, workspace_id, session_id),
             base_generation: base_generation.into(),
             document_id: document_id.into(),
             selector,
             document: document.into(),
         }
+    }
+
+    #[must_use]
+    pub fn scope(&self) -> &TursoOverlaySearchScope {
+        &self.scope
     }
 }
 
@@ -51,48 +82,74 @@ pub async fn bootstrap_turso_overlay_search_store(engine: &ClientDbEngine) -> Re
     engine.bootstrap_active_turso().await.map(|_| ())
 }
 
-/// Store one transient overlay document through the DB Engine Turso adapter.
-pub async fn upsert_turso_overlay_search_document(
+/// Atomically replace one snapshot-bound overlay generation.
+pub async fn replace_turso_overlay_search_document_generation(
     engine: &ClientDbEngine,
-    document: &TursoOverlaySearchDocument,
-) -> Result<(), String> {
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    documents: &[TursoOverlaySearchDocument],
+) -> Result<usize, String> {
+    let Some(first) = documents.first() else {
+        return Ok(0);
+    };
+    for document in documents {
+        if document.scope != first.scope {
+            return Err("overlay generation documents must share one scope".to_string());
+        }
+        if document.base_generation != source_snapshot.root_digest {
+            return Err(format!(
+                "overlay base generation {} does not match snapshot root {}",
+                document.base_generation, source_snapshot.root_digest
+            ));
+        }
+    }
+    let rows = documents
+        .iter()
+        .cloned()
+        .map(TursoClientDbSearchDocument::from)
+        .collect::<Vec<_>>();
+    let namespace = first.scope.namespace();
     engine
-        .upsert_overlay_document(&document.clone().into())
+        .replace_search_document_generation(&namespace, source_snapshot, &rows)
         .await
 }
 
-/// Query transient overlay documents without exposing DB adapter rows to callers.
+/// Query one snapshot-bound overlay generation without exposing DB adapter rows.
 pub async fn search_turso_overlay_documents(
     engine: &ClientDbEngine,
+    scope: &TursoOverlaySearchScope,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
     limit: u32,
 ) -> Result<Vec<TursoOverlaySearchHit>, String> {
-    let hits = engine.search_overlay_documents(query, limit).await?;
-    Ok(hits
+    let namespace = scope.namespace();
+    let result = engine
+        .search_documents(&namespace, source_snapshot, query, limit)
+        .await?;
+    Ok(result
+        .hits
         .into_iter()
-        .filter_map(turso_hit_to_overlay_hit)
+        .map(turso_hit_to_overlay_hit)
         .collect())
 }
 
-fn turso_hit_to_overlay_hit(hit: TursoClientDbSearchHit) -> Option<TursoOverlaySearchHit> {
-    if hit.source() != "overlay" {
-        return None;
-    }
-    Some(TursoOverlaySearchHit {
+fn turso_hit_to_overlay_hit(hit: TursoClientDbSearchHit) -> TursoOverlaySearchHit {
+    TursoOverlaySearchHit {
         document_id: hit.document_id().to_string(),
         selector: hit.selector().map(ToString::to_string),
         document: hit.document().to_string(),
-    })
+    }
 }
 
-impl From<TursoOverlaySearchDocument> for TursoClientDbOverlayDocument {
+impl From<TursoOverlaySearchDocument> for TursoClientDbSearchDocument {
     fn from(document: TursoOverlaySearchDocument) -> Self {
+        let entity_id = format!(
+            "{}:{}",
+            document.scope.namespace(),
+            document.document_id.as_str()
+        );
         Self {
-            repo_id: document.repo_id,
-            workspace_id: document.workspace_id,
-            session_id: document.session_id,
-            base_generation: document.base_generation,
             document_id: document.document_id,
+            entity_id,
             selector: document.selector,
             document: document.document,
         }

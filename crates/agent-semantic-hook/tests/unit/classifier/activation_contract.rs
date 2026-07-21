@@ -104,6 +104,7 @@ fn activation_value(manifest: &ProviderManifest, manifest_digest: &str) -> Value
         binary: manifest.binary.clone(),
         execution: manifest.execution,
         provider_command_prefix: vec![manifest.binary.clone()],
+        execution_command_digest: "test-execution-command-digest".to_string(),
         search_capabilities: manifest.search_capabilities.clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
         query_pack_descriptor: manifest.query_pack_descriptor.clone(),

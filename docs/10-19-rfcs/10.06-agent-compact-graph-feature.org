@@ -201,6 +201,26 @@ Owner-local selector ranking may create query-axis window candidates when declar
 Graph-turbo must also carry an explicit first-stage topology state model. Topology is the analyzer/status decision layer that records which evidence graph was available before the first stage chose owner discovery, owner-local expansion, query-pack refinement, dependency topology, test reachability, or selector-code expansion. It is not another agent-facing stdout field bundle. Normal =search= output should continue to expose only compact graph facts that directly help the next action. Developer/history mode and sandtable reports may persist topology snapshots so quality analysis can connect a bad answer to the graph shape and transition that caused it.
 
 Topology state is language-neutral and evidence-derived. It may use packet facts such as query-pack quality, package cohesion, matched query axes, owner candidate density, parser/finder-local hits, selector miss/coverage state, repeated-action memory, source-index/finder/provider provenance, latency, and packet size. It must not encode ecosystem labels, library names, or project-specific symbols as rules. If a domain label matters, it must enter through parser-owned declarations, provider semantic facts, dependency/package facts, finder evidence, or analyzer receipts.
+Candidate acquisition and graph construction MUST preserve one snapshot
+continuity boundary.  A dynamic overlay carries the exact
+=SourceSnapshotEvidence= produced while its candidates were collected.  The
+source acquisition trace MUST retain that snapshot and any artifact digest
+actually produced by that acquisition.  It MUST NOT synthesize a source-index
+artifact identity for an ephemeral overlay.  Graph-turbo MUST
+graph-turbo MUST compare the acquisition snapshot root with the request base
+snapshot before ranking any candidate.  A mismatch is a deterministic retry or
+snapshot miss; candidates from one snapshot MUST NOT be labeled or ranked as
+evidence from another.  Source-index refresh does not substitute for this
+check, because a query gate may intentionally select the dynamic overlay
+instead of the persisted index.
+
+Owner-item graph artifacts use the domain
+=asp.graph-owner-item-artifact.v1=.  The digest is =blake3= over
+length-delimited bytes for the snapshot root, owner path, query, route state,
+and every ordered graph evidence field.  A renderer receives that digest; it
+MUST NOT accept a snapshot root, source-index digest, debug string, or fixed test
+literal as a substitute for the graph artifact identity.
+
 Topology must model monorepo and submodule boundaries as first-stage graph facts. A workspace that declares submodules, nested language harnesses, or package roots is not a flat owner namespace: topology nodes must connect the workspace to provider roots and submodules, and submodules must connect to owner paths that live under their declared path. Owner ranking, seed planning, and action scope selection may then consume these membership edges as language-neutral cluster evidence. The rule is path/topology derived; it must not special-case this repository, a package name, a language ecosystem, or any library symbol.
 
 Project and dependency topology roots are provider-owned facts. ASP core must not discover them by repository-wide scan limits, hard-coded ignored-directory lists, or language-specific filename tables. Each language provider manifest declares its project markers and dependency markers from its native package/project manager surface, such as Cargo manifests, npm/pnpm/yarn package files, Python project files, Julia project manifests, or Gerbil package descriptors. Graph-turbo may consume those declared marker files as =language-project=, =project-marker=, and =dependency-marker= nodes, but deeper package membership, dependency paths, project references, source roots, and lockfile semantics remain provider/package-manager facts. Document providers that have no package manager should declare empty topology markers rather than letting ASP infer one.

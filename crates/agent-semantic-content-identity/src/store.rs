@@ -37,7 +37,14 @@ impl ContentAddressedStore {
     pub fn write(&self, digest: &str, payload: &[u8]) -> io::Result<PathBuf> {
         let path = self.artifact_path(digest)?;
         if path.try_exists()? {
-            return Ok(path);
+            let existing = fs::read(&path)?;
+            if existing == payload {
+                return Ok(path);
+            }
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("content-addressed payload mismatch for digest {digest}"),
+            ));
         }
         let parent = path
             .parent()

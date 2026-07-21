@@ -3,7 +3,6 @@
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::project_client_cache_dir_read_only;
-use agent_semantic_content_identity::SourceSnapshotEvidence;
 
 use agent_semantic_client_core::{LanguageId, state_core::TURSO_BACKEND};
 
@@ -19,38 +18,13 @@ use crate::engine::source_index_candidate_types::{
 use crate::engine::source_index_query_scoring::source_index_read_model_terms;
 use crate::engine::turso::{connect_turso_client_db_read_only, turso_table_exists};
 use crate::engine::turso_lock_policy::is_turso_lock_error;
-use crate::engine::turso_statement::run_turso_operation_with_lock_retry;
+use crate::engine::turso_statement::run_turso_operation;
 use crate::source_index::{
     ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexLookupResult,
     ClientDbSourceIndexLookupState, ClientDbSourceIndexProjectLookupRequest,
 };
 
 impl ClientDbEngine {
-    /// Read one owner's projection readiness and selector nodes from read-only Turso state.
-    pub fn lookup_graph_owner_read_model_from_project(
-        project_root: &Path,
-        source_snapshot: &SourceSnapshotEvidence,
-        owner_path: &str,
-        language_id: Option<&LanguageId>,
-        limit: u32,
-    ) -> Result<crate::engine::turso_evidence_graph::TursoClientDbGraphOwnerReadModel, String> {
-        let client_dir = project_client_cache_dir_read_only(project_root)?;
-        let db_path = Self::turso_path_for_client_dir(client_dir);
-        let source_snapshot = source_snapshot.clone();
-        let owner_path = owner_path.to_string();
-        let language_id = language_id.cloned();
-        block_on_db_engine_async(async move {
-            crate::engine::turso_evidence_graph::lookup_turso_graph_owner_read_model(
-                &db_path,
-                &source_snapshot,
-                &owner_path,
-                language_id.as_ref().map(LanguageId::as_str),
-                limit,
-            )
-            .await
-        })
-    }
-
     /// Lookup source-index candidates from one project's resolved DB Engine state.
     pub fn lookup_source_index_from_project(
         request: ClientDbSourceIndexProjectLookupRequest<'_>,
@@ -171,24 +145,6 @@ impl ClientDbEngine {
             limit,
             &source_snapshot.root_digest,
             &expected_index_artifact_digest,
-        )
-        .await
-    }
-
-    /// Read one owner's projection readiness and selector nodes from an isolated client directory.
-    pub async fn lookup_graph_owner_read_model_from_client_dir(
-        client_dir: impl AsRef<Path>,
-        source_snapshot: &SourceSnapshotEvidence,
-        owner_path: &str,
-        language_id: Option<&LanguageId>,
-        limit: u32,
-    ) -> Result<crate::engine::turso_evidence_graph::TursoClientDbGraphOwnerReadModel, String> {
-        crate::engine::turso_evidence_graph::lookup_turso_graph_owner_read_model(
-            &Self::turso_path_for_client_dir(client_dir),
-            source_snapshot,
-            owner_path,
-            language_id.map(LanguageId::as_str),
-            limit,
         )
         .await
     }
@@ -469,10 +425,10 @@ async fn turso_source_index_owner_rows_exist(
     connection: &turso::Connection,
     scope: &TursoSourceIndexLookupScope,
 ) -> Result<bool, String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    run_turso_operation(
         || async {
-            connection
-                .query(
+            let mut statement = connection
+                .prepare_cached(
                     "SELECT owner_path
                      FROM asp_source_index_owner_v1
                      WHERE project_root = ?1
@@ -480,24 +436,26 @@ async fn turso_source_index_owner_rows_exist(
                        AND schema_version = ?3
                        AND generation_id = ?4
                      LIMIT 1",
-                    (
-                        scope.project_root.as_str(),
-                        scope.schema_id.as_str(),
-                        scope.schema_version.as_str(),
-                        scope.generation_id.as_str(),
-                    ),
                 )
                 .await
+                .map_err(|error| error.to_string())?;
+            let mut rows = statement
+                .query((
+                    scope.project_root.as_str(),
+                    scope.schema_id.as_str(),
+                    scope.schema_version.as_str(),
+                    scope.generation_id.as_str(),
+                ))
+                .await
+                .map_err(|error| error.to_string())?;
+            rows.next()
+                .await
+                .map(|row| row.is_some())
                 .map_err(|error| error.to_string())
         },
         "failed to inspect Turso source-index owner rows",
     )
-    .await?;
-    Ok(rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read Turso source-index owner rows: {error}"))?
-        .is_some())
+    .await
 }
 async fn turso_source_index_namespace_exists(
     connection: &turso::Connection,

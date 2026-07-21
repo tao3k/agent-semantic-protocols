@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 from tools.paths import repo_root as default_repo_root
 from tools.provider_registry_query_contract import (
@@ -85,8 +86,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def _language_registry_validator(root: Path) -> Draft202012Validator:
-    schema = load_json(root / "schemas" / "semantic-language-registry.v1.schema.json")
-    return Draft202012Validator(schema)
+    schema_dir = root / "schemas"
+    schema = load_json(schema_dir / "semantic-language-registry.v1.schema.json")
+    local_schemas = [load_json(path) for path in sorted(schema_dir.glob("*.schema.json"))]
+    registry = Registry().with_resources(
+        (schema_id, Resource.from_contents(local_schema))
+        for local_schema in local_schemas
+        if isinstance((schema_id := local_schema.get("$id")), str)
+    )
+    return Draft202012Validator(schema, registry=registry)
 
 
 def _provider_failures(

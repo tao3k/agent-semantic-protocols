@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/storage-session-event-batch.v1.schema.json",
+  "title": "ASP Storage Session Event Batch v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "batchId",
+    "partition",
+    "optimizationProfile",
+    "transactionMode",
+    "retryPolicy",
+    "events"
+  ],
+  "properties": {
+    "schemaId": { "const": "asp.storage-session-event-batch.v1" },
+    "batchId": { "type": "string", "minLength": 1 },
+    "partition": { "$ref": "#/$defs/partition" },
+    "optimizationProfile": { "$ref": "#/$defs/optimizationProfile" },
+    "transactionMode": { "$ref": "#/$defs/transactionMode" },
+    "retryPolicy": { "$ref": "#/$defs/retryPolicy" },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1024,
+      "items": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "optimizationProfile": {
+      "enum": [
+        "compatibility-immediate",
+        "mvcc-concurrent",
+        "mvcc-concurrent-passive-checkpoint"
+      ]
+    },
+    "transactionMode": {
+      "enum": ["immediate", "concurrent"]
+    },
+    "partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repoId", "workspaceId", "scopeId", "sessionId", "agentId"],
+      "properties": {
+        "repoId": { "type": "string", "minLength": 1 },
+        "workspaceId": { "type": "string", "minLength": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "agentId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxAttempts", "baseDelayMs", "maxDelayMs", "jitterMs"],
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1 },
+        "baseDelayMs": { "type": "integer", "minimum": 0 },
+        "maxDelayMs": { "type": "integer", "minimum": 0 },
+        "jitterMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "turnId", "eventKind", "payload", "createdAtMs"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 },
+        "turnId": { "type": "string", "minLength": 1 },
+        "eventKind": { "type": "string", "minLength": 1 },
+        "payload": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        },
+        "createdAtMs": { "type": "integer" }
+      }
+    }
+  }
+}
+

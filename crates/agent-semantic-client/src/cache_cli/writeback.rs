@@ -40,7 +40,6 @@ use super::writeback_request::{
     request_search_packet_provider_export_method, request_search_packet_writeback_method,
     request_syntax_query_writeback_method,
 };
-use super::writeback_route_receipt::maybe_write_turso_route_receipt_for_search_packet;
 #[cfg(test)]
 use crate::cache_replay::ProviderCacheReplay;
 use crate::cache_replay::{MAX_CACHE_REPLAY_ARTIFACT_BYTES, replay_artifact_path};
@@ -377,7 +376,6 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
             .ok()?;
         db_write_count += 1;
     }
-    maybe_write_turso_route_receipt_for_search_packet(project_root, packet_bytes, rendered_stdout);
     probe.db_write_count = db_write_count;
     Some(probe)
 }
@@ -400,7 +398,7 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
     let manifest_path = cache_report.manifest_path.as_ref()?;
     let mut manifest =
         load_existing_or_empty_manifest(cache_root, manifest_path, &cache_report.status);
-    let mut generation = query_packet_generation_from_packet(
+    let generation = query_packet_generation_from_packet(
         project_root,
         provider,
         request,

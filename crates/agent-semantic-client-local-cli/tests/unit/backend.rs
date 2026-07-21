@@ -246,6 +246,7 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
             ".".to_string(),
             binary.to_string(),
         ],
+        execution_command_digest: "test-execution-command-digest".to_string(),
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: vec![".".to_string()],

@@ -6,7 +6,7 @@ use serde_json::Value;
 #[test]
 fn every_builtin_language_owns_a_query_pack_descriptor() {
     let schema: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/provider-query-pack-descriptor.v2.schema.json"
+        "../../../../../schemas/provider-query-pack-descriptor.v1.schema.json"
     ))
     .expect("valid provider query pack descriptor schema");
     let descriptor_version = schema
@@ -56,14 +56,14 @@ fn every_builtin_language_owns_a_query_pack_descriptor() {
 }
 
 #[test]
-fn provider_and_activation_v3_require_query_pack_descriptors() {
+fn provider_and_activation_v1_require_query_pack_descriptors() {
     let provider_schema: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/provider-manifest.v3.schema.json"
+        "../../../../../schemas/provider-manifest.v1.schema.json"
     ))
-    .expect("valid provider manifest v3 schema");
+    .expect("valid provider manifest v1 schema");
     assert_eq!(
         provider_schema.pointer("/properties/schemaVersion/const"),
-        Some(&Value::String("3".to_string()))
+        Some(&Value::String("1".to_string()))
     );
     assert!(
         provider_schema["required"]
@@ -98,17 +98,17 @@ fn provider_and_activation_v3_require_query_pack_descriptors() {
     assert_eq!(
         provider_schema.pointer("/properties/queryPackDescriptor/$ref"),
         Some(&Value::String(
-            "provider-query-pack-descriptor.v1.schema.json".to_string()
+            "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-query-pack-descriptor.v1.schema.json".to_string()
         ))
     );
 
     let activation_schema: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/hook-activation.v3.schema.json"
+        "../../../../../schemas/hook-activation.v1.schema.json"
     ))
-    .expect("valid hook activation v3 schema");
+    .expect("valid hook activation v1 schema");
     assert_eq!(
         activation_schema.pointer("/properties/schemaVersion/const"),
-        Some(&Value::String("3".to_string()))
+        Some(&Value::String("1".to_string()))
     );
     assert!(
         activation_schema["$defs"]["activatedProviderConfig"]["required"]
@@ -128,24 +128,24 @@ fn provider_and_activation_v3_require_query_pack_descriptors() {
         activation_schema
             .pointer("/$defs/activatedProviderConfig/properties/searchCapabilities/$ref"),
         Some(&Value::String(
-            "provider-manifest.v3.schema.json#/$defs/providerSearchCapabilities".to_string()
+            "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-manifest.v1.schema.json#/$defs/providerSearchCapabilities".to_string()
         ))
     );
     assert_eq!(
         activation_schema
             .pointer("/$defs/activatedProviderConfig/properties/queryPackDescriptor/$ref"),
         Some(&Value::String(
-            "provider-query-pack-descriptor.v1.schema.json".to_string()
+            "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-query-pack-descriptor.v1.schema.json".to_string()
         ))
     );
 }
 
 #[test]
-fn registry_v3_descriptors_match_builtin_provider_manifests() {
+fn registry_v1_descriptors_match_builtin_provider_manifests() {
     let registry: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/semantic-language-registry.providers.v3.json"
+        "../../../../../schemas/semantic-language-registry.providers.v1.json"
     ))
-    .expect("valid semantic language registry v3");
+    .expect("valid semantic language registry v1");
     let registrations = registry["languages"]
         .as_array()
         .expect("registry languages");
@@ -203,6 +203,7 @@ fn activation_rejects_search_capabilities_drift() {
             binary: manifest.binary.clone(),
             execution: manifest.execution,
             provider_command_prefix: Vec::new(),
+            execution_command_digest: "test-execution-command-digest".to_string(),
             search_capabilities: manifest.search_capabilities.clone(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
             query_pack_descriptor: manifest.query_pack_descriptor.clone(),
@@ -264,6 +265,7 @@ fn activation_rejects_semantic_facts_descriptor_drift() {
             binary: manifest.binary.clone(),
             execution: manifest.execution,
             provider_command_prefix: Vec::new(),
+            execution_command_digest: "test-execution-command-digest".to_string(),
             search_capabilities: manifest.search_capabilities.clone(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
             query_pack_descriptor: manifest.query_pack_descriptor.clone(),

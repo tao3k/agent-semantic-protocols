@@ -30,12 +30,13 @@ fn client_request_hot_path(c: &mut Criterion) {
 
 fn source_index_lookup_hot_path(c: &mut Criterion) {
     let root = source_index_bench_root();
-    prepare_source_index_bench_db(&root);
+    let source_snapshot = prepare_source_index_bench_db(&root);
     let language_id = LanguageId::from("rust");
     c.bench_function("source_index_lookup_hot_path", |b| {
         b.iter(|| {
             let result = lookup_source_index_for_language(
                 black_box(&root),
+                black_box(&source_snapshot),
                 Some(black_box(&language_id)),
                 black_box("bench_symbol_255"),
                 black_box(8),
@@ -47,18 +48,32 @@ fn source_index_lookup_hot_path(c: &mut Criterion) {
     let _ = fs::remove_dir_all(root);
 }
 
-fn prepare_source_index_bench_db(root: &Path) {
+fn prepare_source_index_bench_db(
+    root: &Path,
+) -> agent_semantic_content_identity::SourceSnapshotEvidence {
     fs::create_dir_all(root.join(".git")).expect("create project marker");
     let cache_root = project_client_cache_dir(root).expect("client cache dir");
     fs::create_dir_all(&cache_root).expect("create client cache dir");
+    let source_snapshot = agent_semantic_content_identity::SourceSnapshotEvidence {
+        schema_id: agent_semantic_content_identity::SOURCE_SNAPSHOT_SCHEMA_ID.to_string(),
+        algorithm: agent_semantic_content_identity::SOURCE_SNAPSHOT_ALGORITHM.to_string(),
+        root_digest: "0".repeat(64),
+        source_kind: agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        leaf_count: 512,
+        base_root_digest: None,
+        provider_digest: "1".repeat(64),
+        dirty_paths_digest: None,
+    };
     ClientDbEngine::refresh_source_index_import_from_client_dir(
         &cache_root,
         ClientDbSourceIndexRefreshRequest {
             import: source_index_bench_import(root),
             file_count: 512,
+            source_snapshot: source_snapshot.clone(),
         },
     )
     .expect("replace source index");
+    source_snapshot
 }
 
 fn source_index_bench_import(root: &Path) -> ClientDbSourceIndexImport {

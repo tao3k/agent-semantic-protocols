@@ -1,0 +1,40 @@
+#+title: 10.05.12 Search Overlay Snapshot Continuity
+#+startup: overview
+
+* Status
+
+This document is the canonical v1 snapshot-continuity contract for dynamic
+search-overlay acquisition.  It extends the Merkle workspace snapshot
+authority in 10.05.11 without changing the protocol version.
+
+* Canonical v1 receipt
+
+A search-overlay acquisition receipt MUST contain both of these required,
+typed evidence values:
+
+- =baseSourceSnapshot=: the canonical source evidence for the base workspace
+  snapshot against which acquisition was requested.
+- =resultSourceSnapshot=: the canonical source evidence produced by applying
+  the collected overlay to that base.
+
+The two fields have distinct meanings.  A valid overlay commonly has a result
+root different from its base root.
+
+The former single =sourceSnapshot= field is not a v1 alias.  Producers and
+consumers MUST NOT dual-write, dual-read, fall back to it, or infer both
+identities from one root.  This is a breaking correction within the canonical
+v1 implementation surface; stale binaries fail closed.
+
+* Continuity validation
+
+The requested base evidence MUST be compared with the receipt's
+=baseSourceSnapshot=.  A mismatch is a deterministic retry/miss and MUST be
+rejected before candidate merge, graph construction, or ranking.
+
+The receipt's =resultSourceSnapshot= MUST NOT be compared to the requested base
+as an equality gate.  It is the authority for acquired candidates, acquisition
+trace, and the returned source snapshot.
+
+One acquisition operation MUST produce one receipt.  Validation, trace
+projection, and result construction MUST consume that same receipt; a consumer
+MUST NOT resample the workspace or reconstruct a document-only result root.

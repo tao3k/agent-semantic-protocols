@@ -1,7 +1,6 @@
 use crate::ClientDbSourceIndexImport;
 use crate::engine::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-    run_turso_operation_with_lock_retry,
+    execute_turso_operation, execute_turso_statement, run_turso_operation,
 };
 
 pub(super) fn turso_source_index_import_membership(
@@ -35,7 +34,7 @@ pub(super) async fn stage_turso_source_index_import_membership(
     connection: &turso::Connection,
     file_hashes_json: &str,
 ) -> Result<(), String> {
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "CREATE TEMP TABLE IF NOT EXISTS asp_source_index_incoming_membership_v1 (
             owner_path TEXT NOT NULL PRIMARY KEY,
@@ -44,13 +43,13 @@ pub(super) async fn stage_turso_source_index_import_membership(
         "failed to create Turso source-index incoming membership staging table",
     )
     .await?;
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "DELETE FROM asp_source_index_incoming_membership_v1",
         "failed to clear Turso source-index incoming membership staging table",
     )
     .await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -78,7 +77,7 @@ pub(super) async fn turso_source_index_membership_changes(
     schema_version: &str,
     projection_ready: bool,
 ) -> Result<(Vec<String>, Vec<String>), String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -142,33 +141,4 @@ pub(super) async fn turso_source_index_membership_changes(
         }
     }
     Ok((changed_owner_paths, removed_owner_paths))
-}
-
-pub(super) async fn retire_turso_source_index_precanonical_tables(
-    connection: &turso::Connection,
-) -> Result<(), String> {
-    for table in [
-        "asp_source_index_generation",
-        "asp_source_index_owner",
-        "asp_source_index_selector",
-        "asp_source_index_owner_file_fact",
-        "asp_source_index_selector_file_fact",
-        "asp_source_index_scoped_owner_file_fact",
-        "asp_source_index_scoped_selector_file_fact",
-        "asp_source_index_active_file_membership",
-        "asp_source_index_active_generation",
-        "asp_source_index_active_file_membership_v1",
-        "asp_source_index_active_owner_file_fact_v1",
-        "asp_source_index_active_selector_file_fact_v1",
-        "asp_source_index_active_fact_scope_v1",
-        "asp_source_index_active_packed_fact_scope_v1",
-    ] {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            format!("DROP TABLE IF EXISTS {table}").as_str(),
-            "failed to retire pre-canonical Turso source-index storage",
-        )
-        .await?;
-    }
-    Ok(())
 }

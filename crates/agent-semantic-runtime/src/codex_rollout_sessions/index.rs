@@ -2,15 +2,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-
-
 use super::parse::parse_rollout_file_at_path;
 use super::paths::{
     codex_rollout_paths_for_session_id, codex_sessions_dir, rg_rollout_paths_for_session_id,
 };
 use super::topology::{
-    rollout_topology_lines,
-    spawned_agent_ids_for_rollout, spawned_agent_paths_for_rollout,
+    rollout_topology_lines, spawned_agent_ids_for_rollout, spawned_agent_paths_for_rollout,
     thread_spawn_child_session_ids_for_rollout,
 };
 use super::types::CodexRolloutSessionIndex;

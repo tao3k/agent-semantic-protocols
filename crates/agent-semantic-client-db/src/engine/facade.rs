@@ -37,10 +37,6 @@ use super::turso_cache::{
 use super::turso_provider_command::{
     lookup_turso_provider_command_selections, replace_turso_provider_command_selections,
 };
-use super::turso_route_receipt::{
-    TursoClientDbRouteReceipt, list_turso_route_receipts, upsert_turso_route_receipt,
-};
-use super::turso_search::{TursoClientDbSearchHit, search_turso_documents};
 use super::turso_source_index::refresh_turso_source_index_import;
 use super::turso_syntax::{
     flush_turso_syntax_query_replay, lookup_turso_syntax_query_replay,
@@ -177,9 +173,7 @@ where
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbEngineSourceIndexReadModelReport {
-    pub graph_entity_count: usize,
-    pub graph_edge_count: usize,
-    pub graph_artifact_digest: String,
+    pub node_locator_count: usize,
     pub search_document_count: usize,
 }
 
@@ -423,28 +417,6 @@ impl ClientDbEngine {
         })
     }
 
-    /// Search overlay/stable documents through the active DB Engine backend.
-    pub fn search_documents_from_client_dir(
-        client_dir: impl AsRef<Path>,
-        query: &str,
-        limit: u32,
-    ) -> Result<Vec<TursoClientDbSearchHit>, String> {
-        let db_path = Self::turso_path_for_client_dir(client_dir.as_ref());
-        let query = query.to_string();
-        block_on_db_engine_async(
-            async move { search_turso_documents(&db_path, &query, limit).await },
-        )
-    }
-
-    /// Search overlay/stable documents using this resolved DB Engine.
-    pub fn search_documents_blocking(
-        &self,
-        query: &str,
-        limit: u32,
-    ) -> Result<Vec<TursoClientDbSearchHit>, String> {
-        Self::search_documents_from_client_dir(&self.client_dir, query, limit)
-    }
-
     /// Import one semantic tree-sitter query packet through the active DB Engine backend.
     pub fn import_semantic_tree_sitter_query_packet_from_client_dir(
         client_dir: impl AsRef<Path>,
@@ -537,25 +509,6 @@ impl ClientDbEngine {
         let report = bootstrap_turso_client_db(&self.db_path).await?;
         self.write_manifest()?;
         Ok(report)
-    }
-
-    /// Persist a route receipt through the active DB Engine backend.
-    pub async fn upsert_route_receipt(
-        &self,
-        receipt: &TursoClientDbRouteReceipt,
-    ) -> Result<(), String> {
-        self.bootstrap_active_turso().await?;
-        upsert_turso_route_receipt(&self.db_path, receipt).await
-    }
-
-    /// List recent route receipts through the active DB Engine backend.
-    pub async fn list_route_receipts(
-        &self,
-        session_id: Option<&str>,
-        limit: u32,
-    ) -> Result<Vec<TursoClientDbRouteReceipt>, String> {
-        self.bootstrap_active_turso().await?;
-        list_turso_route_receipts(&self.db_path, session_id, limit).await
     }
 
     /// Persist Merkle artifact roots through the active Turso DB Engine backend.

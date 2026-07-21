@@ -64,9 +64,9 @@ fn validate_semantic_document_query_packet(
     let schema_version = packet
         .get("schemaVersion")
         .and_then(serde_json::Value::as_str);
-    if schema_version != Some("2") {
+    if schema_version != Some("1") {
         return Err(format!(
-            "provider `{}` returned semantic document query packet schemaVersion `{}`; required `2`",
+            "provider `{}` returned semantic document query packet schemaVersion `{}`; required `1`",
             provider.provider_id,
             schema_version.unwrap_or("<missing>")
         ));

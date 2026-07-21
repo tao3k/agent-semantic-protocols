@@ -1,0 +1,69 @@
+#+title: Turso 0.7 Storage Engine Completion Audit
+#+property: header-args :eval never
+
+* Boundary invariants
+
+| Invariant | Evidence | State |
+|-----------+----------+-------|
+| Sole storage owner | Cargo metadata resolves the implementation at =crates/agent-semantic-client-db/Cargo.toml= | complete |
+| No competing crate | Cargo metadata contains no =agent-semantic-client-store= package | complete |
+| No Rust language-harness domain dependency | =languages/rust-lang-project-harness= metadata contains none of =agent-semantic-content-identity=, =agent-semantic-client-db=, or =agent-semantic-client-store= | complete |
+| Stable client DB schema | Both schema constants are exactly =1=; complete v1 is a no-op, incomplete v1 stabilizes transactionally, and future versions fail closed | complete |
+| Stable Turso line | direct dependency is =turso ^0.7.0=, lockfile resolves v0.7.0, default features are disabled, and only =fts= plus =sync= are enabled | complete |
+
+The dirty Rust language-harness submodule still has its own pre-existing test
+deletion and path-policy modification.  This storage change does not consume or
+rewrite those files.
+
+* Capability checklist
+
+| Capability | Fixed implementation/test evidence | Fixed benchmark/receipt | State |
+|------------+------------------------------------+-------------------------+-------|
+| backend-neutral =AgentStorage=, typed transaction mode, batch write receipt | storage-contract and typed storage unit scenarios | =10.21.01-storage-profile-benchmark-receipt.org= | complete |
+| immediate and MVCC profiles, long-lived lanes, batch writes, cached statements | engine/unit scenarios and concurrent-write cases | =turso_storage_profiles=, =turso_mvcc_concurrent_write= | complete |
+| typed bounded retry, jitter, conflict/latency receipt | typed MVCC scenarios | storage profile receipts | complete |
+| passive checkpoint, page/cache/growth/recovery maintenance | maintenance and reopen scenarios | =turso_storage_slo_matrix= | complete |
+| typed keyset cursor and =limit+1= | keyset unit scenarios | storage profile benchmark | complete |
+| production provider runtime call chain | provider-runtime storage scenarios | =provider_runtime_storage= | complete |
+| immutable artifact attempts and pointer CAS | durable/stale/reopen, domain isolation, 16-way CAS, failed-attempt retention, process-abort recovery | =artifact_pointer_cas= and =10.21.02-artifact-pointer-cas-receipt.org= | complete |
+| sync configuration, local durability, checkpoint, stats, typed failure | sync unit scenarios | =turso_sync_local= and =10.21.03-turso-sync-profile-receipt.org= | complete |
+| real sync push/pull success | pinned v0.7.0 local server, two clients, exact row recovery, checkpoint and stats | =turso_sync_server_e2e= and =10.21.08-turso-sync-server-e2e-receipt.org= | complete |
+| schema v1 new/incomplete/current/future lifecycle | four private lifecycle scenarios, including rollback injection | =schema_v1_lifecycle= and =10.21.04-schema-v1-stabilization-receipt.org= | complete |
+| CDC in separate non-MVCC authority | committed insert/update/delete, rollback omission, keyset =limit+1= | =turso_cdc_profile= and =10.21.05-cdc-non-mvcc-profile-receipt.org= | complete |
+| explicit opt-in encryption | key validation/redaction, disk plaintext absence, correct/wrong-key reopen | =turso_encryption_profile= and =10.21.06-encryption-profile-receipt.org= | complete |
+| long ingestion, crash/reopen, mixed pressure, p50/p95/p99, RSS, DB/WAL bytes | 65,536-row reopen recovery plus 200 mixed iterations | =turso_storage_slo_matrix= and =10.21.07-storage-slo-matrix-receipt.org= | complete |
+
+* Final local gates
+
+#+begin_example
+cargo fmt --all -- --check                         exit 0
+cargo test -p agent-semantic-client-db             117 passed, 0 failed, 3 ignored
+cargo check -p agent-semantic-client-db --all-targets
+                                                     exit 0
+scripts/test-turso-sync-server-v0.7.sh              exit 0
+#+end_example
+
+The three default-suite ignored tests are the explicit pinned sync-server
+fixture, its artifact-pointer process-abort child entry point, and a pre-existing
+source-index performance case.  The first two are invoked through their parent
+or explicit fixture command and have passing receipts; they are not silently
+omitted scenarios.
+
+All Turso completion receipt schemas, including the sync-server benchmark
+schema, parse successfully as JSON.  Every registered =agent-semantic-client-db=
+benchmark target compiles through =--all-targets=, and each new performance
+scenario has an executed receipt in this RFC directory.
+
+* Repository-wide documentation gate
+
+=just check-rfc-docs= currently fails six assertions owned by
+=tests/unit/test_cli_first_harness_ux_rfc.py= for the separate 10.05 CLI-first
+RFC language.  Those failures are outside the Turso 10.21 owner and were not
+rewritten here.
+
+The installed Org provider also cannot currently spawn
+=/Users/guangtao/.local/bin/orgize= (=Not a directory=).  Therefore this audit
+records the completed checklist without blindly editing bodies that the
+required parser-owned route could not expose.  Repairing that installed
+provider and mirroring these states into any older checklist prose remains a
+tooling/document-projection task, not a storage implementation gap.

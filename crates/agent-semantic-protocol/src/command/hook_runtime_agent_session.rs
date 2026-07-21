@@ -51,8 +51,7 @@ use hook_runtime_agent_session_command::{
 use hook_runtime_agent_session_execution_lane::ResidentExecutionLane;
 use hook_runtime_agent_session_inline_fallback::missing_resident_decision;
 use hook_runtime_agent_session_pane::{
-    agent_session_allow_decision, agent_session_route_fields,
-    append_agent_session_recovery_action_fields, render_agent_session_template,
+    agent_session_allow_decision, agent_session_route_fields, render_agent_session_template,
 };
 use hook_runtime_agent_session_payload::{
     payload_command_strings, payload_evidence_ref, string_field,

@@ -318,6 +318,35 @@ impl WorkspaceSnapshot {
             dirty_paths_digest: Some(dirty_paths_digest),
         }
     }
+
+    /// Reconcile a complete live path/digest view against this Merkle snapshot.
+    ///
+    /// Callers with a trusted dirty-path set should prefer `with_overlay_delta`.
+    /// This adapter exists for filesystem discovery paths that must derive the
+    /// delta before provider or language candidate selection.
+    pub fn reconcile<I, P, H>(&self, file_hashes: I) -> Self
+    where
+        I: IntoIterator<Item = (P, H)>,
+        P: Into<String>,
+        H: Into<String>,
+    {
+        let current_leaves = file_hashes
+            .into_iter()
+            .map(|(path, hash)| (normalize_snapshot_path(&path.into()), hash.into()))
+            .collect::<BTreeMap<_, _>>();
+        let changed_leaves = current_leaves
+            .iter()
+            .filter(|(path, hash)| self.leaves.get(*path) != Some(*hash))
+            .map(|(path, hash)| (path.clone(), hash.clone()))
+            .collect::<Vec<_>>();
+        let deleted_paths = self
+            .leaves
+            .keys()
+            .filter(|path| !current_leaves.contains_key(*path))
+            .cloned()
+            .collect::<Vec<_>>();
+        self.with_overlay_delta(changed_leaves, deleted_paths)
+    }
 }
 
 fn normalize_snapshot_path(path: &str) -> String {

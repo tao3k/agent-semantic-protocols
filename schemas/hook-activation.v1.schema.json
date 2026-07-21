@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/hook-activation.v1.schema.json",
-  "title": "ASP Hook Activation v3",
+  "title": "ASP Hook Activation v1",
   "type": "object",
   "additionalProperties": false,
   "required": [

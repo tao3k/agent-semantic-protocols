@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/derived-source-artifact-evidence.v1.schema.json",
-  "title": "ASP derived source artifact evidence v2",
+  "title": "ASP derived source artifact evidence v1",
   "type": "object",
   "additionalProperties": false,
   "required": [

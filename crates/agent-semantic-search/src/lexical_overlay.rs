@@ -11,8 +11,7 @@ pub struct LexicalOverlaySearchRequest {
     query: String,
     limit: usize,
     documents: Vec<LexicalOverlayDocument>,
-    base_snapshot: agent_semantic_artifacts::WorkspaceSnapshot,
-    provider_digest: String,
+    source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
 }
 
 /// Lexical overlay hits bound to the Merkle snapshot that was searched.
@@ -38,15 +37,13 @@ impl LexicalOverlaySearchRequest {
     #[must_use]
     pub fn new(
         query: impl Into<String>,
-        base_snapshot: agent_semantic_artifacts::WorkspaceSnapshot,
-        provider_digest: impl Into<String>,
+        source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
     ) -> Self {
         Self {
             query: query.into(),
             limit: 64,
             documents: Vec::new(),
-            base_snapshot,
-            provider_digest: provider_digest.into(),
+            source_snapshot,
         }
     }
 
@@ -204,16 +201,7 @@ impl LexicalOverlayCandidateHit {
 /// Run lexical overlay search without writing dirty evidence to durable DB.
 #[must_use]
 pub fn search_lexical_overlay(request: LexicalOverlaySearchRequest) -> LexicalOverlaySearchResult {
-    let overlay_snapshot = request.base_snapshot.with_overlay(
-        request
-            .documents
-            .iter()
-            .map(|document| (document.owner_path.as_str(), document.source_hash.as_str())),
-    );
-    let source_snapshot = overlay_snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer,
-        request.provider_digest,
-    );
+    let source_snapshot = request.source_snapshot;
     let namespace = DynamicOverlayNamespace::new(
         "lexical-overlay",
         "workspace",
@@ -265,37 +253,20 @@ pub fn search_lexical_overlay(request: LexicalOverlaySearchRequest) -> LexicalOv
 pub fn search_lexical_overlay_candidates(
     terms: &[String],
     documents: &[LexicalOverlayDocument],
-    base_snapshot: &agent_semantic_artifacts::WorkspaceSnapshot,
-    provider_digest: &str,
+    source_snapshot: &agent_semantic_artifacts::SourceSnapshotEvidence,
     per_term_limit: usize,
     total_limit: usize,
 ) -> LexicalOverlayCandidateSearchResult {
-    let overlay_snapshot = base_snapshot.with_overlay(
-        documents
-            .iter()
-            .map(|document| (document.owner_path.as_str(), document.source_hash.as_str())),
-    );
-    let source_snapshot = overlay_snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer,
-        provider_digest,
-    );
     let mut remaining = total_limit;
     let mut candidates = Vec::new();
     for term in terms {
         if remaining == 0 {
             break;
         }
-        let result = search_lexical_overlay(
-            documents.iter().cloned().fold(
-                LexicalOverlaySearchRequest::new(
-                    term,
-                    base_snapshot.clone(),
-                    provider_digest.to_owned(),
-                )
-                .limit(per_term_limit),
-                LexicalOverlaySearchRequest::document,
-            ),
-        );
+        let result = search_lexical_overlay(documents.iter().cloned().fold(
+            LexicalOverlaySearchRequest::new(term, source_snapshot.clone()).limit(per_term_limit),
+            LexicalOverlaySearchRequest::document,
+        ));
         for hit in result.hits {
             if remaining == 0 {
                 break;
@@ -309,7 +280,7 @@ pub fn search_lexical_overlay_candidates(
         }
     }
     LexicalOverlayCandidateSearchResult {
-        source_snapshot,
+        source_snapshot: source_snapshot.clone(),
         candidates,
     }
 }

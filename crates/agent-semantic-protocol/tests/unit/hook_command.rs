@@ -107,11 +107,18 @@ fn top_level_install_help_is_non_mutating_unified_surface() {
         "stdout: {stdout}"
     );
     assert!(
-        stdout.contains("language provider releases are pinned by asp"),
+        stdout.contains("release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)"),
         "stdout: {stdout}"
     );
     assert!(
-        !stdout.contains("--rev") && !stdout.contains("--archive") && !stdout.contains("--repo"),
+        stdout.contains("develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--rev")
+            && !stdout.contains("--archive")
+            && !stdout.contains("--repo")
+            && !stdout.contains("--from-workspace"),
         "stdout: {stdout}\nstderr: {stderr}"
     );
     assert!(!root.join(".codex/config.toml").exists());

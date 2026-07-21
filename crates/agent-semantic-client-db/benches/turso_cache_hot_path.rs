@@ -14,7 +14,7 @@ fn turso_cache_hot_path(c: &mut Criterion) {
                     .as_nanos()
             ));
             let report = ClientDbEngine::inspect_client_dir(&client_dir);
-            assert_eq!(report.db_path, client_dir.join("client.turso"));
+            assert_eq!(report.db_path, client_dir.join("facts.turso"));
             let _ = std::fs::remove_dir_all(client_dir);
         });
     });

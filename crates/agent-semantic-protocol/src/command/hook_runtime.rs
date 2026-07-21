@@ -55,7 +55,6 @@ pub(super) use hook_runtime_install::run_codex_plugin_install_args;
 use hook_runtime_install::run_install;
 use hook_runtime_source_access_materialize::materialize_source_access_deny_message;
 use hook_runtime_stdin::read_hook_stdin_bounded;
-use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -956,4 +955,3 @@ fn positionals(args: &[String]) -> Vec<&str> {
     }
     values
 }
-use agent_semantic_hook::render_platform_response;

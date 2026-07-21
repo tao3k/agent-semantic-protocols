@@ -293,6 +293,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         "algorithm": "typed-ppr-diverse",
         "surfaces": surfaces,
         "source": source,
+        "sourceSnapshot": source_snapshot,
         "candidateSources": candidate_sources,
         "sourceTrace": graph_turbo_source_trace(source_trace),
         "seedIds": seed_ids,

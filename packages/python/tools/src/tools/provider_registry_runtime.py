@@ -71,6 +71,9 @@ def provider_registry_with_env(
 
     if not isinstance(registry, dict):
         return RegistryResult(error=f"{provider}: registry JSON must be an object")
+    nested_registry = registry.get("registry")
+    if isinstance(nested_registry, dict):
+        registry = nested_registry
     return RegistryResult(registry=registry)
 
 

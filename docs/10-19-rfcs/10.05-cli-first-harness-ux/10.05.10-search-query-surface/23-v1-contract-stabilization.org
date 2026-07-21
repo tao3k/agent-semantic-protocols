@@ -24,9 +24,12 @@ then consume only =v1=.
 - hook activation
 - provider manifest and route bindings
 - provider query-pack descriptor
+- semantic document query packet
 - semantic language registry and provider registry payload
 - semantic provider doctor packet
 - derived source artifact evidence
+- semantic owner-item evidence
+- global state layout identifier
 - language-provider copies and generated or embedded schema references
 
 The Rust parse artifact remains =asp.rust.parse-artifact.v1=. Its fields may be
@@ -44,6 +47,7 @@ disposable and are keyed by their source snapshot and producer identity.
 - No owned =v2=, =v3=, or =v4= schema or registry file remains.
 - No generator emits schema, registry, or descriptor version =2=, =3=, or =4=.
 - No provider or client contains a compatibility reader for those drafts.
-- Rust, TypeScript, Python, and Julia emit and validate the same =v1= shapes.
+- Rust, TypeScript, Python, Julia, Gerbil, Org, and Markdown emit and validate
+  the same =v1= shapes.
 - Installed provider artifacts and the installed =asp= binary pass doctor,
   search, exact-selector, and schema validation against only =v1= resources.

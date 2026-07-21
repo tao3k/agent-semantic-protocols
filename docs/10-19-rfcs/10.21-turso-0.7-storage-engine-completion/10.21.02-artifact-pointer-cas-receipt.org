@@ -1,0 +1,69 @@
+#+title: Turso 0.7 Artifact Pointer CAS Receipt
+#+date: 2026-07-20
+
+* Scope
+
+This receipt fixes immutable artifact pointer compare-and-set behavior inside the
+existing =agent-semantic-client-db= owner.  It does not introduce a parallel
+storage crate or place domain dependencies below =languages/=.
+
+* Fixed scenario tests
+
+Command:
+
+#+begin_src sh
+direnv exec . cargo test -p agent-semantic-client-db artifact_pointer -- --nocapture
+#+end_src
+
+Result: =4 passed; 0 failed=.
+
+The checked-in scenarios are:
+
+- initial revision-zero apply, revision-one advance, stale conflict, and a
+  successful advance after closing and reopening the database;
+- sixteen independent Turso handles racing from revision zero, with exactly one
+  =Applied= receipt and fifteen typed =Conflict= receipts;
+- append-only failed-artifact evidence, duplicate attempt rejection, and proof
+  that preserving a failed candidate does not advance the successful pointer.
+- memory, topology, and coordination root authorities sharing the same pointer
+  name remain isolated by their typed domain key and advance revisions
+  independently.
+
+The scenario owner is
+=crates/agent-semantic-client-db/tests/unit/db/engine/artifact_pointer.rs=.
+
+* Fixed benchmark
+
+Smoke command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench artifact_pointer_cas -- --test
+#+end_src
+
+Result: both registered scenarios succeeded.
+
+Measurement command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench artifact_pointer_cas
+#+end_src
+
+Result on the local 2026-07-20 checkout:
+
+| Scenario | Criterion interval | Throughput interval | Outliers |
+|----------+--------------------+---------------------+----------|
+| durable successful CAS | 113.54--147.71 us | 6.7701--8.8074 Kelem/s | 2/20 high |
+| sixteen-way revision-zero storm | 1.3618--1.7944 ms | 8.9167--11.750 Kelem/s | 1/20 high mild |
+
+The benchmark asserts semantic correctness during measurement: every sequential
+CAS must be =Applied=, and every sixteen-way storm must produce exactly one
+winner and fifteen conflicts.  Its checked-in owner is
+=crates/agent-semantic-client-db/benches/artifact_pointer_cas.rs= and the Cargo
+target is explicitly registered with =harness = false=.
+
+* Conservative verdict
+
+The artifact pointer CAS scenarios are now repeatable and regression-gated.
+These numbers are not a claim that all database workloads have closed their
+p95/p99, RSS, long-ingestion, mixed-pressure, or crash-interruption evidence.
+Those remain separate completion gates.

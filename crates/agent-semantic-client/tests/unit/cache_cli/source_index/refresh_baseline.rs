@@ -22,8 +22,11 @@ fn cache_source_index_refresh_builds_db_engine_rows() {
         "(def (poo-read input)\n  ;; gerbil-poo://usage\n  input)\n",
     )
     .expect("write gerbil source");
-    let activation_path =
-        write_gerbil_activation_with_command_prefix(&root, vec!["true".to_string()], &["src"]);
+    let activation_path = write_gerbil_activation_with_command_prefix(
+        &root,
+        super::fixtures::noop_provider_command_prefix(),
+        &["src"],
+    );
     let _activation_env = EnvVarGuard::set(
         ASP_PROVIDER_ACTIVATION_PATH_ENV,
         activation_path.as_os_str(),
@@ -139,7 +142,7 @@ fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
     .expect("write gerbil source");
     let activation_path = write_gerbil_activation_with_command_prefix(
         &root,
-        vec!["true".to_string()],
+        super::fixtures::noop_provider_command_prefix(),
         &["src", "extra"],
     );
     let _activation_env = EnvVarGuard::set(

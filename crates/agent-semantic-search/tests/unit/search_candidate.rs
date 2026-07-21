@@ -35,13 +35,15 @@ fn source_index_candidate_projects_to_shared_search_candidate_contract() {
 #[test]
 fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
-    let result = search_lexical_overlay(
-        LexicalOverlaySearchRequest::new(
-            "overlay fixture",
-            fixture.workspace.clone(),
+    let source_snapshot = fixture
+        .workspace
+        .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
+        .evidence(
+            agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer,
             fixture.provider_digest.clone(),
-        )
-        .document(
+        );
+    let result = search_lexical_overlay(
+        LexicalOverlaySearchRequest::new("overlay fixture", source_snapshot).document(
             LexicalOverlayDocument::new(
                 "src/lib.rs",
                 "rust://src/lib.rs#item/function/overlay_fixture",
@@ -100,6 +102,7 @@ fn structural_index_hit_projects_selector_generation_and_stable_route() {
     let hit = TursoStructuralIndexSearchHit {
         document_id: "structural-index:generation-1:symbol:rust://src/lib.rs#item/fn/parse_config"
             .to_string(),
+        generation: "generation-1".to_string(),
         selector: Some("rust://src/lib.rs#item/fn/parse_config".to_string()),
         document: "symbol parse_config rust rs-harness serde_json::from_str".to_string(),
     };
@@ -140,6 +143,13 @@ fn shared_search_candidate_detects_executable_line_identity() {
 #[test]
 fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let source_snapshot = fixture
+        .workspace
+        .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
+        .evidence(
+            agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer,
+            fixture.provider_digest.clone(),
+        );
     let terms = source_index_lookup_terms("overlay fixture");
     let source_index_candidate = source_index_candidate_to_search_candidate(
         SourceIndexRankCandidate {
@@ -154,18 +164,14 @@ fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index
             document_id:
                 "structural-index:generation-1:symbol:rust://src/lib.rs#item/fn/overlay_fixture"
                     .to_string(),
+            generation: "generation-1".to_string(),
             selector: Some("rust://src/lib.rs#item/fn/overlay_fixture".to_string()),
             document: "symbol overlay_fixture stable structural document".to_string(),
         },
         &terms,
     );
     let overlay_result = search_lexical_overlay(
-        LexicalOverlaySearchRequest::new(
-            "overlay fixture",
-            fixture.workspace.clone(),
-            fixture.provider_digest.clone(),
-        )
-        .document(
+        LexicalOverlaySearchRequest::new("overlay fixture", source_snapshot).document(
             LexicalOverlayDocument::new(
                 "src/lib.rs",
                 "rust://src/lib.rs#item/function/overlay_fixture",
@@ -203,6 +209,13 @@ fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index
 #[test]
 fn merge_search_candidates_prefers_overlay_selector_then_stable_source_index() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let source_snapshot = fixture
+        .workspace
+        .with_overlay([("src/lib.rs", fixture.evidence.root_digest.as_str())])
+        .evidence(
+            agent_semantic_artifacts::SourceSnapshotKind::EditorBuffer,
+            fixture.provider_digest.clone(),
+        );
     let terms = source_index_lookup_terms("overlay fixture");
     let source_index_candidate = source_index_candidate_to_search_candidate(
         SourceIndexRankCandidate {
@@ -213,12 +226,7 @@ fn merge_search_candidates_prefers_overlay_selector_then_stable_source_index() {
         &terms,
     );
     let overlay_result = search_lexical_overlay(
-        LexicalOverlaySearchRequest::new(
-            "overlay fixture",
-            fixture.workspace.clone(),
-            fixture.provider_digest.clone(),
-        )
-        .document(
+        LexicalOverlaySearchRequest::new("overlay fixture", source_snapshot).document(
             LexicalOverlayDocument::new(
                 "src/lib.rs",
                 "rust://src/lib.rs#item/function/overlay_fixture",

@@ -1,27 +1,20 @@
 use super::membership::{
-    retire_turso_source_index_precanonical_tables, stage_turso_source_index_import_membership,
-    turso_source_index_import_membership, turso_source_index_membership_changes,
+    stage_turso_source_index_import_membership, turso_source_index_import_membership,
+    turso_source_index_membership_changes,
 };
 use super::projection::{
     refresh_turso_source_index_posting_projection, write_turso_source_index_owner_rows,
 };
 use super::readiness::{
-    turso_source_index_precanonical_storage_exists, turso_source_index_projection_ready,
-    validate_turso_source_index_selector_payload_proofs,
+    turso_source_index_projection_ready, validate_turso_source_index_selector_payload_proofs,
 };
 use super::trace::{
     source_index_db_trace, source_index_db_trace_membership_changes,
     source_index_db_trace_posting_projection, source_index_db_trace_row_counts,
 };
-use super::transaction::{
-    TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET, TursoSourceIndexWriteStats,
-    return_turso_source_index_write_failure, rollback_turso_source_index_transaction,
-};
+use super::transaction::{TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET, TursoSourceIndexWriteStats};
 use crate::ClientDbSourceIndexImport;
-use crate::engine::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-    run_turso_operation_with_lock_retry,
-};
+use crate::engine::turso_statement::execute_turso_operation;
 
 pub(super) async fn write_turso_source_index_rows(
     connection: &turso::Connection,
@@ -31,19 +24,16 @@ pub(super) async fn write_turso_source_index_rows(
     source_snapshot_json: &str,
 ) -> Result<TursoSourceIndexWriteStats, String> {
     let cold_write_started = std::time::Instant::now();
-    let transaction_started = std::sync::atomic::AtomicBool::new(false);
     validate_turso_source_index_selector_payload_proofs(import)?;
     let imported_membership = turso_source_index_import_membership(import)?;
-    let retire_precanonical_storage =
-        turso_source_index_precanonical_storage_exists(connection).await?;
+    let transaction = turso::transaction::Transaction::new_unchecked(
+        connection,
+        turso::transaction::TransactionBehavior::Immediate,
+    )
+    .await
+    .map_err(|error| format!("failed to begin Turso source-index transaction: {error}"))?;
     let write_result = tokio::time::timeout(TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET, async {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "BEGIN IMMEDIATE",
-            "failed to begin Turso source-index transaction",
-        )
-        .await?;
-        transaction_started.store(true, std::sync::atomic::Ordering::Release);
+        let connection = &*transaction;
 
         let projection_ready = turso_source_index_projection_ready(
             connection,
@@ -101,7 +91,7 @@ pub(super) async fn write_turso_source_index_rows(
             serde_json::to_string(&removed_owner_paths).map_err(|error| {
                 format!("failed to encode Turso source-index removed owners: {error}")
             })?;
-        execute_turso_operation_with_lock_retry(
+        execute_turso_operation(
             || async {
                 connection
                     .execute(
@@ -141,20 +131,6 @@ pub(super) async fn write_turso_source_index_rows(
         )
         .await?;
         source_index_db_trace_posting_projection(cold_write_started, posting_count);
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "DROP TABLE IF EXISTS asp_source_index_term_v1",
-            "failed to retire Turso source-index term projection",
-        )
-        .await?;
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "DROP TABLE IF EXISTS asp_source_index_token_v1",
-            "failed to retire Turso source-index JSON token dictionary",
-        )
-        .await?;
-        source_index_db_trace("legacy-term-projection-retired", cold_write_started);
-
         super::publish::publish_turso_source_index_scope(
             connection,
             project_root,
@@ -166,71 +142,43 @@ pub(super) async fn write_turso_source_index_rows(
             selector_fingerprint.as_str(),
         )
         .await?;
-        if retire_precanonical_storage {
-            retire_turso_source_index_precanonical_tables(connection).await?;
-        }
         source_index_db_trace("snapshot-scope-published", cold_write_started);
-        Ok(TursoSourceIndexWriteStats {
+        let stats = TursoSourceIndexWriteStats {
             physical_generation_id: physical_generation_id.to_string(),
             changed_owner_count: changed_owner_paths.len().min(u32::MAX as usize) as u32,
             removed_owner_count: removed_owner_paths.len().min(u32::MAX as usize) as u32,
             posting_write_count: posting_count.min(u32::MAX as usize) as u32,
-        })
+        };
+        Ok(stats)
     })
     .await;
 
     match write_result {
         Ok(Ok(stats)) => {
-            let commit_result = execute_turso_statement_with_lock_retry(
-                connection,
-                "COMMIT",
-                "failed to commit Turso source-index transaction",
-            )
-            .await;
-            if let Err(error) = commit_result {
-                return rollback_turso_source_index_transaction(connection, error).await;
-            }
+            transaction.commit().await.map_err(|error| {
+                format!("failed to commit Turso source-index transaction: {error}")
+            })?;
             source_index_db_trace("transaction-committed", cold_write_started);
-            let mut checkpoint_rows = run_turso_operation_with_lock_retry(
-                || async {
-                    connection
-                        .query("PRAGMA wal_checkpoint(TRUNCATE)", ())
-                        .await
-                        .map_err(|error| error.to_string())
-                },
-                "failed to checkpoint committed Turso source-index snapshot",
-            )
-            .await?;
-        while checkpoint_rows
-            .next()
-            .await
-            .map_err(|error| format!("failed to read Turso source-index checkpoint: {error}"))?
-            .is_some()
-        {}
-        source_index_db_trace("wal-checkpoint-completed", cold_write_started);
-        Ok(stats)
+            Ok(stats)
         }
-        Ok(Err(error)) => {
-            return_turso_source_index_write_failure(
-                connection,
-                transaction_started.load(std::sync::atomic::Ordering::Acquire),
-                error,
-            )
-            .await
-        }
+        Ok(Err(write_error)) => match transaction.rollback().await {
+            Ok(()) => Err(write_error),
+            Err(rollback_error) => Err(format!("{write_error}; rollbackError={rollback_error}")),
+        },
         Err(_) => {
-            return_turso_source_index_write_failure(
-                connection,
-                transaction_started.load(std::sync::atomic::Ordering::Acquire),
-                format!(
-                    "source-index cold-write budget exhausted: budgetMs={} elapsedMs={} owners={} selectors={}",
-                    TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET.as_millis(),
-                    cold_write_started.elapsed().as_millis(),
-                    import.owners.len(),
-                    import.selectors.len(),
-                ),
-            )
-            .await
+            let write_error = format!(
+                "source-index cold-write budget exhausted: budgetMs={} elapsedMs={} owners={} selectors={}",
+                TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET.as_millis(),
+                cold_write_started.elapsed().as_millis(),
+                import.owners.len(),
+                import.selectors.len(),
+            );
+            match transaction.rollback().await {
+                Ok(()) => Err(write_error),
+                Err(rollback_error) => {
+                    Err(format!("{write_error}; rollbackError={rollback_error}"))
+                }
+            }
         }
     }
 }

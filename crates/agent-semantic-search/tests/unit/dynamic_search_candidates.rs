@@ -32,8 +32,7 @@ fn lexical_overlay_candidates_project_path_and_content_hits_without_executable_r
         locator_root: &root,
         terms: &terms,
         search_roots: &search_roots,
-        base_snapshot: &fixture.workspace,
-        provider_digest: fixture.provider_digest.as_str(),
+        source_snapshot: &fixture.evidence,
         limit: 8,
     });
     let candidates = collection.candidates;

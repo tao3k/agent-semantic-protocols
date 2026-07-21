@@ -1,13 +1,12 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use agent_semantic_client_core::{ClientDbJournalMode, ClientDbStatus};
+use agent_semantic_client_core::ClientDbStatus;
 
-use crate::types::{ClientDbReport, ClientDbRuntimePragmas, ClientDbSyntaxQueryReplay};
+use crate::types::{ClientDbReport, ClientDbSyntaxQueryReplay};
 
 use super::facade::block_on_db_engine_async;
 use super::turso::connect_turso_client_db;
-use super::turso_lock_policy::TURSO_CLIENT_DB_BUSY_TIMEOUT_MS;
 
 pub(super) fn turso_client_db_report(db_path: &Path) -> ClientDbReport {
     let status = if db_path.exists() {
@@ -27,7 +26,6 @@ pub(super) fn turso_client_db_report(db_path: &Path) -> ClientDbReport {
     } else {
         TursoClientDbCounts::default()
     };
-    let runtime_pragmas_available = status == ClientDbStatus::Present;
     ClientDbReport {
         db_path: db_path.to_path_buf(),
         status,
@@ -40,12 +38,7 @@ pub(super) fn turso_client_db_report(db_path: &Path) -> ClientDbReport {
         source_index_selector_count: counts.source_index_selectors,
         artifact_event_count: counts.artifact_events,
         raw_source_stored: false,
-        runtime_pragmas: runtime_pragmas_available.then(|| ClientDbRuntimePragmas {
-            journal_mode: ClientDbJournalMode::from("wal"),
-            synchronous: 1,
-            busy_timeout_ms: TURSO_CLIENT_DB_BUSY_TIMEOUT_MS as i64,
-            foreign_keys: true,
-        }),
+        runtime_pragmas: None,
         reason,
     }
 }

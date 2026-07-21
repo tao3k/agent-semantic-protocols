@@ -9,9 +9,9 @@ Required breaking architecture for the typed search surface.
 
 The active contract epoch uses =https://tao3k.github.io/agent-semantic-protocols/schemas/= as its sole JSON Schema authority. Every schema =$id= and every inter-schema =$ref= published by this epoch MUST be an absolute URI rooted at that authority. Relative references, =agent-semantic-protocols.local=, =agent-semantic-protocols.dev=, URI aliases, dual IDs, and compatibility fallback are invalid.
 
-The epoch consists of =provider-query-pack-descriptor.v2=, =semantic-language-registry.v3=, =semantic-provider-doctor.v3=, =provider-manifest.v4=, and =hook-activation.v4=. New runtimes MUST publish, accept, and persist only those versions. Earlier schema documents remain immutable historical records, but the active runtime MUST NOT publish, accept, dual-read, or synthesize them.
+The epoch consists solely of =provider-query-pack-descriptor.v1=, =semantic-language-registry.v1=, =semantic-provider-doctor.v1=, =provider-manifest.v1=, =hook-activation.v1=, and =provider-workspace-install.v1=. Runtimes MUST publish, accept, and persist only these complete v1 contracts. Version numbers are not development counters: the active schema tree contains no v2, v3, or v4 aliases, compatibility documents, dual-read paths, or synthesized projections.
 
-The doctor-v3 envelope embeds a registry-v3 packet and records =sha256(JCS(registry))= outside the hashed member. Install and sync MUST independently validate the doctor, registry, query-pack descriptor, manifest, activation, canonical authority, provider identity, executable identity, and digest before route materialization. Any older version, non-canonical schema identity, relative reference, identity drift, or digest mismatch fails closed before activation.
+The doctor-v1 envelope embeds a registry-v1 packet and records =sha256(JCS(registry))= outside the hashed member. Install and sync MUST independently validate the doctor, registry, query-pack descriptor, manifest, activation, canonical authority, provider identity, executable identity, and digest before route materialization. Any non-v1 version, incomplete v1 shape, non-canonical schema identity, relative reference, identity drift, or digest mismatch fails closed before activation.
 
 The active provider semantic-language registry is the only authority for public
 search and query invocation arguments. A hook provider manifest MUST bind each
@@ -24,8 +24,8 @@ selected provider. The suffix is shared protocol grammar, not a semantic
 registry method descriptor, and implementations MUST NOT reconstruct it as a
 language-specific command such as =asp <language> agent doctor --json=.
 
-The doctor response MUST use the independent =semantic-provider-doctor.v2=
-envelope. Its =registry= member is a semantic language registry v2 packet and
+The doctor response MUST use the independent =semantic-provider-doctor.v1=
+envelope. Its =registry= member is a semantic language registry v1 packet and
 its =registryDigest= is =sha256(JCS(registry))= over only that member. Keeping
 the digest outside the hashed registry prevents circular self-hashing. After
 validation, the resulting materialized routes and verified registry digest are

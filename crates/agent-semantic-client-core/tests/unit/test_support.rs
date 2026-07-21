@@ -52,6 +52,7 @@ pub(super) fn resolved_provider() -> crate::ResolvedProvider {
         binary: manifest.binary,
         execution: manifest.execution,
         provider_command_prefix: vec!["rs-harness".to_string()],
+        execution_command_digest: "test-execution-command-digest".to_string(),
         namespace: manifest.namespace,
         package_roots: vec![".".to_string()],
         source_extensions: manifest.source.default_extensions,

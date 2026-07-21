@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.client-db.storage-slo-matrix-receipt.v1",
+  "title": "Storage SLO Matrix Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "longIngestionRows",
+    "longIngestionBatchRows",
+    "longIngestionLatencyMicros",
+    "recoveredRows",
+    "mixedPressureIterations",
+    "mixedPressureLatencyMicros",
+    "residentSetKib",
+    "databaseBytes",
+    "walBytes",
+    "shmBytes",
+    "passiveCheckpoint"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.client-db.storage-slo-matrix-receipt.v1"
+    },
+    "longIngestionRows": { "type": "integer", "minimum": 1 },
+    "longIngestionBatchRows": { "type": "integer", "minimum": 1 },
+    "longIngestionLatencyMicros": { "$ref": "#/$defs/latency" },
+    "recoveredRows": { "type": "integer", "minimum": 1 },
+    "mixedPressureIterations": { "type": "integer", "minimum": 1 },
+    "mixedPressureLatencyMicros": { "$ref": "#/$defs/latency" },
+    "residentSetKib": { "type": "integer", "minimum": 1 },
+    "databaseBytes": { "type": "integer", "minimum": 1 },
+    "walBytes": { "type": "integer", "minimum": 0 },
+    "shmBytes": { "type": "integer", "minimum": 0 },
+    "passiveCheckpoint": { "const": true }
+  },
+  "$defs": {
+    "latency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sampleCount", "p50", "p95", "p99", "max"],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "p50": { "type": "integer", "minimum": 0 },
+        "p95": { "type": "integer", "minimum": 0 },
+        "p99": { "type": "integer", "minimum": 0 },
+        "max": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

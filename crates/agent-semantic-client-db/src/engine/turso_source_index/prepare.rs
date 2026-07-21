@@ -1,6 +1,6 @@
 use super::canonical::turso_source_index_canonical_selectors_by_owner;
 use super::core::turso_source_index_selector_fingerprint;
-use crate::engine::turso_statement::run_turso_operation_with_lock_retry;
+use crate::engine::turso_statement::run_turso_operation;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct TursoSourceIndexOwnerRow {
@@ -22,7 +22,7 @@ async fn active_turso_source_index_generation(
     schema_id: &str,
     schema_version: &str,
 ) -> Result<Option<(String, String)>, String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -75,7 +75,7 @@ async fn active_turso_source_index_owner_rows(
     else {
         return Ok((String::new(), std::collections::HashMap::new()));
     };
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(

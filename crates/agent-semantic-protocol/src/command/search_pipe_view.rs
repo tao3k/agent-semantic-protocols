@@ -145,6 +145,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                     },
                 )?;
                 print_search_pipe_header(SearchPipeHeader {
+                    source_snapshot,
                     surface,
                     language_id,
                     project_root,
@@ -320,6 +321,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
             },
         );
         print_search_pipe_header(SearchPipeHeader {
+            source_snapshot,
             surface,
             language_id,
             project_root,
@@ -402,6 +404,7 @@ fn elapsed_millis(duration: Duration) -> u64 {
 }
 
 struct SearchPipeHeader<'a> {
+    source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     surface: &'a str,
     language_id: &'a str,
     project_root: &'a Path,
@@ -415,6 +418,7 @@ struct SearchPipeHeader<'a> {
 
 fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
     let SearchPipeHeader {
+        source_snapshot,
         surface,
         language_id,
         project_root,
@@ -427,6 +431,23 @@ fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
     } = header;
     println!(
         "[{surface}] lang={language_id} view={view} source={source} ranker=graph-turbo:owner-query"
+    );
+    let source_kind = match source_snapshot.source_kind {
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem => "filesystem",
+        agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer => "editor-buffer",
+        agent_semantic_content_identity::SourceSnapshotKind::GitTree => "git-tree",
+        agent_semantic_content_identity::SourceSnapshotKind::DerivedOverlay => "derived-overlay",
+    };
+    println!(
+        "sourceSnapshot=schemaId={} algorithm={} rootDigest={} sourceKind={} leafCount={} baseRootDigest={} providerDigest={} dirtyPathsDigest={}",
+        source_snapshot.schema_id,
+        source_snapshot.algorithm,
+        source_snapshot.root_digest,
+        source_kind,
+        source_snapshot.leaf_count,
+        source_snapshot.base_root_digest.as_deref().unwrap_or("-"),
+        source_snapshot.provider_digest,
+        source_snapshot.dirty_paths_digest.as_deref().unwrap_or("-"),
     );
     println!("query={query}");
     if let Some(workspace) = workspace_label(project_root, locator_root) {

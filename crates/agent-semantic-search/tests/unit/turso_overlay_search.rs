@@ -17,8 +17,8 @@ use agent_semantic_client_db::{
 use agent_semantic_search::{
     TursoOverlaySearchDocument, bootstrap_turso_overlay_search_store,
     collect_turso_structural_index_ranked_candidates_from_engine_async,
-    search_turso_overlay_documents, search_turso_structural_index_documents,
-    upsert_turso_overlay_search_document,
+    replace_turso_overlay_search_document_generation, search_turso_overlay_documents,
+    search_turso_structural_index_documents,
 };
 
 const TURSO_UNIFIED_SEARCH_SCENARIO_ID: &str = "turso-unified-search-interface-warm-path";
@@ -76,35 +76,48 @@ async fn turso_overlay_search_cold_functional_path_filters_to_overlay_hits() {
     bootstrap_turso_overlay_search_store(&engine)
         .await
         .expect("bootstrap turso search schema");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     engine
-        .upsert_search_document(&TursoClientDbSearchDocument {
-            namespace: "stable".to_string(),
-            document_id: "stable-owner".to_string(),
-            entity_id: "stable-owner".to_string(),
-            selector: Some("rust://src/lib.rs#item/function/stable_owner".to_string()),
-            document: "stable overlay_fixture_token".to_string(),
-        })
+        .replace_search_document_generation(
+            "stable",
+            &snapshot.evidence,
+            &[TursoClientDbSearchDocument {
+                document_id: "stable-owner".to_string(),
+                entity_id: "stable-owner".to_string(),
+                selector: Some("rust://src/lib.rs#item/function/stable_owner".to_string()),
+                document: "stable overlay_fixture_token".to_string(),
+            }],
+        )
         .await
-        .expect("upsert stable search document");
-    upsert_turso_overlay_search_document(
+        .expect("replace stable search generation");
+    let overlay_document = TursoOverlaySearchDocument::new(
+        "repo-1",
+        "workspace-1",
+        "session-1",
+        snapshot.evidence.root_digest.clone(),
+        "overlay-owner",
+        Some("rust://src/lib.rs#item/function/overlay_owner".to_string()),
+        "dynamic overlay_fixture_token owner",
+    );
+    let overlay_scope = overlay_document.scope().clone();
+    replace_turso_overlay_search_document_generation(
         &engine,
-        &TursoOverlaySearchDocument {
-            repo_id: "repo-1".to_string(),
-            workspace_id: "workspace-1".to_string(),
-            session_id: "session-1".to_string(),
-            base_generation: "dirty-1".to_string(),
-            document_id: "overlay-owner".to_string(),
-            selector: Some("rust://src/lib.rs#item/function/overlay_owner".to_string()),
-            document: "dynamic overlay_fixture_token owner".to_string(),
-        },
+        &snapshot.evidence,
+        &[overlay_document],
     )
     .await
-    .expect("upsert overlay search document");
+    .expect("replace overlay search generation");
 
     let started = Instant::now();
-    let hits = search_turso_overlay_documents(&engine, "overlay_fixture_token", 8)
-        .await
-        .expect("search turso overlay documents");
+    let hits = search_turso_overlay_documents(
+        &engine,
+        &overlay_scope,
+        &snapshot.evidence,
+        "overlay_fixture_token",
+        8,
+    )
+    .await
+    .expect("search turso overlay documents");
     let elapsed = started.elapsed();
 
     assert_eq!(hits.len(), 1, "{hits:#?}");
@@ -153,31 +166,47 @@ async fn turso_overlay_search_warm_latency_path_stays_inside_scenario_gate() {
     bootstrap_turso_overlay_search_store(&engine)
         .await
         .expect("bootstrap turso search schema");
-    upsert_turso_overlay_search_document(
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let overlay_document = TursoOverlaySearchDocument::new(
+        "repo-1",
+        "workspace-1",
+        "session-1",
+        snapshot.evidence.root_digest.clone(),
+        "overlay-warm-owner",
+        Some("rust://src/lib.rs#item/function/overlay_warm_owner".to_string()),
+        "dynamic overlay_warm_fixture_token owner",
+    );
+    let overlay_scope = overlay_document.scope().clone();
+    replace_turso_overlay_search_document_generation(
         &engine,
-        &TursoOverlaySearchDocument {
-            repo_id: "repo-1".to_string(),
-            workspace_id: "workspace-1".to_string(),
-            session_id: "session-1".to_string(),
-            base_generation: "dirty-1".to_string(),
-            document_id: "overlay-warm-owner".to_string(),
-            selector: Some("rust://src/lib.rs#item/function/overlay_warm_owner".to_string()),
-            document: "dynamic overlay_warm_fixture_token owner".to_string(),
-        },
+        &snapshot.evidence,
+        &[overlay_document],
     )
     .await
-    .expect("upsert warm overlay search document");
+    .expect("replace warm overlay search generation");
 
-    let warmup = search_turso_overlay_documents(&engine, "overlay_warm_fixture_token", 8)
-        .await
-        .expect("warm up turso overlay search");
+    let warmup = search_turso_overlay_documents(
+        &engine,
+        &overlay_scope,
+        &snapshot.evidence,
+        "overlay_warm_fixture_token",
+        8,
+    )
+    .await
+    .expect("warm up turso overlay search");
     assert_eq!(warmup.len(), 1, "{warmup:#?}");
 
     let started = Instant::now();
     for _ in 0..3 {
-        let hits = search_turso_overlay_documents(&engine, "overlay_warm_fixture_token", 8)
-            .await
-            .expect("search warmed turso overlay documents");
+        let hits = search_turso_overlay_documents(
+            &engine,
+            &overlay_scope,
+            &snapshot.evidence,
+            "overlay_warm_fixture_token",
+            8,
+        )
+        .await
+        .expect("search warmed turso overlay documents");
         assert_eq!(hits.len(), 1, "{hits:#?}");
         assert_eq!(hits[0].document_id, "overlay-warm-owner");
     }
@@ -241,30 +270,37 @@ async fn turso_unified_search_interface_warm_path_stays_inside_scenario_gate() {
     bootstrap_turso_overlay_search_store(&engine)
         .await
         .expect("bootstrap turso search schema");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     engine
-        .upsert_search_document(&TursoClientDbSearchDocument {
-            namespace: "stable".to_string(),
-            document_id: "stable-owner".to_string(),
-            entity_id: "stable-owner".to_string(),
-            selector: Some("rust://src/lib.rs#item/function/stable_owner".to_string()),
-            document: "stable unified_search_fixture_token".to_string(),
-        })
+        .replace_search_document_generation(
+            "stable",
+            &snapshot.evidence,
+            &[TursoClientDbSearchDocument {
+                document_id: "stable-owner".to_string(),
+                entity_id: "stable-owner".to_string(),
+                selector: Some("rust://src/lib.rs#item/function/stable_owner".to_string()),
+                document: "stable unified_search_fixture_token".to_string(),
+            }],
+        )
         .await
-        .expect("upsert stable search document");
-    upsert_turso_overlay_search_document(
+        .expect("replace stable search generation");
+    let overlay_document = TursoOverlaySearchDocument::new(
+        "repo-1",
+        "workspace-1",
+        "session-1",
+        snapshot.evidence.root_digest.clone(),
+        "overlay-owner",
+        Some("rust://src/lib.rs#item/function/overlay_owner".to_string()),
+        "dynamic unified_search_fixture_token owner",
+    );
+    let overlay_scope = overlay_document.scope().clone();
+    replace_turso_overlay_search_document_generation(
         &engine,
-        &TursoOverlaySearchDocument {
-            repo_id: "repo-1".to_string(),
-            workspace_id: "workspace-1".to_string(),
-            session_id: "session-1".to_string(),
-            base_generation: "dirty-1".to_string(),
-            document_id: "overlay-owner".to_string(),
-            selector: Some("rust://src/lib.rs#item/function/overlay_owner".to_string()),
-            document: "dynamic unified_search_fixture_token owner".to_string(),
-        },
+        &snapshot.evidence,
+        &[overlay_document],
     )
     .await
-    .expect("upsert overlay search document");
+    .expect("replace overlay search generation");
     let structural_index_import = ClientDbStructuralIndexImport {
         generation_id: CacheGenerationId::from("unified-search-fixture"),
         language_id: LanguageId::from("rust"),
@@ -302,20 +338,31 @@ async fn turso_unified_search_interface_warm_path_stays_inside_scenario_gate() {
         dependency_usages: Vec::new(),
     };
     engine
-        .persist_structural_index_read_model(&structural_index_import)
+        .persist_structural_index_read_model(&structural_index_import, &snapshot.evidence)
         .await
         .expect("persist structural-index Turso read model");
 
     let started = Instant::now();
-    let overlay_hits = search_turso_overlay_documents(&engine, "unified_search_fixture_token", 8)
-        .await
-        .expect("search turso overlay documents");
-    let structural_hits =
-        search_turso_structural_index_documents(&engine, "unified_search_fixture_token", 8)
-            .await
-            .expect("search turso structural-index documents");
+    let overlay_hits = search_turso_overlay_documents(
+        &engine,
+        &overlay_scope,
+        &snapshot.evidence,
+        "unified_search_fixture_token",
+        8,
+    )
+    .await
+    .expect("search turso overlay documents");
+    let structural_hits = search_turso_structural_index_documents(
+        &engine,
+        &snapshot.evidence,
+        "unified_search_fixture_token",
+        8,
+    )
+    .await
+    .expect("search turso structural-index documents");
     let ranked = collect_turso_structural_index_ranked_candidates_from_engine_async(
         &engine,
+        &snapshot.evidence,
         "unified_search_fixture_token",
         8,
     )
@@ -374,16 +421,20 @@ async fn turso_structural_index_search_cold_functional_path_filters_to_structura
     bootstrap_turso_overlay_search_store(&engine)
         .await
         .expect("bootstrap turso search schema");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     engine
-        .upsert_search_document(&TursoClientDbSearchDocument {
-            namespace: "source-index".to_string(),
-            document_id: "source-index:noise:src/lib.rs".to_string(),
-            entity_id: "source-owner:noise:src/lib.rs".to_string(),
-            selector: Some("rust://src/lib.rs#file".to_string()),
-            document: "parse_config non structural source-index noise".to_string(),
-        })
+        .replace_search_document_generation(
+            "source-index",
+            &snapshot.evidence,
+            &[TursoClientDbSearchDocument {
+                document_id: "source-index:noise:src/lib.rs".to_string(),
+                entity_id: "source-owner:noise:src/lib.rs".to_string(),
+                selector: Some("rust://src/lib.rs#file".to_string()),
+                document: "parse_config non structural source-index noise".to_string(),
+            }],
+        )
         .await
-        .expect("upsert non-structural stable search document");
+        .expect("replace non-structural search generation");
     let structural_index_import = ClientDbStructuralIndexImport {
         generation_id: CacheGenerationId::from("structural-search-fixture"),
         language_id: LanguageId::from("rust"),
@@ -430,20 +481,27 @@ async fn turso_structural_index_search_cold_functional_path_filters_to_structura
         }],
     };
     let report = engine
-        .persist_structural_index_read_model(&structural_index_import)
+        .persist_structural_index_read_model(&structural_index_import, &snapshot.evidence)
         .await
         .expect("persist structural-index Turso read model");
     assert_eq!(report.search_document_count, 2);
 
     let started = Instant::now();
-    let hits = search_turso_structural_index_documents(&engine, "parse_config", 8)
-        .await
-        .expect("search Turso structural-index documents");
+    let hits =
+        search_turso_structural_index_documents(&engine, &snapshot.evidence, "parse_config", 8)
+            .await
+            .expect("search Turso structural-index documents");
     let elapsed = started.elapsed();
 
     assert_eq!(hits.len(), 1, "{hits:#?}");
     assert!(
-        hits[0].document_id.contains("structural-search-fixture"),
+        hits[0].document_id.starts_with("structural-index:symbol:"),
+        "{hits:#?}"
+    );
+    assert!(
+        hits[0]
+            .document_id
+            .contains(snapshot.evidence.root_digest.as_str()),
         "{hits:#?}"
     );
     assert_eq!(
@@ -457,6 +515,7 @@ async fn turso_structural_index_search_cold_functional_path_filters_to_structura
     );
     let ranked = collect_turso_structural_index_ranked_candidates_from_engine_async(
         &engine,
+        &snapshot.evidence,
         "parse_config",
         8,
     )
@@ -470,7 +529,7 @@ async fn turso_structural_index_search_cold_functional_path_filters_to_structura
     );
     assert_eq!(
         ranked[0].candidate.generation.as_deref(),
-        Some("structural-search-fixture")
+        Some(snapshot.evidence.root_digest.as_str())
     );
     assert_eq!(ranked[0].candidate.identity_kind, "selector");
 }

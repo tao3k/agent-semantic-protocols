@@ -2,7 +2,6 @@ use agent_semantic_hook::{
     HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, builtin_provider_manifests, provider_manifest_digest,
 };
-use serde_json::json;
 use std::{
     ffi::{OsStr, OsString},
     path::Path,
@@ -14,12 +13,16 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
     root: &Path,
     ignored: &[&str],
 ) -> std::path::PathBuf {
+    let provider_command_prefix = noop_provider_command_prefix();
     let manifest = builtin_provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
+    let execution_command_digest =
+        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
+            .expect("provider execution command digest");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     let activation_project_root =
@@ -27,40 +30,46 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
     let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
     std::fs::create_dir_all(activation_path.parent().expect("activation parent"))
         .expect("create activation parent");
-    let activation = json!({
-        "schemaId": HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": HOOK_ACTIVATION_SCHEMA_VERSION,
-        "protocolId": HOOK_PROTOCOL_ID,
-        "protocolVersion": HOOK_PROTOCOL_VERSION,
-        "projectRoot": activation_project_root.display().to_string(),
-        "generatedBy": { "runtime": "asp", "version": "test" },
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
-            "providerCommandPrefix": ["true"],
-            "searchCapabilities": manifest.search_capabilities,
-            "queryPackDescriptor": manifest.query_pack_descriptor,
-            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-            "semanticRegistryDigest": semantic_registry_digest,
-            "routes": routes,
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": ["crates/app/src", "vendor/tool/src"],
-                "configFiles": ["Cargo.toml", "crates/app/Cargo.toml", "vendor/tool/Cargo.toml"],
-                "sourceExtensions": ["rs"],
-                "ignoredPathPrefixes": ignored
-            }
-        }]
-    });
-    std::fs::write(
-        &activation_path,
-        serde_json::to_string_pretty(&activation).expect("activation json"),
-    )
-    .expect("write activation");
+    let activation = agent_semantic_hook::HookActivation {
+        schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
+        schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
+        protocol_id: HOOK_PROTOCOL_ID.to_string(),
+        protocol_version: HOOK_PROTOCOL_VERSION.to_string(),
+        project_root: activation_project_root.display().to_string(),
+        generated_by: agent_semantic_hook::ActivationGeneratedBy {
+            runtime: "asp".to_string(),
+            version: "test".to_string(),
+        },
+        generated_at: None,
+        providers: vec![agent_semantic_hook::ActivatedProviderConfig {
+            manifest_id: manifest.manifest_id,
+            manifest_digest,
+            language_id: manifest.language_id,
+            provider_id: manifest.provider_id,
+            binary: manifest.binary,
+            execution: manifest.execution,
+            provider_command_prefix,
+            execution_command_digest,
+            search_capabilities: manifest.search_capabilities,
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+            query_pack_descriptor: manifest.query_pack_descriptor,
+            semantic_registry_digest,
+            routes,
+            coverage: agent_semantic_hook::ActivationCoverage {
+                package_roots: vec![".".to_string()],
+                source_roots: vec!["crates/app/src".to_string(), "vendor/tool/src".to_string()],
+                config_files: vec![
+                    "Cargo.toml".to_string(),
+                    "crates/app/Cargo.toml".to_string(),
+                    "vendor/tool/Cargo.toml".to_string(),
+                ],
+                source_extensions: vec!["rs".to_string()],
+                ignored_path_prefixes: ignored.iter().map(|prefix| (*prefix).to_string()).collect(),
+            },
+        }],
+    };
+    agent_semantic_hook::write_activation(&activation_path, &activation).expect("write activation");
     activation_path
 }
 
@@ -87,6 +96,9 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
         .expect("gerbil manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
+    let execution_command_digest =
+        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
+            .expect("provider execution command digest");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     let activation_project_root =
@@ -94,40 +106,45 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
     let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
     std::fs::create_dir_all(activation_path.parent().expect("activation parent"))
         .expect("create activation parent");
-    let activation = json!({
-        "schemaId": HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": HOOK_ACTIVATION_SCHEMA_VERSION,
-        "protocolId": HOOK_PROTOCOL_ID,
-        "protocolVersion": HOOK_PROTOCOL_VERSION,
-        "projectRoot": activation_project_root.display().to_string(),
-        "generatedBy": { "runtime": "asp", "version": "test" },
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
-            "providerCommandPrefix": provider_command_prefix,
-            "searchCapabilities": manifest.search_capabilities,
-            "queryPackDescriptor": manifest.query_pack_descriptor,
-            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-            "semanticRegistryDigest": semantic_registry_digest,
-            "routes": routes,
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": source_roots,
-                "configFiles": ["gerbil.pkg"],
-                "sourceExtensions": ["ss"],
-                "ignoredPathPrefixes": []
-            }
-        }]
-    });
-    std::fs::write(
-        &activation_path,
-        serde_json::to_string_pretty(&activation).expect("activation json"),
-    )
-    .expect("write activation");
+    let activation = agent_semantic_hook::HookActivation {
+        schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
+        schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
+        protocol_id: HOOK_PROTOCOL_ID.to_string(),
+        protocol_version: HOOK_PROTOCOL_VERSION.to_string(),
+        project_root: activation_project_root.display().to_string(),
+        generated_by: agent_semantic_hook::ActivationGeneratedBy {
+            runtime: "asp".to_string(),
+            version: "test".to_string(),
+        },
+        generated_at: None,
+        providers: vec![agent_semantic_hook::ActivatedProviderConfig {
+            manifest_id: manifest.manifest_id,
+            manifest_digest,
+            language_id: manifest.language_id,
+            provider_id: manifest.provider_id,
+            binary: manifest.binary,
+            execution: manifest.execution,
+            provider_command_prefix,
+            execution_command_digest,
+            search_capabilities: manifest.search_capabilities,
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+            query_pack_descriptor: manifest.query_pack_descriptor,
+            semantic_registry_digest,
+            routes,
+            coverage: agent_semantic_hook::ActivationCoverage {
+                package_roots: vec![".".to_string()],
+                source_roots: source_roots
+                    .iter()
+                    .map(|source_root| (*source_root).to_string())
+                    .collect(),
+                config_files: vec!["gerbil.pkg".to_string()],
+                source_extensions: vec!["ss".to_string()],
+                ignored_path_prefixes: Vec::new(),
+            },
+        }],
+    };
+    agent_semantic_hook::write_activation(&activation_path, &activation).expect("write activation");
     activation_path
 }
 
@@ -141,6 +158,15 @@ pub(super) fn make_executable(path: &Path) {
         permissions.set_mode(0o755);
         std::fs::set_permissions(path, permissions).expect("set executable");
     }
+}
+
+pub(super) fn noop_provider_command_prefix() -> Vec<String> {
+    ["/usr/bin/true", "/bin/true"]
+        .into_iter()
+        .map(Path::new)
+        .find(|candidate| candidate.is_file())
+        .map(|candidate| vec![candidate.display().to_string()])
+        .expect("platform true executable")
 }
 
 pub(super) fn isolate_home(root: &Path) -> EnvVarGuard {

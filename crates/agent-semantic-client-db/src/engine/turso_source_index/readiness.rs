@@ -1,6 +1,6 @@
 use super::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
 use crate::ClientDbSourceIndexImport;
-use crate::engine::turso_statement::run_turso_operation_with_lock_retry;
+use crate::engine::turso_statement::run_turso_operation;
 
 pub(super) async fn turso_source_index_projection_ready(
     connection: &turso::Connection,
@@ -8,7 +8,7 @@ pub(super) async fn turso_source_index_projection_ready(
     schema_id: &str,
     schema_version: &str,
 ) -> Result<bool, String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -52,7 +52,7 @@ pub(super) async fn turso_source_index_projection_ready(
     {
         return Ok(false);
     }
-    let mut token_rows = run_turso_operation_with_lock_retry(
+    let mut token_rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -97,51 +97,4 @@ pub(super) fn validate_turso_source_index_selector_payload_proofs(
         }
     }
     Ok(())
-}
-
-pub(super) async fn turso_source_index_precanonical_storage_exists(
-    connection: &turso::Connection,
-) -> Result<bool, String> {
-    let mut rows = run_turso_operation_with_lock_retry(
-        || async {
-            connection
-                .query(
-                    "SELECT EXISTS (
-                        SELECT 1
-                        FROM sqlite_master
-                        WHERE type = 'table'
-                          AND name IN (
-                              'asp_source_index_generation',
-                              'asp_source_index_owner',
-                              'asp_source_index_selector',
-                              'asp_source_index_owner_file_fact',
-                              'asp_source_index_selector_file_fact',
-                              'asp_source_index_scoped_owner_file_fact',
-                              'asp_source_index_scoped_selector_file_fact',
-                              'asp_source_index_active_file_membership',
-                              'asp_source_index_active_generation',
-                              'asp_source_index_active_file_membership_v1',
-                              'asp_source_index_active_owner_file_fact_v1',
-                              'asp_source_index_active_selector_file_fact_v1',
-                              'asp_source_index_active_fact_scope_v1',
-                              'asp_source_index_active_packed_fact_scope_v1'
-                          )
-                     )",
-                    (),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to inspect pre-canonical Turso source-index storage",
-    )
-    .await?;
-    let Some(row) = rows.next().await.map_err(|error| {
-        format!("failed to read pre-canonical Turso source-index storage: {error}")
-    })?
-    else {
-        return Ok(false);
-    };
-    row.get::<i64>(0).map(|value| value != 0).map_err(|error| {
-        format!("failed to decode pre-canonical Turso source-index storage: {error}")
-    })
 }

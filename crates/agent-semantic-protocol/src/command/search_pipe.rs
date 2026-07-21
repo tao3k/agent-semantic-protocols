@@ -51,6 +51,8 @@ pub(super) struct FastSearchContext<'a> {
     pub(super) config: &'a AspConfig,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
+    pub(super) source_index_snapshot:
+        &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
     pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
@@ -158,8 +160,14 @@ fn is_search_ingest(args: &[String]) -> bool {
 }
 
 fn is_search_lexical(args: &[String]) -> bool {
-    parse_lexical_args(args)
-        .is_ok_and(|request| matches!(request.view.as_str(), "seeds" | "graph-turbo-request"))
+    matches!(args.first().map(String::as_str), Some("search"))
+        && parse_lexical_args(args)
+            .is_ok_and(|request| matches!(request.view.as_str(), "seeds" | "graph-turbo-request"))
+}
+
+pub(super) fn is_parser_owned_treesitter_query(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some("query"))
+        && args.iter().any(|arg| arg == "--treesitter-query")
 }
 
 fn is_search_failure(args: &[String]) -> bool {
@@ -270,8 +278,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         context.config,
         context.provider_context,
     )?;
-    let current_snapshot =
-        agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
+    let current_snapshot = context.source_index_snapshot;
     let mut acquisition =
         dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
             language_id: context.language_id,
@@ -343,10 +350,14 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     );
     let rendered_source = resolved_search_pipe_source(pipe_args.source, &acquisition);
     let surfaces = default_search_surfaces();
+    let source_snapshot = acquisition
+        .source_snapshot
+        .as_ref()
+        .unwrap_or(&current_snapshot.source_snapshot);
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: &project_root,
-        source_snapshot: &current_snapshot.source_snapshot,
+        source_snapshot,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-pipe",
@@ -648,6 +659,7 @@ fn dependency_manifest_fast_acquisition(
             .with_fields(manifest_fields),
             SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0),
         ],
+        source_snapshot: None,
     })
 }
 

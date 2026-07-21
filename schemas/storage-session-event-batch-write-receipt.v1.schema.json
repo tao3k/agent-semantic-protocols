@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/storage-session-event-batch-write-receipt.v1.schema.json",
+  "title": "ASP Storage Session Event Batch Write Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "batchId",
+    "partition",
+    "authority",
+    "backend",
+    "backendVersion",
+    "optimizationProfile",
+    "transactionMode",
+    "transactionState",
+    "attemptedRows",
+    "committedRows",
+    "retryCount",
+    "busyCount",
+    "snapshotConflictCount",
+    "retryDelayMs",
+    "conflictCount",
+    "executionDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.storage-session-event-batch-write-receipt.v1"
+    },
+    "batchId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repoId", "workspaceId", "scopeId", "sessionId", "agentId"],
+      "properties": {
+        "repoId": { "type": "string", "minLength": 1 },
+        "workspaceId": { "type": "string", "minLength": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "agentId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "authority": { "enum": ["local", "remote-sync", "in-memory"] },
+    "backend": { "type": "string", "minLength": 1 },
+    "backendVersion": { "type": "string", "minLength": 1 },
+    "optimizationProfile": {
+      "enum": [
+        "compatibility-immediate",
+        "mvcc-concurrent",
+        "mvcc-concurrent-passive-checkpoint"
+      ]
+    },
+    "transactionMode": { "enum": ["immediate", "concurrent"] },
+    "transactionState": { "enum": ["committed", "aborted", "unknown"] },
+    "attemptedRows": { "type": "integer", "minimum": 0 },
+    "committedRows": { "type": "integer", "minimum": 0 },
+    "retryCount": { "type": "integer", "minimum": 0 },
+    "busyCount": { "type": "integer", "minimum": 0 },
+    "snapshotConflictCount": { "type": "integer", "minimum": 0 },
+    "retryDelayMs": { "type": "integer", "minimum": 0 },
+    "conflictCount": { "type": "integer", "minimum": 0 },
+    "executionDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

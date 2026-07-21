@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-source-snapshot-envelope.v1.schema.json",
+  "title": "ASP Exact Source Snapshot Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "providerId",
+    "sourceSnapshot",
+    "casRoot",
+    "owners"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.exact-source-snapshot-envelope.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceSnapshot": {
+      "$ref": "source-snapshot-evidence.v1.schema.json"
+    },
+    "casRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owners": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "snapshotLeafDigest", "blobDigest", "casPath"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "blobDigest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "snapshotLeafDigest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "casPath": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{2}/[0-9a-f]{62}$"
+          },
+          "parserArtifactDigest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

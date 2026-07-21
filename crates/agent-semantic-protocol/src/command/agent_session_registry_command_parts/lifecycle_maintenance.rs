@@ -1,31 +1,13 @@
 use agent_semantic_client_db::{
     AGENT_SESSION_STATUS_INVALID, AgentSessionLookupRequest, AgentSessionRecord,
-    AgentSessionRegisterRequest, AgentSessionRegistry, agent_session_message_target_is_live_bound,
-    agent_session_unix_timestamp,
-};
-use agent_semantic_runtime::{
-    agent_session_registration_identity, agent_session_runtime_status_snapshot,
+    AgentSessionRegistry, agent_session_unix_timestamp,
 };
 
 use crate::command::agent_session_registry::agent_session_registry_args::SessionArgs;
-use crate::command::agent_session_registry::agent_session_registry_lifetime::resolve_session_lifetime;
-use crate::command::agent_session_registry::agent_session_registry_render::{
-    SessionStatusReport, escape_field, print_json_report, print_session_row, print_status_report,
-};
-use crate::command::agent_session_registry::agent_session_registry_rollout_activity::rollout_activity_report;
-use crate::command::agent_session_registry::agent_session_registry_rollout_adopt::{
-    RolloutAdoptRequest, adopt_reusable_rollout_session,
-};
 use crate::command::agent_session_registry::agent_session_registry_state::{
-    current_project_session_scope_id, current_recall_session_id, project_session_scope_id,
-    required_non_empty, resolved_root_session_id, session_record_validation_allows_routing,
+    current_project_session_scope_id, resolved_root_session_id,
 };
-use crate::command::agent_session_registry::agent_session_registry_validation::{
-    validate_recent_session_profile, validate_session_profile,
-};
-use crate::command::agent_session_registry::normalized_metadata_with_roles;
 use crate::command::agent_session_registry::stale_invalid_session_should_be_idle;
-use std::path::Path;
 
 pub(in crate::command::agent_session_registry) fn close_session(
     registry: &AgentSessionRegistry,

@@ -1,6 +1,6 @@
 //! Lifecycle mutations for DB-owned agent session registry rows.
 
-use crate::engine::turso_statement::execute_turso_operation_with_lock_retry;
+use crate::engine::turso_statement::execute_turso_operation;
 
 use super::core::{
     AgentSessionRegistry, block_on_agent_session_registry_async,
@@ -46,7 +46,7 @@ async fn turso_invalidate_session_live_binding(
     now: i64,
 ) -> Result<bool, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    crate::engine::turso_statement::execute_turso_statement_with_lock_retry(
+    crate::engine::turso_statement::execute_turso_statement(
         &connection,
         "BEGIN IMMEDIATE",
         "failed to begin Turso live-binding invalidation",
@@ -84,7 +84,7 @@ async fn turso_invalidate_session_live_binding(
             )
             .await?;
         if changed {
-            execute_turso_operation_with_lock_retry(
+            execute_turso_operation(
                 || async {
                     connection
                         .execute(
@@ -110,7 +110,7 @@ async fn turso_invalidate_session_live_binding(
     let changed = match invalidation {
         Ok(changed) => changed,
         Err(error) => {
-            let _ = crate::engine::turso_statement::execute_turso_statement_with_lock_retry(
+            let _ = crate::engine::turso_statement::execute_turso_statement(
                 &connection,
                 "ROLLBACK",
                 "failed to roll back Turso live-binding invalidation",
@@ -119,7 +119,7 @@ async fn turso_invalidate_session_live_binding(
             return Err(error);
         }
     };
-    crate::engine::turso_statement::execute_turso_statement_with_lock_retry(
+    crate::engine::turso_statement::execute_turso_statement(
         &connection,
         "COMMIT",
         "failed to commit Turso live-binding invalidation",

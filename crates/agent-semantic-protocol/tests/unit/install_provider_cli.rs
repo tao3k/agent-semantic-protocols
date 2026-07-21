@@ -18,7 +18,7 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
     let root = temp_project_root();
     let home = root.join("home");
     let workspace_provider =
-        root.join("languages/rust-lang-project-harness/target/debug/rs-harness");
+        root.join("languages/rust-lang-project-harness/target/release/rs-harness");
     std::fs::create_dir_all(
         workspace_provider
             .parent()
@@ -27,15 +27,8 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
     .expect("create workspace provider parent");
     std::fs::write(&workspace_provider, b"workspace-dev-provider\n")
         .expect("write workspace provider");
-    let legacy_workspace_provider = root.join(".bin/rs-harness");
-    std::fs::create_dir_all(
-        legacy_workspace_provider
-            .parent()
-            .expect("legacy workspace provider parent"),
-    )
-    .expect("create legacy workspace provider parent");
-    std::fs::write(&legacy_workspace_provider, b"legacy-workspace-provider\n")
-        .expect("write legacy workspace provider");
+    let fake_cargo =
+        create_fake_tool_bin(&root, "cargo", concat!("#!/usr/bin/env sh\n", "exit 0\n",));
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
@@ -49,6 +42,14 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
         .arg("--project")
         .arg(&root)
         .env("HOME", &home)
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                fake_cargo.parent().expect("fake cargo parent").display(),
+                std::env::var("PATH").expect("PATH")
+            ),
+        )
         .env_remove("PRJ_CACHE_HOME")
         .env_remove("SEMANTIC_AGENT_BIN_DIR")
         .output()
@@ -61,7 +62,8 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("source=workspace-artifact"), "{stdout}");
+    assert!(stdout.contains("installMode=develop-workspace"), "{stdout}");
+    assert!(stdout.contains("source=workspace-build"), "{stdout}");
     assert!(
         stdout.contains(&format!(
             "workspaceArtifact={}",
@@ -69,7 +71,13 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
         )),
         "{stdout}"
     );
-    assert!(!stdout.contains(".bin/rs-harness"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "workspaceEntrypoint={}",
+            workspace_provider.display()
+        )),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("installTargetSource=home-local-bin"),
         "{stdout}"
@@ -88,12 +96,100 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
 }
 
 #[test]
+fn install_language_usage_separates_locked_release_from_develop_mode() {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["install", "language"])
+        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .output()
+        .expect("run asp install language without a language id");
+
+    assert!(!output.status.success());
+    let receipt = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        receipt.contains("release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)"),
+        "{receipt}"
+    );
+    assert!(
+        receipt.contains("develop mode: use the repository Justfile recipes"),
+        "{receipt}"
+    );
+    assert!(
+        !receipt.contains("[--from-workspace]"),
+        "the internal workspace switch must not be advertised as the normal install surface: {receipt}"
+    );
+}
+
+#[test]
+fn install_language_help_separates_locked_release_from_develop_mode() {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["install", "language", "--help"])
+        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .output()
+        .expect("run asp install language --help");
+
+    assert!(!output.status.success());
+    let receipt = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        receipt.contains("release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)"),
+        "{receipt}"
+    );
+    assert!(
+        receipt.contains("develop mode: use the repository Justfile recipes"),
+        "{receipt}"
+    );
+    assert!(
+        !receipt.contains("state=locked-release-unavailable"),
+        "help must not be resolved as a language release: {receipt}"
+    );
+}
+
+#[test]
+fn install_language_without_pinned_release_reports_locked_release_unavailable() {
+    let root = temp_project_root();
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "install",
+            "language",
+            "md",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
+        .arg("--project")
+        .arg(&root)
+        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .output()
+        .expect("run locked release install for an unpinned language");
+
+    assert!(!output.status.success());
+    let receipt = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        receipt.contains("state=locked-release-unavailable"),
+        "{receipt}"
+    );
+    assert!(receipt.contains("installMode=locked-release"), "{receipt}");
+    assert!(receipt.contains("reason=language-not-pinned"), "{receipt}");
+    assert!(receipt.contains("language=md"), "{receipt}");
+}
+
+#[test]
 #[cfg(unix)]
 fn install_typescript_from_workspace_uses_built_provider_entrypoint() {
     let root = temp_project_root();
     let home = root.join("home");
     let workspace_provider =
-        root.join("languages/typescript-lang-project-harness/dist/src/cli/main.js");
+        root.join("languages/typescript-lang-project-harness/dist/provider/ts-harness.mjs");
     std::fs::create_dir_all(
         workspace_provider
             .parent()
@@ -123,6 +219,7 @@ fn install_typescript_from_workspace_uses_built_provider_entrypoint() {
     )
     .expect("write workspace provider");
     make_executable(&workspace_provider);
+    let fake_npm = create_fake_tool_bin(&root, "npm", concat!("#!/usr/bin/env sh\n", "exit 0\n",));
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
@@ -137,6 +234,14 @@ fn install_typescript_from_workspace_uses_built_provider_entrypoint() {
         .arg(&root)
         .env("HOME", &home)
         .env("ASP_NO_AGENT_PLATFORM", "1")
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                fake_npm.parent().expect("fake npm parent").display(),
+                std::env::var("PATH").expect("PATH")
+            ),
+        )
         .env_remove("PRJ_CACHE_HOME")
         .env_remove("SEMANTIC_AGENT_BIN_DIR")
         .output()
@@ -149,11 +254,18 @@ fn install_typescript_from_workspace_uses_built_provider_entrypoint() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("source=workspace-artifact"), "{stdout}");
-    assert!(stdout.contains("workspaceInstall=symlink"), "{stdout}");
+    assert!(stdout.contains("installMode=develop-workspace"), "{stdout}");
+    assert!(stdout.contains("source=workspace-build"), "{stdout}");
+    let workspace_root = workspace_provider
+        .parent()
+        .expect("workspace provider artifact root");
+    assert!(
+        stdout.contains(&format!("workspaceArtifact={}", workspace_root.display())),
+        "{stdout}"
+    );
     assert!(
         stdout.contains(&format!(
-            "workspaceArtifact={}",
+            "workspaceEntrypoint={}",
             workspace_provider.display()
         )),
         "{stdout}"
@@ -163,12 +275,8 @@ fn install_typescript_from_workspace_uses_built_provider_entrypoint() {
         std::fs::symlink_metadata(&installed)
             .expect("stat installed TypeScript provider")
             .file_type()
-            .is_symlink(),
-        "workspace TypeScript provider must preserve its module graph with a symlink"
-    );
-    assert_eq!(
-        std::fs::canonicalize(&installed).expect("resolve installed TypeScript provider"),
-        std::fs::canonicalize(&workspace_provider).expect("resolve workspace TypeScript provider")
+            .is_file(),
+        "develop install must materialize an executable launcher"
     );
     let provider_output = Command::new(&installed)
         .args(["agent", "doctor"])
@@ -207,6 +315,13 @@ fn install_python_from_workspace_replaces_stale_home_wrapper() {
         "exec uv run --project \"$ASP_PYTHON_PROJECT\" --frozen py-harness \"$@\"\n",
     );
     std::fs::write(&workspace_provider, workspace_wrapper).expect("write workspace python wrapper");
+    let workspace_python = workspace_provider
+        .parent()
+        .expect("workspace provider parent")
+        .join("python3");
+    std::fs::write(&workspace_python, "#!/usr/bin/env sh\nexit 0\n")
+        .expect("write workspace python interpreter");
+    make_executable(&workspace_python);
     std::fs::write(
         home_bin_dir.join("py-harness"),
         concat!(
@@ -215,6 +330,7 @@ fn install_python_from_workspace_replaces_stale_home_wrapper() {
         ),
     )
     .expect("write stale home-local python wrapper");
+    let fake_uv = create_fake_tool_bin(&root, "uv", concat!("#!/usr/bin/env sh\n", "exit 0\n",));
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
@@ -229,6 +345,14 @@ fn install_python_from_workspace_replaces_stale_home_wrapper() {
         .arg(&root)
         .env("HOME", &home)
         .env("ASP_NO_AGENT_PLATFORM", "1")
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                fake_uv.parent().expect("fake uv parent").display(),
+                std::env::var("PATH").expect("PATH")
+            ),
+        )
         .env_remove("PRJ_CACHE_HOME")
         .env_remove("SEMANTIC_AGENT_BIN_DIR")
         .output()
@@ -241,11 +365,17 @@ fn install_python_from_workspace_replaces_stale_home_wrapper() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("source=workspace-artifact"), "{stdout}");
+    assert!(stdout.contains("installMode=develop-workspace"), "{stdout}");
+    assert!(stdout.contains("source=workspace-build"), "{stdout}");
     assert!(stdout.contains("binary=py-harness"), "{stdout}");
+    let workspace_root = root.join("languages/python-lang-project-harness/.venv");
+    assert!(
+        stdout.contains(&format!("workspaceArtifact={}", workspace_root.display())),
+        "{stdout}"
+    );
     assert!(
         stdout.contains(&format!(
-            "workspaceArtifact={}",
+            "workspaceEntrypoint={}",
             workspace_provider.display()
         )),
         "{stdout}"
@@ -256,11 +386,11 @@ fn install_python_from_workspace_replaces_stale_home_wrapper() {
     );
 
     let installed =
-        std::fs::read_to_string(home_bin_dir.join("py-harness")).expect("read installed wrapper");
-    assert_eq!(installed, workspace_wrapper);
+        std::fs::read_to_string(home_bin_dir.join("py-harness")).expect("read installed launcher");
+    assert_ne!(installed, workspace_wrapper);
     assert!(
-        !installed.contains("python_lang_project_harness"),
-        "stale python -m wrapper survived: {installed}"
+        installed.contains("provider-artifacts/py-harness") && installed.contains("bin/python3"),
+        "develop launcher must execute the immutable CAS interpreter: {installed}"
     );
 }
 
@@ -269,16 +399,33 @@ fn install_python_from_workspace_replaces_stale_home_wrapper() {
 fn install_julia_from_workspace_replaces_stale_home_binary() {
     let root = temp_project_root();
     let home = root.join("home");
-    let workspace_bin_dir = root.join(".bin");
+    let workspace_provider =
+        root.join("languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness");
+    let workspace_build =
+        root.join("languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh");
     let home_bin_dir = home.join(".local/bin");
-    std::fs::create_dir_all(&workspace_bin_dir).expect("create workspace bin");
+    std::fs::create_dir_all(
+        workspace_provider
+            .parent()
+            .expect("workspace Julia provider parent"),
+    )
+    .expect("create workspace Julia provider parent");
+    std::fs::create_dir_all(
+        workspace_build
+            .parent()
+            .expect("workspace Julia build parent"),
+    )
+    .expect("create workspace Julia build parent");
     std::fs::create_dir_all(&home_bin_dir).expect("create home-local bin");
 
+    std::fs::write(&workspace_provider, b"workspace-julia-provider\n")
+        .expect("write workspace julia provider");
     std::fs::write(
-        workspace_bin_dir.join("asp-julia-harness"),
-        b"workspace-julia-provider\n",
+        &workspace_build,
+        concat!("#!/usr/bin/env sh\n", "exit 0\n",),
     )
-    .expect("write workspace julia provider");
+    .expect("write workspace Julia build program");
+    make_executable(&workspace_build);
     std::fs::write(
         home_bin_dir.join("asp-julia-harness"),
         b"stale-release-provider-with-ci-rpath\n",
@@ -309,7 +456,8 @@ fn install_julia_from_workspace_replaces_stale_home_binary() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("source=workspace-bin"), "{stdout}");
+    assert!(stdout.contains("installMode=develop-workspace"), "{stdout}");
+    assert!(stdout.contains("source=workspace-build"), "{stdout}");
     assert!(stdout.contains("binary=asp-julia-harness"), "{stdout}");
     assert!(
         stdout.contains("installTargetSource=home-local-bin"),
@@ -496,6 +644,11 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     let root = temp_project_root();
     let home = root.join("home");
     let release_dir = create_pinned_release_fixture(&root);
+    let workspace_decoy =
+        root.join("languages/rust-lang-project-harness/target/release/rs-harness");
+    std::fs::create_dir_all(workspace_decoy.parent().expect("workspace decoy parent"))
+        .expect("create workspace decoy parent");
+    std::fs::write(&workspace_decoy, b"workspace-decoy\n").expect("write workspace decoy");
     let fake_bin = create_fake_curl_bin(&root);
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -523,6 +676,7 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("[asp-install]"), "{stdout}");
+    assert!(stdout.contains("installMode=locked-release"), "{stdout}");
     assert!(stdout.contains("rev=v0.1.2"), "{stdout}");
 
     let runtime = home.join(".agent-semantic-protocols/runtime");
@@ -540,6 +694,11 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
         std::fs::read(&bin).expect("read installed provider"),
         std::fs::read(&package_binary).expect("read package provider"),
         "installed provider target should be the release binary, not a shell launcher"
+    );
+    assert_ne!(
+        std::fs::read(&bin).expect("read installed provider"),
+        std::fs::read(&workspace_decoy).expect("read workspace decoy"),
+        "plain install must never select a current-workspace artifact"
     );
     let lock_contents = std::fs::read_to_string(&lock).expect("read install lock");
     assert!(lock_contents.contains("rev = \"v0.1.2\""));
@@ -802,6 +961,15 @@ fn temp_project_root() -> PathBuf {
         .status()
         .expect("git init");
     root
+}
+
+fn create_fake_tool_bin(root: &PathBuf, name: &str, body: &str) -> PathBuf {
+    let bin_dir = root.join(".fake-bin");
+    std::fs::create_dir_all(&bin_dir).expect("create fake bin dir");
+    let tool = bin_dir.join(name);
+    std::fs::write(&tool, body).expect("write fake tool");
+    make_executable(&tool);
+    tool
 }
 
 fn make_executable(path: &Path) {

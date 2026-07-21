@@ -126,7 +126,7 @@ is absent from rank input.
 
 The provider exposes this admission projection as an independent fast-path:
 #+begin_src shell
-asp <language> search workspace-scope --workspace <discovery-root> --json
+asp <language> search prime --workspace <path>-scope --workspace <discovery-root> --json
 #+end_src
 It returns =semantic-workspace-scope.v1= without starting the full analysis
 harness.  =workspace-scope= is not a semantic-fact graph view: it establishes

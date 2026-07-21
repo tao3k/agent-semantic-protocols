@@ -3,19 +3,19 @@
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::{
-    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheFileHash,
-    ClientDbJournalMode, ClientDbStatus, LanguageId, ProviderId, SemanticSchemaId,
+    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheFileHash, ClientDbStatus,
+    LanguageId, ProviderId, SemanticSchemaId,
 };
 use serde::{Deserialize, Serialize};
 
 /// Current Turso DB Engine schema version for the local agent semantic client DB.
 pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 
-/// Runtime DB pragmas retained for receipt shape compatibility.
+/// Read-only diagnostic summary for the active DB Engine path.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbRuntimePragmas {
-    pub journal_mode: ClientDbJournalMode,
+    pub journal_mode: String,
     pub synchronous: i64,
     pub busy_timeout_ms: i64,
     pub foreign_keys: bool,
@@ -37,6 +37,7 @@ pub struct ClientDbReport {
     pub source_index_selector_count: u32,
     pub artifact_event_count: u32,
     pub raw_source_stored: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_pragmas: Option<ClientDbRuntimePragmas>,
     pub reason: Option<String>,
 }

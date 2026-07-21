@@ -69,6 +69,7 @@ pub(super) fn provider(
         binary: manifest.binary.clone(),
         execution: manifest.execution,
         provider_command_prefix: Vec::new(),
+        execution_command_digest: "test-execution-command-digest".to_string(),
         namespace: manifest.namespace.clone(),
         package_roots: vec![".".to_string()],
         source_extensions: source_extensions

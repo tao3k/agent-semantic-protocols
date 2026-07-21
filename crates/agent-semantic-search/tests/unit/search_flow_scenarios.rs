@@ -12,7 +12,12 @@ use std::path::{Path, PathBuf};
 fn search_flow_source_index_owner_item_graph_chain_is_executable() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/dynamic_search/owner_items/core.rs".to_string(),
@@ -265,7 +270,12 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
 fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "busy".to_string(),
         candidates: Vec::new(),
     };
@@ -314,7 +324,12 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
 fn search_flow_cold_required_source_index_returns_overlay_skipped() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "cold-required".to_string(),
         candidates: Vec::new(),
     };

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/turso-mvcc-maintenance-receipt.v1.schema.json",
+  "title": "ASP Turso MVCC Maintenance Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "backend",
+    "backendVersion",
+    "passiveCheckpoint",
+    "cacheFlushCount",
+    "databaseBytes",
+    "walBytes",
+    "sharedMemoryBytes",
+    "totalFileBytes",
+    "elapsedMicros",
+    "checkpointCounterObservable"
+  ],
+  "properties": {
+    "schemaId": { "const": "asp.turso-mvcc-maintenance-receipt.v1" },
+    "backend": { "const": "turso" },
+    "backendVersion": { "const": "0.7.0" },
+    "passiveCheckpoint": { "type": "boolean" },
+    "cacheFlushCount": { "type": "integer", "minimum": 0 },
+    "databaseBytes": { "type": "integer", "minimum": 0 },
+    "walBytes": { "type": "integer", "minimum": 0 },
+    "sharedMemoryBytes": { "type": "integer", "minimum": 0 },
+    "totalFileBytes": { "type": "integer", "minimum": 0 },
+    "elapsedMicros": { "type": "integer", "minimum": 0 },
+    "checkpointCounterObservable": { "const": false }
+  }
+}

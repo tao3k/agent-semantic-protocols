@@ -25,45 +25,6 @@ fn runtime_project_root_for_generated_activation_uses_activation_storage_root() 
 }
 
 #[test]
-fn runtime_profiles_for_runtime_resolves_project_bin_without_persisting_file() {
-    let root = temp_root("project-bin");
-    let provider_path = write_executable_provider(&root, "rs-harness");
-    let provider = activated_rust_provider(Vec::new());
-    let runtime = HookRuntime {
-        project_root: root.display().to_string(),
-        providers: vec![provider],
-    };
-    let provider = &runtime.providers[0];
-
-    let profiles = runtime_profiles_for_runtime(&root, &runtime);
-    let invocation =
-        runtime_profile_invocation(&profiles, provider, &["search".into(), "prime".into()])
-            .expect("provider invocation");
-
-    assert_eq!(
-        invocation,
-        [
-            std::fs::canonicalize(&provider_path)
-                .expect("canonical provider")
-                .display()
-                .to_string(),
-            "search".to_string(),
-            "prime".to_string(),
-        ]
-    );
-    assert_eq!(
-        profiles.providers[0].health.status,
-        RuntimeProviderHealthStatus::Available
-    );
-    assert!(
-        !root
-            .join(".cache/agent-semantic-protocol/runtime/profiles.json")
-            .exists()
-    );
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn runtime_profiles_for_activation_uses_provider_command_prefix() {
     let root = temp_root("activation-prefix");
     let wrapper = write_executable_provider(&root, "provider-wrapper");
@@ -88,11 +49,11 @@ fn runtime_profiles_for_activation_uses_provider_command_prefix() {
             manifest_digest: provider.manifest_digest.clone(),
             language_id: provider.language_id.clone(),
             provider_id: provider.provider_id.clone(),
-        binary: provider.binary.clone(),
-        execution: provider.execution,
-        provider_command_prefix: provider.provider_command_prefix.clone(),
-        execution_command_digest: provider.execution_command_digest.clone(),
-        search_capabilities: provider.search_capabilities.clone(),
+            binary: provider.binary.clone(),
+            execution: provider.execution,
+            provider_command_prefix: provider.provider_command_prefix.clone(),
+            execution_command_digest: provider.execution_command_digest.clone(),
+            search_capabilities: provider.search_capabilities.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_registry_digest: provider.semantic_registry_digest.clone(),
@@ -196,6 +157,11 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         provider_id: manifest.provider_id,
         binary: manifest.binary,
         execution: manifest.execution,
+        execution_command_digest:
+            crate::protocol_activation::digest::provider_execution_command_digest(
+                &provider_command_prefix,
+            )
+            .expect("digest provider execution command"),
         provider_command_prefix,
         namespace: manifest.namespace,
         package_roots: vec![".".to_string()],
@@ -227,6 +193,11 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
         provider_id: manifest.provider_id,
         binary: manifest.binary,
         execution: manifest.execution,
+        execution_command_digest:
+            crate::protocol_activation::digest::provider_execution_command_digest(
+                &provider_command_prefix,
+            )
+            .expect("digest provider execution command"),
         provider_command_prefix,
         namespace: manifest.namespace,
         package_roots: vec![".".to_string()],

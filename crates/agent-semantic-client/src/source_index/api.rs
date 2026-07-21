@@ -1,7 +1,7 @@
 //! Public refresh API for the DB Engine source index.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
 
 use agent_semantic_client_core::{
@@ -11,7 +11,7 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::ClientDbEngineWriteSession;
 use agent_semantic_client_db::{
     ClientDbEngine, ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexRefreshRequest,
-    ClientDbSourceIndexScopeFile, client_db_source_index_file_count, source_index_file_hashes,
+    client_db_source_index_file_count, source_index_file_hashes,
     source_index_import_with_file_hashes,
 };
 use agent_semantic_runtime::{collect_runtime_source_index_files, runtime_source_index_context};
@@ -74,6 +74,7 @@ fn source_index_snapshot_from_files(
         Vec<ClientCacheFileHash>,
         agent_semantic_artifacts::WorkspaceSnapshot,
         agent_semantic_content_identity::SourceSnapshotEvidence,
+        std::collections::BTreeMap<String, Vec<u8>>,
     ),
     String,
 > {
@@ -84,16 +85,43 @@ fn source_index_snapshot_from_files(
         &registry.fingerprint,
         registry.scope_dirs.iter().map(String::as_str),
     )?;
-    let workspace_snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(
-        file_hashes
-            .iter()
-            .map(|file_hash| (file_hash.path.as_str(), file_hash.sha256.as_str())),
-    );
+    let mut workspace_file_hashes = Vec::with_capacity(files.len());
+    let mut source_blobs = std::collections::BTreeMap::new();
+    for file in files {
+        let source_path = if file.path.is_absolute() {
+            file.path.clone()
+        } else {
+            index_root.join(&file.path)
+        };
+        let bytes = std::fs::read(&source_path).map_err(|error| {
+            format!(
+                "failed to hash workspace source {} with BLAKE3: {error}",
+                source_path.display()
+            )
+        })?;
+        let snapshot_path = source_path
+            .strip_prefix(index_root)
+            .unwrap_or(source_path.as_path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        workspace_file_hashes.push((
+            snapshot_path.clone(),
+            blake3::hash(&bytes).to_hex().to_string(),
+        ));
+        source_blobs.insert(snapshot_path, bytes);
+    }
+    let workspace_snapshot =
+        agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(workspace_file_hashes);
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
         agent_semantic_artifacts::provider_digest(registry.fingerprint.as_bytes()),
     );
-    Ok((file_hashes, workspace_snapshot, source_snapshot))
+    Ok((
+        file_hashes,
+        workspace_snapshot,
+        source_snapshot,
+        source_blobs,
+    ))
 }
 
 /// One content-authoritative view of the live workspace for all source
@@ -101,6 +129,132 @@ fn source_index_snapshot_from_files(
 pub struct CurrentSourceIndexSnapshot {
     pub workspace_snapshot: agent_semantic_artifacts::WorkspaceSnapshot,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    /// Owner bytes captured in the same read pass that produced the Merkle root.
+    pub source_blobs: std::collections::BTreeMap<String, Vec<u8>>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderSourceSnapshotEnvelopeV1<'a> {
+    schema_id: &'static str,
+    schema_version: &'static str,
+    provider_id: &'a str,
+    source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    cas_root: &'a Path,
+    owners: Vec<ProviderSourceSnapshotOwnerV1>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderSourceSnapshotOwnerV1 {
+    path: String,
+    snapshot_leaf_digest: String,
+    blob_digest: String,
+    cas_path: String,
+}
+
+/// Publish one provider-scoped, root-bound source envelope backed by ASP-owned CAS bytes.
+pub fn publish_provider_source_snapshot_envelope(
+    snapshot: &CurrentSourceIndexSnapshot,
+    provider_id: &str,
+    source_extensions: &[String],
+    cache_home: &Path,
+) -> Result<std::path::PathBuf, String> {
+    let cas_root = cache_home.join("source-blob-cas").join("v1");
+    let cas = agent_semantic_content_identity::ContentAddressedStore::new(&cas_root);
+    let normalized_extensions = source_extensions
+        .iter()
+        .map(|extension| extension.trim_start_matches('.').to_ascii_lowercase())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut owners = Vec::new();
+    for (path, bytes) in &snapshot.source_blobs {
+        let extension = Path::new(path)
+            .extension()
+            .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
+        if !normalized_extensions.is_empty()
+            && extension
+                .as_ref()
+                .is_none_or(|extension| !normalized_extensions.contains(extension))
+        {
+            continue;
+        }
+        let snapshot_leaf_digest = snapshot.workspace_snapshot.file_digest(path).ok_or_else(|| {
+            format!(
+                "provider source blob is not committed by snapshot root: path={path} rootDigest={}",
+                snapshot.source_snapshot.root_digest
+            )
+        })?;
+        let blob_digest = agent_semantic_content_identity::hash_blob(bytes).value;
+        let blob_path = cas.write(&blob_digest, bytes).map_err(|error| {
+            format!(
+                "failed to publish provider source blob to ASP content store: path={path} blobDigest={blob_digest} error={error}"
+            )
+        })?;
+        let cas_path = blob_path
+            .strip_prefix(&cas_root)
+            .map_err(|error| {
+                format!(
+                    "provider source blob escaped ASP content store: path={} casRoot={} error={error}",
+                    blob_path.display(),
+                    cas_root.display()
+                )
+            })?
+            .to_string_lossy()
+            .replace('\\', "/");
+        owners.push(ProviderSourceSnapshotOwnerV1 {
+            path: path.clone(),
+            snapshot_leaf_digest: snapshot_leaf_digest.to_string(),
+            blob_digest,
+            cas_path,
+        });
+    }
+    owners.sort_by(|left, right| left.path.cmp(&right.path));
+    let envelope_dir = cache_home
+        .join("source-snapshot-envelopes")
+        .join("v1")
+        .join(&snapshot.source_snapshot.root_digest);
+    std::fs::create_dir_all(&envelope_dir).map_err(|error| {
+        format!(
+            "failed to create provider source envelope directory {}: {error}",
+            envelope_dir.display()
+        )
+    })?;
+    let provider_file_name = provider_id
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let envelope_path = envelope_dir.join(format!("{provider_file_name}.json"));
+    let envelope = ProviderSourceSnapshotEnvelopeV1 {
+        schema_id: "asp.exact-source-snapshot-envelope.v1",
+        schema_version: "1",
+        provider_id,
+        source_snapshot: &snapshot.source_snapshot,
+        cas_root: &cas_root,
+        owners,
+    };
+    let bytes = serde_json::to_vec_pretty(&envelope)
+        .map_err(|error| format!("failed to encode provider source snapshot envelope: {error}"))?;
+    let temporary = envelope_dir.join(format!(".{provider_file_name}.tmp-{}", std::process::id()));
+    std::fs::write(&temporary, bytes).map_err(|error| {
+        format!(
+            "failed to write provider source snapshot envelope {}: {error}",
+            temporary.display()
+        )
+    })?;
+    std::fs::rename(&temporary, &envelope_path).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        format!(
+            "failed to publish provider source snapshot envelope {}: {error}",
+            envelope_path.display()
+        )
+    })?;
+    Ok(envelope_path)
 }
 
 /// Capture the current content-authoritative source snapshot used by both
@@ -118,11 +272,12 @@ pub(crate) fn current_source_index_snapshot_with_registry(
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let registry = provider_registry.evidence(project_root);
     let files = collect_source_index_files(project_root, &provider_registry)?;
-    let (_, workspace_snapshot, source_snapshot) =
+    let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, None, &registry)?;
     Ok(CurrentSourceIndexSnapshot {
         workspace_snapshot,
         source_snapshot,
+        source_blobs,
     })
 }
 
@@ -172,11 +327,12 @@ pub(crate) fn current_runtime_source_index_snapshot(
         fingerprint: runtime_context.registry_fingerprint,
         scope_dirs: BTreeSet::new(),
     };
-    let (_, workspace_snapshot, source_snapshot) =
+    let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(&runtime_context.checkout_root, &files, None, &registry)?;
     Ok(CurrentSourceIndexSnapshot {
         workspace_snapshot,
         source_snapshot,
+        source_blobs,
     })
 }
 
@@ -301,7 +457,7 @@ impl SourceIndexRefreshContext {
         request: SourceIndexGenerationRefresh<'_>,
     ) -> Result<SourceIndexRefreshReport, String> {
         let trace_started = Instant::now();
-        let (file_hashes, _, source_snapshot) = source_index_snapshot_from_files(
+        let (file_hashes, _, source_snapshot, _) = source_index_snapshot_from_files(
             request.index_root,
             request.files,
             request.previous_file_hashes,

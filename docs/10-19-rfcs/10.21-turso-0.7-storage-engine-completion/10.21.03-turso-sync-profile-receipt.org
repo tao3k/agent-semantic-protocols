@@ -1,0 +1,74 @@
+#+title: Turso 0.7 Explicit Sync Profile Receipt
+#+date: 2026-07-20
+
+* Scope
+
+The workspace Turso 0.7 dependency now enables the upstream =sync= feature in
+addition to =fts=.  The implementation remains in the existing
+=agent-semantic-client-db= crate and exposes explicit local-first =push=,
+=pull=, =checkpoint=, and =stats= operations.  No parallel store crate is
+introduced.
+
+The checked-in receipt schema is
+=schemas/turso-sync-operation-receipt.v1.schema.json=.  It records the operation,
+typed outcome, elapsed time, pull-change state, CDC/WAL/network/revision stats,
+and a digest-only failure identity so credentials and raw network errors are not
+placed in the receipt.
+
+* Fixed scenario tests
+
+Command:
+
+#+begin_src sh
+direnv exec . cargo test -p agent-semantic-client-db turso_sync_storage -- --nocapture
+#+end_src
+
+Result: =2 passed; 0 failed=.
+
+The fixed scenarios prove:
+
+- an empty remote URL/token fails closed before opening a database;
+- with =bootstrap_if_empty=false=, a local write succeeds while the remote is
+  unreachable, =stats= and explicit =checkpoint= succeed, =push= and =pull=
+  return typed =Failed= receipts, and the local row survives both failures and
+  a database reopen.
+
+This is intentionally an offline-first regression scenario.  It is not a fake
+remote-success test.
+
+* Fixed benchmark
+
+Smoke command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench turso_sync_local -- --test
+#+end_src
+
+Result: both registered scenarios succeeded.
+
+Measurement command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench turso_sync_local
+#+end_src
+
+Result on the local 2026-07-20 checkout:
+
+| Scenario | Criterion interval | Throughput interval | Outliers |
+|----------+--------------------+---------------------+----------|
+| local-first append 32 plus stats | 42.422--56.043 ms | 570.99--754.32 elem/s | none reported |
+| local-first append 256 plus explicit checkpoint/stats | 98.822--125.96 ms | 2.0323--2.5905 Kelem/s | 1/20 high severe |
+
+The benchmark asserts the typed =Observed= stats and =Applied= checkpoint
+outcomes during measurement.  These results show that sync/CDC bookkeeping is
+materially different from the MVCC local profile; they are not evidence that the
+sync profile should replace the high-throughput local writer.
+
+* Remaining external evidence
+
+A real successful push/pull requires a Turso remote URL and credential that are
+not present in the repository.  Completion therefore still requires an
+environment-owned integration run that proves successful push, remote pull,
+revision movement, network byte counters, and conflict behavior.  The local
+test deliberately preserves this boundary rather than simulating a cloud
+success.

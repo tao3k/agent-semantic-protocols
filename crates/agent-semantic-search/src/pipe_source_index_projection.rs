@@ -3,11 +3,8 @@
 use std::path::Path;
 
 use crate::{
-    SearchPipeCandidate,
-    pipe_source::{
-        SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
-        SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision,
-    },
+    SearchPipeCandidate, SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
+    SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision,
 };
 
 pub(crate) fn source_index_candidate(

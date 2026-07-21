@@ -344,6 +344,52 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
 }
 
 #[test]
+fn parser_owned_treesitter_query_uses_activated_provider_descriptor() {
+    let root = temp_project_root("parser-owned-treesitter-query-provider-context");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(root.join("src/lib.rs"), "pub struct Fiber;\n").expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "query",
+            "--treesitter-query",
+            "(struct_item name: (type_identifier) @declaration.name (#eq? @declaration.name \"Fiber\"))",
+            "--workspace",
+            ".",
+        ])
+        .output()
+        .expect("run parser-owned treesitter query");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !receipt.contains("provider query-pack descriptor is required"),
+        "{receipt}"
+    );
+    assert!(
+        !marker.exists(),
+        "parser-owned treesitter query must not delegate to the provider binary"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn search_pipe_splits_api_compounds_before_seed_quality_analysis() {
     let root = temp_project_root("search-pipe-api-compound-query");
     let bin_dir = root.join(".bin");

@@ -3,8 +3,7 @@
 use std::path::Path;
 
 use crate::engine::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-    run_turso_operation_with_lock_retry,
+    execute_turso_operation, execute_turso_statement, run_turso_operation,
 };
 
 use super::core::{connect_turso_agent_session_registry, turso_session_by_name};
@@ -39,7 +38,7 @@ impl super::core::AgentSessionRegistry {
 pub(super) async fn bootstrap_turso_agent_dispatch_schema(
     connection: &turso::Connection,
 ) -> Result<(), String> {
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "CREATE TABLE IF NOT EXISTS asp_agent_dispatch_leases (
             project_id TEXT NOT NULL,
@@ -61,7 +60,7 @@ pub(super) async fn bootstrap_turso_agent_dispatch_schema(
     )
     .await?;
     ensure_turso_agent_dispatch_generation_column(connection).await?;
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "CREATE INDEX IF NOT EXISTS idx_asp_agent_dispatch_leases_target
             ON asp_agent_dispatch_leases(project_id, root_session_id, name, delivery_target_id)",
@@ -73,7 +72,7 @@ pub(super) async fn bootstrap_turso_agent_dispatch_schema(
 async fn ensure_turso_agent_dispatch_generation_column(
     connection: &turso::Connection,
 ) -> Result<(), String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query("PRAGMA table_info(asp_agent_dispatch_leases)", ())
@@ -95,7 +94,7 @@ async fn ensure_turso_agent_dispatch_generation_column(
             return Ok(());
         }
     }
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "ALTER TABLE asp_agent_dispatch_leases ADD COLUMN delivery_generation_id TEXT",
         "failed to migrate Turso agent dispatch generation",
@@ -181,7 +180,7 @@ pub(super) async fn turso_dispatch_lease_by_identity(
            AND name = ?3
            AND dispatch_identity = ?4"
     );
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(&sql, (project_id, root_session_id, name, dispatch_identity))
@@ -205,7 +204,7 @@ async fn rollback_agent_dispatch_transaction(
     connection: &turso::Connection,
     error: String,
 ) -> Result<AgentSessionDispatchClaimResult, String> {
-    let _ = execute_turso_statement_with_lock_retry(
+    let _ = execute_turso_statement(
         connection,
         "ROLLBACK",
         "failed to roll back Turso agent dispatch transaction",
@@ -245,7 +244,7 @@ pub(super) async fn turso_claim_dispatch(
             )
         };
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "BEGIN IMMEDIATE",
         "failed to begin Turso agent dispatch claim",
@@ -270,7 +269,7 @@ pub(super) async fn turso_claim_dispatch(
         )?;
         match (action, existing.is_some()) {
             ("send", true) => {
-                execute_turso_operation_with_lock_retry(
+                execute_turso_operation(
                     || async {
                         connection
                             .execute(
@@ -305,7 +304,7 @@ pub(super) async fn turso_claim_dispatch(
                 .await?;
             }
             ("send", false) => {
-                execute_turso_operation_with_lock_retry(
+                execute_turso_operation(
                     || async {
                         connection
                             .execute(
@@ -362,7 +361,7 @@ pub(super) async fn turso_claim_dispatch(
         Ok(result) => result,
         Err(error) => return rollback_agent_dispatch_transaction(&connection, error).await,
     };
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "COMMIT",
         "failed to commit Turso agent dispatch claim",
@@ -431,7 +430,7 @@ pub(super) async fn turso_complete_dispatch(
         ));
     }
     if lease.status != "terminal" {
-        execute_turso_operation_with_lock_retry(
+        execute_turso_operation(
             || async {
                 connection
                     .execute(
@@ -493,7 +492,7 @@ pub(super) async fn turso_mark_dispatch_orphaned(
     }
     match lease.status.as_str() {
         "in-flight" => {
-            execute_turso_operation_with_lock_retry(
+            execute_turso_operation(
                 || async {
                     connection
                         .execute(

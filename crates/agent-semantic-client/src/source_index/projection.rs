@@ -13,8 +13,7 @@ use agent_semantic_client_db::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LanguageProjectionImportReport {
     pub reused: bool,
-    pub graph_entity_count: usize,
-    pub graph_edge_count: usize,
+    pub node_locator_count: usize,
 }
 
 /// Import one query-free projection through the shared source-index lifecycle.
@@ -51,8 +50,7 @@ pub fn import_language_projection(
     {
         return Ok(LanguageProjectionImportReport {
             reused: true,
-            graph_entity_count: 0,
-            graph_edge_count: 0,
+            node_locator_count: 0,
         });
     }
     let report = ClientDbEngine::persist_language_projection_read_model_from_client_dir(
@@ -63,8 +61,7 @@ pub fn import_language_projection(
     )?;
     Ok(LanguageProjectionImportReport {
         reused: false,
-        graph_entity_count: report.graph_entity_count,
-        graph_edge_count: report.graph_edge_count,
+        node_locator_count: report.node_locator_count,
     })
 }
 

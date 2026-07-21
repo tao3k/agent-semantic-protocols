@@ -36,6 +36,7 @@ mod hook_config_global;
 mod hook_recovery_prompt;
 mod protocol;
 mod protocol_activation;
+pub use protocol_activation::digest::provider_execution_command_digest;
 mod provider_manifest;
 mod provider_registry;
 pub use provider_registry::registered_language_ids;

@@ -11,8 +11,5 @@ pub(super) struct ProviderReleaseSpec {
     pub(super) archive_prefix: String,
     pub(super) archive_binary: String,
     pub(super) require_native_binary: bool,
-    pub(super) workspace_artifact:
-        Option<super::install_provider_workspace_artifact::WorkspaceArtifactSpec>,
-    pub(super) workspace_build: Option<super::install_provider::WorkspaceBuildSpec>,
     pub(super) supported_targets: Vec<String>,
 }

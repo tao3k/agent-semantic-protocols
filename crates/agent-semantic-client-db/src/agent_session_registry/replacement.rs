@@ -1,8 +1,6 @@
 //! Atomic compare-and-swap replacement for one resident route owner.
 
-use crate::engine::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-};
+use crate::engine::turso_statement::{execute_turso_operation, execute_turso_statement};
 
 use super::{
     core::{
@@ -36,7 +34,7 @@ async fn turso_replace_resident_session(
     request: AgentSessionRegisterRequest<'_>,
 ) -> Result<AgentSessionRecord, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "BEGIN IMMEDIATE",
         "failed to begin Turso resident session replacement",
@@ -45,7 +43,7 @@ async fn turso_replace_resident_session(
     let replacement =
         replace_resident_session_in_transaction(&connection, expected_session_id, &request).await;
     if let Err(error) = replacement {
-        let _ = execute_turso_statement_with_lock_retry(
+        let _ = execute_turso_statement(
             &connection,
             "ROLLBACK",
             "failed to roll back Turso resident session replacement",
@@ -53,7 +51,7 @@ async fn turso_replace_resident_session(
         .await;
         return Err(error);
     }
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "COMMIT",
         "failed to commit Turso resident session replacement",
@@ -74,7 +72,7 @@ async fn replace_resident_session_in_transaction(
     expected_session_id: &str,
     request: &AgentSessionRegisterRequest<'_>,
 ) -> Result<(), String> {
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -95,7 +93,7 @@ async fn replace_resident_session_in_transaction(
         "failed to clear conflicting Turso resident session mapping",
     )
     .await?;
-    let changed = execute_turso_operation_with_lock_retry(
+    let changed = execute_turso_operation(
         || async {
             connection
                 .execute(

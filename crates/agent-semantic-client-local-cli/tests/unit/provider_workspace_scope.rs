@@ -232,6 +232,7 @@ fn provider() -> ResolvedProvider {
         binary: "rs-harness".to_string(),
         execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: Vec::new(),
+        execution_command_digest: "test-execution-command-digest".to_string(),
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: Vec::new(),

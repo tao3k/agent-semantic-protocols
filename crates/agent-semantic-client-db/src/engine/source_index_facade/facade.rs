@@ -2,13 +2,11 @@
 
 use std::path::Path;
 
-use crate::evidence_graph::{source_index_evidence_graph, structural_index_evidence_graph};
 use crate::source_index::{ClientDbSourceIndexImport, ClientDbSourceIndexRefreshRequest};
 use crate::structural_index::ClientDbStructuralIndexImport;
 
 use crate::engine::facade::{ClientDbEngine, block_on_db_engine_async};
-use crate::engine::turso_evidence_graph::TursoClientDbEvidenceGraphPersistReport;
-use crate::engine::turso_search::upsert_turso_search_documents;
+use crate::engine::turso_search::replace_turso_search_document_generation;
 use crate::engine::turso_source_index::refresh_turso_source_index_import;
 use crate::engine::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
@@ -32,14 +30,9 @@ impl ClientDbEngine {
         )
         .await?;
         db_engine_trace("source-index-refresh-read-model", trace_started);
-        let graph = source_index_evidence_graph(import);
-        db_engine_trace("source-index-graph-built", trace_started);
-        let graph_report =
-            crate::engine::persist_turso_evidence_graph(self.db_path(), &graph, source_snapshot)
-                .await?;
         let search_document_count = refresh.owner_count as usize;
         Ok(source_index_read_model_report(
-            graph_report,
+            refresh.owner_count as usize + refresh.selector_count as usize,
             search_document_count,
         ))
     }
@@ -110,17 +103,9 @@ async fn persist_language_projection_read_model_at_path(
     )
     .await?;
     db_engine_trace("language-projection-source-index-refreshed", trace_started);
-    let graph = crate::source_index::language_projection::language_projection_evidence_graph(
-        import, projection,
-    )?;
-    let graph_report =
-        crate::engine::persist_turso_evidence_graph(db_path, &graph, source_snapshot).await?;
-    db_engine_trace(
-        "language-projection-evidence-graph-persisted",
-        trace_started,
-    );
+    projection.validate()?;
     Ok(source_index_read_model_report(
-        graph_report,
+        refresh.owner_count as usize + refresh.selector_count as usize,
         refresh.owner_count as usize,
     ))
 }
@@ -136,52 +121,105 @@ fn db_engine_trace(stage: &str, started: std::time::Instant) {
 }
 
 fn source_index_read_model_report(
-    graph_report: TursoClientDbEvidenceGraphPersistReport,
+    node_locator_count: usize,
     search_document_count: usize,
 ) -> ClientDbEngineSourceIndexReadModelReport {
     ClientDbEngineSourceIndexReadModelReport {
-        graph_entity_count: graph_report.entity_count,
-        graph_edge_count: graph_report.edge_count,
-        graph_artifact_digest: graph_report.graph_artifact_digest,
+        node_locator_count,
         search_document_count,
     }
 }
 
 async fn persist_structural_index_search_documents_at_path(
     db_path: &Path,
-    generation_id: &str,
-    graph: &crate::ClientDbEvidenceGraph,
+    import: &ClientDbStructuralIndexImport,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Result<usize, String> {
     let mut documents = Vec::new();
-    for node in graph
-        .nodes
-        .iter()
-        .filter(|node| matches!(node.kind, "symbol" | "dependency-usage"))
-    {
-        let mut terms = vec![node.kind.to_string(), node.label.clone()];
-        if let Some(path) = &node.path {
-            terms.push(path.clone());
-        }
-        if let Some(selector) = &node.selector {
+    for symbol in &import.symbols {
+        let entity_id = format!(
+            "symbol:{}:{}:{}:{}",
+            source_snapshot.root_digest,
+            symbol.owner_path.as_str(),
+            symbol.kind.as_str(),
+            symbol.name.as_str()
+        );
+        let selector = symbol
+            .source_locator
+            .as_ref()
+            .map(|locator| locator.as_str().to_string());
+        let mut terms = vec![
+            "symbol".to_string(),
+            symbol.name.as_str().to_string(),
+            symbol.kind.as_str().to_string(),
+            symbol.owner_path.as_str().to_string(),
+            import.language_id.as_str().to_string(),
+            import.provider_id.as_str().to_string(),
+        ];
+        if let Some(selector) = &selector {
             terms.push(selector.clone());
         }
-        if let Some(language_id) = &node.language_id {
-            terms.push(language_id.clone());
-        }
-        if let Some(provider_id) = &node.provider_id {
-            terms.push(provider_id.clone());
-        }
-        terms.extend(node.query_keys.iter().cloned());
+        terms.extend(symbol.query_keys.iter().map(|key| key.as_str().to_string()));
         let document = crate::TursoClientDbSearchDocument {
-            namespace: "structural-index".to_string(),
-            document_id: format!("structural-index:{generation_id}:{}", node.id),
-            entity_id: node.id.clone(),
-            selector: node.selector.clone(),
+            document_id: format!("structural-index:{entity_id}"),
+            entity_id,
+            selector,
             document: terms.join(" "),
         };
         documents.push(document);
     }
-    upsert_turso_search_documents(db_path, &documents).await
+    for dependency in &import.dependency_usages {
+        let dependency_label = dependency
+            .api_name
+            .as_ref()
+            .map(|api_name| {
+                format!(
+                    "{}::{}",
+                    dependency.package_name.as_str(),
+                    api_name.as_str()
+                )
+            })
+            .unwrap_or_else(|| dependency.package_name.as_str().to_string());
+        let entity_id = format!(
+            "dependency:{}:{}:{}",
+            source_snapshot.root_digest,
+            dependency.owner_path.as_str(),
+            dependency_label
+        );
+        let selector = dependency
+            .source_locator
+            .as_ref()
+            .map(|locator| locator.as_str().to_string());
+        let mut terms = vec![
+            "dependency-usage".to_string(),
+            dependency_label,
+            dependency.owner_path.as_str().to_string(),
+            import.language_id.as_str().to_string(),
+            import.provider_id.as_str().to_string(),
+        ];
+        if let Some(selector) = &selector {
+            terms.push(selector.clone());
+        }
+        terms.extend(
+            dependency
+                .query_keys
+                .iter()
+                .map(|key| key.as_str().to_string()),
+        );
+        documents.push(crate::TursoClientDbSearchDocument {
+            document_id: format!("structural-index:{entity_id}"),
+            entity_id,
+            selector,
+            document: terms.join(" "),
+        });
+    }
+    replace_turso_search_document_generation(
+        db_path,
+        "structural-index",
+        source_snapshot,
+        &documents,
+    )
+    .await
 }
 
 pub(in crate::engine) async fn persist_structural_index_read_model_at_path(
@@ -197,16 +235,8 @@ pub(in crate::engine) async fn persist_structural_index_read_model_at_path(
     let trace_started = std::time::Instant::now();
     crate::engine::turso_bootstrap::bootstrap_turso_client_db(db_path).await?;
     db_engine_trace("structural-index-bootstrap", trace_started);
-    let graph = structural_index_evidence_graph(import);
-    db_engine_trace("structural-index-graph-built", trace_started);
-    crate::persist_turso_evidence_graph(db_path, &graph, source_snapshot).await?;
-    db_engine_trace("structural-index-graph-persisted", trace_started);
-    let search_document_count = persist_structural_index_search_documents_at_path(
-        db_path,
-        import.generation_id.as_str(),
-        &graph,
-    )
-    .await?;
+    let search_document_count =
+        persist_structural_index_search_documents_at_path(db_path, import, source_snapshot).await?;
     db_engine_trace("structural-index-search-documents-persisted", trace_started);
     Ok(structural_index_read_model_report(search_document_count))
 }

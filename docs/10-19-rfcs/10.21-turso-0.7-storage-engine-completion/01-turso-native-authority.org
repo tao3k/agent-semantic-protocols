@@ -1,0 +1,82 @@
+#+title: Turso 0.7 Native Storage Authority
+#+startup: overview
+
+* Status
+
+Accepted.
+
+This repository has not published a persistent storage contract.  There is no
+backward-compatibility obligation for an SQLite-shaped storage profile or for
+existing local database files.  The implementation MUST prefer the Turso 0.7
+capability model and MAY discard and rebuild pre-release derived state.
+
+* Decision
+
+The authoritative fact store is a Turso-native MVCC store.  The former
+=compatibility-immediate= profile is removed.  It MUST NOT remain as a runtime
+fallback, feature flag, benchmark authority, or public storage abstraction.
+
+The storage boundary exposes ASP domain capabilities, not SQLite behavior:
+
+- immutable Merkle nodes and parser artifacts are content-addressed CAS values;
+- a =WorkspaceSnapshot= root is the source identity for every derived artifact;
+- mutable artifact heads use generation-checked compare-and-swap;
+- append-heavy event batches use bounded, long-lived Turso connection lanes;
+- a failed MVCC commit retries the complete transaction on a typed conflict;
+- individual SQL statements MUST NOT be replayed independently;
+- =busy_timeout=, WAL compatibility tuning, and multiprocess direct writers are
+  not part of the fact-store contract.
+
+* Process ownership
+
+Turso is embedded in the storage owner.  A state root MUST have exactly one
+resident fact-store owner process.  CLI invocations and language providers send
+typed requests to that owner; they MUST NOT open =facts.turso= independently.
+
+Within the owner, one shared =turso::Database= supplies a bounded set of
+long-lived connections.  A connection owns at most one active transaction, and
+independent lanes provide concurrency.  Backpressure is applied at the lane and
+request-batch boundaries rather than through a compatibility lock around the
+whole database.
+
+* Capability domains
+
+Some Turso capabilities have different physical requirements.  They remain
+separate databases with explicit authority, not compatibility profiles:
+
+- =facts.turso= owns Merkle roots, CAS metadata, evidence, and graph facts under
+  MVCC;
+- =search-projection.turso= is a disposable, FTS-capable projection bound to one
+  =WorkspaceSnapshot= root and is never a fact source;
+- a CDC/export database, when enabled, is an audit transport derived from facts
+  and cannot become the canonical read authority;
+- local/remote sync transports immutable artifacts and generation-checked
+  heads; sync state cannot redefine workspace identity.
+
+The domains MUST NOT be hidden behind a lowest-common-denominator SQL or
+SQLite-compatibility interface.  Their receipts use v1 schemas and state the
+capability, snapshot root, provider digest, and artifact digest explicitly.
+
+* Rebuild and migration policy
+
+No migration from the removed compatibility profile is provided.  On storage
+layout, namespace, provider-digest, or snapshot-root mismatch, ASP discards the
+affected pre-release derived database or artifact and rebuilds it from the
+Merkle snapshot and CAS inputs.  Read-only commands never mutate or repair the
+store implicitly.
+
+* Acceptance gates
+
+1. No production symbol, schema, test, or benchmark names an immediate or
+   SQLite compatibility profile.
+2. No fact-store connection configures =busy_timeout= or multiprocess WAL.
+3. Concurrent writes use multiple long-lived lanes and complete-transaction
+   conflict retry.
+4. Two OS processes cannot directly own the same =facts.turso=; the second
+   client routes through the resident owner or fails with a typed owner-state
+   receipt.
+5. Edit, delete, rename, provider-digest change, and cross-root tests prove that
+   Merkle/CAS artifacts invalidate without a compatibility migration.
+6. Benchmarks report single-lane and multi-lane throughput plus p50/p95 latency;
+   a stored Criterion baseline is evidence, not an architectural authority.
+

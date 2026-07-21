@@ -12,6 +12,7 @@
     "protocolVersion",
     "packetKind",
     "surface",
+    "sourceSnapshot",
     "queryTerms",
     "profile",
     "algorithm",
@@ -137,8 +138,12 @@
         "auto",
         "provider",
         "finder",
+        "search-overlay",
         "ingest"
       ]
+    },
+    "sourceSnapshot": {
+      "$ref": "https://agent-semantic-protocols.dev/schemas/source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
     },
     "candidateSources": {
       "type": "array",

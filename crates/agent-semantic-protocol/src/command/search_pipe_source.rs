@@ -43,6 +43,7 @@ pub(super) struct CandidateAcquisition {
     pub(super) candidates: Vec<Candidate>,
     pub(super) candidate_sources: Vec<String>,
     pub(super) source_trace: Vec<SearchPipeSourceTrace>,
+    pub(super) source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
 }
 
 pub(super) fn parse_source_spec(value: &str) -> Result<SourceSpec, String> {
@@ -247,6 +248,7 @@ fn candidate_acquisition_from_search(
             .into_iter()
             .map(search_source_trace)
             .collect(),
+        source_snapshot: acquisition.source_snapshot,
     }
 }
 
@@ -301,6 +303,9 @@ pub(super) fn merge_candidate_acquisitions(
         }
     }
     primary.source_trace.extend(secondary.source_trace);
+    if primary.source_snapshot.is_none() {
+        primary.source_snapshot = secondary.source_snapshot;
+    }
 }
 
 fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSourceTrace {
@@ -370,6 +375,7 @@ fn search_overlay_candidates(
         source_trace: vec![
             candidate_trace(source, &candidates).with_fields(elapsed_fields(acquisition.elapsed)),
         ],
+        source_snapshot: Some(acquisition.result_source_snapshot),
         candidates,
     })
 }
@@ -386,6 +392,7 @@ fn provider_candidates() -> Result<CandidateAcquisition, String> {
             SearchPipeSourceTrace::new("provider", "partial", 0, 1, 0),
             SearchPipeSourceTrace::new("search-overlay", "skipped", 0, 0, 0),
         ],
+        source_snapshot: None,
     })
 }
 
@@ -398,6 +405,7 @@ fn ingest_candidates(
     Ok(CandidateAcquisition {
         candidate_sources: vec!["ingest".to_string()],
         source_trace: vec![candidate_trace("ingest", &candidates)],
+        source_snapshot: None,
         candidates,
     })
 }

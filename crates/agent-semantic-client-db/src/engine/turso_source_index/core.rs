@@ -14,10 +14,7 @@ use crate::types::normalized_project_root;
 
 use crate::engine::{
     turso::connect_turso_client_db,
-    turso_operation_lock::acquire_turso_operation_lock,
-    turso_statement::{
-        execute_turso_statement_with_lock_retry, run_turso_operation_with_lock_retry,
-    },
+    turso_statement::{execute_turso_statement, run_turso_operation},
 };
 
 pub(in crate::engine) const TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION: i64 = 3;
@@ -74,7 +71,7 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             PRIMARY KEY (project_root, schema_id, schema_version, generation_id, token, owner_path)
         )",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             statement,
             "failed to bootstrap Turso source-index schema",
@@ -86,7 +83,7 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
         "CREATE INDEX IF NOT EXISTS asp_source_index_owner_v1_lookup_idx
             ON asp_source_index_owner_v1(project_root, schema_id, schema_version, generation_id, language_id, owner_path)",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             statement,
             "failed to bootstrap Turso source-index schema",
@@ -110,7 +107,7 @@ async fn ensure_turso_source_index_schema(connection: &turso::Connection) -> Res
 }
 
 async fn validate_turso_source_index_schema(connection: &turso::Connection) -> Result<(), String> {
-    run_turso_operation_with_lock_retry(
+    run_turso_operation(
         || async {
             connection
                 .query(
@@ -169,7 +166,7 @@ async fn reset_turso_source_index_schema(connection: &turso::Connection) -> Resu
         "asp_source_index_layout_v1",
         "asp_source_index_scope_v1",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             &format!("DROP TABLE IF EXISTS {table}"),
             "failed to reset noncanonical Turso source-index schema",
@@ -205,7 +202,6 @@ pub async fn refresh_turso_source_index_import(
     if import.file_hashes.is_empty() {
         return Err("source index import requires file hash evidence".to_string());
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "source-index-refresh")?;
     source_index_db_trace("operation-lock-acquired", trace_started);
     crate::engine::turso_bootstrap::bootstrap_turso_source_index_db(db_path).await?;
     source_index_db_trace("base-bootstrap-complete", trace_started);
@@ -346,7 +342,7 @@ pub async fn latest_turso_source_index_scope_files(
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
     let normalized_project_root = normalized_project_root(project_root);
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -422,7 +418,7 @@ pub async fn lookup_reusable_turso_source_index_generation(
     let project_root = normalized_project_root(project_root);
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -491,7 +487,7 @@ async fn latest_turso_source_index_generation(
     let project_root = normalized_project_root(project_root);
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -587,7 +583,7 @@ async fn reusable_turso_source_index_generation(
     file_count: u32,
 ) -> Result<Option<ClientDbSourceIndexRefreshReport>, String> {
     let selector_fingerprint = turso_source_index_selector_fingerprint(import)?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -692,7 +688,7 @@ pub(super) async fn turso_source_index_scope_row_counts(
     schema_version: &str,
     generation_id: &str,
 ) -> Result<(u32, u32), String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
