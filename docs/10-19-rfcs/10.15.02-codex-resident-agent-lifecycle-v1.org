@@ -1,14 +1,14 @@
 #+title: Codex Resident Agent Lifecycle V2
 #+startup: overview
 
-#+TITLE: Codex Resident Agent Lifecycle v1
-
 * Status — pre-release stabilization
 
-Implemented on the ASP side. A profile-valid native resident is the preferred
-transport. When Codex does not expose a custom-agent-aware creation path, ASP
-can explicitly select a degraded current-session parser transport instead of
-self-locking semantic search.
+The ASP implementation is under pre-release stabilization; this document does
+not claim full lifecycle closure until the regression gates below and an
+installed-artifact =bootstrap -> Ready= receipt pass. A profile-valid native
+resident is the preferred transport. When Codex does not expose a
+custom-agent-aware creation path, ASP can explicitly select a degraded
+current-session parser transport instead of self-locking semantic search.
 
 * Problem
 
@@ -846,10 +846,18 @@ older generation or ghost owner.  Generation reuse requires scoped content
 integrity, not only matching counts or fingerprints.
 
 * Regression gates
+:PROPERTIES:
+:CUSTOM_ID: regression-gates
+:END:
 
 The lifecycle acceptance suite MUST cover host fields that are intentionally
 unobservable as explicit protocol states rather than leaving them as ambiguous
 =null= or =unknown= values:
+
+The host observation contract is
+=agent.semantic-protocols.host-resident-target-observation= schema version =2=.
+Version 2 separates weak list visibility (=absent=) from a bounded canonical
+route-probe failure (=unroutable=).
 
 - A canonical typed child with =observedReasoningEffort=null= MAY enter
   =Ready= only through =host-profile-attested-unobservable=, with
@@ -863,8 +871,13 @@ unobservable as explicit protocol states rather than leaving them as ambiguous
   =sandboxVerificationStatus=host-inherited-drift-warning=,
   =sandboxPolicy=warning-only-host-inherited=, and =sandboxAffectsReady=false=.
   It MUST NOT trigger Resume, replacement, Cleanup, or duplicate creation.
-- A fresh native =absent= receipt atomically revokes the message target and
-  live-binding attestation; status cannot retain =ready= or
+- A fresh native-tree =absent= receipt is weak visibility evidence. It MUST
+  require one canonical target probe, MUST NOT revoke the message target, and
+  MUST NOT authorize replacement. A successful probe records
+  =observe-host-ack= and preserves the same generation.
+- Only a canonical probe failure recorded as =targetStatus=unroutable= with a
+  bounded evidence reference atomically revokes the message target and
+  live-binding attestation. Status cannot retain =ready= or
   =control-plane-idle-resumable= for that orphaned generation.
 - Exact hook-envelope plus rollout/profile proof may rehydrate a replacement
   generation only through compare-and-swap; a stale hook cannot overwrite a

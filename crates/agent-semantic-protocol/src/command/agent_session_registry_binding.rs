@@ -7,7 +7,7 @@ use super::reasoning::{
     rollout_proves_canonical_typed_binding, typed_subagent_start_proves_canonical_typed_binding,
 };
 
-pub(in crate::command) fn invalidate_absent_canonical_target(
+pub(in crate::command) fn invalidate_unroutable_canonical_target(
     registry: &AgentSessionRegistry,
     project_id: &str,
     existing: Option<&mut AgentSessionRecord>,
@@ -105,15 +105,37 @@ pub(super) fn require_host_tree_audit<'a>(
     }
 }
 
-pub(super) fn insert_absent_canonical_target_receipt(
+pub(super) fn insert_non_present_canonical_target_receipt(
     object: &mut serde_json::Map<String, serde_json::Value>,
     record: Option<&AgentSessionRecord>,
+    target_status: &str,
     typed_spawn_status: Option<&str>,
     canonical_target: &str,
 ) {
     let Some(record) = record else {
         return;
     };
+    if target_status == "absent" {
+        object.insert("bootstrapBlocked".to_string(), serde_json::Value::Null);
+        object.insert(
+            "canonicalBindingObservation".to_string(),
+            serde_json::json!({
+                "status": "host-tree-absent-reachability-unprobed",
+                "childSessionId": record.session_id,
+                "canonicalTarget": canonical_target,
+                "messageTargetStatus": "probe-required",
+                "registryRoutable": false,
+                "reasoningGateEvaluated": false,
+                "reasoningVerificationStatus": serde_json::Value::Null,
+                "reasoningEvidenceSource": serde_json::Value::Null,
+                "nextAction": "probe-hidden-routable-child-before-replacement",
+            }),
+        );
+        return;
+    }
+    if target_status != "unroutable" {
+        return;
+    }
     let (next_action, blocker) = match typed_spawn_status {
         Some("present") => (
             "create-canonical-typed-child-after-orphaned-owner",

@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use super::{ReasonKind, activation_failure_source_decision, is_activation_recovery_command};
+use super::{ReasonKind, activation_load_failure_decision, is_activation_recovery_command};
 
 fn bash_decision(command: &str) -> Option<agent_semantic_hook::HookDecision> {
-    activation_failure_source_decision(
+    activation_load_failure_decision(
         "codex",
         "pre-tool",
         Path::new("/missing/activation.json"),
@@ -18,12 +18,7 @@ fn bash_decision(command: &str) -> Option<agent_semantic_hook::HookDecision> {
 
 #[test]
 fn activation_repair_commands_remain_available() {
-    for command in [
-        "asp sync",
-        "direnv exec . asp sync",
-        "asp hook doctor",
-        "env HOME=/tmp asp hook doctor",
-    ] {
+    for command in ["asp hook doctor", "env HOME=/tmp asp hook doctor"] {
         assert!(is_activation_recovery_command(command), "{command}");
         assert!(bash_decision(command).is_none(), "{command}");
     }
@@ -37,17 +32,24 @@ fn activation_failure_uses_shared_command_intent() {
         "touch .cache/activation-repair",
         "git diff -- src/lib.rs",
     ] {
-        assert!(bash_decision(command).is_none(), "{command}");
+        let decision = bash_decision(command).expect("non-recovery command must fail closed");
+        assert_eq!(
+            decision.reason_kind,
+            ReasonKind::ActivationUnavailable,
+            "{command}"
+        );
     }
 
     for command in [
+        "asp sync",
+        "direnv exec . asp sync",
         "direnv exec . cat src/lib.rs",
         "nl -ba src/lib.rs | sed -n '1,40p'",
     ] {
-        let decision = bash_decision(command).expect("source dump must fail closed");
+        let decision = bash_decision(command).expect("non-doctor command must fail closed");
         assert_eq!(
             decision.reason_kind,
-            ReasonKind::BulkSourceDump,
+            ReasonKind::ActivationUnavailable,
             "{command}"
         );
     }
@@ -55,7 +57,7 @@ fn activation_failure_uses_shared_command_intent() {
 
 #[test]
 fn structured_read_tools_still_fail_closed() {
-    let decision = activation_failure_source_decision(
+    let decision = activation_load_failure_decision(
         "codex",
         "pre-tool",
         Path::new("/missing/activation.json"),
@@ -67,5 +69,5 @@ fn structured_read_tools_still_fail_closed() {
         .to_string(),
     )
     .expect("structured read decision");
-    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(decision.reason_kind, ReasonKind::ActivationUnavailable);
 }

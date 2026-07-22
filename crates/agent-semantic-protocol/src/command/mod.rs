@@ -4,11 +4,11 @@ mod agent_session;
 mod agent_session_registry;
 
 pub(crate) use agent_session_registry::{
-    ResidentChildIdentityProof, codex_transcript_resident_child_identity, current_agent_session_id,
-    current_registered_session, current_registered_session_identity,
-    current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
-    record_current_session_tool_event, registered_resident_session_for_root,
-    rollout_metadata_matches_managed_agent_profile, validate_session_profile,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity,
+    current_registered_session, current_resident_child_identity_proof, current_root_session_id,
+    has_current_agent_session, record_current_session_tool_event,
+    registered_resident_session_for_root, rollout_metadata_matches_managed_agent_profile,
+    validate_session_profile,
 };
 pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;
@@ -36,6 +36,7 @@ mod install_provider_workspace_descriptor;
 mod install_provider_workspace_source;
 mod language_owner_items;
 mod language_projection_import;
+mod managed_hook_config;
 mod org_archive;
 mod org_capture;
 mod org_capture_contract_materialize;
@@ -54,11 +55,11 @@ mod provider_roots;
 mod provider_selector;
 mod provider_usage;
 mod query_direct_read;
-pub(crate) mod query_owner;
 mod root_language_facade;
 mod search_config;
 mod search_dependency_seed;
 mod search_failure_render;
+mod search_owner;
 mod search_pipe;
 mod search_pipe_action_frontier;
 mod search_pipe_action_model;
@@ -95,6 +96,7 @@ mod search_query_budget;
 mod search_suggest;
 mod source_access;
 mod sync;
+mod workspace_tree_sitter_query;
 
 pub(crate) use dispatch::run_protocol_command;
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;

@@ -23,5 +23,5 @@ pub(super) use support::{
     install_claude_hooks, install_codex_hooks, prepend_path, register_asp_explore_session,
     register_expired_asp_explore_session, run_claude_pre_tool_decision,
     run_codex_hook_decision_with_env, run_codex_pre_tool_decision,
-    run_codex_pre_tool_decision_with_env, show_agent_session_json, write_hook_config,
+    run_codex_pre_tool_decision_with_env, show_agent_session_json,
 };

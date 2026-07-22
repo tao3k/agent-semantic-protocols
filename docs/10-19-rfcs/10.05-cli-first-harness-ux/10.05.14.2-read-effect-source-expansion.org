@@ -1,0 +1,50 @@
+#+title: Read-effect authority for source expansion v1
+#+startup: overview
+
+* Status
+
+Accepted as part of the v1 hook matcher authority.
+
+* Invariant
+
+Source expansion is authorized only by the conjunction below:
+
+#+begin_src text
+typed effect = read
+AND subject = registered source
+AND access mode matches the configured rule
+#+end_src
+
+A registered-source pathname in argv is subject evidence only.  It MUST NOT
+infer a read effect and MUST NOT independently trigger source-access denial,
+recovery replay, or an ASP Explorer receipt requirement.
+
+* Declarative command semantics
+
+Shell syntax remains owned by =agent-semantic-command-match=.  Parsed command
+stages and normalized invocations remain syntax-only and MUST NOT hard-code
+command semantics such as =git mv=.
+
+Command action/effect semantics are projected by the hook configuration.  A
+projection matches normalized invocation facts and supplies a typed action and
+effect before subject matching.  The default configuration declares source
+readers as =read= and filesystem rename/move operations as non-read mutation
+semantics.  Unknown shell effects remain =unknown= and cannot satisfy a
+source-expansion rule that requires =read=.
+
+* Replay identity
+
+A source-access replay receipt MUST bind to the typed decision identity,
+including the normalized command digest and projected effect.  Session, cwd,
+and replay family alone are insufficient: a previous read denial must not
+classify a later rename/move command as source expansion.
+
+* Required scenarios
+
+- =git mv source.rs moved.rs= does not satisfy source expansion.
+- wrapped and absolute-path Git invocations preserve the same non-read result.
+- moving several registered source files remains non-read.
+- actual read commands over registered sources still satisfy the read gate.
+- a previous source-access deny receipt cannot contaminate a later non-read
+  command in the same session, cwd, or transcript.
+

@@ -23,12 +23,13 @@ pub(super) fn source_index_db_trace_row_counts(
 
 pub(super) fn source_index_db_trace_membership_changes(
     started: std::time::Instant,
+    stage: &str,
     changed_owner_count: usize,
     removed_owner_count: usize,
 ) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
         eprintln!(
-            "[source-index-db-trace] stage=snapshot-membership-joined elapsedMs={} changedOwners={changed_owner_count} removedOwners={removed_owner_count}",
+            "[source-index-db-trace] stage={stage} elapsedMs={} changedOwners={changed_owner_count} removedOwners={removed_owner_count}",
             started.elapsed().as_millis()
         );
     }

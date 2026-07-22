@@ -129,36 +129,25 @@ agent-tools-install-protocol bin_dir="":
       fi; \
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
       target/release/asp --version --require-release >/dev/null; \
-      artifact_digest="$(shasum -a 256 target/release/asp | awk '{print $1}')"; \
       if [ -n "${requested_bin_dir}" ]; then \
-        destinations="${requested_bin_dir}/asp"; \
+        destination="${requested_bin_dir}/asp"; \
       elif [ -n "${SEMANTIC_AGENT_BIN_DIR:-}" ]; then \
-        destinations="${SEMANTIC_AGENT_BIN_DIR}/asp"; \
+        destination="${SEMANTIC_AGENT_BIN_DIR}/asp"; \
       else \
-        destinations="$(printf '%s\n' "$HOME/.local/bin/asp" $(which -a asp 2>/dev/null || true) | awk 'NF && !seen[$0]++')"; \
+        destination="$HOME/.local/bin/asp"; \
       fi; \
-      printf '%s\n' "${destinations}" | while IFS= read -r destination; do \
-        [ -n "${destination}" ] || continue; \
-        bin_dir="$(dirname "${destination}")"; \
-        artifact_dir="${bin_dir}/.asp-versions/${artifact_digest}"; \
-        mkdir -p "${artifact_dir}"; \
-        install -m 755 target/release/asp "${artifact_dir}/asp"; \
-        next_link="${bin_dir}/.asp-next.$$"; \
-        ln -sfn "${artifact_dir}/asp" "${next_link}"; \
-        mv -f "${next_link}" "${destination}"; \
-        rm -f "${bin_dir}/semantic-agent-protocol"; \
-        test -x "${destination}"; \
-        "${destination}" --version --require-release >/dev/null; \
-        "${destination}" guide >/dev/null; \
-        printf '%s\n' "[agent-tools-install] binaryPath=${destination} binaryArtifactDigest=${artifact_digest} binarySwitch=atomic"; \
-      done
+      target/release/asp install binary --target "${destination}"; \
+      rm -f "$(dirname "${destination}")/semantic-agent-protocol"; \
+      test -x "${destination}"; \
+      "${destination}" --version --require-release >/dev/null; \
+      "${destination}" guide >/dev/null
 
 # Install the debug protocol binary into a local bin dir and prewarm it.
 agent-tools-install-protocol-debug bin_dir=".bin":
     @bin_dir="{{bin_dir}}"; \
       mkdir -p "${bin_dir}"; \
       cargo build --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
-      install -m 755 target/debug/asp "${bin_dir}/asp"; \
+      target/debug/asp install binary --target "${bin_dir}/asp"; \
       rm -f "${bin_dir}/semantic-agent-protocol"; \
       test -x "${bin_dir}/asp"; \
       "${bin_dir}/asp" guide >/dev/null

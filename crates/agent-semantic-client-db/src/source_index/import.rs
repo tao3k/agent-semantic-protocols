@@ -71,6 +71,8 @@ pub fn source_index_import_from_language_projection(
                 selectors: rows.selectors,
             },
             source_snapshot,
+            membership_change_set:
+                super::types::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
 }

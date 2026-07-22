@@ -94,6 +94,27 @@
         "$ref": "#/$defs/stateUpdate"
       }
     },
+    "interactiveCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "schemaVersion", "argv"],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.loop.resident-interactive-command"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 6,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "fields": {
       "$ref": "#/$defs/fields"
     }

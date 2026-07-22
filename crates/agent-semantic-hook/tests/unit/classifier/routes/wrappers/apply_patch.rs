@@ -67,6 +67,26 @@ schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
 
+[agents]
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-explore"
+role = "asp_explorer"
+roles = []
+permissions = []
+codexAgentName = "asp_explorer"
+sessionLifetime = "resident"
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-testing"
+role = "asp_testing"
+roles = []
+permissions = []
+codexAgentName = "asp_testing"
+sessionLifetime = "resident"
+
 [experimental.semanticAstPatch]
 enabled = false
 "#,

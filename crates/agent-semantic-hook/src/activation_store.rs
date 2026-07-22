@@ -26,17 +26,31 @@ pub fn load_or_sync_activation(
     project_root: &Path,
 ) -> Result<HookRuntime, String> {
     if is_generated_activation_path_for_project(activation_path, project_root) {
-        return sync_activation(project_root, activation_path).or_else(|sync_error| {
-            runtime_from_current_default_activation(project_root).or_else(|runtime_error| {
-                load_activation(activation_path).map_err(|load_error| {
-                    format!(
-                        "{load_error}; failed to sync generated activation {}: {sync_error}; \
+        if let Ok(current_exe) = std::env::current_exe()
+            && crate::verify_active_asp_artifact_receipt(activation_path, &[&current_exe]).is_ok()
+        {
+            return load_activation(activation_path);
+        }
+        return match sync_activation(project_root, activation_path) {
+            Ok(runtime) => {
+                crate::materialize_active_asp_artifact_receipt_for_current_process(
+                    activation_path,
+                    &runtime,
+                )?;
+                Ok(runtime)
+            }
+            Err(sync_error) => {
+                runtime_from_current_default_activation(project_root).or_else(|runtime_error| {
+                    load_activation(activation_path).map_err(|load_error| {
+                        format!(
+                            "{load_error}; failed to sync generated activation {}: {sync_error}; \
                          failed to build in-memory generated activation: {runtime_error}",
-                        activation_path.display()
-                    )
+                            activation_path.display()
+                        )
+                    })
                 })
-            })
-        });
+            }
+        };
     }
     load_activation(activation_path)
 }

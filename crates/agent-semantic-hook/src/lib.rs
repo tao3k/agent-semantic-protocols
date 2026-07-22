@@ -3,6 +3,7 @@
 //! Root semantic agent hook runtime for provider manifests and project activations.
 
 mod activation_store;
+mod active_artifact_receipt;
 mod classifier;
 mod codex_config;
 mod codex_plugin_trust;
@@ -17,11 +18,7 @@ pub use codex_global_config::{
 mod codex_project_trust;
 mod codex_trust;
 mod command;
-pub use command::{
-    AspLanguageCommand, SourceCommandIntent, asp_invocation_indices,
-    classify_asp_language_command_tokens, classify_asp_language_command_tokens_with_policy,
-    classify_source_command_intent, semantic_shell_tokens,
-};
+pub use command::semantic_shell_tokens;
 mod event_replay;
 mod event_state;
 mod event_state_subagent_model_drift;
@@ -43,7 +40,6 @@ pub use provider_registry::registered_language_ids;
 pub use provider_registry::{materialize_provider_routes, semantic_registry_digest};
 mod runtime_profile;
 pub mod source_access;
-mod source_dump_range;
 mod source_selector;
 mod tool_action;
 
@@ -51,6 +47,12 @@ pub use crate::activation_store::{
     DefaultActivationSync, default_activation_path, discover_activation_path, load_activation,
     load_or_refresh_default_activation, load_or_sync_activation, parse_hook_activation,
     write_activation,
+};
+pub use crate::active_artifact_receipt::{
+    ActiveAspArtifactInput, ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
+    materialize_active_asp_artifact_receipt,
+    materialize_active_asp_artifact_receipt_for_current_process,
+    verify_active_asp_artifact_receipt,
 };
 pub use classifier::{
     HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, classify_hook,
@@ -80,8 +82,7 @@ pub use event_state_subagent_model_drift::{
 };
 pub use hook_config::{
     AspSessionPolicy, ClientHookConfig, default_client_config_path, default_client_config_template,
-    default_client_config_template_for_source_extensions, load_client_config,
-    load_client_config_for_project,
+    load_client_config, load_client_config_for_project, load_embedded_client_config_for_project,
 };
 pub use hook_config_global::default_global_client_config_path;
 pub use protocol::{
@@ -126,3 +127,5 @@ pub use read_only_subagent::{
 extern crate self as agent_semantic_hook;
 #[doc(hidden)]
 pub use agent_semantic_command_match as command_match;
+#[doc(hidden)]
+pub use agent_semantic_command_match::bash as bash_command_stages;

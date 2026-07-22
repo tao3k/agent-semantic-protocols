@@ -126,6 +126,7 @@ pub struct ClientDbLanguageProjectionImportRequest {
 pub struct ClientDbLanguageProjectionImport {
     pub source_index: super::types::ClientDbSourceIndexImport,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub membership_change_set: super::types::ClientDbSourceIndexMembershipChangeSet,
 }
 
 /// Rows derived from parser facts without reading or parsing language source text.

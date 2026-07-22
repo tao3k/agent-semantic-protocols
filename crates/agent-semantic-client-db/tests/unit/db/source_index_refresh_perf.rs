@@ -629,6 +629,8 @@ fn source_index_refresh_detects_selector_change_without_file_hash_change() {
 
 fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
     ClientDbSourceIndexRefreshRequest {
+        membership_change_set:
+            agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         file_count: 1,
         source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
         import: ClientDbSourceIndexImport {
@@ -703,6 +705,8 @@ fn large_refresh_request(
         });
     }
     ClientDbSourceIndexRefreshRequest {
+        membership_change_set:
+            agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         file_count: owner_count,
         source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
         import: ClientDbSourceIndexImport {

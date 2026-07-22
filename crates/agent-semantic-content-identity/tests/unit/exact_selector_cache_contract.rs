@@ -5,9 +5,9 @@ use agent_semantic_content_identity::exact_selector_cache::{
 use agent_semantic_content_identity::exact_selector_merkle::{
     ContentDigestV1, EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM, EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID,
     EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1, ExactSelectorMerkleProofV1,
-    MerkleInclusionSideV1, MerkleInclusionStepV1, derive_parser_fact_digest_v1,
-    derive_projection_digest_v1,
+    derive_parser_fact_digest_v1, derive_projection_digest_v1,
 };
+use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
 
 fn digest(character: char) -> ContentDigestV1 {
     ContentDigestV1::parse(character.to_string().repeat(64)).expect("valid digest")
@@ -15,6 +15,13 @@ fn digest(character: char) -> ContentDigestV1 {
 
 pub(crate) fn record() -> ExactSelectorProjectionRecordV1 {
     let projection_payload = b"fn run() {}".to_vec();
+    let owner_path = "crates/example/src/lib.rs".to_owned();
+    let source_blob_digest = digest('d');
+    let tree = WorkspacePathMerkleTreeV1::from_file_digests([
+        (owner_path.clone(), source_blob_digest.clone()),
+        ("crates/other/src/lib.rs".to_owned(), digest('2')),
+    ])
+    .expect("valid Merkle tree");
     let parser_fact_digest = derive_parser_fact_digest_v1(
         "rust",
         &digest('e'),
@@ -35,14 +42,14 @@ pub(crate) fn record() -> ExactSelectorProjectionRecordV1 {
             schema_version: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION.to_owned(),
             digest_algorithm: EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM.to_owned(),
             language_id: "rust".to_owned(),
-            workspace_root_digest: digest('a'),
-            owner_path: "crates/example/src/lib.rs".to_owned(),
-            owner_subtree_digest: digest('b'),
-            owner_inclusion_proof: vec![MerkleInclusionStepV1 {
-                side: MerkleInclusionSideV1::Left,
-                digest: digest('c'),
-            }],
-            source_blob_digest: digest('d'),
+            workspace_root_digest: tree.root_digest().clone(),
+            owner_path: owner_path.clone(),
+            owner_subtree_digest: tree
+                .owner_subtree_digest(&owner_path)
+                .expect("owner leaf")
+                .clone(),
+            owner_inclusion_proof: tree.inclusion_proof(&owner_path).expect("owner proof"),
+            source_blob_digest,
             parser_identity_digest: digest('e'),
             query_pack_digest: digest('f'),
             parser_fact_digest,
@@ -74,7 +81,7 @@ pub(crate) fn key<'a>(
 fn valid_warm_hit_has_zero_side_effects() {
     let record = record();
     let hit = record
-        .validate_warm_hit(&key(&record), |_| true)
+        .validate_warm_hit(&key(&record))
         .expect("valid warm hit");
     assert_eq!(hit.projection_payload, b"fn run() {}");
     assert_eq!(hit.side_effects, ExactSelectorWarmSideEffectsV1::ZERO);
@@ -83,9 +90,12 @@ fn valid_warm_hit_has_zero_side_effects() {
 #[test]
 fn failed_owner_inclusion_is_a_typed_miss() {
     let record = record();
+    let mut invalid = record.clone();
+    invalid.proof.workspace_root_digest = digest('9');
+    let invalid_key = key(&invalid);
     assert_eq!(
-        record.validate_warm_hit(&key(&record), |_| false),
-        Err(ExactSelectorMerkleMissV1::OwnerInclusionMismatch)
+        invalid.validate_warm_hit(&invalid_key),
+        Err(ExactSelectorMerkleMissV1::InvalidProofShape)
     );
 }
 
@@ -94,7 +104,29 @@ fn changed_projection_payload_is_a_typed_miss() {
     let mut record = record();
     record.projection_payload = b"fn changed() {}".to_vec();
     assert_eq!(
-        record.validate_warm_hit(&key(&record), |_| true),
+        record.validate_warm_hit(&key(&record)),
         Err(ExactSelectorMerkleMissV1::ProjectionDigestMismatch)
+    );
+}
+
+#[test]
+fn validated_projection_reuses_proof_but_rebinds_every_lookup_key() {
+    let record = record();
+    let lookup_key = key(&record);
+    let validated = agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1::hydrate(
+        record.clone(),
+        &lookup_key,
+    )
+    .expect("valid hydration");
+    let hit = validated
+        .validate_warm_hit(&lookup_key)
+        .expect("validated warm hit");
+    assert_eq!(hit.side_effects, ExactSelectorWarmSideEffectsV1::ZERO);
+
+    let mut different_identity = record;
+    different_identity.proof.query_pack_digest = digest('8');
+    assert_eq!(
+        validated.validate_warm_hit(&key(&different_identity)),
+        Err(ExactSelectorMerkleMissV1::IdentityMismatch)
     );
 }

@@ -94,31 +94,77 @@ For =cargo test=, all of these candidates therefore select the same
 - A benign executable whose argument merely contains the text =cargo test= does
   not match.
 - No Cargo/test special case exists outside configuration and wrapper grammar.
+* Config-derived scenario contract
+
+The canonical =crates/agent-semantic-config/templates/hooks/config.toml= is the
+test and benchmark case inventory.  A Rust test MUST NOT restate =rg=, =cargo
+test=, or any other configured command as its own scenario list.
+
+The generic runner expands every =rules[*].match.argvPrefixAny= entry and every
+=executionLanes[*].commandPrefixes= entry into bare, absolute-executable,
+environment, directory-environment, later-pipeline, conditional, and shell
+carrier forms.  It also derives quoted-data and similar-command negative
+controls.  Adding or removing a configured prefix therefore changes the test
+and benchmark inventory without editing Rust code.
+
+Raw and normalized typed stages are both matcher evidence.  Raw stages preserve
+explicit configured prefixes such as =uv run python=, while normalized stages
+allow the inner command to match a rule such as =rg=.  They are projections of
+one Bash AST receipt, not separate tokenizers or compatibility classifiers.
+
+The benchmark consumes the same derived inventory after configuration parsing;
+configuration parsing and fixture generation are outside the timed loop.
 * Fixed performance contract
 
-The matcher benchmark compiles the same pure matcher owner without compiling
-the protocol workspace.  Build-graph time is not matcher latency and MUST NOT
-be hidden by a larger timeout.
+The matcher benchmark compiles the single command-match owner without compiling
+the protocol workspace.  That owner includes Bash parsing, typed stage
+materialization, and rule matching.  Build-graph time is not matcher latency
+and MUST NOT be hidden by a larger timeout.
 
-The v1 acceptance scenarios are fixed:
-
-- bare command
-- absolute executable path
-- =env= wrapper and assignment
-- =direnv exec= wrapper
-- =rtk= wrapper, including an absolute wrapped executable
-- a later shell stage
-- quoted-text negative control
-- the bounded worst-case candidate frontier
-- a 128-rule routing set
+The v1 acceptance transforms are fixed, while command prefixes are always
+derived from the canonical config: bare command, absolute executable path,
+=env=, =direnv exec=, =timeout= carrier, later shell stage, conditional stage, shell carrier,
+quoted-data negative control, similar-name negative control, the bounded
+worst-case candidate frontier, and a 128-rule routing set.
 
 For one prefix match, p95 MUST be at most 50 microseconds.  For a 128-rule
 routing set, p95 MUST be at most 1 millisecond.  Candidate or token budget
 exhaustion MUST select protected routing and MUST NOT become an execution-lane
 escape.
 
+For one Bash parse plus typed-stage match, p95 MUST be at most 1 millisecond.
+
 Active artifact refresh is a different scenario from building an artifact.
 Installation MUST place the binary and activation contract under an immutable
 artifact identity, validate the pair, and atomically switch the active pointer.
 Compilation, provider discovery, and deep health probing MUST NOT be counted as
 refresh work or performed on the command-match hot path.
+* Bash AST ownership
+
+Wrapper matching MUST consume typed command stages produced by
+=tree-sitter-bash=.  A flat shell-token vector, substring search, or a literal
+=* rg= pattern is not an authoritative shell model.
+
+For each Bash =command= node, the parser emits one ordered stage containing its
+command name, assignments, wrapper arguments, ordinary arguments, and quoted
+arguments.  The shared matcher searches executable prefix candidates within
+that stage.  Candidate index zero is valid, so =* rg= means zero or more
+wrapper words before =rg=; it MUST NOT require at least one wrapper word.
+
+The same typed stage supplies argv source-path candidates to the rule engine.
+Language source extensions and source globs remain configuration/harness owned;
+the Bash parser MUST NOT hard-code =.rs=, =.py=, or any other language suffix.
+Thus both of these predicates are evaluated over one AST receipt:
+
+- an executable candidate matches =rg=;
+- an argument candidate matches an activated language source glob.
+
+The raw source-search deny/ASP route applies only after both predicates are
+evaluated.  Parser failure, candidate-budget exhaustion, invalid activation,
+or invalid hook config MUST fail closed and MUST NOT become permission to run
+the raw command.
+
+Required scenarios include bare, absolute, assignment-prefixed, =env=,
+=direnv exec=, pipeline, later list stage, and quoted source path forms.  Every
+scenario MUST produce the same typed route for =rg PATTERN file.<language
+extension>= without duplicating wrapper-specific rules.

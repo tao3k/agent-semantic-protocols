@@ -42,12 +42,22 @@ pub(crate) fn run_provider_method(
         .map_err(|error| format!("serialize provider method: {error}"))?
         .trim_matches('"')
         .to_owned();
-    if let Some(storage) =
-        crate::provider_runtime_storage::ProviderRuntimeStorageBinding::from_current_runtime(
-            &parsed.project_root,
-        )?
-    {
-        storage.record_invocation_start(&provider_method_name, language_id.as_str())?;
+    match crate::provider_runtime_storage::ProviderRuntimeStorageBinding::from_current_runtime(
+        &parsed.project_root,
+    ) {
+        Ok(Some(storage)) => {
+            if let Err(error) =
+                storage.record_invocation_start(&provider_method_name, language_id.as_str())
+            {
+                debug_client_stage(&format!(
+                    "provider-method:runtime-storage-record-unavailable:{error}"
+                ));
+            }
+        }
+        Ok(None) => {}
+        Err(error) => debug_client_stage(&format!(
+            "provider-method:runtime-storage-open-unavailable:{error}"
+        )),
     }
     debug_client_stage("provider-method:load-registry");
     let snapshot = crate::activation_cache::load_provider_registry_snapshot(

@@ -32,7 +32,6 @@ pub(crate) use super::provider_selector::{
 use super::query_direct_read::{
     is_asp_fast_direct_source_read, run_asp_fast_direct_source_read_command,
 };
-use super::query_owner::run_asp_fast_owner_query_command;
 use super::search_config::AspConfig;
 use super::search_dependency_seed::{
     is_search_dependency_seed, run_search_dependency_seed_command,
@@ -58,16 +57,11 @@ macro_rules! restore_env_var {
 }
 
 pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
-    fn uses_client_backend(language_id: &str, args: &[String]) -> bool {
+    fn uses_client_backend(args: &[String]) -> bool {
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
             || matches!(args.first().map(String::as_str), Some("check"))
             || matches!(args.first().map(String::as_str), Some("cache"))
-            || (language_id != "gerbil-scheme"
-                && !document_language_facade::is_document_language(language_id)
-                && args.first().is_some_and(|command| command == "query")
-                && args.get(1).is_none_or(|subcommand| subcommand != "guide")
-                && !is_provider_owned_structural_code_query(language_id, args))
     }
 
     fn is_document_owner_items_search(language_id: &str, args: &[String]) -> bool {
@@ -255,14 +249,12 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     )?;
     reject_registered_source_selector_query(language_id, &command_args, provider)?;
 
-    if !is_provider_owned_structural_code_query(language_id, &provider_args)
-        && run_asp_fast_owner_query_command(
-            language_id,
-            &provider_args,
-            &project_root,
-            &invocation_root,
-        )?
-    {
+    if super::workspace_tree_sitter_query::try_run_workspace_tree_sitter_query(
+        language_id,
+        &provider_args,
+        &project_root,
+        provider,
+    )? {
         return Ok(());
     }
 
@@ -371,7 +363,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if try_replay_gerbil_check_cache(language_id, &provider_args, &project_root)? {
         return Ok(());
     }
-    if uses_client_backend(language_id, &command_args) {
+    if uses_client_backend(&command_args) {
         return run_client_backend_command(
             language_id,
             &provider_args,
@@ -402,8 +394,88 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     let mut provider_argv = provider_process_args(&provider_args);
     if is_provider_owned_structural_code_query(language_id, &provider_args) {
-        let snapshot =
-            agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
+        let parser_identity_digest = agent_semantic_content_identity::exact_selector_projection_packet::derive_parser_identity_digest_v1(
+            &provider.provider_id,
+            &provider.execution_command_digest,
+            &provider.semantic_registry_digest,
+        );
+        let canonical_query_pack =
+            serde_json::to_vec(&provider.query_pack_descriptor).map_err(|error| {
+                format!("failed to encode activated query-pack descriptor: {error}")
+            })?;
+        let query_pack_digest = agent_semantic_content_identity::exact_selector_projection_packet::derive_query_pack_identity_digest_v1(
+            &canonical_query_pack,
+        );
+        let owner_path = super::provider_selector::provider_owned_structural_owner_path(
+            language_id,
+            &provider_args,
+        )
+        .ok_or_else(|| {
+            "provider-owned structural query is missing an exact owner path".to_string()
+        })?;
+        let structural_selector = super::provider_selector::provider_owned_structural_selector(
+            language_id,
+            &provider_args,
+        )
+        .ok_or_else(|| {
+            "provider-owned structural query is missing an exact selector".to_string()
+        })?;
+        let snapshot = agent_semantic_client::source_index::current_source_index_snapshot_for_owner_from_activation(
+            &project_root,
+            &activation_path,
+            &runtime,
+            owner_path,
+            language_id,
+            &provider.provider_id,
+        )?;
+        let source = snapshot.source_blobs.get(owner_path).ok_or_else(|| {
+            format!("current source snapshot omitted exact-selector owner bytes: {owner_path}")
+        })?;
+        let source_blob_digest =
+            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                source,
+            );
+        let workspace_tree =
+            agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
+                [(owner_path.to_string(), source_blob_digest.clone())],
+            )
+            .map_err(|error| format!("failed to construct exact-selector workspace Merkle tree: {error:?}"))?;
+        let owner_subtree_digest =
+            workspace_tree
+                .owner_subtree_digest(owner_path)
+                .ok_or_else(|| {
+                    format!(
+                        "exact-selector owner is absent from workspace Merkle tree: {owner_path}"
+                    )
+                })?;
+        let lookup_key =
+            agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
+                language_id,
+                workspace_root_digest: workspace_tree.root_digest(),
+                owner_path,
+                owner_subtree_digest,
+                source_blob_digest: &source_blob_digest,
+                parser_identity_digest: &parser_identity_digest,
+                query_pack_digest: &query_pack_digest,
+                structural_selector,
+                projection_mode: agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
+            };
+        if let Some(validated) =
+            agent_semantic_client_db::ClientDbEngine::lookup_exact_selector_projection_v1_from_client_dir(
+                &cache_home,
+                &lookup_key,
+            )?
+        {
+            let hit = validated
+                .validate_warm_hit(&lookup_key)
+                .map_err(|miss| format!("validated exact-selector cache entry missed: {miss:?}"))?;
+            std::io::Write::write_all(
+                &mut std::io::stdout().lock(),
+                hit.projection_payload,
+            )
+            .map_err(|error| format!("failed to write exact-selector warm projection: {error}"))?;
+            return Ok(());
+        }
         let envelope =
             agent_semantic_client::source_index::publish_provider_source_snapshot_envelope(
                 &snapshot,
@@ -412,9 +484,82 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 &cache_home,
             )?;
         provider_argv.extend([
+            "--json".to_string(),
+            "--asp-provider-id".to_string(),
+            provider.provider_id.clone(),
+            "--asp-parser-identity-digest".to_string(),
+            parser_identity_digest.as_str().to_string(),
+            "--asp-query-pack-digest".to_string(),
+            query_pack_digest.as_str().to_string(),
             "--source-snapshot-envelope".to_string(),
             envelope.display().to_string(),
         ]);
+        let invocations = provider_invocations(
+            provider,
+            &provider_argv,
+            &project_root,
+            &runtime_profiles,
+            &config,
+        )?;
+        let [invocation] = invocations.as_slice() else {
+            return Err(format!(
+                "exact-selector typed projection requires one provider invocation; invocations={}",
+                invocations.len()
+            ));
+        };
+        let output = super::provider_process::run_provider_command_with_stdin(
+            language_id,
+            provider,
+            invocation,
+            &project_root,
+            &cache_home,
+            Vec::new(),
+        )?;
+        if !output.status.success() {
+            return Err(format!(
+                "exact-selector provider failed: status={:?} stderr={}",
+                output.status.code(),
+                String::from_utf8_lossy(output.stderr.as_ref())
+            ));
+        }
+        let packet: agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1 =
+            serde_json::from_slice(output.stdout.as_ref()).map_err(|error| {
+                format!("failed to decode exact-selector provider packet: {error}")
+            })?;
+        if packet.language_id != language_id
+            || packet.provider_id != provider.provider_id
+            || packet.owner_path != owner_path
+            || packet.structural_selector != structural_selector
+        {
+            return Err(
+                "exact-selector provider packet identity does not match activated request"
+                    .to_string(),
+            );
+        }
+        let record = packet
+            .enrich_projection_record(&workspace_tree)
+            .map_err(|error| {
+                format!("failed to enrich exact-selector provider packet: {error:?}")
+            })?;
+        let validated =
+            agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1::hydrate(
+                record,
+                &lookup_key,
+            )
+            .map_err(|miss| {
+                format!("exact-selector provider record failed Merkle validation: {miss:?}")
+            })?;
+        agent_semantic_client_db::ClientDbEngine::persist_exact_selector_projection_v1_from_client_dir(
+            &cache_home,
+            &lookup_key,
+            validated.record(),
+        )?;
+        let hit = validated
+            .validate_warm_hit(&lookup_key)
+            .map_err(|miss| format!("persisted exact-selector record missed: {miss:?}"))?;
+        std::io::Write::write_all(&mut std::io::stdout().lock(), hit.projection_payload)
+            .map_err(|error| format!("failed to write exact-selector cold projection: {error}"))?;
+        return Ok(());
     }
     for invocation in provider_invocations(
         provider,

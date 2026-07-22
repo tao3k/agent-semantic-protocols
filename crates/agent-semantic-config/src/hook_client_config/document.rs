@@ -2,9 +2,9 @@
 
 use figment::{
     Figment,
-    providers::{Format, Serialized, Toml},
+    providers::{Format, Toml},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     collections::{BTreeMap, HashSet},
     path::Path,
@@ -12,8 +12,7 @@ use std::{
 
 use super::validation::validate_config;
 
-use super::agent_runtime::{HookClientAgentsConfig, HookClientExecutionLanesConfig};
-use super::intent_policy::HookClientAspCommandIntentPolicyConfig;
+use super::agent_runtime::HookClientAgentsConfig;
 use super::routing::HookClientRuleConfig;
 
 /// Schema id for hook client config.
@@ -24,32 +23,10 @@ pub const CLIENT_HOOK_CONFIG_SCHEMA_VERSION: &str = "1";
 pub(super) const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.hook";
 pub(super) const HOOK_PROTOCOL_VERSION: &str = "1";
 
-const DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS: &[&str] = &[
-    ".rs",
-    ".py",
-    ".ts",
-    ".tsx",
-    ".js",
-    ".jsx",
-    ".mts",
-    ".cts",
-    ".mjs",
-    ".cjs",
-    ".ss",
-    ".ssi",
-    ".scm",
-    ".sld",
-    ".jl",
-    ".org",
-    ".org_archive",
-    ".md",
-    ".markdown",
-];
-
 const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../../templates/hooks/config.toml");
 
 /// Parsed and validated project-local hook client config.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientConfigFile {
     #[serde(default, rename = "wrapper_match")]
@@ -74,16 +51,10 @@ pub struct HookClientConfigFile {
     pub agent_session_guide: HookClientAgentSessionGuideConfig,
     #[serde(default)]
     pub agent_session_messages: HookClientAgentSessionMessagesConfig,
-    #[serde(default)]
     pub agents: HookClientAgentsConfig,
-    #[serde(default)]
-    pub execution_lanes: HookClientExecutionLanesConfig,
-    #[serde(default)]
-    pub asp_command_intent_policy: HookClientAspCommandIntentPolicyConfig,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
 }
-
 
 /// Optional hook recovery prompt template and per-client agent-flow fragments.
 #[derive(Debug, Default, Deserialize)]
@@ -239,15 +210,66 @@ pub struct AspProjectConfigFile {
 /// Hook-owned ASP project config.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AspProjectHookConfig {}
+pub struct AspProjectHookConfig {
+    #[serde(default)]
+    pub agents: HookClientAgentsConfig,
+    #[serde(default)]
+    pub rules: Vec<HookClientRuleConfig>,
+}
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HookClientConfigMetadataDefaults {
-    schema_id: &'static str,
-    schema_version: &'static str,
-    protocol_id: &'static str,
-    protocol_version: &'static str,
+/// Merge project hook declarations over the managed v1 config by stable identity.
+///
+/// Rules replace complete rules with the same `id`; resident agents replace complete
+/// identities with the same `name`. Field-level merging is intentionally unsupported,
+/// so every declaration remains one auditable policy unit.
+pub fn merge_asp_project_hook_config(
+    mut base: HookClientConfigFile,
+    project: AspProjectConfigFile,
+) -> Result<HookClientConfigFile, String> {
+    let mut resident_names = HashSet::new();
+    for resident in &project.hook.agents.resident_agents {
+        if !resident_names.insert(resident.name.as_str()) {
+            return Err(format!(
+                "project hook declares resident agent `{}` more than once",
+                resident.name
+            ));
+        }
+    }
+    let mut rule_ids = HashSet::new();
+    for rule in &project.hook.rules {
+        if !rule_ids.insert(rule.id.as_str()) {
+            return Err(format!(
+                "project hook declares rule `{}` more than once",
+                rule.id
+            ));
+        }
+    }
+
+    for resident in project.hook.agents.resident_agents {
+        if let Some(index) = base
+            .agents
+            .resident_agents
+            .iter()
+            .position(|existing| existing.name == resident.name)
+        {
+            base.agents.resident_agents[index] = resident;
+        } else {
+            base.agents.resident_agents.push(resident);
+        }
+    }
+    for rule in project.hook.rules {
+        if let Some(index) = base
+            .rules
+            .iter()
+            .position(|existing| existing.id == rule.id)
+        {
+            base.rules[index] = rule;
+        } else {
+            base.rules.push(rule);
+        }
+    }
+    validate_config(&base)?;
+    Ok(base)
 }
 
 /// Agent-facing Org artifact workflow guard from project-local hook config.
@@ -312,7 +334,21 @@ pub struct HookClientAgentOrgArtifactsArchiveWarningConfig {
 
 /// Render the seed global hook config file.
 pub fn default_hook_client_config_template() -> String {
-    default_hook_client_config_template_for_source_extensions(DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS)
+    DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE
+        .replace(
+            "@CLIENT_HOOK_CONFIG_SCHEMA_ID@",
+            CLIENT_HOOK_CONFIG_SCHEMA_ID,
+        )
+        .replace(
+            "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@",
+            CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
+        )
+        .replace("@HOOK_PROTOCOL_ID@", HOOK_PROTOCOL_ID)
+        .replace("@HOOK_PROTOCOL_VERSION@", HOOK_PROTOCOL_VERSION)
+        .replace(
+            "@HOOK_CLIENT_CONTRACT_FINGERPRINT@",
+            &hook_client_contract_fingerprint(),
+        )
 }
 
 /// Parse the embedded default hook config template.
@@ -344,33 +380,6 @@ pub fn hook_client_contract_fingerprint() -> String {
     format!("hook-client-v1-{hash:016x}")
 }
 
-/// Render the seed global hook config file for active provider source extensions.
-pub fn default_hook_client_config_template_for_source_extensions<I, S>(
-    source_extensions: I,
-) -> String
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    let argv_source_globs = render_argv_source_globs(source_extensions);
-    DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE
-        .replace(
-            "@CLIENT_HOOK_CONFIG_SCHEMA_ID@",
-            CLIENT_HOOK_CONFIG_SCHEMA_ID,
-        )
-        .replace(
-            "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@",
-            CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
-        )
-        .replace("@HOOK_PROTOCOL_ID@", HOOK_PROTOCOL_ID)
-        .replace("@HOOK_PROTOCOL_VERSION@", HOOK_PROTOCOL_VERSION)
-        .replace(
-            "@HOOK_CLIENT_CONTRACT_FINGERPRINT@",
-            &hook_client_contract_fingerprint(),
-        )
-        .replace("@ARGV_SOURCE_GLOBS@", &argv_source_globs)
-}
-
 /// Render a hook client message template with `{{key}}` placeholders.
 pub fn render_hook_client_message_template(template: &str, values: &[(&str, &str)]) -> String {
     let mut rendered = template.to_string();
@@ -380,50 +389,15 @@ pub fn render_hook_client_message_template(template: &str, values: &[(&str, &str
     rendered.trim().to_string()
 }
 
-fn render_argv_source_globs<I, S>(source_extensions: I) -> String
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    let mut seen = HashSet::new();
-    let mut lines = Vec::new();
-    for source_extension in source_extensions {
-        let Some(extension) = normalize_source_extension(source_extension.as_ref()) else {
-            continue;
-        };
-        if seen.insert(extension.clone()) {
-            lines.push(format!("  \"*{extension}\", \"**/*{extension}\","));
-        }
-    }
-    if lines.is_empty() {
-        return render_argv_source_globs(DEFAULT_HOOK_CLIENT_SOURCE_EXTENSIONS);
-    }
-    lines.join("\n")
-}
-
-fn normalize_source_extension(source_extension: &str) -> Option<String> {
-    let extension = source_extension.trim();
-    if extension.is_empty() {
-        return None;
-    }
-    let extension = extension
-        .strip_prefix("**/*")
-        .or_else(|| extension.strip_prefix('*'))
-        .unwrap_or(extension);
-    if extension.starts_with('.') {
-        Some(extension.to_string())
-    } else {
-        Some(format!(".{extension}"))
-    }
-}
-
 /// Load, parse, and validate project-local hook config.
 pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
     if !path.is_file() {
-        return Ok(HookClientConfigFile::default());
+        return Err(format!(
+            "hook client config does not exist: {}",
+            path.display()
+        ));
     }
-    let parsed = Figment::from(Serialized::defaults(hook_client_config_metadata_defaults()))
-        .merge(Toml::file(path))
+    let parsed = Figment::from(Toml::file(path))
         .extract::<HookClientConfigFile>()
         .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
     validate_config(&parsed)?;
@@ -439,15 +413,6 @@ pub fn load_asp_project_config_file(path: &Path) -> Result<AspProjectConfigFile,
     Figment::from(Toml::file(path))
         .extract::<AspProjectConfigFile>()
         .map_err(|error| format!("failed to parse {}: {error}", path.display()))
-}
-
-fn hook_client_config_metadata_defaults() -> HookClientConfigMetadataDefaults {
-    HookClientConfigMetadataDefaults {
-        schema_id: CLIENT_HOOK_CONFIG_SCHEMA_ID,
-        schema_version: CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-    }
 }
 
 pub(super) fn default_enabled() -> bool {

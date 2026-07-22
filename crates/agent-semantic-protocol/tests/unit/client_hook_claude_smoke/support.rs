@@ -189,6 +189,32 @@ pub(in super::super) fn run_codex_hook_decision_with_activation(
     envs: &[(&str, &str)],
     activation_path: &Path,
 ) -> Value {
+    let output = run_codex_hook_output_with_activation(root, event, payload, envs, activation_path);
+    assert!(
+        output.status.success(),
+        "hook stdout: {}\nhook stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).expect("parse hook stdout")
+}
+
+pub(in super::super) fn run_codex_pre_tool_output_with_env(
+    root: &Path,
+    payload: Value,
+    envs: &[(&str, &str)],
+) -> std::process::Output {
+    let activation_path = codex_smoke_activation_path(root);
+    run_codex_hook_output_with_activation(root, "pre-tool", payload, envs, &activation_path)
+}
+
+fn run_codex_hook_output_with_activation(
+    root: &Path,
+    event: &str,
+    payload: Value,
+    envs: &[(&str, &str)],
+    activation_path: &Path,
+) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
         .args(["hook", event, "--client", "codex", "--emit", "decision"])
@@ -218,14 +244,7 @@ pub(in super::super) fn run_codex_hook_decision_with_activation(
         .expect("stdin")
         .write_all(payload.to_string().as_bytes())
         .expect("write payload");
-    let output = child.wait_with_output().expect("wait hook");
-    assert!(
-        output.status.success(),
-        "hook stdout: {}\nhook stderr: {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    serde_json::from_slice(&output.stdout).expect("parse hook stdout")
+    child.wait_with_output().expect("wait hook")
 }
 
 pub(in super::super) fn codex_asp_query_payload(command: &str) -> Value {
@@ -388,13 +407,6 @@ pub(in super::super) fn show_agent_session_json(root: &Path, child_session_id: &
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).expect("parse agent session show json")
-}
-
-pub(in super::super) fn write_hook_config(root: &Path, contents: &str) {
-    let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
-    std::fs::create_dir_all(config_path.parent().expect("hook config parent"))
-        .expect("create hook config dir");
-    std::fs::write(config_path, contents).expect("write hook config");
 }
 
 fn make_executable(path: &Path) {

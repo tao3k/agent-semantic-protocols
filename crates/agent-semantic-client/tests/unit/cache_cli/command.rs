@@ -22,12 +22,19 @@ use std::{
 
 fn search_turso_documents(
     engine: &ClientDbEngine,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
     limit: u32,
 ) -> Vec<TursoClientDbSearchHit> {
-    runtime_block_on_current_thread(engine.search_documents(query, limit))
-        .expect("run active Turso DB Engine search")
-        .expect("search active Turso DB Engine documents")
+    runtime_block_on_current_thread(engine.search_documents(
+        "structural-index",
+        source_snapshot,
+        query,
+        limit,
+    ))
+    .expect("run active Turso DB Engine search")
+    .expect("search active Turso DB Engine documents")
+    .hits
 }
 
 #[test]
@@ -362,7 +369,14 @@ fn cache_import_replays_structural_index_artifact_into_db() {
     run_cache(&root, None, &["import".to_string()], false).expect("cache import");
 
     let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
-    let symbols = search_turso_documents(&engine, "cache_imported_symbol", 8);
+    let source_snapshot = crate::source_index::current_source_index_snapshot(&root)
+        .expect("capture imported structural source snapshot");
+    let symbols = search_turso_documents(
+        &engine,
+        &source_snapshot.source_snapshot,
+        "cache_imported_symbol",
+        8,
+    );
 
     assert_eq!(symbols.len(), 1);
     assert!(

@@ -9,6 +9,56 @@ pub(crate) struct SourceSelectorMatch<'provider> {
     pub(crate) kind: SourceSelectorKind,
 }
 
+pub(crate) fn semantic_action_subjects(
+    registry: &HookRuntime,
+    paths: &[String],
+) -> Vec<crate::tool_action::ActionSubject> {
+    paths
+        .iter()
+        .map(|path| crate::tool_action::ActionSubject {
+            value: path.clone(),
+            kind: semantic_action_subject_kind(registry, path),
+        })
+        .collect()
+}
+
+fn semantic_action_subject_kind(
+    registry: &HookRuntime,
+    value: &str,
+) -> crate::tool_action::ActionSubjectKind {
+    use crate::tool_action::ActionSubjectKind;
+
+    if value.contains("://") || value.contains("#item/") {
+        return ActionSubjectKind::StructuralSelector;
+    }
+    if value == "." || value == ".." || value.ends_with(['/', '\\']) {
+        return ActionSubjectKind::Directory;
+    }
+
+    let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
+    let Some((_, suffix)) = leaf.rsplit_once('.') else {
+        return ActionSubjectKind::Other;
+    };
+    if suffix.is_empty()
+        || !suffix
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '*' | '?' | '[' | ']' | '-'))
+    {
+        return ActionSubjectKind::Other;
+    }
+
+    let registered =
+        !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty();
+    if !registered {
+        return ActionSubjectKind::Other;
+    }
+    if leaf.chars().any(|ch| matches!(ch, '*' | '?' | '[' | ']')) {
+        ActionSubjectKind::RegisteredLanguageSourcePattern
+    } else {
+        ActionSubjectKind::RegisteredLanguageSource
+    }
+}
+
 pub(crate) fn collect_source_selector_matches<'provider, I, S, F>(
     registry: &'provider HookRuntime,
     selectors: I,

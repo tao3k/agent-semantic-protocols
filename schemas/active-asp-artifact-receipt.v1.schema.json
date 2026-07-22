@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/active-asp-artifact-receipt.v1.schema.json",
+  "title": "Active ASP Artifact Merkle Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "digestAlgorithm",
+    "artifactSetId",
+    "artifactRootDigest",
+    "leaves"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.active-asp-artifact-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "digestAlgorithm": {
+      "const": "blake3-256"
+    },
+    "artifactSetId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactRootDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "leaves": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/leaf"
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "leaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalPath",
+        "materializedPath",
+        "artifactKind",
+        "artifactDigest",
+        "sizeBytes"
+      ],
+      "properties": {
+        "logicalPath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*//)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\)(?!.*\\/$).+$"
+        },
+        "materializedPath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+        },
+        "artifactKind": {
+          "enum": [
+            "asp-binary",
+            "activation",
+            "provider-binary",
+            "provider-registry",
+            "runtime-config"
+          ]
+        },
+        "artifactDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

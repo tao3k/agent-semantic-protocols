@@ -187,7 +187,10 @@ impl ProviderRegistrySnapshot {
         Self::from_activation(activation_path, &activation)
     }
 
-    fn from_activation(activation_path: &Path, activation: &HookRuntime) -> Result<Self, String> {
+    pub fn from_activation(
+        activation_path: &Path,
+        activation: &HookRuntime,
+    ) -> Result<Self, String> {
         let runtime_profiles = activation_needs_runtime_profile_fallback(activation).then(|| {
             let runtime_project_root =
                 runtime_project_root_for_activation(activation_path, &activation.project_root);

@@ -1,6 +1,3 @@
-#[path = "asp_command_intent.rs"]
-mod asp_command_intent;
-
 #[path = "codex_agent_projection.rs"]
 mod codex_agent_projection;
 

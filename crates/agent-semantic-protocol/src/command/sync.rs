@@ -14,7 +14,6 @@ pub(super) struct AgentConfigurationSync {
     pub(super) projected: usize,
     pub(super) codex_registry_entries: usize,
     pub(super) codex_spawn_agent_metadata: &'static str,
-    pub(super) hook_config_status: &'static str,
     pub(super) activation_status: &'static str,
 }
 
@@ -42,7 +41,7 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         .join("org");
     let org_artifacts = org_artifacts_root_for_project(&project_root)?;
     println!(
-        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={} orgSourceIndex={} orgSourceIndexGeneration={} agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} hookConfig={} activationStatus={} agentSessionRegistry={}",
+        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={} orgSourceIndex={} orgSourceIndexGeneration={} agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} activationStatus={} agentSessionRegistry={}",
         display_path(&project_root, &org_state),
         display_path(&project_root, &org_artifacts),
         sync.source,
@@ -52,95 +51,22 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         agent_configs.projected,
         agent_configs.codex_registry_entries,
         agent_configs.codex_spawn_agent_metadata,
-        agent_configs.hook_config_status,
         agent_configs.activation_status,
         display_path(&project_root, agent_session_registry.db_path()),
     );
     Ok(())
 }
 
-pub(super) fn sync_agent_configuration() -> Result<AgentConfigurationSync, String> {
-    let project_root = std::env::current_dir()
-        .map_err(|error| format!("failed to resolve current project root: {error}"))?;
-    sync_agent_configuration_for_project(&project_root)
-}
-
 fn sync_agent_configuration_for_project(
     project_root: &std::path::Path,
 ) -> Result<AgentConfigurationSync, String> {
-    let hook_config_status = sync_global_hook_config()?;
     let activation_path = agent_semantic_hook::default_activation_path(&project_root);
     let activation_status =
         agent_semantic_hook::load_or_refresh_default_activation(&activation_path, &project_root)?
             .status;
     let mut sync = sync_global_agent_configs()?;
-    sync.hook_config_status = hook_config_status;
     sync.activation_status = activation_status;
     Ok(sync)
-}
-
-pub(super) fn ensure_codex_agent_configuration(
-    agent_name: &str,
-) -> Result<Option<AgentConfigurationSync>, String> {
-    if codex_agent_configuration_ready(agent_name) {
-        return Ok(None);
-    }
-    let sync = sync_agent_configuration()?;
-    if codex_agent_configuration_ready(agent_name) {
-        Ok(Some(sync))
-    } else {
-        Err(format!(
-            "asp sync completed but configured Codex agent `{agent_name}` is still not registered"
-        ))
-    }
-}
-
-fn codex_agent_configuration_ready(agent_name: &str) -> bool {
-    let Ok(state_home) = agent_semantic_runtime::state_core::resolve_state_home() else {
-        return false;
-    };
-    let source_dir = state_home.join("agents");
-    let Ok(registry) = load_codex_agent_registry(&source_dir) else {
-        return false;
-    };
-    let Some(entry) = registry.get(agent_name) else {
-        return false;
-    };
-    let source = source_dir.join(&entry.profile);
-    let projection = codex_home().join("agents").join(&entry.projection);
-    if source.canonicalize().ok() != projection.canonicalize().ok() {
-        return false;
-    }
-    let config_path = codex_home().join("config.toml");
-    let Ok(config) = fs::read_to_string(config_path) else {
-        return false;
-    };
-    let Ok(config) = toml::from_str::<toml::Value>(&config) else {
-        return false;
-    };
-    let expected_config_file = format!("agents/{}", entry.projection);
-    let agent_registered = config
-        .get("agents")
-        .and_then(|agents| agents.get(agent_name))
-        .and_then(|agent| agent.get("config_file"))
-        .and_then(toml::Value::as_str)
-        == Some(expected_config_file.as_str());
-    let metadata_visible = config
-        .get("features")
-        .and_then(|features| features.get("multi_agent_v2"))
-        .and_then(toml::Value::as_table)
-        .is_some_and(|multi_agent_v2| {
-            multi_agent_v2.get("enabled").and_then(toml::Value::as_bool) == Some(true)
-                && multi_agent_v2
-                    .get("hide_spawn_agent_metadata")
-                    .and_then(toml::Value::as_bool)
-                    == Some(false)
-                && multi_agent_v2
-                    .get("tool_namespace")
-                    .and_then(toml::Value::as_str)
-                    .is_some_and(|namespace| !namespace.trim().is_empty())
-        });
-    agent_registered && metadata_visible
 }
 
 fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
@@ -152,7 +78,6 @@ fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
             projected: 0,
             codex_registry_entries,
             codex_spawn_agent_metadata: "visible-agent-type",
-            hook_config_status: "unchanged",
             activation_status: "not-synced",
         });
     }
@@ -198,181 +123,8 @@ fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
         projected: synced,
         codex_registry_entries,
         codex_spawn_agent_metadata: "visible-agent-type",
-        hook_config_status: "unchanged",
         activation_status: "not-synced",
     })
-}
-
-fn sync_global_hook_config() -> Result<&'static str, String> {
-    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
-    let config_path = state_home.join("hooks").join("config.toml");
-    let default_config = agent_semantic_config::default_hook_client_config_template();
-    let existing = match fs::read_to_string(&config_path) {
-        Ok(existing) => existing,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            write_hook_config(&config_path, &default_config)?;
-            return Ok("created");
-        }
-        Err(error) => {
-            return Err(format!("failed to read {}: {error}", config_path.display()));
-        }
-    };
-
-    let repaired =
-        match merge_default_hook_resident_routes(&existing, &default_config, &config_path) {
-            Ok(repaired) => repaired,
-            Err(_) => return replace_invalid_hook_config(&config_path, &default_config),
-        };
-    let status = if repaired != existing {
-        write_hook_config(&config_path, &repaired)?;
-        "repaired-resident-routes"
-    } else {
-        "unchanged"
-    };
-    match agent_semantic_config::load_hook_client_config_file(&config_path) {
-        Ok(_) => Ok(status),
-        Err(_) => replace_invalid_hook_config(&config_path, &default_config),
-    }
-}
-
-fn replace_invalid_hook_config(
-    config_path: &Path,
-    default_config: &str,
-) -> Result<&'static str, String> {
-    let backup_path = invalid_hook_config_backup_path(config_path);
-    if let Some(parent) = backup_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::rename(config_path, &backup_path).map_err(|error| {
-        format!(
-            "failed to preserve invalid hook config {} as {}: {error}",
-            config_path.display(),
-            backup_path.display()
-        )
-    })?;
-    if let Err(error) = write_hook_config(config_path, default_config) {
-        let _ = fs::rename(&backup_path, config_path);
-        return Err(error);
-    }
-    Ok("replaced-invalid-with-backup")
-}
-
-fn merge_default_hook_resident_routes(
-    existing: &str,
-    defaults: &str,
-    config_path: &Path,
-) -> Result<String, String> {
-    let mut value: toml::Value = toml::from_str(existing).map_err(|error| {
-        format!(
-            "failed to parse {} for repair: {error}",
-            config_path.display()
-        )
-    })?;
-    let default_value: toml::Value = toml::from_str(defaults)
-        .map_err(|error| format!("failed to parse built-in hook config template: {error}"))?;
-    let default_residents = default_value
-        .get("agents")
-        .and_then(|agents| agents.get("residentAgents"))
-        .and_then(toml::Value::as_array)
-        .ok_or_else(|| "built-in hook config is missing agents.residentAgents".to_string())?;
-    let root = value
-        .as_table_mut()
-        .ok_or_else(|| format!("{} must contain a TOML table", config_path.display()))?;
-    let agents = root
-        .entry("agents".to_string())
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-        .as_table_mut()
-        .ok_or_else(|| format!("{}.agents must be a TOML table", config_path.display()))?;
-    let residents = agents
-        .entry("residentAgents".to_string())
-        .or_insert_with(|| toml::Value::Array(Vec::new()))
-        .as_array_mut()
-        .ok_or_else(|| {
-            format!(
-                "{}.agents.residentAgents must be an array",
-                config_path.display()
-            )
-        })?;
-    let mut changed = false;
-    for default_resident in default_residents {
-        let default_name = default_resident
-            .get("name")
-            .and_then(toml::Value::as_str)
-            .ok_or_else(|| "built-in resident agent is missing name".to_string())?;
-        if !residents.iter().any(|resident| {
-            resident.get("name").and_then(toml::Value::as_str) == Some(default_name)
-        }) {
-            residents.push(default_resident.clone());
-            changed = true;
-        }
-    }
-    let default_lanes = default_value
-        .get("executionLanes")
-        .and_then(toml::Value::as_table)
-        .ok_or_else(|| "built-in hook config is missing executionLanes".to_string())?;
-    let lanes = root
-        .entry("executionLanes".to_string())
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-        .as_table_mut()
-        .ok_or_else(|| {
-            format!(
-                "{}.executionLanes must be a TOML table",
-                config_path.display()
-            )
-        })?;
-    for (lane_name, default_lane) in default_lanes {
-        match lanes.get_mut(lane_name) {
-            None => {
-                lanes.insert(lane_name.clone(), default_lane.clone());
-                changed = true;
-            }
-            Some(existing_lane)
-                if is_legacy_generated_current_session_lane(existing_lane, default_lane) =>
-            {
-                *existing_lane = default_lane.clone();
-                changed = true;
-            }
-            Some(_) => {}
-        }
-    }
-    if !changed {
-        return Ok(existing.to_string());
-    }
-    toml::to_string_pretty(&value)
-        .map_err(|error| format!("failed to render repaired hook config: {error}"))
-}
-
-fn is_legacy_generated_current_session_lane(
-    existing: &toml::Value,
-    current_default: &toml::Value,
-) -> bool {
-    let (Some(existing), Some(default)) = (existing.as_table(), current_default.as_table()) else {
-        return false;
-    };
-    existing.get("transport").and_then(toml::Value::as_str) == Some("current-session")
-        && existing.get("residentName").is_none()
-        && default.get("transport").and_then(toml::Value::as_str) == Some("resident-agent")
-        && ["enabled", "receiptKind", "commandPrefixes"]
-            .iter()
-            .all(|key| existing.get(*key) == default.get(*key))
-}
-
-fn write_hook_config(path: &Path, contents: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::write(path, contents)
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))
-}
-
-fn invalid_hook_config_backup_path(config_path: &Path) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or_default();
-    config_path.with_extension(format!("toml.invalid-{timestamp}"))
 }
 
 fn load_codex_agent_registry(

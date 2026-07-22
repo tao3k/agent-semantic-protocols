@@ -1,17 +1,17 @@
 ** =query= — first-class parser-native extraction and reroutes
 The =query= facade must classify projection intent before provider fallback.
 Default =query --selector <selector> --code= is parser-owned item-code
-projection, not a file-read API. A bare file selector with =--code= and no
-=--term=/=--query= is ambiguous and must fail before provider execution; it
-must not render whole source and must not fall through to provider fallback. A
-structural item selector with =--code= is an item-code projection and must write
-only the matched item code. A file selector with =--term= or =--query= remains
-an owner-local item query and may render =[search-owner]= locator evidence when
-=--code= is absent. A file selector with =--code= is invalid on the normal
-facade and must fail before provider execution. These cases are mutually
-exclusive parser-owned request types; the facade must not let an exact code
-projection fall through to owner inventory, graph frontier rendering, provider
-fallback, or internal direct-read recovery.
+projection, not a file-read API. Source-language =query= accepts only an exact
+structural selector, an exact Tree-sitter query contract, or an exact relation
+catalog contract. Owner paths, =--term=, and =--query= are discovery inputs and
+belong exclusively to =search owner <path> items --query <symbol>=. A bare file
+selector with =--code= is invalid and must fail before provider execution; it
+must not render whole source or fall through to owner inventory, graph frontier
+rendering, provider fallback, or internal direct-read recovery. A structural
+item selector with =--code= must write only the matched item code. The removed
+=query <owner-path> --query <symbol>= spelling is not a compatibility alias:
+implementations must reject it and point to the =search owner= discovery
+surface.
 
 =query --selector <selector> --code= is exact parser-owned code extraction, not
 directory search and not whole-file source transport. The default selector must
@@ -27,23 +27,22 @@ Scheme =.ss= files receive the same preflight behavior. Agents that need
 directory-scoped discovery must first use =search lexical=, =search owner=, or
 =search pipe= with explicit =--workspace=, then follow the returned exact
 parser-owned =query --selector ... --code= action.
-Provider-native item query is the default code extraction path for agents:
+Owner discovery followed by exact item query is the default extraction path for
+agents:
 
 #+begin_src shell
-<lang-harness> query <project-path> --query <symbol-or-a|b|c>
-<lang-harness> query <project-path> --term <symbol-a> --term <symbol-b> --names-only
 asp <language> search owner <project-path> items --query <symbol-or-term> --workspace <workspace-root> --view seeds
 asp <language> query --selector <parser-owned-uri-or-handle> --workspace <workspace-root> --code
 #+end_src
 
-The language provider owns parser/AST lookup, exact item matching, multi-term
-query expressions, hook reroute normalization, and compact code rendering.
-Workspace-wide lexical or fuzzy discovery is not a =query --names-only= mode:
+The language provider owns parser/AST lookup, exact item projection, owner-local
+search expressions, hook reroute normalization, and compact code rendering.
+Workspace-wide lexical or fuzzy discovery is not a =query= mode:
 agents and hooks must use =search lexical <term> owner tests --view seeds=, adding
 =--workspace <workspace-root>= only when the invocation workspace is not the
-desired root.  Providers should reject
-=query --term <term> --names-only= without an owner selector and print the
-explicit =search lexical= route instead of silently rerouting it.
+desired root. Providers must reject =query --term= and =query --query= in every
+source-language form and print the explicit =search owner= or =search lexical=
+route instead of silently rerouting it.
 
 Owner-local item discovery is also provider-owned when a manifest declares
 =searchCapabilities.ownerItems=true=. The ASP facade may delegate
@@ -59,7 +58,7 @@ Julia owner-local item query uses this same shared =semantic-query-packet=
 contract for JSON output through the language facade:
 
 #+begin_src shell
-asp julia query src/CliExample.jl --term run --json languages/JuliaLangProjectHarness.jl
+asp julia search owner src/CliExample.jl items --query run --workspace languages/JuliaLangProjectHarness.jl --view seeds
 #+end_src
 
 Document-language domain surfaces must be expressed through the normal element
@@ -173,10 +172,9 @@ not include =|code= rows, =text= fields, cache ids, DB paths, receipt JSON,
 or unbounded adjacent source.  A =read-plan= or item response must keep code
 omitted and provide executable read locators.  If an agent needs source text,
 the next action is an explicit =--code= request or structured
-=--json --view read-packet=.  For exact selectors with a query term, the
-provider should keep the normal item query/code projection path.  Wildcard or
-broad selectors still require concrete terms and should remain bounded
-candidate/seed searches.
+=--json --view read-packet=. Exact selectors do not accept query terms; symbol
+refinement returns to =search owner=, while wildcard or broad discovery remains
+a bounded =search= candidate/seed operation.
 
 Hook route construction must not put line-range selectors into prompt-facing
 routes.  The hook may keep the original range as a diagnostic source locator
@@ -192,4 +190,3 @@ This keeps the recovery route selector-first without letting a line range become
 semantic identity.  The final source read happens only after owner/item
 frontier evidence selects an exact parser-owned item or a bounded audited
 fallback.
-

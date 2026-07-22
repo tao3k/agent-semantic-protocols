@@ -1,4 +1,3 @@
-use crate::provider_command::facade::pipe::pipe_frontier::rust_dependency_topology::support::assert_manifest_dependency;
 use crate::provider_command::support;
 #[test]
 fn search_pipe_graph_request_includes_language_neutral_project_topology() {

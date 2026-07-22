@@ -1,6 +1,6 @@
 use agent_semantic_client_db::agent_session_registry::AgentSessionRecord;
 
-use super::insert_absent_canonical_target_receipt;
+use super::insert_non_present_canonical_target_receipt;
 
 fn record_for_testing_lane() -> AgentSessionRecord {
     AgentSessionRecord {
@@ -33,13 +33,14 @@ fn record_for_testing_lane() -> AgentSessionRecord {
 }
 
 #[test]
-fn absent_canonical_binding_receipt_uses_lane_target() {
+fn absent_canonical_binding_receipt_requires_probe_and_uses_lane_target() {
     let record = record_for_testing_lane();
     let mut object = serde_json::Map::new();
 
-    insert_absent_canonical_target_receipt(
+    insert_non_present_canonical_target_receipt(
         &mut object,
         Some(&record),
+        "absent",
         Some("present"),
         "/root/asp_testing",
     );
@@ -60,5 +61,15 @@ fn absent_canonical_binding_receipt_uses_lane_target() {
             .get("canonicalTarget")
             .and_then(|value| value.as_str()),
         Some("/root/asp_explorer")
+    );
+    assert_eq!(
+        binding
+            .get("messageTargetStatus")
+            .and_then(|value| value.as_str()),
+        Some("probe-required")
+    );
+    assert_eq!(
+        binding.get("nextAction").and_then(|value| value.as_str()),
+        Some("probe-hidden-routable-child-before-replacement")
     );
 }

@@ -27,7 +27,6 @@ impl ExactSelectorProjectionRecordV1 {
     pub fn validate_warm_hit<'a>(
         &'a self,
         key: &ExactSelectorMerkleLookupKeyV1<'_>,
-        verify_owner_inclusion: impl FnOnce(&ExactSelectorMerkleProofV1) -> bool,
     ) -> Result<ExactSelectorWarmHitV1<'a>, ExactSelectorMerkleMissV1> {
         self.proof
             .validate_shape()
@@ -44,10 +43,6 @@ impl ExactSelectorProjectionRecordV1 {
             || self.proof.projection_mode != key.projection_mode
         {
             return Err(ExactSelectorMerkleMissV1::IdentityMismatch);
-        }
-
-        if !verify_owner_inclusion(&self.proof) {
-            return Err(ExactSelectorMerkleMissV1::OwnerInclusionMismatch);
         }
 
         match verify_projection_digest_v1(&self.proof, &self.projection_payload) {
@@ -95,4 +90,59 @@ pub enum ExactSelectorMerkleMissV1 {
     IdentityMismatch,
     OwnerInclusionMismatch,
     ProjectionDigestMismatch,
+}
+
+/// An owned exact-selector projection whose proof was verified at the
+/// persistence or hydration boundary.
+///
+/// The record is private so callers cannot construct a warm-cache entry without
+/// first passing the complete Merkle and projection validation performed by
+/// [`ExactSelectorProjectionRecordV1::validate_warm_hit`]. Subsequent lookups
+/// only bind the immutable record to the current typed identity key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedExactSelectorProjectionV1 {
+    record: ExactSelectorProjectionRecordV1,
+}
+
+impl ValidatedExactSelectorProjectionV1 {
+    pub fn hydrate(
+        record: ExactSelectorProjectionRecordV1,
+        key: &ExactSelectorMerkleLookupKeyV1<'_>,
+    ) -> Result<Self, ExactSelectorMerkleMissV1> {
+        record.validate_warm_hit(key)?;
+        Ok(Self { record })
+    }
+
+    pub fn validate_warm_hit(
+        &self,
+        key: &ExactSelectorMerkleLookupKeyV1<'_>,
+    ) -> Result<ExactSelectorWarmHitV1<'_>, ExactSelectorMerkleMissV1> {
+        if !lookup_key_matches_proof(key, &self.record.proof) {
+            return Err(ExactSelectorMerkleMissV1::IdentityMismatch);
+        }
+        Ok(ExactSelectorWarmHitV1 {
+            proof: &self.record.proof,
+            projection_payload: &self.record.projection_payload,
+            side_effects: ExactSelectorWarmSideEffectsV1::ZERO,
+        })
+    }
+
+    pub fn record(&self) -> &ExactSelectorProjectionRecordV1 {
+        &self.record
+    }
+}
+
+fn lookup_key_matches_proof(
+    key: &ExactSelectorMerkleLookupKeyV1<'_>,
+    proof: &ExactSelectorMerkleProofV1,
+) -> bool {
+    key.language_id == proof.language_id
+        && key.workspace_root_digest == &proof.workspace_root_digest
+        && key.owner_path == proof.owner_path
+        && key.owner_subtree_digest == &proof.owner_subtree_digest
+        && key.source_blob_digest == &proof.source_blob_digest
+        && key.parser_identity_digest == &proof.parser_identity_digest
+        && key.query_pack_digest == &proof.query_pack_digest
+        && key.structural_selector == proof.structural_selector
+        && key.projection_mode == proof.projection_mode
 }

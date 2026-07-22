@@ -19,6 +19,7 @@ use crate::engine::turso_statement::execute_turso_operation;
 pub(super) async fn write_turso_source_index_rows(
     connection: &turso::Connection,
     import: &ClientDbSourceIndexImport,
+    membership_change_set: &crate::source_index::ClientDbSourceIndexMembershipChangeSet,
     project_root: &str,
     file_hashes_json: &str,
     source_snapshot_json: &str,
@@ -42,16 +43,57 @@ pub(super) async fn write_turso_source_index_rows(
             import.schema_version.as_str(),
         )
         .await?;
-        stage_turso_source_index_import_membership(connection, file_hashes_json).await?;
-        let (membership_changed_owner_paths, removed_owner_paths) =
-            turso_source_index_membership_changes(
-                connection,
-                project_root,
-                import.schema_id.as_str(),
-                import.schema_version.as_str(),
-                projection_ready,
-            )
-            .await?;
+        let (membership_changed_owner_paths, removed_owner_paths) = match membership_change_set {
+            crate::source_index::ClientDbSourceIndexMembershipChangeSet::FullSnapshot => {
+                stage_turso_source_index_import_membership(connection, file_hashes_json).await?;
+                turso_source_index_membership_changes(
+                    connection,
+                    project_root,
+                    import.schema_id.as_str(),
+                    import.schema_version.as_str(),
+                    projection_ready,
+                )
+                .await?
+            }
+            crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                changed_owner_paths,
+                removed_owner_paths,
+            } => {
+                if !projection_ready {
+                    return Err(
+                        "source-index Merkle overlay requires a published base projection"
+                            .to_string(),
+                    );
+                }
+                let source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence =
+                    serde_json::from_str(source_snapshot_json).map_err(|error| {
+                        format!(
+                            "failed to decode Turso source-index Merkle overlay evidence: {error}"
+                        )
+                    })?;
+                super::membership::validate_turso_source_index_overlay_base(
+                    connection,
+                    project_root,
+                    import.schema_id.as_str(),
+                    import.schema_version.as_str(),
+                    source_snapshot
+                        .base_root_digest
+                        .as_deref()
+                        .expect("Merkle overlay evidence validated before write"),
+                )
+                .await?;
+                (
+                    changed_owner_paths
+                        .iter()
+                        .map(|path| path.as_str().to_string())
+                        .collect(),
+                    removed_owner_paths
+                        .iter()
+                        .map(|path| path.as_str().to_string())
+                        .collect(),
+                )
+            }
+        };
         let prepared = super::prepare::prepare_turso_source_index_rows(
             connection,
             import,
@@ -59,6 +101,10 @@ pub(super) async fn write_turso_source_index_rows(
             &imported_membership,
             membership_changed_owner_paths,
             projection_ready,
+            matches!(
+                membership_change_set,
+                crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay { .. }
+            ),
         )
         .await?;
         let physical_generation_id = prepared.physical_generation_id.as_str();
@@ -66,8 +112,17 @@ pub(super) async fn write_turso_source_index_rows(
         let changed_owner_paths = prepared.changed_owner_paths;
         let changed_owner_rows = prepared.changed_owner_rows;
         let semantic_term_count = prepared.semantic_term_count;
+        let membership_trace_stage = match membership_change_set {
+            crate::source_index::ClientDbSourceIndexMembershipChangeSet::FullSnapshot => {
+                "snapshot-membership-joined"
+            }
+            crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                ..
+            } => "merkle-frontier-prepared",
+        };
         source_index_db_trace_membership_changes(
             cold_write_started,
+            membership_trace_stage,
             changed_owner_paths.len(),
             removed_owner_paths.len(),
         );

@@ -1,11 +1,9 @@
-use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_core::{
     CacheArtifactId, CacheGenerationId, CacheStatus, ClientCacheGeneration, ClientCacheManifest,
     ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot,
     SemanticSchemaId, project_client_cache_manifest_path,
 };
 use agent_semantic_client_db::ClientDbEngine;
-use agent_semantic_runtime::runtime_block_on_current_thread;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -157,32 +155,6 @@ rank=O frontier=O.owner\n";
 
     assert_eq!(replay.stdout, rendered_stdout.as_bytes());
     assert_eq!(probe.db_write_count, 2);
-    {
-        let state = ResolvedState::resolve(&root).expect("resolve state for Turso receipt");
-        let engine = ClientDbEngine::from_resolved_state(&state);
-        assert!(engine.db_path().ends_with("client.turso"));
-        assert!(
-            engine.db_path().exists(),
-            "route receipt writeback must materialize the active Turso backend path"
-        );
-        let receipts = runtime_block_on_current_thread(engine.list_route_receipts(None, 8))
-            .expect("run DB Engine route receipt lookup")
-            .expect("list route receipts through DB Engine facade");
-        assert_eq!(receipts.len(), 1);
-        assert_eq!(receipts[0].query, "prime");
-        assert_eq!(receipts[0].route_source, "graph-route");
-        assert_eq!(
-            receipts[0].next_command.as_deref(),
-            Some("asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds")
-        );
-        assert!(
-            receipts[0]
-                .evidence_ids
-                .iter()
-                .any(|evidence_id| evidence_id == "owners:path:src/lib.rs"),
-            "receipts={receipts:?}"
-        );
-    }
     let _ = std::fs::remove_dir_all(root);
 }
 

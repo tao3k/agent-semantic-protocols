@@ -7,6 +7,69 @@ use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
 use agent_semantic_client_db::ClientDbEngine;
 
 #[test]
+fn exact_owner_snapshot_includes_provider_ignored_file_without_workspace_scan() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("exact-owner-provider-ignored");
+    let _home_env = isolate_home(&root);
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"exact-owner\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write package manifest");
+    std::fs::create_dir_all(root.join("src")).expect("create default source");
+    std::fs::write(root.join("src/lib.rs"), "pub fn default_owner() {}\n")
+        .expect("write default owner");
+    std::fs::create_dir_all(root.join("benches")).expect("create explicit owner dir");
+    std::fs::write(
+        root.join("benches/client_microbench.rs"),
+        "fn explicit_owner() {}\n",
+    )
+    .expect("write explicit owner");
+    let activation_path = write_rust_activation_with_ignored_prefixes(&root, &["benches"]);
+    let _activation_env = EnvVarGuard::set(
+        ASP_PROVIDER_ACTIVATION_PATH_ENV,
+        activation_path.as_os_str(),
+    );
+
+    let snapshot = crate::source_index::current_source_index_snapshot_for_owner(
+        &root,
+        "benches/client_microbench.rs",
+        "rust",
+        "rs-harness",
+    )
+    .expect("capture explicit owner snapshot");
+
+    assert_eq!(snapshot.source_snapshot.leaf_count, 1);
+    assert!(
+        snapshot
+            .workspace_snapshot
+            .file_digest("benches/client_microbench.rs")
+            .is_some()
+    );
+    assert_eq!(snapshot.source_blobs.len(), 1);
+    assert!(
+        snapshot
+            .source_blobs
+            .contains_key("benches/client_microbench.rs")
+    );
+
+    let error = match crate::source_index::current_source_index_snapshot_for_owner(
+        &root,
+        "../outside.rs",
+        "rust",
+        "rs-harness",
+    ) {
+        Ok(_) => panic!("parent traversal must fail"),
+        Err(error) => error,
+    };
+    assert!(error.contains("reasonKind=owner-outside-workspace"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn cache_source_index_refresh_respects_provider_ignored_path_prefixes() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()

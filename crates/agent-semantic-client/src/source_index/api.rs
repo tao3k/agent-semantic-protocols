@@ -1,7 +1,7 @@
 //! Public refresh API for the DB Engine source index.
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use agent_semantic_client_core::{
@@ -266,6 +266,121 @@ pub fn current_source_index_snapshot(
     current_source_index_snapshot_with_registry(project_root, &provider_registry)
 }
 
+/// Capture a content-authoritative, one-owner snapshot for an exact query.
+///
+/// Exact reads are an owner-scoped evidence projection. They must not rebuild
+/// the workspace source index or scan unrelated owners before invoking the
+/// live parser.
+pub fn current_source_index_snapshot_for_owner(
+    project_root: &Path,
+    owner_path: &str,
+    language_id: &str,
+    provider_id: &str,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
+    current_source_index_snapshot_for_owner_with_registry(
+        project_root,
+        owner_path,
+        language_id,
+        provider_id,
+        &provider_registry,
+    )
+}
+
+/// Capture one exact owner from an activation that the caller already loaded.
+///
+/// This keeps activation synchronization at the command boundary instead of
+/// re-entering the manifest/activation materializer from the source snapshot.
+pub fn current_source_index_snapshot_for_owner_from_activation(
+    project_root: &Path,
+    activation_path: &Path,
+    activation: &agent_semantic_hook::HookRuntime,
+    owner_path: &str,
+    language_id: &str,
+    provider_id: &str,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
+    current_source_index_snapshot_for_owner_with_registry(
+        project_root,
+        owner_path,
+        language_id,
+        provider_id,
+        &provider_registry,
+    )
+}
+
+fn current_source_index_snapshot_for_owner_with_registry(
+    project_root: &Path,
+    owner_path: &str,
+    language_id: &str,
+    provider_id: &str,
+    provider_registry: &ProviderRegistrySnapshot,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let registry = provider_registry.evidence(project_root);
+    let owner_path = explicit_snapshot_owner_path(project_root, owner_path)?;
+    let files = [SourceIndexScopeFile {
+        path: owner_path,
+        language_id: LanguageId::from(language_id),
+        provider_id: ProviderId::from(provider_id),
+        selector_receipts: Vec::new(),
+    }];
+    let (_, workspace_snapshot, source_snapshot, source_blobs) =
+        source_index_snapshot_from_files(project_root, &files, None, &registry)?;
+    Ok(CurrentSourceIndexSnapshot {
+        workspace_snapshot,
+        source_snapshot,
+        source_blobs,
+    })
+}
+
+fn explicit_snapshot_owner_path(project_root: &Path, owner_path: &str) -> Result<PathBuf, String> {
+    let mut normalized = PathBuf::new();
+    for component in Path::new(owner_path).components() {
+        match component {
+            std::path::Component::Normal(component) => normalized.push(component),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(format!(
+                    "exact source owner escaped workspace namespace: ownerPath={owner_path} reasonKind=owner-outside-workspace"
+                ));
+            }
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        return Err(
+            "exact source owner path is empty: reasonKind=owner-not-in-worktree".to_string(),
+        );
+    }
+    let canonical_root = project_root.canonicalize().map_err(|error| {
+        format!(
+            "failed to resolve exact source workspace {}: {error}",
+            project_root.display()
+        )
+    })?;
+    let source_path = project_root.join(&normalized);
+    let canonical_source = source_path.canonicalize().map_err(|error| {
+        format!(
+            "exact source owner is not available in workspace: ownerPath={} reasonKind=owner-not-in-worktree error={error}",
+            normalized.display()
+        )
+    })?;
+    if !canonical_source.starts_with(&canonical_root) {
+        return Err(format!(
+            "exact source owner escaped workspace namespace: ownerPath={} reasonKind=owner-outside-workspace",
+            normalized.display()
+        ));
+    }
+    if !source_path.is_file() {
+        return Err(format!(
+            "exact source owner is not a file: ownerPath={} reasonKind=owner-not-in-worktree",
+            normalized.display()
+        ));
+    }
+    Ok(normalized)
+}
+
 pub(crate) fn current_source_index_snapshot_with_registry(
     project_root: &Path,
     provider_registry: &ProviderRegistrySnapshot,
@@ -457,12 +572,13 @@ impl SourceIndexRefreshContext {
         request: SourceIndexGenerationRefresh<'_>,
     ) -> Result<SourceIndexRefreshReport, String> {
         let trace_started = Instant::now();
-        let (file_hashes, _, source_snapshot, _) = source_index_snapshot_from_files(
-            request.index_root,
-            request.files,
-            request.previous_file_hashes,
-            request.registry,
-        )?;
+        let (file_hashes, workspace_snapshot, mut source_snapshot, _) =
+            source_index_snapshot_from_files(
+                request.index_root,
+                request.files,
+                request.previous_file_hashes,
+                request.registry,
+            )?;
         source_index_trace("generation-file-hashes-built", trace_started);
         let reusable_stats = self.db_session.reusable_source_index_generation(
             request.index_root,
@@ -479,6 +595,16 @@ impl SourceIndexRefreshContext {
                 true,
             ));
         }
+        let previous_stats = self.db_session.latest_source_index_stats(
+            request.index_root,
+            &self.schema_id,
+            &self.schema_version,
+        )?;
+        let previous_scope_files = self.db_session.latest_source_index_scope_files(
+            request.index_root,
+            &self.schema_id,
+            &self.schema_version,
+        )?;
         let generation_id =
             agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
                 &source_snapshot,
@@ -498,6 +624,69 @@ impl SourceIndexRefreshContext {
             },
             file_hashes,
         )?;
+        let membership_change_set = match (
+            previous_stats,
+            request.previous_file_hashes,
+            previous_scope_files,
+        ) {
+            (Some(previous_stats), Some(previous_file_hashes), Some(previous_scope_files)) => {
+                let previous_hashes = previous_file_hashes
+                    .iter()
+                    .map(|file| (file.path.as_str(), file.sha256.as_str()))
+                    .collect::<std::collections::BTreeMap<_, _>>();
+                let current_hashes = import
+                    .file_hashes
+                    .iter()
+                    .map(|file| (file.path.as_str(), file.sha256.as_str()))
+                    .collect::<std::collections::BTreeMap<_, _>>();
+                let current_owner_paths = import
+                    .owners
+                    .iter()
+                    .map(|owner| owner.owner_path.as_str().to_string())
+                    .collect::<std::collections::BTreeSet<_>>();
+                let changed_owner_paths = current_owner_paths
+                    .iter()
+                    .filter(|path| {
+                        previous_hashes.get(path.as_str()) != current_hashes.get(path.as_str())
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let removed_owner_paths = previous_scope_files
+                    .iter()
+                    .map(|file| {
+                        agent_semantic_client_db::source_index_relative_path(
+                            request.index_root,
+                            &file.path,
+                        )
+                    })
+                    .filter(|path| !current_owner_paths.contains(path))
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                if changed_owner_paths.is_empty() && removed_owner_paths.is_empty() {
+                    agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot
+                } else {
+                    source_snapshot = workspace_snapshot.overlay_evidence(
+                        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+                        source_snapshot.provider_digest.clone(),
+                        previous_stats.source_snapshot.root_digest,
+                        changed_owner_paths.iter().cloned(),
+                        removed_owner_paths.iter().cloned(),
+                    )?;
+                    agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                        changed_owner_paths: changed_owner_paths
+                            .into_iter()
+                            .map(agent_semantic_client_db::ClientDbSourceIndexPath::new)
+                            .collect(),
+                        removed_owner_paths: removed_owner_paths
+                            .into_iter()
+                            .map(agent_semantic_client_db::ClientDbSourceIndexPath::new)
+                            .collect(),
+                    }
+                }
+            }
+            _ => agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
+        };
         source_index_trace("generation-import-assembled", trace_started);
         let report =
             self.db_session
@@ -505,6 +694,7 @@ impl SourceIndexRefreshContext {
                     import,
                     file_count: client_db_source_index_file_count(request.files.len()),
                     source_snapshot: source_snapshot.clone(),
+                    membership_change_set,
                 })?;
         source_index_trace("generation-turso-imported", trace_started);
         Ok(SourceIndexRefreshReport::from_report(

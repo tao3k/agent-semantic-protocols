@@ -886,6 +886,8 @@ fn source_index_refresh_request_remains_db_engine_owned() {
     .expect("build source-index import");
 
     let request = ClientDbSourceIndexRefreshRequest {
+        membership_change_set:
+            agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         file_count: 1,
         import,
         source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),

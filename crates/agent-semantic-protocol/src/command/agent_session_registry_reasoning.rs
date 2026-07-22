@@ -403,3 +403,7 @@ pub(super) fn direct_reasoning_receipt(
         },
     )
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_reasoning.rs"]
+mod agent_session_registry_reasoning_tests;

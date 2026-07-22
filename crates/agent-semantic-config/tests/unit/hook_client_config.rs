@@ -2,10 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_config::{
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientDecisionMaterializer,
-    HookClientExecutionTransport, HookClientResidentAgentConfig,
-    default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientResidentAgentConfig,
+    default_hook_client_config_file, default_hook_client_config_template,
     hook_client_contract_fingerprint, load_asp_project_config_file, load_hook_client_config_file,
+    merge_asp_project_hook_config,
 };
 
 fn resident_agent<'a>(
@@ -36,10 +36,7 @@ role = "asp_lint"
 roles = ["subagent", "lint"]
 permissions = ["workspace-write"]
 codexAgentName = "asp_lint"
-lifecycle = "lint-command"
 sessionLifetime = "resident"
-mainAllowedAspCommandPrefixes = []
-commandPrefixes = ["cargo clippy", "cargo fmt", "ruff check"]
 "#,
         template = default_hook_client_config_template(),
     );
@@ -68,14 +65,7 @@ commandPrefixes = ["cargo clippy", "cargo fmt", "ruff check"]
     assert_eq!(asp_lint.name, "asp-lint");
     assert_eq!(asp_lint.role, "asp_lint");
     assert_eq!(asp_lint.codex_agent_name, "asp_lint");
-    assert_eq!(asp_lint.lifecycle, "lint-command");
     assert_eq!(asp_lint.session_lifetime, "resident");
-    assert!(asp_lint.main_allowed_asp_command_prefixes.is_empty());
-    assert_eq!(
-        asp_lint.command_prefixes,
-        ["cargo clippy", "cargo fmt", "ruff check"]
-    );
-
     assert_ne!(asp_explore.name, asp_lint.name);
     assert_ne!(asp_testing.name, asp_lint.name);
 
@@ -172,44 +162,75 @@ fn default_template_round_trips_through_config_parser() {
     assert!(asp_explore.enabled);
     assert_eq!(asp_explore.name, "asp-explore");
     assert_eq!(asp_explore.codex_agent_name, "asp_explorer");
-    assert_eq!(
-        asp_explore.main_allowed_asp_command_prefixes,
-        [
-            "help",
-            "--help",
-            "-h",
-            "agent session",
-            "org recall",
-            "org capture"
-        ]
-    );
     let asp_testing = resident_agent(&config, "asp-testing");
     assert_eq!(asp_testing.codex_agent_name, "asp_testing");
     assert_eq!(config.agents.resident_agents.len(), 2);
-    let testing_lane = config
-        .execution_lanes
-        .lanes
-        .get("testing")
-        .expect("testing execution lane");
-    assert!(testing_lane.enabled);
+    let testing_dispatch = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "resident-testing-dispatch")
+        .and_then(|rule| rule.dispatch.as_ref())
+        .expect("testing resident dispatch");
+    assert_eq!(testing_dispatch.resident_name, "asp-testing");
+    assert_eq!(testing_dispatch.receipt_kind, "asp-testing-execution-v1");
     assert_eq!(
-        testing_lane.transport,
-        HookClientExecutionTransport::ResidentAgent
-    );
-    assert_eq!(testing_lane.resident_name, "asp-testing");
-    assert_eq!(testing_lane.receipt_kind, "asp-testing-execution-v1");
-    assert_eq!(
-        testing_lane.command_prefixes,
-        [
-            "cargo test",
-            "cargo check",
-            "cargo build",
-            "pytest",
-            "uv run pytest",
-            "just test"
+        config
+            .rules
+            .iter()
+            .find(|rule| rule.id == "resident-testing-dispatch")
+            .expect("testing dispatch rule")
+            .match_config
+            .argv_prefix_any,
+        vec![
+            vec!["cargo", "test"],
+            vec!["cargo", "check"],
+            vec!["cargo", "build"],
+            vec!["pytest"],
+            vec!["uv", "run", "pytest"],
+            vec!["just", "test"],
+            vec!["rs-harness"],
         ]
     );
-    assert_eq!(config.rules.len(), 9);
+    let bounded_json = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "allow-bounded-json-projection")
+        .expect("bounded JSON projection rule");
+    assert!(matches!(
+        bounded_json.decision,
+        agent_semantic_config::HookClientConfigDecision::Allow
+    ));
+    assert!(bounded_json.match_config.argv_workspace_regular_file);
+    let json_projection = bounded_json
+        .match_config
+        .structured_projection
+        .as_ref()
+        .expect("JSON projection matcher");
+    assert_eq!(json_projection.binary, "jq");
+    assert_eq!(
+        json_projection.document_format,
+        agent_semantic_config::HookClientStructuredFormat::Json
+    );
+    assert_eq!(
+        bounded_json
+            .fields
+            .get("capabilityActivation")
+            .map(String::as_str),
+        Some("lazy-executable")
+    );
+    let bounded_toml = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "allow-bounded-toml-projection")
+        .expect("bounded TOML projection rule");
+    let toml_projection = bounded_toml
+        .match_config
+        .structured_projection
+        .as_ref()
+        .expect("TOML projection matcher");
+    assert_eq!(toml_projection.binary, "yq");
+    assert_eq!(toml_projection.optional_subcommand_any, ["eval", "e"]);
+    assert_eq!(config.rules.len(), 14);
     assert_eq!(
         config
             .rules
@@ -217,89 +238,34 @@ fn default_template_round_trips_through_config_parser() {
             .map(|rule| rule.id.as_str())
             .collect::<Vec<_>>(),
         [
+            "registered-asp-reasoning-search",
+            "resident-testing-dispatch",
+            "deny-raw-registered-source-action",
             "deny-agent-search-json",
-            "materialize-prompt-search-strategy",
             "materialize-apply-patch-policy",
             "materialize-source-access-policy",
             "deny-uncontrolled-source-search-commands",
+            "allow-bounded-json-projection",
+            "allow-bounded-toml-projection",
+            "deny-unbounded-structured-projection",
             "deny-uncontrolled-source-materialization-commands",
             "deny-uncontrolled-python-inline-source-materialization",
             "deny-uncontrolled-javascript-inline-source-materialization",
             "deny-uncontrolled-git-source-reads",
         ]
     );
-    let prompt_strategy_rule = config
-        .rules
-        .iter()
-        .find(|rule| rule.id == "materialize-prompt-search-strategy")
-        .expect("prompt search strategy rule");
-    assert!(
-        matches!(
-            prompt_strategy_rule.decision_materializer,
-            Some(HookClientDecisionMaterializer::PromptSearchStrategy)
-        ),
-        "prompt strategy materializer: {:?}",
-        prompt_strategy_rule.decision_materializer
-    );
-    assert_eq!(
-        config.asp_command_intent_policy.control_plane.root_commands,
-        [
-            "guide",
-            "providers",
-            "tools",
-            "wrap",
-            "cache",
-            "cloud",
-            "hook",
-            "agent",
-            "install",
-            "sync",
-            "paths",
-            "healthcheck",
-            "source-access",
-            "ast-patch",
-            "graph",
-        ]
-    );
-    assert!(
-        config
-            .asp_command_intent_policy
-            .reasoning
-            .root_commands
-            .is_empty()
-    );
-    assert_eq!(
-        config.asp_command_intent_policy.reasoning.search_routes,
-        [
-            "prime",
-            "pipe",
-            "owner",
-            "lexical",
-            "deps",
-            "dependency",
-            "failure",
-            "reasoning",
-            "ingest",
-            "guide",
-        ]
-    );
-    assert_eq!(
-        config.asp_command_intent_policy.reasoning.query_flags,
-        ["--term"]
-    );
-    assert_eq!(
-        config
-            .asp_command_intent_policy
-            .exact_evidence
-            .selector_kinds,
-        ["item"]
-    );
-    assert!(
-        config
-            .asp_command_intent_policy
-            .invalid_evidence
-            .reject_cross_language_selector
-    );
+    let rendered = default_hook_client_config_template();
+    for removed_key in [
+        "aspCommandIntentPolicy",
+        "mainAllowedAspCommandPrefixes",
+        "lifecycle =",
+        "prompt-search-strategy",
+    ] {
+        assert!(
+            !rendered.contains(removed_key),
+            "legacy key remains: {removed_key}"
+        );
+    }
     let _ = fs::remove_dir_all(root);
 }
 
@@ -352,17 +318,61 @@ message = "legacy"
 }
 
 #[test]
+fn legacy_intent_policy_and_resident_route_fields_are_rejected() {
+    let root = temp_root("legacy-intent-policy");
+    let config_path = root.join("hooks/config.toml");
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
+    fs::write(
+        &config_path,
+        format!(
+            "{}\n[aspCommandIntentPolicy.controlPlane]\nrootCommands = [\"sync\"]\n",
+            default_hook_client_config_template()
+        ),
+    )
+    .expect("write legacy config");
+    let policy_error =
+        load_hook_client_config_file(&config_path).expect_err("legacy policy must fail");
+    assert!(
+        policy_error.contains("aspCommandIntentPolicy"),
+        "unexpected error: {policy_error}"
+    );
+
+    for legacy_field in [
+        "lifecycle = \"asp-command\"",
+        "mainAllowedAspCommandPrefixes = [\"help\"]",
+    ] {
+        let resident = format!(
+            r#"
+enabled = true
+name = "asp-explore"
+role = "asp_explorer"
+roles = ["subagent", "search"]
+permissions = ["read-only"]
+codexAgentName = "asp_explorer"
+sessionLifetime = "resident"
+{legacy_field}
+"#
+        );
+        let error = toml::from_str::<HookClientResidentAgentConfig>(&resident)
+            .expect_err("legacy resident route field must fail");
+        assert!(
+            error
+                .to_string()
+                .contains(legacy_field.split_whitespace().next().unwrap()),
+            "unexpected error: {error}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn client_config_loads_recovery_prompt_template() {
     let root = temp_root("hook-client-recovery-prompt");
     let config_path = root.join("config.toml");
-    fs::write(
+    write_canonical_config_overlay(
         &config_path,
         r#"
-schemaId = "agent.semantic-protocols.hook.client-config"
-schemaVersion = "1"
-protocolId = "agent.semantic-protocols.hook"
-protocolVersion = "1"
-
 [recoveryPrompt]
 template = "reason={reason}\nflow={agent_flow}\nroutes={routes}"
 codexAgentFlow = "codex flow from config"
@@ -374,16 +384,8 @@ register = "register guide"
 list = "list guide"
 show = "show guide"
 reuse = "reuse guide"
-
-[[agents.residentAgents]]
-name = "asp-explore"
-role = "asp_explorer"
-codexAgentName = "asp_explorer"
-lifecycle = "asp-command"
-mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org capture"]
 "#,
-    )
-    .expect("write config");
+    );
 
     let config = load_hook_client_config_file(&config_path).expect("load config");
 
@@ -423,10 +425,6 @@ mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org cap
     assert!(asp_explore.enabled);
     assert_eq!(asp_explore.name, "asp-explore");
     assert_eq!(asp_explore.codex_agent_name, "asp_explorer");
-    assert_eq!(
-        asp_explore.main_allowed_asp_command_prefixes,
-        ["help", "agent session", "org recall", "org capture"]
-    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -434,19 +432,13 @@ mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org cap
 fn client_config_rejects_legacy_flat_subagent_receipt_message() {
     let root = temp_root("hook-client-legacy-subagent-message");
     let config_path = root.join("config.toml");
-    fs::write(
+    write_canonical_config_overlay(
         &config_path,
         r#"
-schemaId = "agent.semantic-protocols.hook.client-config"
-schemaVersion = "1"
-protocolId = "agent.semantic-protocols.hook"
-protocolVersion = "1"
-
 [agentSessionMessages]
 sourceAccessCompactSubagent = "Use ASP query/search routes and return selector-only `[asp-search-subagent]` evidence with owner/read/next."
 "#,
-    )
-    .expect("write config");
+    );
 
     let error = load_hook_client_config_file(&config_path).expect_err("legacy message rejected");
 
@@ -488,60 +480,68 @@ entrySkillPath = "/tmp/asp-state/org/templates/ASP_ORG_SKILL.org"
 }
 
 #[test]
-fn template_source_extensions_generate_declarative_materialization_rule() {
-    let root = temp_root("hook-client-template-extensions");
+fn template_uses_workspace_regular_files_without_extension_authority() {
+    let root = temp_root("hook-client-template-workspace-files");
     let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
-    let rendered = default_hook_client_config_template_for_source_extensions([
-        ".ss", "ss", "*.scm", "**/*.sld", "", "  ",
-    ]);
-    fs::write(&config_path, rendered).expect("write config");
+    fs::write(&config_path, default_hook_client_config_template()).expect("write config");
 
     let config = load_hook_client_config_file(&config_path).expect("load config");
-    assert_eq!(
-        config
-            .rules
-            .iter()
-            .map(|rule| rule.id.as_str())
-            .collect::<Vec<_>>(),
-        [
-            "deny-agent-search-json",
-            "materialize-prompt-search-strategy",
-            "materialize-apply-patch-policy",
-            "materialize-source-access-policy",
-            "deny-uncontrolled-source-search-commands",
-            "deny-uncontrolled-source-materialization-commands",
-            "deny-uncontrolled-python-inline-source-materialization",
-            "deny-uncontrolled-javascript-inline-source-materialization",
-            "deny-uncontrolled-git-source-reads",
-        ]
-    );
     let materialization_rule = config
         .rules
         .iter()
         .find(|rule| rule.id == "deny-uncontrolled-source-materialization-commands")
         .expect("materialization rule");
-    assert_eq!(
-        materialization_rule.match_config.argv_source_glob_any,
-        ["*.ss", "**/*.ss", "*.scm", "**/*.scm", "*.sld", "**/*.sld"]
+    assert!(
+        !materialization_rule
+            .match_config
+            .argv_workspace_regular_file
     );
+    assert!(materialization_rule.match_config.argv_source_any.is_empty());
+    assert!(
+        materialization_rule
+            .match_config
+            .argv_source_glob_any
+            .is_empty()
+    );
+    let bounded = config
+        .rules
+        .iter()
+        .position(|rule| rule.id == "allow-bounded-json-projection")
+        .expect("bounded projector rule");
+    let bounded_toml = config
+        .rules
+        .iter()
+        .position(|rule| rule.id == "allow-bounded-toml-projection")
+        .expect("bounded TOML projector rule");
+    let unbounded = config
+        .rules
+        .iter()
+        .position(|rule| rule.id == "deny-unbounded-structured-projection")
+        .expect("unbounded projector rule");
+    let raw = config
+        .rules
+        .iter()
+        .position(|rule| rule.id == "deny-uncontrolled-source-materialization-commands")
+        .expect("raw materialization rule");
+    assert!(bounded < bounded_toml && bounded_toml < unbounded && unbounded < raw);
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn missing_config_loads_empty_defaults() {
+fn missing_config_is_rejected() {
     let root = temp_root("hook-client-missing");
-    let config = load_hook_client_config_file(&root.join("missing.toml")).expect("missing config");
+    let config_path = root.join("missing.toml");
+    let error = load_hook_client_config_file(&config_path).expect_err("missing config must fail");
 
-    assert!(config.rules.is_empty());
-    assert!(config.experimental.is_empty());
-    assert!(config.agent_org_artifacts.is_none());
+    assert!(error.contains("hook client config does not exist"));
+    assert!(error.contains(&config_path.display().to_string()));
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn existing_config_uses_figment_metadata_defaults() {
-    let root = temp_root("hook-client-metadata-defaults");
+fn existing_config_requires_resident_identity_table() {
+    let root = temp_root("hook-client-missing-control-plane");
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
@@ -551,24 +551,13 @@ id = "deny-rust-read"
 decision = "deny"
 "#,
     )
-    .expect("write config");
+    .expect("write incomplete config");
 
-    let config = load_hook_client_config_file(&config_path).expect("load config");
+    let error = load_hook_client_config_file(&config_path)
+        .expect_err("config without agents and execution lanes must fail");
 
-    assert_eq!(
-        config.schema_id.as_deref(),
-        Some(CLIENT_HOOK_CONFIG_SCHEMA_ID)
-    );
-    assert_eq!(config.schema_version.as_deref(), Some("1"));
-    assert_eq!(
-        config.protocol_id.as_deref(),
-        Some("agent.semantic-protocols.hook")
-    );
-    assert_eq!(config.protocol_version.as_deref(), Some("1"));
-    assert!(config.contract_fingerprint.is_none());
-    assert!(config.agent_org_artifacts.is_none());
-    assert_eq!(config.rules.len(), 1);
-    assert_eq!(config.rules[0].id, "deny-rust-read");
+    assert!(error.contains("missing field"));
+    assert!(error.contains("agents"));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -603,14 +592,9 @@ enabled = true
 fn agent_org_artifacts_rejects_empty_paths_and_zero_minutes() {
     let root = temp_root("hook-client-agent-org-artifacts-invalid");
     let config_path = root.join("config.toml");
-    fs::write(
+    write_canonical_config_overlay(
         &config_path,
         r#"
-schemaId = "agent.semantic-protocols.hook.client-config"
-schemaVersion = "1"
-protocolId = "agent.semantic-protocols.hook"
-protocolVersion = "1"
-
 [agentOrgArtifacts]
 inactiveAfterMinutes = 0
 artifactsPath = ""
@@ -621,8 +605,7 @@ activeOrgFileThreshold = 0
 archivesDir = ""
 maxReportedFiles = 0
 "#,
-    )
-    .expect("write config");
+    );
 
     let error =
         load_hook_client_config_file(&config_path).expect_err("reject invalid agent org artifacts");
@@ -667,21 +650,15 @@ argv = ["asp", "rust"]
 fn invalid_decision_materializer_is_rejected_by_config_layer() {
     let root = temp_root("hook-client-invalid-materializer");
     let config_path = root.join("config.toml");
-    fs::write(
+    write_canonical_config_overlay(
         &config_path,
         r#"
-schemaId = "agent.semantic-protocols.hook.client-config"
-schemaVersion = "1"
-protocolId = "agent.semantic-protocols.hook"
-protocolVersion = "1"
-
 [[rules]]
 id = "deny-source-access"
 decision = "deny"
 decisionMaterializer = "legacy-source-classifier"
 "#,
-    )
-    .expect("write config");
+    );
 
     let error = load_hook_client_config_file(&config_path).expect_err("invalid materializer");
 
@@ -693,14 +670,9 @@ decisionMaterializer = "legacy-source-classifier"
 fn decision_materializer_cannot_compete_with_static_routes() {
     let root = temp_root("hook-client-materializer-routes");
     let config_path = root.join("config.toml");
-    fs::write(
+    write_canonical_config_overlay(
         &config_path,
         r#"
-schemaId = "agent.semantic-protocols.hook.client-config"
-schemaVersion = "1"
-protocolId = "agent.semantic-protocols.hook"
-protocolVersion = "1"
-
 [[rules]]
 id = "deny-source-access"
 decision = "deny"
@@ -711,8 +683,7 @@ providerId = "rs-harness"
 kind = "query"
 argv = ["asp", "rust", "query"]
 "#,
-    )
-    .expect("write config");
+    );
 
     let error = load_hook_client_config_file(&config_path).expect_err("ambiguous materializer");
 
@@ -727,14 +698,9 @@ argv = ["asp", "rust", "query"]
 fn argv_source_match_fields_round_trip_through_config_parser() {
     let root = temp_root("hook-client-argv-source");
     let config_path = root.join("config.toml");
-    fs::write(
+    write_canonical_config_overlay(
         &config_path,
         r#"
-schemaId = "agent.semantic-protocols.hook.client-config"
-schemaVersion = "1"
-protocolId = "agent.semantic-protocols.hook"
-protocolVersion = "1"
-
 [[rules]]
 id = "deny-argv-source"
 decision = "deny"
@@ -745,8 +711,7 @@ argvSourceAny = ["src/main.ts"]
 argvSourceGlobAny = ["*.ts"]
 argvSourceExcludeFlagAny = ["--output"]
 "#,
-    )
-    .expect("write config");
+    );
 
     let config = load_hook_client_config_file(&config_path).expect("load config");
     let rule = config.rules.first().expect("config rule");
@@ -755,6 +720,213 @@ argvSourceExcludeFlagAny = ["--output"]
     assert_eq!(rule.match_config.argv_source_glob_any, ["*.ts"]);
     assert_eq!(rule.match_config.argv_source_exclude_flag_any, ["--output"]);
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn bounded_json_projector_round_trips_as_one_lazy_capability_contract() {
+    let root = temp_root("hook-client-bounded-json-projector");
+    let config_path = root.join("config.toml");
+    write_canonical_config_overlay(
+        &config_path,
+        r#"
+[[rules]]
+id = "allow-bounded-json"
+decision = "allow"
+
+[rules.match]
+argvWorkspaceRegularFile = true
+
+[rules.match.structuredProjection]
+binary = "project-json"
+documentFormat = "json"
+filterGrammar = "bounded-path-v1"
+optionAny = ["--compact"]
+optionValueArity = { "--arg" = 2 }
+"#,
+    );
+
+    let config = load_hook_client_config_file(&config_path).expect("load config");
+    let rule = config.rules.first().expect("config rule");
+    let projection = rule
+        .match_config
+        .structured_projection
+        .as_ref()
+        .expect("projection matcher");
+    assert_eq!(projection.binary, "project-json");
+    assert_eq!(
+        projection.filter_grammar,
+        agent_semantic_config::HookClientStructuredFilterGrammar::BoundedPathV1
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn bounded_projection_rejects_invalid_declarative_models() {
+    for (name, match_config, expected) in [
+        (
+            "binary-path",
+            r#"
+argvWorkspaceRegularFile = true
+
+[rules.match.structuredProjection]
+binary = "../project-json"
+documentFormat = "json"
+filterGrammar = "bounded-path-v1"
+"#,
+            "invalid rules[].match.structuredProjection.binary",
+        ),
+        (
+            "zero-option-arity",
+            r#"
+argvWorkspaceRegularFile = true
+
+[rules.match.structuredProjection]
+binary = "project-json"
+documentFormat = "json"
+filterGrammar = "bounded-path-v1"
+optionValueArity = { "--arg" = 0 }
+"#,
+            "must start with `-` and have positive arity",
+        ),
+    ] {
+        let root = temp_root(name);
+        let config_path = root.join("config.toml");
+        write_canonical_config_overlay(
+            &config_path,
+            &format!(
+                r#"
+[[rules]]
+id = "allow-bounded-json"
+decision = "allow"
+
+[rules.match]
+{match_config}
+"#
+            ),
+        );
+        let error = load_hook_client_config_file(&config_path).expect_err("invalid projector");
+        assert!(error.contains(expected), "{error}");
+        let _ = fs::remove_dir_all(root);
+    }
+}
+
+#[test]
+fn project_hook_declarations_replace_rules_by_id_and_residents_by_name() {
+    let root = temp_root("project-hook-stable-identity-merge");
+    let config_path = root.join(".agents/asp.toml");
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
+    fs::write(
+        &config_path,
+        r#"
+[[hook.agents.residentAgents]]
+enabled = true
+name = "asp-explore"
+role = "project_search"
+roles = ["subagent", "search"]
+permissions = ["read-only"]
+codexAgentName = "project_search"
+sessionLifetime = "resident"
+
+[[hook.rules]]
+id = "deny-agent-search-json"
+priority = 1200
+intent = "project-json-policy"
+decision = "allow"
+message = "Project policy replaces the complete managed rule."
+
+[hook.rules.match]
+commandContainsAny = ["--json"]
+"#,
+    )
+    .expect("write project config");
+
+    let project = load_asp_project_config_file(&config_path).expect("load project hook config");
+    let merged = merge_asp_project_hook_config(
+        default_hook_client_config_file().expect("default config"),
+        project,
+    )
+    .expect("merge project declarations");
+
+    assert_eq!(merged.agents.resident_agents.len(), 2);
+    let explore = resident_agent(&merged, "asp-explore");
+    assert_eq!(explore.role, "project_search");
+    assert_eq!(explore.codex_agent_name, "project_search");
+    let replaced = merged
+        .rules
+        .iter()
+        .filter(|rule| rule.id == "deny-agent-search-json")
+        .collect::<Vec<_>>();
+    assert_eq!(replaced.len(), 1);
+    assert_eq!(replaced[0].intent.as_deref(), Some("project-json-policy"));
+    assert!(replaced[0].decision_materializer.is_none());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn project_hook_rejects_duplicate_policy_identities() {
+    let root = temp_root("project-hook-duplicate-identities");
+    let config_path = root.join(".agents/asp.toml");
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
+    fs::write(
+        &config_path,
+        r#"
+[[hook.rules]]
+id = "project-search"
+decision = "allow"
+
+[hook.rules.match]
+commandAny = ["asp"]
+
+[[hook.rules]]
+id = "project-search"
+decision = "deny"
+
+[hook.rules.match]
+commandAny = ["cargo"]
+"#,
+    )
+    .expect("write project config");
+
+    let project = load_asp_project_config_file(&config_path).expect("load project hook config");
+    let error = merge_asp_project_hook_config(
+        default_hook_client_config_file().expect("default config"),
+        project,
+    )
+    .expect_err("duplicate rule identity must be rejected");
+    assert_eq!(
+        error,
+        "project hook declares rule `project-search` more than once"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+fn write_canonical_config_overlay(path: &std::path::Path, overlay: &str) {
+    let mut config = toml::from_str::<toml::Value>(&default_hook_client_config_template())
+        .expect("parse canonical hook config");
+    let overlay = toml::from_str::<toml::Value>(overlay).expect("parse hook config overlay");
+    merge_toml_value(&mut config, overlay);
+    fs::write(
+        path,
+        toml::to_string_pretty(&config).expect("render hook config overlay"),
+    )
+    .expect("write hook config overlay");
+}
+
+fn merge_toml_value(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(base), toml::Value::Table(overlay)) => {
+            for (key, value) in overlay {
+                if let Some(existing) = base.get_mut(&key) {
+                    merge_toml_value(existing, value);
+                } else {
+                    base.insert(key, value);
+                }
+            }
+        }
+        (base, overlay) => *base = overlay,
+    }
 }
 
 fn temp_root(label: &str) -> PathBuf {

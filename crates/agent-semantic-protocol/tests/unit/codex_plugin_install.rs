@@ -587,90 +587,6 @@ fn claude_install_creates_managed_hook_config_and_sidecar() {
 }
 
 #[test]
-fn claude_install_migrates_recognized_legacy_default_without_fingerprint() {
-    let root = unix::temp_project_root("managed-hook-config-legacy");
-    let config = managed_hook_config_path(&root);
-    let mut legacy =
-        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
-            .expect("parse template");
-    legacy
-        .as_table_mut()
-        .expect("template table")
-        .remove("contractFingerprint");
-    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
-    std::fs::write(&config, toml::to_string(&legacy).expect("render legacy"))
-        .expect("write legacy");
-    let output = run_claude_hook_install(&root);
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
-    assert_eq!(
-        std::fs::read_to_string(&config).expect("read config"),
-        agent_semantic_hook::default_client_config_template()
-    );
-    assert!(managed_config_sidecar(&config).is_file());
-    std::fs::remove_dir_all(root).expect("cleanup");
-}
-
-#[test]
-fn claude_install_migrates_pre_rules_legacy_managed_config() {
-    let root = unix::temp_project_root("managed-hook-config-pre-rules");
-    let config = managed_hook_config_path(&root);
-    let mut pre_rules =
-        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
-            .expect("parse template");
-    let pre_rules_table = pre_rules.as_table_mut().expect("template table");
-    pre_rules_table.remove("contractFingerprint");
-    pre_rules_table.remove("rules");
-    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
-    std::fs::write(
-        &config,
-        toml::to_string(&pre_rules).expect("render pre-rules legacy config"),
-    )
-    .expect("write pre-rules legacy config");
-
-    let output = run_claude_hook_install(&root);
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
-
-    let installed = std::fs::read_to_string(&config).expect("read restored config");
-    let installed = toml::from_str::<toml::Value>(&installed).expect("parse restored config");
-    let current =
-        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
-            .expect("parse current template");
-    assert_eq!(
-        installed
-            .get("contractFingerprint")
-            .and_then(toml::Value::as_str),
-        current
-            .get("contractFingerprint")
-            .and_then(toml::Value::as_str)
-    );
-    assert_eq!(
-        installed
-            .get("rules")
-            .and_then(toml::Value::as_array)
-            .map(Vec::len),
-        Some(7)
-    );
-    let restored_bytes = std::fs::read(&config).expect("read restored config bytes");
-    assert_eq!(
-        std::fs::read_to_string(managed_config_sidecar(&config))
-            .expect("read managed config sidecar")
-            .trim(),
-        test_sha256(&restored_bytes)
-    );
-    std::fs::remove_dir_all(root).expect("cleanup");
-}
-
-#[test]
 fn claude_install_rejects_unproven_custom_config_without_stamping() {
     let root = unix::temp_project_root("managed-hook-config-custom");
     let config = managed_hook_config_path(&root);
@@ -691,6 +607,33 @@ fn claude_install_rejects_unproven_custom_config_without_stamping() {
     assert_eq!(
         std::fs::read_to_string(&config).expect("read config"),
         custom_bytes
+    );
+    assert!(!managed_config_sidecar(&config).exists());
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn claude_install_rejects_unproven_config_without_fingerprint() {
+    let root = unix::temp_project_root("managed-hook-config-unproven");
+    let config = managed_hook_config_path(&root);
+    let mut unproven =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse template");
+    unproven
+        .as_table_mut()
+        .expect("template table")
+        .remove("contractFingerprint");
+    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
+    let unproven_bytes = toml::to_string(&unproven).expect("render unproven config");
+    std::fs::write(&config, &unproven_bytes).expect("write unproven config");
+
+    let output = run_claude_hook_install(&root);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("user-config-contract-unproven"));
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("read config"),
+        unproven_bytes
     );
     assert!(!managed_config_sidecar(&config).exists());
     std::fs::remove_dir_all(root).expect("cleanup");

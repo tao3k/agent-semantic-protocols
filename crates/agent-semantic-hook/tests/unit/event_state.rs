@@ -242,6 +242,84 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
     }
 }
 
+#[test]
+fn configured_resident_dispatch_requires_complete_canonical_fields() {
+    let mut decision = decision("configured-resident-dispatch", 0);
+    assert!(!decision.has_configured_resident_dispatch());
+
+    insert_configured_resident_dispatch(&mut decision);
+    assert!(decision.has_configured_resident_dispatch());
+    let command = decision
+        .configured_resident_interactive_command()
+        .expect("configured resident command");
+    assert_eq!(
+        command.argv,
+        [
+            "asp",
+            "agent",
+            "session",
+            "bootstrap",
+            "--name",
+            "asp-testing",
+            "--root-session-id",
+            "root-session-test",
+        ]
+    );
+    assert_eq!(
+        decision
+            .configured_resident_interactive_command_line()
+            .as_deref(),
+        Some("asp agent session bootstrap --name asp-testing --root-session-id root-session-test")
+    );
+
+    decision.fields.insert(
+        "receiptKind".to_string(),
+        serde_json::Value::String(String::new()),
+    );
+    assert!(!decision.has_configured_resident_dispatch());
+}
+
+fn insert_configured_resident_dispatch(decision: &mut HookDecision) {
+    for (field, value) in [
+        ("agentSessionAction", "dispatch-configured-resident"),
+        ("transport", "resident-agent"),
+        ("residentName", "asp-testing"),
+        ("receiptKind", "asp-testing-execution-v1"),
+        ("targetAgentName", "asp_testing"),
+        ("sessionId", "root-session-test"),
+    ] {
+        decision.fields.insert(
+            field.to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
+    }
+}
+
+#[test]
+fn source_access_replay_preserves_configured_resident_dispatch() {
+    let _state_home = AspStateHomeGuard::activate_isolated();
+    let project_root = unique_project_root();
+    let mut decision = decision("configured-resident-replay", 0);
+    let original_message = "Route the exact command to ASP Testing.".to_string();
+    decision.message = original_message.clone();
+    insert_configured_resident_dispatch(&mut decision);
+
+    assert!(
+        !agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut decision).unwrap()
+    );
+    assert_eq!(decision.message, original_message);
+    assert_eq!(
+        decision
+            .fields
+            .get("denyReplayMessagePolicy")
+            .and_then(serde_json::Value::as_str),
+        Some("preserve-agent-session-route")
+    );
+    assert!(!decision.fields.contains_key("completionReceipt"));
+
+    fs::remove_dir_all(project_root).ok();
+}
+
 fn lifecycle_decision(event: &str, session_id: &str, transcript_path: &str) -> HookDecision {
     let mut fields = BTreeMap::new();
     fields.insert(

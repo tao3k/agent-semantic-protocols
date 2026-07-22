@@ -248,6 +248,66 @@ impl WorkspaceSnapshot {
         evidence
     }
 
+    /// Bind a fully materialized current snapshot to the Merkle delta that
+    /// produced it from an already published base root.
+    pub fn overlay_evidence<I, P, D, Q>(
+        &self,
+        source_kind: SourceSnapshotKind,
+        provider_digest: impl Into<String>,
+        base_root_digest: impl Into<String>,
+        changed_paths: I,
+        removed_paths: D,
+    ) -> Result<SourceSnapshotEvidence, String>
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<String>,
+        D: IntoIterator<Item = Q>,
+        Q: Into<String>,
+    {
+        let changed_leaves = changed_paths
+            .into_iter()
+            .map(Into::into)
+            .map(|path| normalize_snapshot_path(&path))
+            .map(|path| {
+                self.leaves
+                    .get(&path)
+                    .cloned()
+                    .map(|digest| (path.clone(), digest))
+                    .ok_or_else(|| {
+                        format!(
+                            "Merkle overlay changed path is absent from current snapshot: {path}"
+                        )
+                    })
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        let removed_paths = removed_paths
+            .into_iter()
+            .map(Into::into)
+            .map(|path| normalize_snapshot_path(&path))
+            .collect::<BTreeSet<_>>();
+        if let Some(path) = removed_paths
+            .iter()
+            .find(|path| self.leaves.contains_key(path.as_str()))
+        {
+            return Err(format!(
+                "Merkle overlay removed path remains in current snapshot: {path}"
+            ));
+        }
+        if changed_leaves.is_empty() && removed_paths.is_empty() {
+            return Err("Merkle overlay evidence requires at least one changed path".to_string());
+        }
+        let mut evidence = SourceSnapshotEvidence::new(
+            self.root_digest.clone(),
+            source_kind,
+            self.leaves.len(),
+            provider_digest,
+        );
+        evidence.base_root_digest = Some(base_root_digest.into());
+        evidence.dirty_paths_digest =
+            Some(overlay_dirty_paths_digest(&changed_leaves, &removed_paths));
+        Ok(evidence)
+    }
+
     /// Derive a snapshot by applying explicit path/digest updates over this base root.
     pub fn with_overlay<I, P, H>(&self, file_hashes: I) -> Self
     where
@@ -291,19 +351,7 @@ impl WorkspaceSnapshot {
             .map(|path| normalize_snapshot_path(&path))
             .collect::<BTreeSet<_>>();
 
-        let mut dirty_leaves = overlay_leaves
-            .iter()
-            .map(|(path, digest)| {
-                let operation_digest =
-                    crate::hash_blob(format!("upsert\0{digest}").as_bytes()).value;
-                (path.clone(), operation_digest)
-            })
-            .collect::<BTreeMap<_, _>>();
-        for path in &deleted_paths {
-            dirty_leaves.insert(path.clone(), crate::hash_blob(b"delete").value);
-        }
-
-        let dirty_paths_digest = merkle_root(&dirty_leaves);
+        let dirty_paths_digest = overlay_dirty_paths_digest(&overlay_leaves, &deleted_paths);
         let mut leaves = self.leaves.clone();
         for path in deleted_paths {
             leaves.remove(&path);
@@ -362,6 +410,23 @@ fn normalize_snapshot_path(path: &str) -> String {
             components
         })
         .join("/")
+}
+
+fn overlay_dirty_paths_digest(
+    changed_leaves: &BTreeMap<String, String>,
+    removed_paths: &BTreeSet<String>,
+) -> String {
+    let mut dirty_leaves = changed_leaves
+        .iter()
+        .map(|(path, digest)| {
+            let operation_digest = crate::hash_blob(format!("upsert\0{digest}").as_bytes()).value;
+            (path.clone(), operation_digest)
+        })
+        .collect::<BTreeMap<_, _>>();
+    for path in removed_paths {
+        dirty_leaves.insert(path.clone(), crate::hash_blob(b"delete").value);
+    }
+    merkle_root(&dirty_leaves)
 }
 
 fn merkle_root(leaves: &BTreeMap<String, String>) -> String {

@@ -20,6 +20,33 @@ pub(super) fn temp_root(label: &str) -> PathBuf {
     canonical(&root)
 }
 
+pub(super) fn with_required_resident_agents(config: &str) -> String {
+    format!(
+        "{config}\n{}",
+        r#"
+[agents]
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-explore"
+role = "asp_explorer"
+roles = []
+permissions = []
+codexAgentName = "asp_explorer"
+sessionLifetime = "resident"
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-testing"
+role = "asp_testing"
+roles = []
+permissions = []
+codexAgentName = "asp_testing"
+sessionLifetime = "resident"
+"#
+    )
+}
+
 fn canonical(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
@@ -84,7 +111,7 @@ Keep recoverable ASP Org state.
 pub(super) fn agent_org_artifacts_config(root: &Path, enabled: bool) -> String {
     let artifacts_path = org_artifacts_root(root);
     let entry_skill_path = org_state_skill_path(root);
-    format!(
+    with_required_resident_agents(&format!(
         r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -112,13 +139,13 @@ commandAny = ["rg"]
 "#,
         artifacts_path.display().to_string().replace('\\', "\\\\"),
         entry_skill_path.display().to_string().replace('\\', "\\\\")
-    )
+    ))
 }
 
 pub(super) fn agent_org_artifacts_default_config(root: &Path) -> String {
     let artifacts_path = org_artifacts_root(root);
     let entry_skill_path = org_state_skill_path(root);
-    format!(
+    with_required_resident_agents(&format!(
         r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -144,5 +171,5 @@ commandAny = ["rg"]
 "#,
         artifacts_path.display().to_string().replace('\\', "\\\\"),
         entry_skill_path.display().to_string().replace('\\', "\\\\")
-    )
+    ))
 }

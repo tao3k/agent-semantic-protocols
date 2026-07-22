@@ -6,7 +6,6 @@ mod cli;
 mod command;
 
 pub mod graph;
-pub mod query_owner_core;
 mod state_cli;
 
 pub use cli::{run_cli_args, run_cli_from_env};

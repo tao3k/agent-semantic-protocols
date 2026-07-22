@@ -1,4 +1,3 @@
-
 #[tokio::test(flavor = "current_thread")]
 async fn turso_backend_bootstrap_smoke_creates_local_file() {
     let project_root = temp_root("turso-bootstrap-project");
@@ -46,7 +45,11 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     })
     .expect("build source-index Turso read-model import");
     let source_index_report = engine
-        .persist_source_index_read_model(&source_index_import, &source_snapshot)
+        .persist_source_index_read_model(
+            &source_index_import,
+            &source_snapshot,
+            &agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
+        )
         .await
         .expect("persist source-index read-model through DB Engine facade");
     assert_eq!(source_index_report.search_document_count, 1);
@@ -207,9 +210,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     assert!(
         structural_dependency_hits.hits.iter().any(|hit| {
             hit.source == "projection"
-                && hit
-                    .document_id
-                    .starts_with("structural-index:dependency:")
+                && hit.document_id.starts_with("structural-index:dependency:")
                 && hit
                     .document_id
                     .contains(source_snapshot.root_digest.as_str())
@@ -261,12 +262,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
         .await
         .expect("replace the same root with a smaller complete generation");
     let removed_document = engine
-        .search_documents(
-            "replacement-fixture",
-            &source_snapshot,
-            "alphazulu9831",
-            8,
-        )
+        .search_documents("replacement-fixture", &source_snapshot, "alphazulu9831", 8)
         .await
         .expect("search the replaced Turso projection generation");
     assert_eq!(
@@ -275,12 +271,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     );
     assert!(removed_document.hits.is_empty());
     let retained_document = engine
-        .search_documents(
-            "replacement-fixture",
-            &source_snapshot,
-            "betayankee7042",
-            8,
-        )
+        .search_documents("replacement-fixture", &source_snapshot, "betayankee7042", 8)
         .await
         .expect("search the retained replacement document");
     assert_eq!(

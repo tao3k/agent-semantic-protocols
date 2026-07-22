@@ -63,3 +63,26 @@ fn resolution_must_be_bound_to_the_same_snapshot_root() {
     let error = SnapshotBoundResolution::new(evidence, stale).expect_err("stale root must fail");
     assert!(error.contains("does not match"));
 }
+
+#[test]
+fn materialized_overlay_evidence_matches_canonical_delta_evidence() {
+    let base = WorkspaceSnapshot::from_file_hashes([
+        ("src/a.rs", "a".repeat(64)),
+        ("src/b.rs", "b".repeat(64)),
+    ]);
+    let canonical_overlay = base.with_overlay_delta([("src/a.rs", "c".repeat(64))], ["src/b.rs"]);
+    let materialized_current = WorkspaceSnapshot::from_file_hashes([("src/a.rs", "c".repeat(64))]);
+
+    let expected = canonical_overlay.evidence(SourceSnapshotKind::Filesystem, "d".repeat(64));
+    let actual = materialized_current
+        .overlay_evidence(
+            SourceSnapshotKind::Filesystem,
+            "d".repeat(64),
+            base.root_digest(),
+            ["src/a.rs"],
+            ["src/b.rs"],
+        )
+        .expect("materialized overlay evidence");
+
+    assert_eq!(actual, expected);
+}

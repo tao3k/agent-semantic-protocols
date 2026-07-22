@@ -60,6 +60,7 @@ fn workspace_build_env_expands_pinned_workspace_root() {
         program: "gxi".to_string(),
         args: Vec::new(),
         working_directory: "languages/gerbil".to_string(),
+        source_snapshot_anchors: vec!["languages/gerbil/gerbil.pkg".to_string()],
         derived_paths: vec!["languages/gerbil/target".to_string()],
         env: std::collections::BTreeMap::from([(
             "HOME".to_string(),
@@ -158,6 +159,7 @@ fn pinned_workspace_snapshot_isolated_from_live_edits() {
     let before = super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
         &live,
         &[derived],
+        &[],
         "provider-digest",
     )
     .expect("capture workspace snapshot");
@@ -172,6 +174,7 @@ fn pinned_workspace_snapshot_isolated_from_live_edits() {
         super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
             &pinned,
             &[],
+            &[],
             "provider-digest",
         )
         .expect("capture pinned snapshot");
@@ -179,6 +182,7 @@ fn pinned_workspace_snapshot_isolated_from_live_edits() {
         super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
             &live,
             &[live.join("target")],
+            &[],
             "provider-digest",
         )
         .expect("capture edited live source");
@@ -193,6 +197,7 @@ fn pinned_workspace_snapshot_isolated_from_live_edits() {
     let pinned_after =
         super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
             &pinned,
+            &[],
             &[],
             "provider-digest",
         )
@@ -246,6 +251,66 @@ fn corrupted_workspace_artifact_cas_is_rematerialized_from_merkle_source() {
 }
 
 #[test]
+fn ignored_harness_anchor_is_forced_into_merkle_source_cas() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let temp = std::env::temp_dir().join(format!(
+        "asp-workspace-source-anchor-{}-{nonce}",
+        std::process::id()
+    ));
+    let live = temp.join("live");
+    let pinned = temp.join("pinned");
+    let derived = live.join("target");
+    let manifest = live.join("Cargo.toml");
+    let lockfile = live.join("Cargo.lock");
+    std::fs::create_dir_all(live.join("src")).expect("create live source");
+    std::fs::create_dir_all(&derived).expect("create derived path");
+    std::fs::write(live.join(".gitignore"), b"Cargo.lock\ntarget\n")
+        .expect("write ignore contract");
+    std::fs::write(
+        &manifest,
+        b"[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write manifest anchor");
+    std::fs::write(&lockfile, b"version = 4\n").expect("write ignored lock anchor");
+    std::fs::write(live.join("src/lib.rs"), b"pub fn value() -> u8 { 1 }\n")
+        .expect("write live source");
+    std::fs::write(derived.join("ignored"), b"derived\n").expect("write derived output");
+
+    let anchors = vec![manifest, lockfile.clone()];
+    let before = super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
+        &live,
+        &[derived],
+        &anchors,
+        "provider-digest",
+    )
+    .expect("capture anchored workspace snapshot");
+    assert!(before.leaves.contains_key("Cargo.toml"));
+    assert!(before.leaves.contains_key("Cargo.lock"));
+    assert!(!before.leaves.contains_key("target/ignored"));
+
+    super::super::install_provider_workspace_source::copy_workspace_snapshot_leaves(
+        &live, &pinned, &before,
+    )
+    .expect("materialize anchored source CAS");
+    assert!(pinned.join("Cargo.lock").is_file());
+
+    std::fs::write(&lockfile, b"version = 4\n# changed\n").expect("change lock anchor");
+    let after = super::super::install_provider_workspace_source::capture_workspace_build_snapshot(
+        &live,
+        &[live.join("target")],
+        &anchors,
+        "provider-digest",
+    )
+    .expect("capture changed anchor snapshot");
+    assert_ne!(before.evidence.root_digest, after.evidence.root_digest);
+    assert_eq!(before.changed_paths(&after), vec!["Cargo.lock"]);
+    let _ = std::fs::remove_dir_all(temp);
+}
+
+#[test]
 fn resolves_provider_owned_workspace_descriptors_through_manifests() {
     let cases = [
         ("rust", "rs-harness", "rs-harness"),
@@ -262,5 +327,12 @@ fn resolves_provider_owned_workspace_descriptors_through_manifests() {
             .unwrap_or_else(|error| panic!("{language_id}: {error}"));
         assert_eq!(descriptor.provider_id, provider_id);
         assert_eq!(descriptor.binary, binary);
+        assert!(
+            !descriptor
+                .workspace_build
+                .source_snapshot_anchors
+                .is_empty(),
+            "{language_id} must publish harness-owned source snapshot anchors"
+        );
     }
 }

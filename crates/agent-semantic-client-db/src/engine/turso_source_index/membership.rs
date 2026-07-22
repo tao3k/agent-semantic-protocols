@@ -142,3 +142,119 @@ pub(super) async fn turso_source_index_membership_changes(
     }
     Ok((changed_owner_paths, removed_owner_paths))
 }
+
+pub(super) fn validate_source_index_membership_change_set(
+    request: &crate::source_index::ClientDbSourceIndexRefreshRequest,
+) -> Result<(), String> {
+    let crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+        changed_owner_paths,
+        removed_owner_paths,
+    } = &request.membership_change_set
+    else {
+        return Ok(());
+    };
+    if request.source_snapshot.base_root_digest.is_none()
+        || request.source_snapshot.dirty_paths_digest.is_none()
+    {
+        return Err(
+            "source-index Merkle overlay requires baseRootDigest and dirtyPathsDigest evidence"
+                .to_string(),
+        );
+    }
+    if changed_owner_paths.is_empty() && removed_owner_paths.is_empty() {
+        return Err("source-index Merkle overlay requires at least one changed owner".to_string());
+    }
+
+    let changed = changed_owner_paths
+        .iter()
+        .map(|path| path.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let removed = removed_owner_paths
+        .iter()
+        .map(|path| path.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    if changed.len() != changed_owner_paths.len() || removed.len() != removed_owner_paths.len() {
+        return Err("source-index Merkle overlay contains duplicate owner paths".to_string());
+    }
+    if changed.iter().any(|path| removed.contains(path)) {
+        return Err(
+            "source-index Merkle overlay owner cannot be both changed and removed".to_string(),
+        );
+    }
+
+    let imported_file_paths = request
+        .import
+        .file_hashes
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let imported_owner_paths = request
+        .import
+        .owners
+        .iter()
+        .map(|owner| owner.owner_path.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    if let Some(path) = changed.iter().find(|path| {
+        !imported_file_paths.contains(**path) || !imported_owner_paths.contains(**path)
+    }) {
+        return Err(format!(
+            "source-index Merkle overlay changed owner is absent from snapshot import: path={path}"
+        ));
+    }
+    if let Some(path) = removed
+        .iter()
+        .find(|path| imported_file_paths.contains(**path) || imported_owner_paths.contains(**path))
+    {
+        return Err(format!(
+            "source-index Merkle overlay removed owner remains in snapshot import: path={path}"
+        ));
+    }
+    Ok(())
+}
+
+pub(super) async fn validate_turso_source_index_overlay_base(
+    connection: &turso::Connection,
+    project_root: &str,
+    schema_id: &str,
+    schema_version: &str,
+    expected_base_root_digest: &str,
+) -> Result<(), String> {
+    let mut rows = run_turso_operation(
+        || async {
+            connection
+                .query(
+                    "SELECT source_snapshot_json
+                     FROM asp_source_index_scope_v1
+                     WHERE project_root = ?1
+                       AND schema_id = ?2
+                       AND schema_version = ?3
+                     LIMIT 1",
+                    (project_root, schema_id, schema_version),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to query Turso source-index overlay base snapshot",
+    )
+    .await?;
+    let Some(row) = rows.next().await.map_err(|error| {
+        format!("failed to read Turso source-index overlay base snapshot: {error}")
+    })?
+    else {
+        return Err("source-index Merkle overlay base projection is missing".to_string());
+    };
+    let source_snapshot_json = row.get::<String>(0).map_err(|error| {
+        format!("failed to decode Turso source-index overlay base snapshot: {error}")
+    })?;
+    let source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence =
+        serde_json::from_str(&source_snapshot_json).map_err(|error| {
+            format!("failed to parse Turso source-index overlay base snapshot: {error}")
+        })?;
+    if source_snapshot.root_digest != expected_base_root_digest {
+        return Err(format!(
+            "source-index Merkle overlay base root mismatch: expected={} actual={}",
+            expected_base_root_digest, source_snapshot.root_digest
+        ));
+    }
+    Ok(())
+}

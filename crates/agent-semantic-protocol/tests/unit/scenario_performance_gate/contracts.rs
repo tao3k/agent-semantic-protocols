@@ -7,13 +7,6 @@ pub(crate) fn assert_dynamic_overlay_benchmark_contract(benchmark: &SharedBenchm
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
-pub(crate) fn assert_turso_overlay_benchmark_contract(benchmark: &SharedBenchmarkToml) {
-    assert_eq!(benchmark.route_source.as_deref(), Some("turso-overlay"));
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
-
 pub(crate) fn assert_evidence_graph_rank_benchmark_contract(benchmark: &SharedBenchmarkToml) {
     assert_eq!(
         benchmark.route_source.as_deref(),

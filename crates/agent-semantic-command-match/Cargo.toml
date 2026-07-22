@@ -1,10 +1,18 @@
 [package]
 name = "agent-semantic-command-match"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
 publish = false
+
+[dev-dependencies]
+toml = { workspace = true }
 
 [[bench]]
 name = "command_match_scenarios"
 harness = false
+
+
+[dependencies]
+tree-sitter = "0.26"
+tree-sitter-bash = "0.25"

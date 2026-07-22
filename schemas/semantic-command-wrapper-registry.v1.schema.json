@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-command-wrapper-registry.v1.schema.json",
+  "title": "Semantic command wrapper registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "wrappers"
+  ],
+  "properties": {
+    "wrappers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "executable"
+        ],
+        "properties": {
+          "executable": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

@@ -30,7 +30,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     let client_config_status = if client_config_path.is_file() {
         "ok"
     } else {
-        "default"
+        "missing"
     };
     let hook_config =
         load_client_config_for_project(&client_config_path, &project_root).map_err(|error| {
@@ -377,6 +377,7 @@ fn decision_kind_label(kind: DecisionKind) -> &'static str {
 fn reason_kind_label(kind: ReasonKind) -> &'static str {
     match kind {
         ReasonKind::None => "none",
+        ReasonKind::ActivationUnavailable => "activation-unavailable",
         ReasonKind::DirectSourceRead => "direct-source-read",
         ReasonKind::BulkSourceDump => "bulk-source-dump",
         ReasonKind::RawBroadSearch => "raw-broad-search",

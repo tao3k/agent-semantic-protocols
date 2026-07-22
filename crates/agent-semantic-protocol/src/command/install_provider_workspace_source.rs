@@ -46,10 +46,11 @@ impl Drop for WorkspaceBuildSandbox {
 pub(super) fn capture_workspace_build_snapshot(
     project_root: &Path,
     derived_paths: &[PathBuf],
+    source_snapshot_anchors: &[PathBuf],
     provider_digest: &str,
 ) -> Result<WorkspaceBuildSnapshot, String> {
     let mut walker = ignore::WalkBuilder::new(project_root);
-    let derived_paths = derived_paths.to_vec();
+    let excluded_derived_paths = derived_paths.to_vec();
     walker
         .hidden(false)
         .ignore(true)
@@ -60,7 +61,7 @@ pub(super) fn capture_workspace_build_snapshot(
         .follow_links(false)
         .filter_entry(move |entry| {
             entry.file_name() != ".git"
-                && !derived_paths
+                && !excluded_derived_paths
                     .iter()
                     .any(|derived| entry.path().starts_with(derived))
         });
@@ -78,23 +79,31 @@ pub(super) fn capture_workspace_build_snapshot(
         {
             continue;
         }
-        let relative = entry.path().strip_prefix(project_root).map_err(|error| {
+        file_hashes.push(workspace_snapshot_leaf(project_root, entry.path())?);
+    }
+    for anchor in source_snapshot_anchors {
+        if derived_paths
+            .iter()
+            .any(|derived| anchor.starts_with(derived))
+        {
+            return Err(format!(
+                "workspace source snapshot anchor must not be inside a derived path: {}",
+                anchor.display()
+            ));
+        }
+        let metadata = fs::symlink_metadata(anchor).map_err(|error| {
             format!(
-                "failed to normalize workspace snapshot path {}: {error}",
-                entry.path().display()
+                "failed to inspect required workspace source snapshot anchor {}: {error}",
+                anchor.display()
             )
         })?;
-        let normalized = relative.to_string_lossy().replace('\\', "/");
-        let bytes = fs::read(entry.path()).map_err(|error| {
-            format!(
-                "failed to read workspace snapshot leaf {}: {error}",
-                entry.path().display()
-            )
-        })?;
-        file_hashes.push((
-            normalized,
-            agent_semantic_content_identity::hash_blob(&bytes).value,
-        ));
+        if !metadata.file_type().is_file() {
+            return Err(format!(
+                "required workspace source snapshot anchor is not a regular file: {}",
+                anchor.display()
+            ));
+        }
+        file_hashes.push(workspace_snapshot_leaf(project_root, anchor)?);
     }
     file_hashes.sort_by(|left, right| left.0.cmp(&right.0));
     let leaves = file_hashes.into_iter().collect::<BTreeMap<_, _>>();
@@ -107,6 +116,26 @@ pub(super) fn capture_workspace_build_snapshot(
         ),
         leaves,
     })
+}
+
+fn workspace_snapshot_leaf(project_root: &Path, path: &Path) -> Result<(String, String), String> {
+    let relative = path.strip_prefix(project_root).map_err(|error| {
+        format!(
+            "failed to normalize workspace snapshot path {}: {error}",
+            path.display()
+        )
+    })?;
+    let normalized = relative.to_string_lossy().replace('\\', "/");
+    let bytes = fs::read(path).map_err(|error| {
+        format!(
+            "failed to read workspace snapshot leaf {}: {error}",
+            path.display()
+        )
+    })?;
+    Ok((
+        normalized,
+        agent_semantic_content_identity::hash_blob(&bytes).value,
+    ))
 }
 
 pub(super) fn remove_workspace_snapshot_tree(path: &Path) -> Result<(), String> {
@@ -179,8 +208,12 @@ pub(super) fn materialize_workspace_source_cas(
         .map_err(|error| format!("failed to create {}: {error}", cas_parent.display()))?;
     let cas_root = cas_parent.join(&snapshot.evidence.root_digest);
     if cas_root.is_dir() {
-        let cached =
-            capture_workspace_build_snapshot(&cas_root, &[], &snapshot.evidence.provider_digest)?;
+        let cached = capture_workspace_build_snapshot(
+            &cas_root,
+            &[],
+            &[],
+            &snapshot.evidence.provider_digest,
+        )?;
         if cached.evidence.root_digest == snapshot.evidence.root_digest
             && cached.evidence.leaf_count == snapshot.evidence.leaf_count
         {
@@ -200,7 +233,7 @@ pub(super) fn materialize_workspace_source_cas(
     ));
     copy_workspace_snapshot_leaves(project_root, &staging, snapshot)?;
     let staged =
-        capture_workspace_build_snapshot(&staging, &[], &snapshot.evidence.provider_digest)?;
+        capture_workspace_build_snapshot(&staging, &[], &[], &snapshot.evidence.provider_digest)?;
     if staged.evidence.root_digest != snapshot.evidence.root_digest
         || staged.evidence.leaf_count != snapshot.evidence.leaf_count
     {

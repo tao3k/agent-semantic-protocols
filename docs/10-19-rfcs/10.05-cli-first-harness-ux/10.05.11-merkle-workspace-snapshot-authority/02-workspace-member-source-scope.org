@@ -31,6 +31,22 @@ All admitted roots are workspace-relative, separator-normalized to =/=, sorted
 bytewise, and deduplicated before acquisition. A root escaping the workspace or
 a symlink escaping an admitted package fails closed.
 
+* Harness-owned build source anchors
+
+The v1 provider workspace-install descriptor MUST carry
+=workspaceBuild.sourceSnapshotAnchors=. The owning language harness publishes
+this normalized, workspace-relative set from its package-manager and build
+contract. ASP consumes the typed set verbatim; it MUST NOT infer Cargo, npm,
+uv, Julia, Gerbil, or other anchor filenames in protocol Rust code.
+
+Every declared anchor is a mandatory regular-file leaf in the provider build
+source snapshot even when repository ignore rules would otherwise omit it.
+Missing anchors, symlinks, parent traversal, and anchors inside a declared
+=derivedPaths= boundary fail closed. The same anchor set participates in the
+build recipe digest, source CAS, build sandbox, and before/after immutability
+check. This keeps the package-manager lock input and the Merkle proof in one
+authority instead of repairing an incomplete sandbox after the build fails.
+
 * Snapshot and topology join
 
 Workspace topology is not merely an extra candidate source. Before candidate

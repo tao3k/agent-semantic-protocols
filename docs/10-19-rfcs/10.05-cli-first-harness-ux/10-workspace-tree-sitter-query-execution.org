@@ -1,0 +1,54 @@
+#+title: Workspace Tree-sitter Query Execution
+#+status: Implemented
+
+* Decision
+
+=query --treesitter-query= has two typed execution modes:
+
+- an exact =--selector= selects one owner/item projection;
+- no selector executes the query across the requested =--workspace=.
+
+=--code= remains exact-selector only.  A workspace query returns compact capture
+locators and native fact references; it never returns capture text or source
+windows.
+
+* Query ownership
+
+The ASP-owned tree-sitter runtime MUST compile the supplied query with the
+language grammar resolved by the ASP grammar registry and execute the resulting
+query object against each registered source file.  Node kinds, capture names,
+alternations, fields, and predicates such as =#eq?= and =#match?= belong to the
+tree-sitter query engine.
+
+The dispatch/runtime path MUST NOT recognize supported queries by substring
+matching the query text, extracting one predicate with an ad-hoc parser, or
+dispatching on a fixed node/capture pair.  Unsupported grammar constructs fail during query
+compilation with the provider's query error; they are not reported as a missing
+=--selector=.
+
+* Compact result contract
+
+For workspace execution the compact packet records:
+
+- workspace-relative owner path;
+- captured node kind and capture name;
+- start and end line;
+- a provider-owned native fact reference;
+- total/retained counts and an explicit truncation bit.
+
+The output cap bounds agent context, not parser execution semantics.  Query
+predicates are evaluated before a capture is counted.  Source acquisition uses
+the content-authoritative live workspace snapshot filtered by the activated
+provider's registered extensions; a derived search index is not a query
+execution fallback.  Owner paths remain deterministically ordered.
+
+* Regression requirements
+
+ASP runtime/dispatch tests MUST cover both:
+
+1. a predicate-bearing string-literal query without =--selector=; and
+2. one query containing multiple declaration node kinds sharing a capture.
+
+The installed-ASP gate MUST run the original public command form and prove
+that it exits successfully without the historical =requires an exact
+--selector= error.

@@ -66,10 +66,9 @@ use agent_session_registry_state::open_or_create_default_registry;
 use std::{env, path::PathBuf};
 
 pub(crate) use agent_session_registry_state::{
-    ResidentChildIdentityProof, codex_transcript_resident_child_identity, current_agent_session_id,
-    current_registered_session, current_registered_session_identity,
-    current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
-    registered_resident_session_for_root, registered_root_session_id,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity,
+    current_registered_session, current_resident_child_identity_proof, current_root_session_id,
+    has_current_agent_session, registered_resident_session_for_root, registered_root_session_id,
 };
 pub(crate) use agent_session_registry_tool_event::record_current_session_tool_event;
 

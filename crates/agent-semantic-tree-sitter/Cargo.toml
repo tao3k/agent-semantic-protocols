@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
+tree-sitter-rust = "0.24.2"
 agent-semantic-tree-sitter-runtime = { version = "0.1.0", path = "../agent-semantic-tree-sitter-runtime" }
 tree-sitter = { workspace = true }
 

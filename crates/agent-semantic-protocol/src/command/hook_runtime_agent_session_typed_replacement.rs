@@ -110,7 +110,7 @@ pub(super) fn release_terminal_owner_before_typed_start(
         agent_semantic_client_db::AgentSessionRegistry::open_or_create_project(project_root)?;
     let project_id = agent_semantic_client_db::AgentSessionRegistry::project_scope_id(project_root);
     let replacement_lease =
-        crate::command::agent_session_registry::agent_session_registry_host_capability::consume_fresh_absent_resident_target_observation(
+        crate::command::agent_session_registry::agent_session_registry_host_capability::consume_fresh_unroutable_resident_target_observation(
             &registry,
             root_session_id,
             asp_session_policy.resident_child_name(),
@@ -131,7 +131,7 @@ pub(super) fn release_terminal_owner_before_typed_start(
                 && (replacement_lease
                     || matches!(
                         existing.status.as_str(),
-                        "invalid" | "replacement-required" | "orphan-risk" | "archived" | "closed"
+                        "invalid" | "replacement-required" | "archived" | "closed"
                     ))
         })
     else {

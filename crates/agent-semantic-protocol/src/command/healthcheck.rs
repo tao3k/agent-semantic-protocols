@@ -1,7 +1,7 @@
 //! Runtime healthcheck for project-local ASP state.
 
 use super::hook_runtime::active_codex_plugin_skill_path;
-use super::protocol_binary::{protocol_binary_artifact_digest, protocol_binary_on_path};
+use super::protocol_binary::protocol_binary_on_path;
 use agent_semantic_config::{PRJ_CACHE_HOME_ENV, ProjectRuntimeLayout, project_runtime_layout};
 use agent_semantic_hook::{
     RuntimeProfiles, RuntimeProviderHealthStatus, load_activation, runtime_profiles_for_runtime,
@@ -22,9 +22,9 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let context = agent_semantic_client_core::ProjectContext::resolve(&options.project_root)?;
     let project_state_paths = agent_semantic_runtime::project_state_paths(context.cwd())?;
     let activation_path = project_state_paths.activation_path;
-    let activation = check_activation(Some(&activation_path));
-    let activation_runtime = check_activation_runtime(Some(&activation_path), context.cwd());
-    let binary = check_binary();
+    let (activation, activation_runtime) =
+        check_activation_and_runtime(Some(&activation_path), context.cwd());
+    let binary = check_binary(&activation_path);
     let skill = check_skill(&options.project_root);
 
     let mut issues = collect_layout_issues(&layout, &skill);
@@ -142,6 +142,10 @@ struct BinaryCheck {
     current_asp: Option<PathBuf>,
     path_asp: Option<PathBuf>,
     status: &'static str,
+    receipt_path: Option<PathBuf>,
+    artifact_root_digest: Option<String>,
+    binary_artifact_digest: Option<String>,
+    error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -150,93 +154,113 @@ enum FsKind {
     File,
 }
 
-fn check_activation(path: Option<&Path>) -> ActivationCheck {
+fn check_activation_and_runtime(
+    path: Option<&Path>,
+    project_root: &Path,
+) -> (ActivationCheck, ActivationRuntimeCheck) {
     let Some(path) = path else {
-        return ActivationCheck {
-            status: "unresolved",
-            provider_count: None,
-            error: None,
-        };
+        return (
+            ActivationCheck {
+                status: "unresolved",
+                provider_count: None,
+                error: None,
+            },
+            ActivationRuntimeCheck {
+                status: "unresolved",
+                provider_count: None,
+                error: None,
+                profiles: None,
+            },
+        );
     };
     if !path.is_file() {
-        return ActivationCheck {
-            status: "missing",
-            provider_count: None,
-            error: None,
-        };
+        return (
+            ActivationCheck {
+                status: "missing",
+                provider_count: None,
+                error: None,
+            },
+            ActivationRuntimeCheck {
+                status: "missing",
+                provider_count: None,
+                error: None,
+                profiles: None,
+            },
+        );
     }
     match load_activation(path) {
-        Ok(runtime) => ActivationCheck {
-            status: "ok",
-            provider_count: Some(runtime.providers.len()),
-            error: None,
-        },
-        Err(error) => ActivationCheck {
-            status: "invalid",
-            provider_count: None,
-            error: Some(error),
-        },
+        Ok(runtime) => {
+            let provider_count = runtime.providers.len();
+            let profiles = runtime_profiles_for_runtime(project_root, &runtime);
+            (
+                ActivationCheck {
+                    status: "ok",
+                    provider_count: Some(provider_count),
+                    error: None,
+                },
+                ActivationRuntimeCheck {
+                    status: "ok",
+                    provider_count: Some(profiles.providers.len()),
+                    error: None,
+                    profiles: Some(profiles),
+                },
+            )
+        }
+        Err(error) => (
+            ActivationCheck {
+                status: "invalid",
+                provider_count: None,
+                error: Some(error.clone()),
+            },
+            ActivationRuntimeCheck {
+                status: "invalid",
+                provider_count: None,
+                error: Some(error),
+                profiles: None,
+            },
+        ),
     }
 }
 
-fn check_activation_runtime(path: Option<&Path>, project_root: &Path) -> ActivationRuntimeCheck {
-    let Some(path) = path else {
-        return ActivationRuntimeCheck {
-            status: "unresolved",
-            provider_count: None,
-            error: None,
-            profiles: None,
-        };
-    };
-    if !path.is_file() {
-        return ActivationRuntimeCheck {
-            status: "missing",
-            provider_count: None,
-            error: None,
-            profiles: None,
-        };
-    }
-    match load_activation(path).map(|runtime| runtime_profiles_for_runtime(project_root, &runtime))
-    {
-        Ok(profiles) => ActivationRuntimeCheck {
-            status: "ok",
-            provider_count: Some(profiles.providers.len()),
-            error: None,
-            profiles: Some(profiles),
-        },
-        Err(error) => ActivationRuntimeCheck {
-            status: "invalid",
-            provider_count: None,
-            error: Some(error),
-            profiles: None,
-        },
-    }
-}
-
-fn check_binary() -> BinaryCheck {
+fn check_binary(activation_path: &Path) -> BinaryCheck {
     let current_asp = env::current_exe().ok();
     let path_asp = protocol_binary_on_path();
-    let status = match (&current_asp, &path_asp) {
-        (Some(current), Some(on_path)) if same_binary_artifact(current, on_path) => "ok",
-        (Some(_), Some(_)) => "mismatch",
-        (Some(_), None) => "path-missing",
-        (None, Some(_)) => "current-missing",
-        (None, None) => "missing",
-    };
+    let receipt_path = agent_semantic_hook::active_asp_artifact_receipt_path(activation_path).ok();
+    let (status, artifact_root_digest, binary_artifact_digest, error) =
+        match (&current_asp, &path_asp) {
+            (Some(current), Some(on_path)) => {
+                match agent_semantic_hook::verify_active_asp_artifact_receipt(
+                    activation_path,
+                    &[current, on_path],
+                ) {
+                    Ok(receipt) => (
+                        "ok",
+                        Some(receipt.artifact_root_digest.as_str().to_string()),
+                        Some(
+                            receipt
+                                .asp_binary_leaf()
+                                .artifact_digest
+                                .as_str()
+                                .to_string(),
+                        ),
+                        None,
+                    ),
+                    Err(error) => ("artifact-degraded", None, None, Some(error)),
+                }
+            }
+            (Some(_), None) => ("path-missing", None, None, None),
+            (None, Some(_)) => ("current-missing", None, None, None),
+            (None, None) => ("missing", None, None, None),
+        };
     BinaryCheck {
         current_asp,
         path_asp,
         status,
+        receipt_path,
+        artifact_root_digest,
+        binary_artifact_digest,
+        error,
     }
-}
-
-fn same_binary_artifact(left: &Path, right: &Path) -> bool {
-    if same_path(left, right) {
-        return true;
-    }
-    protocol_binary_artifact_digest(left)
-        .zip(protocol_binary_artifact_digest(right))
-        .is_some_and(|(left_digest, right_digest)| left_digest == right_digest)
 }
 
 fn collect_layout_issues(
@@ -343,9 +367,12 @@ fn collect_read_issue(
 fn collect_binary_issue(issues: &mut Vec<HealthIssue>, binary: &BinaryCheck) {
     match binary.status {
         "ok" => {}
-        "mismatch" => issues.push(warn(
-            "asp-binary-mismatch",
-            "current asp executable differs from asp on PATH".to_string(),
+        "artifact-degraded" => issues.push(warn(
+            "active-asp-artifact-receipt-invalid",
+            binary
+                .error
+                .clone()
+                .unwrap_or_else(|| "active ASP artifact receipt could not be verified".to_string()),
         )),
         _ => issues.push(warn(
             "asp-binary-path-missing",
@@ -387,12 +414,6 @@ fn fs_status(path: Option<&Path>, kind: FsKind) -> &'static str {
         Some(path) if kind == FsKind::File && path.is_file() => "ok",
         Some(_) => "missing",
     }
-}
-
-fn same_path(left: &Path, right: &Path) -> bool {
-    let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
-    let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
-    left == right
 }
 
 fn print_compact(
@@ -445,10 +466,14 @@ fn print_compact(
         display_count(activation_runtime.provider_count)
     );
     println!(
-        "|binary currentAsp={} pathAsp={} status={}",
+        "|binary currentAsp={} pathAsp={} status={} activeArtifactReceipt={} artifactRoot={} binaryArtifactDigest={} verification=receipt-metadata subprocesses=0 dbOpens=0 manifestWrites=0 binaryByteReads=0 error={}",
         display_opt(binary.current_asp.as_deref()),
         display_opt(binary.path_asp.as_deref()),
-        binary.status
+        binary.status,
+        display_opt(binary.receipt_path.as_deref()),
+        binary.artifact_root_digest.as_deref().unwrap_or("none"),
+        binary.binary_artifact_digest.as_deref().unwrap_or("none"),
+        binary.error.as_deref().unwrap_or("none")
     );
     if let Some(profiles) = activation_runtime.profiles.as_ref() {
         for provider in &profiles.providers {
@@ -530,6 +555,15 @@ fn print_json(
             "currentAsp": path_value(binary.current_asp.as_deref()),
             "pathAsp": path_value(binary.path_asp.as_deref()),
             "status": binary.status,
+            "activeArtifactReceipt": path_value(binary.receipt_path.as_deref()),
+            "artifactRootDigest": binary.artifact_root_digest,
+            "binaryArtifactDigest": binary.binary_artifact_digest,
+            "verification": "receipt-metadata",
+            "subprocessCount": 0,
+            "dbOpenCount": 0,
+            "manifestWriteCount": 0,
+            "binaryByteReadCount": 0,
+            "error": binary.error,
         },
         "providers": providers,
         "issues": issues,

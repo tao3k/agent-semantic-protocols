@@ -321,13 +321,13 @@ projection = "asp-explorer.toml"
         let hook_config = state_home.join("hooks").join("config.toml");
         let hook_config = agent_semantic_config::load_hook_client_config_file(&hook_config)
             .expect("load auto-synced hook config");
-        assert!(
-            hook_config
-                .agents
-                .resident_agents
-                .iter()
-                .any(|agent| agent.lifecycle == "asp-command")
-        );
+        assert!(hook_config.agents.resident_agents.iter().any(|agent| {
+            agent.enabled
+                && agent
+                    .roles
+                    .iter()
+                    .any(|role| role.eq_ignore_ascii_case("search"))
+        }));
 
         let _ = std::fs::remove_dir_all(source);
         let _ = std::fs::remove_dir_all(project);

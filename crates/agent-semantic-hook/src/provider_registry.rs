@@ -164,13 +164,18 @@ fn language_provider_manifests() -> Vec<ProviderManifest> {
 
 /// Return registered ASP language ids from the embedded provider manifests.
 pub fn registered_language_ids() -> Vec<String> {
-    let mut language_ids = language_provider_manifests()
-        .into_iter()
-        .map(|manifest| manifest.language_id)
-        .collect::<Vec<_>>();
-    language_ids.sort();
-    language_ids.dedup();
-    language_ids
+    static REGISTERED_LANGUAGE_IDS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    REGISTERED_LANGUAGE_IDS
+        .get_or_init(|| {
+            let mut language_ids = language_provider_manifests()
+                .into_iter()
+                .map(|manifest| manifest.language_id)
+                .collect::<Vec<_>>();
+            language_ids.sort();
+            language_ids.dedup();
+            language_ids
+        })
+        .clone()
 }
 
 fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {

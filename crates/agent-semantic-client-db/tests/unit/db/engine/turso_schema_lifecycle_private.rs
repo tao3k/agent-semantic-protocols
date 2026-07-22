@@ -201,3 +201,77 @@ async fn failed_v1_stabilization_rolls_back_tables_and_version() {
             .unwrap()
     );
 }
+
+#[tokio::test]
+async fn exact_selector_projection_round_trip_hydrates_a_validated_merkle_record() {
+    let root = temp_db("exact-selector-merkle-round-trip");
+    std::fs::create_dir_all(&root).expect("create exact-selector client directory");
+    let owner_path = "src/lib.rs";
+    let selector = "rust://src/lib.rs#item/function/cached_symbol";
+    let source = b"fn cached_symbol() -> usize { 255 }\n";
+    let source_blob_digest =
+        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(source);
+    let parser_identity_digest =
+        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1(
+            b"parser",
+            &[b"rs-harness"],
+        );
+    let query_pack_digest =
+        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1(
+            b"query-pack",
+            &[b"rust"],
+        );
+    let tree = agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests([
+        (owner_path.to_string(), source_blob_digest.clone()),
+    ])
+    .expect("build exact-selector workspace tree");
+    let packet = agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
+        "rust",
+        "rs-harness",
+        &parser_identity_digest,
+        &query_pack_digest,
+        owner_path,
+        selector,
+        agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
+        source,
+        br#"{"kind":"fn","name":"cached_symbol"}"#,
+        source,
+    );
+    let record = packet
+        .enrich_projection_record(&tree)
+        .expect("enrich exact-selector projection with Merkle proof");
+    let key =
+        agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
+            language_id: "rust",
+            workspace_root_digest: tree.root_digest(),
+            owner_path,
+            owner_subtree_digest: tree
+                .owner_subtree_digest(owner_path)
+                .expect("resolve exact-selector owner subtree"),
+            source_blob_digest: &source_blob_digest,
+            parser_identity_digest: &parser_identity_digest,
+            query_pack_digest: &query_pack_digest,
+            structural_selector: selector,
+            projection_mode:
+                agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
+        };
+
+    crate::ClientDbEngine::persist_exact_selector_projection_v1_from_client_dir(
+        &root, &key, &record,
+    )
+    .expect("persist validated exact-selector projection");
+    let validated =
+        crate::ClientDbEngine::lookup_exact_selector_projection_v1_from_client_dir(&root, &key)
+            .expect("lookup exact-selector projection")
+            .expect("warm exact-selector projection");
+    let hit = validated
+        .validate_warm_hit(&key)
+        .expect("validate hydrated exact-selector projection");
+
+    assert_eq!(hit.projection_payload, source);
+    assert_eq!(hit.side_effects.parser_process_count, 0);
+    assert_eq!(hit.side_effects.content_store_write_count, 0);
+    assert_eq!(hit.side_effects.turso_write_count, 0);
+    assert_eq!(hit.side_effects.manifest_write_count, 0);
+    std::fs::remove_dir_all(root).expect("remove exact-selector client directory");
+}

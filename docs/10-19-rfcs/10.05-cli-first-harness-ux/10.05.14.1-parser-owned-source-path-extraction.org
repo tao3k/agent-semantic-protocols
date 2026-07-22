@@ -1,0 +1,32 @@
+#+title: Parser-owned source path extraction v1
+#+startup: overview
+
+* Status
+
+Accepted as part of the v1 hook matcher authority.
+
+* Authority
+
+Shell structure belongs to =agent-semantic-command-match=.  Source-path
+candidates MUST be projected from parsed command stages and their ordered
+=words()= evidence.  The hook runtime MUST NOT restore a hook-local shell
+parser, command-name table, language-extension table, or semantic host-action
+taxonomy.
+
+Whether a candidate is a registered source path remains a declarative matcher
+decision backed by the activated provider registry and =config.toml=.  Source
+path extraction only supplies bounded argv evidence; it does not classify a
+language, authorize source access, or choose an agent lane.
+
+* v1 contract
+
+- =command_source_paths= parses the raw command once and returns stable,
+  de-duplicated stage words.
+- Already-tokenized argv may be used only when no raw command is present or the
+  parser cannot produce a stage receipt; it is evidence fallback, not a second
+  shell grammar.
+- =path_like_token_matches= delegates the candidate to the caller-owned typed
+  predicate.  It MUST NOT contain filename-extension or command-name heuristics.
+- Registered-language and provider availability decisions remain lazy and
+  registry-owned.
+

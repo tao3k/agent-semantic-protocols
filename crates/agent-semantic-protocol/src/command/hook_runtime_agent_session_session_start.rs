@@ -4,10 +4,9 @@
 mod hook_runtime_agent_session_session_start_route;
 
 use crate::command::{
-    ResidentChildIdentityProof, codex_transcript_resident_child_identity, current_agent_session_id,
-    current_registered_session, current_registered_session_identity,
-    current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
-    registered_resident_session_for_root,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity,
+    current_registered_session, current_resident_child_identity_proof, current_root_session_id,
+    has_current_agent_session, registered_resident_session_for_root,
 };
 use agent_semantic_client_db::AgentSessionRecord;
 use agent_semantic_hook::{
@@ -18,7 +17,7 @@ use agent_semantic_runtime::codex_rollout_session_metadata;
 use std::path::Path;
 
 use super::hook_runtime_agent_session_rollout_topology::{
-    CurrentRolloutTopology, current_rollout_topology, nested_resident_child_decision,
+    current_rollout_topology, nested_resident_child_decision,
     register_required_resident_child_decision,
 };
 use super::{
@@ -31,119 +30,6 @@ use hook_runtime_agent_session_session_start_route::{
 pub(super) use hook_runtime_agent_session_session_start_route::{
     session_start_resume_existing_decision, session_start_reuse_decision,
 };
-
-pub(super) struct MainSessionRouteContext {
-    pub(super) has_agent_session: bool,
-    pub(super) current_session: Option<AgentSessionRecord>,
-    pub(super) active_explore_session: Option<AgentSessionRecord>,
-    pub(super) root_session_id: Option<String>,
-    current_rollout_topology: Option<CurrentRolloutTopology>,
-}
-
-impl MainSessionRouteContext {
-    pub(super) fn current_is_active_resident_child(
-        &self,
-        now: i64,
-        asp_session_policy: &AspSessionPolicy,
-    ) -> bool {
-        if self
-            .current_rollout_topology
-            .as_ref()
-            .is_some_and(|topology| topology.is_direct_resident_subagent(asp_session_policy))
-        {
-            return true;
-        }
-        self.current_session.as_ref().is_some_and(|session| {
-            session_matches_resident_agent(
-                session,
-                asp_session_policy.resident_child_name(),
-                asp_session_policy.resident_agent_role(),
-            ) && session.is_routable_at(now)
-        })
-    }
-
-    pub(super) fn outside_agent_session(&self) -> bool {
-        !self.has_agent_session
-            && self.current_session.is_none()
-            && self.active_explore_session.is_none()
-            && self.root_session_id.is_none()
-            && self.current_rollout_topology.is_none()
-    }
-
-    pub(super) fn current_register_required_resident_child(
-        &self,
-        asp_session_policy: &AspSessionPolicy,
-    ) -> Option<&CurrentRolloutTopology> {
-        self.current_rollout_topology.as_ref().filter(|topology| {
-            topology.is_resident_subagent(asp_session_policy)
-                && !topology.is_nested_resident_subagent(asp_session_policy)
-                && self.current_session.is_none()
-        })
-    }
-
-    pub(super) fn current_nested_resident_child(
-        &self,
-        asp_session_policy: &AspSessionPolicy,
-    ) -> Option<&CurrentRolloutTopology> {
-        self.current_rollout_topology
-            .as_ref()
-            .filter(|topology| topology.is_nested_resident_subagent(asp_session_policy))
-    }
-}
-
-pub(super) fn main_session_route_context(
-    project_root: &Path,
-    asp_session_policy: &AspSessionPolicy,
-    payload: &serde_json::Value,
-) -> Result<MainSessionRouteContext, String> {
-    let current_session =
-        registry_lookup_for_route_child(current_registered_session_identity(project_root), false)?;
-    let root_session_id = current_root_session_id()
-        .or_else(|| {
-            current_session
-                .as_ref()
-                .map(|session| session.root_session_id.clone())
-        })
-        .or_else(|| {
-            string_field(
-                payload,
-                &[
-                    "root_session_id",
-                    "rootSessionId",
-                    "session_id",
-                    "sessionId",
-                ],
-            )
-        })
-        .or_else(current_agent_session_id);
-    let now = unix_timestamp()?;
-    let active_explore_session = root_session_id
-        .as_deref()
-        .map(|root_session_id| {
-            registered_resident_session_for_root(
-                project_root,
-                root_session_id,
-                asp_session_policy.resident_child_name(),
-            )
-        })
-        .transpose()?
-        .flatten()
-        .filter(|session| {
-            session_matches_resident_agent(
-                session,
-                asp_session_policy.resident_child_name(),
-                asp_session_policy.resident_agent_role(),
-            ) && session.is_routable_at(now)
-        });
-    let current_rollout_topology = current_rollout_topology()?;
-    Ok(MainSessionRouteContext {
-        has_agent_session: has_current_agent_session(),
-        current_session,
-        active_explore_session,
-        root_session_id,
-        current_rollout_topology,
-    })
-}
 
 pub(in crate::command) fn current_session_resident_child_identity_proof(
     project_root: &Path,
@@ -159,7 +45,7 @@ pub(in crate::command) fn current_session_resident_child_identity_proof(
     )
 }
 
-pub(super) fn current_session_configured_resident_identity_proof(
+pub(in crate::command) fn current_session_configured_resident_identity_proof(
     project_root: &Path,
     payload: &serde_json::Value,
     resident_child_name: &str,
@@ -299,6 +185,8 @@ pub(super) fn classify_session_start_bootstrap(
     use crate::command::agent_session_registry::record_subagent_start_target_present as record_start;
 
     let resident_name = asp_session_policy.resident_child_name();
+    let canonical_resident_target =
+        format!("/root/{}", asp_session_policy.resident_codex_agent_name());
     let codex_native_event = if platform == "codex" && event == "subagent-start" {
         crate::codex::native_agent_transport::parse_subagent_event(payload)?
     } else {
@@ -665,7 +553,13 @@ pub(super) fn classify_session_start_bootstrap(
                         },
                     )?;
                     if message_target_id.is_some() {
-                        record_start(&registry, &root_session_id, resident_name, now)?;
+                        record_start(
+                            &registry,
+                            &root_session_id,
+                            resident_name,
+                            &canonical_resident_target,
+                            now,
+                        )?;
                     }
                     return Ok(native_runtime_drift_decision);
                 }
@@ -731,7 +625,13 @@ pub(super) fn classify_session_start_bootstrap(
                         )?;
                     }
                     if message_target_id.is_some() {
-                        record_start(&registry, &root_session_id, resident_name, now)?;
+                        record_start(
+                            &registry,
+                            &root_session_id,
+                            resident_name,
+                            &canonical_resident_target,
+                            now,
+                        )?;
                     }
                     return Ok(native_runtime_drift_decision);
                 }

@@ -53,6 +53,7 @@ pub(super) struct WorkspaceBuildSpec {
     #[serde(default)]
     args: Vec<String>,
     working_directory: String,
+    source_snapshot_anchors: Vec<String>,
     derived_paths: Vec<String>,
     #[serde(default)]
     env: std::collections::BTreeMap<String, String>,
@@ -67,6 +68,7 @@ struct InstallArgs {
 
 pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
+        Some("binary") => run_install_binary(&args[1..]),
         Some("hook") => run_install_hook(&args[1..]),
         Some("plugin") => run_install_plugin(&args[1..]),
         Some("language") => run_install_provider(&args[1..]),
@@ -77,6 +79,44 @@ pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
         None => Err(usage()),
         Some(_) => Err(usage()),
     }
+}
+
+fn run_install_binary(args: &[String]) -> Result<(), String> {
+    let mut targets = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--target" => {
+                let target = args.get(index + 1).ok_or_else(usage).map(PathBuf::from)?;
+                targets.push(target);
+                index += 2;
+            }
+            "help" | "--help" | "-h" => {
+                println!("{}", usage());
+                return Ok(());
+            }
+            _ => return Err(usage()),
+        }
+    }
+    if targets.is_empty() {
+        return Err(usage());
+    }
+    let source = env::current_exe()
+        .map_err(|error| format!("failed to resolve current ASP binary: {error}"))?;
+    let installed = super::protocol_binary::install_protocol_binary_targets(&source, &targets)?;
+    println!(
+        "[asp-install-binary] binaryPath={} binaryPaths={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic",
+        installed.path.display(),
+        installed
+            .paths
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+        installed.status,
+        installed.artifact_digest,
+    );
+    Ok(())
 }
 
 fn run_install_hook(args: &[String]) -> Result<(), String> {
@@ -411,6 +451,22 @@ fn materialize_workspace_provider_binary(
         .iter()
         .map(|path| resolve_workspace_relative_path(project_root, path, "derivedPaths"))
         .collect::<Result<Vec<_>, _>>()?;
+    let live_source_snapshot_anchors = build
+        .source_snapshot_anchors
+        .iter()
+        .map(|path| resolve_workspace_relative_path(project_root, path, "sourceSnapshotAnchors"))
+        .collect::<Result<Vec<_>, _>>()?;
+    if let Some(anchor) = live_source_snapshot_anchors.iter().find(|anchor| {
+        derived_paths
+            .iter()
+            .any(|derived| anchor.starts_with(derived))
+    }) {
+        return Err(format!(
+            "provider {} workspaceBuild source snapshot anchor must not be inside a derivedPaths boundary: {}",
+            spec.provider_id,
+            anchor.display()
+        ));
+    }
     if !derived_paths
         .iter()
         .any(|derived| live_workspace_artifact_root.starts_with(derived))
@@ -422,8 +478,12 @@ fn materialize_workspace_provider_binary(
         ));
     }
     let build_recipe_digest = workspace_build_recipe_digest(spec, build)?;
-    let before =
-        capture_workspace_build_snapshot(project_root, &derived_paths, &build_recipe_digest)?;
+    let before = capture_workspace_build_snapshot(
+        project_root,
+        &derived_paths,
+        &live_source_snapshot_anchors,
+        &build_recipe_digest,
+    )?;
     let source_cas_root = materialize_workspace_source_cas(state, project_root, &before)?;
     let sandbox = materialize_workspace_build_sandbox(
         state,
@@ -449,6 +509,11 @@ fn materialize_workspace_provider_binary(
         .derived_paths
         .iter()
         .map(|path| resolve_workspace_relative_path(&sandbox.root, path, "derivedPaths"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let source_snapshot_anchors = build
+        .source_snapshot_anchors
+        .iter()
+        .map(|path| resolve_workspace_relative_path(&sandbox.root, path, "sourceSnapshotAnchors"))
         .collect::<Result<Vec<_>, _>>()?;
     let configured_program = Path::new(&build.program);
     let build_program = if configured_program.is_absolute() {
@@ -478,8 +543,12 @@ fn materialize_workspace_provider_binary(
             spec.provider_id
         ));
     }
-    let after =
-        capture_workspace_build_snapshot(&sandbox.root, &derived_paths, &build_recipe_digest)?;
+    let after = capture_workspace_build_snapshot(
+        &sandbox.root,
+        &derived_paths,
+        &source_snapshot_anchors,
+        &build_recipe_digest,
+    )?;
     if before.evidence.root_digest != after.evidence.root_digest
         || before.evidence.leaf_count != after.evidence.leaf_count
     {
@@ -828,7 +897,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)".to_string()
+    "usage: asp install binary --target <path> [--target <path>...]\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)".to_string()
 }
 
 fn install_hook_usage() -> String {

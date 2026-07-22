@@ -76,9 +76,9 @@ pub(super) fn bootstrap_session(
             .is_some_and(|observation| {
                 observation.target_status == "present" && observation.identity_status == "verified"
             });
-    let host_resident_target_absent = host_resident_target_observation
+    let host_resident_target_unroutable = host_resident_target_observation
         .as_ref()
-        .is_some_and(|observation| observation.target_status == "absent");
+        .is_some_and(|observation| observation.target_status == "unroutable");
     if args.child_session_id.is_some()
         || args.message_target_id.is_some()
         || args.parent_session_id.is_some()
@@ -144,7 +144,7 @@ pub(super) fn bootstrap_session(
         rollout_history_status = "locked-existing-repair-candidate";
         rollout_history_action = "preserve-candidate-identity-until-host-classification";
     }
-    if host_resident_target_absent {
+    if host_resident_target_unroutable {
         if let Some(session) = record.as_mut() {
             session.status = "orphan-risk".to_string();
             session.message_target_id = None;
@@ -464,6 +464,7 @@ pub(super) fn bootstrap_session(
                             "canonicalTarget": canonical_resident_target(&menu.host_requirement),
                             "targetStatus": observation.target_status,
                             "identityStatus": observation.identity_status,
+                            "probeEvidenceRef": observation.probe_evidence_ref,
                             "source": observation.source,
                             "observedAt": observation.observed_at,
                             "expiresAt": observation.expires_at,
@@ -473,13 +474,14 @@ pub(super) fn bootstrap_session(
                     },
                 ),
             );
-            if host_resident_target_observation
+            if let Some(observation) = host_resident_target_observation
                 .as_ref()
-                .is_some_and(|observation| observation.target_status == "absent")
+                .filter(|observation| observation.target_status != "present")
             {
-                binding::insert_absent_canonical_target_receipt(
+                binding::insert_non_present_canonical_target_receipt(
                     object,
                     record.as_ref(),
+                    &observation.target_status,
                     host_typed_spawn_observation
                         .as_ref()
                         .map(|observation| observation.field_status.as_str()),

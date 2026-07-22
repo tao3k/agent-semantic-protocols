@@ -22,8 +22,20 @@ use agent_semantic_client_db::{
     source_index_import_with_file_hashes,
 };
 
+#[path = "engine_source_index/exact_selector_projection.rs"]
+mod exact_selector_projection;
 #[path = "engine_source_index/language_projection.rs"]
 mod language_projection;
+pub use agent_semantic_client_db::ClientDbSourceIndexImport;
+use agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet;
+
+#[path = "engine_source_index/merkle_overlay_refresh.rs"]
+mod merkle_overlay_refresh;
+
+#[path = "engine_source_index/snapshot_helper.rs"]
+mod snapshot_helper;
+#[cfg(unix)]
+use snapshot_helper::client_dir_snapshot;
 
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_control() {
@@ -57,6 +69,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             import: first_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh source-index through active Turso DB Engine path");
@@ -97,6 +110,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             import: second_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("reuse source-index generation through active Turso DB Engine path");
@@ -175,6 +189,7 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh source-index payload proof import");
@@ -282,6 +297,7 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
             import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh source-index scope payload proof import");
@@ -355,6 +371,7 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
         let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
             &client_dir,
             ClientDbSourceIndexRefreshRequest {
+                membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
                 import: source_index_import,
                 file_count: 1,
                 source_snapshot: source_snapshot.clone(),
@@ -433,6 +450,7 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
             import: source_index_import.clone(),
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh source-index through Turso FTS search lane");
@@ -503,6 +521,7 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh concurrent source-index fixture");
@@ -588,6 +607,7 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh read-only source-index fixture");
@@ -670,6 +690,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
             import: initial_import,
             file_count: 1,
             source_snapshot: initial_source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh initial pressure source-index fixture");
@@ -714,6 +735,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
             ClientDbEngine::refresh_source_index_import_from_client_dir(
                 writer_client_dir.as_ref(),
                 ClientDbSourceIndexRefreshRequest {
+                    membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
                     import,
                     file_count: 1,
                     source_snapshot: crate::snapshot_fixture::source_snapshot_evidence_for(
@@ -831,23 +853,6 @@ fn temp_root(label: &str) -> PathBuf {
     root
 }
 
-#[cfg(unix)]
-fn client_dir_snapshot(root: &std::path::Path) -> Vec<(String, u64, std::time::SystemTime)> {
-    let mut snapshot = fs::read_dir(root)
-        .expect("read client directory snapshot")
-        .map(|entry| {
-            let entry = entry.expect("read client directory entry");
-            let metadata = entry.metadata().expect("read client entry metadata");
-            (
-                entry.file_name().to_string_lossy().into_owned(),
-                metadata.len(),
-                metadata.modified().expect("read client entry mtime"),
-            )
-        })
-        .collect::<Vec<_>>();
-    snapshot.sort_by(|left, right| left.0.cmp(&right.0));
-    snapshot
-}
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() {
     let client_dir = temp_root("db-engine-source-index-canonical-schema-client");
@@ -939,6 +944,7 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("bootstrap canonical source-index schema");

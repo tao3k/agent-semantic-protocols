@@ -1,0 +1,60 @@
+#+TITLE: Hook Match Profile Boundary
+#+PROPERTY: RFC_ID 10.05.10-hook-match-profile-v1
+
+* Registered command execution is not reasoning delegation
+
+An invocation whose executable candidate is =asp= and whose language, command,
+and stage are registered by the active provider contract is a local protocol
+execution.  The hook MUST NOT convert that invocation into a resident-agent
+delegation merely because the command is named =search=, =query=, or =guide=.
+
+Reasoning is a configuration-owned match profile.  It describes when a host
+request needs an agent reasoning lane; it is not a Rust enum over ASP command
+names.  Natural-language prompts and other configured host surfaces MAY match
+the reasoning profile.  Registered ASP commands default to passthrough unless
+a higher-priority invalid-evidence or safety profile rejects them.
+
+* Match profile v1
+
+A compiled profile has these language-neutral fields:
+
+- =id= and =priority=
+- =match= with typed executable candidates, named captures, and predicates
+- =intent= independent of the terminal decision
+- =decision= with =allow=, =block=, or =deny=
+- =route= whose values may reference validated captures
+- =fields= whose values may reference validated captures
+
+Named captures cover executable, language id, root command, search stage,
+selector, selector language, selector kind, flags, view, and source operands.
+Predicates support configured-set membership, equality, same-language checks,
+and explicit =all=, =any=, and =not= composition.  A capture is unavailable
+unless produced by the typed Bash/parser candidate graph.
+
+Profiles are compiled once when the hook configuration is loaded.  Runtime
+classification is first-match by priority and MUST NOT perform substring or
+sliding-window discovery over arbitrary argv positions.
+
+* Required profiles
+
+- =registered-asp-execution=: allow registered =asp <language> search/query=
+  commands after typed parsing.
+- =exact-evidence=: allow exact selector projection when selector language and
+  kind satisfy the provider contract.
+- =invalid-evidence=: deny projected queries with missing, cross-language, or
+  unsupported selectors.
+- =reasoning=: route only configured non-command reasoning requests to the
+  reasoning resident.
+- safety profiles retain higher priority and may deny raw source/search escape.
+
+The Rust-specific =classify_search= and =classify_query= functions are Legacy
+once these profiles are compiled from the canonical hook configuration and
+MUST be physically removed rather than retained as fallback behavior.
+
+* Receipt requirements
+
+Every matched decision emits =configProfileId=, =matchedExecutable=, captured
+fields used by the decision, and the terminal =decision=.  A reasoning route
+also emits its configured target.  Registered passthrough emits no resident
+target.  Receipt fields originate from the compiled profile and typed captures,
+not from a second command classifier.

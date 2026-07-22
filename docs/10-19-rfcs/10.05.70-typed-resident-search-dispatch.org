@@ -1,0 +1,91 @@
+#+title: Typed resident search dispatch
+
+* Status
+
+This document is the breaking v1 contract for resident-owned ASP search,
+query, and testing execution.  There is no legacy compatibility surface.
+
+* Decision
+
+The public language protocol is already complete:
+
+#+begin_example
+asp <language> search ...
+asp <language> query ...
+#+end_example
+
+A configured resident executes that native typed surface directly.  Session
+lifecycle code MUST NOT serialize arbitrary argv into JSON, spawn an argv from
+the root task, or provide a root resident-command bridge.
+
+The following surfaces are removed from v1:
+
+- =asp agent session dispatch-execute=
+- =--command-json=
+- =--resident-bridge=
+- =resident-command-bridge:/root/...= delivery targets
+- root execution of a search, query, build, or test command owned by a resident
+
+* Typed dispatch flow
+
+1. The hook match engine classifies a command into a typed intent and selects
+   the configured resident profile.
+2. The control plane binds the root session, child session, canonical native
+   message target, resident role, receipt kind, and canonical command digest.
+3. The host delivers the exact request to that native child once.
+4. The child runs the ordinary =asp <language> search/query= surface.  Testing
+   residents run their configured build or test command directly.
+5. The child returns a digest-bound typed receipt.  The root may consume the
+   receipt but MUST NOT execute the command on the child's behalf.
+
+The session registry records claim, delivery, completion, and receipt evidence.
+It is not a generic command executor and does not store executable argv JSON.
+
+* Child execution proof
+
+The match engine permits a resident-owned command only when all of these v1
+facts agree:
+
+- current root session id
+- current child session id
+- configured resident name and role
+- verified canonical native message target
+- exact command digest and receipt kind
+- a live, unconsumed dispatch claim
+
+The child proof is consumed exactly once.  A repeated command, mismatched child,
+mismatched digest, stale host observation, or root payload fails closed.
+Permission is intent-scoped: an ASP Explorer capability cannot authorize build
+or test execution, and an ASP Testing capability cannot authorize reasoning
+search.
+
+* Transport boundary
+
+Read-only residents MUST NOT open or mutate the Turso registry directly merely
+to run a search.  Registry claim and completion are control-plane operations.
+The native child receives the verified capability through the host transport
+and returns the receipt through the same transport.
+
+No environment-variable bypass, arbitrary shell wrapper, or prompt-only claim
+is authority.
+
+* Performance contract
+
+Warm dispatch classification and capability verification are in-memory or
+receipt-metadata operations.  They perform zero provider launches, zero source
+index opens, zero manifest writes, and zero binary-byte reads before the child
+starts the requested command.  Their p95 budget is 10 ms, with a scenario
+benchmark covering Explorer search, exact query, and Testing execution.
+
+* Acceptance
+
+The migration is complete only when:
+
+- removed CLI flags and bridge targets are absent from production code and help
+- a root task cannot execute a resident-owned command
+- ASP Explorer runs native search/query without recursive hook denial
+- ASP Testing runs its configured command without recursive hook denial
+- duplicate delivery produces one receipt and one output block
+- child, digest, role, target, and stale-observation negative cases fail closed
+- installed-artifact tests exercise the real hook, resident, and provider
+  binaries

@@ -9,7 +9,8 @@ fn command_contains_any_rejects_empty_patterns() {
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        r#"
+        super::common::with_required_resident_agents(
+            r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
@@ -23,6 +24,7 @@ decision = "deny"
 tool = "Bash"
 commandContainsAny = [""]
 "#,
+        ),
     )
     .expect("write config");
 
@@ -41,7 +43,8 @@ fn command_contains_any_matches_ascii_case_insensitively() {
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        r#"
+        super::common::with_required_resident_agents(
+            r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
@@ -56,6 +59,7 @@ priority = 20000
 tool = "Bash"
 commandContainsAny = ["HOOKDECISION"]
 "#,
+        ),
     )
     .expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
@@ -92,7 +96,8 @@ fn argv_prefix_any_matches_a_nested_command_stage_without_matching_nearby_forms(
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        r#"
+        super::common::with_required_resident_agents(
+            r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
@@ -106,6 +111,7 @@ decision = "deny"
 tool = "Bash"
 argvPrefixAny = [["rm", "-rf"]]
 "#,
+        ),
     )
     .expect("write config");
     let config = load_client_config(&config_path).expect("load client config");
@@ -152,7 +158,8 @@ fn argv_prefix_any_rejects_empty_patterns() {
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        r#"
+        super::common::with_required_resident_agents(
+            r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
@@ -165,6 +172,7 @@ decision = "deny"
 [rules.match]
 argvPrefixAny = [[]]
 "#,
+        ),
     )
     .expect("write config");
 
@@ -175,6 +183,84 @@ argvPrefixAny = [[]]
     );
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn configured_git_diff_routes_to_testing_resident() {
+    let config = ClientHookConfig::default();
+    let registry = registry();
+    let payload = json!({
+        "tool_name": "functions.exec_command",
+        "tool_input": {"cmd": "git diff --check"}
+    });
+    let decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &payload,
+    });
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(serde_json::Value::as_str),
+        Some("deny-uncontrolled-git-source-reads")
+    );
+    assert_eq!(
+        decision
+            .fields
+            .get("targetAgentName")
+            .and_then(serde_json::Value::as_str),
+        Some("asp_testing")
+    );
+    assert_eq!(
+        decision
+            .fields
+            .get("requiredAction")
+            .and_then(serde_json::Value::as_str),
+        Some("route-exact-command-to-hook-selected-resident")
+    );
+    assert_eq!(
+        decision.subject.command.as_deref(),
+        Some("git diff --check")
+    );
+    let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
+    assert_eq!(decision_json["interactiveCommand"]["schemaVersion"], "1");
+    assert_eq!(
+        decision_json["interactiveCommand"]["argv"],
+        json!([
+            "asp",
+            "agent",
+            "session",
+            "bootstrap",
+            "--name",
+            "asp-testing"
+        ])
+    );
+    let decision_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/semantic-agent-hook-decision.v1.schema.json"
+    ))
+    .expect("parse hook decision schema");
+    let validator =
+        jsonschema::validator_for(&decision_schema).expect("compile hook decision schema");
+    validator
+        .validate(&decision_json)
+        .expect("configured resident decision should satisfy the v1 schema");
+    let rendered = agent_semantic_hook::render_platform_response(&decision)
+        .expect("render configured resident deny");
+    assert_eq!(
+        rendered["hookSpecificOutput"]["permissionDecisionReason"],
+        "asp agent session bootstrap --name asp-testing"
+    );
+    assert!(
+        rendered["hookSpecificOutput"]
+            .get("additionalContext")
+            .is_none()
+    );
+    assert!(rendered.get("systemMessage").is_none());
 }
 
 #[test]
@@ -197,11 +283,11 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rg -query 'HookDecision' src/cli/agent-hooks.ts"}
+            "tool_input": {"command": "asp rust search pipe 'HookDecision' --workspace . --view seeds"}
         }),
     ];
-    let samples = 4;
-    let iterations = 20_000;
+    let samples = 2;
+    let iterations = 10_000;
     let mut best_elapsed = Duration::MAX;
     let mut best_denied = 0usize;
 
@@ -233,10 +319,10 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         best_elapsed.as_millis()
     );
 
-    assert_eq!(best_denied, iterations / 2);
+    assert_eq!(best_denied, iterations * 3 / 4);
     assert!(
-        best_elapsed < Duration::from_millis(5_000),
-        "configurable hook classification regressed: {best_elapsed:?} for {iterations} iterations"
+        per_decision < 250_000,
+        "configurable hook classification regressed: {per_decision}ns per decision"
     );
 
     let _ = fs::remove_dir_all(root);

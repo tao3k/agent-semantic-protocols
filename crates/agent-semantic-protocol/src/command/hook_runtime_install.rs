@@ -15,7 +15,7 @@ use super::{
 use crate::command::{ensure_protocol_binary_installed_for_path, run_org_state_sync};
 use agent_semantic_hook::{
     claude_hook_block, default_claude_settings_path, default_client_config_path,
-    load_client_config, load_or_refresh_default_activation, merge_claude_settings,
+    load_or_refresh_default_activation, merge_claude_settings,
     remove_incompatible_hook_event_state, runtime_profiles_for_activation,
     validate_claude_settings_json,
 };
@@ -29,7 +29,7 @@ pub(super) fn run_install(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     if client == "codex" {
         return Err(
-            "Codex plugin installation uses `asp install plugin --codex [PROJECT_ROOT]`; direct hook configuration is not a Codex surface."
+            "Codex plugin installation uses `asp install plugin --codex`; direct hook configuration is not a Codex surface."
                 .to_string(),
         );
     }
@@ -39,7 +39,7 @@ pub(super) fn run_install(args: &[String]) -> Result<(), String> {
 pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
     if optional_flag_value(args, "--client")?.is_some() {
         return Err(
-            "asp install plugin --codex does not accept --client; use `asp install plugin --codex [PROJECT_ROOT]`"
+            "asp install plugin --codex does not accept --client; use `asp install plugin --codex`"
                 .to_string(),
         );
     }
@@ -78,11 +78,39 @@ fn run_install_for_client(
     timings.mark("activation");
     let runtime_profiles = runtime_profiles_for_activation(&project_root, &activation)?;
     timings.mark("runtime-profiles");
+    let client_config_path = default_client_config_path(&project_root.to_string_lossy());
+    let user_config_status = crate::command::managed_hook_config::materialize(&client_config_path)?;
+    timings.mark("user-config");
+    let mut provider_artifacts = runtime_profiles
+        .providers
+        .iter()
+        .filter_map(|provider| {
+            provider.resolved_binary.as_ref().map(|binary| {
+                agent_semantic_hook::ActiveAspArtifactInput {
+                    logical_path: format!(
+                        "providers/{}/{}",
+                        provider.language_id, provider.provider_id
+                    ),
+                    artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::ProviderBinary,
+                    materialized_path: PathBuf::from(binary),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    provider_artifacts.push(agent_semantic_hook::ActiveAspArtifactInput {
+        logical_path: "runtime/hooks/config.toml".to_string(),
+        artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::RuntimeConfig,
+        materialized_path: client_config_path.clone(),
+    });
+    let active_artifact = agent_semantic_hook::materialize_active_asp_artifact_receipt(
+        &binary_install.path,
+        &binary_install.artifact_digest,
+        &activation_path,
+        &provider_artifacts,
+    )?;
+    timings.mark("active-artifact-receipt");
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
-    let client_config_path = default_client_config_path(&project_root.to_string_lossy());
-    let user_config_status = reconcile_managed_hook_client_config(&client_config_path)?;
-    timings.mark("user-config");
     let (config_path, extra_config_receipt) = match client {
         "codex" => install_codex_plugin_hooks(&project_root, codex_plugin_scope, &subagent_model)?,
         "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
@@ -158,10 +186,12 @@ fn run_install_for_client(
         .collect::<Vec<_>>()
         .join(",");
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryPaths={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryPaths={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
+        display_path(&project_root, &active_artifact.receipt_path),
+        active_artifact.receipt.artifact_root_digest.as_str(),
         display_path(&project_root, &agent_config_path),
         display_path(&project_root, &runtime_state.protocol_home.join("org")),
         org_state_sync.status,
@@ -238,295 +268,4 @@ fn install_claude_project_hooks(
         settings_path,
         format!(" subagent={}", display_path(project_root, &subagent_path)),
     ))
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum UserConfigStatus {
-    Current,
-    Created,
-    MigratedManaged,
-}
-
-impl UserConfigStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Current => "current",
-            Self::Created => "created",
-            Self::MigratedManaged => "migrated-managed",
-        }
-    }
-}
-
-fn reconcile_managed_hook_client_config(
-    path: &std::path::Path,
-) -> Result<UserConfigStatus, String> {
-    let current_template = agent_semantic_hook::default_client_config_template();
-    let current_fingerprint = config_contract_fingerprint(&current_template)?;
-    let current_bytes = current_template.as_bytes();
-    let sidecar_path = managed_config_digest_path(path);
-
-    if !path.exists() {
-        write_managed_config_pair(path, current_bytes, &sidecar_path)?;
-        verify_current_managed_config(path, &current_fingerprint, current_bytes, &sidecar_path)?;
-        return Ok(UserConfigStatus::Created);
-    }
-
-    let existing_bytes = std::fs::read(path).map_err(|error| {
-        format!(
-            "failed to read user hook config {}: {error}",
-            path.display()
-        )
-    })?;
-    let existing_config =
-        load_client_config(path).map_err(|error| format!("invalid user hook config: {error}"))?;
-    if existing_config.contract_fingerprint() == Some(current_fingerprint.as_str()) {
-        if existing_bytes == current_bytes && !sidecar_path.exists() {
-            atomic_write(
-                &sidecar_path,
-                managed_config_digest(&existing_bytes).as_bytes(),
-            )?;
-        }
-        return Ok(UserConfigStatus::Current);
-    }
-
-    let sidecar_matches = std::fs::read_to_string(&sidecar_path)
-        .ok()
-        .is_some_and(|digest| digest.trim() == managed_config_digest(&existing_bytes));
-    let recognized_legacy_default = existing_config.contract_fingerprint().is_none()
-        && same_recognized_legacy_managed_config(&existing_bytes, current_bytes)?;
-    if sidecar_matches || recognized_legacy_default {
-        write_managed_config_pair(path, current_bytes, &sidecar_path)?;
-        verify_current_managed_config(path, &current_fingerprint, current_bytes, &sidecar_path)?;
-        return Ok(UserConfigStatus::MigratedManaged);
-    }
-
-    Err(format!(
-        "user-config-contract-unproven: refusing to overwrite {}",
-        path.display()
-    ))
-}
-
-fn managed_config_digest_path(config_path: &std::path::Path) -> std::path::PathBuf {
-    let file_name = config_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("config.toml");
-    config_path.with_file_name(format!("{file_name}.managed.sha256"))
-}
-
-fn config_contract_fingerprint(template: &str) -> Result<String, String> {
-    let value = toml::from_str::<toml::Value>(template)
-        .map_err(|error| format!("invalid default hook config template: {error}"))?;
-    value
-        .get("contractFingerprint")
-        .and_then(toml::Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| "default hook config template is missing contractFingerprint".to_string())
-}
-
-fn same_recognized_legacy_managed_config(existing: &[u8], current: &[u8]) -> Result<bool, String> {
-    let existing_text = std::str::from_utf8(existing)
-        .map_err(|error| format!("invalid utf8 user hook config: {error}"))?;
-    let existing = toml::from_str::<toml::Value>(existing_text)
-        .map_err(|error| format!("invalid user hook config: {error}"))?;
-    let current_text = std::str::from_utf8(current)
-        .map_err(|error| format!("invalid utf8 default hook config template: {error}"))?;
-    let current = toml::from_str::<toml::Value>(current_text)
-        .map_err(|error| format!("invalid default hook config template: {error}"))?;
-    let current_without_fingerprint = remove_top_level_contract_fingerprint(current)?;
-    let current_pre_rules = remove_top_level_rules(current_without_fingerprint.clone())?;
-    Ok(existing == current_without_fingerprint
-        || existing == current_pre_rules
-        || same_audited_pre_rules_prompt_legacy(&existing, &current_pre_rules)?)
-}
-
-fn same_audited_pre_rules_prompt_legacy(
-    existing: &toml::Value,
-    current_pre_rules: &toml::Value,
-) -> Result<bool, String> {
-    const SIGNATURES: &[(&[&str], usize, &str)] = &[
-        (&["agentSessionGuide", "register"], 873, "eb75c832f874"),
-        (&["agentSessionGuide", "status"], 330, "f629b91cbd7b"),
-        (
-            &["agentSessionMessages", "sourceAccessCompact"],
-            539,
-            "ad46a65d6d4e",
-        ),
-        (
-            &["agentSessionMessages", "sourceAccessCompactRepeated"],
-            326,
-            "fb79b457af27",
-        ),
-        (
-            &["agentSessionMessages", "sourceAccessCompactSubagent"],
-            340,
-            "3338fe7386c9",
-        ),
-    ];
-    if !SIGNATURES.iter().all(|(path, length, digest_prefix)| {
-        toml_string_at_path(existing, path).is_some_and(|value| {
-            value.len() == *length
-                && managed_config_digest(value.as_bytes()).starts_with(digest_prefix)
-        })
-    }) {
-        return Ok(false);
-    }
-
-    let mut normalized_existing = existing.clone();
-    let mut normalized_current = current_pre_rules.clone();
-    for path in SIGNATURES.iter().map(|(path, _, _)| *path) {
-        remove_toml_path(&mut normalized_existing, path)?;
-    }
-    for path in [
-        &["agentSessionGuide", "register"][..],
-        &["agentSessionGuide", "status"][..],
-    ] {
-        remove_toml_path(&mut normalized_current, path)?;
-    }
-    Ok(normalized_existing == normalized_current)
-}
-
-fn toml_string_at_path<'a>(value: &'a toml::Value, path: &[&str]) -> Option<&'a str> {
-    path.iter()
-        .try_fold(value, |current, key| current.get(*key))?
-        .as_str()
-}
-
-fn remove_toml_path(value: &mut toml::Value, path: &[&str]) -> Result<(), String> {
-    let Some((key, parents)) = path.split_last() else {
-        return Err("managed config normalization path is empty".to_string());
-    };
-    let parent = parents.iter().try_fold(value, |current, parent| {
-        current
-            .get_mut(*parent)
-            .ok_or_else(|| format!("managed config normalization path is missing {parent}"))
-    })?;
-    parent
-        .as_table_mut()
-        .ok_or_else(|| format!("managed config normalization parent is not a table: {parents:?}"))?
-        .remove(*key);
-    Ok(())
-}
-
-fn remove_top_level_contract_fingerprint(mut config: toml::Value) -> Result<toml::Value, String> {
-    config
-        .as_table_mut()
-        .ok_or_else(|| "hook config TOML root must be a table".to_string())?
-        .remove("contractFingerprint");
-    Ok(config)
-}
-
-fn remove_top_level_rules(mut config: toml::Value) -> Result<toml::Value, String> {
-    config
-        .as_table_mut()
-        .ok_or_else(|| "hook config TOML root must be a table".to_string())?
-        .remove("rules");
-    Ok(config)
-}
-
-fn write_managed_config_pair(
-    config_path: &std::path::Path,
-    config_bytes: &[u8],
-    sidecar_path: &std::path::Path,
-) -> Result<(), String> {
-    atomic_write(config_path, config_bytes)?;
-    atomic_write(sidecar_path, managed_config_digest(config_bytes).as_bytes())
-}
-
-fn verify_current_managed_config(
-    config_path: &std::path::Path,
-    current_fingerprint: &str,
-    current_bytes: &[u8],
-    sidecar_path: &std::path::Path,
-) -> Result<(), String> {
-    let loaded = load_client_config(config_path)
-        .map_err(|error| format!("failed to reload managed hook config: {error}"))?;
-    if loaded.contract_fingerprint() != Some(current_fingerprint) {
-        return Err("managed hook config fingerprint verification failed".to_string());
-    }
-    let written = std::fs::read(config_path).map_err(|error| {
-        format!(
-            "failed to reread managed hook config {}: {error}",
-            config_path.display()
-        )
-    })?;
-    if written != current_bytes {
-        return Err("managed hook config byte verification failed".to_string());
-    }
-    let sidecar = std::fs::read_to_string(sidecar_path).map_err(|error| {
-        format!(
-            "failed to reread managed config sidecar {}: {error}",
-            sidecar_path.display()
-        )
-    })?;
-    if sidecar.trim() != managed_config_digest(current_bytes) {
-        return Err("managed hook config sidecar verification failed".to_string());
-    }
-    Ok(())
-}
-
-fn managed_config_digest(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(bytes))
-}
-
-fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
-    use std::io::Write;
-
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("managed config path has no parent: {}", path.display()))?;
-    std::fs::create_dir_all(parent).map_err(|error| {
-        format!(
-            "failed to create managed config directory {}: {error}",
-            parent.display()
-        )
-    })?;
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("config");
-    let nonce = format!(
-        "{}.{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| error.to_string())?
-            .as_nanos()
-    );
-    let temporary = parent.join(format!(".{file_name}.{nonce}.tmp"));
-    let write_result = (|| -> Result<(), String> {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .map_err(|error| {
-                format!(
-                    "failed to create managed config temporary {}: {error}",
-                    temporary.display()
-                )
-            })?;
-        file.write_all(bytes).map_err(|error| {
-            format!(
-                "failed to write managed config temporary {}: {error}",
-                temporary.display()
-            )
-        })?;
-        file.sync_all().map_err(|error| {
-            format!(
-                "failed to sync managed config temporary {}: {error}",
-                temporary.display()
-            )
-        })?;
-        std::fs::rename(&temporary, path).map_err(|error| {
-            format!(
-                "failed to replace managed config {}: {error}",
-                path.display()
-            )
-        })?;
-        Ok(())
-    })();
-    if write_result.is_err() {
-        let _ = std::fs::remove_file(&temporary);
-    }
-    write_result
 }

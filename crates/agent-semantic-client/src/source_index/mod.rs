@@ -8,6 +8,8 @@ pub(crate) use api::current_source_index_snapshot_with_registry;
 pub use api::rebuild_source_index;
 pub use api::{
     CurrentSourceIndexSnapshot, current_source_index_snapshot,
+    current_source_index_snapshot_for_owner,
+    current_source_index_snapshot_for_owner_from_activation,
     publish_provider_source_snapshot_envelope,
 };
 pub use projection::{LanguageProjectionImportReport, import_language_projection};

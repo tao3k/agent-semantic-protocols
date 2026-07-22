@@ -38,6 +38,8 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
     ClientDbEngine::refresh_source_index_import_from_client_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
+            membership_change_set:
+                agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
@@ -118,6 +120,8 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
             import: import_a,
             file_count: 1,
             source_snapshot: source_snapshot_a.clone(),
+            membership_change_set:
+                agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("write project A scoped source-index snapshot");
@@ -127,6 +131,8 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
             import: import_b,
             file_count: 1,
             source_snapshot: source_snapshot_b,
+            membership_change_set:
+                agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("write project B scoped source-index snapshot");

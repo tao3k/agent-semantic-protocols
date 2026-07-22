@@ -6,11 +6,10 @@ pub(crate) use core::{
     materialize_agent_search_json_decision, materialize_apply_patch_decision,
     materialize_source_access_decision,
 };
-pub(crate) use prompt_search_flow::materialize_prompt_search_strategy_decision;
 mod decision;
-mod prompt_search_flow;
 #[path = "../classifier_recovery.rs"]
 mod recovery;
+pub(crate) use recovery::command_line;
 mod source_access_routes;
 
 pub use core::{HookClassificationRequest, classify_hook, classify_hook_with_config};

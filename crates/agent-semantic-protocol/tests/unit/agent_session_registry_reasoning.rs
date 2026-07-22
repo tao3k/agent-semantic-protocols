@@ -328,7 +328,7 @@ fn trusted_rollout_recovery_can_attest_unobservable_reasoning() {
 }
 
 #[test]
-fn trusted_profile_attestation_makes_unobservable_reasoning_ready() {
+fn reasoning_unobservable_attestation_reaches_ready() {
     let record = live_typed_record();
     assert!(typed_subagent_start_proves_canonical_typed_binding(
         &record,

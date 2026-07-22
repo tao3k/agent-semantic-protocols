@@ -39,6 +39,7 @@ pub fn import_language_projection(
         })?;
     let import = prepared.source_index;
     let source_snapshot = prepared.source_snapshot;
+    let membership_change_set = prepared.membership_change_set;
     if db_session
         .reusable_source_index_generation(
             project_root,
@@ -58,6 +59,7 @@ pub fn import_language_projection(
         &import,
         &projection,
         &source_snapshot,
+        &membership_change_set,
     )?;
     Ok(LanguageProjectionImportReport {
         reused: false,

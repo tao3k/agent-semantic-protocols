@@ -70,6 +70,15 @@ string and the unsigned 64-bit big-endian part count.  The v1 domains are
 =asp.parser-fact.v1= and =asp.exact-projection.v1= respectively.  This encoding
 is shared contract behavior, not a Rust-provider implementation detail.
 
+Workspace leaves are sorted by normalized owner-path bytes.  A leaf uses the
+domain =asp.workspace-file-leaf.v1= and length-prefixed parts =ownerPath= and
+=sourceBlobDigest=.  Internal nodes use =asp.workspace-merkle-node.v1= with
+left and right child digests.  When a level has an odd final node, that node is
+duplicated as its own right sibling.  The empty root uses the domain
+=asp.workspace-merkle-empty.v1= with zero parts.  These rules make inclusion
+proofs reproducible across language providers and eliminate generation-number
+or insertion-order identity.
+
 * Warm query control flow
 
 For an exact parser-owned selector, dispatch MUST execute in this order:
@@ -128,10 +137,11 @@ For every valid warm hit:
 Cold acquisition is a separate scenario with its own receipt.  Increasing a
 timeout is not an optimization and MUST NOT change either budget.
 
-The wrapper match engine remains a zero-dependency consumer-side hot path.  Its
-fixed budget is 50 microseconds for one prefix and 1 millisecond for a 128-rule
-route.  Merkle lookup MUST NOT run on command matching itself; it accelerates
-the exact evidence query selected after routing.
+The command-match owner contains Bash AST parsing and typed-stage matching.  Its
+fixed budget is 50 microseconds for one prefix, 1 millisecond for a 128-rule
+route, and 1 millisecond for one Bash parse plus match.  Merkle lookup MUST NOT
+run on command matching itself; it accelerates the exact evidence query
+selected after routing.
 
 * Required implementation edges
 

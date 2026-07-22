@@ -8,8 +8,105 @@ protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
-# Parser-owned `asp <language>` command intent taxonomy. These entries drive
-# runtime matching; they are not documentation-only command examples.
+# Registered-language reasoning search dispatch. The matcher expands
+# `<registered-language>` from the provider registry; the rule owns the complete
+# match, intent, decision, and resident dispatch policy.
+[[rules]]
+id = "registered-asp-reasoning-search"
+priority = 100000
+intent = "reasoning-search"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+message = "Registered ASP reasoning search is dispatched to the configured asp-explore resident agent."
+event = "pre-tool"
+
+[rules.match]
+argvPatternAny = [
+  ["asp", "<registered-language>", "search"],
+  ["asp", "search", "--language", "<registered-language>"],
+]
+
+[rules.dispatch]
+transport = "resident-agent"
+residentName = "asp-explore"
+receiptKind = "asp-explore-search-v1"
+lazyProvider = "matched-language"
+
+[[rules]]
+id = "resident-testing-dispatch"
+priority = 90000
+intent = "test-build-command"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+message = "Test/build commands are dispatched to the configured asp-testing resident agent."
+event = "pre-tool"
+
+[rules.match]
+argvPrefixAny = [
+  ["cargo", "test"],
+  ["cargo", "check"],
+  ["cargo", "build"],
+  ["pytest"],
+  ["uv", "run", "pytest"],
+  ["just", "test"],
+  ["rs-harness"],
+]
+
+[rules.dispatch]
+transport = "resident-agent"
+residentName = "asp-testing"
+receiptKind = "asp-testing-execution-v1"
+
+[[rules]]
+id = "deny-raw-registered-source-search-action"
+enabled = true
+event = "pre-tool"
+priority = 20000
+decision = "deny"
+reasonKind = "raw-broad-search"
+message = "Raw host search actions over registered source belong in `asp <language> search`."
+
+[rules.match]
+actionAny = ["search"]
+effectAny = ["search"]
+subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+
+[[rules]]
+id = "deny-raw-registered-source-action"
+priority = 9900
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Raw semantic reads over registered language source are denied. Use parser-owned ASP search/query evidence."
+event = "pre-tool"
+
+[rules.match]
+actionAny = ["execute"]
+effectAny = ["read"]
+effectProjections = [
+  { argvPrefix = ["read"], effect = "read" },
+  { argvPrefix = ["cat"], effect = "read" },
+  { argvPrefix = ["bat"], effect = "read" },
+  { argvPrefix = ["head"], effect = "read" },
+  { argvPrefix = ["tail"], effect = "read" },
+  { argvPrefix = ["sed"], effect = "read" },
+  { argvPrefix = ["awk"], effect = "read" },
+  { argvPrefix = ["less"], effect = "read" },
+  { argvPrefix = ["more"], effect = "read" },
+  { argvPrefix = ["git", "show"], effect = "read" },
+  { argvPrefix = ["git", "mv"], effect = "edit" },
+  { argvPrefix = ["mv"], effect = "edit" },
+  { argvPrefix = ["cp"], effect = "edit" },
+]
+subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+authorityAny = ["raw-host-action", "raw-shell", "unknown"]
+authorityProjections = [
+  { argvPrefix = ["asp", "<registered-language>"], authority = "parser-owned-exact-evidence" },
+]
+commandWrappers = [{ executable = "rtk" }]
+invocationShapeAny = ["host-native", "command", "wrapped-command"]
+wrapperMatchAny = ["matched", "unmatched", "unknown"]
+flagPresenceAny = ["present", "absent"]
+
 [[rules]]
 id = "deny-agent-search-json"
 priority = 1100
@@ -20,13 +117,6 @@ message = "Agent-facing search JSON is denied; use the compact ASP search route.
 
 [rules.match]
 commandContainsAny = ["--json"]
-
-[[rules]]
-id = "materialize-prompt-search-strategy"
-priority = 1050
-decision = "deny"
-decisionMaterializer = "prompt-search-strategy"
-message = "Prompt-scoped ASP search strategy is derived by the configured hook materializer."
 
 [[rules]]
 id = "materialize-apply-patch-policy"
@@ -53,6 +143,48 @@ message = "Uncontrolled source search is denied. Route the evidence task to the 
 argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["git", "ls-files"], ["git", "ls-tree"]]
 
 [[rules]]
+id = "allow-bounded-json-projection"
+priority = 2000
+decision = "allow"
+fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
+
+[rules.match]
+argvWorkspaceRegularFile = true
+
+[rules.match.structuredProjection]
+binary = "jq"
+documentFormat = "json"
+filterGrammar = "bounded-path-v1"
+optionAny = ["-c", "--compact-output", "-r", "--raw-output", "-e", "--exit-status"]
+optionValueArity = { "--arg" = 2, "--argjson" = 2, "--slurpfile" = 2, "--rawfile" = 2, "--argfile" = 2, "--indent" = 1, "-L" = 1 }
+
+[[rules]]
+id = "allow-bounded-toml-projection"
+priority = 1980
+decision = "allow"
+fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
+
+[rules.match]
+argvWorkspaceRegularFile = true
+
+[rules.match.structuredProjection]
+binary = "yq"
+documentFormat = "toml"
+filterGrammar = "bounded-path-v1"
+optionalSubcommandAny = ["eval", "e"]
+
+[[rules]]
+id = "deny-unbounded-structured-projection"
+priority = 1970
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Structured documents require one configured bounded projector path; identity, recursive, iterator, compound, unknown-option, multiple-input, and multi-stage projections are denied."
+
+[rules.match]
+commandAny = ["jq", "yq"]
+argvWorkspaceRegularFile = true
+
+[[rules]]
 id = "deny-uncontrolled-source-materialization-commands"
 priority = 10001
 decision = "deny"
@@ -61,9 +193,7 @@ message = "Direct source materialization is permanently denied. Consume parser-o
 
 [rules.match]
 argvPrefixAny = [["cat"], ["sed"], ["head"], ["tail"], ["awk"], ["nl"], ["less"], ["more"], ["bat"], ["strings"], ["xxd"], ["od"], ["cut"], ["sort"], ["uniq"], ["wc"], ["jq"], ["perl"], ["python"], ["python3"], ["ruby"], ["node"], ["dd"]]
-argvSourceGlobAny = [
-@ARGV_SOURCE_GLOBS@
-]
+argvRegisteredSourceFile = true
 
 [[rules]]
 id = "deny-uncontrolled-python-inline-source-materialization"
@@ -75,9 +205,7 @@ message = "Inline Python source materialization is permanently denied. Consume p
 [rules.match]
 argvPrefixAny = [["python"], ["python3"], ["uv", "run", "python"], ["uv", "run", "python3"], ["bash"], ["sh"], ["zsh"]]
 commandContainsAny = [".read_text(", ".read_bytes(", "open(", ".read("]
-pathGlobAny = [
-@ARGV_SOURCE_GLOBS@
-]
+argvRegisteredSourceFile = true
 
 [[rules]]
 id = "deny-uncontrolled-javascript-inline-source-materialization"
@@ -89,83 +217,22 @@ message = "Inline JavaScript source materialization is permanently denied. Consu
 [rules.match]
 argvPrefixAny = [["node"], ["bun"], ["deno"], ["bash"], ["sh"], ["zsh"]]
 commandContainsAny = ["readFileSync(", ".readFile(", "readFile("]
-pathGlobAny = [
-@ARGV_SOURCE_GLOBS@
-]
+argvRegisteredSourceFile = true
 
 [[rules]]
 id = "deny-uncontrolled-git-source-reads"
 priority = 10000
 decision = "deny"
 reasonKind = "raw-broad-search"
-message = "Git object and diff reads are denied as source-access escapes. Route the evidence task to the resident ASP Explore agent."
+message = "Git object and diff reads are denied in the main agent. Route the exact command to the resident ASP Testing agent."
 
-[rules.match]
-argvPrefixAny = [["git", "show"], ["git", "diff"], ["git", "cat-file"], ["git", "blame"], ["git", "log"]]
-
-[aspCommandIntentPolicy.controlPlane]
-rootCommands = [
-  "guide",
-  "providers",
-  "tools",
-  "wrap",
-  "cache",
-  "cloud",
-  "hook",
-  "agent",
-  "install",
-  "sync",
-  "paths",
-  "healthcheck",
-  "source-access",
-  "ast-patch",
-  "graph",
-]
-
-[aspCommandIntentPolicy.reasoning]
-rootCommands = []
-guideCommand = true
-searchRoutes = [
-  "prime",
-  "pipe",
-  "owner",
-  "lexical",
-  "deps",
-  "dependency",
-  "failure",
-  "reasoning",
-  "ingest",
-  "guide",
-]
-queryFlags = ["--term"]
-unprojectedQuery = true
-
-[aspCommandIntentPolicy.exactEvidence]
-queryProjectionFlags = ["--code", "--content", "--verbatim", "--names-only"]
-queryProjectionViews = ["metadata"]
-selectorKinds = ["item"]
-requireSameLanguage = true
-
-[aspCommandIntentPolicy.invalidEvidence]
-rejectProjectedQueryWithoutExactSelector = true
-rejectCrossLanguageSelector = true
-
-# Deterministic testing/build work is routed to its configured resident agent.
-# The hook denies execution in the main Agent and emits a digest-bound resident
-# dispatch action for these exact token prefixes.
-[executionLanes.testing]
-enabled = true
+[rules.dispatch]
 transport = "resident-agent"
 residentName = "asp-testing"
 receiptKind = "asp-testing-execution-v1"
-commandPrefixes = [
-  "cargo test",
-  "cargo check",
-  "cargo build",
-  "pytest",
-  "uv run pytest",
-  "just test",
-]
+
+[rules.match]
+argvPrefixAny = [["git", "show"], ["git", "diff"], ["git", "cat-file"], ["git", "blame"], ["git", "log"]]
 
 [[agents.residentAgents]]
 enabled = true
@@ -174,16 +241,7 @@ role = "asp_explorer"
 roles = ["subagent", "search"]
 permissions = ["read-only"]
 codexAgentName = "asp_explorer"
-lifecycle = "asp-command"
 sessionLifetime = "resident"
-mainAllowedAspCommandPrefixes = [
-  "help",
-  "--help",
-  "-h",
-  "agent session",
-  "org recall",
-  "org capture",
-]
 
 [[agents.residentAgents]]
 enabled = true
@@ -192,16 +250,7 @@ role = "asp_testing"
 roles = ["subagent", "testing", "build"]
 permissions = ["workspace-write"]
 codexAgentName = "asp_testing"
-lifecycle = "test-build-command"
 sessionLifetime = "resident"
-commandPrefixes = [
-  "cargo test",
-  "cargo check",
-  "cargo build",
-  "pytest",
-  "uv run pytest",
-  "just test",
-]
 
 [agentSessionGuide]
 register = """

@@ -6,7 +6,7 @@ use crate::SourceSnapshotEvidence;
 
 /// Shared schema identifier for snapshot-authority artifact evidence.
 pub const DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID: &str =
-    "asp.derived-source-artifact-evidence.v2";
+    "asp.derived-source-artifact-evidence.v1";
 /// All derived source artifacts are rebuildable and disposable.
 pub const DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION: &str = "disposable";
 

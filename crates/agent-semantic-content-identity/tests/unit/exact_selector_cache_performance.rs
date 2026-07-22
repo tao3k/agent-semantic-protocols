@@ -12,9 +12,7 @@ fn warm_hit_p95_is_bounded_and_side_effect_free() {
     let record = record();
     let key = key(&record);
     for _ in 0..ITERATIONS {
-        let hit = record
-            .validate_warm_hit(&key, |_| true)
-            .expect("valid warm hit");
+        let hit = record.validate_warm_hit(&key).expect("valid warm hit");
         assert_eq!(hit.side_effects, ExactSelectorWarmSideEffectsV1::ZERO);
     }
 
@@ -23,7 +21,7 @@ fn warm_hit_p95_is_bounded_and_side_effect_free() {
         let started = Instant::now();
         for _ in 0..ITERATIONS {
             let hit = black_box(&record)
-                .validate_warm_hit(black_box(&key), |_| true)
+                .validate_warm_hit(black_box(&key))
                 .expect("valid warm hit");
             black_box(hit);
         }

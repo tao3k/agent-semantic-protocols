@@ -208,8 +208,13 @@ pub fn validate_registry_identity(registry: &MemberPolicyRegistry) -> Result<(),
         return Err("Rust member-policy registry v1 has no members".to_string());
     }
     for (index, member) in registry.members.iter().enumerate() {
-        if member.package.is_empty() || member.package_directory.is_empty() || member.gate_label.is_empty() {
-            return Err(format!("invalid empty member identity at registry index {index}"));
+        if member.package.is_empty()
+            || member.package_directory.is_empty()
+            || member.gate_label.is_empty()
+        {
+            return Err(format!(
+                "invalid empty member identity at registry index {index}"
+            ));
         }
         if registry.members[..index]
             .iter()
@@ -228,10 +233,19 @@ pub fn validate_receipt_identity(receipt: &DownstreamPolicyReceipt) -> Result<()
         return Err("invalid Rust downstream-policy receipt v1 identity".to_string());
     }
     for (label, digest) in [
-        ("source_snapshot.digest", receipt.source_snapshot.digest.as_str()),
+        (
+            "source_snapshot.digest",
+            receipt.source_snapshot.digest.as_str(),
+        ),
         ("policy_digest", receipt.policy_digest.as_str()),
-        ("execution_command_digest", receipt.execution_command_digest.as_str()),
-        ("cache_payload_digest", receipt.cache_payload_digest.as_str()),
+        (
+            "execution_command_digest",
+            receipt.execution_command_digest.as_str(),
+        ),
+        (
+            "cache_payload_digest",
+            receipt.cache_payload_digest.as_str(),
+        ),
     ] {
         validate_blake3_digest(label, digest)?;
     }
@@ -242,14 +256,21 @@ pub fn canonical_json_digest<T: Serialize>(value: &T) -> Result<String, String> 
     let value = serde_json::to_value(value).map_err(|error| error.to_string())?;
     let mut canonical = String::new();
     write_canonical_json(&value, &mut canonical)?;
-    Ok(format!("blake3:{}", blake3::hash(canonical.as_bytes()).to_hex()))
+    Ok(format!(
+        "blake3:{}",
+        blake3::hash(canonical.as_bytes()).to_hex()
+    ))
 }
 
 fn validate_blake3_digest(label: &str, digest: &str) -> Result<(), String> {
     let Some(hex) = digest.strip_prefix("blake3:") else {
         return Err(format!("{label} is not a blake3 digest"));
     };
-    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) {
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return Err(format!("{label} is not lowercase blake3 hex"));
     }
     Ok(())
@@ -260,9 +281,9 @@ fn write_canonical_json(value: &Value, output: &mut String) -> Result<(), String
         Value::Null => output.push_str("null"),
         Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
         Value::Number(value) => output.push_str(&value.to_string()),
-        Value::String(value) => output.push_str(
-            &serde_json::to_string(value).map_err(|error| error.to_string())?,
-        ),
+        Value::String(value) => {
+            output.push_str(&serde_json::to_string(value).map_err(|error| error.to_string())?)
+        }
         Value::Array(values) => {
             output.push('[');
             for (index, value) in values.iter().enumerate() {
@@ -281,9 +302,7 @@ fn write_canonical_json(value: &Value, output: &mut String) -> Result<(), String
                 if index != 0 {
                     output.push(',');
                 }
-                output.push_str(
-                    &serde_json::to_string(key).map_err(|error| error.to_string())?,
-                );
+                output.push_str(&serde_json::to_string(key).map_err(|error| error.to_string())?);
                 output.push(':');
                 write_canonical_json(&values[key], output)?;
             }
@@ -292,4 +311,3 @@ fn write_canonical_json(value: &Value, output: &mut String) -> Result<(), String
     }
     Ok(())
 }
-

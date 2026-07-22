@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/hook-match-profile.v1.schema.json",
+  "title": "Hook Match Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "id", "priority", "match", "intent", "decision"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.hook-match-profile" },
+    "schemaVersion": { "const": "1" },
+    "id": { "type": "string", "minLength": 1 },
+    "priority": { "type": "integer" },
+    "match": { "$ref": "#/$defs/match" },
+    "intent": { "type": "string", "minLength": 1 },
+    "decision": { "enum": ["allow", "block", "deny"] },
+    "route": { "$ref": "#/$defs/templateObject" },
+    "fields": { "$ref": "#/$defs/templateObject" }
+  },
+  "$defs": {
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executableAny"],
+      "properties": {
+        "executableAny": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "captures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capture" }
+        },
+        "predicate": { "$ref": "#/$defs/predicate" }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "source"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "source": {
+          "enum": [
+            "executable",
+            "language-id",
+            "root-command",
+            "search-stage",
+            "selector",
+            "selector-language",
+            "selector-kind",
+            "flag",
+            "view",
+            "source-operand"
+          ]
+        },
+        "required": { "type": "boolean", "default": false }
+      }
+    },
+    "predicate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["capture", "in"],
+          "properties": {
+            "capture": { "type": "string", "minLength": 1 },
+            "in": {
+              "type": "array",
+              "items": { "type": "string" },
+              "uniqueItems": true
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["left", "equals"],
+          "properties": {
+            "left": { "type": "string", "minLength": 1 },
+            "equals": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sameLanguage"],
+          "properties": {
+            "sameLanguage": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "string", "minLength": 1 },
+                { "type": "string", "minLength": 1 }
+              ],
+              "items": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "maxProperties": 1,
+          "properties": {
+            "all": { "type": "array", "items": { "$ref": "#/$defs/predicate" } },
+            "any": { "type": "array", "items": { "$ref": "#/$defs/predicate" } },
+            "not": { "$ref": "#/$defs/predicate" }
+          }
+        }
+      ]
+    },
+    "templateObject": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+    }
+  }
+}

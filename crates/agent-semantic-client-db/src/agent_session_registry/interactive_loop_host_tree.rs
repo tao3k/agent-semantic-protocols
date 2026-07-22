@@ -71,6 +71,32 @@ pub fn resident_child_host_tree_observation_menu<'a>(
         }
         return menu;
     }
+    if target_status == "absent" {
+        menu.state = AgentSessionLoopState::Audit;
+        menu.choices = vec![AgentSessionInteractiveChoice {
+            id: "probe-hidden-routable-child-before-replacement",
+            label: "Probe the canonical resident target before creating a replacement.",
+            platform_action: std::borrow::Cow::Borrowed(
+                "The native host tree did not list the canonical resident target, but list-agents absence is not a reachability proof. Use the main agent's native follow-up surface on the canonical target path. If it succeeds or reports that the path already exists, record observe-host-ack for the same target and generation. If it returns target/path/id not found, record observe-host-tree with targetStatus=unroutable and the bounded failure evidence reference. Do not create a replacement from absent alone.",
+            ),
+            next_state: AgentSessionLoopState::Audit,
+            required_inputs: &["canonicalReachabilityProbeReceipt"],
+        }];
+        menu.trace.push(AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Audit,
+            result: "host-tree-absent-canonical-reachability-probe-required",
+        });
+        return menu;
+    }
+    if target_status != "unroutable" {
+        menu.state = AgentSessionLoopState::Blocked;
+        menu.choices.clear();
+        menu.trace.push(AgentSessionLoopTraceStep {
+            state: AgentSessionLoopState::Blocked,
+            result: "unsupported-host-target-observation",
+        });
+        return menu;
+    }
     if menu.session.is_none() {
         menu.choices.retain(|choice| {
             !matches!(
@@ -82,7 +108,7 @@ pub fn resident_child_host_tree_observation_menu<'a>(
         });
         menu.trace.push(AgentSessionLoopTraceStep {
             state: AgentSessionLoopState::Classify,
-            result: "canonical-host-target-absent",
+            result: "canonical-host-target-unroutable",
         });
         return menu;
     }
@@ -94,29 +120,13 @@ pub fn resident_child_host_tree_observation_menu<'a>(
         },
         AgentSessionLoopTraceStep {
             state: AgentSessionLoopState::Audit,
-            result: "canonical-host-target-absent-registry-orphan-risk",
+            result: "canonical-host-target-unroutable-registry-orphan-risk",
         },
     ];
-    if typed_spawn_status == Some("present") {
-        menu.choices = vec![AgentSessionInteractiveChoice {
-            id: "probe-hidden-routable-child-before-replacement",
-            label: "Probe the canonical resident target before creating a replacement.",
-            platform_action: std::borrow::Cow::Borrowed(
-                "The native host tree reported the canonical resident target as absent, but list-agents absence is not a definitive reachability proof. Before any replacement, use the main agent's native follow-up surface on the canonical target path. If the follow-up succeeds or native spawn reports the path already exists, record a trusted host ack for the same canonical target and re-enter this pane; do not create a duplicate. Only when the canonical follow-up probe proves the target is not routable may the typed replacement path be audited.",
-            ),
-            next_state: AgentSessionLoopState::Audit,
-            required_inputs: &["canonicalReachabilityProbeReceipt"],
-        }];
-        menu.trace.push(AgentSessionLoopTraceStep {
-            state: AgentSessionLoopState::Audit,
-            result: "host-tree-absent-canonical-reachability-probe-required",
-        });
-        return menu;
-    }
     menu.choices = match typed_spawn_status {
-        Some("present-after-canonical-probe-miss") => vec![AgentSessionInteractiveChoice {
+        Some("present") => vec![AgentSessionInteractiveChoice {
             id: "create-canonical-typed-child-after-orphaned-owner",
-            label: "Create one canonical typed child after the host-tree and canonical reachability miss.",
+            label: "Create one canonical typed child after the canonical reachability probe failed.",
             platform_action: orphan_replacement_action(
                 menu.name,
                 super::interactive_loop_actions::managed_agent_kind(menu.name).as_ref(),
@@ -124,7 +134,7 @@ pub fn resident_child_host_tree_observation_menu<'a>(
             .into(),
             next_state: AgentSessionLoopState::Audit,
             required_inputs: &[
-                "freshHostTreeAbsentObservation",
+                "freshHostTreeUnroutableObservation",
                 "canonicalReachabilityProbeMiss",
                 "freshTypedSpawnPresentObservation",
             ],
@@ -139,7 +149,7 @@ pub fn resident_child_host_tree_observation_menu<'a>(
                 ),
                 next_state: AgentSessionLoopState::Blocked,
                 required_inputs: &[
-                    "freshHostTreeAbsentObservation",
+                    "freshHostTreeUnroutableObservation",
                     "freshHostTypedSpawnAbsentObservation",
                 ],
             }]
@@ -154,3 +164,7 @@ pub fn resident_child_host_tree_observation_menu<'a>(
     };
     menu
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_host_tree.rs"]
+mod tests;

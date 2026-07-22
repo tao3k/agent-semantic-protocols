@@ -159,6 +159,7 @@ pub(super) async fn prepare_turso_source_index_rows(
     imported_membership: &std::collections::HashMap<&str, &str>,
     membership_changed_owner_paths: Vec<String>,
     projection_ready: bool,
+    reuse_active_generation: bool,
 ) -> Result<PreparedTursoSourceIndexRows, String> {
     let selector_fingerprint = turso_source_index_selector_fingerprint(import)?;
     let active_generation = active_turso_source_index_generation(
@@ -168,26 +169,35 @@ pub(super) async fn prepare_turso_source_index_rows(
         import.schema_version.as_str(),
     )
     .await?;
-    let all_owner_paths = import
-        .owners
-        .iter()
-        .map(|owner| owner.owner_path.as_str())
-        .collect::<std::collections::BTreeSet<_>>();
     let requested_generation_id = import.generation_id.as_str().to_string();
-    let physical_generation_id = requested_generation_id;
+    let physical_generation_id = if reuse_active_generation {
+        active_generation
+            .as_ref()
+            .map(|(generation_id, _)| generation_id.clone())
+            .ok_or_else(|| {
+                "source-index Merkle overlay requires an active physical generation".to_string()
+            })?
+    } else {
+        requested_generation_id
+    };
     let selector_projection_unchanged = projection_ready
         && active_generation
             .as_ref()
             .is_some_and(|(generation_id, fingerprint)| {
                 generation_id == &physical_generation_id && fingerprint == &selector_fingerprint
             });
-    let row_owner_paths = if selector_projection_unchanged {
+    let use_membership_frontier = reuse_active_generation || selector_projection_unchanged;
+    let row_owner_paths = if use_membership_frontier {
         membership_changed_owner_paths
             .iter()
             .map(String::as_str)
             .collect::<std::collections::BTreeSet<_>>()
     } else {
-        all_owner_paths.clone()
+        import
+            .owners
+            .iter()
+            .map(|owner| owner.owner_path.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
     };
     let selectors_by_owner = turso_source_index_canonical_selectors_by_owner(
         import,
@@ -248,7 +258,7 @@ pub(super) async fn prepare_turso_source_index_rows(
         }
         (rows, semantic_term_count)
     };
-    let changed_owner_paths = if selector_projection_unchanged {
+    let changed_owner_paths = if use_membership_frontier {
         membership_changed_owner_paths
             .into_iter()
             .collect::<std::collections::BTreeSet<_>>()

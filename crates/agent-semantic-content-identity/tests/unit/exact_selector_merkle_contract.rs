@@ -1,28 +1,35 @@
 use agent_semantic_content_identity::exact_selector_merkle::{
     ContentDigestV1, EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM, EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID,
     EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1,
-    ExactSelectorMerkleProofError, ExactSelectorMerkleProofV1, MerkleInclusionSideV1,
-    MerkleInclusionStepV1,
+    ExactSelectorMerkleProofError, ExactSelectorMerkleProofV1,
 };
+use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
 
 fn digest(character: char) -> ContentDigestV1 {
     ContentDigestV1::parse(character.to_string().repeat(64)).expect("valid digest")
 }
 
 fn proof() -> ExactSelectorMerkleProofV1 {
+    let owner_path = "crates/example/src/lib.rs".to_owned();
+    let source_blob_digest = digest('d');
+    let tree = WorkspacePathMerkleTreeV1::from_file_digests([
+        (owner_path.clone(), source_blob_digest.clone()),
+        ("crates/other/src/lib.rs".to_owned(), digest('2')),
+    ])
+    .expect("valid Merkle tree");
     ExactSelectorMerkleProofV1 {
         schema_id: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID.to_owned(),
         schema_version: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION.to_owned(),
         digest_algorithm: EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM.to_owned(),
         language_id: "rust".to_owned(),
-        workspace_root_digest: digest('a'),
-        owner_path: "crates/example/src/lib.rs".to_owned(),
-        owner_subtree_digest: digest('b'),
-        owner_inclusion_proof: vec![MerkleInclusionStepV1 {
-            side: MerkleInclusionSideV1::Left,
-            digest: digest('c'),
-        }],
-        source_blob_digest: digest('d'),
+        workspace_root_digest: tree.root_digest().clone(),
+        owner_path: owner_path.clone(),
+        owner_subtree_digest: tree
+            .owner_subtree_digest(&owner_path)
+            .expect("owner leaf")
+            .clone(),
+        owner_inclusion_proof: tree.inclusion_proof(&owner_path).expect("owner proof"),
+        source_blob_digest,
         parser_identity_digest: digest('e'),
         query_pack_digest: digest('f'),
         parser_fact_digest: digest('0'),
@@ -39,7 +46,7 @@ fn valid_v1_proof_shape_round_trips() {
     let encoded = serde_json::to_value(&proof).expect("serialize proof");
     assert_eq!(encoded["schemaVersion"], "1");
     assert_eq!(encoded["digestAlgorithm"], "blake3-256");
-    assert_eq!(encoded["ownerInclusionProof"][0]["side"], "left");
+    assert_eq!(encoded["ownerInclusionProof"][0]["side"], "right");
     let decoded: ExactSelectorMerkleProofV1 =
         serde_json::from_value(encoded).expect("deserialize proof");
     assert_eq!(decoded, proof);

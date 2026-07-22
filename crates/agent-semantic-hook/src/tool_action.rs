@@ -6,7 +6,7 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 
-use crate::command::{apply_patch_source_paths, command_source_paths, semantic_shell_tokens};
+use crate::command::{apply_patch_source_paths, semantic_shell_tokens};
 use crate::protocol::DecisionSubject;
 
 const PATH_SCALAR_KEYS: &[&str] = &[
@@ -80,6 +80,177 @@ const ACTION_SCAN_KEYS: &[&str] = &[
     "toolCalls",
 ];
 
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+pub(crate) enum HostActionKind {
+    Read,
+    Edit,
+    Search,
+    Enumerate,
+    Execute,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ActionSubjectKind {
+    RegisteredLanguageSource,
+    RegisteredLanguageSourcePattern,
+    Directory,
+    StructuralSelector,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ActionAuthority {
+    RawHostAction,
+    RawShell,
+    ParserOwnedExactEvidence,
+    ParserOwnedSearch,
+    AstPatchEvidence,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ActionSubject {
+    pub(crate) value: String,
+    pub(crate) kind: ActionSubjectKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SemanticHostAction {
+    pub(crate) action: HostActionKind,
+    pub(crate) effect: HostActionKind,
+    pub(crate) authority: ActionAuthority,
+    pub(crate) subjects: Vec<ActionSubject>,
+}
+
+impl SemanticHostAction {
+    pub(crate) fn receipt_value(&self) -> serde_json::Value {
+        serde_json::json!({
+            "action": host_action_kind_label(self.action),
+            "effect": host_action_kind_label(self.effect),
+            "authority": action_authority_label(self.authority),
+            "subjects": self
+                .subjects
+                .iter()
+                .map(|subject| serde_json::json!({
+                    "value": subject.value.as_str(),
+                    "kind": action_subject_kind_label(subject.kind),
+                }))
+                .collect::<Vec<_>>(),
+        })
+    }
+}
+
+const fn host_action_kind_label(kind: HostActionKind) -> &'static str {
+    match kind {
+        HostActionKind::Read => "read",
+        HostActionKind::Edit => "edit",
+        HostActionKind::Search => "search",
+        HostActionKind::Enumerate => "enumerate",
+        HostActionKind::Execute => "execute",
+        HostActionKind::Unknown => "unknown",
+    }
+}
+
+const fn action_authority_label(authority: ActionAuthority) -> &'static str {
+    match authority {
+        ActionAuthority::RawHostAction => "raw-host-action",
+        ActionAuthority::RawShell => "raw-shell",
+        ActionAuthority::ParserOwnedExactEvidence => "parser-owned-exact-evidence",
+        ActionAuthority::ParserOwnedSearch => "parser-owned-search",
+        ActionAuthority::AstPatchEvidence => "ast-patch-evidence",
+        ActionAuthority::Unknown => "unknown",
+    }
+}
+
+const fn action_subject_kind_label(kind: ActionSubjectKind) -> &'static str {
+    match kind {
+        ActionSubjectKind::RegisteredLanguageSource => "registered-language-source",
+        ActionSubjectKind::RegisteredLanguageSourcePattern => "registered-language-source-pattern",
+        ActionSubjectKind::Directory => "directory",
+        ActionSubjectKind::StructuralSelector => "structural-selector",
+        ActionSubjectKind::Other => "other",
+    }
+}
+
+pub(crate) fn action_kind_matches(
+    candidate: HostActionKind,
+    configured: agent_semantic_config::HookClientActionKind,
+) -> bool {
+    use agent_semantic_config::HookClientActionKind as Configured;
+
+    matches!(
+        (candidate, configured),
+        (HostActionKind::Read, Configured::Read)
+            | (HostActionKind::Edit, Configured::Edit)
+            | (HostActionKind::Search, Configured::Search)
+            | (HostActionKind::Enumerate, Configured::Enumerate)
+            | (HostActionKind::Execute, Configured::Execute)
+            | (HostActionKind::Unknown, Configured::Unknown)
+    )
+}
+
+pub(crate) fn action_kind_from_config(
+    configured: agent_semantic_config::HookClientActionKind,
+) -> Option<HostActionKind> {
+    use agent_semantic_config::HookClientActionKind as Configured;
+
+    match configured {
+        Configured::Read => Some(HostActionKind::Read),
+        Configured::Edit => Some(HostActionKind::Edit),
+        Configured::Search => Some(HostActionKind::Search),
+        Configured::Enumerate => Some(HostActionKind::Enumerate),
+        Configured::Execute => Some(HostActionKind::Execute),
+        Configured::Unknown => Some(HostActionKind::Unknown),
+        Configured::Test | Configured::Build | Configured::Delete => None,
+    }
+}
+
+pub(crate) fn subject_kind_matches(
+    candidate: ActionSubjectKind,
+    configured: agent_semantic_config::HookClientActionSubjectKind,
+) -> bool {
+    use agent_semantic_config::HookClientActionSubjectKind as Configured;
+
+    matches!(
+        (candidate, configured),
+        (
+            ActionSubjectKind::RegisteredLanguageSource,
+            Configured::RegisteredLanguageSource
+        ) | (
+            ActionSubjectKind::RegisteredLanguageSourcePattern,
+            Configured::RegisteredLanguageSourcePattern
+        ) | (ActionSubjectKind::Directory, Configured::Directory)
+            | (
+                ActionSubjectKind::StructuralSelector,
+                Configured::StructuralSelector
+            )
+            | (ActionSubjectKind::Other, Configured::Other)
+    )
+}
+
+pub(crate) fn authority_matches(
+    candidate: ActionAuthority,
+    configured: agent_semantic_config::HookClientActionAuthority,
+) -> bool {
+    candidate == action_authority_from_config(configured)
+}
+
+pub(crate) fn action_authority_from_config(
+    configured: agent_semantic_config::HookClientActionAuthority,
+) -> ActionAuthority {
+    use agent_semantic_config::HookClientActionAuthority as Configured;
+
+    match configured {
+        Configured::RawHostAction => ActionAuthority::RawHostAction,
+        Configured::RawShell => ActionAuthority::RawShell,
+        Configured::ParserOwnedExactEvidence => ActionAuthority::ParserOwnedExactEvidence,
+        Configured::ParserOwnedSearch => ActionAuthority::ParserOwnedSearch,
+        Configured::AstPatchEvidence => ActionAuthority::AstPatchEvidence,
+        Configured::Unknown => ActionAuthority::Unknown,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ToolAction {
     pub(crate) tool_name: String,
@@ -91,6 +262,30 @@ pub(crate) struct ToolAction {
 }
 
 impl ToolAction {
+    pub(crate) fn semantic_command_text(&self) -> Option<&str> {
+        self.command.as_deref()
+    }
+
+    pub(crate) fn semantic_host_action(&self) -> SemanticHostAction {
+        let action = self.operation.semantic_effect();
+        let authority = match action {
+            HostActionKind::Execute => ActionAuthority::RawShell,
+            HostActionKind::Unknown => ActionAuthority::Unknown,
+            _ => ActionAuthority::RawHostAction,
+        };
+        let effect = if action == HostActionKind::Execute {
+            HostActionKind::Unknown
+        } else {
+            action
+        };
+        SemanticHostAction {
+            action,
+            effect,
+            authority,
+            subjects: Vec::new(),
+        }
+    }
+
     pub(crate) fn command_tokens(&self) -> Option<Cow<'_, [String]>> {
         self.command_tokens
             .as_deref()
@@ -213,6 +408,17 @@ pub(crate) enum OperationIntent {
 }
 
 impl OperationIntent {
+    pub(crate) fn semantic_effect(self) -> HostActionKind {
+        match self {
+            Self::ApplyPatch => HostActionKind::Edit,
+            Self::DirectoryRead => HostActionKind::Enumerate,
+            Self::DirectRead => HostActionKind::Read,
+            Self::FileSearch => HostActionKind::Search,
+            Self::ShellCommand | Self::StdinContinuation => HostActionKind::Execute,
+            Self::NestedTools | Self::Unknown => HostActionKind::Unknown,
+        }
+    }
+
     pub(crate) fn from_action(
         surface: ToolSurface,
         command: Option<&str>,
@@ -385,9 +591,9 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
                 command,
             ),
             "search" => (
-                ToolSurface::CodexShell,
-                OperationIntent::ShellCommand,
-                command.or_else(|| synthesize_codex_search_command(object)),
+                ToolSurface::CodexFuzzyFileSearch,
+                OperationIntent::FileSearch,
+                command,
             ),
             "unknown" => (
                 ToolSurface::CodexShell,
@@ -397,15 +603,13 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             _ => return None,
         };
 
-        if command.is_none() && paths.is_empty() {
+        if command.is_none()
+            && paths.is_empty()
+            && !matches!(operation, OperationIntent::FileSearch)
+        {
             return None;
         }
         let command_tokens = command.as_deref().map(semantic_shell_tokens);
-        if let (Some(command), Some(tokens)) = (command.as_deref(), command_tokens.as_deref()) {
-            for path in command_source_paths(command, tokens) {
-                push_unique_path(&mut paths, path);
-            }
-        }
 
         Some(ToolAction {
             tool_name: format!("{tool_name}.command_action.{action_type}"),
@@ -415,25 +619,6 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             command_tokens,
             paths,
         })
-    }
-
-    fn synthesize_codex_search_command(object: &serde_json::Map<String, Value>) -> Option<String> {
-        let query = object.get("query").and_then(Value::as_str)?.trim();
-        if query.is_empty() {
-            return None;
-        }
-
-        let mut command = format!("rg {}", shell_quote_arg(query));
-        if let Some(path) = object
-            .get("path")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|path| !path.is_empty())
-        {
-            command.push(' ');
-            command.push_str(&shell_quote_arg(path));
-        }
-        Some(command)
     }
 
     fn push_unique_action(actions: &mut Vec<ToolAction>, action: ToolAction) {
@@ -456,18 +641,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     let mut paths = extract_paths_direct(tool_input);
     if let Some(command) = command.as_deref() {
         let patch_paths = apply_patch_source_paths(tool_name, command);
-        let mut command_paths = if !patch_paths.is_empty() {
-            patch_paths
-        } else if command_paths_are_needed_at_action_boundary(surface, command_tokens.as_deref()) {
-            command_tokens
-                .as_deref()
-                .map(|tokens| command_source_paths(command, tokens))
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        append_base_paths_for_ranges(&mut command_paths);
-        for path in command_paths {
+        for path in patch_paths {
             if !paths.iter().any(|existing| existing == &path) {
                 paths.push(path);
             }
@@ -489,69 +663,6 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         }
     }
     actions
-}
-
-fn command_paths_are_needed_at_action_boundary(
-    surface: ToolSurface,
-    command_tokens: Option<&[String]>,
-) -> bool {
-    if !matches!(
-        surface,
-        ToolSurface::CodexShell | ToolSurface::CodexStdinContinuation
-    ) {
-        return true;
-    }
-    let Some(command_name) = command_tokens
-        .and_then(|tokens| tokens.first())
-        .map(|token| token.rsplit('/').next().unwrap_or(token))
-    else {
-        return false;
-    };
-    matches!(
-        command_name,
-        "awk"
-            | "gawk"
-            | "sed"
-            | "gsed"
-            | "head"
-            | "ghead"
-            | "tail"
-            | "gtail"
-            | "cat"
-            | "less"
-            | "more"
-            | "bat"
-            | "nl"
-            | "read"
-            | "rtk"
-    )
-}
-
-fn append_base_paths_for_ranges(paths: &mut Vec<String>) {
-    for path in paths.clone() {
-        if let Some(base) = path_without_line_range(&path)
-            && !paths.iter().any(|path| path == base)
-        {
-            paths.push(base.to_string());
-        }
-    }
-}
-
-fn path_without_line_range(path: &str) -> Option<&str> {
-    let (base, suffix) = path.rsplit_once(':')?;
-    if suffix.chars().all(|character| character.is_ascii_digit()) {
-        let (base, start) = base.rsplit_once(':')?;
-        return start
-            .chars()
-            .all(|character| character.is_ascii_digit())
-            .then_some(base);
-    }
-    let (start, end) = suffix.split_once('-')?;
-    (!start.is_empty()
-        && !end.is_empty()
-        && start.chars().all(|character| character.is_ascii_digit())
-        && end.chars().all(|character| character.is_ascii_digit()))
-    .then_some(base)
 }
 
 pub(crate) fn subject_for_action(action: &ToolAction) -> DecisionSubject {
@@ -591,7 +702,7 @@ fn extract_command_direct(
             .map(str::to_string);
     }
     if surface == ToolSurface::CodexFuzzyFileSearch {
-        return extract_file_search_command(&normalized_tool_name, tool_input);
+        return None;
     }
     if surface != ToolSurface::CodexShell {
         return None;
@@ -616,33 +727,6 @@ fn extract_command_direct(
             .map(str::to_string);
     }
     None
-}
-
-fn extract_file_search_command(tool_name: &str, tool_input: &Value) -> Option<String> {
-    match tool_name {
-        "grep" => {
-            let pattern = payload_string(tool_input, "pattern")?;
-            let mut command = vec!["rg".to_string()];
-            if let Some(glob) = payload_string(tool_input, "glob") {
-                command.push("--glob".to_string());
-                command.push(shell_quote_arg(&glob));
-            }
-            command.push(shell_quote_arg(&pattern));
-            if let Some(path) = payload_string(tool_input, "path") {
-                command.push(shell_quote_arg(&path));
-            }
-            Some(command.join(" "))
-        }
-        "glob" => {
-            let pattern = payload_string(tool_input, "pattern")?;
-            let mut command = vec!["fd".to_string(), shell_quote_arg(&pattern)];
-            if let Some(path) = payload_string(tool_input, "path") {
-                command.push(shell_quote_arg(&path));
-            }
-            Some(command.join(" "))
-        }
-        _ => None,
-    }
 }
 
 fn extract_paths_direct(tool_input: &Value) -> Vec<String> {
@@ -771,7 +855,7 @@ fn decoded_json_input(value: &Value) -> Option<Value> {
 fn string_array_command(values: &[Value]) -> Option<String> {
     let mut parts = Vec::new();
     for value in values {
-        parts.push(shell_quote_arg(value.as_str()?));
+        parts.push(render_shell_token(value.as_str()?));
     }
     if parts.is_empty() {
         None
@@ -780,7 +864,7 @@ fn string_array_command(values: &[Value]) -> Option<String> {
     }
 }
 
-fn shell_quote_arg(value: &str) -> String {
+fn render_shell_token(value: &str) -> String {
     if value.chars().any(char::is_whitespace) {
         format!("'{}'", value.replace('\'', "'\"'\"'"))
     } else {

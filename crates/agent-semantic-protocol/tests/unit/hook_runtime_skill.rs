@@ -4,7 +4,7 @@ mod hook_runtime_skill;
 
 use agent_semantic_hook::{
     ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy, HookActivation,
-    ProviderExecution, RuntimeProfiles, RuntimeProfilesGeneratedBy,
+    RuntimeProfiles, RuntimeProfilesGeneratedBy,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 

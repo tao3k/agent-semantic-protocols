@@ -53,19 +53,6 @@ pub(crate) fn current_registered_session(
     Ok(Some(record))
 }
 
-pub(crate) fn current_registered_session_identity(
-    project_root: &Path,
-) -> Result<Option<AgentSessionRecord>, String> {
-    let Some(session) = current_agent_runtime_session() else {
-        return Ok(None);
-    };
-    let Some(registry) = open_existing_registry(project_root)? else {
-        return Ok(None);
-    };
-    let project_id = project_session_scope_id(&registry, project_root)?;
-    registry.session_by_id(&project_id, &session.id)
-}
-
 pub(crate) fn current_resident_child_identity_proof(
     project_root: &Path,
     resident_child_name: &str,

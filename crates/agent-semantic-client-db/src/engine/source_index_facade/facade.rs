@@ -13,11 +13,89 @@ use crate::engine::{
 };
 
 impl ClientDbEngine {
+    pub fn lookup_exact_selector_projection_v1_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        key: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1<
+            '_,
+        >,
+    ) -> Result<
+        Option<
+            agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1,
+        >,
+        String,
+    >{
+        let db_path = Self::turso_path_for_client_dir(client_dir.as_ref());
+        let language_id = key.language_id.to_owned();
+        let workspace_root_digest = key.workspace_root_digest.clone();
+        let owner_path = key.owner_path.to_owned();
+        let owner_subtree_digest = key.owner_subtree_digest.clone();
+        let source_blob_digest = key.source_blob_digest.clone();
+        let parser_identity_digest = key.parser_identity_digest.clone();
+        let query_pack_digest = key.query_pack_digest.clone();
+        let structural_selector = key.structural_selector.to_owned();
+        let projection_mode = key.projection_mode;
+        block_on_db_engine_async(async move {
+            let key = agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
+                language_id: &language_id,
+                workspace_root_digest: &workspace_root_digest,
+                owner_path: &owner_path,
+                owner_subtree_digest: &owner_subtree_digest,
+                source_blob_digest: &source_blob_digest,
+                parser_identity_digest: &parser_identity_digest,
+                query_pack_digest: &query_pack_digest,
+                structural_selector: &structural_selector,
+                projection_mode,
+            };
+            crate::engine::turso_source_index::core::lookup_exact_selector_projection_v1(
+                &db_path, &key,
+            )
+            .await
+        })
+    }
+
+    pub fn persist_exact_selector_projection_v1_from_client_dir(
+        client_dir: impl AsRef<Path>,
+        key: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1<
+            '_,
+        >,
+        record: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorProjectionRecordV1,
+    ) -> Result<(), String> {
+        let db_path = Self::turso_path_for_client_dir(client_dir.as_ref());
+        let language_id = key.language_id.to_owned();
+        let workspace_root_digest = key.workspace_root_digest.clone();
+        let owner_path = key.owner_path.to_owned();
+        let owner_subtree_digest = key.owner_subtree_digest.clone();
+        let source_blob_digest = key.source_blob_digest.clone();
+        let parser_identity_digest = key.parser_identity_digest.clone();
+        let query_pack_digest = key.query_pack_digest.clone();
+        let structural_selector = key.structural_selector.to_owned();
+        let projection_mode = key.projection_mode;
+        let record = record.clone();
+        block_on_db_engine_async(async move {
+            let key = agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
+                language_id: &language_id,
+                workspace_root_digest: &workspace_root_digest,
+                owner_path: &owner_path,
+                owner_subtree_digest: &owner_subtree_digest,
+                source_blob_digest: &source_blob_digest,
+                parser_identity_digest: &parser_identity_digest,
+                query_pack_digest: &query_pack_digest,
+                structural_selector: &structural_selector,
+                projection_mode,
+            };
+            crate::engine::turso_source_index::core::persist_exact_selector_projection_v1(
+                &db_path, &key, &record,
+            )
+            .await
+        })
+    }
+
     /// Persist stable source-index graph and search documents through the active DB Engine backend.
     pub async fn persist_source_index_read_model(
         &self,
         import: &ClientDbSourceIndexImport,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+        membership_change_set: &crate::ClientDbSourceIndexMembershipChangeSet,
     ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
         let trace_started = std::time::Instant::now();
         let refresh = refresh_turso_source_index_import(
@@ -26,6 +104,7 @@ impl ClientDbEngine {
                 import: import.clone(),
                 file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
                 source_snapshot: source_snapshot.clone(),
+                membership_change_set: membership_change_set.clone(),
             },
         )
         .await?;
@@ -43,12 +122,14 @@ impl ClientDbEngine {
         import: &ClientDbSourceIndexImport,
         projection: &crate::ClientDbLanguageProjection,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+        membership_change_set: &crate::ClientDbSourceIndexMembershipChangeSet,
     ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
         persist_language_projection_read_model_at_path(
             self.db_path(),
             import,
             projection,
             source_snapshot,
+            membership_change_set,
         )
         .await
     }
@@ -59,17 +140,20 @@ impl ClientDbEngine {
         import: &ClientDbSourceIndexImport,
         projection: &crate::ClientDbLanguageProjection,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+        membership_change_set: &crate::ClientDbSourceIndexMembershipChangeSet,
     ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
         let db_path = Self::turso_path_for_client_dir(client_dir);
         let import = import.clone();
         let projection = projection.clone();
         let source_snapshot = source_snapshot.clone();
+        let membership_change_set = membership_change_set.clone();
         block_on_db_engine_async(async move {
             persist_language_projection_read_model_at_path(
                 &db_path,
                 &import,
                 &projection,
                 &source_snapshot,
+                &membership_change_set,
             )
             .await
         })
@@ -83,6 +167,37 @@ impl ClientDbEngine {
     ) -> Result<ClientDbEngineStructuralIndexReadModelReport, String> {
         persist_structural_index_read_model_at_path(self.db_path(), import, source_snapshot).await
     }
+
+    /// Return only a projection that passes the persisted v1 Merkle proof at hydration.
+    pub async fn lookup_exact_selector_projection_v1(
+        &self,
+        key: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1<'_>,
+    ) -> Result<
+        Option<agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1>,
+        String,
+    >{
+        crate::engine::turso_source_index::core::lookup_exact_selector_projection_v1(
+            self.db_path(),
+            key,
+        )
+        .await
+    }
+
+    /// Persist an exact projection only after its v1 Merkle proof validates.
+    pub async fn persist_exact_selector_projection_v1(
+        &self,
+        key: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1<
+            '_,
+        >,
+        record: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorProjectionRecordV1,
+    ) -> Result<(), String> {
+        crate::engine::turso_source_index::core::persist_exact_selector_projection_v1(
+            self.db_path(),
+            key,
+            record,
+        )
+        .await
+    }
 }
 
 async fn persist_language_projection_read_model_at_path(
@@ -90,6 +205,7 @@ async fn persist_language_projection_read_model_at_path(
     import: &ClientDbSourceIndexImport,
     projection: &crate::ClientDbLanguageProjection,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    membership_change_set: &crate::ClientDbSourceIndexMembershipChangeSet,
 ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
     let trace_started = std::time::Instant::now();
     crate::engine::turso_bootstrap::bootstrap_turso_client_db(db_path).await?;
@@ -99,6 +215,7 @@ async fn persist_language_projection_read_model_at_path(
             import: import.clone(),
             file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set: membership_change_set.clone(),
         },
     )
     .await?;

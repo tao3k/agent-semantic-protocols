@@ -1,24 +1,25 @@
 //! Hook configuration and managed-profile self-repair receipts.
 
-use agent_semantic_hook::{DecisionKind, HookDecision};
+use agent_semantic_hook::HookDecision;
 use std::path::Path;
 
-pub(super) fn annotate_hook_config_fallback(
+pub(super) fn annotate_hook_config_repair(
     decision: &mut HookDecision,
     config_path: &Path,
-    errors: &[String],
     repair_reasons: &[String],
-    auto_sync: Option<&str>,
+    auto_refresh: &str,
 ) {
-    let error = errors.join("; ");
-    let auto_sync_completed = auto_sync.is_some_and(|status| status.starts_with("completed:"));
+    let auto_refresh_completed = auto_refresh.starts_with("completed:");
+    let embedded_current = auto_refresh.starts_with("embedded-current:");
     decision.fields.insert(
         "hookConfigStatus".to_string(),
         serde_json::Value::String(
-            if errors.is_empty() && auto_sync_completed {
-                "repaired-by-asp-sync"
+            if auto_refresh_completed {
+                "refreshed-by-hook"
+            } else if embedded_current {
+                "active-from-embedded-authority"
             } else {
-                "degraded-built-in-fallback"
+                "verified-after-failed-refresh-attempt"
             }
             .to_string(),
         ),
@@ -27,12 +28,6 @@ pub(super) fn annotate_hook_config_fallback(
         "hookConfigPath".to_string(),
         serde_json::Value::String(config_path.display().to_string()),
     );
-    if !error.is_empty() {
-        decision.fields.insert(
-            "hookConfigError".to_string(),
-            serde_json::Value::String(error.clone()),
-        );
-    }
     if !repair_reasons.is_empty() {
         decision.fields.insert(
             "hookConfigRepairReasons".to_string(),
@@ -47,78 +42,45 @@ pub(super) fn annotate_hook_config_fallback(
     }
     decision.fields.insert(
         "hookConfigFailurePolicy".to_string(),
-        serde_json::Value::String("continue-with-built-in-policy".to_string()),
+        serde_json::Value::String("fail-closed".to_string()),
     );
     decision.fields.insert(
-        "hookConfigRecoveryCommand".to_string(),
-        serde_json::Value::String("asp sync".to_string()),
+        "hookConfigAutoRefresh".to_string(),
+        serde_json::Value::String(auto_refresh.to_string()),
     );
-    if let Some(auto_sync) = auto_sync {
-        decision.fields.insert(
-            "hookConfigAutoSync".to_string(),
-            serde_json::Value::String(auto_sync.to_string()),
-        );
-    }
-    let diagnostic = if errors.is_empty() && auto_sync_completed {
+    decision.fields.insert(
+        "hookConfigPersistenceStatus".to_string(),
+        serde_json::Value::String(
+            if auto_refresh_completed {
+                "atomically-persisted"
+            } else if embedded_current {
+                "deferred-read-only-sandbox"
+            } else {
+                "refresh-not-confirmed"
+            }
+            .to_string(),
+        ),
+    );
+    let diagnostic = if auto_refresh_completed {
         format!(
-            "ASP hook automatically ran `asp sync` and repaired `{}` before continuing.",
+            "ASP hook atomically refreshed `{}` before continuing.",
+            config_path.display()
+        )
+    } else if embedded_current {
+        format!(
+            "ASP hook activated the binary-owned current config in memory because `{}` is not writable in this sandbox; classification continued from embedded authority.",
             config_path.display()
         )
     } else {
         format!(
-            "Semantic hook config repair did not fully succeed; ASP continued with built-in policy so Codex remains operable. Automatic sync receipt: {}. Error: {}",
-            auto_sync.unwrap_or("not-run"),
-            if error.is_empty() { "none" } else { &error }
+            "Hook refresh did not report completion, but `{}` passed the required matcher and resident contracts on reload. Automatic refresh receipt: {}",
+            config_path.display(),
+            auto_refresh
         )
     };
-    if decision.decision == DecisionKind::Allow {
+    if decision.message.trim().is_empty() {
         decision.message = diagnostic;
     } else {
         decision.message = format!("{}\n{diagnostic}", decision.message.trim());
-    }
-}
-
-pub(super) fn annotate_target_agent_auto_sync(
-    decision: &mut HookDecision,
-    target_agent_name: &str,
-) {
-    match super::super::sync::ensure_codex_agent_configuration(target_agent_name) {
-        Ok(None) => {
-            decision.fields.insert(
-                "targetAgentRegistryStatus".to_string(),
-                serde_json::Value::String("ready".to_string()),
-            );
-        }
-        Ok(Some(sync)) => {
-            decision.fields.insert(
-                "targetAgentRegistryStatus".to_string(),
-                serde_json::Value::String("repaired-by-asp-sync".to_string()),
-            );
-            decision.fields.insert(
-                "targetAgentAutoSync".to_string(),
-                serde_json::Value::String(format!(
-                    "completed:hookConfig={};agentConfigs={};codexAgentRegistry={}",
-                    sync.hook_config_status, sync.projected, sync.codex_registry_entries
-                )),
-            );
-            decision.message = format!(
-                "{}\nASP hook automatically ran `asp sync` and verified Codex profile `{target_agent_name}` before returning this route.",
-                decision.message.trim()
-            );
-        }
-        Err(error) => {
-            decision.fields.insert(
-                "targetAgentRegistryStatus".to_string(),
-                serde_json::Value::String("degraded-built-in-route".to_string()),
-            );
-            decision.fields.insert(
-                "targetAgentAutoSync".to_string(),
-                serde_json::Value::String(format!("failed:{error}")),
-            );
-            decision.message = format!(
-                "{}\nASP could not fully project Codex profile `{target_agent_name}`, but the config failure did not block Codex tool use. Auto-sync error: {error}",
-                decision.message.trim()
-            );
-        }
     }
 }

@@ -43,15 +43,15 @@ pub fn verify_receipt_bytes(
         .map_err(|error| format!("invalid Rust downstream-policy receipt v1 JSON: {error}"))?;
     validate_receipt_identity(&receipt)?;
 
-    let expected_directory = normalized_relative_directory(input.workspace_root, input.manifest_dir)?;
+    let expected_directory =
+        normalized_relative_directory(input.workspace_root, input.manifest_dir)?;
     if member.package_directory != expected_directory {
         return Err(format!(
             "Rust member-policy registry directory mismatch for `{}`: expected `{expected_directory}`, got `{}`",
             input.package_name, member.package_directory
         ));
     }
-    if receipt.package.name != input.package_name
-        || receipt.package.directory != expected_directory
+    if receipt.package.name != input.package_name || receipt.package.directory != expected_directory
     {
         return Err(format!(
             "Rust downstream-policy receipt package mismatch for `{}`",
@@ -136,9 +136,9 @@ fn unique_member<'a>(
         .members
         .iter()
         .filter(|member| member.package == package_name);
-    let member = matches.next().ok_or_else(|| {
-        format!("no Rust member policy registered for `{package_name}`")
-    })?;
+    let member = matches
+        .next()
+        .ok_or_else(|| format!("no Rust member policy registered for `{package_name}`"))?;
     if matches.next().is_some() {
         return Err(format!(
             "duplicate Rust member policies registered for `{package_name}`"
@@ -147,7 +147,10 @@ fn unique_member<'a>(
     Ok(member)
 }
 
-fn normalized_relative_directory(workspace_root: &Path, manifest_dir: &Path) -> Result<String, String> {
+fn normalized_relative_directory(
+    workspace_root: &Path,
+    manifest_dir: &Path,
+) -> Result<String, String> {
     let relative = manifest_dir.strip_prefix(workspace_root).map_err(|_| {
         format!(
             "CARGO_MANIFEST_DIR `{}` is outside workspace root `{}`",

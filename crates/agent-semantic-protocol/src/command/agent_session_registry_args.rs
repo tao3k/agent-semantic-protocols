@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent|unroutable] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -63,9 +63,9 @@ pub(super) struct SessionArgs {
     pub(super) schema_digest: Option<String>,
     pub(super) dispatch_identity: Option<String>,
     pub(super) command_digest: Option<String>,
-    pub(super) evidence_ref: Option<String>,
     pub(super) command_json: Option<String>,
     pub(super) resident_bridge: bool,
+    pub(super) evidence_ref: Option<String>,
     pub(super) canonical_target: Option<String>,
     pub(super) observation_ttl_seconds: i64,
 }
@@ -100,9 +100,9 @@ impl SessionArgs {
             schema_digest: None,
             dispatch_identity: None,
             command_digest: None,
-            evidence_ref: None,
             command_json: None,
             resident_bridge: false,
+            evidence_ref: None,
             canonical_target: None,
             observation_ttl_seconds: 300,
         };
@@ -282,18 +282,16 @@ impl SessionArgs {
                     parsed.command_digest =
                         Some(non_empty_flag(args, index, "--command-digest")?.to_string());
                 }
-                "--evidence-ref" => {
-                    index += 1;
-                    parsed.evidence_ref =
-                        Some(non_empty_flag(args, index, "--evidence-ref")?.to_string());
-                }
                 "--command-json" => {
                     index += 1;
                     parsed.command_json =
                         Some(non_empty_flag(args, index, "--command-json")?.to_string());
                 }
-                "--resident-bridge" => {
-                    parsed.resident_bridge = true;
+                "--resident-bridge" => parsed.resident_bridge = true,
+                "--evidence-ref" => {
+                    index += 1;
+                    parsed.evidence_ref =
+                        Some(non_empty_flag(args, index, "--evidence-ref")?.to_string());
                 }
                 "--canonical-target" => {
                     index += 1;
@@ -386,12 +384,12 @@ asp agent session observe-host-ack --name <resident-lane> --canonical-target /ro
         SessionCommand::DispatchClaim => Some(
             "asp agent session dispatch-claim guide\n\
 Atomically claim or poll one exact resident command. Only action=send authorizes a native follow-up; action=wait polls the existing attempt and action=complete forbids replay.\n\
-asp agent session dispatch-claim --name <resident-lane> --dispatch-identity <id> --command-digest <digest> [--resident-bridge]",
+asp agent session dispatch-claim --name <resident-lane> --dispatch-identity <id> --command-digest <digest>",
         ),
         SessionCommand::DispatchExecute => Some(
             "asp agent session dispatch-execute guide\n\
-Execute one exact argv under a previously claimed one-shot resident bridge lease. A child may execute it directly; the root may execute only a canonical resident-command-bridge lease. The command validates the digest and terminally consumes the lease.\n\
-asp agent session dispatch-execute --name <resident-lane> --root-session-id <root> --dispatch-identity <id> --command-digest <digest> --command-json '<json argv>'",
+Execute one previously claimed exact argv and atomically record its terminal receipt. Root execution is allowed only through --resident-bridge bound to the fresh verified canonical target.\n\
+asp agent session dispatch-execute --name <resident-lane> --dispatch-identity <id> --command-digest <digest> --command-json '<argv-json>' --resident-bridge",
         ),
         SessionCommand::DispatchComplete => Some(
             "asp agent session dispatch-complete guide\n\
@@ -516,10 +514,8 @@ fn load_agent_session_guide() -> agent_semantic_config::HookClientAgentSessionGu
         }
     }
 
-    load_agent_session_guide_from_str(
-        &agent_semantic_config::default_hook_client_config_template_for_source_extensions([".rs"]),
-    )
-    .unwrap_or_else(default_agent_session_guide)
+    load_agent_session_guide_from_str(&agent_semantic_config::default_hook_client_config_template())
+        .unwrap_or_else(default_agent_session_guide)
 }
 
 fn default_agent_session_guide() -> agent_semantic_config::HookClientAgentSessionGuideConfig {

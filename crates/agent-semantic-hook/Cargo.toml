@@ -6,7 +6,9 @@ description = "Root semantic agent hook runtime for provider manifests and proje
 license = "MIT"
 
 [dependencies]
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
 agent-semantic-config = { path = "../agent-semantic-config" }
+agent-semantic-loop = { path = "../agent-semantic-loop" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 aho-corasick.workspace = true
 fs2 = { workspace = true }
@@ -15,11 +17,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 toml = { workspace = true }
-tree-sitter = { workspace = true }
-tree-sitter-bash = { workspace = true }
 
 
 [dev-dependencies]
+jsonschema = { workspace = true }
 asp-rust-project-harness-policy.workspace = true
 
 [build-dependencies]

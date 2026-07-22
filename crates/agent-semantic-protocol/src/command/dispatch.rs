@@ -37,7 +37,10 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
             println!("{}", agent_semantic_config::hook_client_contract_fingerprint());
             Ok(())
         }
-        Some("guide" | "providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap") => {
+        Some(
+            "guide" | "providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap" | "fd"
+            | "rg",
+        ) => {
             run_client_command(args)
         }
         Some("search") if args.get(1).is_some_and(|arg| arg == "history") => {

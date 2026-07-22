@@ -3,7 +3,6 @@ use agent_semantic_hook::{ActivatedProvider, CommandTemplate, HookRoutes, HookRu
 mod activation_contract;
 mod platform;
 mod routes;
-mod search_flow_feedback;
 
 pub(crate) fn command(argv: &[&str]) -> CommandTemplate {
     CommandTemplate {
@@ -23,6 +22,13 @@ pub(crate) fn registry() -> HookRuntime {
     HookRuntime {
         project_root: ".".to_string(),
         providers: vec![typescript_provider()],
+    }
+}
+
+pub(crate) fn rust_registry() -> HookRuntime {
+    HookRuntime {
+        project_root: ".".to_string(),
+        providers: vec![rust_provider()],
     }
 }
 
@@ -47,6 +53,19 @@ pub(super) fn typescript_provider() -> ActivatedProvider {
         &["package.json", "tsconfig.json"],
         &["src", "tests"],
         &["node_modules", "dist"],
+        routes,
+    )
+}
+
+fn rust_provider() -> ActivatedProvider {
+    let manifest = builtin_provider_manifest("rust", "rs-harness");
+    let routes = agent_semantic_hook::materialize_provider_routes(&manifest).expect("Rust routes");
+    provider(
+        &manifest,
+        &[".rs"],
+        &["Cargo.toml"],
+        &["src", "tests", "benches", "examples"],
+        &["target"],
         routes,
     )
 }

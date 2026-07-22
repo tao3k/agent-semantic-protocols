@@ -99,6 +99,7 @@
         "program",
         "args",
         "workingDirectory",
+        "sourceSnapshotAnchors",
         "derivedPaths",
         "env"
       ],
@@ -111,6 +112,14 @@
         },
         "workingDirectory": {
           "$ref": "#/$defs/nonEmptyString"
+        },
+        "sourceSnapshotAnchors": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
         },
         "derivedPaths": {
           "type": "array",

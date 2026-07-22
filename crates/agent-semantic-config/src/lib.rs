@@ -12,22 +12,25 @@ pub use hook_client_config::HookClientDecisionMaterializer;
 pub use hook_client_config::hook_client_contract_fingerprint;
 mod layout;
 
+pub use hook_client_config::HookClientStructuredFormat;
 pub use hook_client_config::{
-    AspCommandIntent, AspCommandIntentMatch, AspCommandRouteId, AspProjectConfigFile,
-    AspProjectHookConfig, CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
-    HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
-    HookClientAgentSessionGuideConfig, HookClientAgentSessionMessagesConfig,
-    HookClientAgentsConfig, HookClientAspCommandIntentPolicyConfig,
-    HookClientAspControlPlaneIntentConfig, HookClientAspExactEvidenceIntentConfig,
-    HookClientAspInvalidEvidenceIntentConfig, HookClientAspReasoningIntentConfig,
-    HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
-    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientExecutionLaneConfig,
-    HookClientExecutionLanesConfig, HookClientExecutionTransport, HookClientRecoveryPromptConfig,
-    HookClientResidentAgentConfig, HookClientRuleConfig, HookClientRuleMatchConfig,
-    HookClientRuleRouteConfig, StructuralSelector, classify_asp_language_command,
+    AspProjectConfigFile, AspProjectHookConfig, CLIENT_HOOK_CONFIG_SCHEMA_ID,
+    CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientActionAuthority, HookClientActionKind,
+    HookClientActionSubjectKind, HookClientAgentOrgArtifactsArchiveWarningConfig,
+    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig,
+    HookClientAgentSessionMessagesConfig, HookClientAgentsConfig, HookClientAuthorityProjection,
+    HookClientCommandWrapper, HookClientConfigDecision, HookClientConfigFile,
+    HookClientConfigReasonKind, HookClientConfigRouteKind, HookClientConfigStdinMode,
+    HookClientEffectProjection, HookClientFlagPresence, HookClientInvocationShape,
+    HookClientLazyProviderPolicy, HookClientRecoveryPromptConfig, HookClientResidentAgentConfig,
+    HookClientRuleConfig, HookClientRuleDispatchConfig, HookClientRuleDispatchTransport,
+    HookClientRuleMatchConfig, HookClientRuleRouteConfig, HookClientWrapperMatch,
     default_hook_client_config_file, default_hook_client_config_template,
-    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
-    load_hook_client_config_file, render_hook_client_message_template,
+    load_asp_project_config_file, load_hook_client_config_file, merge_asp_project_hook_config,
+    render_hook_client_message_template,
+};
+pub use hook_client_config::{
+    HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig,
 };
 pub use layout::{
     PRJ_CACHE_HOME_ENV, ProjectCacheSource, ProjectEnvStatus, ProjectRuntimeEnv,

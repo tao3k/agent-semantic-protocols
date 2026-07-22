@@ -158,12 +158,25 @@ where
     T: Send + 'static,
     F: std::future::Future<Output = Result<T, String>> + Send + 'static,
 {
+    // Turso databases and connection lanes are process-scoped. Keep their async
+    // driver alive for the same lifetime instead of pooling them across runtimes
+    // that are destroyed after each synchronous facade call.
+    static DB_ENGINE_RUNTIME: std::sync::OnceLock<Result<tokio::runtime::Runtime, String>> =
+        std::sync::OnceLock::new();
+
     std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| format!("failed to build DB Engine async runtime: {error}"))?;
-        runtime.block_on(future)
+        let runtime = DB_ENGINE_RUNTIME.get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_name("asp-client-db")
+                .enable_all()
+                .build()
+                .map_err(|error| format!("failed to build DB Engine async runtime: {error}"))
+        });
+        match runtime {
+            Ok(runtime) => runtime.block_on(future),
+            Err(error) => Err(error.clone()),
+        }
     })
     .join()
     .map_err(|_| "DB Engine async runtime thread panicked".to_string())?

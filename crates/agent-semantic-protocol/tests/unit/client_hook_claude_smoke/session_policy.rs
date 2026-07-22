@@ -3,7 +3,7 @@ use serde_json::json;
 use super::{
     claude_fixture, codex_asp_query_payload, install_codex_hooks, register_asp_explore_session,
     run_codex_hook_decision_with_env, run_codex_pre_tool_decision_with_env,
-    show_agent_session_json, write_hook_config,
+    show_agent_session_json,
 };
 
 #[test]
@@ -247,17 +247,27 @@ fn codex_main_session_routes_wrapped_test_command_to_asp_testing() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
+    let target_dir = root.join("target/session-validation-check");
+    let cargo = root.join("toolchain/bin/cargo");
+    let command = format!(
+        "CARGO_TARGET_DIR={} {} test -p agent-semantic-content-identity packet_builder_tests --lib --offline",
+        target_dir.display(),
+        cargo.display()
+    );
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload(
-            "direnv exec . env CARGO_TARGET_DIR=target/session-validation-check cargo test -p agent-semantic-protocol asp_agent_session_rejects_mismatched_codex_agent_config_path --test unit_test -- --nocapture",
-        ),
+        codex_asp_query_payload(&command),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000010")],
     );
     assert_eq!(decision["decision"].as_str(), Some("deny"));
     assert_eq!(
         decision["fields"]["residentChildName"].as_str(),
         Some("asp-testing"),
+        "{decision}"
+    );
+    assert_eq!(
+        decision["fields"]["targetAgentName"].as_str(),
+        Some("asp_testing"),
         "{decision}"
     );
     assert_eq!(
@@ -269,31 +279,156 @@ fn codex_main_session_routes_wrapped_test_command_to_asp_testing() {
     assert!(
         decision["subject"]["command"]
             .as_str()
-            .is_some_and(|command| command.contains("direnv exec . env CARGO_TARGET_DIR"))
+            .is_some_and(|subject| subject == command)
     );
 }
 
 #[test]
-fn codex_main_session_allows_configured_main_asp_command_prefix() {
+fn codex_hook_rejects_invalid_matcher_config_without_builtin_fallback() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
-    write_hook_config(
+    let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
+    std::fs::create_dir_all(config_path.parent().expect("config parent"))
+        .expect("create hook config parent");
+    std::fs::write(&config_path, "[[rules]\ninvalid = true\n")
+        .expect("write invalid hook matcher config");
+
+    let cargo = root.join("toolchain/bin/cargo");
+    let command = format!("{} test --offline", cargo.display());
+    let output = super::support::run_codex_pre_tool_output_with_env(
         &root,
-        r#"
-[agents]
-residentAgents = [
-  { name = "asp-explore", role = "asp_explorer", lifecycle = "resident", mainAllowedAspCommandPrefixes = ["help", "agent session", "org recall", "org capture", "install plugin"] },
-  { name = "asp-testing", role = "asp_testing", lifecycle = "ephemeral" },
-]
-"#,
+        codex_asp_query_payload(&command),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000010")],
     );
+
+    assert!(!output.status.success(), "hook unexpectedly failed open");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("hook matcher config freshness gate failed"),
+        "{stderr}"
+    );
+    assert!(
+        !stderr.contains("continuing with built-in policy"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn codex_hook_rejects_stale_matcher_contract_without_builtin_fallback() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
+    std::fs::create_dir_all(config_path.parent().expect("config parent"))
+        .expect("create hook config parent");
+    let current_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
+    let stale_config = agent_semantic_config::default_hook_client_config_template()
+        .replace(&current_fingerprint, "hook-client-v1-0000000000000000");
+    std::fs::write(&config_path, stale_config).expect("write stale hook matcher config");
+
+    let cargo = root.join("toolchain/bin/cargo");
+    let command = format!("{} test --offline", cargo.display());
+    let output = super::support::run_codex_pre_tool_output_with_env(
+        &root,
+        codex_asp_query_payload(&command),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000010")],
+    );
+
+    assert!(!output.status.success(), "hook unexpectedly failed open");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("configured fingerprint hook-client-v1-0000000000000000"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("does not match binary fingerprint hook-client-v1-"),
+        "{stderr}"
+    );
+    assert!(
+        !stderr.contains("continuing with built-in policy"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn codex_hook_auto_syncs_stale_managed_matcher_contract() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
+    let current_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
+    let stale_config = agent_semantic_config::default_hook_client_config_template()
+        .replace(&current_fingerprint, "hook-client-v1-0000000000000000");
+    std::fs::write(&config_path, &stale_config).expect("write stale managed hook config");
+    std::fs::write(
+        managed_config_sidecar(&config_path),
+        test_sha256(stale_config.as_bytes()),
+    )
+    .expect("prove stale hook config ownership");
+
+    let cargo = root.join("toolchain/bin/cargo");
+    let command = format!("{} test --offline", cargo.display());
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp install plugin --codex ."),
-        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000008")],
+        codex_asp_query_payload(&command),
+        &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000011")],
     );
-    assert_eq!(decision["decision"].as_str(), Some("allow"));
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["fields"]["targetAgentName"].as_str(),
+        Some("asp_testing"),
+        "{decision}"
+    );
+    assert_eq!(
+        decision["fields"]["hookConfigStatus"].as_str(),
+        Some("repaired-by-asp-sync"),
+        "{decision}"
+    );
+    assert_eq!(
+        decision["fields"]["hookConfigFailurePolicy"].as_str(),
+        Some("fail-closed"),
+        "{decision}"
+    );
+    assert!(
+        decision["fields"]
+            .get("hookConfigRecoveryCommand")
+            .is_none(),
+        "automatic repair must not instruct the user to run asp sync: {decision}"
+    );
+    assert!(
+        decision["message"].as_str().is_some_and(|message| {
+            message.contains("automatically ran `asp sync`") && !message.contains("Run `asp sync`")
+        }),
+        "{decision}"
+    );
+
+    let current_config = agent_semantic_config::default_hook_client_config_template();
+    assert_eq!(
+        std::fs::read_to_string(&config_path).expect("read repaired hook config"),
+        current_config
+    );
+    assert_eq!(
+        std::fs::read_to_string(managed_config_sidecar(&config_path))
+            .expect("read repaired hook config sidecar"),
+        test_sha256(current_config.as_bytes())
+    );
+}
+
+fn managed_config_sidecar(config: &std::path::Path) -> std::path::PathBuf {
+    config.with_file_name(format!(
+        "{}.managed.sha256",
+        config
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("config name")
+    ))
+}
+
+fn test_sha256(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 #[test]

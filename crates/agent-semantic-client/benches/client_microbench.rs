@@ -4,7 +4,8 @@ use agent_semantic_client_core::{
     SemanticSchemaId, SemanticSchemaVersion, project_client_cache_dir,
 };
 use agent_semantic_client_db::{
-    ClientDbEngine, ClientDbSourceIndexImport, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
+    CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
+    ClientDbSourceIndexImport, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
     ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource,
 };
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -47,6 +48,91 @@ fn source_index_lookup_hot_path(c: &mut Criterion) {
     });
     let _ = fs::remove_dir_all(root);
     source_index_merkle_db_scenario(c);
+    exact_selector_merkle_turso_scenario(c);
+}
+
+fn exact_selector_merkle_turso_scenario(c: &mut Criterion) {
+    let root = source_index_bench_root();
+    let cache_root = root.join("exact-selector-client");
+    fs::create_dir_all(&cache_root).expect("exact-selector benchmark cache root");
+    let owner_path = "src/lib.rs";
+    let selector = "rust://src/lib.rs#item/function/bench_symbol";
+    let source = b"fn bench_symbol() -> usize { 255 }\n";
+    let source_blob_digest =
+        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(source);
+    let parser_identity_digest =
+        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1(
+            b"parser",
+            &[b"rs-harness"],
+        );
+    let query_pack_digest =
+        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1(
+            b"query-pack",
+            &[b"rust"],
+        );
+    let tree = agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests([
+        (owner_path.to_string(), source_blob_digest.clone()),
+    ])
+    .expect("exact-selector benchmark workspace tree");
+    let packet = agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
+        "rust",
+        "rs-harness",
+        &parser_identity_digest,
+        &query_pack_digest,
+        owner_path,
+        selector,
+        agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
+        source,
+        br#"{"kind":"fn","name":"bench_symbol"}"#,
+        source,
+    );
+    let record = packet
+        .enrich_projection_record(&tree)
+        .expect("exact-selector benchmark record");
+    let key =
+        agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
+            language_id: "rust",
+            workspace_root_digest: tree.root_digest(),
+            owner_path,
+            owner_subtree_digest: tree
+                .owner_subtree_digest(owner_path)
+                .expect("exact-selector benchmark owner subtree"),
+            source_blob_digest: &source_blob_digest,
+            parser_identity_digest: &parser_identity_digest,
+            query_pack_digest: &query_pack_digest,
+            structural_selector: selector,
+            projection_mode:
+                agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
+        };
+    ClientDbEngine::persist_exact_selector_projection_v1_from_client_dir(
+        &cache_root,
+        &key,
+        &record,
+    )
+    .expect("persist exact-selector benchmark record");
+
+    let mut group = c.benchmark_group("exact_selector_merkle_turso_scenario");
+    group.bench_function("warm_hydrate_validate_zero_write", |b| {
+        b.iter(|| {
+            let validated = ClientDbEngine::lookup_exact_selector_projection_v1_from_client_dir(
+                black_box(&cache_root),
+                black_box(&key),
+            )
+            .expect("lookup exact-selector benchmark record")
+            .expect("exact-selector benchmark warm hit");
+            let hit = validated
+                .validate_warm_hit(black_box(&key))
+                .expect("validate exact-selector benchmark warm hit");
+            assert_eq!(hit.projection_payload, source);
+            assert_eq!(hit.side_effects.parser_process_count, 0);
+            assert_eq!(hit.side_effects.content_store_write_count, 0);
+            assert_eq!(hit.side_effects.turso_write_count, 0);
+            assert_eq!(hit.side_effects.manifest_write_count, 0);
+            black_box(hit);
+        });
+    });
+    group.finish();
+    let _ = fs::remove_dir_all(root);
 }
 
 fn source_index_merkle_db_scenario(c: &mut Criterion) {
@@ -54,7 +140,7 @@ fn source_index_merkle_db_scenario(c: &mut Criterion) {
     let source_snapshot = prepare_source_index_bench_db(&root);
     let cache_root = project_client_cache_dir(&root).expect("client cache dir");
     let language_id = LanguageId::from("rust");
-    let base_snapshot = source_index_bench_workspace_snapshot(512);
+    let mut base_snapshot = source_index_bench_workspace_snapshot(512);
     let mut revision = 0_u64;
 
     let mut group = c.benchmark_group("source_index_merkle_db_scenario");
@@ -104,15 +190,24 @@ fn source_index_merkle_db_scenario(c: &mut Criterion) {
                 agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
                 "1".repeat(64),
             );
-            ClientDbEngine::refresh_source_index_import_from_client_dir(
+            let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
                 black_box(&cache_root),
                 ClientDbSourceIndexRefreshRequest {
                     import: source_index_bench_import_with_revision(&root, Some((255, revision))),
                     file_count: 512,
                     source_snapshot: edited_evidence.clone(),
+                    membership_change_set:
+                        agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                            changed_owner_paths: vec![ClientDbSourceIndexPath::new(
+                                "src/owner_255.rs",
+                            )],
+                            removed_owner_paths: Vec::new(),
+                        },
                 },
             )
             .expect("refresh edited source index");
+            assert_eq!(refresh.changed_owner_count, 1);
+            assert_eq!(refresh.removed_owner_count, 0);
             let result = lookup_source_index_for_language(
                 black_box(&root),
                 black_box(&edited_evidence),
@@ -122,7 +217,9 @@ fn source_index_merkle_db_scenario(c: &mut Criterion) {
             )
             .expect("lookup edited source index");
             assert_eq!(result.candidates.len(), 1);
-            black_box((edited_snapshot.root_digest(), result));
+            let edited_root_digest = edited_snapshot.root_digest().to_string();
+            base_snapshot = edited_snapshot;
+            black_box((edited_root_digest, refresh, result));
         });
     });
     group.finish();
@@ -159,6 +256,8 @@ fn prepare_source_index_bench_db(
             import: source_index_bench_import(root),
             file_count: 512,
             source_snapshot: source_snapshot.clone(),
+            membership_change_set:
+                agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("replace source index");
@@ -188,9 +287,11 @@ fn source_index_bench_import_with_revision(
         .collect();
     ClientDbSourceIndexImport {
         generation_id: CacheGenerationId::from("bench-generation"),
-        project_root: root.to_path_buf(),
-        schema_id: SemanticSchemaId::from("agent.semantic-protocols.source-index"),
-        schema_version: SemanticSchemaVersion::from("1"),
+        project_root: root
+            .canonicalize()
+            .expect("canonicalize benchmark project root"),
+        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
         file_hashes: (0..512)
             .map(|index| {
                 let revision = edited_owner

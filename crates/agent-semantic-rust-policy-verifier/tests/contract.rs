@@ -171,5 +171,8 @@ fn duplicate_registry_member_is_rejected() {
         verification_input(&snapshot),
     )
     .unwrap_err();
-    assert!(error.contains("duplicate Rust member policy"), "error={error}");
+    assert!(
+        error.contains("duplicate Rust member policy"),
+        "error={error}"
+    );
 }

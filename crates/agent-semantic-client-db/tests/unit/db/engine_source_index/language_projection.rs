@@ -83,6 +83,7 @@ async fn harness_projection_imports_without_source_text_projection() {
         &import.source_index,
         &projection,
         &source_snapshot,
+        &agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
     )
     .expect("persist language projection import");
     let language_id = LanguageId::from("gerbil-scheme");

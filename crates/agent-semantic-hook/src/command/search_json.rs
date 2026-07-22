@@ -1,6 +1,6 @@
 use crate::protocol_activation::protocol_activation_manifest::{ActivatedProvider, HookRuntime};
 
-use super::shell::{command_name, is_separator};
+use agent_semantic_command_match::bash::{command_name, is_separator};
 
 pub(crate) fn search_json_route<'a>(
     registry: &'a HookRuntime,

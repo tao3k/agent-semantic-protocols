@@ -143,7 +143,7 @@ fn ensure_default_codex_agent_tables(root: &mut toml::Table) -> Result<(), Strin
             session_lifetime: "resident",
             roles: &["subagent", "search"],
             permissions: &["read-only"],
-            sandbox_mode: "read-only",
+            sandbox_mode: "workspace-write",
         },
     )?;
     ensure_codex_agent_table(
@@ -330,6 +330,40 @@ fn update_agent_model_file(path: &Path, model: &str) -> Result<(), String> {
     table
         .entry("sandbox_mode".to_string())
         .or_insert_with(|| toml::Value::String("read-only".to_string()));
+    if table.get("sandbox_mode").and_then(toml::Value::as_str) == Some("workspace-write") {
+        let state_root = path
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| format!("{} has no protocol state root", path.display()))?
+            .to_string_lossy()
+            .into_owned();
+        let sandbox = table
+            .entry("sandbox_workspace_write".to_string())
+            .or_insert_with(|| toml::Value::Table(Default::default()))
+            .as_table_mut()
+            .ok_or_else(|| {
+                format!(
+                    "{}.sandbox_workspace_write must be a TOML table",
+                    path.display()
+                )
+            })?;
+        let writable_roots = sandbox
+            .entry("writable_roots".to_string())
+            .or_insert_with(|| toml::Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or_else(|| {
+                format!(
+                    "{}.sandbox_workspace_write.writable_roots must be an array",
+                    path.display()
+                )
+            })?;
+        if !writable_roots
+            .iter()
+            .any(|value| value.as_str() == Some(state_root.as_str()))
+        {
+            writable_roots.push(toml::Value::String(state_root));
+        }
+    }
     table.remove("session_lifetime");
     write_toml_value(path, &value)
 }

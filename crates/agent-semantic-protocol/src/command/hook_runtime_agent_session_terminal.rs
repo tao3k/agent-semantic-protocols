@@ -2,24 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use super::hook_runtime_agent_session_command::command_contains_asp_binary;
-
-pub(super) fn proven_resident_parser_command_is_terminal(
-    commands: &[String],
-    resident_identity_proven: bool,
-) -> bool {
-    resident_identity_proven
-        && commands
-            .iter()
-            .any(|command| command_contains_asp_binary(command))
-}
-
-pub(super) fn resident_dispatch_wrapper_is_terminal(commands: &[String]) -> bool {
-    commands.iter().any(|command| {
-        command_contains_asp_binary(command) && command.contains("agent session dispatch-execute")
-    })
-}
-
 pub(super) fn append_terminal_execution_fields(
     fields: &mut BTreeMap<String, serde_json::Value>,
     action: &str,

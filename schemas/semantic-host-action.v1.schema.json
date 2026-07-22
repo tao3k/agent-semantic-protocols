@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-host-action.v1.schema.json",
+  "title": "Semantic host action",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "action",
+    "effect",
+    "authority",
+    "subjects"
+  ],
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/actionKind"
+    },
+    "effect": {
+      "$ref": "#/$defs/actionKind"
+    },
+    "authority": {
+      "enum": [
+        "raw-host-action",
+        "raw-shell",
+        "parser-owned-exact-evidence",
+        "parser-owned-search",
+        "ast-patch-evidence",
+        "unknown"
+      ]
+    },
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value",
+          "kind"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "$ref": "#/$defs/subjectKind"
+          }
+        }
+      }
+    },
+    "invocations": {
+      "type": "array",
+      "items": {
+        "$ref": "semantic-command-invocation.v1.schema.json"
+      }
+    }
+  },
+  "$defs": {
+    "actionKind": {
+      "enum": [
+        "read",
+        "edit",
+        "search",
+        "enumerate",
+        "execute",
+        "test",
+        "build",
+        "delete",
+        "unknown"
+      ]
+    },
+    "subjectKind": {
+      "enum": [
+        "registered-language-source",
+        "registered-language-source-pattern",
+        "provider-config-file",
+        "directory",
+        "structural-selector",
+        "other"
+      ]
+    }
+  }
+}

@@ -41,6 +41,15 @@ impl ExactSelectorMerkleProofV1 {
             return Err(ExactSelectorMerkleProofError::LanguageId);
         }
         validate_owner_path(&self.owner_path)?;
+        if !crate::workspace_merkle_v1::verify_owner_inclusion_v1(
+            &self.owner_path,
+            &self.source_blob_digest,
+            &self.owner_subtree_digest,
+            &self.owner_inclusion_proof,
+            &self.workspace_root_digest,
+        ) {
+            return Err(ExactSelectorMerkleProofError::OwnerInclusion);
+        }
         if self.structural_selector.trim().is_empty() {
             return Err(ExactSelectorMerkleProofError::StructuralSelector);
         }
@@ -100,6 +109,33 @@ pub fn verify_projection_digest_v1(
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ContentDigestV1(String);
+
+pub fn blake3_content_digest_v1(bytes: &[u8]) -> ContentDigestV1 {
+    ContentDigestV1(blake3::hash(bytes).to_hex().to_string())
+}
+
+pub fn parse_content_digest_v1(value: &str) -> Result<ContentDigestV1, String> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    {
+        return Err("content digest must be 64 lowercase hexadecimal characters".to_string());
+    }
+    Ok(ContentDigestV1(value.to_string()))
+}
+
+pub fn canonical_content_digest_v1(domain: &[u8], parts: &[&[u8]]) -> ContentDigestV1 {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&(domain.len() as u64).to_be_bytes());
+    hasher.update(domain);
+    hasher.update(&(parts.len() as u64).to_be_bytes());
+    for part in parts {
+        hasher.update(&(part.len() as u64).to_be_bytes());
+        hasher.update(part);
+    }
+    ContentDigestV1(hasher.finalize().to_hex().to_string())
+}
 
 impl ContentDigestV1 {
     pub fn parse(value: impl Into<String>) -> Result<Self, ExactSelectorMerkleProofError> {
@@ -161,6 +197,7 @@ pub enum ExactSelectorMerkleProofError {
     DigestAlgorithm,
     LanguageId,
     OwnerPath,
+    OwnerInclusion,
     ContentDigest,
     StructuralSelector,
 }
@@ -173,6 +210,7 @@ impl fmt::Display for ExactSelectorMerkleProofError {
             Self::DigestAlgorithm => "invalid exact-selector Merkle digest algorithm",
             Self::LanguageId => "languageId must be non-empty",
             Self::OwnerPath => "ownerPath must be a normalized relative path",
+            Self::OwnerInclusion => "owner inclusion proof does not match workspace root",
             Self::ContentDigest => "content digest must be 64 lowercase hexadecimal characters",
             Self::StructuralSelector => "structuralSelector must be non-empty",
         };
@@ -200,7 +238,7 @@ fn validate_owner_path(owner_path: &str) -> Result<(), ExactSelectorMerkleProofE
     Ok(())
 }
 
-fn canonical_digest_v1(domain: &[u8], parts: &[&[u8]]) -> ContentDigestV1 {
+pub(crate) fn canonical_digest_v1(domain: &[u8], parts: &[&[u8]]) -> ContentDigestV1 {
     let mut hasher = blake3::Hasher::new();
     hasher.update(&(domain.len() as u64).to_be_bytes());
     hasher.update(domain);

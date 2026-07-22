@@ -3,14 +3,14 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_hook::{builtin_provider_manifests, provider_manifest_digest};
 use serde_json::{Value, json};
 
 #[test]
 fn client_config_rule_can_deny_tool_use() {
     let root = temp_project_root("client-config-deny");
     let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
+        .expect("write activation");
     write_config(
         &root,
         r#"
@@ -66,7 +66,8 @@ stdinMode = "pipe-candidates"
 fn client_config_rule_denies_shell_alias_scheme_source_argv() {
     let root = temp_project_root("client-config-shell-scheme-source-argv");
     let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
+        .expect("write activation");
     write_config(
         &root,
         r#"
@@ -109,7 +110,8 @@ argvSourceExcludeFlagAny = ["--output", "--output-file", "--out", "-o"]
 fn disabled_client_config_rule_does_not_fire() {
     let root = temp_project_root("client-config-disabled");
     let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
+        .expect("write activation");
     write_config(
         &root,
         r#"
@@ -136,10 +138,11 @@ tool = "Bash"
 }
 
 #[test]
-fn invalid_client_config_auto_sync_repairs_without_blocking_tool_use() {
+fn invalid_client_config_auto_refresh_repairs_without_blocking_tool_use() {
     let root = temp_project_root("client-config-invalid");
     let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
+        .expect("write activation");
     write_config(&root, "[[rules]\ninvalid");
 
     let decision = run_hook_decision(
@@ -153,10 +156,11 @@ fn invalid_client_config_auto_sync_repairs_without_blocking_tool_use() {
 }
 
 #[test]
-fn missing_resident_route_auto_syncs_then_routes_search_to_codex_profile() {
+fn missing_resident_route_auto_refreshes_then_routes_search_to_codex_profile() {
     let root = temp_project_root("client-config-missing-resident-route");
     let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
+        .expect("write activation");
     write_config(
         &root,
         r#"
@@ -169,126 +173,44 @@ residentAgents = []
         &root,
         &activation_path,
         json!({
-            "session_id": "019f-hook-auto-sync-root",
-            "transcript_path": "/tmp/rollout-hook-auto-sync-root.jsonl",
+            "session_id": "019f-hook-auto-refresh-root",
+            "transcript_path": "/tmp/rollout-hook-auto-refresh-root.jsonl",
             "cwd": root,
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust guide"}
+            "tool_input": {"command": "asp rust search pipe owner --workspace . --view seeds"}
         }),
     );
 
     assert_eq!(decision["decision"], "deny", "{decision}");
-    assert_eq!(decision["reasonKind"], "asp-reasoning-routed", "{decision}");
+    assert_eq!(
+        decision["reasonKind"], "subagent-receipt-required",
+        "{decision}"
+    );
     assert_eq!(decision["fields"]["targetAgentName"], "asp_explorer");
     assert_eq!(decision["fields"]["residentChildName"], "asp-explore");
     assert_eq!(
-        decision["fields"]["targetAgentSelectionSource"],
-        "hook-deny-intent"
+        decision["fields"]["configRuleId"],
+        "registered-asp-reasoning-search"
     );
-    assert_eq!(
-        decision["fields"]["targetAgentRegistrySource"],
-        "~/.agent-semantic-protocols/agents/config.toml"
-    );
-    assert_eq!(
-        decision["fields"]["targetAgentHostRegistry"],
-        "~/.codex/agents"
-    );
-    assert_eq!(
-        decision["fields"]["hookConfigStatus"],
-        "repaired-by-asp-sync"
-    );
+    assert_eq!(decision["fields"]["intent"], "reasoning-search");
+    assert_eq!(decision["fields"]["residentName"], "asp-explore");
+    assert_eq!(decision["fields"]["registeredLanguageId"], "rust");
+    assert_eq!(decision["fields"]["hookConfigStatus"], "refreshed-by-hook");
     assert!(
-        decision["fields"]["hookConfigAutoSync"]
+        decision["fields"]["hookConfigAutoRefresh"]
             .as_str()
             .is_some_and(|receipt| receipt.starts_with("completed:")),
-        "{decision}"
-    );
-    assert!(
-        decision["message"]
-            .as_str()
-            .is_some_and(|message| message
-                .contains("Main Agent must select configured profile `asp_explorer`")),
         "{decision}"
     );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn source_access_deny_selects_profile_before_auto_syncing_codex_registry() {
-    let root = temp_project_root("source-access-target-agent-auto-sync");
-    let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
-    write_config(
-        &root,
-        r#"
-[agents]
-
-[[agents.residentAgents]]
-name = "asp-explore"
-role = "asp_explorer"
-lifecycle = "asp-command"
-enabled = true
-codexAgentName = "asp_explorer"
-mainAllowedAspCommandPrefixes = ["help", "agent session"]
-"#,
-    );
-    let agents_dir = root.join(".agent-semantic-protocols/agents");
-    std::fs::create_dir_all(&agents_dir).expect("create ASP agents dir");
-    std::fs::write(
-        agents_dir.join("config.toml"),
-        r#"[agents.asp_explorer]
-host_agent_name = "asp_explorer"
-profile = "asp-explorer_codex.toml"
-projection = "asp-explorer.toml"
-"#,
-    )
-    .expect("write ASP agent registry");
-    std::fs::write(
-        agents_dir.join("asp-explorer_codex.toml"),
-        "name = \"asp_explorer\"\nmodel = \"gpt-5.4-mini\"\nmodel_reasoning_effort = \"low\"\n",
-    )
-    .expect("write ASP Codex profile");
-
-    let decision = run_hook_decision(
-        &root,
-        &activation_path,
-        json!({
-            "session_id": "019f-source-auto-sync-root",
-            "transcript_path": "/tmp/rollout-source-auto-sync-root.jsonl",
-            "cwd": root,
-            "tool_name": "Bash",
-            "tool_input": {"command": "rg -n lifecycle crates/agent-semantic-protocol/src/command/sync.rs"}
-        }),
-    );
-
-    assert_eq!(decision["decision"], "deny", "{decision}");
-    assert_eq!(decision["reasonKind"], "raw-broad-search", "{decision}");
-    assert_eq!(decision["fields"]["targetAgentName"], "asp_explorer");
-    assert_eq!(
-        decision["fields"]["targetAgentRegistryStatus"], "repaired-by-asp-sync",
-        "{decision}"
-    );
-    assert!(
-        decision["fields"]["targetAgentAutoSync"]
-            .as_str()
-            .is_some_and(|receipt| receipt.starts_with("completed:")),
-        "{decision}"
-    );
-    let codex_home = root.join(".codex-home");
-    let codex_config =
-        std::fs::read_to_string(codex_home.join("config.toml")).expect("read Codex config");
-    assert!(codex_config.contains("# BEGIN ASP MANAGED CODEX AGENT REGISTRY"));
-    assert!(codex_config.contains("[agents.asp_explorer]"));
-    assert!(codex_home.join("agents/asp-explorer.toml").is_symlink());
-
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn duplicate_client_config_rule_ids_auto_sync_repair_without_blocking_tool_use() {
+fn duplicate_client_config_rule_ids_auto_refresh_without_blocking_tool_use() {
     let root = temp_project_root("client-config-duplicate-rule-id");
     let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
+        .expect("write activation");
     write_config(
         &root,
         r#"
@@ -315,7 +237,7 @@ tool = "Bash"
 }
 
 #[test]
-fn client_config_schema_shape_errors_auto_sync_repair_without_blocking_tool_use() {
+fn client_config_schema_shape_errors_auto_refresh_without_blocking_tool_use() {
     let cases = [
         (
             "bad-rule-id",
@@ -410,7 +332,7 @@ argv = ["rs-harness"]
     for (name, config, expected_error) in cases {
         let root = temp_project_root(&format!("client-config-schema-shape-{name}"));
         let activation_path = root.join("activation.json");
-        std::fs::write(&activation_path, root_owned_rust_activation_json())
+        std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
             .expect("write activation");
         write_config(&root, config);
         let decision = run_hook_decision(
@@ -424,10 +346,11 @@ argv = ["rs-harness"]
 }
 
 #[test]
-fn wrong_client_config_schema_id_auto_sync_repairs_without_blocking_tool_use() {
+fn wrong_client_config_schema_id_auto_refreshes_without_blocking_tool_use() {
     let root = temp_project_root("client-config-wrong-schema");
     let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
+        .expect("write activation");
     write_config(
         &root,
         r#"
@@ -449,6 +372,42 @@ decision = "block"
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
+#[test]
+fn stale_contract_fingerprint_is_atomically_refreshed_before_the_gate() {
+    let root = temp_project_root("client-config-stale-fingerprint");
+    let activation_path = root.join("activation.json");
+    std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
+        .expect("write activation");
+    let expected_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
+    let stale = agent_semantic_config::default_hook_client_config_template()
+        .replace(&expected_fingerprint, "hook-client-v1-9a7c3cad98a8c0dc");
+    assert_ne!(
+        stale,
+        agent_semantic_config::default_hook_client_config_template(),
+        "fixture must replace the active binary fingerprint"
+    );
+    write_config(&root, &stale);
+
+    let decision = run_hook_decision(
+        &root,
+        &activation_path,
+        json!({"tool_name": "Bash", "tool_input": {"command": "printf ok"}}),
+    );
+
+    assert_hook_config_auto_repaired(&decision, "fingerprint must equal");
+    let refreshed =
+        std::fs::read_to_string(root.join(".agent-semantic-protocols/hooks/config.toml"))
+            .expect("read refreshed config");
+    assert_eq!(
+        refreshed,
+        agent_semantic_config::default_hook_client_config_template()
+    );
+    assert!(refreshed.contains(&expected_fingerprint));
+    assert!(!refreshed.contains("hook-client-v1-9a7c3cad98a8c0dc"));
+
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
 fn write_config(root: &std::path::Path, content: &str) {
     let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
@@ -459,11 +418,11 @@ fn write_config(root: &std::path::Path, content: &str) {
 fn assert_hook_config_auto_repaired(decision: &Value, expected_reason: &str) {
     assert_eq!(decision["decision"], "allow", "{decision}");
     assert_eq!(
-        decision["fields"]["hookConfigStatus"], "repaired-by-asp-sync",
+        decision["fields"]["hookConfigStatus"], "refreshed-by-hook",
         "{decision}"
     );
     assert!(
-        decision["fields"]["hookConfigAutoSync"]
+        decision["fields"]["hookConfigAutoRefresh"]
             .as_str()
             .is_some_and(|receipt| receipt.starts_with("completed:")),
         "{decision}"
@@ -489,48 +448,36 @@ fn temp_project_root(name: &str) -> PathBuf {
     root
 }
 
-fn root_owned_rust_activation_json() -> String {
-    let manifest = builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
-        .expect("rust manifest");
-    let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
-    serde_json::to_string_pretty(&json!({
-        "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
-        "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
-        "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
-        "generatedBy": {"runtime": "agent-semantic-hook", "version": "test"},
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "providerCommandPrefix": [],
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": ["src", "tests", "crates", "examples", "benches"],
-                "configFiles": ["Cargo.toml", "Cargo.lock"],
-                "sourceExtensions": [".rs"],
-                "ignoredPathPrefixes": [
-                    ".cache",
-                    ".direnv",
-                    ".git",
-                    ".idea",
-                    ".jj",
-                    ".run",
-                    ".vscode",
-                    "node_modules",
-                    "target",
-                    ".codex/harness-state",
-                    ".codex/rs-harness"
-                ]
-            }
-        }]
-    }))
-    .expect("serialize root-owned rust activation")
+fn root_owned_rust_activation_json(root: &std::path::Path) -> String {
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"hook-config-fixture\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write Rust project anchor");
+    let provider = root.join(".bin/rs-harness");
+    std::fs::create_dir_all(provider.parent().expect("provider parent"))
+        .expect("create provider bin dir");
+    std::fs::write(&provider, "#!/bin/sh\nexit 0\n").expect("write fixture provider");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&provider)
+            .expect("provider metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&provider, permissions).expect("provider executable");
+    }
+
+    let activation =
+        agent_semantic_hook::build_default_activation(root).expect("build typed activation");
+    assert!(
+        activation
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "rust"),
+        "typed activation must select the Rust provider"
+    );
+    serde_json::to_string_pretty(&activation).expect("serialize typed activation")
 }
 
 fn run_hook_decision(

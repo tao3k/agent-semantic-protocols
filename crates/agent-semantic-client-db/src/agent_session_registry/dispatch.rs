@@ -217,32 +217,32 @@ pub(super) async fn turso_claim_dispatch(
     db_path: &Path,
     request: super::types::AgentSessionDispatchClaimRequest<'_>,
 ) -> Result<super::types::AgentSessionDispatchClaimResult, String> {
-    let native_delivery_target;
-    let native_delivery_generation;
-    let (delivery_target_id, delivery_generation_id) =
-        if let Some(target) = request.delivery_target_override {
-            (target, target)
-        } else {
-            let session = turso_session_by_name(
-                db_path,
-                request.project_id,
-                request.root_session_id,
-                request.name,
-            )
-            .await?
-            .ok_or_else(|| "resident dispatch requires a registered session".to_string())?;
-            if !agent_session_message_target_is_live_bound(&session, request.root_session_id) {
-                return Err("resident dispatch requires a verified live message target".to_string());
-            }
-            native_delivery_target = session
+    let session = turso_session_by_name(
+        db_path,
+        request.project_id,
+        request.root_session_id,
+        request.name,
+    )
+    .await?
+    .ok_or_else(|| "resident dispatch requires a registered session".to_string())?;
+    let native_delivery_target = if request.delivery_target_override.is_none() {
+        if !agent_session_message_target_is_live_bound(&session, request.root_session_id) {
+            return Err("resident dispatch requires a verified live message target".to_string());
+        }
+        Some(
+            session
                 .message_target_id
-                .ok_or_else(|| "live-bound resident has no message target".to_string())?;
-            native_delivery_generation = session.session_id;
-            (
-                native_delivery_target.as_str(),
-                native_delivery_generation.as_str(),
-            )
-        };
+                .as_deref()
+                .ok_or_else(|| "live-bound resident has no message target".to_string())?,
+        )
+    } else {
+        None
+    };
+    let delivery_target_id = request
+        .delivery_target_override
+        .or(native_delivery_target)
+        .ok_or_else(|| "resident dispatch has no delivery target".to_string())?;
+    let delivery_generation_id = session.session_id.as_str();
     let connection = connect_turso_agent_session_registry(db_path).await?;
     execute_turso_statement(
         &connection,
@@ -408,6 +408,10 @@ fn dispatch_claim_action(
 #[cfg(test)]
 #[path = "../../tests/unit/agent_session_dispatch_claim.rs"]
 mod dispatch_claim_tests;
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_dispatch_registry.rs"]
+mod dispatch_registry_tests;
 
 pub(super) async fn turso_complete_dispatch(
     db_path: &Path,

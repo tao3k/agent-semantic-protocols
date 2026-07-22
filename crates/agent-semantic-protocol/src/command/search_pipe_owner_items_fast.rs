@@ -9,8 +9,8 @@ use super::graph::GraphTurboReceiptRequest;
 use super::language_owner_items::{
     LanguageOwnerItemsDispatchRequest, dispatch_language_owner_items,
 };
-use super::query_owner::{OwnerItem, collect_syn_rust_owner_items};
 use super::search_config::AspConfig;
+use super::search_owner::{item::OwnerItem, rust_items::collect_syn_rust_owner_items};
 use super::search_pipe_args::{OwnerQueryArgs, parse_search_owner_items_query_args};
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_view::reject_non_graph_turbo_receipt;

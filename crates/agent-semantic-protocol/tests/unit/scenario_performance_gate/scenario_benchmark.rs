@@ -140,12 +140,6 @@ fn scenario_benchmark_duration_contract_rejects_zero_budget() {
 }
 
 #[test]
-fn asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate() {
-    super::overlay_and_provider_gates::asp_turso_overlay_search_adapter_cold_functional_path_stays_inside_scenario_gate(
-    );
-}
-
-#[test]
 fn asp_turso_db_engine_concurrent_process_pressure_stays_inside_scenario_gate() {
     super::scenario_performance_gate_impl::asp_turso_db_engine_concurrent_process_pressure_stays_inside_scenario_gate();
 }

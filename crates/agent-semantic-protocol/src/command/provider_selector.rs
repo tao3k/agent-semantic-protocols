@@ -1,13 +1,7 @@
 use agent_semantic_hook::HookRuntime;
 
 fn registered_language_facades() -> Vec<String> {
-    let mut facades = agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .map(|manifest| manifest.language_id.to_string())
-        .collect::<Vec<_>>();
-    facades.sort();
-    facades.dedup();
-    facades
+    agent_semantic_hook::registered_language_ids()
 }
 
 pub(super) fn registered_language_facades_line() -> String {
@@ -183,6 +177,34 @@ pub(super) fn is_provider_owned_structural_code_query(language_id: &str, args: &
         return false;
     };
     selector.starts_with(selector_prefix) && selector.contains("#item/")
+}
+
+pub(super) fn provider_owned_structural_owner_path<'a>(
+    language_id: &str,
+    args: &'a [String],
+) -> Option<&'a str> {
+    if !is_provider_owned_structural_code_query(language_id, args) {
+        return None;
+    }
+    let selector_prefix = match language_id {
+        "rust" => "rust://",
+        "typescript" => "typescript://",
+        _ => return None,
+    };
+    option_value(args, "--selector")?
+        .strip_prefix(selector_prefix)?
+        .split_once('#')
+        .map(|(owner_path, _)| owner_path)
+}
+
+pub(super) fn provider_owned_structural_selector<'a>(
+    language_id: &str,
+    args: &'a [String],
+) -> Option<&'a str> {
+    if !is_provider_owned_structural_code_query(language_id, args) {
+        return None;
+    }
+    option_value(args, "--selector")
 }
 
 pub(super) fn reject_registered_source_selector_query(

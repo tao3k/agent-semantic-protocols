@@ -67,6 +67,15 @@ workspace.
 
 * Root Rust Runtime
 
+Configured-resident denies project to exactly one executable v1
+interactive-loop command.  The Agent enters the selected resident session
+directly and must not interpret routing fields, recovery prose, or receipt
+metadata first.  The complete typed decision remains durable in hook event
+state and is available through =--emit decision= for machine validation; the
+normal Codex/Claude deny envelope omits that serialized decision from
+=additionalContext=.  This is a breaking refinement of the existing v1
+contract, not a new schema version.
+
 The v1 implementation target is the shared protocol binary in this repository.
 The hook runtime itself stays in the =agent-semantic-hook= library crate:
 

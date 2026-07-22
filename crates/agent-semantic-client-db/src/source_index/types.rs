@@ -366,12 +366,25 @@ impl ClientDbSourceIndexRefreshResult {
     }
 }
 
+/// Membership authority used when applying a source-index snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ClientDbSourceIndexMembershipChangeSet {
+    /// Publish a complete cold snapshot and reconcile its full membership.
+    FullSnapshot,
+    /// Apply only the owner leaves committed by a Merkle overlay.
+    MerkleOverlay {
+        changed_owner_paths: Vec<ClientDbSourceIndexPath>,
+        removed_owner_paths: Vec<ClientDbSourceIndexPath>,
+    },
+}
+
 /// Request for applying a source-index import to the DB.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexRefreshRequest {
     pub import: ClientDbSourceIndexImport,
     pub file_count: u32,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub membership_change_set: ClientDbSourceIndexMembershipChangeSet,
 }
 
 /// DB-owned refresh result for source-index generation writes.

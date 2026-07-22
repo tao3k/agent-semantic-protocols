@@ -10,11 +10,10 @@ use super::recovery::command_line;
 use super::source_access_routes::{
     classify_direct_read_action, direct_read_language_ids, direct_read_routes,
 };
-use crate::event_state::missing_search_pipe_after_prime;
+use crate::event_state::asp_command_tokens;
 use crate::{
-    ActivatedProvider, ClientHookConfig, DecisionKind, DecisionRoute, DecisionRouteKind,
-    DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
-    HOOK_PROTOCOL_VERSION, HookDecision, HookRuntime, OperationIntent, ReasonKind, ToolAction,
+    ActivatedProvider, ClientHookConfig, DecisionRoute, DecisionRouteKind, DecisionSubject,
+    HookDecision, HookRuntime, OperationIntent, ReasonKind, ToolAction,
     collect_source_selector_matches, collect_tool_actions, payload_string, subject_for_action,
 };
 
@@ -185,13 +184,7 @@ fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
 }
 
 fn classify_non_tool_event(request: &HookClassificationRequest<'_>) -> Option<HookDecision> {
-    classify_stop(
-        request.registry,
-        request.platform,
-        request.event,
-        request.payload,
-    )
-    .or_else(|| classify_user_prompt(request.platform, request.event, request.payload))
+    classify_user_prompt(request.platform, request.event, request.payload)
 }
 
 fn classify_tool_actions(
@@ -203,11 +196,11 @@ fn classify_tool_actions(
         config,
         platform,
         event,
-        payload,
+        payload: _,
     } = request;
     if let Some(decision) = actions
         .iter()
-        .find_map(|action| config.classify(registry, platform, event, payload, action))
+        .find_map(|action| config.classify(registry, platform, event, action))
     {
         return Some(decision);
     }
@@ -240,75 +233,6 @@ fn prompt_is_locator_only(prompt: &str) -> bool {
         && !prompt.contains("show code")
         && !prompt.contains("read code")
         && !prompt.contains("extract code")
-}
-
-fn classify_stop(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    payload: &Value,
-) -> Option<HookDecision> {
-    if event != "stop" {
-        return None;
-    }
-    let session_id =
-        payload_string(payload, "session_id").or_else(|| payload_string(payload, "sessionId"));
-    let transcript_path = payload_string(payload, "transcript_path")
-        .or_else(|| payload_string(payload, "transcriptPath"));
-    let feedback = missing_search_pipe_after_prime(
-        std::path::Path::new(&registry.project_root),
-        session_id.as_deref(),
-        transcript_path.as_deref(),
-    )
-    .ok()
-    .flatten()?;
-    let mut fields = std::collections::BTreeMap::new();
-    fields.insert(
-        "hookFeedback".to_string(),
-        Value::String("search-pipe-required".to_string()),
-    );
-    fields.insert(
-        "languageId".to_string(),
-        Value::String(feedback.language_id.clone()),
-    );
-    Some(HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Block,
-        reason_kind: ReasonKind::None,
-        language_ids: vec![feedback.language_id.clone()],
-        subject: DecisionSubject::default(),
-        routes: Vec::new(),
-        message: search_pipe_required_stop_message(&feedback.language_id),
-        fields,
-    })
-}
-
-fn search_pipe_required_stop_message(language_id: &str) -> String {
-    [
-        "ASP hook blocked Stop because this prompt ran `search prime` but has not shown final evidence beyond the prime map."
-            .to_string(),
-        "The prime packet is only a project/owner map; answer from a justified route frontier, not from prime alone."
-            .to_string(),
-        String::new(),
-        "## Run Next".to_string(),
-        "Choose the narrowest ASP route justified by the current evidence state.".to_string(),
-        String::new(),
-        "## Rules".to_string(),
-        "Follow `recommendedNext` or `nextCommand` when the prime packet supplied one."
-            .to_string(),
-        format!(
-            "Run `asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds` only when the evidence is still ambiguous and needs query refinement."
-        ),
-        "If an owner, symbol, dependency, test/failure, or exact selector is already known, skip pipe and use the narrower owner/reasoning/query route."
-            .to_string(),
-        "Do not repeat `search prime`. Do not answer from prime alone.".to_string(),
-    ]
-    .join("\n")
 }
 
 pub(crate) fn materialize_apply_patch_decision(
@@ -463,7 +387,7 @@ pub(crate) fn materialize_agent_search_json_decision(
     action: &ToolAction,
     tokens: &[String],
 ) -> Option<HookDecision> {
-    if !crate::command::asp_invocation_indices(tokens).is_empty() {
+    if asp_command_tokens(tokens) {
         return None;
     }
     if !tokens.iter().any(|token| token == "--json") {
