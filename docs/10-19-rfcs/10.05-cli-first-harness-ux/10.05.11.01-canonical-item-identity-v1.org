@@ -1,0 +1,65 @@
+#+title: Canonical item identity across language harnesses
+
+* Decision
+
+The public structural-selector protocol remains v1. Every registered language
+harness MUST emit and resolve =asp.canonical-item-selector.v1=. ASP core
+validates and transports the packet; it MUST NOT reconstruct a
+language-specific item identity.
+
+The shared identity contains =languageId=, =kind=, =symbol=, and an ordered
+=scopes[]= list. Each scope contains =relation=, =kind=, and =symbol=.
+=CanonicalItemSelectorV1= binds those facts to one =structuralSelector=. The
+outer exact-projection packet supplies =providerId= and =ownerPath=.
+Language-specific concepts live in scope facts:
+
+- Rust may emit implementation-owner and trait-owner scopes;
+- TypeScript may emit class, interface, namespace, or type scopes;
+- Python may emit class and nested-function scopes;
+- Julia may emit module, type, and function scopes;
+- Gerbil Scheme may emit module, class, syntax, and lexical scopes;
+- Org and Markdown may emit document, heading, and block scopes.
+
+These examples do not form a closed enum. Scope vocabulary is provider-owned
+and registered through the provider query pack. The shared schema defines the
+shape and invariants, not a Rust or package-manager taxonomy.
+
+* Single authority
+
+The language harness parser is the sole canonical item identity producer. Its
+owner discovery, exact projection, graph facts, cache artifacts, and relocation
+resolver MUST consume the same identity and selector encoder. Root ASP routes
+the provider packet as opaque typed identity and MUST NOT contain an
+independent Rust, TypeScript, Python, Julia, Gerbil, Org, or Markdown selector
+constructor.
+
+The selector's =structuralSelector= is canonical. Bounded alias rules belong to
+the provider query pack and never become cache, proof, graph, or receipt
+authority. An alias resolves only inside the exact owner and only when it
+denotes one canonical identity. Duplicate aliases return typed ambiguity with
+sorted canonical selectors.
+
+Relocation compares canonical identity facts and current live owner evidence.
+Line ranges remain display metadata. A provider cannot use an index row,
+unqualified symbol, range, or filename heuristic as canonical identity.
+
+* Registry contract
+
+Every active provider descriptor and query pack declares support for
+=asp.canonical-item-selector.v1= and the scope relations it emits. Activation
+fails closed when a provider advertises exact item projection without this
+capability. Org and Markdown may share one Orgize implementation but retain
+their distinct language IDs and selector dialects.
+
+* Acceptance
+
+- all registered language harnesses validate emitted packets against the shared
+  schema;
+- owner discovery and exact projection return the same canonical selector;
+- at least one nested-item fixture per language proves scope-qualified
+  resolution;
+- duplicate unqualified aliases return sorted canonical alternatives;
+- Rust enclosing impls are materializable and duplicate methods are separately
+  addressable;
+- genuine missing, kind-mismatch, and ambiguity states remain distinct;
+- ASP core contains no language-specific canonical item constructor.

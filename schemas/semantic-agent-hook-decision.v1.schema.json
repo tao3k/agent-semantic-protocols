@@ -235,8 +235,12 @@
     },
     "fields": {
       "type": "object",
-      "properties": {
-        "configRuleId": {
+    "properties": {
+      "agentAction": {
+        "$ref": "agent-action.v1.schema.json",
+        "description": "Typed action, authority, effect, and subjects derived from the host tool payload."
+      },
+      "configRuleId": {
           "$ref": "#/$defs/identifier",
           "description": "Client hook config rule id that produced this decision."
         },

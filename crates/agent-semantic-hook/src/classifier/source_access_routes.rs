@@ -15,6 +15,7 @@ pub(super) fn classify_direct_read_action(
     platform: &str,
     event: &str,
     action: &ToolAction,
+    agent_action: Option<&crate::tool_action::AgentAction>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
@@ -166,7 +167,11 @@ pub(super) fn classify_direct_read_action(
         ));
     }
 
-    if action.operation != OperationIntent::DirectRead {
+    let inferred_execute_read = action.operation == OperationIntent::ShellCommand
+        && agent_action.is_some_and(|agent_action| {
+            agent_action.effect == crate::tool_action::AgentActionKind::Read
+        });
+    if action.operation != OperationIntent::DirectRead && !inferred_execute_read {
         return None;
     }
 
@@ -176,14 +181,25 @@ pub(super) fn classify_direct_read_action(
         return None;
     }
 
-    Some(direct_source_read_decision(
-        platform,
-        event,
-        action,
-        matches,
-        semantic_ast_patch_enabled,
-        recovery_prompt,
-    ))
+    if inferred_execute_read {
+        Some(derive_execute_read_decision(
+            platform,
+            event,
+            action,
+            matches,
+            semantic_ast_patch_enabled,
+            recovery_prompt,
+        ))
+    } else {
+        Some(direct_source_read_decision(
+            platform,
+            event,
+            action,
+            matches,
+            semantic_ast_patch_enabled,
+            recovery_prompt,
+        ))
+    }
 }
 
 type DirectReadMatch<'provider> = SourceSelectorMatch<'provider>;
@@ -210,6 +226,36 @@ fn direct_source_read_decision(
         platform,
         event,
         ReasonKind::DirectSourceRead,
+        action,
+        direct_read_language_ids(&matches),
+        subject_for_action(action),
+        routes,
+        message,
+    )
+}
+
+fn derive_execute_read_decision(
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    matches: Vec<DirectReadMatch<'_>>,
+    semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
+) -> HookDecision {
+    let routes = direct_read_routes(&matches);
+    let providers = providers_from_matches(&matches);
+    let message = source_access_recovery_message(
+        platform,
+        "bulk-source-dump",
+        &providers,
+        &routes,
+        semantic_ast_patch_enabled,
+        recovery_prompt,
+    );
+    deny_for_action(
+        platform,
+        event,
+        ReasonKind::BulkSourceDump,
         action,
         direct_read_language_ids(&matches),
         subject_for_action(action),

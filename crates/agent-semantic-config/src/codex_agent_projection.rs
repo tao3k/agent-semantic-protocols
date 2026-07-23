@@ -143,7 +143,7 @@ fn ensure_default_codex_agent_tables(root: &mut toml::Table) -> Result<(), Strin
             session_lifetime: "resident",
             roles: &["subagent", "search"],
             permissions: &["read-only"],
-            sandbox_mode: "workspace-write",
+            sandbox_mode: "read-only",
         },
     )?;
     ensure_codex_agent_table(

@@ -1,6 +1,5 @@
 //! PATH-visible `asp` binary installation helpers.
 
-use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,69 +9,106 @@ const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";
 const SEMANTIC_AGENT_BIN_DIR_ENV: &str = "SEMANTIC_AGENT_BIN_DIR";
 pub(crate) struct ProtocolBinaryInstall {
     pub(crate) path: PathBuf,
-    pub(crate) paths: Vec<PathBuf>,
     pub(crate) status: &'static str,
     pub(crate) artifact_digest: String,
 }
 
-pub(crate) fn ensure_protocol_binary_installed_for_path() -> Result<ProtocolBinaryInstall, String> {
-    let current_exe = env::current_exe()
-        .map_err(|error| format!("failed to resolve current protocol binary: {error}"))?;
-    let current_name = current_exe
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default();
-    if current_name.trim_end_matches(".exe") != SEMANTIC_AGENT_PROTOCOL_BIN {
-        return Err(format!(
-            "semantic hook setup must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}` so generated hooks can resolve the same binary on PATH"
-        ));
-    }
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ProtocolBinaryInstallPlan {
+    current_exe: PathBuf,
+    target: PathBuf,
+}
 
-    if let Some(bin_dir) = env::var_os(SEMANTIC_AGENT_BIN_DIR_ENV).filter(|value| !value.is_empty())
-    {
-        let bin_dir = PathBuf::from(bin_dir);
-        fs::create_dir_all(&bin_dir)
-            .map_err(|error| format!("failed to create {}: {error}", bin_dir.display()))?;
-        require_path_contains_dir(&bin_dir)?;
-        let target = bin_dir.join(SEMANTIC_AGENT_PROTOCOL_BIN);
-        return install_protocol_binary_targets(&current_exe, &[target]);
-    }
+impl ProtocolBinaryInstallPlan {
+    pub(crate) fn capture() -> Result<Self, String> {
+        let current_exe = env::current_exe()
+            .map_err(|error| format!("failed to resolve current protocol binary: {error}"))?;
+        let current_name = current_exe
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        if current_name.trim_end_matches(".exe") != SEMANTIC_AGENT_PROTOCOL_BIN {
+            return Err(format!(
+                "semantic hook setup must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}` so generated hooks can resolve the same binary on PATH"
+            ));
+        }
 
-    let existing = protocol_binaries_on_path();
-    if !existing.is_empty() {
-        return install_protocol_binary_targets(&current_exe, &existing);
+        let explicit_bin_dir = env::var_os(SEMANTIC_AGENT_BIN_DIR_ENV)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        if let Some(bin_dir) = explicit_bin_dir.as_ref() {
+            fs::create_dir_all(&bin_dir)
+                .map_err(|error| format!("failed to create {}: {error}", bin_dir.display()))?;
+            require_path_contains_dir(&bin_dir)?;
+        }
+        let target = resolve_protocol_binary_install_target(
+            &current_exe,
+            explicit_bin_dir.as_deref(),
+            &path_dirs(),
+        )?;
+        Ok(Self {
+            current_exe,
+            target,
+        })
     }
+}
 
-    let target_dir = first_writable_path_dir().ok_or_else(|| {
-        format!(
-            "`{SEMANTIC_AGENT_PROTOCOL_BIN}` is not on PATH and no writable PATH directory was found; set {SEMANTIC_AGENT_BIN_DIR_ENV} to a PATH directory and rerun install"
-        )
-    })?;
-    let target = target_dir.join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    install_protocol_binary_targets(&current_exe, &[target])
+pub(crate) fn ensure_protocol_binary_installed(
+    plan: &ProtocolBinaryInstallPlan,
+) -> Result<ProtocolBinaryInstall, String> {
+    install_protocol_binary_target(&plan.current_exe, &plan.target)
 }
 
 pub(crate) fn protocol_binary_on_path() -> Option<PathBuf> {
-    protocol_binaries_on_path().into_iter().next()
-}
-
-fn protocol_binaries_on_path() -> Vec<PathBuf> {
-    let mut seen = BTreeSet::new();
     path_dirs()
         .into_iter()
         .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
-        .filter(|candidate| candidate.is_file() && seen.insert(candidate.clone()))
-        .collect()
+        .find(|candidate| candidate.is_file())
 }
 
-pub(crate) fn install_protocol_binary_targets(
+fn resolve_protocol_binary_install_target(
+    current_exe: &Path,
+    explicit_bin_dir: Option<&Path>,
+    path_dirs: &[PathBuf],
+) -> Result<PathBuf, String> {
+    if let Some(bin_dir) = explicit_bin_dir {
+        return Ok(bin_dir.join(SEMANTIC_AGENT_PROTOCOL_BIN));
+    }
+    let current_identity = fs::canonicalize(current_exe).map_err(|error| {
+        format!(
+            "failed to resolve current protocol binary identity {}: {error}",
+            current_exe.display()
+        )
+    })?;
+    let target = path_dirs
+        .into_iter()
+        .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            format!(
+                "`{SEMANTIC_AGENT_PROTOCOL_BIN}` is not resolvable on PATH; set {SEMANTIC_AGENT_BIN_DIR_ENV} to the single install directory"
+            )
+        })?;
+    let target_identity = fs::canonicalize(&target).map_err(|error| {
+        format!(
+            "failed to resolve PATH protocol binary identity {}: {error}",
+            target.display()
+        )
+    })?;
+    if target_identity != current_identity {
+        return Err(format!(
+            "refusing to update unrelated PATH binary {}; set {SEMANTIC_AGENT_BIN_DIR_ENV} to the single install directory",
+            target.display()
+        ));
+    }
+    Ok(target)
+}
+
+pub(crate) fn install_protocol_binary_target(
     source: &Path,
-    targets: &[PathBuf],
+    target: &Path,
 ) -> Result<ProtocolBinaryInstall, String> {
-    let path = targets
-        .first()
-        .cloned()
-        .ok_or_else(|| "protocol binary installation requires at least one target".to_string())?;
+    let path = target.to_path_buf();
     let artifact_digest = protocol_binary_artifact_digest(source).ok_or_else(|| {
         format!(
             "failed to derive BLAKE3 protocol artifact digest for {}",
@@ -81,29 +117,12 @@ pub(crate) fn install_protocol_binary_targets(
     })?;
     let artifact = digest_addressed_protocol_binary_path(&path, &artifact_digest)?;
     stage_digest_addressed_protocol_binary(source, &artifact)?;
-    let mut status = "already-present";
-    for target in targets {
-        status = merge_install_status(
-            status,
-            install_protocol_binary_from_artifact(target, &artifact)?,
-        );
-    }
+    let status = install_protocol_binary_from_artifact(target, &artifact)?;
     Ok(ProtocolBinaryInstall {
         path,
-        paths: targets.to_vec(),
         status,
         artifact_digest,
     })
-}
-
-fn merge_install_status(current: &'static str, next: &'static str) -> &'static str {
-    if current == "updated" || next == "updated" {
-        "updated"
-    } else if current == "installed" || next == "installed" {
-        "installed"
-    } else {
-        "already-present"
-    }
 }
 
 fn install_protocol_binary_from_artifact(
@@ -274,30 +293,6 @@ fn require_path_contains_dir(dir: &Path) -> Result<(), String> {
             "{SEMANTIC_AGENT_BIN_DIR_ENV}={} is not present in PATH; generated hooks use bare `{SEMANTIC_AGENT_PROTOCOL_BIN}`",
             dir.display()
         ))
-    }
-}
-
-fn first_writable_path_dir() -> Option<PathBuf> {
-    path_dirs()
-        .into_iter()
-        .find(|dir| dir.is_dir() && directory_is_writable(dir))
-}
-
-fn directory_is_writable(dir: &Path) -> bool {
-    let probe = dir.join(format!(
-        ".agent-semantic-protocol-install-check-{}",
-        std::process::id()
-    ));
-    match fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&probe)
-    {
-        Ok(_) => {
-            let _ = fs::remove_file(probe);
-            true
-        }
-        Err(_) => false,
     }
 }
 

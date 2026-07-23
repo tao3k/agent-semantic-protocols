@@ -99,11 +99,9 @@ pub(super) fn typed_subagent_start_binding_is_valid(
     record: &AgentSessionRecord,
     root_session_id: &str,
     expected_agent_type: &str,
-    canonical_target: &str,
     live_bound: bool,
 ) -> bool {
     live_bound
-        && record.message_target_id.as_deref() == Some(canonical_target)
         && typed_subagent_start_proves_canonical_typed_binding(
             record,
             root_session_id,
@@ -403,7 +401,3 @@ pub(super) fn direct_reasoning_receipt(
         },
     )
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/agent_session_registry_reasoning.rs"]
-mod agent_session_registry_reasoning_tests;

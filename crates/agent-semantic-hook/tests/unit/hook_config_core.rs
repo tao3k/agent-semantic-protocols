@@ -1,11 +1,11 @@
-use super::{HookClientRuleMatchConfig, RuleMatch};
+use super::compiled_rule::{CompiledHookRule, RuleMatch};
 use crate::tool_action::{OperationIntent, ToolAction, ToolSurface};
 
 fn configured_projection_rule(
     document_format: agent_semantic_config::HookClientStructuredFormat,
     optional_subcommand_any: Vec<String>,
 ) -> RuleMatch {
-    RuleMatch::try_from(HookClientRuleMatchConfig {
+    RuleMatch::try_from(agent_semantic_config::HookClientRuleMatchConfig {
         structured_projection: Some(
             agent_semantic_config::HookClientStructuredProjectionMatchConfig {
                 binary: "sh".to_string(),
@@ -37,7 +37,7 @@ fn source_expansion_rule_rejects_non_read_effect_contract() {
     rule.match_config.effect_any = vec![agent_semantic_config::HookClientActionKind::Edit];
     let resident_agents = config.agents.resident_agents;
 
-    let error = match super::CompiledHookRule::try_from_with_agents(rule, &resident_agents) {
+    let error = match CompiledHookRule::try_from_with_agents(rule, &resident_agents) {
         Ok(_) => panic!("source expansion must require a typed read effect"),
         Err(error) => error,
     };
@@ -81,7 +81,7 @@ fn bounded_projection_model_comes_from_config_and_is_fail_closed() {
 
 #[test]
 fn workspace_regular_file_matching_does_not_use_language_extensions() {
-    let rule = RuleMatch::try_from(HookClientRuleMatchConfig {
+    let rule = RuleMatch::try_from(agent_semantic_config::HookClientRuleMatchConfig {
         argv_workspace_regular_file: true,
         ..Default::default()
     })

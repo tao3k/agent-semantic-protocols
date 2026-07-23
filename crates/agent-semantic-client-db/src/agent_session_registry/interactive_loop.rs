@@ -279,7 +279,7 @@ fn resident_child_state_and_choices<'a>(
             label: "Dispatch the routed command to the configured resident.",
             platform_action: std::borrow::Cow::Borrowed(ready_dispatch_action(name)),
             next_state: AgentSessionLoopState::WaitReceipt,
-            required_inputs: &["residentCommand", "dispatchIdentity"],
+            required_inputs: &["deniedAspCommand", "receiptKind"],
         }],
         vec![
             AgentSessionLoopTraceStep {

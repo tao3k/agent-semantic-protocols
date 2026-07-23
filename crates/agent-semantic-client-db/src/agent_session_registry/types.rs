@@ -11,6 +11,55 @@ pub const AGENT_SESSION_STATUS_IDLE: &str = "idle";
 pub const AGENT_SESSION_STATUS_ARCHIVED: &str = "archived";
 pub const AGENT_SESSION_STATUS_INVALID: &str = "invalid";
 
+macro_rules! agent_session_registry_id {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+
+            #[must_use]
+            pub fn into_string(self) -> String {
+                self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_string())
+            }
+        }
+    };
+}
+
+agent_session_registry_id!(
+    /// State Core project id that owns agent session rows.
+    AgentSessionProjectId
+);
+agent_session_registry_id!(
+    /// Root host session id used as the routing tree root.
+    AgentSessionRootSessionId
+);
+agent_session_registry_id!(
+    /// Configured resident lane name such as `asp-explore`.
+    AgentSessionResidentName
+);
+agent_session_registry_id!(
+    /// Exact resident dispatch identity.
+    AgentSessionDispatchIdentity
+);
+
 /// Durable agent session registry row stored in the Turso DB Engine.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AgentSessionRecord {
@@ -405,6 +454,34 @@ pub struct AgentSessionToolEventRequest<'a> {
     pub evidence_ref: Option<&'a str>,
     /// Mutation timestamp supplied by the caller.
     pub now: i64,
+}
+
+/// Semantic inputs used to derive one stable resident dispatch identity.
+pub struct AgentSessionDispatchIdentityInput<'a> {
+    /// Root Codex session id that owns the logical dispatch.
+    pub root_session_id: &'a str,
+    /// Stable resident registry lane name.
+    pub name: &'a str,
+    /// Fresh verified canonical host target.
+    pub canonical_target: &'a str,
+    /// Versioned receipt family expected from the command.
+    pub receipt_kind: &'a str,
+    /// Exact argv after parser-owned tokenization.
+    pub canonical_argv: &'a [String],
+}
+
+/// Stable identity and digest derived from semantic dispatch inputs.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct AgentSessionDispatchDerivedIdentity {
+    /// Versioned logical identity shared by claims across processes and turns.
+    #[serde(rename = "dispatchIdentity")]
+    pub dispatch_identity: String,
+    /// SHA-256 digest of the canonical argv JSON.
+    #[serde(rename = "commandDigest")]
+    pub command_digest: String,
+    /// Canonical JSON array consumed by dispatch execution.
+    #[serde(rename = "canonicalCommandJson")]
+    pub canonical_command_json: String,
 }
 
 /// Durable dispatch lease for one exact resident-child command.

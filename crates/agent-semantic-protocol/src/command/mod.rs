@@ -33,6 +33,7 @@ mod install_provider_target;
 mod install_provider_workspace_artifact;
 mod install_provider_workspace_cas;
 mod install_provider_workspace_descriptor;
+mod install_provider_workspace_materialization;
 mod install_provider_workspace_source;
 mod language_owner_items;
 mod language_projection_import;
@@ -59,7 +60,6 @@ mod root_language_facade;
 mod search_config;
 mod search_dependency_seed;
 mod search_failure_render;
-mod search_owner;
 mod search_pipe;
 mod search_pipe_action_frontier;
 mod search_pipe_action_model;
@@ -102,7 +102,7 @@ pub(crate) use dispatch::run_protocol_command;
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;
 pub(in crate::command) use hook_runtime_context::payload_indicates_subagent_context;
 pub(in crate::command) use protocol_binary::{
-    ensure_protocol_binary_installed_for_path, protocol_binary_on_path,
+    ProtocolBinaryInstallPlan, ensure_protocol_binary_installed, protocol_binary_on_path,
 };
 pub(in crate::command) use protocol_version::{
     protocol_version_line, run_protocol_version_command,

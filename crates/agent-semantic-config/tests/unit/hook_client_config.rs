@@ -230,7 +230,7 @@ fn default_template_round_trips_through_config_parser() {
         .expect("TOML projection matcher");
     assert_eq!(toml_projection.binary, "yq");
     assert_eq!(toml_projection.optional_subcommand_any, ["eval", "e"]);
-    assert_eq!(config.rules.len(), 14);
+    assert_eq!(config.rules.len(), 15);
     assert_eq!(
         config
             .rules
@@ -240,6 +240,7 @@ fn default_template_round_trips_through_config_parser() {
         [
             "registered-asp-reasoning-search",
             "resident-testing-dispatch",
+            "deny-raw-registered-source-search-action",
             "deny-raw-registered-source-action",
             "deny-agent-search-json",
             "materialize-apply-patch-policy",

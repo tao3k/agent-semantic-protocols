@@ -133,7 +133,7 @@ fn testing_live_transport_gate_uses_testing_target_and_receipt() {
     assert!(
         ready.choices[0]
             .platform_action
-            .contains("asp-testing-execution-v1")
+            .contains("configured receipt kind")
     );
 }
 

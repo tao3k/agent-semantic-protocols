@@ -15,11 +15,25 @@ pub fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
         .map(|stages| {
             stages
                 .into_iter()
-                .flat_map(|stage| stage.words().to_vec())
+                .flat_map(|stage| stage.words().iter().skip(1).cloned().collect::<Vec<_>>())
                 .collect::<Vec<_>>()
         });
 
-    stable_unique(parsed_words.as_deref().unwrap_or(tokens))
+    let mut candidates = parsed_words.unwrap_or_else(|| tokens.to_vec());
+    candidates.extend(crate::bash_parser::bash_heredoc_literal_candidates(command));
+    stable_unique(&candidates)
+}
+
+/// Returns stable literal candidates embedded in already parsed command tokens.
+///
+/// This keeps interpreter `-c` payload discovery in the command parser owner
+/// while leaving language/provider classification to the caller.
+pub fn embedded_literal_candidates(tokens: &[String]) -> Vec<String> {
+    let candidates = tokens
+        .iter()
+        .flat_map(|token| crate::bash_parser::quoted_literal_candidates(token))
+        .collect::<Vec<_>>();
+    stable_unique(&candidates)
 }
 
 /// Applies the caller-owned typed predicate to one parser-produced candidate.

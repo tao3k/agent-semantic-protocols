@@ -1,6 +1,8 @@
 use std::sync::{Arc, Barrier, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
+
 use super::{ManagedHookConfigStatus, materialize};
 
 fn test_root(label: &str) -> std::path::PathBuf {
@@ -14,14 +16,31 @@ fn test_root(label: &str) -> std::path::PathBuf {
     ))
 }
 
+fn write_sidecar(path: &std::path::Path, bytes: &[u8]) {
+    let sidecar = path.with_file_name(format!(
+        "{}.managed.sha256",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .expect("config file name")
+    ));
+    let digest = Sha256::digest(bytes);
+    let hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    std::fs::write(sidecar, hex).expect("write sidecar");
+}
+
 #[test]
 fn hook_owned_refresh_covers_create_stale_and_warm_cycles() {
     let root = test_root("lifecycle");
     let path = root.join("hooks").join("config.toml");
 
     assert_eq!(materialize(&path), Ok(ManagedHookConfigStatus::Created));
-    std::fs::write(&path, b"contractFingerprint = \"stale\"\n").expect("write stale config");
-    assert_eq!(materialize(&path), Ok(ManagedHookConfigStatus::Refreshed));
+    let stale = b"contractFingerprint = \"stale\"\n";
+    std::fs::write(&path, stale).expect("write stale config");
+    write_sidecar(&path, stale);
+    assert_eq!(materialize(&path), Ok(ManagedHookConfigStatus::Migrated));
     assert_eq!(materialize(&path), Ok(ManagedHookConfigStatus::Current));
     assert_eq!(
         std::fs::read_to_string(&path).expect("read refreshed config"),
@@ -37,8 +56,9 @@ fn concurrent_stale_refresh_is_lock_free_and_converges() {
     let root = test_root("concurrent");
     let path = Arc::new(root.join("hooks").join("config.toml"));
     std::fs::create_dir_all(path.parent().expect("config parent")).expect("create parent");
-    std::fs::write(path.as_ref(), b"contractFingerprint = \"stale\"\n")
-        .expect("write stale config");
+    let stale = b"contractFingerprint = \"stale\"\n";
+    std::fs::write(path.as_ref(), stale).expect("write stale config");
+    write_sidecar(path.as_ref(), stale);
 
     let barrier = Arc::new(Barrier::new(WORKERS));
     let (sender, receiver) = mpsc::channel();
@@ -63,7 +83,7 @@ fn concurrent_stale_refresh_is_lock_free_and_converges() {
             .expect("concurrent refresh succeeds");
         assert!(matches!(
             status,
-            ManagedHookConfigStatus::Current | ManagedHookConfigStatus::Refreshed
+            ManagedHookConfigStatus::Current | ManagedHookConfigStatus::Migrated
         ));
     }
     for worker in workers {

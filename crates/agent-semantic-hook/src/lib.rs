@@ -19,6 +19,7 @@ mod codex_project_trust;
 mod codex_trust;
 mod command;
 pub use command::semantic_shell_tokens;
+pub use tool_action::direct_source_read_paths;
 mod event_replay;
 mod event_state;
 mod event_state_subagent_model_drift;
@@ -81,8 +82,9 @@ pub use event_state_subagent_model_drift::{
     latest_unmanaged_subagent_start,
 };
 pub use hook_config::{
-    AspSessionPolicy, ClientHookConfig, default_client_config_path, default_client_config_template,
-    load_client_config, load_client_config_for_project, load_embedded_client_config_for_project,
+    AspSessionPolicy, ClientHookConfig, ConfiguredResidentTarget, default_client_config_path,
+    default_client_config_template, load_client_config, load_client_config_for_project,
+    load_embedded_client_config_for_project,
 };
 pub use hook_config_global::default_global_client_config_path;
 pub use protocol::{

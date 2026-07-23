@@ -223,6 +223,11 @@ fn validate_source_snapshot_capability(
             "asp.exact-source-query-result.v1",
         ),
         (
+            "canonicalItemSelectorSchemaId",
+            descriptor.canonical_item_selector_schema_id.as_str(),
+            agent_semantic_content_identity::canonical_item_identity::CANONICAL_ITEM_SELECTOR_SCHEMA_ID,
+        ),
+        (
             "sourceSnapshotEnvelopeSchemaId",
             descriptor.source_snapshot_envelope_schema_id.as_str(),
             "asp.exact-source-snapshot-envelope.v1",

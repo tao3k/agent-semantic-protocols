@@ -48,12 +48,16 @@ fn activation_load_failure_decision(
         .or_else(|| payload.get("input"))
         .unwrap_or(&payload);
     let command = string_field(tool_input, &["cmd", "command", "script"]);
+    let direct_source_read_paths = tool_name
+        .as_deref()
+        .and_then(|tool_name| agent_semantic_hook::direct_source_read_paths(tool_name, tool_input));
     if command
         .as_deref()
         .is_some_and(is_activation_recovery_command)
     {
         return None;
     }
+    let direct_source_read = direct_source_read_paths.is_some();
     Some(HookDecision {
         schema_id: HOOK_DECISION_SCHEMA_ID,
         schema_version: HOOK_DECISION_SCHEMA_VERSION,
@@ -62,18 +66,29 @@ fn activation_load_failure_decision(
         platform: client.to_string(),
         event: event.to_string(),
         decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::ActivationUnavailable,
+        reason_kind: if direct_source_read {
+            ReasonKind::DirectSourceRead
+        } else {
+            ReasonKind::ActivationUnavailable
+        },
         language_ids: Vec::new(),
         subject: DecisionSubject {
             tool_name,
             command,
-            paths: Vec::new(),
+            paths: direct_source_read_paths.unwrap_or_default(),
         },
         routes: Vec::new(),
-        message: format!(
-            "Semantic hook activation could not be loaded from {}; tool use is denied until activation is repaired: {error}",
-            activation_path.display()
-        ),
+        message: if direct_source_read {
+            format!(
+                "Semantic source reads fail closed while activation cannot be loaded from {}; repair activation before retrying: {error}",
+                activation_path.display()
+            )
+        } else {
+            format!(
+                "Semantic hook activation could not be loaded from {}; tool use is denied until activation is repaired: {error}",
+                activation_path.display()
+            )
+        },
         fields: BTreeMap::new(),
     })
 }

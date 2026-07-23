@@ -20,9 +20,6 @@ pub(super) fn claim_dispatch(
             "dispatch claim requires the current or explicit root session id".to_string()
         })?;
     let name = required_non_empty(args.name.as_deref(), "--name")?;
-    let dispatch_identity =
-        required_non_empty(args.dispatch_identity.as_deref(), "--dispatch-identity")?;
-    let command_digest = required_non_empty(args.command_digest.as_deref(), "--command-digest")?;
     let now = agent_session_unix_timestamp()?;
     let live_target =
         super::agent_session_registry_host_capability::fresh_host_resident_target_observation(
@@ -48,15 +45,80 @@ pub(super) fn claim_dispatch(
             "dispatch-live-target-unverified: resident `{name}` host observation is {observed}; use a verified native binding"
         ));
     }
-    let resident_bridge_target = if args.resident_bridge {
-        let canonical_target = live_target
-            .as_ref()
-            .and_then(|observation| observation.canonical_target.as_deref())
-            .ok_or_else(|| {
-                format!(
-                    "dispatch-live-target-unverified: resident `{name}` has no verified canonical target"
-                )
+    let canonical_target = live_target
+        .as_ref()
+        .and_then(|observation| observation.canonical_target.as_deref())
+        .ok_or_else(|| {
+            format!(
+                "dispatch-live-target-unverified: resident `{name}` has no verified canonical target"
+            )
+        })?;
+    if let Some(asserted_target) = args.canonical_target.as_deref()
+        && asserted_target != canonical_target
+    {
+        return Err(format!(
+            "dispatch-canonical-target-mismatch: expected={canonical_target} observed={asserted_target}"
+        ));
+    }
+    let derived = match (args.receipt_kind.as_deref(), args.command_json.as_deref()) {
+        (Some(receipt_kind), Some(command_json)) => {
+            let argv = serde_json::from_str::<Vec<String>>(command_json).map_err(|error| {
+                format!("--command-json must encode an argv string array: {error}")
             })?;
+            validate_exact_argv(&argv)?;
+            Some(
+                agent_semantic_client_db::agent_session_registry::derive_agent_session_dispatch_identity(
+                    agent_semantic_client_db::agent_session_registry::AgentSessionDispatchIdentityInput {
+                        root_session_id: &root_session_id,
+                        name,
+                        canonical_target,
+                        receipt_kind,
+                        canonical_argv: &argv,
+                    },
+                )?,
+            )
+        }
+        (None, None) => None,
+        _ => {
+            return Err(
+                "dispatch identity derivation requires both --receipt-kind and --command-json"
+                    .to_string(),
+            );
+        }
+    };
+    if let (Some(explicit), Some(derived)) = (args.dispatch_identity.as_deref(), derived.as_ref())
+        && explicit != derived.dispatch_identity
+    {
+        return Err(format!(
+            "dispatch-identity-mismatch: expected={} observed={explicit}",
+            derived.dispatch_identity
+        ));
+    }
+    if let (Some(explicit), Some(derived)) = (args.command_digest.as_deref(), derived.as_ref())
+        && explicit != derived.command_digest
+    {
+        return Err(format!(
+            "dispatch-command-digest-mismatch: expected={} observed={explicit}",
+            derived.command_digest
+        ));
+    }
+    let dispatch_identity = derived
+        .as_ref()
+        .map(|derived| derived.dispatch_identity.as_str())
+        .or(args.dispatch_identity.as_deref())
+        .ok_or_else(|| {
+            "dispatch claim requires --receipt-kind with --command-json or --dispatch-identity"
+                .to_string()
+        })?;
+    let command_digest = derived
+        .as_ref()
+        .map(|derived| derived.command_digest.as_str())
+        .or(args.command_digest.as_deref())
+        .ok_or_else(|| {
+            "dispatch claim requires --receipt-kind with --command-json or --command-digest"
+                .to_string()
+        })?;
+    let resident_bridge_target = if args.resident_bridge {
         Some(format!("resident-command-bridge:{canonical_target}"))
     } else {
         None
@@ -138,9 +200,6 @@ pub(super) fn execute_dispatch(
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "dispatch execution requires CODEX_THREAD_ID".to_string())?;
     let name = required_non_empty(args.name.as_deref(), "--name")?;
-    let dispatch_identity =
-        required_non_empty(args.dispatch_identity.as_deref(), "--dispatch-identity")?;
-    let command_digest = required_non_empty(args.command_digest.as_deref(), "--command-digest")?;
     let command_json = required_non_empty(args.command_json.as_deref(), "--command-json")?;
     let argv = serde_json::from_str::<Vec<String>>(command_json)
         .map_err(|error| format!("--command-json must encode an argv string array: {error}"))?;
@@ -148,6 +207,77 @@ pub(super) fn execute_dispatch(
     let canonical_argv = serde_json::to_string(&argv)
         .map_err(|error| format!("failed to encode canonical argv: {error}"))?;
     let observed_digest = format!("{:x}", sha2::Sha256::digest(canonical_argv.as_bytes()));
+    let derived = if let Some(receipt_kind) = args.receipt_kind.as_deref() {
+        let observation =
+            super::agent_session_registry_host_capability::fresh_host_resident_target_observation(
+                registry,
+                &root_session_id,
+                name,
+                agent_session_unix_timestamp()?,
+            )?
+            .ok_or_else(|| {
+                "dispatch identity derivation requires a fresh host target observation".to_string()
+            })?;
+        let canonical_target = observation
+            .canonical_target
+            .as_deref()
+            .filter(|_| {
+                observation.target_status == "present" && observation.identity_status == "verified"
+            })
+            .ok_or_else(|| {
+                "dispatch identity derivation requires a verified canonical target".to_string()
+            })?;
+        if let Some(asserted_target) = args.canonical_target.as_deref()
+            && asserted_target != canonical_target
+        {
+            return Err(format!(
+                "dispatch-canonical-target-mismatch: expected={canonical_target} observed={asserted_target}"
+            ));
+        }
+        Some(
+            agent_semantic_client_db::agent_session_registry::derive_agent_session_dispatch_identity(
+                agent_semantic_client_db::agent_session_registry::AgentSessionDispatchIdentityInput {
+                    root_session_id: &root_session_id,
+                    name,
+                    canonical_target,
+                    receipt_kind,
+                    canonical_argv: &argv,
+                },
+            )?,
+        )
+    } else {
+        None
+    };
+    if let (Some(explicit), Some(derived)) = (args.dispatch_identity.as_deref(), derived.as_ref())
+        && explicit != derived.dispatch_identity
+    {
+        return Err(format!(
+            "dispatch-identity-mismatch: expected={} observed={explicit}",
+            derived.dispatch_identity
+        ));
+    }
+    if let (Some(explicit), Some(derived)) = (args.command_digest.as_deref(), derived.as_ref())
+        && explicit != derived.command_digest
+    {
+        return Err(format!(
+            "dispatch-command-digest-mismatch: expected={} observed={explicit}",
+            derived.command_digest
+        ));
+    }
+    let dispatch_identity = derived
+        .as_ref()
+        .map(|derived| derived.dispatch_identity.as_str())
+        .or(args.dispatch_identity.as_deref())
+        .ok_or_else(|| {
+            "dispatch execute requires --receipt-kind or --dispatch-identity".to_string()
+        })?;
+    let command_digest = derived
+        .as_ref()
+        .map(|derived| derived.command_digest.as_str())
+        .or(args.command_digest.as_deref())
+        .ok_or_else(|| {
+            "dispatch execute requires --receipt-kind or --command-digest".to_string()
+        })?;
     if observed_digest != command_digest {
         return Err(format!(
             "dispatch-command-digest-mismatch: expected={command_digest} observed={observed_digest}"

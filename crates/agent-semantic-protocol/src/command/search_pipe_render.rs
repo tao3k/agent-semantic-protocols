@@ -46,24 +46,21 @@ pub(super) fn render_owner_tests_frontier(
     locator_root: &Path,
     owner: &Path,
 ) -> String {
-    let owner_path = if owner.is_absolute() {
+    let owner_path = super::search_pipe::normalize_path(&if owner.is_absolute() {
         owner.to_path_buf()
     } else {
         project_root.join(owner)
-    };
+    });
     let display_owner = display_path(locator_root, &owner_path);
     let mut rendered = String::from(
         "[search-reasoning] q=owner-tests alg=asp-fast-owner-tests-v1\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases: graph:{G=search,T=test,O=owner}\n",
     );
-    let _ = writeln!(
-        rendered,
-        "O=owner:path({display_owner})!owner;T=test:path({display_owner})!tests"
-    );
-    rendered.push_str("G>{O:selects,T:covers}\n");
-    rendered.push_str("rank=O,T frontier=O.owner,T.tests\n");
-    rendered.push_str("entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)\n");
+    let _ = writeln!(rendered, "O=owner:path({display_owner})!owner");
+    rendered.push_str("G>{O:selects}\n");
+    rendered.push_str("rank=O frontier=O.owner\n");
+    rendered.push_str("entries=owner-tests(O=>no-covering-tests-indexed)\n");
     rendered
 }
 

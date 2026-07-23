@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use super::install_provider::WorkspaceBuildSpec;
 use super::install_provider_workspace_artifact::WorkspaceArtifactSpec;
+use super::install_provider_workspace_materialization::WorkspaceDependencyMaterializationSpec;
 
 const WORKSPACE_INSTALL_SCHEMA_ID: &str = "agent.semantic-protocols.provider-workspace-install";
 const WORKSPACE_INSTALL_SCHEMA_VERSION: &str = "1";
@@ -58,6 +59,8 @@ pub(super) struct ProviderWorkspaceInstallDescriptor {
     pub(super) provider_id: String,
     pub(super) binary: String,
     pub(super) workspace_artifact: WorkspaceArtifactSpec,
+    #[serde(default)]
+    pub(super) dependency_materialization: Option<WorkspaceDependencyMaterializationSpec>,
     pub(super) workspace_build: WorkspaceBuildSpec,
 }
 

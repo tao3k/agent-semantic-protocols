@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use super::{git_init, make_executable, temp_root};
 
-static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 struct HomeEnvGuard {
     previous: Option<OsString>,
@@ -201,7 +201,27 @@ fn default_activation_accepts_languages_bin_provider_override() {
     make_executable(&provider_bin);
     write_agent_config(
         &root,
-        "[languages.rust]\nbin = \"tools/custom-rs-harness\"\n",
+        r#"[languages.rust]
+bin = "tools/custom-rs-harness"
+
+[providers.typescript]
+enabled = false
+
+[providers.python]
+enabled = false
+
+[providers.julia]
+enabled = false
+
+[providers.gerbil-scheme]
+enabled = false
+
+[providers.org]
+enabled = false
+
+[providers.md]
+enabled = false
+"#,
     );
 
     let activation = build_default_activation(&root).expect("build activation");
@@ -229,7 +249,27 @@ fn asp_toml_can_disable_document_language_hook_activation() {
     let asp_bin = root.join(".bin/orgize");
     fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
     make_executable(&asp_bin);
-    write_agent_config(&root, "[providers.org]\nenabled = false\n");
+    write_agent_config(
+        &root,
+        r#"[providers.rust]
+enabled = false
+
+[providers.typescript]
+enabled = false
+
+[providers.python]
+enabled = false
+
+[providers.julia]
+enabled = false
+
+[providers.gerbil-scheme]
+enabled = false
+
+[providers.org]
+enabled = false
+"#,
+    );
 
     let activation = build_default_activation(&root).expect("build activation");
 
@@ -265,6 +305,9 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
     let asp_bin = root.join(".bin/orgize");
     fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
     make_executable(&asp_bin);
+    let gerbil_bin = root.join(".bin/gslph");
+    fs::write(&gerbil_bin, "#!/bin/sh\nexit 0\n").expect("write gerbil bin");
+    make_executable(&gerbil_bin);
     fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
         .expect("write ignored top-level asp.toml");
 

@@ -259,6 +259,7 @@ pub(crate) fn materialize_source_access_decision(
     platform: &str,
     event: &str,
     action: &ToolAction,
+    agent_action: Option<&crate::tool_action::AgentAction>,
     _tokens: Option<&[String]>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &crate::hook_recovery_prompt::CompiledRecoveryPromptConfig,
@@ -268,6 +269,7 @@ pub(crate) fn materialize_source_access_decision(
         platform,
         event,
         action,
+        agent_action,
         semantic_ast_patch_enabled,
         recovery_prompt,
     )

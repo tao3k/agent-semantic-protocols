@@ -24,6 +24,9 @@ use super::install_provider_archive::{checksum_name, parse_sha256_checksum};
 
 use super::install_provider_workspace_artifact::capture_workspace_artifact_snapshot;
 use super::install_provider_workspace_cas::install_workspace_artifact_from_cas;
+use super::install_provider_workspace_materialization::{
+    rendered_workspace_command_env, resolve_workspace_relative_path, run_dependency_materialization,
+};
 
 const PINNED_LANGUAGE_RELEASES_TOML: &str = include_str!("../../pinned-language-releases.toml");
 
@@ -82,13 +85,17 @@ pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
 }
 
 fn run_install_binary(args: &[String]) -> Result<(), String> {
-    let mut targets = Vec::new();
+    let mut target = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--target" => {
-                let target = args.get(index + 1).ok_or_else(usage).map(PathBuf::from)?;
-                targets.push(target);
+                if target.is_some() {
+                    return Err(
+                        "asp install binary accepts exactly one --target install root".to_string(),
+                    );
+                }
+                target = Some(args.get(index + 1).ok_or_else(usage).map(PathBuf::from)?);
                 index += 2;
             }
             "help" | "--help" | "-h" => {
@@ -98,21 +105,13 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
             _ => return Err(usage()),
         }
     }
-    if targets.is_empty() {
-        return Err(usage());
-    }
+    let target = target.ok_or_else(usage)?;
     let source = env::current_exe()
         .map_err(|error| format!("failed to resolve current ASP binary: {error}"))?;
-    let installed = super::protocol_binary::install_protocol_binary_targets(&source, &targets)?;
+    let installed = super::protocol_binary::install_protocol_binary_target(&source, &target)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryPaths={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic",
         installed.path.display(),
-        installed
-            .paths
-            .iter()
-            .map(|path| path.display().to_string())
-            .collect::<Vec<_>>()
-            .join(","),
         installed.status,
         installed.artifact_digest,
     );
@@ -353,30 +352,6 @@ pub(super) struct MaterializedWorkspaceArtifact {
         Option<super::install_provider_workspace_artifact::WorkspaceArtifactLaunchSpec>,
 }
 
-pub(super) fn resolve_workspace_relative_path(
-    project_root: &Path,
-    relative: &str,
-    field: &str,
-) -> Result<PathBuf, String> {
-    let path = Path::new(relative);
-    if relative.is_empty()
-        || path.is_absolute()
-        || path.components().any(|component| {
-            matches!(
-                component,
-                std::path::Component::ParentDir
-                    | std::path::Component::RootDir
-                    | std::path::Component::Prefix(_)
-            )
-        })
-    {
-        return Err(format!(
-            "provider workspace build {field} must be a project-relative path without parent traversal: {relative}"
-        ));
-    }
-    Ok(project_root.join(path))
-}
-
 fn workspace_build_recipe_digest(
     spec: &super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor,
     build: &WorkspaceBuildSpec,
@@ -385,6 +360,12 @@ fn workspace_build_recipe_digest(
         .map_err(|error| format!("failed to encode workspace build recipe: {error}"))?;
     payload.push(0);
     payload.extend_from_slice(spec.binary.as_bytes());
+    payload.push(0);
+    let dependency_materialization =
+        serde_json::to_vec(&spec.dependency_materialization).map_err(|error| {
+            format!("failed to encode workspace dependency materialization recipe: {error}")
+        })?;
+    payload.extend_from_slice(&dependency_materialization);
     payload.push(0);
     let artifact = serde_json::to_vec(&spec.workspace_artifact)
         .map_err(|error| format!("failed to encode workspace artifact recipe: {error}"))?;
@@ -396,17 +377,7 @@ fn rendered_workspace_build_env(
     build: &WorkspaceBuildSpec,
     workspace_root: &Path,
 ) -> std::collections::BTreeMap<String, String> {
-    let workspace_root = workspace_root.to_string_lossy();
-    build
-        .env
-        .iter()
-        .map(|(name, value)| {
-            (
-                name.clone(),
-                value.replace("${ASP_WORKSPACE_ROOT}", &workspace_root),
-            )
-        })
-        .collect()
+    rendered_workspace_command_env(&build.env, workspace_root)
 }
 
 fn materialize_workspace_provider_binary(
@@ -492,6 +463,14 @@ fn materialize_workspace_provider_binary(
         &source_cas_root,
         &before,
     )?;
+    if let Some(materialization) = &spec.dependency_materialization {
+        run_dependency_materialization(
+            materialization,
+            &spec.provider_id,
+            project_root,
+            &sandbox.root,
+        )?;
+    }
     let working_directory = resolve_workspace_relative_path(
         &sandbox.root,
         &build.working_directory,
@@ -897,7 +876,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install binary --target <path> [--target <path>...]\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)".to_string()
+    "usage: asp install binary --target <path>\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)".to_string()
 }
 
 fn install_hook_usage() -> String {

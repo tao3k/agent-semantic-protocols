@@ -1,5 +1,6 @@
 use agent_semantic_client_db::turso_sync_storage::{
-    TursoSyncOperationOutcome, TursoSyncProfileConfig, TursoSyncStorage,
+    DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT, TursoSyncOperationOutcome, TursoSyncProfileConfig,
+    TursoSyncProfileMode, TursoSyncStorage,
 };
 
 struct SyncServerGuard {
@@ -47,9 +48,12 @@ fn start_sync_server(database_path: &std::path::Path) -> (SyncServerGuard, Strin
 fn sync_server_config(path: &std::path::Path, remote_url: &str) -> TursoSyncProfileConfig {
     TursoSyncProfileConfig {
         path: path.to_path_buf(),
-        remote_url: remote_url.to_owned(),
-        auth_token: "local-sync-server".to_owned(),
-        bootstrap_if_empty: true,
+        mode: TursoSyncProfileMode::Remote {
+            remote_url: remote_url.to_owned(),
+            auth_token: "local-sync-server".to_owned(),
+            bootstrap_if_empty: true,
+        },
+        operation_timeout: DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT,
     }
 }
 

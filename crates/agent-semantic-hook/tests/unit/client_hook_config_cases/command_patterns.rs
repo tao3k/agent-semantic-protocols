@@ -229,6 +229,9 @@ fn configured_git_diff_routes_to_testing_resident() {
     );
     let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
     assert_eq!(decision_json["interactiveCommand"]["schemaVersion"], "1");
+    let receipt_kind = decision_json["fields"]["receiptKind"]
+        .as_str()
+        .expect("configured resident dispatch receipt kind");
     assert_eq!(
         decision_json["interactiveCommand"]["argv"],
         json!([
@@ -237,15 +240,33 @@ fn configured_git_diff_routes_to_testing_resident() {
             "session",
             "bootstrap",
             "--name",
-            "asp-testing"
+            "asp-testing",
+            "--receipt-kind",
+            receipt_kind,
+            "--command-json",
+            "[\"/bin/sh\",\"-c\",\"git diff --check\"]"
         ])
     );
     let decision_schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../schemas/semantic-agent-hook-decision.v1.schema.json"
     ))
     .expect("parse hook decision schema");
-    let validator =
-        jsonschema::validator_for(&decision_schema).expect("compile hook decision schema");
+    let agent_action_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/agent-action.v1.schema.json"
+    ))
+    .expect("parse agent action schema");
+    let schema_registry = jsonschema::Registry::new()
+        .add(
+            "https://agent-semantic-protocols.local/schemas/agent-action.v1.schema.json",
+            agent_action_schema,
+        )
+        .expect("register agent action schema")
+        .prepare()
+        .expect("prepare hook decision schema registry");
+    let validator = jsonschema::options()
+        .with_registry(&schema_registry)
+        .build(&decision_schema)
+        .expect("compile hook decision schema");
     validator
         .validate(&decision_json)
         .expect("configured resident decision should satisfy the v1 schema");
@@ -253,7 +274,8 @@ fn configured_git_diff_routes_to_testing_resident() {
         .expect("render configured resident deny");
     assert_eq!(
         rendered["hookSpecificOutput"]["permissionDecisionReason"],
-        "asp agent session bootstrap --name asp-testing"
+        "asp agent session bootstrap --name asp-testing --receipt-kind \
+asp-testing-execution-v1 --command-json '[\"/bin/sh\",\"-c\",\"git diff --check\"]'"
     );
     assert!(
         rendered["hookSpecificOutput"]
@@ -286,8 +308,10 @@ fn configurable_hook_default_rule_classification_stays_fast() {
             "tool_input": {"command": "asp rust search pipe 'HookDecision' --workspace . --view seeds"}
         }),
     ];
-    let samples = 2;
-    let iterations = 10_000;
+    // Keep the total decision count high while using short samples so unrelated
+    // parallel tests cannot dominate every measurement with scheduler stalls.
+    let samples = 50;
+    let iterations = 1_000;
     let mut best_elapsed = Duration::MAX;
     let mut best_denied = 0usize;
 

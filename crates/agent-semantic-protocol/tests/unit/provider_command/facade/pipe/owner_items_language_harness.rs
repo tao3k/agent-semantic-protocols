@@ -1,6 +1,6 @@
 use crate::provider_command::support::{
     asp_command, home_local_bin, make_executable, prepend_path, provider,
-    provider_with_owner_items, temp_project_root, write_activation, write_marker_provider,
+    provider_with_owner_items, temp_project_root, write_activation,
 };
 use std::os::unix::fs::PermissionsExt;
 use std::time::{Duration, Instant};
@@ -8,18 +8,16 @@ use std::time::{Duration, Instant};
 const OWNER_ITEMS_FACADE_DEBUG_SUBPROCESS_GATE: Duration = Duration::from_millis(750);
 
 #[test]
-fn language_owner_items_uses_dynamic_owner_items_without_provider_fallback() {
+fn language_owner_items_uses_provider_interface_without_core_fallback() {
     let root = temp_project_root("search-owner-language-routes-to-harness");
     let bin_dir = root.join(".bin");
-    let marker = root.join("provider-called");
-    std::fs::create_dir_all(root.join("crate/src")).expect("create source");
+    std::fs::create_dir_all(root.join("src")).expect("create source");
     std::fs::write(
-        root.join("crate/src/lib.rs"),
-        "pub async fn dynamic_owner_item_index() {}\npub use crate::dispatch::run_protocol_command as run_binary_from_env;\n",
+        root.join("src/core.rs"),
+        "struct QueryExpr;\n\nfn parse_query_expr() {}\n",
     )
     .expect("write source");
-    write_marker_provider(&bin_dir, "rs-harness", &marker);
-    write_activation(&root, &[provider("rust", Vec::new())]);
+    crate::provider_command::support::write_rust_owner_frontier_provider(&root);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
@@ -28,7 +26,7 @@ fn language_owner_items_uses_dynamic_owner_items_without_provider_fallback() {
             "rust",
             "search",
             "owner",
-            "crate/src/lib.rs",
+            "src/core.rs",
             "items",
             "--workspace",
             ".",
@@ -44,22 +42,14 @@ fn language_owner_items_uses_dynamic_owner_items_without_provider_fallback() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains("alg=asp-dynamic-owner-items-v1"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("dynamic_owner_item_index"), "{stdout}");
-    assert!(stdout.contains("run_binary_from_env"), "{stdout}");
-    assert!(stdout.contains("kind=reexport"), "{stdout}");
-    assert!(
-        !marker.exists(),
-        "dynamic owner-items should not invoke the provider fallback"
-    );
+    assert!(stdout.contains("alg=item-frontier"), "{stdout}");
+    assert!(stdout.contains("QueryExpr"), "{stdout}");
+    assert!(stdout.contains("parse_query_expr"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn language_owner_items_reuses_dynamic_owner_items_without_provider_cache() {
+fn language_owner_items_reuses_provider_cache() {
     let root = temp_project_root("search-owner-language-harness-cache");
     let bin_dir = home_local_bin(&root);
     let count_path = root.join("provider-count");
@@ -115,9 +105,10 @@ fn language_owner_items_reuses_dynamic_owner_items_without_provider_cache() {
         );
     }
 
-    assert!(
-        !count_path.exists(),
-        "dynamic owner-items should not invoke or cache the provider output"
+    assert_eq!(
+        std::fs::read_to_string(&count_path).expect("provider call count"),
+        "1",
+        "the second identical owner-items query must reuse provider output"
     );
     let _ = std::fs::remove_dir_all(root);
 }

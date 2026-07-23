@@ -234,6 +234,25 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .all(|value| value.as_str() != Some("asp sync"))
     );
 
+    let legacy_query_decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "asp rust query --term HookDecision --workspace . --code"}
+        }),
+    });
+    assert_eq!(legacy_query_decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        legacy_query_decision
+            .fields
+            .get("configRuleId")
+            .and_then(|id| id.as_str()),
+        Some("registered-asp-reasoning-search")
+    );
+
     let direct_rg_decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
         config: &config,
@@ -283,13 +302,13 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
 #[test]
 fn builtin_materialization_rule_is_permanent_and_source_scoped() {
     let config = ClientHookConfig::default();
-    let registry = registry();
+    let registry = crate::classifier::rust_registry();
     let source_payload = json!({
         "session_id": "permanent-source-deny",
         "transcript_path": "/tmp/permanent-source-deny.jsonl",
         "tool_name": "Bash",
         "tool_input": {
-            "command": "sed -n 1p crates/agent-semantic-hook/src/hook_config/core.rs"
+            "command": "sed -n 1p crates/agent-semantic-hook/src/hook_config/core/implementation.rs"
         }
     });
 
@@ -301,7 +320,11 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
             event: "pre-tool",
             payload: &source_payload,
         });
-        assert_eq!(decision.decision, DecisionKind::Deny);
+        assert_eq!(
+            decision.decision,
+            DecisionKind::Deny,
+            "source materialization must remain denied: {decision:?}"
+        );
         assert_eq!(
             decision
                 .fields
@@ -325,7 +348,7 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
 }
 
 #[test]
-fn action_first_rule_denies_projected_reads_before_shell_expansion() {
+fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
 
@@ -358,8 +381,8 @@ fn action_first_rule_denies_projected_reads_before_shell_expansion() {
         );
         let host_action = decision
             .fields
-            .get("hostAction")
-            .expect("typed host action receipt");
+            .get("agentAction")
+            .expect("typed agent action receipt");
         assert_eq!(host_action["action"], "execute", "{command}");
         assert_eq!(host_action["effect"], "read", "{command}");
         assert_eq!(host_action["authority"], "raw-shell", "{command}");
@@ -401,10 +424,10 @@ fn action_first_rule_denies_projected_reads_before_shell_expansion() {
         }),
     });
     assert_eq!(native_read.decision, DecisionKind::Deny);
-    assert_eq!(native_read.fields["hostAction"]["action"], "read");
-    assert_eq!(native_read.fields["hostAction"]["effect"], "read");
+    assert_eq!(native_read.fields["agentAction"]["action"], "read");
+    assert_eq!(native_read.fields["agentAction"]["effect"], "read");
     assert_eq!(
-        native_read.fields["hostAction"]["authority"],
+        native_read.fields["agentAction"]["authority"],
         "raw-host-action"
     );
 
@@ -424,15 +447,15 @@ fn action_first_rule_denies_projected_reads_before_shell_expansion() {
 #[test]
 fn builtin_inline_materialization_rules_use_config_and_source_paths() {
     let config = ClientHookConfig::default();
-    let registry = registry();
+    let registry = crate::classifier::rust_registry();
 
     for (command, expected_rule) in [
         (
-            "python -c \"open('crates/agent-semantic-hook/src/hook_config/core.rs').read()\"",
+            "python -c \"open('crates/agent-semantic-hook/src/hook_config/core/implementation.rs').read()\"",
             "deny-uncontrolled-python-inline-source-materialization",
         ),
         (
-            "node -e \"require('fs').readFileSync('crates/agent-semantic-hook/src/hook_config/core.rs')\"",
+            "node -e \"require('fs').readFileSync('crates/agent-semantic-hook/src/hook_config/core/implementation.rs')\"",
             "deny-uncontrolled-javascript-inline-source-materialization",
         ),
     ] {

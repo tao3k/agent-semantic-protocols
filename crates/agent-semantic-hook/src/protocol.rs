@@ -232,10 +232,20 @@ impl HookDecision {
             .get("rootSessionId")
             .or_else(|| self.fields.get("sessionId"))
             .and_then(Value::as_str);
-        Some(agent_semantic_loop::ResidentInteractiveCommand::bootstrap(
-            resident_name,
-            root_session_id,
-        ))
+        let receipt_kind = self.fields.get("receiptKind").and_then(Value::as_str);
+        let command_json = self
+            .subject
+            .command
+            .as_deref()
+            .and_then(|command| serde_json::to_string(&["/bin/sh", "-c", command]).ok());
+        Some(
+            agent_semantic_loop::ResidentInteractiveCommand::bootstrap_with_dispatch(
+                resident_name,
+                root_session_id,
+                receipt_kind,
+                command_json.as_deref(),
+            ),
+        )
     }
 
     pub fn configured_resident_interactive_command_line(&self) -> Option<String> {

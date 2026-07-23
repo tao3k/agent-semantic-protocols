@@ -20,7 +20,7 @@ pub use document::{
     merge_asp_project_hook_config, render_hook_client_message_template,
 };
 pub use invocation::{
-    HookClientAuthorityProjection, HookClientCommandWrapper, HookClientEffectProjection,
+    AgentActionAuthorityRule, AgentActionEffectRule, HookClientCommandWrapper,
     HookClientFlagPresence, HookClientInvocationShape, HookClientWrapperMatch,
 };
 pub use routing::{

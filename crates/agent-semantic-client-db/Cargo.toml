@@ -68,3 +68,6 @@ tokio = { workspace = true }
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
+[[bench]]
+name = "turso_source_index"
+harness = false

@@ -3,15 +3,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::install_provider::{
-    MaterializedWorkspaceArtifact, WorkspaceBuildReceipt, resolve_workspace_relative_path,
-};
+use super::install_provider::{MaterializedWorkspaceArtifact, WorkspaceBuildReceipt};
 use super::install_provider_archive::{install_executable_entrypoint, sha256_file};
 use super::install_provider_workspace_artifact::{
     WorkspaceArtifactLaunchSpec, capture_workspace_artifact_snapshot, copy_workspace_artifact_tree,
     remove_workspace_artifact_path,
 };
 use super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor;
+use super::install_provider_workspace_materialization::resolve_workspace_relative_path;
 
 #[derive(Debug)]
 pub(super) struct InstalledWorkspaceEntrypoint {

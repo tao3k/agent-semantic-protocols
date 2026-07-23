@@ -156,34 +156,30 @@ pub(super) fn is_file_selector_query(args: &[String]) -> bool {
     !selector.contains("://") && selector.split_once(':').is_none()
 }
 
-pub(super) fn is_provider_owned_structural_code_query(language_id: &str, args: &[String]) -> bool {
-    let selector_prefix = match language_id {
-        "rust" => "rust://",
-        "typescript" => "typescript://",
-        _ => return false,
-    };
+pub(super) fn is_provider_owned_structural_selector_query(
+    language_id: &str,
+    args: &[String],
+) -> bool {
     if !matches!(args.first().map(String::as_str), Some("query"))
-        || !args.iter().any(|arg| arg == "--code")
-        || args.iter().any(|arg| {
-            matches!(
-                arg.as_str(),
-                "--json" | "--term" | "--treesitter-query" | "--names-only"
-            )
-        })
+        || args
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "--term" | "--treesitter-query"))
     {
         return false;
     }
     let Some(selector) = option_value(args, "--selector") else {
         return false;
     };
-    selector.starts_with(selector_prefix) && selector.contains("#item/")
+    selector
+        .strip_prefix(language_id)
+        .is_some_and(|suffix| suffix.starts_with("://") && suffix.contains("#item/"))
 }
 
 pub(super) fn provider_owned_structural_owner_path<'a>(
     language_id: &str,
     args: &'a [String],
 ) -> Option<&'a str> {
-    if !is_provider_owned_structural_code_query(language_id, args) {
+    if !is_provider_owned_structural_selector_query(language_id, args) {
         return None;
     }
     let selector_prefix = match language_id {
@@ -201,7 +197,7 @@ pub(super) fn provider_owned_structural_selector<'a>(
     language_id: &str,
     args: &'a [String],
 ) -> Option<&'a str> {
-    if !is_provider_owned_structural_code_query(language_id, args) {
+    if !is_provider_owned_structural_selector_query(language_id, args) {
         return None;
     }
     option_value(args, "--selector")

@@ -9,53 +9,60 @@ pub(crate) struct SourceSelectorMatch<'provider> {
     pub(crate) kind: SourceSelectorKind,
 }
 
-pub(crate) fn semantic_action_subjects(
+pub(crate) fn derive_agent_action_subjects(
     registry: &HookRuntime,
     paths: &[String],
-) -> Vec<crate::tool_action::ActionSubject> {
-    paths
+) -> Vec<crate::tool_action::AgentActionSubject> {
+    let (mut semantic_subjects, other_subjects): (Vec<_>, Vec<_>) = paths
         .iter()
-        .map(|path| crate::tool_action::ActionSubject {
+        .map(|path| crate::tool_action::AgentActionSubject {
             value: path.clone(),
-            kind: semantic_action_subject_kind(registry, path),
+            kind: infer_agent_action_subject_kind(registry, path),
         })
-        .collect()
+        .partition(|subject| {
+            !matches!(
+                &subject.kind,
+                crate::tool_action::AgentActionSubjectKind::Other
+            )
+        });
+    semantic_subjects.extend(other_subjects);
+    semantic_subjects
 }
 
-fn semantic_action_subject_kind(
+fn infer_agent_action_subject_kind(
     registry: &HookRuntime,
     value: &str,
-) -> crate::tool_action::ActionSubjectKind {
-    use crate::tool_action::ActionSubjectKind;
+) -> crate::tool_action::AgentActionSubjectKind {
+    use crate::tool_action::AgentActionSubjectKind;
 
     if value.contains("://") || value.contains("#item/") {
-        return ActionSubjectKind::StructuralSelector;
+        return AgentActionSubjectKind::StructuralSelector;
     }
     if value == "." || value == ".." || value.ends_with(['/', '\\']) {
-        return ActionSubjectKind::Directory;
+        return AgentActionSubjectKind::Directory;
     }
 
     let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
     let Some((_, suffix)) = leaf.rsplit_once('.') else {
-        return ActionSubjectKind::Other;
+        return AgentActionSubjectKind::Other;
     };
     if suffix.is_empty()
         || !suffix
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '*' | '?' | '[' | ']' | '-'))
     {
-        return ActionSubjectKind::Other;
+        return AgentActionSubjectKind::Other;
     }
 
     let registered =
         !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty();
     if !registered {
-        return ActionSubjectKind::Other;
+        return AgentActionSubjectKind::Other;
     }
     if leaf.chars().any(|ch| matches!(ch, '*' | '?' | '[' | ']')) {
-        ActionSubjectKind::RegisteredLanguageSourcePattern
+        AgentActionSubjectKind::RegisteredLanguageSourcePattern
     } else {
-        ActionSubjectKind::RegisteredLanguageSource
+        AgentActionSubjectKind::RegisteredLanguageSource
     }
 }
 

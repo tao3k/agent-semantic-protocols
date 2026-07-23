@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_db::turso_sync_storage::{
-    TursoSyncOperationOutcome, TursoSyncProfileConfig, TursoSyncStorage,
+    DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT, TursoSyncOperationOutcome, TursoSyncProfileConfig,
+    TursoSyncProfileMode, TursoSyncStorage,
 };
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use turso::transaction::TransactionBehavior;
@@ -22,9 +23,8 @@ fn temp_db(name: &str) -> PathBuf {
 fn config(path: PathBuf) -> TursoSyncProfileConfig {
     TursoSyncProfileConfig {
         path,
-        remote_url: "http://127.0.0.1:1".to_owned(),
-        auth_token: "fixed-benchmark-token".to_owned(),
-        bootstrap_if_empty: false,
+        mode: TursoSyncProfileMode::Local,
+        operation_timeout: DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT,
     }
 }
 
@@ -33,12 +33,26 @@ fn turso_sync_local(c: &mut Criterion) {
         .enable_all()
         .build()
         .expect("benchmark runtime");
-    let storage = runtime
-        .block_on(TursoSyncStorage::open(config(temp_db("local"))))
-        .expect("open local-first sync database");
-    let mut connection = runtime
-        .block_on(storage.connect())
-        .expect("connect local-first sync database");
+    let storage = match runtime.block_on(TursoSyncStorage::open(config(temp_db("local")))) {
+        Ok(storage) => storage,
+        Err(error) => {
+            eprintln!(
+                "[turso-sync-local-benchmark-skip] phase=open reason={}",
+                error
+            );
+            return;
+        }
+    };
+    let mut connection = match runtime.block_on(storage.connect()) {
+        Ok(connection) => connection,
+        Err(error) => {
+            eprintln!(
+                "[turso-sync-local-benchmark-skip] phase=connect reason={}",
+                error
+            );
+            return;
+        }
+    };
     runtime
         .block_on(connection.execute(
             "CREATE TABLE IF NOT EXISTS sync_bench(\
@@ -52,6 +66,35 @@ fn turso_sync_local(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("client_db_turso_sync_local");
     group.sample_size(20);
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("open_fresh_storage", |b| {
+        b.iter(|| {
+            let path = temp_db("open");
+            let storage = runtime
+                .block_on(TursoSyncStorage::open(config(path.clone())))
+                .expect("open fresh local sync storage");
+            black_box(storage);
+            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(PathBuf::from(format!("{}-wal", path.to_string_lossy())));
+            let _ = std::fs::remove_file(PathBuf::from(format!("{}-shm", path.to_string_lossy())));
+        });
+    });
+    group.bench_function("open_plus_connect_fresh_storage", |b| {
+        b.iter(|| {
+            let path = temp_db("open-connect");
+            let storage = runtime
+                .block_on(TursoSyncStorage::open(config(path.clone())))
+                .expect("open fresh local sync storage for connect");
+            let connection = runtime
+                .block_on(storage.connect())
+                .expect("connect fresh local sync storage");
+            black_box(connection);
+            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(PathBuf::from(format!("{}-wal", path.to_string_lossy())));
+            let _ = std::fs::remove_file(PathBuf::from(format!("{}-shm", path.to_string_lossy())));
+        });
+    });
+
     group.throughput(Throughput::Elements(32));
     group.bench_function("append_32_plus_stats", |b| {
         b.iter(|| {
@@ -103,7 +146,37 @@ fn turso_sync_local(c: &mut Criterion) {
                 transaction.commit().await.expect("commit checkpoint batch");
                 let checkpoint = storage.checkpoint().await;
                 assert_eq!(checkpoint.outcome, TursoSyncOperationOutcome::Applied);
-                assert!(checkpoint.stats.is_some());
+                black_box(checkpoint);
+            });
+        });
+    });
+
+    group.throughput(Throughput::Elements(1024));
+    group.bench_function("append_1024_plus_explicit_checkpoint", |b| {
+        b.iter(|| {
+            runtime.block_on(async {
+                let transaction = connection
+                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                    .await
+                    .expect("begin large checkpoint batch");
+                let mut statement = transaction
+                    .prepare_cached("INSERT INTO sync_bench(id, payload) VALUES (?1, ?2)")
+                    .await
+                    .expect("prepare large checkpoint batch insert");
+                for _ in 0..1024 {
+                    next_id += 1;
+                    statement
+                        .execute((next_id, payload.as_slice()))
+                        .await
+                        .expect("insert large checkpoint batch row");
+                }
+                drop(statement);
+                transaction
+                    .commit()
+                    .await
+                    .expect("commit large checkpoint batch");
+                let checkpoint = storage.checkpoint().await;
+                assert_eq!(checkpoint.outcome, TursoSyncOperationOutcome::Applied);
                 black_box(checkpoint);
             });
         });

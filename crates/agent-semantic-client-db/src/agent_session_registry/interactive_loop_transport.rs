@@ -62,7 +62,7 @@ fn ready_menu(mut menu: AgentSessionInteractiveMenu<'_>) -> AgentSessionInteract
         label: "Send the denied ASP command to the verified resident child.",
         platform_action: std::borrow::Cow::Borrowed(ready_dispatch_action(menu.name)),
         next_state: AgentSessionLoopState::WaitReceipt,
-        required_inputs: &["deniedAspCommand", "dispatchIdentity"],
+        required_inputs: &["deniedAspCommand", "receiptKind"],
     }];
     menu
 }
@@ -90,11 +90,7 @@ fn live_transport_rebind_menu<'a>(
 }
 
 fn ready_dispatch_action(name: &str) -> &'static str {
-    if name == "asp-testing" {
-        "Derive one execution identity from the root session, registered agentMessageTargetId, canonical /root/asp_testing target, and exact denied command. Use host-native follow-up exactly once, then wait for a digest-bound [asp-testing-execution-v1] receipt. Never execute the command in the main agent."
-    } else {
-        "Derive one dispatch identity from the root session, registered agentMessageTargetId, and exact denied ASP command. Use host-native message-agent send exactly once for that identity, then wait for a compact [asp-search-subagent] receipt. A timeout or repeated bootstrap may only poll/wait for the same receipt; it must never resend the command or concatenate a second search output block."
-    }
+    super::interactive_loop_actions::ready_dispatch_action(name)
 }
 
 fn verify_live_transport_action(name: &str) -> String {

@@ -8,7 +8,7 @@ protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
-# Registered-language reasoning search dispatch. The matcher expands
+# Registered-language reasoning query/search dispatch. The matcher expands
 # `<registered-language>` from the provider registry; the rule owns the complete
 # match, intent, decision, and resident dispatch policy.
 [[rules]]
@@ -22,6 +22,8 @@ event = "pre-tool"
 
 [rules.match]
 argvPatternAny = [
+  ["asp", "<registered-language>", "query", "--term"],
+  ["asp", "query", "--language", "<registered-language>", "--term"],
   ["asp", "<registered-language>", "search"],
   ["asp", "search", "--language", "<registered-language>"],
 ]
@@ -57,6 +59,9 @@ transport = "resident-agent"
 residentName = "asp-testing"
 receiptKind = "asp-testing-execution-v1"
 
+[rules.fields]
+executionLane = "testing"
+
 [[rules]]
 id = "deny-raw-registered-source-search-action"
 enabled = true
@@ -82,30 +87,68 @@ event = "pre-tool"
 [rules.match]
 actionAny = ["execute"]
 effectAny = ["read"]
-effectProjections = [
-  { argvPrefix = ["read"], effect = "read" },
-  { argvPrefix = ["cat"], effect = "read" },
-  { argvPrefix = ["bat"], effect = "read" },
-  { argvPrefix = ["head"], effect = "read" },
-  { argvPrefix = ["tail"], effect = "read" },
-  { argvPrefix = ["sed"], effect = "read" },
-  { argvPrefix = ["awk"], effect = "read" },
-  { argvPrefix = ["less"], effect = "read" },
-  { argvPrefix = ["more"], effect = "read" },
-  { argvPrefix = ["git", "show"], effect = "read" },
-  { argvPrefix = ["git", "mv"], effect = "edit" },
-  { argvPrefix = ["mv"], effect = "edit" },
-  { argvPrefix = ["cp"], effect = "edit" },
-]
 subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
 authorityAny = ["raw-host-action", "raw-shell", "unknown"]
-authorityProjections = [
-  { argvPrefix = ["asp", "<registered-language>"], authority = "parser-owned-exact-evidence" },
-]
 commandWrappers = [{ executable = "rtk" }]
 invocationShapeAny = ["host-native", "command", "wrapped-command"]
 wrapperMatchAny = ["matched", "unmatched", "unknown"]
 flagPresenceAny = ["present", "absent"]
+
+[[rules.match.effectRules]]
+argvPrefix = ["read"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["cat"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["bat"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["head"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["tail"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["sed"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["awk"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["less"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["more"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["git", "show"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["git", "mv"]
+effect = "edit"
+
+[[rules.match.effectRules]]
+argvPrefix = ["mv"]
+effect = "edit"
+
+[[rules.match.effectRules]]
+argvPrefix = ["cp"]
+effect = "edit"
+
+[[rules.match.authorityRules]]
+argvPrefix = ["asp", "<registered-language>"]
+authority = "parser-owned-exact-evidence"
 
 [[rules]]
 id = "deny-agent-search-json"
@@ -131,6 +174,11 @@ priority = 900
 decision = "deny"
 decisionMaterializer = "source-access"
 message = "Source-access policy is derived by the configured hook materializer."
+
+[rules.match]
+[[rules.match.effectRules]]
+commandContainsAny = [".read_text(", ".read_bytes(", "read_to_string(", "read_to_end("]
+effect = "read"
 
 [[rules]]
 id = "deny-uncontrolled-source-search-commands"

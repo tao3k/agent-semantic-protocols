@@ -47,7 +47,7 @@ pub(super) fn codex_plugin_scope_arg(
     } else if global_plugin {
         CodexPluginScope::Global
     } else {
-        CodexPluginScope::Project
+        CodexPluginScope::Global
     })
 }
 

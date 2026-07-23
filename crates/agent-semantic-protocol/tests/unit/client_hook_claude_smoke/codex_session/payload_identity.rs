@@ -1,21 +1,22 @@
 use serde_json::json;
 
 use super::{
-    claude_fixture, install_codex_hooks, register_asp_explore_session,
-    run_codex_pre_tool_decision_with_env, show_agent_session_json, write_codex_asp_explore_rollout,
+    assert_configured_asp_explore_dispatch, claude_fixture, install_codex_hooks,
+    register_asp_explore_session, run_codex_pre_tool_decision_with_env, show_agent_session_json,
+    write_codex_asp_explore_rollout,
 };
 
 #[test]
-fn codex_normal_task_allows_precise_native_file_reads_for_any_source_extension() {
+fn codex_normal_task_routes_native_source_reads_by_activated_provider() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
 
-    for (suffix, relative_path) in [
-        ("rust", "src/core.rs"),
-        ("hook", "src/hook_runtime.rs"),
-        ("typescript", "src/component.ts"),
-        ("tsx", "src/view.tsx"),
+    for (suffix, relative_path, expected_decision, expected_reason) in [
+        ("rust", "src/core.rs", "deny", "direct-source-read"),
+        ("hook", "src/hook_runtime.rs", "deny", "direct-source-read"),
+        ("typescript", "src/component.ts", "allow", "none"),
+        ("tsx", "src/view.tsx", "allow", "none"),
     ] {
         let path = root.join(relative_path);
         std::fs::write(&path, "// precise native read fixture\n").expect("write read fixture");
@@ -32,19 +33,26 @@ fn codex_normal_task_allows_precise_native_file_reads_for_any_source_extension()
             &[],
         );
 
-        assert_eq!(decision["decision"], "allow", "{relative_path}: {decision}");
         assert_eq!(
-            decision["reasonKind"], "none",
+            decision["decision"], expected_decision,
             "{relative_path}: {decision}"
         );
-        assert!(
-            decision["fields"].get("agentSessionRoute").is_none(),
+        assert_eq!(
+            decision["reasonKind"], expected_reason,
             "{relative_path}: {decision}"
         );
         assert!(
             decision["fields"].get("executionLane").is_none(),
             "{relative_path}: {decision}"
         );
+        if expected_decision == "deny" {
+            assert_eq!(decision["routes"][0]["kind"], "owner");
+        } else {
+            assert!(
+                decision["routes"].as_array().is_some_and(Vec::is_empty),
+                "{relative_path}: {decision}"
+            );
+        }
     }
 }
 
@@ -61,20 +69,12 @@ fn codex_normal_task_routes_reasoning_from_payload_session_without_thread_env() 
             "transcript_path": format!("/tmp/rollout-{session_id}.jsonl"),
             "cwd": root,
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust guide"}
+            "tool_input": {"command": "asp rust query --term guide --workspace ."}
         }),
         &[],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["reasonKind"].as_str(),
-        Some("asp-reasoning-routed")
-    );
-    assert_eq!(decision["fields"]["aspCommandIntent"], "reasoning");
-    assert_eq!(decision["fields"]["aspCommandRoute"], "guide");
-    assert_eq!(decision["fields"]["agentSessionRoute"], "asp-explore");
-    assert_eq!(decision["fields"]["rootSessionId"], session_id);
+    assert_configured_asp_explore_dispatch(&decision);
     assert_eq!(decision["fields"]["sessionId"], session_id);
 }
 
@@ -107,7 +107,7 @@ fn codex_proven_resident_child_executes_parser_command_without_self_routing() {
     assert_eq!(decision["reasonKind"], "none", "{decision}");
     assert_eq!(
         decision["fields"]["agentSessionAction"],
-        "active-resident-child"
+        "active-hook-selected-resident"
     );
     assert_eq!(decision["fields"]["routingTerminal"], true);
     assert_eq!(decision["fields"]["redispatchAllowed"], false);
@@ -193,9 +193,14 @@ fn codex_generic_child_cannot_spoof_resident_identity_through_tool_input() {
         &[("CODEX_THREAD_ID", root_id)],
     );
 
-    assert_eq!(decision["decision"], "deny", "{decision}");
-    assert_eq!(decision["reasonKind"], "asp-reasoning-routed");
-    assert_ne!(decision["fields"]["routingTerminal"], true);
+    assert_eq!(decision["decision"], "allow", "{decision}");
+    assert_eq!(decision["reasonKind"], "none");
+    assert!(
+        decision["fields"]
+            .get("residentChildIdentityProof")
+            .is_none()
+    );
+    assert!(decision["fields"].get("routingTerminal").is_none());
 }
 
 #[test]
@@ -230,7 +235,7 @@ fn codex_unobservable_child_can_enter_only_the_validating_dispatch_wrapper() {
 }
 
 #[test]
-fn codex_normal_task_routes_root_language_guide_spelling_as_reasoning() {
+fn codex_normal_task_preserves_root_language_guide_spelling() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
@@ -247,11 +252,9 @@ fn codex_normal_task_routes_root_language_guide_spelling_as_reasoning() {
         &[],
     );
 
-    assert_eq!(decision["decision"], "deny", "{decision}");
-    assert_eq!(decision["reasonKind"], "asp-reasoning-routed", "{decision}");
-    assert_eq!(decision["fields"]["aspCommandIntent"], "reasoning");
-    assert_eq!(decision["fields"]["aspCommandRoute"], "guide");
-    assert_eq!(decision["fields"]["agentSessionRoute"], "asp-explore");
+    assert_eq!(decision["decision"], "allow", "{decision}");
+    assert_eq!(decision["reasonKind"], "none", "{decision}");
+    assert!(decision["fields"].get("residentName").is_none());
 }
 
 #[test]
@@ -260,24 +263,18 @@ fn codex_normal_task_preserves_non_reasoning_intents_from_payload_session() {
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
 
-    for (suffix, command, expected_decision, expected_intent) in [
+    for (suffix, command) in [
         (
             "invalid",
             "asp rust query --selector src/lib.rs --workspace . --code",
-            "deny",
-            "invalid-evidence",
         ),
         (
             "exact",
             "asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --code",
-            "allow",
-            "exact-evidence",
         ),
         (
             "fallback",
             "asp rust query --from-hook direct-source-read --selector src/lib.rs:1:10 --workspace . --code --fallback-reason bounded",
-            "allow",
-            "direct-read-fallback",
         ),
     ] {
         let session_id = format!("019f5c0f-a653-7040-ab54-{suffix}");
@@ -293,13 +290,10 @@ fn codex_normal_task_preserves_non_reasoning_intents_from_payload_session() {
             &[],
         );
 
-        assert_eq!(decision["decision"], expected_decision, "{command}");
-        assert_eq!(
-            decision["fields"]["aspCommandIntent"], expected_intent,
-            "{command}"
-        );
+        assert_eq!(decision["decision"], "allow", "{command}: {decision}");
+        assert_eq!(decision["reasonKind"], "none", "{command}: {decision}");
         assert!(
-            decision["fields"].get("agentSessionRoute").is_none(),
+            decision["fields"].get("residentName").is_none(),
             "{command}: {decision}"
         );
     }
@@ -342,14 +336,9 @@ fn codex_normal_task_matches_only_supported_asp_invocations() {
     install_codex_hooks(&root, &codex_home);
 
     for (suffix, command, expected_decision, expected_reason) in [
-        (
-            "semicolon",
-            "printf ready; asp rust guide",
-            "deny",
-            "asp-reasoning-routed",
-        ),
+        ("semicolon", "printf ready; asp rust guide", "allow", "none"),
         ("data", "printf '%s' 'asp rust guide'", "allow", "none"),
-        ("invalid-facade", "asp bananas guide", "deny", "none"),
+        ("invalid-facade", "asp bananas guide", "allow", "none"),
     ] {
         let session_id = format!("019f5c0f-a653-7040-ab54-{suffix}");
         let decision = run_codex_pre_tool_decision_with_env(
@@ -367,9 +356,9 @@ fn codex_normal_task_matches_only_supported_asp_invocations() {
         assert_eq!(decision["decision"], expected_decision, "{decision}");
         assert_eq!(decision["reasonKind"], expected_reason, "{decision}");
         if suffix == "invalid-facade" {
-            assert_eq!(decision["fields"]["invalidFacade"], "bananas", "{decision}");
             assert!(
-                decision["fields"].get("agentSessionRoute").is_none(),
+                decision["fields"].get("residentName").is_none()
+                    && decision["fields"].get("agentSessionRoute").is_none(),
                 "{decision}"
             );
         }
@@ -433,7 +422,7 @@ fn codex_normal_task_routes_testing_execution_to_configured_resident() {
         "{decision}"
     );
     assert_eq!(decision["fields"]["executionLane"], "testing");
-    assert_eq!(decision["fields"]["executionTransport"], "resident-agent");
+    assert_eq!(decision["fields"]["transport"], "resident-agent");
     assert_eq!(decision["fields"]["residentChildName"], "asp-testing");
     assert_eq!(decision["fields"]["targetAgentName"], "asp_testing");
     assert_eq!(decision["fields"]["canonicalTarget"], "/root/asp_testing");
@@ -450,12 +439,12 @@ fn codex_normal_task_routes_testing_execution_to_configured_resident() {
         "{decision}"
     );
     assert_eq!(
-        decision["fields"]["executionReceiptKind"],
+        decision["fields"]["receiptKind"],
         "asp-testing-execution-v1"
     );
-    assert_eq!(decision["fields"]["rootSessionId"], session_id);
+    assert_eq!(decision["fields"]["sessionId"], session_id);
     assert!(
-        decision["fields"]["executionCommandDigest"]
+        decision["fields"]["commandDigest"]
             .as_str()
             .is_some_and(|digest| digest.starts_with("sha256:") && digest.len() == 71),
         "{decision}"
@@ -596,13 +585,6 @@ developer_instructions = "Run only routed release build commands."
     hook_config.push_str(
         r#"
 
-[executionLanes.release]
-enabled = true
-transport = "resident-agent"
-residentName = "release-build"
-receiptKind = "release-build-execution-v1"
-commandPrefixes = ["just release-probe"]
-
 [[agents.residentAgents]]
 enabled = true
 name = "release-build"
@@ -610,9 +592,27 @@ role = "release_builder"
 roles = ["subagent", "release", "build"]
 permissions = ["workspace-write"]
 codexAgentName = "release_builder"
-lifecycle = "release-command"
 sessionLifetime = "resident"
-commandPrefixes = ["just release-probe"]
+
+[[rules]]
+id = "resident-release-dispatch"
+priority = 90001
+intent = "release-command"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+message = "Release commands are dispatched to the configured release-build resident agent."
+event = "pre-tool"
+
+[rules.fields]
+executionLane = "release"
+
+[rules.match]
+argvPrefixAny = [["just", "release-probe"]]
+
+[rules.dispatch]
+transport = "resident-agent"
+residentName = "release-build"
+receiptKind = "release-build-execution-v1"
 "#,
     );
     std::fs::write(&hook_config_path, hook_config).expect("write custom hook lane");
@@ -644,12 +644,8 @@ commandPrefixes = ["just release-probe"]
         "{decision}"
     );
     assert_eq!(
-        decision["fields"]["executionReceiptKind"],
+        decision["fields"]["receiptKind"],
         "release-build-execution-v1"
-    );
-    assert_eq!(
-        decision["fields"]["targetAgentRegistryStatus"], "repaired-by-asp-sync",
-        "{decision}"
     );
 
     for (task_name, fork_turns) in [("release_builder", "all"), ("release-builder-copy", "none")] {

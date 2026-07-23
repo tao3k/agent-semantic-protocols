@@ -8,21 +8,7 @@ use agent_semantic_hook::{
 };
 
 pub(super) fn asp_command() -> Command {
-    if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
-        return checked_asp_command(PathBuf::from(path), "ASP_TEST_ASP_BIN");
-    }
-    if let Some(path) = option_env!("CARGO_BIN_EXE_asp") {
-        return checked_asp_command(PathBuf::from(path), "CARGO_BIN_EXE_asp");
-    }
-    if let Ok(path) = std::env::var("CARGO_BIN_EXE_asp") {
-        return checked_asp_command(PathBuf::from(path), "CARGO_BIN_EXE_asp");
-    }
-    if let Some(path) = target_debug_asp() {
-        return Command::new(path);
-    }
-    panic!(
-        "agent-semantic-hook CLI tests require a fresh asp binary; run `cargo build -p agent-semantic-protocol --bin asp` or set ASP_TEST_ASP_BIN"
-    );
+    Command::new(asp_binary_path())
 }
 
 fn target_debug_asp() -> Option<PathBuf> {
@@ -36,14 +22,39 @@ fn target_debug_asp() -> Option<PathBuf> {
     Some(asp)
 }
 
-fn checked_asp_command(path: PathBuf, source: &str) -> Command {
+pub(super) fn asp_bin_dir() -> PathBuf {
+    asp_binary_path()
+        .parent()
+        .expect("asp binary must have parent directory")
+        .to_path_buf()
+}
+
+fn asp_binary_path() -> PathBuf {
+    if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
+        return checked_asp_path(PathBuf::from(path), "ASP_TEST_ASP_BIN");
+    }
+    if let Some(path) = option_env!("CARGO_BIN_EXE_asp") {
+        return checked_asp_path(PathBuf::from(path), "CARGO_BIN_EXE_asp");
+    }
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_asp") {
+        return checked_asp_path(PathBuf::from(path), "CARGO_BIN_EXE_asp");
+    }
+    if let Some(path) = target_debug_asp() {
+        return path;
+    }
+    panic!(
+        "agent-semantic-hook CLI tests require a fresh asp binary; run `cargo build -p agent-semantic-protocol --bin asp` or set ASP_TEST_ASP_BIN"
+    );
+}
+
+fn checked_asp_path(path: PathBuf, source: &str) -> PathBuf {
     assert!(
         path.exists(),
         "{source} points to a missing asp binary: {}",
         path.display()
     );
     assert_asp_binary_fresh(&path);
-    Command::new(path)
+    path
 }
 
 fn assert_asp_binary_fresh(binary: &Path) {
@@ -79,8 +90,16 @@ fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
         "crates/agent-semantic-protocol/src/command/org_capture_contract_materialize.rs",
         "crates/agent-semantic-protocol/src/command/hook_enforcement.rs",
         "crates/agent-semantic-config/src/hook_client_config.rs",
+        "crates/agent-semantic-hook/src/activation_store.rs",
         "crates/agent-semantic-hook/src/event_state.rs",
         "crates/agent-semantic-hook/src/hook_config/agent_org_config.rs",
+        "crates/agent-semantic-hook/src/provider_manifest.rs",
+        "crates/agent-semantic-hook/src/provider_registry.rs",
+        "crates/agent-semantic-hook/src/protocol_activation/digest.rs",
+        "crates/agent-semantic-hook/src/protocol_activation/protocol_activation_manifest.rs",
+        "crates/agent-semantic-hook/src/protocol_activation/protocol_activation_runtime.rs",
+        "languages/rust-lang-project-harness/provider/asp-provider-manifest.json",
+        "schemas/semantic-language-registry.providers.v1.json",
         "SKILL.org",
         "SKILL.contract.org",
     ]

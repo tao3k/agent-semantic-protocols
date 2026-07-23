@@ -35,6 +35,10 @@ mod unix {
             .current_dir(&root)
             .env("CODEX_HOME", &codex_home)
             .env("PATH", prepend_path(&fake_bin))
+            .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
+            .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
+            .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
+            .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
             .env("ASP_STATE_HOME", root.join(".state"))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(["install", "plugin", "--codex", "--project", "."])
@@ -562,11 +566,19 @@ esac
     fn prepend_path(bin_dir: &Path) -> String {
         let existing = std::env::var_os("PATH").unwrap_or_default();
         let mut paths = std::env::split_paths(&existing).collect::<Vec<_>>();
+        paths.insert(0, asp_bin_dir());
         paths.insert(0, bin_dir.to_path_buf());
         std::env::join_paths(paths)
             .expect("join PATH")
             .to_string_lossy()
             .into_owned()
+    }
+
+    fn asp_bin_dir() -> PathBuf {
+        Path::new(env!("CARGO_BIN_EXE_asp"))
+            .parent()
+            .expect("CARGO_BIN_EXE_asp has parent")
+            .to_path_buf()
     }
 }
 #[test]
@@ -671,8 +683,18 @@ fn claude_install_migrates_stale_managed_config_when_sidecar_proves_ownership() 
 }
 
 fn run_claude_hook_install(root: &std::path::Path) -> std::process::Output {
+    let asp_bin_dir = std::path::Path::new(env!("CARGO_BIN_EXE_asp"))
+        .parent()
+        .expect("CARGO_BIN_EXE_asp has parent")
+        .to_path_buf();
+    let existing = std::env::var_os("PATH").unwrap_or_default();
+    let mut paths = std::env::split_paths(&existing).collect::<Vec<_>>();
+    paths.insert(0, asp_bin_dir.clone());
+    let path = std::env::join_paths(paths).expect("join PATH");
     std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(root)
+        .env("PATH", path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", root.join(".state"))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["install", "hook", "--client", "claude", "."])

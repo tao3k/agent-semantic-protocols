@@ -13,6 +13,7 @@ use super::support::{
 #[test]
 fn cli_doctor_accepts_root_owned_rust_activation() {
     let root = temp_project_root("doctor-activation");
+    super::support::write_default_client_hook_config(&root);
     let activation_path = write_root_owned_rust_activation(&root);
     let output = asp_command()
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))

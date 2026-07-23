@@ -136,6 +136,7 @@ pub struct ProviderSourceSnapshotDescriptor {
     pub language_id: String,
     pub packet_schema_id: String,
     pub exact_source_packet_schema_id: String,
+    pub canonical_item_selector_schema_id: String,
     pub source_snapshot_envelope_schema_id: String,
     pub derived_artifact_evidence_schema_id: String,
     pub algorithm: String,

@@ -8,6 +8,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const ACTIVE_ASP_ARTIFACT_RECEIPT_FILE: &str = "active-asp-artifact-receipt.v1.json";
@@ -25,6 +26,30 @@ pub struct ActiveAspArtifactInput {
     pub artifact_kind: ActiveArtifactKindV1,
     pub materialized_path: PathBuf,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ActiveArtifactMetadataFingerprint {
+    materialized_path: String,
+    size_bytes: u64,
+    modified_unix_nanos: u64,
+    change_time_unix_nanos: Option<i64>,
+}
+
+#[derive(Clone, Debug)]
+struct VerifiedActiveAspArtifactReceiptCacheEntry {
+    receipt_path: PathBuf,
+    receipt_size_bytes: u64,
+    receipt_modified_unix_nanos: u64,
+    receipt_change_time_unix_nanos: Option<i64>,
+    activation_path: PathBuf,
+    asp_paths: Vec<PathBuf>,
+    leaf_fingerprints: Vec<ActiveArtifactMetadataFingerprint>,
+    receipt: ActiveAspArtifactReceiptV1,
+}
+
+static VERIFIED_ACTIVE_ASP_ARTIFACT_RECEIPT_CACHE: OnceLock<
+    Mutex<Option<VerifiedActiveAspArtifactReceiptCacheEntry>>,
+> = OnceLock::new();
 
 pub fn active_asp_artifact_receipt_path(activation_path: &Path) -> Result<PathBuf, String> {
     let parent = activation_path.parent().ok_or_else(|| {
@@ -173,6 +198,17 @@ pub fn verify_active_asp_artifact_receipt(
     asp_paths: &[&Path],
 ) -> Result<ActiveAspArtifactReceiptV1, String> {
     let receipt_path = active_asp_artifact_receipt_path(activation_path)?;
+    let receipt_metadata = fs::metadata(&receipt_path)
+        .map_err(|error| format!("failed to inspect {}: {error}", receipt_path.display()))?;
+    if let Some(receipt) = verified_active_receipt_cache_hit(
+        &receipt_path,
+        &receipt_metadata,
+        activation_path,
+        asp_paths,
+    )? {
+        return Ok(receipt);
+    }
+
     let bytes = fs::read(&receipt_path)
         .map_err(|error| format!("failed to read {}: {error}", receipt_path.display()))?;
     let receipt: ActiveAspArtifactReceiptV1 = serde_json::from_slice(&bytes)
@@ -181,9 +217,18 @@ pub fn verify_active_asp_artifact_receipt(
         .validate()
         .map_err(|error| format!("invalid active ASP artifact receipt: {error:?}"))?;
 
-    verify_materialized_leaf(activation_path, receipt.activation_leaf(), "activation")?;
+    let mut leaf_fingerprints = Vec::with_capacity(receipt.leaves.len());
+    leaf_fingerprints.push(verify_materialized_leaf(
+        activation_path,
+        receipt.activation_leaf(),
+        "activation",
+    )?);
     for asp_path in asp_paths {
-        verify_materialized_leaf(asp_path, receipt.asp_binary_leaf(), "ASP binary")?;
+        leaf_fingerprints.push(verify_materialized_leaf(
+            asp_path,
+            receipt.asp_binary_leaf(),
+            "ASP binary",
+        )?);
     }
     for leaf in &receipt.leaves {
         if matches!(
@@ -192,20 +237,107 @@ pub fn verify_active_asp_artifact_receipt(
         ) {
             continue;
         }
-        verify_materialized_leaf(
+        leaf_fingerprints.push(verify_materialized_leaf(
             Path::new(&leaf.materialized_path),
             leaf,
             leaf.artifact_kind.canonical_name(),
-        )?;
+        )?);
     }
+    remember_verified_active_receipt(
+        receipt_path,
+        &receipt_metadata,
+        activation_path,
+        asp_paths,
+        leaf_fingerprints,
+        receipt.clone(),
+    )?;
     Ok(receipt)
+}
+
+fn verified_active_receipt_cache_hit(
+    receipt_path: &Path,
+    receipt_metadata: &fs::Metadata,
+    activation_path: &Path,
+    asp_paths: &[&Path],
+) -> Result<Option<ActiveAspArtifactReceiptV1>, String> {
+    let Some(cache) = VERIFIED_ACTIVE_ASP_ARTIFACT_RECEIPT_CACHE.get() else {
+        return Ok(None);
+    };
+    let guard = cache
+        .lock()
+        .map_err(|_| "active ASP artifact receipt cache lock poisoned".to_string())?;
+    let Some(entry) = guard.as_ref() else {
+        return Ok(None);
+    };
+    if entry.receipt_path != receipt_path
+        || entry.receipt_size_bytes != receipt_metadata.len()
+        || entry.receipt_modified_unix_nanos != modified_unix_nanos(receipt_metadata)?
+        || entry.receipt_change_time_unix_nanos != change_time_unix_nanos(receipt_metadata)
+        || entry.activation_path != activation_path
+        || !same_asp_paths(&entry.asp_paths, asp_paths)
+    {
+        return Ok(None);
+    }
+    for fingerprint in &entry.leaf_fingerprints {
+        if !current_metadata_matches_fingerprint(fingerprint)? {
+            return Ok(None);
+        }
+    }
+    Ok(Some(entry.receipt.clone()))
+}
+
+fn remember_verified_active_receipt(
+    receipt_path: PathBuf,
+    receipt_metadata: &fs::Metadata,
+    activation_path: &Path,
+    asp_paths: &[&Path],
+    leaf_fingerprints: Vec<ActiveArtifactMetadataFingerprint>,
+    receipt: ActiveAspArtifactReceiptV1,
+) -> Result<(), String> {
+    let cache = VERIFIED_ACTIVE_ASP_ARTIFACT_RECEIPT_CACHE.get_or_init(|| Mutex::new(None));
+    let mut guard = cache
+        .lock()
+        .map_err(|_| "active ASP artifact receipt cache lock poisoned".to_string())?;
+    *guard = Some(VerifiedActiveAspArtifactReceiptCacheEntry {
+        receipt_path,
+        receipt_size_bytes: receipt_metadata.len(),
+        receipt_modified_unix_nanos: modified_unix_nanos(receipt_metadata)?,
+        receipt_change_time_unix_nanos: change_time_unix_nanos(receipt_metadata),
+        activation_path: activation_path.to_path_buf(),
+        asp_paths: asp_paths.iter().map(|path| (*path).to_path_buf()).collect(),
+        leaf_fingerprints,
+        receipt,
+    });
+    Ok(())
+}
+
+fn same_asp_paths(cached: &[PathBuf], current: &[&Path]) -> bool {
+    cached.len() == current.len()
+        && cached
+            .iter()
+            .zip(current.iter())
+            .all(|(cached, current)| cached == *current)
+}
+
+fn current_metadata_matches_fingerprint(
+    fingerprint: &ActiveArtifactMetadataFingerprint,
+) -> Result<bool, String> {
+    let metadata = fs::metadata(&fingerprint.materialized_path).map_err(|error| {
+        format!(
+            "failed to inspect {}: {error}",
+            fingerprint.materialized_path
+        )
+    })?;
+    Ok(metadata.len() == fingerprint.size_bytes
+        && modified_unix_nanos(&metadata)? == fingerprint.modified_unix_nanos
+        && change_time_unix_nanos(&metadata) == fingerprint.change_time_unix_nanos)
 }
 
 fn verify_materialized_leaf(
     path: &Path,
     leaf: &ActiveArtifactLeafV1,
     label: &str,
-) -> Result<(), String> {
+) -> Result<ActiveArtifactMetadataFingerprint, String> {
     let canonical = canonical_regular_file(path, label)?;
     if canonical != Path::new(&leaf.materialized_path) {
         return Err(format!(
@@ -223,10 +355,18 @@ fn verify_materialized_leaf(
             leaf.size_bytes
         ));
     }
-    if modified_unix_nanos(&metadata)? == leaf.modified_unix_nanos
-        && change_time_unix_nanos(&metadata) == leaf.change_time_unix_nanos
+    let modified_unix_nanos = modified_unix_nanos(&metadata)?;
+    let change_time_unix_nanos = change_time_unix_nanos(&metadata);
+    let fingerprint = ActiveArtifactMetadataFingerprint {
+        materialized_path: utf8_path(&canonical, label)?,
+        size_bytes: size,
+        modified_unix_nanos,
+        change_time_unix_nanos,
+    };
+    if modified_unix_nanos == leaf.modified_unix_nanos
+        && change_time_unix_nanos == leaf.change_time_unix_nanos
     {
-        return Ok(());
+        return Ok(fingerprint);
     }
     let bytes = fs::read(&canonical)
         .map_err(|error| format!("failed to read {}: {error}", canonical.display()))?;
@@ -238,7 +378,7 @@ fn verify_materialized_leaf(
             leaf.artifact_digest.as_str()
         ));
     }
-    Ok(())
+    Ok(fingerprint)
 }
 
 fn modified_unix_nanos(metadata: &fs::Metadata) -> Result<u64, String> {

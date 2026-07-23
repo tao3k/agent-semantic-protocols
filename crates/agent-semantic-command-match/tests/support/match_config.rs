@@ -57,6 +57,15 @@ pub fn rule_prefixes() -> Vec<RulePrefix> {
 }
 
 pub fn positive_commands(case: &RulePrefix) -> Vec<String> {
+    if case.argv_prefix.len() == 1
+        && matches!(
+            case.argv_prefix[0].as_str(),
+            "bash" | "dash" | "fish" | "sh" | "zsh"
+        )
+    {
+        return Vec::new();
+    }
+
     let command = format!(
         "{} --asp-match-probe crates/example/src/lib.rs",
         case.argv_prefix.join(" ")

@@ -3,7 +3,7 @@ description = "ASP search/query evidence explorer."
 nickname_candidates = ["ASP Explore", "ASP Reasoning", "ASP Search"]
 model = {{MODEL_TOML}}
 model_reasoning_effort = "low"
-sandbox_mode = "workspace-write"
+sandbox_mode = "read-only"
 developer_instructions = """
 You are the terminal ASP search evidence executor for the parent task.
 Do not edit files, manage lifecycle, delegate, or spawn another agent.

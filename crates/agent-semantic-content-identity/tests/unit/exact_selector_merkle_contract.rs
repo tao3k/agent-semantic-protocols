@@ -18,6 +18,10 @@ fn proof() -> ExactSelectorMerkleProofV1 {
     ])
     .expect("valid Merkle tree");
     ExactSelectorMerkleProofV1 {
+        canonical_item_selector: agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new("rust", "function", "run"),
+            "rust://crates/example/src/lib.rs#item/function/run",
+        ),
         schema_id: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID.to_owned(),
         schema_version: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION.to_owned(),
         digest_algorithm: EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM.to_owned(),
@@ -84,6 +88,12 @@ fn parser_fact_and_projection_digests_are_domain_separated_and_recomputable() {
         b"normalized-parser-facts",
     );
     let projection = derive_projection_digest_v1(
+        &agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(
+                "rust", "function", "run",
+            ),
+            "rust://crates/example/src/lib.rs#item/function/run",
+        ),
         "rust://crates/example/src/lib.rs#item/function/run",
         ExactProjectionModeV1::Code,
         &parser_fact,

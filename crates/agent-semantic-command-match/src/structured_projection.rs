@@ -1,14 +1,18 @@
+//! Bounded structured-filter command classification.
+
 use std::collections::BTreeMap;
 
 use crate::CommandStageV1;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// One bounded structured-filter path segment.
 pub enum BoundedPathSegmentV1 {
     Field(String),
     Index(usize),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Classification of a structured-filter command.
 pub enum StructuredFilterClassificationV1 {
     BoundedPath { segments: Vec<BoundedPathSegmentV1> },
     Identity,
@@ -18,6 +22,7 @@ pub enum StructuredFilterClassificationV1 {
     Invalid,
 }
 
+/// Configured command grammar for one bounded structured-filter input.
 pub struct BoundedPathCommandSpecV1<'a> {
     pub binary: &'a str,
     pub optional_subcommand_any: &'a [String],
@@ -25,7 +30,15 @@ pub struct BoundedPathCommandSpecV1<'a> {
     pub option_value_arity: &'a BTreeMap<String, u8>,
 }
 
+/// Classify one bounded-path command without accepting compound shell stages.
 pub fn classify_single_bounded_path_command(
+    command: &str,
+    spec: BoundedPathCommandSpecV1<'_>,
+) -> StructuredFilterClassificationV1 {
+    classify_single_bounded_path_command_impl(command, spec)
+}
+
+fn classify_single_bounded_path_command_impl(
     command: &str,
     spec: BoundedPathCommandSpecV1<'_>,
 ) -> StructuredFilterClassificationV1 {
@@ -92,6 +105,7 @@ fn classify_bounded_path_stage(
     classify_bounded_path_filter(filter)
 }
 
+/// Classify a structured-filter expression without executing it.
 pub fn classify_bounded_path_filter(filter: &str) -> StructuredFilterClassificationV1 {
     let filter = filter.trim();
     if filter == "." {
@@ -205,66 +219,5 @@ fn is_identifier_continue(byte: u8) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-
-    use super::{
-        BoundedPathCommandSpecV1, StructuredFilterClassificationV1,
-        classify_single_bounded_path_command,
-    };
-
-    fn spec<'a>(
-        binary: &'a str,
-        subcommands: &'a [String],
-        options: &'a [String],
-        option_values: &'a BTreeMap<String, u8>,
-    ) -> BoundedPathCommandSpecV1<'a> {
-        BoundedPathCommandSpecV1 {
-            binary,
-            optional_subcommand_any: subcommands,
-            option_any: options,
-            option_value_arity: option_values,
-        }
-    }
-
-    #[test]
-    fn command_model_is_configured_instead_of_binary_hardcoded() {
-        let no_subcommands = Vec::new();
-        let options = vec!["--raw-output".to_string()];
-        let mut option_values = BTreeMap::new();
-        option_values.insert("--arg".to_string(), 2);
-        assert!(matches!(
-            classify_single_bounded_path_command(
-                "project-json --arg scope workspace .package.name package.json",
-                spec("project-json", &no_subcommands, &options, &option_values),
-            ),
-            StructuredFilterClassificationV1::BoundedPath { .. }
-        ));
-    }
-
-    #[test]
-    fn rejects_identity_multiple_inputs_and_multi_stage_commands() {
-        let subcommands = vec!["eval".to_string(), "e".to_string()];
-        let options = Vec::new();
-        let option_values = BTreeMap::new();
-        let configured = || spec("project-toml", &subcommands, &options, &option_values);
-        assert_eq!(
-            classify_single_bounded_path_command("project-toml eval . Cargo.toml", configured()),
-            StructuredFilterClassificationV1::Identity
-        );
-        assert_eq!(
-            classify_single_bounded_path_command(
-                "project-toml .workspace Cargo.toml pyproject.toml",
-                configured(),
-            ),
-            StructuredFilterClassificationV1::Compound
-        );
-        assert_eq!(
-            classify_single_bounded_path_command(
-                "project-toml .workspace Cargo.toml | sed Cargo.toml",
-                configured(),
-            ),
-            StructuredFilterClassificationV1::Compound
-        );
-    }
-}
+#[path = "../tests/unit/structured_projection.rs"]
+mod tests;

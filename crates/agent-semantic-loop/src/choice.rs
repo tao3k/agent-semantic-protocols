@@ -17,6 +17,16 @@ pub struct ResidentInteractiveCommand {
 
 impl ResidentInteractiveCommand {
     pub fn bootstrap(resident_name: &str, root_session_id: Option<&str>) -> Self {
+        Self::bootstrap_with_dispatch(resident_name, root_session_id, None, None)
+    }
+
+    #[must_use]
+    pub fn bootstrap_with_dispatch(
+        resident_name: &str,
+        root_session_id: Option<&str>,
+        receipt_kind: Option<&str>,
+        command_json: Option<&str>,
+    ) -> Self {
         let mut argv = vec![
             "asp".to_string(),
             "agent".to_string(),
@@ -28,6 +38,12 @@ impl ResidentInteractiveCommand {
         if let Some(root_session_id) = root_session_id.filter(|value| !value.is_empty()) {
             argv.extend(["--root-session-id".to_string(), root_session_id.to_string()]);
         }
+        if let Some(receipt_kind) = receipt_kind {
+            argv.extend(["--receipt-kind".to_string(), receipt_kind.to_string()]);
+        }
+        if let Some(command_json) = command_json {
+            argv.extend(["--command-json".to_string(), command_json.to_string()]);
+        }
         Self {
             schema_id: "agent.semantic-protocols.loop.resident-interactive-command",
             schema_version: "1",
@@ -37,29 +53,8 @@ impl ResidentInteractiveCommand {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::ResidentInteractiveCommand;
-
-    #[test]
-    fn resident_bootstrap_command_is_one_v1_argv() {
-        let command =
-            ResidentInteractiveCommand::bootstrap("asp-testing", Some("root-session-test"));
-        assert_eq!(command.schema_version, "1");
-        assert_eq!(
-            command.argv,
-            [
-                "asp",
-                "agent",
-                "session",
-                "bootstrap",
-                "--name",
-                "asp-testing",
-                "--root-session-id",
-                "root-session-test",
-            ]
-        );
-    }
-}
+#[path = "../tests/unit/choice.rs"]
+mod tests;
 
 #[derive(Serialize)]
 pub struct ChoicePane<'a, State>

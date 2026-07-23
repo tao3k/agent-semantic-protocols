@@ -61,6 +61,12 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
             let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
             let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
                 .expect("materialize provider routes");
+            let execution_command_digest = if spec.command_prefix.is_empty() {
+                format!("sha256:{}", "0".repeat(64))
+            } else {
+                agent_semantic_hook::provider_execution_command_digest(&spec.command_prefix)
+                    .expect("provider execution command digest")
+            };
             let provider = json!({
                 "manifestId": manifest.manifest_id,
                 "manifestDigest": manifest_digest,
@@ -69,6 +75,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 "binary": manifest.binary,
                 "execution": manifest.execution,
                 "providerCommandPrefix": spec.command_prefix,
+                "executionCommandDigest": execution_command_digest,
                 "searchCapabilities": manifest.search_capabilities,
                 "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
                 "queryPackDescriptor": manifest.query_pack_descriptor,

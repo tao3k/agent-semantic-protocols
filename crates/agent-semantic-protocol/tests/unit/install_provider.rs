@@ -311,6 +311,21 @@ fn ignored_harness_anchor_is_forced_into_merkle_source_cas() {
 }
 
 #[test]
+fn typescript_workspace_descriptor_materializes_locked_dependencies_before_build() {
+    let descriptor = super::super::install_provider_workspace_descriptor::workspace_install_descriptor_for_language("typescript")
+        .expect("typescript workspace install descriptor should resolve");
+    let materialization = descriptor
+        .dependency_materialization
+        .expect("typescript must materialize dependencies inside the isolated build sandbox");
+    assert_eq!(materialization.program, "npm");
+    assert_eq!(materialization.args, ["ci"]);
+    assert_eq!(
+        materialization.working_directory,
+        "languages/typescript-lang-project-harness"
+    );
+}
+
+#[test]
 fn resolves_provider_owned_workspace_descriptors_through_manifests() {
     let cases = [
         ("rust", "rs-harness", "rs-harness"),

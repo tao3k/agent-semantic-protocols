@@ -5,7 +5,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use agent_semantic_client_db::turso_sync_storage::{
-    TursoSyncOperationOutcome, TursoSyncProfileConfig, TursoSyncStorage,
+    DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT, TursoSyncOperationOutcome, TursoSyncProfileConfig,
+    TursoSyncProfileMode, TursoSyncStorage,
 };
 use serde::Serialize;
 
@@ -96,9 +97,12 @@ fn start_sync_server(database_path: &Path) -> (SyncServerGuard, String) {
 fn config(path: &Path, remote_url: &str) -> TursoSyncProfileConfig {
     TursoSyncProfileConfig {
         path: path.to_path_buf(),
-        remote_url: remote_url.to_owned(),
-        auth_token: "local-sync-server".to_owned(),
-        bootstrap_if_empty: true,
+        mode: TursoSyncProfileMode::Remote {
+            remote_url: remote_url.to_owned(),
+            auth_token: "local-sync-server".to_owned(),
+            bootstrap_if_empty: true,
+        },
+        operation_timeout: DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT,
     }
 }
 

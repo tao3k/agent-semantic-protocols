@@ -1,10 +1,10 @@
+use super::action_match;
+
 use agent_semantic_config::{
     HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
     HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientRuleConfig,
     HookClientRuleMatchConfig, HookClientRuleRouteConfig,
 };
-use std::borrow::Cow;
-use std::path::Path;
 
 use crate::hook_config::AspSessionPolicy;
 use crate::hook_config::agent_org_config::compile_agent_org_artifacts_config;
@@ -25,7 +25,7 @@ use crate::tool_action::{ToolAction, subject_for_action};
 #[derive(Debug)]
 /// Compiled hook rules loaded from the global ASP state root.
 pub struct ClientHookConfig {
-    rules: Vec<CompiledHookRule>,
+    pub(in crate::hook_config) rules: Vec<CompiledHookRule>,
     contract_fingerprint: Option<String>,
     semantic_ast_patch_disabled: bool,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
@@ -34,40 +34,13 @@ pub struct ClientHookConfig {
     agent_session_messages: agent_semantic_config::HookClientAgentSessionMessagesConfig,
 }
 
-impl Default for ClientHookConfig {
-    fn default() -> Self {
-        let config = agent_semantic_config::default_hook_client_config_file()
-            .expect("embedded hook client config must remain valid");
-        compile_config(config).expect("embedded hook client rules must compile")
-    }
-}
-
-impl ClientHookConfig {
-    /// Return the agent-facing session message templates.
-    pub fn agent_session_messages(
-        &self,
-    ) -> &agent_semantic_config::HookClientAgentSessionMessagesConfig {
-        &self.agent_session_messages
-    }
-
-    /// Return the resident child session name used for ASP exploration.
-    pub fn resident_asp_explore_child_name(&self) -> &str {
-        self.asp_session_policy.resident_child_name()
-    }
-
-    /// Return the configured Codex agent name used for ASP exploration.
-    pub fn resident_asp_explore_codex_agent_name(&self) -> &str {
-        self.asp_session_policy.resident_codex_agent_name()
-    }
-}
-
 #[derive(Debug)]
-struct CompiledHookRule {
+pub(in crate::hook_config) struct CompiledHookRule {
     id: String,
     priority: i64,
     intent: Option<String>,
     fields: std::collections::BTreeMap<String, String>,
-    dispatch: Option<CompiledRuleDispatch>,
+    pub(in crate::hook_config) dispatch: Option<CompiledRuleDispatch>,
     decision: HookClientConfigDecision,
     decision_materializer: Option<agent_semantic_config::HookClientDecisionMaterializer>,
     reason_kind: ReasonKind,
@@ -80,18 +53,18 @@ struct CompiledHookRule {
 }
 
 #[derive(Debug)]
-struct CompiledRuleDispatch {
+pub(in crate::hook_config) struct CompiledRuleDispatch {
     transport: agent_semantic_config::HookClientRuleDispatchTransport,
-    resident_name: String,
-    resident_codex_agent_name: String,
-    resident_role: String,
+    pub(in crate::hook_config) resident_name: String,
+    pub(in crate::hook_config) resident_codex_agent_name: String,
+    pub(in crate::hook_config) resident_role: String,
     receipt_kind: String,
     lazy_provider: Option<agent_semantic_config::HookClientLazyProviderPolicy>,
 }
 
 #[derive(Debug)]
-struct RuleMatch {
-    semantic_action: action_match::SemanticActionMatch,
+pub(super) struct RuleMatch {
+    agent_action: action_match::AgentActionMatch,
     tool_any: Vec<String>,
     command_any: Vec<String>,
     argv_pattern_any: Vec<Vec<String>>,
@@ -99,11 +72,11 @@ struct RuleMatch {
     command_contains_any: CompiledCommandContains,
     path_any: Vec<String>,
     path_glob_any: CompiledPathGlobs,
-    argv_source_any: Vec<String>,
-    argv_source_glob_any: CompiledPathGlobs,
-    argv_source_exclude_flag_any: Vec<String>,
-    argv_workspace_regular_file: bool,
-    argv_registered_source_file: bool,
+    pub(super) argv_source_any: Vec<String>,
+    pub(super) argv_source_glob_any: CompiledPathGlobs,
+    pub(super) argv_source_exclude_flag_any: Vec<String>,
+    pub(super) argv_workspace_regular_file: bool,
+    pub(super) argv_registered_source_file: bool,
     structured_projection: Option<agent_semantic_config::HookClientStructuredProjectionMatchConfig>,
 }
 
@@ -115,157 +88,6 @@ struct RuleRoute {
     kind: DecisionRouteKind,
     argv: Vec<String>,
     stdin_mode: Option<StdinMode>,
-}
-
-impl ClientHookConfig {
-    pub fn contract_fingerprint(&self) -> Option<&str> {
-        self.contract_fingerprint.as_deref()
-    }
-
-    pub(crate) fn semantic_ast_patch_enabled(&self) -> bool {
-        !self.semantic_ast_patch_disabled
-    }
-
-    /// Return ASP session routing policy compiled from hook config.
-    pub fn asp_session_policy(&self) -> &AspSessionPolicy {
-        &self.asp_session_policy
-    }
-
-    pub(crate) fn recovery_prompt(&self) -> &CompiledRecoveryPromptConfig {
-        &self.recovery_prompt
-    }
-
-    pub(crate) fn agent_org_artifacts_recovery(
-        &self,
-        project_root: impl AsRef<Path>,
-        session_id: Option<&str>,
-    ) -> Option<AgentOrgArtifactsRecovery> {
-        self.agent_org_artifacts
-            .recovery(project_root.as_ref(), session_id)
-    }
-
-    pub(crate) fn agent_org_artifacts_archive_warning(
-        &self,
-        project_root: impl AsRef<Path>,
-    ) -> Option<AgentOrgArtifactsArchiveWarning> {
-        self.agent_org_artifacts
-            .archive_warning(project_root.as_ref())
-    }
-
-    pub(crate) fn classify(
-        &self,
-        runtime: &HookRuntime,
-        platform: &str,
-        event: &str,
-        action: &ToolAction,
-    ) -> Option<HookDecision> {
-        let mut command_tokens: Option<Option<Cow<'_, [String]>>> = None;
-        for rule in &self.rules {
-            let needs_command_tokens = rule.match_config.needs_command_tokens()
-                || matches!(
-                    rule.decision_materializer,
-                    Some(
-                        agent_semantic_config::HookClientDecisionMaterializer::AgentSearchJson
-                            | agent_semantic_config::HookClientDecisionMaterializer::SourceAccess
-                    )
-                );
-            let command_token_slice = if needs_command_tokens {
-                command_tokens
-                    .get_or_insert_with(|| action.command_tokens())
-                    .as_deref()
-            } else {
-                None
-            };
-            if !rule.matches_before_paths(runtime, platform, event, action, command_token_slice) {
-                continue;
-            }
-            let match_paths = action.paths.as_slice();
-            if !rule.matches_after_paths(runtime, match_paths) {
-                continue;
-            }
-            let argv_source_paths = if rule.match_config.needs_argv_source_match() {
-                let Some(paths) = rule
-                    .match_config
-                    .matching_argv_source_paths(runtime, command_token_slice)
-                else {
-                    continue;
-                };
-                Some(paths)
-            } else {
-                None
-            };
-            let decision_paths = if rule.needs_decision_paths() {
-                if let Some(paths) = argv_source_paths.as_deref()
-                    && !rule.match_config.needs_path_match()
-                {
-                    paths
-                } else {
-                    action.paths.as_slice()
-                }
-            } else {
-                action.paths.as_slice()
-            };
-            if let Some(materializer) = rule.decision_materializer {
-                let decision = match materializer {
-                    agent_semantic_config::HookClientDecisionMaterializer::AgentSearchJson => {
-                        command_token_slice.and_then(|tokens| {
-                            crate::classifier::materialize_agent_search_json_decision(
-                                runtime, platform, event, action, tokens,
-                            )
-                        })
-                    }
-                    agent_semantic_config::HookClientDecisionMaterializer::ApplyPatch => {
-                        crate::classifier::materialize_apply_patch_decision(
-                            runtime,
-                            platform,
-                            event,
-                            action,
-                            self.semantic_ast_patch_enabled(),
-                        )
-                    }
-                    agent_semantic_config::HookClientDecisionMaterializer::SourceAccess => {
-                        crate::classifier::materialize_source_access_decision(
-                            runtime,
-                            platform,
-                            event,
-                            action,
-                            command_token_slice,
-                            self.semantic_ast_patch_enabled(),
-                            self.recovery_prompt(),
-                        )
-                    }
-                };
-                if let Some(mut decision) = decision {
-                    if let Some(host_action) =
-                        rule.host_action_receipt(runtime, action, decision.subject.paths.as_slice())
-                    {
-                        decision
-                            .fields
-                            .insert("hostAction".to_string(), host_action);
-                    }
-                    decision.fields.insert(
-                        "configRuleId".to_string(),
-                        serde_json::Value::String(rule.id.clone()),
-                    );
-                    if let Some(intent) = rule.intent.as_ref() {
-                        decision.fields.insert(
-                            "intent".to_string(),
-                            serde_json::Value::String(intent.clone()),
-                        );
-                    }
-                    decision
-                        .fields
-                        .extend(rule.fields.iter().map(|(key, value)| {
-                            (key.clone(), serde_json::Value::String(value.clone()))
-                        }));
-                    return Some(decision);
-                }
-                continue;
-            }
-            return Some(rule.decision(runtime, platform, event, action, decision_paths));
-        }
-        None
-    }
 }
 
 impl CompiledHookRule {
@@ -300,16 +122,16 @@ impl CompiledHookRule {
         self.matches_language(runtime, paths) && self.match_config.matches_paths(paths)
     }
 
-    fn host_action_receipt(
+    fn agent_action_receipt(
         &self,
         runtime: &HookRuntime,
         action: &ToolAction,
         paths: &[String],
     ) -> Option<serde_json::Value> {
         self.match_config
-            .semantic_action
-            .projected_host_action(runtime, action, Some(paths))
-            .map(|semantic| semantic.receipt_value())
+            .agent_action
+            .derive_agent_action_for_rule(runtime, action, Some(paths))
+            .map(|agent_action| agent_action.receipt_value())
     }
 
     fn matches_language(&self, runtime: &HookRuntime, paths: &[String]) -> bool {
@@ -358,8 +180,8 @@ impl CompiledHookRule {
             .iter()
             .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
             .collect::<std::collections::BTreeMap<_, _>>();
-        if let Some(host_action) = self.host_action_receipt(runtime, action, paths) {
-            decision_fields.insert("hostAction".to_string(), host_action);
+        if let Some(agent_action) = self.agent_action_receipt(runtime, action, paths) {
+            decision_fields.insert("agentAction".to_string(), agent_action);
         }
         if let Some(dispatch) = self.dispatch.as_ref() {
             decision_fields.insert(
@@ -411,7 +233,7 @@ impl CompiledHookRule {
                 ),
             );
         }
-        let registered_asp = super::registered_asp::match_registered_asp_command(
+        let registered_asp = crate::hook_config::core::registered_asp::match_registered_asp_command(
             &self.match_config.argv_pattern_any,
             runtime,
             action,
@@ -421,7 +243,7 @@ impl CompiledHookRule {
             .map(|matched| vec![matched.language_id.clone()])
             .unwrap_or_else(|| self.language_ids.clone());
         if let Some(matched) = registered_asp.as_ref() {
-            super::registered_asp::append_materialization_fields(
+            crate::hook_config::core::registered_asp::append_materialization_fields(
                 &mut decision_fields,
                 runtime,
                 matched,
@@ -466,11 +288,11 @@ impl RuleMatch {
         command_tokens: Option<&[String]>,
         match_paths: Option<&[String]>,
     ) -> bool {
-        self.semantic_action.matches(registry, action, match_paths)
-            && self.matches_before_paths_untyped(registry, action, command_tokens)
+        self.agent_action.matches(registry, action, match_paths)
+            && self.matches_untyped_facts(registry, action, command_tokens)
     }
 
-    fn matches_before_paths_untyped(
+    fn matches_untyped_facts(
         &self,
         runtime: &HookRuntime,
         action: &ToolAction,
@@ -480,7 +302,7 @@ impl RuleMatch {
             && self.matches_command(action, command_tokens)
             && self.matches_structured_projection(action)
             && (self.argv_pattern_any.is_empty()
-                || super::registered_asp::match_registered_asp_command(
+                || crate::hook_config::core::registered_asp::match_registered_asp_command(
                     &self.argv_pattern_any,
                     runtime,
                     action,
@@ -488,8 +310,14 @@ impl RuleMatch {
                 .is_some())
     }
 
-    fn matches_structured_projection(&self, action: &ToolAction) -> bool {
-        super::structured_projection::matches(self.structured_projection.as_ref(), action)
+    pub(in crate::hook_config) fn matches_structured_projection(
+        &self,
+        action: &ToolAction,
+    ) -> bool {
+        crate::hook_config::core::structured_projection::matches(
+            self.structured_projection.as_ref(),
+            action,
+        )
     }
 
     fn matches_paths(&self, paths: &[String]) -> bool {
@@ -519,7 +347,7 @@ impl RuleMatch {
     }
 
     fn needs_source_paths(&self) -> bool {
-        self.semantic_action.needs_subjects()
+        self.agent_action.needs_subjects()
             || self.needs_path_match()
             || !self.argv_source_any.is_empty()
             || !self.argv_source_glob_any.is_empty()
@@ -582,7 +410,11 @@ impl RuleMatch {
         exact_match || glob_match
     }
 
-    fn fast_argv_source_path(&self, project_root: &std::path::Path, token: &str) -> Option<String> {
+    pub(super) fn fast_argv_source_path(
+        &self,
+        project_root: &std::path::Path,
+        token: &str,
+    ) -> Option<String> {
         let path = fast_path_token(token)?;
         if self.matches_argv_source_path(project_root, path) {
             return Some(path.to_string());
@@ -592,7 +424,11 @@ impl RuleMatch {
             .then(|| base.to_string())
     }
 
-    fn matches_argv_source_path(&self, project_root: &std::path::Path, path: &str) -> bool {
+    pub(super) fn matches_argv_source_path(
+        &self,
+        project_root: &std::path::Path,
+        path: &str,
+    ) -> bool {
         let exact_match = !self.argv_source_any.is_empty()
             && self
                 .argv_source_any
@@ -691,52 +527,6 @@ impl RuleRoute {
     }
 }
 
-pub(in crate::hook_config) fn compile_config(
-    config: HookClientConfigFile,
-) -> Result<ClientHookConfig, String> {
-    let contract_fingerprint = config.contract_fingerprint.clone();
-    let default_config = agent_semantic_config::default_hook_client_config_file()?;
-    let default_agent_session_messages = default_config.agent_session_messages;
-    let agent_session_messages = merge_agent_session_messages(
-        config.agent_session_messages,
-        default_agent_session_messages,
-    );
-    let semantic_ast_patch_enabled = config
-        .experimental
-        .get("semanticAstPatch")
-        .and_then(|feature| feature.get("enabled"))
-        .copied()
-        .unwrap_or(true);
-    let configured_rule_ids = config
-        .rules
-        .iter()
-        .map(|rule| rule.id.clone())
-        .collect::<std::collections::BTreeSet<_>>();
-    let mut rule_configs = default_config
-        .rules
-        .into_iter()
-        .filter(|rule| !configured_rule_ids.contains(rule.id.as_str()))
-        .collect::<Vec<_>>();
-    rule_configs.extend(config.rules);
-    let agents = config.agents;
-    let mut rules = rule_configs
-        .into_iter()
-        .filter(|rule| rule.enabled)
-        .map(|rule| CompiledHookRule::try_from_with_agents(rule, &agents.resident_agents))
-        .collect::<Result<Vec<_>, _>>()?;
-    // `sort_by_key` is stable, so equal-priority rules keep config file order.
-    rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
-    Ok(ClientHookConfig {
-        rules,
-        contract_fingerprint,
-        semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
-        agent_org_artifacts: compile_agent_org_artifacts_config(config.agent_org_artifacts)?,
-        recovery_prompt: config.recovery_prompt.into(),
-        agent_session_messages,
-        asp_session_policy: AspSessionPolicy::try_from(agents)?,
-    })
-}
-
 fn merge_agent_session_messages(
     mut config: agent_semantic_config::HookClientAgentSessionMessagesConfig,
     defaults: agent_semantic_config::HookClientAgentSessionMessagesConfig,
@@ -789,7 +579,7 @@ impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
 }
 
 impl CompiledHookRule {
-    fn try_from_with_agents(
+    pub(in crate::hook_config) fn try_from_with_agents(
         config: HookClientRuleConfig,
         resident_agents: &[agent_semantic_config::HookClientResidentAgentConfig],
     ) -> Result<Self, String> {
@@ -828,8 +618,8 @@ impl CompiledHookRule {
             || !config.match_config.subject_kind_any.is_empty()
             || !config.match_config.authority_any.is_empty()
             || !config.match_config.authority_exclude_any.is_empty()
-            || !config.match_config.authority_projections.is_empty()
-            || !config.match_config.effect_projections.is_empty();
+            || !config.match_config.authority_rules.is_empty()
+            || !config.match_config.effect_rules.is_empty();
         if typed_action_contract
             && matches!(
                 reason_kind,
@@ -881,7 +671,7 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
             tool_any.push(tool);
         }
         Ok(Self {
-            semantic_action: action_match::SemanticActionMatch::new(
+            agent_action: action_match::AgentActionMatch::new(
                 config.command_wrappers,
                 config.invocation_shape_any,
                 config.wrapper_match_any,
@@ -891,8 +681,8 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
                 config.subject_kind_any,
                 config.authority_any,
                 config.authority_exclude_any,
-                config.authority_projections,
-                config.effect_projections,
+                config.authority_rules,
+                config.effect_rules,
             ),
             tool_any,
             command_any: config.command_any,
@@ -967,17 +757,13 @@ impl From<HookClientConfigStdinMode> for StdinMode {
     }
 }
 
-#[path = "action_match.rs"]
-mod action_match;
-#[path = "argv_source.rs"]
-mod argv_source;
+#[path = "compiled_rule_client_config.rs"]
+mod client_config;
 
-use super::compile::{compile_command_contains, compile_globs};
-use super::match_types::{CompiledCommandContains, CompiledPathGlobs};
+pub(in crate::hook_config) use client_config::compile_config;
 
-#[cfg(test)]
-#[path = "../../../tests/unit/hook_config_core.rs"]
-mod tests;
+use crate::hook_config::core::compile::{compile_command_contains, compile_globs};
+use crate::hook_config::core::match_types::{CompiledCommandContains, CompiledPathGlobs};
 
 fn canonical_event(value: &str) -> String {
     value.to_ascii_lowercase().replace('_', "-")

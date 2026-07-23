@@ -6,13 +6,14 @@ use serde_json::json;
 use std::path::Path;
 
 #[test]
-fn codex_subagent_start_consumes_absent_host_tree_lease_once() {
+fn codex_subagent_start_requires_canonical_probe_before_replacement() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
     let root_session_id = "019f126d-0000-7000-8000-000000000035";
     let stale_child_id = "019f126d-0000-7000-8000-000000000135";
-    let replacement_child_id = "019f126d-0000-7000-8000-000000000235";
+    let blocked_child_id = "019f126d-0000-7000-8000-000000000235";
+    let replacement_child_id = "019f126d-0000-7000-8000-000000000335";
     register_asp_explore_session(&root, root_session_id, stale_child_id);
 
     let observation = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -38,6 +39,56 @@ fn codex_subagent_start_consumes_absent_host_tree_lease_once() {
         String::from_utf8_lossy(&observation.stderr)
     );
 
+    let blocked = native_resident_start(&root, root_session_id, blocked_child_id);
+    assert_eq!(blocked["decision"].as_str(), Some("allow"), "{blocked}");
+    assert_eq!(
+        blocked["fields"]["agentSessionAction"].as_str(),
+        Some("reuse-resident-child"),
+        "{blocked}"
+    );
+    assert_eq!(
+        blocked["fields"]["agentSessionDuplicateChildAction"].as_str(),
+        Some("close-native-subagent"),
+        "{blocked}"
+    );
+    assert_eq!(
+        blocked["fields"]["childSessionId"].as_str(),
+        Some(stale_child_id),
+        "{blocked}"
+    );
+    assert_eq!(
+        blocked["fields"]["agentSessionDuplicateChildId"].as_str(),
+        Some(blocked_child_id),
+        "{blocked}"
+    );
+
+    let canonical_probe_miss = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env("CODEX_HOME", root.join(".codex-home"))
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME")
+        .args([
+            "agent",
+            "session",
+            "observe-host-tree",
+            "--name",
+            "asp-explore",
+            "--resident-target-status",
+            "unroutable",
+            "--canonical-target",
+            "/root/asp_explorer",
+            "--evidence-ref",
+            "canonical-followup-not-found:1",
+        ])
+        .output()
+        .expect("record canonical probe miss");
+    assert!(
+        canonical_probe_miss.status.success(),
+        "observe canonical probe miss failed: {}",
+        String::from_utf8_lossy(&canonical_probe_miss.stderr)
+    );
+
     let replacement = native_resident_start(&root, root_session_id, replacement_child_id);
     assert_eq!(
         replacement["decision"].as_str(),
@@ -51,7 +102,7 @@ fn codex_subagent_start_consumes_absent_host_tree_lease_once() {
         "decision={replacement} record={replacement_record}"
     );
 
-    let duplicate_child_id = "019f126d-0000-7000-8000-000000000335";
+    let duplicate_child_id = "019f126d-0000-7000-8000-000000000435";
     let duplicate = native_resident_start(&root, root_session_id, duplicate_child_id);
     assert_eq!(duplicate["decision"].as_str(), Some("deny"), "{duplicate}");
     assert_eq!(

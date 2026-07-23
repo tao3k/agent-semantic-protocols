@@ -33,6 +33,10 @@ use self::runtime_repair::{
     latest_trace_result, main_agent_runtime_rebind_instruction, runtime_repair_diagnosis,
     runtime_switch_followup_message,
 };
+fn dispatch_shell_argument(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
 pub(super) fn bootstrap_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
@@ -190,7 +194,6 @@ pub(super) fn bootstrap_session(
                     session,
                     root_session_id,
                     &expected_agent_type,
-                    &expected_canonical_target,
                     agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
                         session,
                         root_session_id,
@@ -406,6 +409,47 @@ pub(super) fn bootstrap_session(
                 && observation.identity_status == "verified"
                 && registry_routable
         });
+    match (args.receipt_kind.as_deref(), args.command_json.as_deref()) {
+        (Some(receipt_kind), Some(command_json)) => {
+            let argv = serde_json::from_str::<Vec<String>>(command_json).map_err(|error| {
+                format!("--command-json must encode an argv string array: {error}")
+            })?;
+            super::agent_session_registry_dispatch::validate_exact_argv(&argv)?;
+            let canonical_command_json = serde_json::to_string(&argv)
+                .map_err(|error| format!("failed to encode canonical dispatch argv: {error}"))?;
+            if format!("{:?}", menu.state) == "Ready"
+                && let Some(choice) = menu
+                    .choices
+                    .iter_mut()
+                    .find(|choice| choice.id == "send-denied-asp-command")
+            {
+                let mut command = format!(
+                    "asp agent session dispatch-claim --name {}",
+                    dispatch_shell_argument(name)
+                );
+                if let Some(root_session_id) = root_session_id.as_deref() {
+                    command.push_str(&format!(
+                        " --root-session-id {}",
+                        dispatch_shell_argument(root_session_id)
+                    ));
+                }
+                command.push_str(&format!(
+                    " --receipt-kind {} --command-json {} --resident-bridge --json",
+                    dispatch_shell_argument(receipt_kind),
+                    dispatch_shell_argument(&canonical_command_json),
+                ));
+                choice.platform_action = std::borrow::Cow::Owned(command);
+                choice.required_inputs = &[];
+            }
+        }
+        (None, None) => {}
+        _ => {
+            return Err(
+                "bootstrap dispatch projection requires both --receipt-kind and --command-json"
+                    .to_string(),
+            );
+        }
+    }
     if args.json {
         let mut rendered = serde_json::to_value(&menu)
             .map_err(|error| format!("failed to render bootstrap menu: {error}"))?;

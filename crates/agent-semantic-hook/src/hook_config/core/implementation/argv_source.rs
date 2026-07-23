@@ -2,10 +2,11 @@
 
 use std::collections::BTreeSet;
 
-use super::{HookRuntime, RuleMatch, collect_source_selector_matches};
+use super::compiled_rule::RuleMatch;
+use crate::{HookRuntime, source_selector::collect_source_selector_matches};
 
 impl RuleMatch {
-    pub(super) fn matching_argv_source_paths(
+    pub(in crate::hook_config) fn matching_argv_source_paths(
         &self,
         runtime: &HookRuntime,
         command_tokens: Option<&[String]>,
@@ -64,6 +65,16 @@ impl RuleMatch {
             } else {
                 if self.matches_argv_source_path(project_root, token) {
                     paths.insert(token.to_string());
+                }
+            }
+        }
+        if self.argv_registered_source_file {
+            for candidate in agent_semantic_command_match::embedded_literal_candidates(tokens) {
+                let provider_owned =
+                    !collect_source_selector_matches(runtime, [candidate.as_str()], |_| true)
+                        .is_empty();
+                if provider_owned {
+                    paths.insert(candidate);
                 }
             }
         }

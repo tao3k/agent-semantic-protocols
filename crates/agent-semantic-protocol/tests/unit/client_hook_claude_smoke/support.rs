@@ -78,20 +78,79 @@ pub(in super::super) fn claude_fixture() -> PathBuf {
     root
 }
 
+struct SmokeInstallRoots {
+    home: PathBuf,
+    xdg_config_home: PathBuf,
+    xdg_data_home: PathBuf,
+    xdg_state_home: PathBuf,
+    xdg_cache_home: PathBuf,
+    temp_dir: PathBuf,
+    bin_dir: PathBuf,
+    asp_state_home: PathBuf,
+    codex_home: PathBuf,
+}
+
+impl SmokeInstallRoots {
+    fn new(root: &Path, codex_home: PathBuf) -> Self {
+        let home = root.join(".home");
+        let xdg_config_home = home.join(".config");
+        let xdg_data_home = home.join(".local/share");
+        let xdg_state_home = home.join(".local/state");
+        let xdg_cache_home = home.join(".cache");
+        let temp_dir = root.join(".tmp");
+        let bin_dir = root.join(".bin");
+        let asp_state_home = root.join(".agent-semantic-protocols");
+        for path in [
+            &home,
+            &xdg_config_home,
+            &xdg_data_home,
+            &xdg_state_home,
+            &xdg_cache_home,
+            &temp_dir,
+            &bin_dir,
+            &asp_state_home,
+            &codex_home,
+        ] {
+            std::fs::create_dir_all(path).expect("create isolated smoke install root");
+        }
+        Self {
+            home,
+            xdg_config_home,
+            xdg_data_home,
+            xdg_state_home,
+            xdg_cache_home,
+            temp_dir,
+            bin_dir,
+            asp_state_home,
+            codex_home,
+        }
+    }
+
+    fn apply(&self, command: &mut Command) {
+        command.env_clear();
+        command
+            .env("PATH", prepend_path(&self.bin_dir))
+            .env("HOME", &self.home)
+            .env("XDG_CONFIG_HOME", &self.xdg_config_home)
+            .env("XDG_DATA_HOME", &self.xdg_data_home)
+            .env("XDG_STATE_HOME", &self.xdg_state_home)
+            .env("XDG_CACHE_HOME", &self.xdg_cache_home)
+            .env("TMPDIR", &self.temp_dir)
+            .env("CODEX_HOME", &self.codex_home)
+            .env("ASP_STATE_HOME", &self.asp_state_home)
+            .env("PRJ_CACHE_HOME", self.xdg_cache_home.join("prj"))
+            .env("SEMANTIC_AGENT_BIN_DIR", &self.bin_dir);
+    }
+}
+
 pub(in super::super) fn install_claude_hooks(root: &Path) {
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+    let roots = SmokeInstallRoots::new(root, root.join(".codex-home"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command
         .args(["install", "hook", "--client", "claude"])
-        .arg(root)
-        .env("PATH", prepend_path(&root.join(".bin")))
-        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
-        .env_remove("CODEX_THREAD_ID")
-        .env_remove("CODEX_PARENT_THREAD_ID")
-        .env_remove("CLAUDE_CODE_SESSION_ID")
-        .env_remove("AGENT_SESSION_ID")
-        .env_remove("SESSION_ID")
-        .env_remove("PRJ_CACHE_HOME")
-        .output()
-        .expect("run asp install hook");
+        .arg(root);
+    roots.apply(&mut command);
+    let output = command.output().expect("run asp install hook");
     assert!(
         output.status.success(),
         "install stderr: {}",
@@ -108,15 +167,13 @@ pub(in super::super) fn install_codex_hooks(root: &Path, codex_home: &Path) -> S
         agent_semantic_config::default_hook_client_config_template(),
     )
     .expect("write default hook config");
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+    let roots = SmokeInstallRoots::new(root, codex_home.to_path_buf());
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command
         .args(["install", "plugin", "--codex", "--project"])
-        .arg(root)
-        .env("PATH", prepend_path(&root.join(".bin")))
-        .env("CODEX_HOME", codex_home)
-        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
-        .env_remove("PRJ_CACHE_HOME")
-        .output()
-        .expect("run asp install plugin");
+        .arg(root);
+    roots.apply(&mut command);
+    let output = command.output().expect("run asp install plugin");
     assert!(
         output.status.success(),
         "install stdout: {}\ninstall stderr: {}",
@@ -124,6 +181,31 @@ pub(in super::super) fn install_codex_hooks(root: &Path, codex_home: &Path) -> S
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8(output.stdout).expect("install stdout is utf8")
+}
+
+pub(in super::super) fn install_codex_hooks_without_explicit_binary_root(
+    root: &Path,
+    codex_home: &Path,
+    ambient_bin: &Path,
+) -> std::process::Output {
+    let hook_config = root.join(".agent-semantic-protocols/hooks/config.toml");
+    std::fs::create_dir_all(hook_config.parent().expect("hook config parent"))
+        .expect("create hook config dir");
+    std::fs::write(
+        &hook_config,
+        agent_semantic_config::default_hook_client_config_template(),
+    )
+    .expect("write default hook config");
+    let roots = SmokeInstallRoots::new(root, codex_home.to_path_buf());
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command
+        .args(["install", "plugin", "--codex", "--project"])
+        .arg(root);
+    roots.apply(&mut command);
+    command
+        .env_remove("SEMANTIC_AGENT_BIN_DIR")
+        .env("PATH", prepend_path(ambient_bin));
+    command.output().expect("run isolated failing ASP install")
 }
 
 pub(in super::super) fn run_claude_pre_tool_decision(

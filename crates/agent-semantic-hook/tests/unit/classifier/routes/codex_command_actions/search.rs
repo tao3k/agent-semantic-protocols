@@ -39,7 +39,6 @@ fn codex_search_command_action_routes_as_raw_search() {
             .fields
             .get("configRuleId")
             .and_then(|value| value.as_str()),
-        Some("deny-uncontrolled-source-search-commands")
+        Some("deny-raw-registered-source-search-action")
     );
-    assert!(decision.message.contains("ASP Explore"));
 }

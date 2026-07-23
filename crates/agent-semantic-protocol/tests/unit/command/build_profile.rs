@@ -68,3 +68,21 @@ fn global_install_checks_release_profile_before_and_after_copy() {
     assert!(recipe.contains("target/release/asp"));
     assert!(!recipe.contains("target/debug/asp"));
 }
+
+#[test]
+fn asp_recipe_freshness_uses_binary_content_identity() {
+    let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+
+    assert!(
+        justfile.contains("! cmp -s target/release/asp \"${protocol_bin}\""),
+        "ASP recipe freshness must compare release and installed binary bytes"
+    );
+    assert!(
+        !justfile.contains("target/release/asp -nt \"${protocol_bin}\""),
+        "atomic content-addressed installs must not be invalidated by mtime"
+    );
+    assert!(
+        !justfile.contains("find crates/agent-semantic-protocol/src"),
+        "recipe freshness must not hard-code one package's source layout"
+    );
+}

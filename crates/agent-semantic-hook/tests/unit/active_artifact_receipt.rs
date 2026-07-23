@@ -9,9 +9,12 @@ use std::path::PathBuf;
 use std::process;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+static FIXTURE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn fixture() -> (PathBuf, PathBuf, PathBuf, String) {
+    let sequence = FIXTURE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
-        "asp-active-artifact-{}-{}",
+        "asp-active-artifact-{}-{}-{sequence}",
         process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

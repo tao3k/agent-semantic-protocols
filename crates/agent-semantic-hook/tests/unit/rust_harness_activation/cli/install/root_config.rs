@@ -236,7 +236,10 @@ fn assert_codex_asp_explorer(codex_home: &std::path::Path, model: &str) {
         "session_lifetime is an ASP registry field, not a Codex agent TOML field"
     );
     assert!(agent.contains("model_reasoning_effort = \"low\""));
-    assert!(agent.contains("sandbox_mode = \"read-only\""));
+    assert!(
+        agent.contains("sandbox_mode = \"read-only\""),
+        "installed Codex ASP explorer must remain read-only:\n{agent}"
+    );
     assert!(agent.contains("developer_instructions = \"\"\""));
     assert!(!agent.contains("fork_turns"), "{agent}");
     assert_asp_explorer_instructions(&agent);

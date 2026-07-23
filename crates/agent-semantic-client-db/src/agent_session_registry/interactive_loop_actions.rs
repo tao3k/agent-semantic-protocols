@@ -74,7 +74,7 @@ pub(super) fn runtime_observation_action(name: &str) -> &'static str {
 }
 
 pub(super) fn ready_dispatch_action(_name: &str) -> &'static str {
-    "Derive one dispatch identity from the root session, configured resident slot, verified canonical message target, configured receipt kind, and canonical argv digest. Claim it through `asp agent session dispatch-claim`; only action=send may deliver once. A timeout or repeated bootstrap may only poll action=wait/complete for the same identity and digest; it must never resend, reuse a receipt from another resident or digest, or concatenate a second output block."
+    "Use the parser-owned derived-mode `asp agent session dispatch-claim` action for the exact denied command and configured receipt kind. Only action=send may execute once; action=wait/complete must poll the same semantic inputs and must never resend, reuse another receipt, or concatenate a second output block."
 }
 
 pub(super) fn model_repair_action(name: &str) -> &'static str {

@@ -47,6 +47,40 @@ fn claude_install_writes_project_settings_hooks() {
 }
 
 #[test]
+fn codex_install_without_explicit_binary_root_never_mutates_unrelated_path_asp() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    let ambient_bin = root.join(".ambient-bin");
+    std::fs::create_dir_all(&ambient_bin).expect("create ambient bin");
+    let ambient_asp = ambient_bin.join("asp");
+    std::fs::write(&ambient_asp, b"ambient-sentinel").expect("write ambient ASP sentinel");
+    let ambient_before = std::fs::read(&ambient_asp).expect("snapshot ambient ASP sentinel");
+    let isolated_asp = root.join(".bin").join("asp");
+    let isolated_before = std::fs::read(&isolated_asp).ok();
+
+    let output = super::support::install_codex_hooks_without_explicit_binary_root(
+        root.as_path(),
+        &codex_home,
+        &ambient_bin,
+    );
+
+    assert!(!output.status.success(), "install unexpectedly succeeded");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("refusing to update unrelated PATH binary"),
+        "unexpected install error: {stderr}"
+    );
+    let ambient_after = std::fs::read(&ambient_asp).expect("read ambient ASP sentinel");
+    assert_eq!(ambient_after, ambient_before);
+    assert_eq!(std::fs::read(&isolated_asp).ok(), isolated_before);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("activeArtifactReceipt="),
+        "failed install emitted an active artifact receipt: {stdout}"
+    );
+}
+
+#[test]
 fn codex_install_writes_project_plugin_and_runtime_decision_config() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
@@ -56,6 +90,50 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
         first_install_stdout.contains("activationSync=created")
             || first_install_stdout.contains("activationSync=refreshed"),
         "{first_install_stdout}"
+    );
+    let isolated_binary = root.join(".bin").join("asp");
+    assert!(
+        first_install_stdout.contains(&format!("binaryPath={}", isolated_binary.display())),
+        "install must target only the explicit fixture binary root: {first_install_stdout}"
+    );
+    let receipt_field = first_install_stdout
+        .split_ascii_whitespace()
+        .find_map(|field| field.strip_prefix("activeArtifactReceipt="))
+        .expect("active artifact receipt field");
+    let receipt_path = {
+        let path = std::path::PathBuf::from(receipt_field);
+        if path.is_absolute() {
+            path
+        } else {
+            root.join(path)
+        }
+    };
+    assert!(
+        receipt_path.starts_with(root.join(".agent-semantic-protocols")),
+        "active receipt escaped isolated state root: {}",
+        receipt_path.display()
+    );
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&receipt_path).expect("read active artifact receipt"),
+    )
+    .expect("parse active artifact receipt");
+    let runtime_asp = receipt["leaves"]
+        .as_array()
+        .expect("receipt leaves")
+        .iter()
+        .find(|leaf| leaf["logicalPath"].as_str() == Some("runtime/asp"))
+        .expect("runtime ASP leaf");
+    let runtime_asp_path = std::path::Path::new(
+        runtime_asp["materializedPath"]
+            .as_str()
+            .expect("runtime ASP materialized path"),
+    );
+    let isolated_artifact_root = std::fs::canonicalize(root.join(".bin").join(".asp-artifacts"))
+        .expect("canonical isolated ASP artifact root");
+    assert!(
+        runtime_asp_path.starts_with(&isolated_artifact_root),
+        "runtime ASP receipt escaped explicit binary root: {}",
+        runtime_asp_path.display()
     );
     let codex_config =
         std::fs::read_to_string(root.join(".codex").join("config.toml")).expect("read config");

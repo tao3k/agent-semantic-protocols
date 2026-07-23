@@ -253,12 +253,19 @@ fn prepared_project(name: &str) -> PathBuf {
 fn write_activation(root: &Path, provider: &Path) {
     let manifest = rust_manifest();
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
+    let provider_command_prefix = vec![provider.display().to_string()];
+    let execution_command_digest =
+        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
+            .expect("provider execution command digest");
+    let routes =
+        agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     let activation_path = canonical_activation_path(root);
     let activation_dir = activation_path.parent().expect("activation parent");
     std::fs::create_dir_all(&activation_dir).expect("create activation dir");
     let activation = json!({
         "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
         "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
+        "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
         "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": root.canonicalize().expect("canonical root").display().to_string(),
@@ -269,7 +276,14 @@ fn write_activation(root: &Path, provider: &Path) {
             "languageId": manifest.language_id,
             "providerId": manifest.provider_id,
             "binary": manifest.binary,
-            "providerCommandPrefix": [provider.display().to_string()],
+            "execution": manifest.execution,
+            "providerCommandPrefix": provider_command_prefix,
+            "executionCommandDigest": execution_command_digest,
+            "searchCapabilities": manifest.search_capabilities,
+            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+            "queryPackDescriptor": manifest.query_pack_descriptor,
+            "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
+            "routes": routes,
             "coverage": {
                 "packageRoots": ["."],
                 "sourceRoots": manifest.source.default_source_roots,

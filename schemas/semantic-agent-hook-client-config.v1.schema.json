@@ -244,6 +244,12 @@
         "priority": {
           "type": "integer"
         },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "decision": {
           "enum": ["deny", "block"]
         },

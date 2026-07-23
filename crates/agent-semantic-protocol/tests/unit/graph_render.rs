@@ -185,18 +185,20 @@ fn sample_owner_items_packet() -> serde_json::Value {
         "items": [
             {
                 "name": "payload_string",
-                "kind": "fn",
+                "kind": "function",
                 "ownerPath": "crates/agent-semantic-hook/src/tool_action.rs",
                 "fields": {
-                    "read": "crates/agent-semantic-hook/src/tool_action.rs:212:214"
+                    "read": "crates/agent-semantic-hook/src/tool_action.rs:212:214",
+                    "structuralSelector": "rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/payload_string"
                 }
             },
             {
                 "name": "collect_tool_actions",
-                "kind": "fn",
+                "kind": "function",
                 "ownerPath": "crates/agent-semantic-hook/src/tool_action.rs",
                 "fields": {
-                    "read": "crates/agent-semantic-hook/src/tool_action.rs:216:419"
+                    "read": "crates/agent-semantic-hook/src/tool_action.rs:216:419",
+                    "structuralSelector": "rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/collect_tool_actions"
                 }
             }
         ],
@@ -206,14 +208,20 @@ fn sample_owner_items_packet() -> serde_json::Value {
                 "target": "command_source_paths",
                 "targetRole": "symbol",
                 "ownerPath": "crates/agent-semantic-hook/src/tool_action.rs",
-                "read": "crates/agent-semantic-hook/src/tool_action.rs:397:401"
+                "read": "crates/agent-semantic-hook/src/tool_action.rs:397:401",
+                "fields": {
+                    "structuralSelector": "rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/command_source_paths"
+                }
             },
             {
                 "kind": "hot",
                 "target": "nested_action_from_tool_use",
                 "targetRole": "symbol",
                 "ownerPath": "crates/agent-semantic-hook/src/tool_action.rs",
-                "read": "crates/agent-semantic-hook/src/tool_action.rs:567:568"
+                "read": "crates/agent-semantic-hook/src/tool_action.rs:567:568",
+                "fields": {
+                    "structuralSelector": "rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/nested_action_from_tool_use"
+                }
             }
         ],
         "notes": [
@@ -339,11 +347,11 @@ fn shared_renderer_projects_owner_items_into_query_item_hot_frontier() {
         "Q=query:term(tool_action|structured|payload|command_intent|from_payload|from_action)!query"
     ));
     assert!(output.contains(
-        "I=item:symbol(payload_string)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/payload_string!syntax"
+        "I=item:symbol(payload_string)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/payload_string!syntax"
     ));
-    assert!(output.contains("I2=item:symbol(collect_tool_actions)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/collect_tool_actions!syntax"));
-    assert!(output.contains("H=hot:symbol(command_source_paths)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/hot/command_source_paths!syntax"));
-    assert!(output.contains("syntax I selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/payload_string pattern='((function_item name: (_) @function.name) (#eq? @function.name \"payload_string\"))'"));
+    assert!(output.contains("I2=item:symbol(collect_tool_actions)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/collect_tool_actions!syntax"));
+    assert!(output.contains("H=hot:symbol(command_source_paths)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/command_source_paths!syntax"));
+    assert!(output.contains("syntax I selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/payload_string pattern='((function_item name: (_) @function.name) (#eq? @function.name \"payload_string\"))'"));
     assert!(
         !output.contains(
             "I=item:symbol(payload_string)@crates/agent-semantic-hook/src/tool_action.rs:"
@@ -365,6 +373,45 @@ fn shared_renderer_projects_owner_items_into_query_item_hot_frontier() {
     assert!(output.contains("avoid=inline-code-in-search,raw-read,repeat-owner"));
     assert!(!output.contains("S=symbol"));
     assert!(!output.contains("frontier=O.owner"));
+}
+
+#[test]
+fn shared_renderer_never_reconstructs_item_identity_from_owner_or_range_hints() {
+    let mut packet = sample_owner_items_packet();
+    for item in packet["items"]
+        .as_array_mut()
+        .expect("owner-items fixture must contain items")
+    {
+        item["fields"]
+            .as_object_mut()
+            .expect("item fields must be an object")
+            .remove("structuralSelector");
+    }
+    for action in packet["nextActions"]
+        .as_array_mut()
+        .expect("owner-items fixture must contain next actions")
+    {
+        action
+            .as_object_mut()
+            .expect("next action must be an object")
+            .remove("fields");
+    }
+
+    let output = render_search_graph_packet(
+        &packet,
+        GraphRenderOptions {
+            seed_limit: Some(12),
+        },
+    );
+
+    assert!(!output.contains("#item/"), "{output}");
+    assert!(!output.contains("syntax I selector="), "{output}");
+    assert!(
+        !output.contains(
+            "I=item:symbol(payload_string)@crates/agent-semantic-hook/src/tool_action.rs:"
+        ),
+        "{output}"
+    );
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-pub(super) fn append_terminal_execution_fields(
+pub(in crate::command::hook_runtime) fn append_terminal_execution_fields(
     fields: &mut BTreeMap<String, serde_json::Value>,
     action: &str,
 ) {

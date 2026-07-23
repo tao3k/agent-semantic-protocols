@@ -33,7 +33,7 @@ fn aligned_routable_record_is_ready() {
     assert!(
         menu.choices[0]
             .platform_action
-            .contains("only action=send may deliver once")
+            .contains("Only action=send may execute once")
     );
     assert!(
         menu.choices[0]
@@ -42,7 +42,7 @@ fn aligned_routable_record_is_ready() {
     );
     assert_eq!(
         menu.choices[0].required_inputs,
-        &["residentCommand", "dispatchIdentity"]
+        &["deniedAspCommand", "receiptKind"]
     );
     assert_eq!(
         menu.trace.iter().map(|step| step.state).collect::<Vec<_>>(),
@@ -71,10 +71,42 @@ fn host_tree_observation_prevents_persisted_target_false_ready() {
     });
     assert_eq!(ready.state, AgentSessionLoopState::Ready);
 
-    let blocked =
+    let probe =
         agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
             ready,
             "absent",
+            Some("absent"),
+        );
+    assert_eq!(probe.state, AgentSessionLoopState::Audit);
+    assert_eq!(probe.choices.len(), 1);
+    assert_eq!(
+        probe.choices[0].id,
+        "probe-hidden-routable-child-before-replacement"
+    );
+    assert_eq!(probe.choices[0].next_state, AgentSessionLoopState::Audit);
+    assert_eq!(
+        probe.choices[0].required_inputs,
+        &["canonicalReachabilityProbeReceipt"]
+    );
+    assert!(
+        probe.choices[0]
+            .platform_action
+            .contains("canonical target path")
+    );
+    assert!(
+        probe.choices[0]
+            .platform_action
+            .contains("Do not create a replacement from absent alone.")
+    );
+    assert_eq!(
+        probe.trace.last().map(|step| step.result),
+        Some("host-tree-absent-canonical-reachability-probe-required")
+    );
+
+    let blocked =
+        agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
+            probe,
+            "unroutable",
             Some("absent"),
         );
     assert_eq!(blocked.state, AgentSessionLoopState::Blocked);
@@ -83,6 +115,17 @@ fn host_tree_observation_prevents_persisted_target_false_ready() {
         blocked.choices[0].id,
         "report-host-typed-spawn-capability-unavailable"
     );
+    assert_eq!(
+        blocked.choices[0].next_state,
+        AgentSessionLoopState::Blocked
+    );
+    assert_eq!(
+        blocked.choices[0].required_inputs,
+        &[
+            "freshHostTreeUnroutableObservation",
+            "freshHostTypedSpawnAbsentObservation",
+        ]
+    );
     assert!(
         blocked.choices[0]
             .platform_action
@@ -90,7 +133,7 @@ fn host_tree_observation_prevents_persisted_target_false_ready() {
     );
     assert_eq!(
         blocked.trace.last().map(|step| step.result),
-        Some("canonical-host-target-absent-registry-orphan-risk")
+        Some("canonical-host-target-unroutable-registry-orphan-risk")
     );
 }
 
@@ -108,18 +151,59 @@ fn host_tree_absent_with_typed_spawn_allows_one_canonical_replacement() {
         rollout_history_action: Some("none"),
         now: 2,
     });
-    let repair =
+    let probe =
         agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
             menu,
             "absent",
-            Some("present-after-canonical-probe-miss"),
+            Some("present"),
         );
 
+    assert_eq!(probe.state, AgentSessionLoopState::Audit);
+    assert_eq!(probe.choices.len(), 1);
+    assert_eq!(
+        probe.choices[0].id,
+        "probe-hidden-routable-child-before-replacement"
+    );
+    assert_eq!(probe.choices[0].next_state, AgentSessionLoopState::Audit);
+    assert_eq!(
+        probe.choices[0].required_inputs,
+        &["canonicalReachabilityProbeReceipt"]
+    );
+    assert!(
+        probe.choices[0]
+            .platform_action
+            .contains("canonical target path")
+    );
+    assert!(
+        probe.choices[0]
+            .platform_action
+            .contains("Do not create a replacement from absent alone.")
+    );
+    assert_eq!(
+        probe.trace.last().map(|step| step.result),
+        Some("host-tree-absent-canonical-reachability-probe-required")
+    );
+
+    let repair =
+        agent_semantic_client_db::agent_session_registry::resident_child_host_tree_observation_menu(
+            probe,
+            "unroutable",
+            Some("present"),
+        );
     assert_eq!(repair.state, AgentSessionLoopState::Audit);
     assert_eq!(repair.choices.len(), 1);
     assert_eq!(
         repair.choices[0].id,
         "create-canonical-typed-child-after-orphaned-owner"
+    );
+    assert_eq!(repair.choices[0].next_state, AgentSessionLoopState::Audit);
+    assert_eq!(
+        repair.choices[0].required_inputs,
+        &[
+            "freshHostTreeUnroutableObservation",
+            "canonicalReachabilityProbeMiss",
+            "freshTypedSpawnPresentObservation",
+        ]
     );
     assert!(
         repair.choices[0]

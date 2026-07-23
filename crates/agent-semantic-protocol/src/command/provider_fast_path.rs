@@ -4,9 +4,6 @@ use std::path::Path;
 
 use agent_semantic_hook::HookRuntime;
 
-use super::provider_roots::effective_project_root_and_args;
-use super::search_pipe::is_asp_fast_search;
-
 pub(super) fn search_owner_items_owner_path(args: &[String]) -> Option<&str> {
     if args.first().map(String::as_str) != Some("search")
         || args.get(1).map(String::as_str) != Some("owner")
@@ -16,39 +13,6 @@ pub(super) fn search_owner_items_owner_path(args: &[String]) -> Option<&str> {
         return None;
     }
     args.get(2).map(String::as_str)
-}
-
-pub(super) fn run_pre_activation_dynamic_rust_owner_items_search(
-    language_id: &str,
-    command_args: &[String],
-    invocation_root: &Path,
-) -> Result<Option<Result<(), String>>, String> {
-    if language_id != "rust"
-        || !is_asp_fast_search(command_args)
-        || search_owner_items_owner_path(command_args).is_none()
-    {
-        return Ok(None);
-    }
-    let (project_root, provider_args) = effective_project_root_and_args(
-        language_id,
-        command_args,
-        invocation_root,
-        invocation_root,
-    )?;
-    let config = AspConfig::load(invocation_root, &project_root);
-    if !config.language_enabled(language_id) {
-        return Ok(Some(Err(format!(
-            "language `{language_id}` is disabled by asp.toml"
-        ))));
-    }
-    if super::search_pipe_owner_items_fast::run_pre_activation_dynamic_rust_owner_items_search(
-        &provider_args,
-        &project_root,
-        invocation_root,
-    )? {
-        return Ok(Some(Ok(())));
-    }
-    Ok(None)
 }
 
 pub(super) fn run_pre_activation_search_command_preflight(
@@ -118,4 +82,3 @@ pub(super) fn run_activated_owner_language_preflight(
         }
     }
 }
-use super::search_config::AspConfig;

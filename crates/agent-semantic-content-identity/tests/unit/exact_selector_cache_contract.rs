@@ -31,6 +31,12 @@ pub(crate) fn record() -> ExactSelectorProjectionRecordV1 {
     );
     let structural_selector = "rust://crates/example/src/lib.rs#item/function/run".to_owned();
     let projection_digest = derive_projection_digest_v1(
+        &agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(
+                "rust", "function", "run",
+            ),
+            structural_selector.clone(),
+        ),
         &structural_selector,
         ExactProjectionModeV1::Code,
         &parser_fact_digest,
@@ -38,6 +44,12 @@ pub(crate) fn record() -> ExactSelectorProjectionRecordV1 {
     );
     ExactSelectorProjectionRecordV1 {
         proof: ExactSelectorMerkleProofV1 {
+            canonical_item_selector: agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(
+                    "rust", "function", "run",
+                ),
+                structural_selector.clone(),
+            ),
             schema_id: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID.to_owned(),
             schema_version: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION.to_owned(),
             digest_algorithm: EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM.to_owned(),

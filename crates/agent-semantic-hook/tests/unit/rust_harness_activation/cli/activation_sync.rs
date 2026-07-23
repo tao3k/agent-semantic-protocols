@@ -15,6 +15,7 @@ use crate::rust_harness_activation::support::{
 #[test]
 fn cli_hook_repairs_missing_activation_and_denies_source_read() {
     let root = temp_project_root("hook-activation-missing-fail-closed");
+    super::super::support::write_default_client_hook_config(&root);
     let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
     let _ = std::fs::remove_file(&activation_path);
     std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
@@ -32,7 +33,10 @@ fn cli_hook_repairs_missing_activation_and_denies_source_read() {
     );
 
     assert_eq!(decision["decision"], "deny");
-    assert_eq!(decision["reasonKind"], "direct-source-read");
+    assert_eq!(
+        decision["reasonKind"], "direct-source-read",
+        "decision={decision}\nstderr={_stderr}"
+    );
     assert_eq!(decision["subject"]["toolName"], "Read");
     assert_eq!(decision["subject"]["paths"], json!(["src/lib.rs"]));
     assert_eq!(
@@ -74,6 +78,7 @@ fn cli_hook_repairs_missing_activation_then_classifies_source_read() {
 #[test]
 fn cli_hook_fails_closed_on_generated_activation_drift_for_source_read() {
     let root = temp_project_root("hook-activation-drift-fail-closed");
+    super::super::support::write_default_client_hook_config(&root);
     let activation_path = write_invalid_generated_activation(&root);
     let (decision, stderr) = run_hook_with_activation(
         &activation_path,
@@ -81,7 +86,10 @@ fn cli_hook_fails_closed_on_generated_activation_drift_for_source_read() {
     );
 
     assert_eq!(decision["decision"], "deny");
-    assert_eq!(decision["reasonKind"], "direct-source-read");
+    assert_eq!(
+        decision["reasonKind"], "direct-source-read",
+        "decision={decision}\nstderr={stderr}"
+    );
     assert_eq!(decision["subject"]["paths"], json!(["src/lib.rs"]));
     assert!(
         decision["message"]
@@ -101,6 +109,7 @@ fn cli_hook_fails_closed_on_generated_activation_drift_for_source_read() {
 fn cli_doctor_syncs_generated_activation_drift() {
     let root = temp_project_root("doctor-activation-sync");
     let state_home = root.join(".agent-semantic-protocols");
+    super::super::support::write_default_client_hook_config(&root);
     let activation_path = write_invalid_generated_activation(&root);
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
 
@@ -219,7 +228,14 @@ fn run_hook_with_activation(
     activation_path: &Path,
     payload: serde_json::Value,
 ) -> (serde_json::Value, String) {
+    let project_root = activation_path
+        .ancestors()
+        .nth(4)
+        .expect("legacy activation project root");
+    let home = project_root.join(".home");
+    std::fs::create_dir_all(&home).expect("create isolated hook HOME");
     let mut child = asp_command()
+        .env("HOME", home)
         .env(
             "ASP_STATE_HOME",
             activation_path
@@ -227,20 +243,8 @@ fn run_hook_with_activation(
                 .and_then(Path::parent)
                 .expect("legacy activation state home"),
         )
-        .env(
-            "CODEX_HOME",
-            activation_path
-                .ancestors()
-                .nth(4)
-                .expect("legacy activation project root")
-                .join(".codex-home"),
-        )
-        .current_dir(
-            activation_path
-                .ancestors()
-                .nth(4)
-                .expect("legacy activation project root"),
-        )
+        .env("CODEX_HOME", project_root.join(".codex-home"))
+        .current_dir(project_root)
         .args([
             "hook",
             "--client",

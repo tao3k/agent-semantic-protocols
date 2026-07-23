@@ -6,6 +6,66 @@ use super::{
     run_codex_pre_tool_decision_with_env, show_agent_session_json, write_codex_asp_explore_rollout,
 };
 
+fn assert_configured_asp_explore_dispatch(decision: &serde_json::Value) {
+    assert_eq!(decision["decision"].as_str(), Some("deny"), "{decision}");
+    assert_eq!(
+        decision["reasonKind"].as_str(),
+        Some("subagent-receipt-required"),
+        "{decision}"
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionAction"].as_str(),
+        Some("dispatch-configured-resident"),
+        "{decision}"
+    );
+    assert_eq!(
+        decision["fields"]["residentName"].as_str(),
+        Some("asp-explore")
+    );
+    assert_eq!(
+        decision["fields"]["canonicalTarget"].as_str(),
+        Some("/root/asp_explorer")
+    );
+    assert_eq!(
+        decision["fields"]["receiptKind"].as_str(),
+        Some("asp-explore-search-v1")
+    );
+    assert_eq!(
+        decision["fields"]["requiredAction"].as_str(),
+        Some("route-exact-command-to-hook-selected-resident")
+    );
+    let root_session_id = decision["fields"]
+        .get("rootSessionId")
+        .or_else(|| decision["fields"].get("sessionId"))
+        .and_then(serde_json::Value::as_str);
+    let command_json = serde_json::to_string(&[
+        "/bin/sh",
+        "-c",
+        decision["subject"]["command"]
+            .as_str()
+            .expect("configured resident dispatch exact command"),
+    ])
+    .expect("configured resident dispatch command JSON");
+    let mut expected_argv = vec![
+        "asp".to_string(),
+        "agent".to_string(),
+        "session".to_string(),
+        "bootstrap".to_string(),
+        "--name".to_string(),
+        "asp-explore".to_string(),
+    ];
+    if let Some(root_session_id) = root_session_id {
+        expected_argv.extend(["--root-session-id".to_string(), root_session_id.to_string()]);
+    }
+    expected_argv.extend([
+        "--receipt-kind".to_string(),
+        "asp-explore-search-v1".to_string(),
+        "--command-json".to_string(),
+        command_json,
+    ]);
+    assert_eq!(decision["interactiveCommand"]["argv"], json!(expected_argv));
+}
+
 #[test]
 fn codex_session_start_resumes_existing_non_routable_asp_explore() {
     let root = claude_fixture();
@@ -24,7 +84,11 @@ fn codex_session_start_resumes_existing_non_routable_asp_explore() {
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000032")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["decision"].as_str(),
+        Some("deny"),
+        "decision={decision}"
+    );
     assert_eq!(
         decision["fields"]["agentSessionAction"].as_str(),
         Some("resume-existing-resident-child")
@@ -39,7 +103,6 @@ fn codex_session_start_resumes_existing_non_routable_asp_explore() {
     );
     assert!(decision["fields"].get("agentSessionBootstrap").is_none());
     let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("Enter the resident-child choice pane"));
     assert!(!message.contains("Resume that child session instead of creating a replacement"));
     assert!(!message.contains("archive or delete"));
 }
@@ -96,8 +159,6 @@ fn codex_main_session_denies_reasoning_flow_commands_for_every_language_facade()
     );
 
     let commands = [
-        "asp search owner src/lib.rs items --workspace . --view seeds",
-        "asp query --selector src/lib.rs --workspace . --code",
         "asp rust search owner src/lib.rs items --workspace . --view seeds",
         "asp rust search lexical --query run --workspace . --view seeds",
         "asp rust search pipe --query run --workspace . --view seeds",
@@ -113,12 +174,6 @@ fn codex_main_session_denies_reasoning_flow_commands_for_every_language_facade()
         "asp org search owner docs/spec.org items --workspace . --view seeds",
         "asp md search owner docs/spec.md items --workspace . --view seeds",
         "asp rust query --term run --workspace .",
-        "asp rust query --selector src/lib.rs --workspace . --code",
-        "asp org elements-query --packet '{\"selector\":\"docs/spec.org\"}'",
-        "asp org contract trace docs/spec.org",
-        "asp org contract query-surface docs/spec.org",
-        "asp fd -query example .",
-        "asp rg -query example src",
     ];
 
     for command in commands {
@@ -128,21 +183,7 @@ fn codex_main_session_denies_reasoning_flow_commands_for_every_language_facade()
             &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000003")],
         );
 
-        assert_eq!(
-            decision["decision"].as_str(),
-            Some("deny"),
-            "command={command} decision={decision}"
-        );
-        assert_eq!(
-            decision["fields"]["agentSessionRoute"].as_str(),
-            Some("asp-explore"),
-            "command={command} decision={decision}"
-        );
-        assert_eq!(
-            decision["fields"]["agentSessionLoopCommand"].as_str(),
-            Some("asp agent session bootstrap --name asp-explore"),
-            "command={command} decision={decision}"
-        );
+        assert_configured_asp_explore_dispatch(&decision);
     }
 }
 
@@ -163,95 +204,8 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000001")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["reasonKind"].as_str(),
-        Some("asp-reasoning-routed"),
-        "decision: {}",
-        serde_json::to_string_pretty(&decision).expect("serialize decision")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["residentChildName"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["residentCodexAgentName"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["targetAgentName"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["targetAgentRole"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["residentCodexAgentName"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionLoopCommand"].as_str(),
-        Some("asp agent session bootstrap --name asp-explore")
-    );
-    assert!(decision["fields"]["agentSessionLookupCommand"].is_null());
-    assert!(decision["fields"]["agentSessionRegisterCommandTemplate"].is_null());
-    assert_eq!(
-        decision["fields"]["agentSessionLifecycle"].as_str(),
-        Some("resident")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionLoopCommand"].as_str(),
-        Some("asp agent session bootstrap --name asp-explore")
-    );
-    assert!(decision["fields"]["agentSessionStatusCheck"].is_null());
-    assert!(decision["fields"]["agentSessionStatusCommand"].is_null());
-    assert_eq!(
-        decision["fields"]["agentSessionTimeoutPolicy"].as_str(),
-        Some("timeout-is-not-duplicate-worker-trigger")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child"),
-        "decision: {}",
-        serde_json::to_string_pretty(&decision).expect("serialize decision")
-    );
-    assert_eq!(
-        decision["fields"]["requiredAction"].as_str(),
-        Some("use-existing-asp-explore-through-pane")
-    );
-    assert_eq!(
-        decision["fields"]["nextAction"].as_str(),
-        Some("enter-bootstrap-pane-if-transport-is-not-ready")
-    );
-    assert_eq!(
-        decision["fields"]["targetAgentName"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["targetAgentRole"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["forbiddenUntilResolved"].as_str(),
-        Some("raw-source-fallback")
-    );
-    assert_eq!(
-        decision["fields"]["completionReceipt"].as_str(),
-        Some("asp-explore-child-command")
-    );
-    assert_eq!(
-        decision["fields"]["childSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000101")
-    );
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP denied main-session ASP exploration"));
-    assert!(message.contains("asp-explore"));
-    assert!(message.contains("019f126d-0000-7000-8000-000000000101"));
+    assert_configured_asp_explore_dispatch(&decision);
+    assert!(decision["fields"].get("childSessionId").is_none());
 
     let repeated = run_codex_pre_tool_decision_with_env(
         &root,
@@ -263,9 +217,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
         repeated["fields"]["denyReplayMessagePolicy"].as_str(),
         Some("preserve-agent-session-route")
     );
-    let repeated_message = repeated["message"].as_str().unwrap_or_default();
-    assert!(repeated_message.contains("ASP denied main-session ASP exploration"));
-    assert!(repeated_message.contains("asp-explore"));
+    assert_configured_asp_explore_dispatch(&repeated);
 }
 
 #[test]
@@ -289,30 +241,8 @@ fn codex_main_session_denies_env_prefixed_asp_query_when_asp_explore_registered(
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000002")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["reasonKind"].as_str(),
-        Some("asp-reasoning-routed")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child")
-    );
-    assert_eq!(
-        decision["fields"]["requiredAction"].as_str(),
-        Some("use-existing-asp-explore-through-pane")
-    );
-    assert_eq!(
-        decision["fields"]["childSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000102")
-    );
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP denied main-session ASP exploration"));
-    assert!(message.contains("019f126d-0000-7000-8000-000000000102"));
+    assert_configured_asp_explore_dispatch(&decision);
+    assert!(decision["fields"].get("childSessionId").is_none());
 }
 
 #[test]
@@ -368,7 +298,7 @@ fn codex_main_session_denies_registered_language_reasoning_query_and_search() {
         );
         assert_eq!(
             decision["reasonKind"].as_str(),
-            Some("asp-reasoning-routed"),
+            Some("subagent-receipt-required"),
             "command={command} decision={decision}"
         );
         assert!(
@@ -434,23 +364,11 @@ fn codex_main_session_denies_reasoning_search_pipe_when_asp_explore_registered()
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000004")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["reasonKind"].as_str(),
-        Some("asp-reasoning-routed")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["requiredAction"].as_str(),
-        Some("use-existing-asp-explore-through-pane")
-    );
+    assert_configured_asp_explore_dispatch(&decision);
 }
 
 #[test]
-fn codex_main_session_reuses_model_drifted_asp_explore_registration() {
+fn codex_main_session_routes_model_drifted_asp_explore_through_canonical_dispatch() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
@@ -472,19 +390,8 @@ fn codex_main_session_reuses_model_drifted_asp_explore_registration() {
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000011")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("reuse-resident-child")
-    );
-    assert_eq!(
-        decision["fields"]["childSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000111")
-    );
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("resident-child interactive pane"));
-    assert!(message.contains("asp agent session bootstrap --name asp-explore"));
-    assert!(message.contains("choose one number"));
+    assert_configured_asp_explore_dispatch(&decision);
+    assert!(decision["fields"].get("childSessionId").is_none());
 }
 
 #[test]
@@ -597,29 +504,8 @@ fn codex_main_session_denies_asp_query_when_asp_explore_is_expired() {
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000006")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("enter-resident-child-bootstrap-pane")
-    );
-    assert_eq!(
-        decision["fields"]["residentCodexAgentName"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionLoopCommand"].as_str(),
-        Some("asp agent session bootstrap --name asp-explore")
-    );
-    assert!(decision["fields"]["agentSessionLookupCommand"].is_null());
-    assert!(decision["fields"]["agentSessionRegisterCommandTemplate"].is_null());
+    assert_configured_asp_explore_dispatch(&decision);
     assert!(decision["fields"].get("childSessionId").is_none());
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("asp agent session bootstrap --name asp-explore"));
-    assert!(!message.contains("asp agent session bootstrap --name asp-explore --json"));
 }
 
 #[test]
@@ -630,80 +516,12 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
 
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query src/lib.rs --workspace . --code"),
+        codex_asp_query_payload("asp rust query --term src/lib.rs --workspace . --code"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000002")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
-    assert_eq!(
-        decision["fields"]["agentSessionRoute"].as_str(),
-        Some("asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionLifecycle"].as_str(),
-        Some("resident")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionLoopCommand"].as_str(),
-        Some("asp agent session bootstrap --name asp-explore")
-    );
-    assert!(decision["fields"]["agentSessionStatusCheck"].is_null());
-    assert!(decision["fields"]["agentSessionStatusCommand"].is_null());
-    assert_eq!(
-        decision["fields"]["agentSessionTimeoutPolicy"].as_str(),
-        Some("timeout-is-not-duplicate-worker-trigger")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionAction"].as_str(),
-        Some("enter-resident-child-bootstrap-pane")
-    );
-    assert_eq!(
-        decision["fields"]["requiredAction"].as_str(),
-        Some("enter-asp-explore-choice-pane")
-    );
-    assert_eq!(
-        decision["fields"]["nextAction"].as_str(),
-        Some("choose-one-bootstrap-pane-option")
-    );
-    assert_eq!(
-        decision["fields"]["targetAgentName"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["targetAgentRole"].as_str(),
-        Some("asp_explorer")
-    );
-    assert_eq!(
-        decision["fields"]["forbiddenUntilResolved"].as_str(),
-        Some("raw-source-fallback")
-    );
-    assert_eq!(
-        decision["fields"]["completionReceipt"].as_str(),
-        Some("asp-explore-choice-pane-receipt")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionBootstrap"].as_str(),
-        Some("session-start-reminder")
-    );
-    assert_eq!(
-        decision["fields"]["agentSessionBootstrapGuideCommand"].as_str(),
-        Some("asp agent session bootstrap --name asp-explore")
-    );
-    assert_eq!(
-        decision["fields"]["residentCodexAgentName"].as_str(),
-        Some("asp_explorer")
-    );
-    assert!(decision["fields"]["agentSessionLookupCommand"].is_null());
-    assert!(decision["fields"]["agentSessionRegisterCommandTemplate"].is_null());
-    assert_eq!(
-        decision["fields"]["rootSessionId"].as_str(),
-        Some("019f126d-0000-7000-8000-000000000002")
-    );
+    assert_configured_asp_explore_dispatch(&decision);
     assert!(decision["fields"].get("childSessionId").is_none());
-    let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("asp agent session bootstrap --name asp-explore"));
-    assert!(!message.contains("asp agent session bootstrap --name asp-explore --json"));
-    assert!(!message.contains("asp agent session register --guide"));
 }
 
 #[test]
@@ -719,7 +537,11 @@ fn codex_session_start_bootstraps_missing_asp_explore() {
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000020")],
     );
 
-    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["decision"].as_str(),
+        Some("deny"),
+        "decision={decision}"
+    );
     assert_eq!(
         decision["fields"]["agentSessionBootstrap"].as_str(),
         Some("session-start-reminder")
@@ -743,10 +565,7 @@ fn codex_session_start_bootstraps_missing_asp_explore() {
         Some("019f126d-0000-7000-8000-000000000020")
     );
     let message = decision["message"].as_str().unwrap_or_default();
-    assert!(message.contains("ASP resident-child interactive loop"));
-    assert!(message.contains("asp agent session bootstrap --name asp-explore"));
     assert!(!message.contains("asp agent session bootstrap --name asp-explore --json"));
-    assert!(message.contains("asp-explore"));
 }
 
 #[path = "codex_session/payload_identity.rs"]
@@ -856,6 +675,229 @@ fn codex_native_custom_subagent_is_outside_asp_lifecycle_management() {
 
     let report = show_agent_session_json(&root, resident_child_id);
     assert_eq!(report["sessions"][0]["status"].as_str(), Some("active"));
+}
+
+#[test]
+fn codex_bootstrap_attests_unobservable_reasoning_from_typed_profile() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let root_session_id = "019f126d-0000-7000-8000-000000000062";
+    let child_session_id = "019f126d-0000-7000-8000-000000000162";
+    let start = run_codex_hook_decision_with_env(
+        &root,
+        "subagent-start",
+        json!({
+            "hook_event_name": "SubagentStart",
+            "session_id": root_session_id,
+            "agent_id": child_session_id,
+            "agent_type": "asp_explorer",
+            "model": "gpt-5.4-mini",
+            "permission_mode": "default",
+        }),
+        &[("CODEX_THREAD_ID", root_session_id)],
+    );
+    assert_eq!(start["decision"].as_str(), Some("allow"));
+
+    let bootstrap_output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "agent",
+            "session",
+            "bootstrap",
+            "--name",
+            "asp-explore",
+            "--json",
+        ])
+        .current_dir(&root)
+        .env("CODEX_HOME", &codex_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("bootstrap typed resident with unobservable reasoning");
+    assert!(
+        bootstrap_output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&bootstrap_output.stdout),
+        String::from_utf8_lossy(&bootstrap_output.stderr),
+    );
+    let bootstrap: serde_json::Value =
+        serde_json::from_slice(&bootstrap_output.stdout).expect("bootstrap JSON");
+    assert_eq!(bootstrap["state"].as_str(), Some("Ready"));
+    assert_eq!(
+        bootstrap
+            .pointer("/hostLifecycleObservation/reasoningVerificationStatus")
+            .and_then(serde_json::Value::as_str),
+        Some("host-profile-attested-unobservable"),
+        "bootstrap={bootstrap}"
+    );
+}
+
+#[test]
+fn codex_dispatch_terminal_receipt_recovers_across_cli_processes() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let root_session_id = "019f126d-0000-7000-8000-000000000061";
+    let child_session_id = "019f126d-0000-7000-8000-000000000161";
+    let start = run_codex_hook_decision_with_env(
+        &root,
+        "subagent-start",
+        json!({
+            "hook_event_name": "SubagentStart",
+            "session_id": root_session_id,
+            "agent_id": child_session_id,
+            "agent_type": "asp_explorer",
+            "model": "gpt-5.4-mini",
+            "permission_mode": "default",
+        }),
+        &[("CODEX_THREAD_ID", root_session_id)],
+    );
+    assert_eq!(start["decision"].as_str(), Some("allow"));
+
+    let execution_marker = root.join("dispatch-execution-count");
+    let argv = vec![
+        "/bin/sh".to_string(),
+        "-c".to_string(),
+        "printf x >> \"$1\"".to_string(),
+        "dispatch-receipt-test".to_string(),
+        execution_marker.display().to_string(),
+    ];
+    let command_json = serde_json::to_string(&argv).expect("canonical command JSON");
+    let run_session_command = |command: &str| {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args([
+                "agent",
+                "session",
+                command,
+                "--name",
+                "asp-explore",
+                "--receipt-kind",
+                "dispatch-execution-receipt.v1",
+                "--command-json",
+                command_json.as_str(),
+                "--resident-bridge",
+                "--json",
+            ])
+            .current_dir(&root)
+            .env("CODEX_HOME", &codex_home)
+            .env("CODEX_THREAD_ID", root_session_id)
+            .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+            .env_remove("PRJ_CACHE_HOME")
+            .output()
+            .expect("run agent session dispatch command");
+        assert!(
+            output.status.success(),
+            "command={command} stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).expect("dispatch command JSON")
+    };
+
+    let first_claim = run_session_command("dispatch-claim");
+    assert_eq!(first_claim["action"].as_str(), Some("send"));
+    assert_eq!(first_claim["lease"]["attemptCount"].as_u64(), Some(1));
+    let first_identity = first_claim["lease"]["dispatchIdentity"]
+        .as_str()
+        .expect("derived dispatch identity")
+        .to_string();
+
+    let completed = run_session_command("dispatch-execute");
+    assert_eq!(completed["status"].as_str(), Some("terminal"));
+    assert_eq!(completed["attemptCount"].as_u64(), Some(1));
+    assert_eq!(completed["evidenceRef"].as_str(), Some("parser-exit:0"));
+
+    let recovered = run_session_command("dispatch-claim");
+    assert_eq!(recovered["action"].as_str(), Some("complete"));
+    assert_eq!(recovered["lease"]["status"].as_str(), Some("terminal"));
+    assert_eq!(recovered["lease"]["attemptCount"].as_u64(), Some(1));
+    assert_eq!(
+        recovered["lease"]["dispatchIdentity"].as_str(),
+        Some(first_identity.as_str())
+    );
+    assert_eq!(
+        recovered["lease"]["evidenceRef"].as_str(),
+        Some("parser-exit:0")
+    );
+
+    let replay = run_session_command("dispatch-execute");
+    assert_eq!(replay["status"].as_str(), Some("terminal"));
+    assert_eq!(replay["attemptCount"].as_u64(), Some(1));
+    assert_eq!(
+        std::fs::read_to_string(&execution_marker).expect("execution marker"),
+        "x"
+    );
+}
+
+#[test]
+fn codex_ready_bootstrap_projects_exact_derived_dispatch_claim() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let root_session_id = "019f126d-0000-7000-8000-000000000060";
+    let child_session_id = "019f126d-0000-7000-8000-000000000160";
+    let start = run_codex_hook_decision_with_env(
+        &root,
+        "subagent-start",
+        json!({
+            "hook_event_name": "SubagentStart",
+            "session_id": root_session_id,
+            "agent_id": child_session_id,
+            "agent_type": "asp_explorer",
+            "model": "gpt-5.4-mini",
+            "permission_mode": "default",
+        }),
+        &[("CODEX_THREAD_ID", root_session_id)],
+    );
+    assert_eq!(start["decision"].as_str(), Some("allow"));
+
+    let command_json =
+        serde_json::to_string(&vec!["/usr/bin/true"]).expect("canonical command JSON");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "agent",
+            "session",
+            "bootstrap",
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            root_session_id,
+            "--receipt-kind",
+            "dispatch-execution-receipt.v1",
+            "--command-json",
+            command_json.as_str(),
+            "--json",
+        ])
+        .current_dir(&root)
+        .env("CODEX_HOME", &codex_home)
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("bootstrap Ready dispatch projection");
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let bootstrap: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("bootstrap JSON");
+    assert_eq!(bootstrap["state"].as_str(), Some("Ready"));
+    assert_eq!(
+        bootstrap["choices"][0]["platformAction"].as_str(),
+        Some(
+            "asp agent session dispatch-claim --name 'asp-explore' \
+--root-session-id '019f126d-0000-7000-8000-000000000060' \
+--receipt-kind 'dispatch-execution-receipt.v1' \
+--command-json '[\"/usr/bin/true\"]' --resident-bridge --json"
+        )
+    );
+    assert_eq!(
+        bootstrap["choices"][0]["requiredInputs"],
+        serde_json::json!([])
+    );
 }
 
 #[test]

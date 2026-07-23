@@ -4,6 +4,8 @@
 mod hook_runtime_activation_failure;
 #[path = "hook_runtime_agent_session.rs"]
 mod hook_runtime_agent_session;
+#[path = "hook_runtime_agent_session_dispatch.rs"]
+mod hook_runtime_agent_session_dispatch;
 #[path = "hook_runtime_codex_plugin.rs"]
 mod hook_runtime_codex_plugin;
 #[path = "hook_runtime_codex_plugin_identity.rs"]
@@ -273,6 +275,17 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         })
     };
     decision.event = event.to_string();
+    hook_runtime_agent_session_dispatch::enforce_configured_resident_spawn_contract(
+        &hook_config,
+        client,
+        classification_event,
+        &payload,
+        &mut decision,
+    );
+    hook_runtime_agent_session_dispatch::materialize_resident_dispatch_wrapper(
+        &payload,
+        &mut decision,
+    );
     if let Some(auto_refresh) = hook_config_auto_refresh.as_deref() {
         annotate_hook_config_repair(
             &mut decision,
@@ -807,6 +820,26 @@ fn enforce_resident_child_deny_contract(
     }
     if resident_parser_owned_search || configured_resident_dispatch {
         decision.decision = DecisionKind::Allow;
+        decision.reason_kind = ReasonKind::None;
+        decision.fields.insert(
+            "agentSessionAction".to_string(),
+            serde_json::Value::String("active-hook-selected-resident".to_string()),
+        );
+        decision.fields.insert(
+            "executionLane".to_string(),
+            serde_json::Value::String(
+                if configured_resident_name == "asp-testing" {
+                    "testing"
+                } else {
+                    "search"
+                }
+                .to_string(),
+            ),
+        );
+        hook_runtime_agent_session::append_terminal_execution_fields(
+            &mut decision.fields,
+            "active-hook-selected-resident",
+        );
         decision.fields.insert(
             "residentChildConfiguredCommand".to_string(),
             serde_json::Value::Bool(true),

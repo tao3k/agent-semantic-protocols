@@ -1,4 +1,7 @@
 use agent_semantic_client_db::ClientDbEngine;
+use agent_semantic_content_identity::canonical_item_identity::{
+    CanonicalItemIdentityV1, CanonicalItemSelectorV1,
+};
 use agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1;
 use agent_semantic_content_identity::exact_selector_merkle::{
     ExactProjectionModeV1, blake3_content_digest_v1, canonical_content_digest_v1,
@@ -19,6 +22,10 @@ fn turso_round_trip_returns_only_a_validated_merkle_projection() {
     std::fs::create_dir_all(&root).expect("create exact-selector test directory");
     let owner_path = "src/lib.rs";
     let selector = "rust://src/lib.rs#item/function/example";
+    let canonical_item_selector = CanonicalItemSelectorV1::new(
+        CanonicalItemIdentityV1::new("rust", "function", "example"),
+        selector,
+    );
     let source = b"fn example() {}\n";
     let source_blob_digest = blake3_content_digest_v1(source);
     let parser_identity_digest = canonical_content_digest_v1(b"parser", &[b"rs-harness"]);
@@ -31,6 +38,7 @@ fn turso_round_trip_returns_only_a_validated_merkle_projection() {
     let packet = build_exact_selector_projection_packet_v1(
         "rust",
         "rs-harness",
+        canonical_item_selector,
         &parser_identity_digest,
         &query_pack_digest,
         owner_path,

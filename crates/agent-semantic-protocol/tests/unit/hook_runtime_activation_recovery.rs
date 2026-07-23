@@ -69,5 +69,7 @@ fn structured_read_tools_still_fail_closed() {
         .to_string(),
     )
     .expect("structured read decision");
-    assert_eq!(decision.reason_kind, ReasonKind::ActivationUnavailable);
+    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(decision.subject.tool_name.as_deref(), Some("Read"));
+    assert_eq!(decision.subject.paths, vec!["src/lib.rs"]);
 }

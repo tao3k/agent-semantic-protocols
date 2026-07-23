@@ -263,13 +263,17 @@ fn configured_resident_dispatch_requires_complete_canonical_fields() {
             "asp-testing",
             "--root-session-id",
             "root-session-test",
+            "--receipt-kind",
+            "asp-testing-execution-v1",
         ]
     );
     assert_eq!(
         decision
             .configured_resident_interactive_command_line()
             .as_deref(),
-        Some("asp agent session bootstrap --name asp-testing --root-session-id root-session-test")
+        Some(
+            "asp agent session bootstrap --name asp-testing --root-session-id root-session-test --receipt-kind asp-testing-execution-v1"
+        )
     );
 
     decision.fields.insert(

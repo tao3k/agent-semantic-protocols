@@ -2,6 +2,8 @@
 mod activation_fixture;
 #[path = "client_hook_claude_smoke/claude_platform.rs"]
 mod claude_platform;
+#[path = "client_hook_claude_smoke/codex_resident_replacement.rs"]
+mod codex_resident_replacement;
 #[path = "client_hook_claude_smoke/codex_session.rs"]
 mod codex_session;
 #[path = "client_hook_claude_smoke/install.rs"]

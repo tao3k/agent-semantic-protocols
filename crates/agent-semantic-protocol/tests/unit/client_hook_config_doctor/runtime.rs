@@ -7,6 +7,7 @@ use super::{
 fn doctor_reports_runtime_profile_health() {
     let root = temp_project_root("doctor-runtime-profiles");
     let activation_path = write_activation(&root);
+    write_client_config(&root, "");
     let bin_dir = root.join(".doctor-bin");
     write_executable(&bin_dir, "rs-harness", "#!/bin/sh\nexit 0\n");
 

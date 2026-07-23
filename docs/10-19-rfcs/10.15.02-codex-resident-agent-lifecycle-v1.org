@@ -203,6 +203,14 @@ Users and hooks do not hand-edit generated Codex agent files.
 
 * Required Codex host contract
 
+A Codex deeplink such as =codex://threads/<threadId>= is an opaque host
+locator, not liveness, profile, authorization, or replacement evidence.  The
+control plane MAY retain its thread ID as a portable join key, but it MUST
+probe the corresponding canonical target through a non-mutating host read
+before Resume.  Only a successful canonical Resume/acknowledgement can
+strengthen the binding lease; a deeplink or list absence alone MUST NOT
+authorize replacement.
+
 The host must provide a create action that selects the registered custom-agent
 key, not merely a task path:
 
@@ -925,6 +933,13 @@ route-probe failure (=unroutable=).
   search/query and emits a digest-bound =current-session= receipt.
 - The same ASP command without opt-in remains lifecycle-routed.
 - Adding the opt-in token to raw =rg= or another shell read remains denied.
+- Exact Org headline =--content= subtree materialization is covered by
+  [[file:../../languages/orgize/tests/integration/export_cli_org.rs][the orgize document-query regression]].
+- Canonical owner-key normalization and empty covering-test frontiers are
+  covered by
+  [[file:../../crates/agent-semantic-protocol/tests/unit/provider_command/facade/pipe/reasoning.rs][the ASP-owned reasoning frontier regression]].
+- Cross-process exactly-once terminal receipt recovery is covered by
+  [[file:../../crates/agent-semantic-protocol/tests/unit/client_hook_claude_smoke/codex_session.rs][the Codex lifecycle dispatch regression]].
 
 * Lifecycle engine correction
 This section is normative for lifecycle v1 stabilization and supersedes any older

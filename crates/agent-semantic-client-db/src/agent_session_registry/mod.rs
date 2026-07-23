@@ -36,10 +36,12 @@ pub use interactive_loop_types::{
 };
 
 pub use core::AgentSessionRegistry;
+pub use dispatch::derive_agent_session_dispatch_identity;
 pub use types::{
     AGENT_SESSION_REGISTRY_DB_NAME, AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED,
     AGENT_SESSION_STATUS_IDLE, AGENT_SESSION_STATUS_INVALID, AgentSessionDispatchClaimRequest,
     AgentSessionDispatchClaimResult, AgentSessionDispatchCompleteRequest,
+    AgentSessionDispatchDerivedIdentity, AgentSessionDispatchIdentityInput,
     AgentSessionDispatchLeaseRecord, AgentSessionDispatchMarkOrphanedRequest,
     AgentSessionLookupRequest, AgentSessionRecord, AgentSessionRegisterRequest,
     AgentSessionToolEventRequest, agent_session_message_target_is_currently_routable,

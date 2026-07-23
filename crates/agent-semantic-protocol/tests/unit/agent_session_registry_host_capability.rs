@@ -47,7 +47,14 @@ fn unroutable_host_target_requires_canonical_probe_evidence() {
 
 #[test]
 fn absent_observation_cannot_be_consumed_as_replacement_lease() {
-    let root = std::env::temp_dir().join(format!("asp-host-probe-lease-{}", std::process::id()));
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time after unix epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-host-probe-lease-{}-{nonce}",
+        std::process::id()
+    ));
     let registry = agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root(
         root.join("state"),
     )

@@ -120,6 +120,6 @@ fn builder_orphan_requires_probe_before_canonical_replacement() {
 
     let action = repair.choices[0].platform_action.as_ref();
     assert!(action.contains("canonical target path"));
-    assert!(action.contains("do not create a duplicate"));
+    assert!(action.contains("Do not create a replacement from absent alone."));
     assert!(!action.contains("agent_type="));
 }

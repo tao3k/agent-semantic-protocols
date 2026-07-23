@@ -17,7 +17,29 @@ fn write_client_config(root: &std::path::Path, content: &str) {
     let config_path = asp_state_home(root).join("hooks/config.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create config dir");
-    std::fs::write(config_path, content).expect("write client config");
+    std::fs::write(
+        config_path,
+        format!(
+            r#"{content}
+[agents]
+
+[[agents.residentAgents]]
+name = "asp-explore"
+role = "asp_explorer"
+codexAgentName = "asp_explorer"
+roles = ["subagent", "search"]
+permissions = ["read-only"]
+
+[[agents.residentAgents]]
+name = "asp-testing"
+role = "asp_testing"
+codexAgentName = "asp_testing"
+roles = ["subagent", "testing", "build"]
+permissions = ["workspace-write"]
+"#
+        ),
+    )
+    .expect("write client config");
 }
 
 fn asp_state_home(root: &std::path::Path) -> std::path::PathBuf {
@@ -217,9 +239,12 @@ fn root_owned_rust_activation_json() -> String {
         .find(|manifest| manifest.language_id == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
+    let routes =
+        agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     serde_json::to_string_pretty(&json!({
         "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
         "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
+        "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
         "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": ".",
@@ -230,7 +255,14 @@ fn root_owned_rust_activation_json() -> String {
             "languageId": manifest.language_id,
             "providerId": manifest.provider_id,
             "binary": manifest.binary,
+            "execution": manifest.execution,
             "providerCommandPrefix": [],
+            "executionCommandDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "searchCapabilities": manifest.search_capabilities,
+            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+            "queryPackDescriptor": manifest.query_pack_descriptor,
+            "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
+            "routes": routes,
             "coverage": {
                 "packageRoots": ["."],
                 "sourceRoots": ["src", "tests", "crates", "examples", "benches"],

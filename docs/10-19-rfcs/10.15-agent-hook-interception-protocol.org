@@ -777,6 +777,12 @@ PATH set.  This bootstrap boundary exists so an older hook cannot permanently
 prevent installation of the parser or routing fix that replaces it.
 
 ** Resident runtime rebind control intent
+:PROPERTIES:
+:CUSTOM_ID: resident-runtime-rebind-control-intent
+:END:
+
+The canonical resident lifecycle and its release evidence are owned by
+[[file:10.15.02-codex-resident-agent-lifecycle-v1.org::#regression-gates][RFC 10.15.02 regression gates]].
 
 A resident-child runtime mismatch is repaired on the existing canonical child;
 it is never evidence that a replacement child should be created.  The repair

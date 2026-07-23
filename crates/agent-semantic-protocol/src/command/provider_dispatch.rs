@@ -15,8 +15,8 @@ use super::gerbil_check_cache::try_replay_gerbil_check_cache;
 use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
 use super::provider_fast_path::{
-    run_activated_owner_language_preflight, run_pre_activation_dynamic_rust_owner_items_search,
-    run_pre_activation_search_command_preflight, search_owner_items_owner_path,
+    run_activated_owner_language_preflight, run_pre_activation_search_command_preflight,
+    search_owner_items_owner_path,
 };
 use super::provider_fast_search::fast_search_needs_provider_context;
 use super::provider_process::{
@@ -185,13 +185,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if run_asp_fast_search_meta_command(language_id, &command_args) {
         return Ok(());
     }
-    if let Some(result) = run_pre_activation_dynamic_rust_owner_items_search(
-        language_id,
-        &command_args,
-        &invocation_root,
-    )? {
-        return result;
-    }
     run_pre_activation_search_command_preflight(language_id, &command_args, &invocation_root)?;
     reject_search_file_workspace(&command_args, &invocation_root)?;
     validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
@@ -333,7 +326,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                     provider_context: Some(&provider_context),
                     frontier_receipt: frontier_receipt.as_ref(),
                     source_index_snapshot: &current_snapshot,
-                    source_snapshot: &current_snapshot.source_snapshot,
                 },
             );
         }
@@ -348,7 +340,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 provider_context: None,
                 frontier_receipt: frontier_receipt.as_ref(),
                 source_index_snapshot: &current_snapshot,
-                source_snapshot: &current_snapshot.source_snapshot,
             },
         );
     }
@@ -393,7 +384,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         );
     }
     let mut provider_argv = provider_process_args(&provider_args);
-    if is_provider_owned_structural_code_query(language_id, &provider_args) {
+    if is_provider_owned_structural_selector_query(language_id, &provider_args) {
         let parser_identity_digest = agent_semantic_content_identity::exact_selector_projection_packet::derive_parser_identity_digest_v1(
             &provider.provider_id,
             &provider.execution_command_digest,
@@ -435,6 +426,19 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
                 source,
             );
+        let projection_mode = if provider_args.iter().any(|arg| arg == "--code") {
+            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code
+        } else if provider_args.iter().any(|arg| arg == "--names-only") {
+            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Names
+        } else if provider_args.iter().any(|arg| arg == "--verbatim") {
+            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Verbatim
+        } else if super::provider_selector::option_value(&provider_args, "--from-hook")
+            == Some("item-skeleton")
+        {
+            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Skeleton
+        } else {
+            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code
+        };
         let workspace_tree =
             agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
                 [(owner_path.to_string(), source_blob_digest.clone())],
@@ -458,7 +462,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 parser_identity_digest: &parser_identity_digest,
                 query_pack_digest: &query_pack_digest,
                 structural_selector,
-                projection_mode: agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
+                projection_mode,
             };
         if let Some(validated) =
             agent_semantic_client_db::ClientDbEngine::lookup_exact_selector_projection_v1_from_client_dir(
@@ -526,6 +530,17 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             serde_json::from_slice(output.stdout.as_ref()).map_err(|error| {
                 format!("failed to decode exact-selector provider packet: {error}")
             })?;
+        packet.validate_shape().map_err(|error| {
+            format!(
+                "exact-selector provider packet contract mismatch: error={error:?} schemaId={} expectedSchemaId={} schemaVersion={} expectedSchemaVersion={} digestAlgorithm={} expectedDigestAlgorithm={}",
+                packet.schema_id,
+                agent_semantic_content_identity::exact_selector_projection_packet::EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_ID,
+                packet.schema_version,
+                agent_semantic_content_identity::exact_selector_projection_packet::EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_VERSION,
+                packet.digest_algorithm,
+                agent_semantic_content_identity::exact_selector_projection_packet::EXACT_SELECTOR_PROJECTION_PACKET_DIGEST_ALGORITHM,
+            )
+        })?;
         if packet.language_id != language_id
             || packet.provider_id != provider.provider_id
             || packet.owner_path != owner_path
@@ -535,6 +550,26 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 "exact-selector provider packet identity does not match activated request"
                     .to_string(),
             );
+        }
+        if packet.source_blob_digest != source_blob_digest {
+            return Err(format!(
+                "exact-selector provider source digest mismatch: provider={} expected={}",
+                packet.source_blob_digest.as_str(),
+                source_blob_digest.as_str(),
+            ));
+        }
+        if packet.parser_identity_digest != parser_identity_digest
+            || packet.query_pack_digest != query_pack_digest
+            || packet.projection_mode != projection_mode
+        {
+            return Err(format!(
+                "exact-selector provider proof identity mismatch: parserIdentity={} expectedParserIdentity={} queryPack={} expectedQueryPack={} projectionMode={:?} expectedProjectionMode={projection_mode:?}",
+                packet.parser_identity_digest.as_str(),
+                parser_identity_digest.as_str(),
+                packet.query_pack_digest.as_str(),
+                query_pack_digest.as_str(),
+                packet.projection_mode,
+            ));
         }
         let record = packet
             .enrich_projection_record(&workspace_tree)
@@ -610,6 +645,6 @@ use super::provider_activation::{
 };
 use super::provider_execution::provider_process_args;
 use super::provider_selector::{
-    is_provider_owned_structural_code_query, reject_manifest_source_selector_query_code,
+    is_provider_owned_structural_selector_query, reject_manifest_source_selector_query_code,
     reject_registered_source_selector_query, reject_search_file_workspace,
 };

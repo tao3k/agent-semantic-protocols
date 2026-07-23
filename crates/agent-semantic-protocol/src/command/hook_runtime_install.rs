@@ -12,14 +12,15 @@ use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_mode
 use super::{
     display_path, ensure_supported_client, flag_value, optional_flag_value, project_root_arg,
 };
-use crate::command::{ensure_protocol_binary_installed_for_path, run_org_state_sync};
+use crate::command::{
+    ProtocolBinaryInstallPlan, ensure_protocol_binary_installed, run_org_state_sync,
+};
 use agent_semantic_hook::{
-    claude_hook_block, default_claude_settings_path, default_client_config_path,
-    load_or_refresh_default_activation, merge_claude_settings,
-    remove_incompatible_hook_event_state, runtime_profiles_for_activation,
+    claude_hook_block, default_claude_settings_path, load_or_refresh_default_activation,
+    merge_claude_settings, remove_incompatible_hook_event_state, runtime_profiles_for_activation,
     validate_claude_settings_json,
 };
-use agent_semantic_runtime::{project_activation_path, project_runtime_state};
+use agent_semantic_runtime::project_runtime_state;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -43,14 +44,7 @@ pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Resu
                 .to_string(),
         );
     }
-    let mut global_args = args.to_vec();
-    if !global_args
-        .iter()
-        .any(|arg| matches!(arg.as_str(), "--global" | "--global-plugin"))
-    {
-        global_args.push("--global".to_string());
-    }
-    run_install_for_client("codex", &global_args, "plugin-install")
+    run_install_for_client("codex", args, "plugin-install")
 }
 
 fn run_install_for_client(
@@ -65,20 +59,24 @@ fn run_install_for_client(
         subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
     let project_root = project_root_arg(args)?;
     timings.mark("args");
+    let binary_install_plan = ProtocolBinaryInstallPlan::capture()?;
     let runtime_state = project_runtime_state(&project_root)?;
     timings.mark("runtime-state");
     let org_state_sync = run_org_state_sync(&project_root)?;
     timings.mark("org-state");
-    let binary_install = ensure_protocol_binary_installed_for_path()?;
+    let binary_install = ensure_protocol_binary_installed(&binary_install_plan)?;
     timings.mark("binary");
-    let activation_path = project_activation_path(&project_root)?;
+    let activation_path = runtime_state.activation_path.clone();
     let activation_sync = load_or_refresh_default_activation(&activation_path, &project_root)?;
     let activation_status = activation_sync.status;
     let activation = activation_sync.activation;
     timings.mark("activation");
     let runtime_profiles = runtime_profiles_for_activation(&project_root, &activation)?;
     timings.mark("runtime-profiles");
-    let client_config_path = default_client_config_path(&project_root.to_string_lossy());
+    let client_config_path = runtime_state
+        .protocol_home
+        .join("hooks")
+        .join("config.toml");
     let user_config_status = crate::command::managed_hook_config::materialize(&client_config_path)?;
     timings.mark("user-config");
     let mut provider_artifacts = runtime_profiles
@@ -102,13 +100,6 @@ fn run_install_for_client(
         artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::RuntimeConfig,
         materialized_path: client_config_path.clone(),
     });
-    let active_artifact = agent_semantic_hook::materialize_active_asp_artifact_receipt(
-        &binary_install.path,
-        &binary_install.artifact_digest,
-        &activation_path,
-        &provider_artifacts,
-    )?;
-    timings.mark("active-artifact-receipt");
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
     let (config_path, extra_config_receipt) = match client {
@@ -153,6 +144,13 @@ fn run_install_for_client(
         }
     }
     timings.mark("plugin-cache");
+    let active_artifact = agent_semantic_hook::materialize_active_asp_artifact_receipt(
+        &binary_install.path,
+        &binary_install.artifact_digest,
+        &activation_path,
+        &provider_artifacts,
+    )?;
+    timings.mark("active-artifact-receipt");
     let project_skill_receipt = installed_skill
         .as_ref()
         .and_then(|installed_skill| installed_skill.skill_path.as_ref())
@@ -179,14 +177,8 @@ fn run_install_for_client(
         display_path(&project_root, &client_config_path),
         user_config_status.as_str()
     );
-    let binary_paths = binary_install
-        .paths
-        .iter()
-        .map(|path| path.display().to_string())
-        .collect::<Vec<_>>()
-        .join(",");
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryPaths={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
@@ -202,7 +194,6 @@ fn run_install_for_client(
         plugin_skill_receipt,
         plugin_cache_receipt,
         binary_install.path.display(),
-        binary_paths,
         binary_install.status,
         binary_install.artifact_digest,
     );

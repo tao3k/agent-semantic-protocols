@@ -41,7 +41,7 @@ pub(super) use hook_runtime_agent_session_session_start::{
     current_session_configured_resident_identity_proof,
     current_session_resident_child_identity_proof, session_matches_resident_agent,
 };
-use hook_runtime_agent_session_terminal::append_terminal_execution_fields;
+pub(super) use hook_runtime_agent_session_terminal::append_terminal_execution_fields;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 

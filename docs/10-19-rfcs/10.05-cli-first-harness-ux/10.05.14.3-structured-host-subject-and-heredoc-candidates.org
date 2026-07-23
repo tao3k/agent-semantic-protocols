@@ -1,0 +1,86 @@
+#+title: 10.05.14.3 Agent Action Subjects and Embedded Source Candidates
+#+startup: overview
+
+* Status
+
+This section defines the shared action-first contract for hook source-access
+decisions. It replaces command-name special cases and projection-named action
+contracts. There is no compatibility alias for the removed contract names.
+
+* Agent action envelope
+
+Every hook request is normalized into one =AgentAction= before policy rules are
+evaluated. The envelope contains:
+
+- =action=: the operation issued by the agent, such as =read=, =search=,
+  =edit=, or =execute=;
+- =effect=: the behavior inferred from the operation and parsed invocation;
+- =authority=: the evidence boundary, including =raw-host-action=,
+  =raw-shell=, =parser-owned-exact-evidence=, and =parser-owned-search=;
+- =subjects=: normalized targets with registered-source, registered-source
+  pattern, directory, structural-selector, or other kinds.
+
+Hook decision receipts expose this envelope as =agentAction=. =hostAction= is
+not part of the new contract.
+
+* Matching and inference
+
+=AgentActionMatch= evaluates action, effect, authority, subject kind, invocation
+shape, wrapper match, and flag presence. Configuration uses =effectRules= and
+=authorityRules= to infer missing semantics. Rules are data, not hard-coded
+executable names.
+
+For example, =rtk read *.rs= is normalized as:
+
+#+begin_src text
+action=execute
+effect=read
+authority=raw-shell
+subject.kind=registered-language-source-pattern
+invocation.shape=wrapped-command
+wrapperMatch=matched
+flagPresence=absent
+#+end_src
+
+The same rule must also cover zero or more flags without encoding =rtk= or
+=read= in the hook crate. Wrapper parsing belongs to the command-match crate;
+policy matching belongs to the hook action matcher.
+
+* Structured host inputs
+
+Native host tools contribute their typed paths directly. Shell actions
+contribute operands from parsed command invocations. These subject sources are
+merged and de-duplicated before matching; neither source may suppress the
+other.
+
+=structuredProjection= remains a payload-shape adapter only. It maps typed host
+fields such as =file_path=, =path=, =glob=, or equivalent registered fields into
+the normalized subject list. It does not define action or effect semantics.
+
+* Embedded source candidates
+
+The Bash parser extracts literal heredoc and quoted-script candidates before
+source classification. A shell action such as a Python heredoc can therefore
+infer =effect=read= and expose embedded registered-source paths without a raw
+string matcher in the hook crate.
+
+Candidate extraction must:
+
+- be parser-owned;
+- preserve the enclosing command invocation and wrapper facts;
+- emit only literal path candidates;
+- classify extensions through the provider registry;
+- fail closed when the parser cannot establish a safe candidate boundary.
+
+* Validation requirements
+
+The implementation is not complete until tests prove:
+
+- native structured read and search actions reach the same =AgentAction=
+  contract;
+- =rtk read *.rs= is denied from =execute + read + registered source pattern=;
+- wrapper and flag variants are matched by invocation facts;
+- embedded heredoc source reads are denied through parser-owned candidates;
+- receipts contain =agentAction= and contain no =hostAction= field;
+- removed projection-named action keys are rejected rather than silently
+  accepted.

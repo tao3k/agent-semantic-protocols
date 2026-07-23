@@ -23,6 +23,87 @@ use agent_semantic_client_db::turso_mvcc_store::TursoMvccStoreConfig;
 const PROVIDER_RUNTIME_EVENT_DB_FILE: &str = "agent-provider-runtime-events.turso";
 static INVOCATION_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderRuntimeClientId(String);
+
+impl ProviderRuntimeClientId {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    #[must_use]
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for ProviderRuntimeClientId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ProviderRuntimeClientId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderRuntimeSessionId(String);
+
+impl ProviderRuntimeSessionId {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    #[must_use]
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for ProviderRuntimeSessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ProviderRuntimeSessionId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderRuntimeRootSessionId(String);
+
+impl ProviderRuntimeRootSessionId {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    #[must_use]
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for ProviderRuntimeRootSessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ProviderRuntimeRootSessionId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderRuntimeStorageContext {
@@ -140,9 +221,9 @@ impl ProviderRuntimeStorageBinding {
     /// probing.
     pub fn from_runtime_identity(
         project_root: impl AsRef<Path>,
-        client: impl Into<String>,
-        session_id: impl Into<String>,
-        root_session_id: impl Into<String>,
+        client: impl Into<ProviderRuntimeClientId>,
+        session_id: impl Into<ProviderRuntimeSessionId>,
+        root_session_id: impl Into<ProviderRuntimeRootSessionId>,
     ) -> Result<Self, String> {
         let client = client.into();
         let session_id = session_id.into();
@@ -165,7 +246,8 @@ impl ProviderRuntimeStorageBinding {
             Arc::new(storage),
             StorageOptimizationProfile::MvccConcurrentPassiveCheckpoint,
         )?;
-        let invocation_id = next_invocation_id(&session_id, &client, current_time_millis());
+        let invocation_id =
+            next_invocation_id(session_id.as_str(), client.as_str(), current_time_millis());
         Ok(Self {
             adapter,
             event_db_path,
@@ -173,9 +255,9 @@ impl ProviderRuntimeStorageBinding {
                 repo_id: engine.repo_id().to_owned(),
                 workspace_id: engine.workspace_id().to_owned(),
                 scope_id: engine.scope_id().to_owned(),
-                session_id,
-                root_session_id,
-                agent_id: client,
+                session_id: session_id.into_string(),
+                root_session_id: root_session_id.into_string(),
+                agent_id: client.into_string(),
                 invocation_id,
             },
         })

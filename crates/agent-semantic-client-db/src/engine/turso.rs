@@ -425,10 +425,28 @@ async fn shared_turso_read_only_connection(turso_path: &Path) -> Result<turso::C
 }
 
 async fn build_turso_database(turso_path: &Path) -> Result<turso::Database, String> {
-    turso_builder(turso_path)
-        .build()
-        .await
-        .map_err(|error| format!("failed to open Turso client DB: {error}"))
+    let max_attempts = 8;
+    let mut last_lock_error = None;
+    for attempt in 0..max_attempts {
+        match turso_builder(turso_path).build().await {
+            Ok(database) => return Ok(database),
+            Err(error) => {
+                let message = error.to_string();
+                if !super::turso_lock_policy::is_turso_lock_error(&message) {
+                    return Err(format!("failed to open Turso client DB: {message}"));
+                }
+                last_lock_error = Some(message);
+                if attempt + 1 == max_attempts {
+                    break;
+                }
+                tokio::time::sleep(super::turso_lock_policy::turso_lock_retry_delay(attempt)).await;
+            }
+        }
+    }
+    Err(format!(
+        "failed to open Turso client DB after bounded lock retries: {}",
+        last_lock_error.unwrap_or_else(|| "unknown Turso lock error".to_string())
+    ))
 }
 
 pub(super) fn turso_client_db_exists(db_path: &Path) -> bool {

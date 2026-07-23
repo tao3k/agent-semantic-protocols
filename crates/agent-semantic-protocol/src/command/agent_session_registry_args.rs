@@ -64,6 +64,7 @@ pub(super) struct SessionArgs {
     pub(super) dispatch_identity: Option<String>,
     pub(super) command_digest: Option<String>,
     pub(super) command_json: Option<String>,
+    pub(super) receipt_kind: Option<String>,
     pub(super) resident_bridge: bool,
     pub(super) evidence_ref: Option<String>,
     pub(super) canonical_target: Option<String>,
@@ -101,6 +102,7 @@ impl SessionArgs {
             dispatch_identity: None,
             command_digest: None,
             command_json: None,
+            receipt_kind: None,
             resident_bridge: false,
             evidence_ref: None,
             canonical_target: None,
@@ -287,6 +289,11 @@ impl SessionArgs {
                     parsed.command_json =
                         Some(non_empty_flag(args, index, "--command-json")?.to_string());
                 }
+                "--receipt-kind" => {
+                    index += 1;
+                    parsed.receipt_kind =
+                        Some(non_empty_flag(args, index, "--receipt-kind")?.to_string());
+                }
                 "--resident-bridge" => parsed.resident_bridge = true,
                 "--evidence-ref" => {
                     index += 1;
@@ -384,12 +391,13 @@ asp agent session observe-host-ack --name <resident-lane> --canonical-target /ro
         SessionCommand::DispatchClaim => Some(
             "asp agent session dispatch-claim guide\n\
 Atomically claim or poll one exact resident command. Only action=send authorizes a native follow-up; action=wait polls the existing attempt and action=complete forbids replay.\n\
-asp agent session dispatch-claim --name <resident-lane> --dispatch-identity <id> --command-digest <digest>",
+Derive the stable identity from the verified canonical target, receipt kind, and exact argv. Explicit identity/digest values are accepted only when they match the derived values.\n\
+asp agent session dispatch-claim --name <resident-lane> --receipt-kind <kind> --command-json '<argv-json>'",
         ),
         SessionCommand::DispatchExecute => Some(
             "asp agent session dispatch-execute guide\n\
 Execute one previously claimed exact argv and atomically record its terminal receipt. Root execution is allowed only through --resident-bridge bound to the fresh verified canonical target.\n\
-asp agent session dispatch-execute --name <resident-lane> --dispatch-identity <id> --command-digest <digest> --command-json '<argv-json>' --resident-bridge",
+asp agent session dispatch-execute --name <resident-lane> --receipt-kind <kind> --command-json '<argv-json>' --resident-bridge",
         ),
         SessionCommand::DispatchComplete => Some(
             "asp agent session dispatch-complete guide\n\

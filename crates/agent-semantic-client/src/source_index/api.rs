@@ -150,16 +150,18 @@ struct ProviderSourceSnapshotOwnerV1 {
     path: String,
     snapshot_leaf_digest: String,
     blob_digest: String,
+    source_content_digest: String,
     cas_path: String,
 }
 
 /// Publish one provider-scoped, root-bound source envelope backed by ASP-owned CAS bytes.
 pub fn publish_provider_source_snapshot_envelope(
     snapshot: &CurrentSourceIndexSnapshot,
-    provider_id: &str,
+    provider_id: impl Into<ProviderId>,
     source_extensions: &[String],
     cache_home: &Path,
 ) -> Result<std::path::PathBuf, String> {
+    let provider_id = provider_id.into();
     let cas_root = cache_home.join("source-blob-cas").join("v1");
     let cas = agent_semantic_content_identity::ContentAddressedStore::new(&cas_root);
     let normalized_extensions = source_extensions
@@ -185,6 +187,10 @@ pub fn publish_provider_source_snapshot_envelope(
             )
         })?;
         let blob_digest = agent_semantic_content_identity::hash_blob(bytes).value;
+        let source_content_digest =
+            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(bytes)
+                .as_str()
+                .to_owned();
         let blob_path = cas.write(&blob_digest, bytes).map_err(|error| {
             format!(
                 "failed to publish provider source blob to ASP content store: path={path} blobDigest={blob_digest} error={error}"
@@ -205,6 +211,7 @@ pub fn publish_provider_source_snapshot_envelope(
             path: path.clone(),
             snapshot_leaf_digest: snapshot_leaf_digest.to_string(),
             blob_digest,
+            source_content_digest,
             cas_path,
         });
     }
@@ -220,6 +227,7 @@ pub fn publish_provider_source_snapshot_envelope(
         )
     })?;
     let provider_file_name = provider_id
+        .as_str()
         .chars()
         .map(|character| {
             if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
@@ -233,7 +241,7 @@ pub fn publish_provider_source_snapshot_envelope(
     let envelope = ProviderSourceSnapshotEnvelopeV1 {
         schema_id: "asp.exact-source-snapshot-envelope.v1",
         schema_version: "1",
-        provider_id,
+        provider_id: provider_id.as_str(),
         source_snapshot: &snapshot.source_snapshot,
         cas_root: &cas_root,
         owners,

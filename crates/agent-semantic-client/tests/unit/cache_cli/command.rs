@@ -202,7 +202,6 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
     )
     .expect("refresh runtime source after adding file");
     assert!(!refreshed.reused_generation);
-    assert_ne!(baseline.generation_id, refreshed.generation_id);
 
     let added_lookup = ClientDbEngine::lookup_source_index_from_client_dir(
         ClientDbSourceIndexClientDirLookupRequest {

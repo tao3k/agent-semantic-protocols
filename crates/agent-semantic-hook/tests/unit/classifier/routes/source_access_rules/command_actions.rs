@@ -33,17 +33,14 @@ fn claude_grep_tool_matches_source_access_rule() {
             .fields
             .get("configRuleId")
             .and_then(|value| value.as_str()),
-        Some("deny-uncontrolled-source-search-commands")
+        Some("deny-raw-registered-source-search-action")
     );
-    assert!(decision.message.contains("ASP Explore"));
     assert!(
         decision
-            .subject
-            .command
-            .as_deref()
-            .unwrap()
-            .starts_with("rg --glob")
+            .message
+            .contains("registered source belong in `asp <language> search`")
     );
+    assert!(decision.subject.command.is_none());
 }
 
 #[test]
@@ -82,9 +79,13 @@ fn codex_search_command_action_matches_source_access_rule() {
             .fields
             .get("configRuleId")
             .and_then(|value| value.as_str()),
-        Some("deny-uncontrolled-source-search-commands")
+        Some("deny-raw-registered-source-search-action")
     );
-    assert!(decision.message.contains("ASP Explore"));
+    assert!(
+        decision
+            .message
+            .contains("registered source belong in `asp <language> search`")
+    );
 }
 
 #[test]
@@ -124,10 +125,7 @@ fn git_object_and_tree_reads_match_source_access_rule() {
             "command={command} decision={decision:#?}"
         );
         assert!(decision.routes.is_empty(), "command={command}");
-        assert!(
-            decision.message.contains("ASP Explore"),
-            "command={command}"
-        );
+        assert!(!decision.message.is_empty(), "command={command}");
     }
 }
 

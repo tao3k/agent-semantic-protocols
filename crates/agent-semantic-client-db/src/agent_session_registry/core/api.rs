@@ -12,7 +12,8 @@ use crate::agent_session_registry::types::{
     AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED, AGENT_SESSION_STATUS_INVALID,
     AgentSessionDispatchClaimRequest, AgentSessionDispatchClaimResult,
     AgentSessionDispatchCompleteRequest, AgentSessionDispatchLeaseRecord,
-    AgentSessionLookupRequest, AgentSessionRecord, AgentSessionRegisterRequest,
+    AgentSessionLookupRequest, AgentSessionProjectId, AgentSessionRecord,
+    AgentSessionRegisterRequest, AgentSessionResidentName, AgentSessionRootSessionId,
     AgentSessionToolEventRequest, agent_session_unix_timestamp,
 };
 
@@ -35,15 +36,18 @@ impl AgentSessionRegistry {
     /// Return registered sessions for one project, optionally narrowed by root session and name.
     pub fn query_sessions(
         &self,
-        project_id: &str,
-        root_session_id: Option<&str>,
-        name: Option<&str>,
+        project_id: impl Into<AgentSessionProjectId>,
+        root_session_id: Option<AgentSessionRootSessionId>,
+        name: Option<AgentSessionResidentName>,
     ) -> Result<Vec<AgentSessionRecord>, String> {
+        let project_id = project_id.into();
         block_on_agent_session_registry_async(turso_query_sessions(
             &self.db_path,
-            project_id,
-            root_session_id,
-            name,
+            project_id.as_str(),
+            root_session_id
+                .as_ref()
+                .map(AgentSessionRootSessionId::as_str),
+            name.as_ref().map(AgentSessionResidentName::as_str),
         ))
     }
 
@@ -130,8 +134,11 @@ impl AgentSessionRegistry {
         if let (Some(root_session_id), Some(name)) = (request.root_session_id, request.name) {
             return self.session_by_name(request.project_id, root_session_id, name);
         }
-        let sessions =
-            self.query_sessions(request.project_id, request.root_session_id, request.name)?;
+        let sessions = self.query_sessions(
+            request.project_id,
+            request.root_session_id.map(AgentSessionRootSessionId::from),
+            request.name.map(AgentSessionResidentName::from),
+        )?;
         Ok(sessions.into_iter().next())
     }
 

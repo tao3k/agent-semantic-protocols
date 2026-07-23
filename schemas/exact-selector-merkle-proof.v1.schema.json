@@ -17,6 +17,7 @@
     "parserIdentityDigest",
     "queryPackDigest",
     "parserFactDigest",
+    "canonicalItemSelector",
     "structuralSelector",
     "projectionMode",
     "projectionDigest"
@@ -63,6 +64,9 @@
     },
     "parserFactDigest": {
       "$ref": "#/$defs/contentDigest"
+    },
+    "canonicalItemSelector": {
+      "$ref": "canonical-item-selector.v1.schema.json"
     },
     "structuralSelector": {
       "type": "string",

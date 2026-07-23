@@ -1,6 +1,6 @@
 use super::{
-    claude_fixture, codex_asp_query_payload, install_codex_hooks,
-    run_codex_pre_tool_decision_with_env,
+    assert_configured_asp_explore_dispatch, claude_fixture, codex_asp_query_payload,
+    install_codex_hooks, run_codex_pre_tool_decision_with_env,
 };
 
 const ROOT_SESSION_ID: &str = "019f5c84-0000-7000-8000-000000000301";
@@ -19,21 +19,10 @@ fn explicit_inline_fallback_flag_does_not_bypass_resident_lifecycle() {
         &[("CODEX_THREAD_ID", ROOT_SESSION_ID)],
     );
 
-    assert_eq!(decision["decision"], "deny", "{decision}");
-    assert_eq!(decision["reasonKind"], "asp-reasoning-routed");
-    assert_eq!(
-        decision["fields"]["agentSessionAction"],
-        "start-resident-child"
-    );
+    assert_configured_asp_explore_dispatch(&decision);
     assert!(decision["fields"].get("executionTransport").is_none());
     assert!(decision["fields"].get("degraded").is_none());
-    assert_eq!(decision["fields"]["aspCommandIntent"], "reasoning");
-    assert_eq!(decision["fields"]["languageId"], "rust");
     assert!(decision["fields"].get("executionCommandDigest").is_none());
-    assert_eq!(
-        decision["fields"]["agentSessionLoopCommand"],
-        "asp agent session bootstrap --name asp-explore"
-    );
 }
 
 #[test]
@@ -50,17 +39,7 @@ fn parser_owned_search_without_inline_opt_in_remains_denied() {
         &[("CODEX_THREAD_ID", ROOT_SESSION_ID)],
     );
 
-    assert_eq!(decision["decision"], "deny", "{decision}");
-    assert_eq!(decision["reasonKind"], "asp-reasoning-routed");
-    assert_eq!(decision["fields"]["inlineParserFallbackAvailable"], true);
-    assert_eq!(
-        decision["fields"]["inlineParserFallbackOptIn"],
-        "ASP_INLINE_PARSER_FALLBACK=1"
-    );
-    assert_eq!(
-        decision["fields"]["inlineParserFallbackPolicy"],
-        "exact-parser-owned-command-only"
-    );
+    assert_configured_asp_explore_dispatch(&decision);
 }
 
 #[test]

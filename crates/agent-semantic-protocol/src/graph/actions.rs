@@ -464,25 +464,23 @@ fn append_item_symbols(actions: &mut Vec<GraphAction>, value: Option<&Value>, la
             .or_else(|| value.get("target"))
             .and_then(Value::as_str);
         if let Some(target) = target {
-            let locator = graph_item_locator(value, language_id, target);
+            let Some(locator) = graph_item_locator(value) else {
+                continue;
+            };
             let syntax_query = graph_item_syntax_query(value, language_id, target);
             actions.push(GraphAction {
                 kind: "item-symbol".to_string(),
                 target: target.to_string(),
-                action: locator
-                    .as_deref()
-                    .map(item_frontier_action)
-                    .map(ToOwned::to_owned),
-                locator,
+                action: Some(item_frontier_action(&locator).to_owned()),
+                locator: Some(locator),
                 syntax_query,
             });
         }
     }
 }
 
-fn graph_item_locator(value: &Value, language_id: &str, target: &str) -> Option<String> {
+fn graph_item_locator(value: &Value) -> Option<String> {
     graph_item_structural_selector(value)
-        .or_else(|| graph_item_structural_selector_from_hints(value, language_id, target))
 }
 
 fn graph_item_structural_selector(value: &Value) -> Option<String> {
@@ -500,98 +498,6 @@ fn graph_item_structural_selector(value: &Value) -> Option<String> {
         .or_else(|| value.get("semanticSelector").and_then(Value::as_str))
         .filter(|selector| !selector.trim().is_empty())
         .map(str::to_string)
-}
-
-fn graph_item_structural_selector_from_hints(
-    value: &Value,
-    language_id: &str,
-    target: &str,
-) -> Option<String> {
-    let owner_path = graph_item_owner_path(value)?;
-    let kind = graph_item_kind(value).unwrap_or(default_item_kind(language_id));
-    let language = if language_id.is_empty() {
-        "code"
-    } else {
-        language_id
-    };
-    Some(format!(
-        "{}://{}#item/{}/{}",
-        selector_token(language),
-        owner_path,
-        selector_token(kind),
-        selector_token(target)
-    ))
-}
-
-fn graph_item_owner_path(value: &Value) -> Option<String> {
-    value
-        .get("ownerPath")
-        .and_then(Value::as_str)
-        .or_else(|| value.get("path").and_then(Value::as_str))
-        .or_else(|| {
-            value
-                .get("fields")
-                .and_then(|fields| fields.get("ownerPath"))
-                .and_then(Value::as_str)
-        })
-        .or_else(|| {
-            value
-                .get("fields")
-                .and_then(|fields| fields.get("path"))
-                .and_then(Value::as_str)
-        })
-        .map(str::trim)
-        .filter(|path| !path.is_empty())
-        .map(ToOwned::to_owned)
-        .or_else(|| {
-            graph_item_source_locator_hint(value).and_then(|locator| source_locator_path(&locator))
-        })
-}
-
-fn graph_item_source_locator_hint(value: &Value) -> Option<String> {
-    value
-        .get("fields")
-        .and_then(|fields| fields.get("sourceLocatorHint"))
-        .and_then(Value::as_str)
-        .or_else(|| value.get("sourceLocatorHint").and_then(Value::as_str))
-        .or_else(|| {
-            value
-                .get("fields")
-                .and_then(|fields| fields.get("read"))
-                .and_then(Value::as_str)
-        })
-        .or_else(|| value.get("read").and_then(Value::as_str))
-        .map(str::trim)
-        .filter(|locator| !locator.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn source_locator_path(locator: &str) -> Option<String> {
-    locator
-        .split_once(':')
-        .map(|(path, _)| path.trim())
-        .filter(|path| !path.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn selector_token(value: &str) -> String {
-    let token = value
-        .trim()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | '/' | ':')
-            {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>();
-    if token.is_empty() {
-        "item".to_string()
-    } else {
-        token
-    }
 }
 
 fn graph_item_syntax_query(value: &Value, language_id: &str, target: &str) -> Option<String> {
@@ -734,12 +640,12 @@ fn action_from_value(value: &Value, language_id: &str) -> Option<GraphAction> {
     let target = graph_item_target(value)
         .or_else(|| graph_item_ownerish_target(value))?
         .to_string();
-    let locator = graph_item_locator(value, language_id, &target);
+    let locator = graph_item_locator(value)?;
     Some(GraphAction {
         kind,
         syntax_query: graph_item_syntax_query(value, language_id, &target),
         target,
-        locator,
+        locator: Some(locator),
         action,
     })
 }

@@ -20,10 +20,8 @@ _agent-tools-run-asp bin_dir +args:
     if [ -x "${protocol_bin}" ]; then \
       stale_reason=""; \
       if [ -z "${ASP_BIN:-}" ]; then \
-        if [ -x target/release/asp ] && [ target/release/asp -nt "${protocol_bin}" ]; then \
-          stale_reason="target/release/asp is newer"; \
-        elif find crates/agent-semantic-protocol/src crates/agent-semantic-protocol/Cargo.toml Cargo.lock -type f -newer "${protocol_bin}" 2>/dev/null | grep -q .; then \
-          stale_reason="agent-semantic-protocol Rust source is newer"; \
+        if [ -x target/release/asp ] && ! cmp -s target/release/asp "${protocol_bin}"; then \
+          stale_reason="target/release/asp content differs"; \
         fi; \
       fi; \
       if [ -n "${stale_reason}" ]; then \

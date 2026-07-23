@@ -135,6 +135,45 @@ reader fallback.  Every other action receives the v1
 =activation-unavailable= reason and must retry only after activation is
 healthy.
 
+* Exact selector routing authority
+
+The v1 provider source-snapshot envelope must keep three digest domains
+distinct for every owner: =snapshotLeafDigest= proves workspace-tree
+membership, =blobDigest= addresses the CAS artifact, and
+=sourceContentDigest= is the canonical =blake3-256= digest of the exact owner
+bytes consumed by the parser. Exact-selector packets and Merkle lookup keys
+must use =sourceContentDigest=; they must never reinterpret the CAS blob digest
+as a source-content digest.
+
+The selected structural projection mode is part of the v1 request identity and
+must flow unchanged through router, provider packet, Merkle lookup key, and
+cache record. =--code= selects =Code=, =--names-only= selects =Names=,
+=--from-hook item-skeleton= selects =Skeleton=, and =--verbatim= selects
+=Verbatim=. When no projection flag is present, v1 defaults to =Code=. The
+provider must emit that mode explicitly in its packet; it must not fall back to
+term-query validation.
+
+=--json= controls the output envelope only. It is not a projection mode and
+must not alter exact-selector route selection. Agent-platform policy may reject
+JSON output before provider dispatch without changing the structural query
+contract.
+
+An exact structural selector is a complete query key.  Once =--selector=
+identifies a provider-owned structural item, routing must select the structural
+query path before ordinary term-query validation.  =--term= is neither required
+nor synthesized for this path.
+
+Projection flags such as =--code= and =--names-only= select the rendering of the
+same structural result; they do not decide whether the request is structural.
+A selector request must therefore never fall through to a query-pack entry point
+whose precondition is one or more terms.  Mixing =--selector= with an
+incompatible query mode is rejected as a typed mode conflict instead of being
+reinterpreted as a term query.
+
+This invariant is language neutral and belongs to the protocol/provider
+capability contract.  A provider may advertise the projections it supports,
+but it may not require a synthetic term once it accepts exact selectors.
+
 * Required absence gates
 
 The migration is complete only when:

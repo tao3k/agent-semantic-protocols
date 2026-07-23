@@ -53,7 +53,6 @@ pub(super) struct FastSearchContext<'a> {
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
     pub(super) source_index_snapshot:
         &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
-    pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
@@ -94,6 +93,25 @@ pub(super) fn run_asp_fast_search_command(
     if is_search_ingest(args) {
         return run_search_ingest_command(args, &context);
     }
+    if is_search_owner_items_query(args) {
+        match preflight_search_command_args(context.language_id, args, context.project_root) {
+            SearchCommandPreflightOutcome::Rejected(error) => return Err(error),
+            SearchCommandPreflightOutcome::Passed
+            | SearchCommandPreflightOutcome::NotApplicable => {}
+        }
+        return run_search_owner_items_query_command(
+            args,
+            SearchOwnerItemsFastContext {
+                language_id: context.language_id,
+                project_root: context.project_root,
+                locator_root: context.locator_root,
+                cache_home: context.cache_home,
+                config: context.config,
+                provider_context: context.provider_context,
+                frontier_receipt: context.frontier_receipt,
+            },
+        );
+    }
     if is_search_lexical(args) {
         return run_search_lexical_command(args, &context);
     }
@@ -122,26 +140,6 @@ pub(super) fn run_asp_fast_search_command(
             context.project_root,
             context.locator_root,
             context.frontier_receipt,
-        );
-    }
-    if is_search_owner_items_query(args) {
-        match preflight_search_command_args(context.language_id, args, context.project_root) {
-            SearchCommandPreflightOutcome::Rejected(error) => return Err(error),
-            SearchCommandPreflightOutcome::Passed
-            | SearchCommandPreflightOutcome::NotApplicable => {}
-        }
-        return run_search_owner_items_query_command(
-            args,
-            SearchOwnerItemsFastContext {
-                language_id: context.language_id,
-                project_root: context.project_root,
-                locator_root: context.locator_root,
-                cache_home: context.cache_home,
-                config: context.config,
-                provider_context: context.provider_context,
-                frontier_receipt: context.frontier_receipt,
-                source_snapshot: context.source_snapshot,
-            },
         );
     }
     Err("unsupported ASP fast search command".to_string())
@@ -687,7 +685,7 @@ pub(super) fn search_workspace_root(
     normalize_path(&workspace)
 }
 
-fn normalize_path(path: &Path) -> PathBuf {
+pub(super) fn normalize_path(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {

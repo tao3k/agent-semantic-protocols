@@ -5,13 +5,13 @@ use agent_semantic_config::{
     HookClientWrapperMatch,
 };
 
-use super::SemanticActionMatch;
+use super::AgentActionMatch;
 use crate::tool_action::{
-    ActionAuthority, ActionSubject, ActionSubjectKind, HostActionKind, SemanticHostAction,
+    AgentAction, AgentActionAuthority, AgentActionKind, AgentActionSubject, AgentActionSubjectKind,
 };
 
-fn wrapped_matcher() -> SemanticActionMatch {
-    SemanticActionMatch::new(
+fn wrapped_matcher() -> AgentActionMatch {
+    AgentActionMatch::new(
         vec![HookClientCommandWrapper {
             executable: "rtk".to_string(),
         }],
@@ -38,7 +38,7 @@ fn wrapper_match_accepts_flags_or_no_flags_without_inner_command_registry() {
     for command in ["rtk read *.rs", "rtk -q read --number *.rs"] {
         let invocations = normalize_bash_command_invocations(command, &matcher.command_wrappers)
             .expect("bash invocation should parse");
-        assert!(matcher.matches_invocation_facts(HostActionKind::Execute, &invocations));
+        assert!(matcher.matches_invocation_facts(AgentActionKind::Execute, &invocations));
     }
 }
 
@@ -48,12 +48,12 @@ fn wrapper_match_is_registry_driven() {
     let invocations = normalize_bash_command_invocations("reader *.rs", &matcher.command_wrappers)
         .expect("direct bash invocation should parse");
 
-    assert!(!matcher.matches_invocation_facts(HostActionKind::Execute, &invocations));
+    assert!(!matcher.matches_invocation_facts(AgentActionKind::Execute, &invocations));
 }
 
 #[test]
 fn source_expansion_requires_read_effect_even_for_registered_source_patterns() {
-    let matcher = SemanticActionMatch::new(
+    let matcher = AgentActionMatch::new(
         vec![HookClientCommandWrapper {
             executable: "rtk".to_string(),
         }],
@@ -74,25 +74,25 @@ fn source_expansion_requires_read_effect_even_for_registered_source_patterns() {
     let invocations =
         normalize_bash_command_invocations("rtk git mv old.rs new.rs", &matcher.command_wrappers)
             .expect("wrapped command should parse");
-    let mut semantic = SemanticHostAction {
-        action: HostActionKind::Execute,
-        effect: HostActionKind::Edit,
-        authority: ActionAuthority::RawShell,
-        subjects: vec![ActionSubject {
+    let mut agent_action = AgentAction {
+        action: AgentActionKind::Execute,
+        effect: AgentActionKind::Edit,
+        authority: AgentActionAuthority::RawShell,
+        subjects: vec![AgentActionSubject {
             value: "old.rs".to_string(),
-            kind: ActionSubjectKind::RegisteredLanguageSourcePattern,
+            kind: AgentActionSubjectKind::RegisteredLanguageSourcePattern,
         }],
     };
 
-    assert!(!matcher.matches_envelope(&semantic, &invocations));
+    assert!(!matcher.matches_envelope(&agent_action, &invocations));
 
-    semantic.effect = HostActionKind::Read;
-    assert!(matcher.matches_envelope(&semantic, &invocations));
+    agent_action.effect = AgentActionKind::Read;
+    assert!(matcher.matches_envelope(&agent_action, &invocations));
 }
 
 #[test]
-fn wrapped_execute_with_projected_read_effect_matches_registered_source_pattern() {
-    let matcher = SemanticActionMatch::new(
+fn wrapped_execute_with_inferred_read_effect_matches_registered_source_pattern() {
+    let matcher = AgentActionMatch::new(
         vec![HookClientCommandWrapper {
             executable: "rtk".to_string(),
         }],
@@ -116,42 +116,43 @@ fn wrapped_execute_with_projected_read_effect_matches_registered_source_pattern(
         vec![HookClientActionAuthority::RawShell],
         Vec::new(),
         Vec::new(),
-        vec![agent_semantic_config::HookClientEffectProjection {
+        vec![agent_semantic_config::AgentActionEffectRule {
             argv_prefix: vec!["read".to_string()],
+            command_contains_any: Vec::new(),
             effect: HookClientActionKind::Read,
         }],
     );
     let invocations =
         normalize_bash_command_invocations("rtk read *.rs", &matcher.command_wrappers)
             .expect("wrapped command should parse");
-    let mut semantic = SemanticHostAction {
-        action: HostActionKind::Execute,
-        effect: HostActionKind::Unknown,
-        authority: ActionAuthority::RawShell,
-        subjects: vec![ActionSubject {
+    let mut agent_action = AgentAction {
+        action: AgentActionKind::Execute,
+        effect: AgentActionKind::Unknown,
+        authority: AgentActionAuthority::RawShell,
+        subjects: vec![AgentActionSubject {
             value: "*.rs".to_string(),
-            kind: ActionSubjectKind::RegisteredLanguageSourcePattern,
+            kind: AgentActionSubjectKind::RegisteredLanguageSourcePattern,
         }],
     };
 
-    semantic.effect = matcher
-        .projected_effect(&invocations)
+    agent_action.effect = matcher
+        .infer_effect(&invocations, Some("rtk read *.rs"))
         .expect("registered wrapper must expose the inner read projection");
-    assert_eq!(semantic.effect, HostActionKind::Read);
-    assert!(matcher.matches_envelope(&semantic, &invocations));
+    assert_eq!(agent_action.effect, AgentActionKind::Read);
+    assert!(matcher.matches_envelope(&agent_action, &invocations));
 }
 
 #[test]
-fn semantic_action_and_invocation_schemas_are_valid_json_objects() {
+fn agent_action_and_invocation_schemas_are_valid_json_objects() {
     for schema in [
-        include_str!("../../../../../schemas/semantic-host-action.v1.schema.json"),
-        include_str!("../../../../../schemas/semantic-action-match.v1.schema.json"),
+        include_str!("../../../../../schemas/agent-action.v1.schema.json"),
+        include_str!("../../../../../schemas/agent-action-match.v1.schema.json"),
         include_str!("../../../../../schemas/semantic-command-invocation.v1.schema.json"),
         include_str!("../../../../../schemas/semantic-invocation-match.v1.schema.json"),
         include_str!("../../../../../schemas/semantic-command-wrapper-registry.v1.schema.json"),
     ] {
         let document = serde_json::from_str::<serde_json::Value>(schema)
-            .expect("semantic action schema should contain valid JSON");
+            .expect("agent action schema should contain valid JSON");
         assert_eq!(document["type"], "object");
         assert_eq!(document["additionalProperties"], false);
         assert!(document["$id"].as_str().is_some_and(|id| !id.is_empty()));
@@ -160,7 +161,7 @@ fn semantic_action_and_invocation_schemas_are_valid_json_objects() {
 
 #[test]
 fn host_native_read_matches_registered_source_without_command_parsing() {
-    let matcher = SemanticActionMatch::new(
+    let matcher = AgentActionMatch::new(
         Vec::new(),
         vec![HookClientInvocationShape::HostNative],
         vec![HookClientWrapperMatch::Unmatched],
@@ -173,22 +174,22 @@ fn host_native_read_matches_registered_source_without_command_parsing() {
         Vec::new(),
         Vec::new(),
     );
-    let semantic = SemanticHostAction {
-        action: HostActionKind::Read,
-        effect: HostActionKind::Read,
-        authority: ActionAuthority::RawHostAction,
-        subjects: vec![ActionSubject {
+    let agent_action = AgentAction {
+        action: AgentActionKind::Read,
+        effect: AgentActionKind::Read,
+        authority: AgentActionAuthority::RawHostAction,
+        subjects: vec![AgentActionSubject {
             value: "src/lib.rs".to_string(),
-            kind: ActionSubjectKind::RegisteredLanguageSource,
+            kind: AgentActionSubjectKind::RegisteredLanguageSource,
         }],
     };
 
-    assert!(matcher.matches_envelope(&semantic, &[]));
+    assert!(matcher.matches_envelope(&agent_action, &[]));
 }
 
 #[test]
 fn parser_owned_authority_does_not_match_raw_shell_safety_rule() {
-    let matcher = SemanticActionMatch::new(
+    let matcher = AgentActionMatch::new(
         Vec::new(),
         vec![HookClientInvocationShape::Command],
         vec![HookClientWrapperMatch::Unmatched],
@@ -206,15 +207,15 @@ fn parser_owned_authority_does_not_match_raw_shell_safety_rule() {
     );
     let invocations = normalize_bash_command_invocations("provider file.rs", &[])
         .expect("parser-owned command should parse");
-    let semantic = SemanticHostAction {
-        action: HostActionKind::Execute,
-        effect: HostActionKind::Unknown,
-        authority: ActionAuthority::ParserOwnedExactEvidence,
-        subjects: vec![ActionSubject {
+    let agent_action = AgentAction {
+        action: AgentActionKind::Execute,
+        effect: AgentActionKind::Unknown,
+        authority: AgentActionAuthority::ParserOwnedExactEvidence,
+        subjects: vec![AgentActionSubject {
             value: "file.rs".to_string(),
-            kind: ActionSubjectKind::RegisteredLanguageSource,
+            kind: AgentActionSubjectKind::RegisteredLanguageSource,
         }],
     };
 
-    assert!(!matcher.matches_envelope(&semantic, &invocations));
+    assert!(!matcher.matches_envelope(&agent_action, &invocations));
 }

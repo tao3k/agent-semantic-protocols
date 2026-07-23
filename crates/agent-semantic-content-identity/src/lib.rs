@@ -59,6 +59,11 @@ mod store_tests;
 mod hashing_tests;
 
 pub mod active_artifact_merkle_v1;
+pub mod canonical_item_identity;
+
+#[cfg(test)]
+#[path = "../tests/unit/canonical_item_identity.rs"]
+mod canonical_item_identity_tests;
 pub mod exact_selector_cache;
 pub mod exact_selector_merkle;
 pub mod exact_selector_projection_packet;
@@ -66,3 +71,4 @@ pub mod exact_selector_projection_packet;
 #[path = "../tests/unit/overlay.rs"]
 mod overlay_tests;
 pub mod workspace_merkle_v1;
+extern crate self as agent_semantic_content_identity;

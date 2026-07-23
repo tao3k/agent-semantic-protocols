@@ -50,6 +50,7 @@ pub struct ExactSelectorProjectionPacketV1 {
     pub digest_algorithm: String,
     pub language_id: String,
     pub provider_id: String,
+    pub canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
     pub parser_identity_digest: ContentDigestV1,
     pub query_pack_digest: ContentDigestV1,
     pub owner_path: String,
@@ -64,6 +65,7 @@ pub struct ExactSelectorProjectionPacketV1 {
 pub fn build_exact_selector_projection_packet_v1(
     language_id: &str,
     provider_id: &str,
+    canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
     parser_identity_digest: &ContentDigestV1,
     query_pack_digest: &ContentDigestV1,
     owner_path: &str,
@@ -85,11 +87,12 @@ pub fn build_exact_selector_projection_packet_v1(
         ],
     );
     ExactSelectorProjectionPacketV1 {
-        schema_id: "agent.semantic-protocols.exact-selector-projection-packet".to_string(),
-        schema_version: "1".to_string(),
-        digest_algorithm: "blake3-256".to_string(),
+        schema_id: EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_ID.to_owned(),
+        schema_version: EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_VERSION.to_owned(),
+        digest_algorithm: EXACT_SELECTOR_PROJECTION_PACKET_DIGEST_ALGORITHM.to_owned(),
         language_id: language_id.to_string(),
         provider_id: provider_id.to_string(),
+        canonical_item_selector,
         parser_identity_digest: parser_identity_digest.clone(),
         query_pack_digest: query_pack_digest.clone(),
         owner_path: owner_path.to_string(),
@@ -126,45 +129,8 @@ fn encode_projection_payload_base64_v1(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod packet_builder_tests {
-    use super::build_exact_selector_projection_packet_v1;
-    use crate::exact_selector_merkle::{ExactProjectionModeV1, canonical_content_digest_v1};
-
-    #[test]
-    fn builder_binds_source_parser_facts_and_projection_bytes() {
-        let parser_digest = canonical_content_digest_v1(b"parser", &[b"rs-harness"]);
-        let query_pack_digest = canonical_content_digest_v1(b"query-pack", &[b"rust"]);
-        let packet = build_exact_selector_projection_packet_v1(
-            "rust",
-            "rs-harness",
-            &parser_digest,
-            &query_pack_digest,
-            "src/lib.rs",
-            "rust://src/lib.rs#item/function/example",
-            ExactProjectionModeV1::Code,
-            b"fn example() {}\n",
-            br#"{"kind":"fn","name":"example"}"#,
-            b"fn example() {}\n",
-        );
-        assert_eq!(packet.schema_version, "1");
-        assert_eq!(packet.projection_payload_base64, "Zm4gZXhhbXBsZSgpIHt9Cg==");
-
-        let changed = build_exact_selector_projection_packet_v1(
-            "rust",
-            "rs-harness",
-            &parser_digest,
-            &query_pack_digest,
-            "src/lib.rs",
-            "rust://src/lib.rs#item/function/example",
-            ExactProjectionModeV1::Code,
-            b"fn example() { todo!() }\n",
-            br#"{"kind":"fn","name":"example"}"#,
-            b"fn example() { todo!() }\n",
-        );
-        assert_ne!(packet.source_blob_digest, changed.source_blob_digest);
-        assert_ne!(packet.parser_fact_digest, changed.parser_fact_digest);
-    }
-}
+#[path = "../tests/unit/exact_selector_projection_packet.rs"]
+mod packet_builder_tests;
 
 impl ExactSelectorProjectionPacketV1 {
     pub fn validate_shape(&self) -> Result<(), ExactSelectorProjectionPacketV1Error> {
@@ -179,6 +145,14 @@ impl ExactSelectorProjectionPacketV1 {
             || self.structural_selector.is_empty()
         {
             return Err(ExactSelectorProjectionPacketV1Error::RequiredIdentity);
+        }
+        self.canonical_item_selector
+            .validate()
+            .map_err(|_| ExactSelectorProjectionPacketV1Error::CanonicalItemIdentity)?;
+        if self.canonical_item_selector.language_id != self.language_id
+            || self.canonical_item_selector.structural_selector != self.structural_selector
+        {
+            return Err(ExactSelectorProjectionPacketV1Error::CanonicalItemIdentity);
         }
         let owner_path = Path::new(&self.owner_path);
         if self.owner_path.trim().is_empty()
@@ -217,6 +191,7 @@ impl ExactSelectorProjectionPacketV1 {
             .inclusion_proof(&self.owner_path)
             .ok_or(ExactSelectorProjectionPacketV1Error::OwnerNotInSnapshot)?;
         let projection_digest = derive_projection_digest_v1(
+            &self.canonical_item_selector,
             &self.structural_selector,
             self.projection_mode,
             &self.parser_fact_digest,
@@ -236,6 +211,7 @@ impl ExactSelectorProjectionPacketV1 {
                 parser_identity_digest: self.parser_identity_digest,
                 query_pack_digest: self.query_pack_digest,
                 parser_fact_digest: self.parser_fact_digest,
+                canonical_item_selector: self.canonical_item_selector,
                 structural_selector: self.structural_selector,
                 projection_mode: self.projection_mode,
                 projection_digest,
@@ -295,6 +271,7 @@ fn base64_value(byte: u8) -> Option<u8> {
 pub enum ExactSelectorProjectionPacketV1Error {
     ContractIdentity,
     RequiredIdentity,
+    CanonicalItemIdentity,
     OwnerPath,
     ProjectionPayload,
     OwnerNotInSnapshot,

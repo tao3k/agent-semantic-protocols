@@ -118,9 +118,9 @@ pub enum HookClientActionAuthority {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleMatchConfig {
     #[serde(default)]
-    pub authority_projections: Vec<super::invocation::HookClientAuthorityProjection>,
+    pub authority_rules: Vec<super::invocation::AgentActionAuthorityRule>,
     #[serde(default)]
-    pub effect_projections: Vec<super::invocation::HookClientEffectProjection>,
+    pub effect_rules: Vec<super::invocation::AgentActionEffectRule>,
     #[serde(default)]
     pub command_wrappers: Vec<super::invocation::HookClientCommandWrapper>,
     #[serde(default)]

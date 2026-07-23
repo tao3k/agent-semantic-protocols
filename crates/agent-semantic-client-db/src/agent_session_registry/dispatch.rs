@@ -8,7 +8,8 @@ use crate::engine::turso_statement::{
 
 use super::core::{connect_turso_agent_session_registry, turso_session_by_name};
 use super::types::{
-    AgentSessionDispatchClaimResult, AgentSessionDispatchLeaseRecord,
+    AgentSessionDispatchClaimResult, AgentSessionDispatchIdentity, AgentSessionDispatchLeaseRecord,
+    AgentSessionProjectId, AgentSessionResidentName, AgentSessionRootSessionId,
     agent_session_message_target_is_live_bound,
 };
 
@@ -16,23 +17,86 @@ impl super::core::AgentSessionRegistry {
     /// Read one exact dispatch lease for capability validation.
     pub fn dispatch_lease(
         &self,
-        project_id: &str,
-        root_session_id: &str,
-        name: &str,
-        dispatch_identity: &str,
+        project_id: impl Into<AgentSessionProjectId>,
+        root_session_id: impl Into<AgentSessionRootSessionId>,
+        name: impl Into<AgentSessionResidentName>,
+        dispatch_identity: impl Into<AgentSessionDispatchIdentity>,
     ) -> Result<Option<AgentSessionDispatchLeaseRecord>, String> {
+        let project_id = project_id.into();
+        let root_session_id = root_session_id.into();
+        let name = name.into();
+        let dispatch_identity = dispatch_identity.into();
         super::core::block_on_agent_session_registry_async(async {
             let connection = connect_turso_agent_session_registry(self.db_path()).await?;
             turso_dispatch_lease_by_identity(
                 &connection,
-                project_id,
-                root_session_id,
-                name,
-                dispatch_identity,
+                project_id.as_str(),
+                root_session_id.as_str(),
+                name.as_str(),
+                dispatch_identity.as_str(),
             )
             .await
         })
     }
+}
+
+/// Derive the stable logical identity used to recover one exact resident
+/// dispatch across processes and turns.
+pub fn derive_agent_session_dispatch_identity(
+    input: super::types::AgentSessionDispatchIdentityInput<'_>,
+) -> Result<super::types::AgentSessionDispatchDerivedIdentity, String> {
+    use sha2::Digest as _;
+
+    fn require_non_empty<'a>(value: &'a str, field: &str) -> Result<&'a str, String> {
+        let value = value.trim();
+        if value.is_empty() {
+            Err(format!("dispatch identity requires non-empty {field}"))
+        } else {
+            Ok(value)
+        }
+    }
+
+    fn update_text(hasher: &mut sha2::Sha256, value: &str) {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+
+    let root_session_id = require_non_empty(input.root_session_id, "root_session_id")?;
+    let name = require_non_empty(input.name, "name")?;
+    let canonical_target = require_non_empty(input.canonical_target, "canonical_target")?;
+    let receipt_kind = require_non_empty(input.receipt_kind, "receipt_kind")?;
+    if input.canonical_argv.is_empty()
+        || input
+            .canonical_argv
+            .iter()
+            .any(|argument| argument.is_empty())
+    {
+        return Err("dispatch identity requires a non-empty exact argv".to_string());
+    }
+
+    let canonical_command_json = serde_json::to_string(input.canonical_argv)
+        .map_err(|error| format!("failed to encode canonical dispatch argv: {error}"))?;
+    let command_digest = format!(
+        "{:x}",
+        sha2::Sha256::digest(canonical_command_json.as_bytes())
+    );
+    let mut identity_hasher = sha2::Sha256::new();
+    update_text(
+        &mut identity_hasher,
+        "agent.semantic-protocols.dispatch-identity.v1",
+    );
+    update_text(&mut identity_hasher, root_session_id);
+    update_text(&mut identity_hasher, name);
+    update_text(&mut identity_hasher, canonical_target);
+    update_text(&mut identity_hasher, receipt_kind);
+    update_text(&mut identity_hasher, &command_digest);
+    let dispatch_identity = format!("dispatch-v1:{:x}", identity_hasher.finalize());
+
+    Ok(super::types::AgentSessionDispatchDerivedIdentity {
+        dispatch_identity,
+        command_digest,
+        canonical_command_json,
+    })
 }
 
 pub(super) async fn bootstrap_turso_agent_dispatch_schema(

@@ -1,8 +1,25 @@
 use std::env;
 
-use crate::rust_harness_activation::support::write_fake_provider_binary;
+use sha2::{Digest, Sha256};
+
+use crate::rust_harness_activation::support::{asp_bin_dir, write_fake_provider_binary};
 
 use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
+
+fn write_managed_config_sidecar(path: &std::path::Path, bytes: &[u8]) {
+    let sidecar = path.with_file_name(format!(
+        "{}.managed.sha256",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .expect("config file name")
+    ));
+    let digest = Sha256::digest(bytes);
+    let hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    std::fs::write(sidecar, hex).expect("write managed config sidecar");
+}
 
 #[test]
 fn cli_install_uses_state_core_home_over_prj_cache_home() {
@@ -10,6 +27,31 @@ fn cli_install_uses_state_core_home_over_prj_cache_home() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    let config_path = root.join(".agents").join("asp.toml");
+    std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
+        .expect("create agent config parent");
+    std::fs::write(
+        &config_path,
+        r#"[providers.typescript]
+enabled = false
+
+[providers.python]
+enabled = false
+
+[providers.julia]
+enabled = false
+
+[providers.gerbil-scheme]
+enabled = false
+
+[providers.org]
+enabled = false
+
+[providers.md]
+enabled = false
+"#,
+    )
+    .expect("write .agents/asp.toml");
     let protocol_bin_dir = root.join(".agent-bin");
     let prj_cache_home = root.join(".project-cache");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
@@ -79,7 +121,7 @@ fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::
 }
 
 #[test]
-fn cli_install_rejects_unproven_existing_client_hook_config() {
+fn cli_install_refreshes_drifted_managed_client_hook_config() {
     let root = git_project_root("install-preserves-client-config");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -99,6 +141,7 @@ id = "custom-rule"
 decision = "deny"
 "#;
     std::fs::write(&client_config_path, custom_config).expect("write custom config");
+    write_managed_config_sidecar(&client_config_path, custom_config.as_bytes());
     let output = protocol_command()
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
@@ -107,17 +150,21 @@ decision = "deny"
         .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("user-config-contract-unproven"));
+    assert!(
+        output.status.success(),
+        "install stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
     assert_eq!(
         std::fs::read_to_string(&client_config_path).expect("read client config"),
-        custom_config
+        agent_semantic_hook::default_client_config_template()
     );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn cli_install_rejects_unproven_user_hook_config_without_regeneration() {
+fn cli_install_refreshes_legacy_managed_hook_config() {
     let root = git_project_root("install-preserves-user-hook-config");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -127,9 +174,7 @@ fn cli_install_rejects_unproven_user_hook_config_without_regeneration() {
     let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
-    std::fs::write(
-        &client_config_path,
-        r#"# Semantic agent client hook config.
+    let legacy_config = r#"# Semantic agent client hook config.
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
@@ -146,9 +191,9 @@ argvSourceGlobAny = [
   "*.ss", "**/*.ss",
   "*.scm", "**/*.scm",
 ]
-"#,
-    )
-    .expect("write existing generated config");
+"#;
+    std::fs::write(&client_config_path, legacy_config).expect("write existing generated config");
+    write_managed_config_sidecar(&client_config_path, legacy_config.as_bytes());
 
     let output = protocol_command()
         .env("PATH", &path)
@@ -158,14 +203,18 @@ argvSourceGlobAny = [
         .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("user-config-contract-unproven"));
+    assert!(
+        output.status.success(),
+        "install stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
 
     let client_config = std::fs::read_to_string(&client_config_path).expect("read client config");
-    assert!(client_config.contains("\"*.ss\", \"**/*.ss\""));
-    assert!(client_config.contains("\"*.scm\", \"**/*.scm\""));
-    assert!(!client_config.contains("\"*.ssi\", \"**/*.ssi\""));
-    assert!(!client_config.contains("\"*.sld\", \"**/*.sld\""));
+    assert_eq!(
+        client_config,
+        agent_semantic_hook::default_client_config_template()
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -174,6 +223,9 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     let root = git_project_root("install-unified-exec-feature");
     let codex_home = root.join(".codex-home");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    let asp_bin_dir = asp_bin_dir();
+    let path = env::join_paths([provider_path.as_path(), asp_bin_dir.as_path()])
+        .expect("provider and asp PATH");
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(
@@ -189,7 +241,8 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     .expect("write stale user trust state");
 
     let output = protocol_command()
-        .env("PATH", &provider_path)
+        .env("PATH", &path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .args(codex_plugin_install_args(&root))
         .output()

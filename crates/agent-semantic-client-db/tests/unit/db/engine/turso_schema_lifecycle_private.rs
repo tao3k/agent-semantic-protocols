@@ -221,6 +221,15 @@ async fn exact_selector_projection_round_trip_hydrates_a_validated_merkle_record
             b"query-pack",
             &[b"rust"],
         );
+    let canonical_item_selector =
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(
+                "rust",
+                "function",
+                "cached_symbol",
+            ),
+            selector,
+        );
     let tree = agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests([
         (owner_path.to_string(), source_blob_digest.clone()),
     ])
@@ -228,6 +237,7 @@ async fn exact_selector_projection_round_trip_hydrates_a_validated_merkle_record
     let packet = agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
         "rust",
         "rs-harness",
+        canonical_item_selector,
         &parser_identity_digest,
         &query_pack_digest,
         owner_path,

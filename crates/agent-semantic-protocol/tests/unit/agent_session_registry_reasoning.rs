@@ -158,7 +158,7 @@ fn live_typed_record() -> AgentSessionRecord {
         project_id: "project".into(),
         root_session_id: "root".into(),
         session_id: "child".into(),
-        message_target_id: Some("/root/asp_explorer".into()),
+        message_target_id: Some("child".into()),
         parent_session_id: Some("root".into()),
         name: "asp-explore".into(),
         role: "asp_explorer".into(),
@@ -186,7 +186,7 @@ fn live_typed_record() -> AgentSessionRecord {
                 "source": "codex.subagent-start",
                 "boundRootSessionId": "root",
                 "childSessionId": "child",
-                "messageTargetId": "/root/asp_explorer"
+                "messageTargetId": "child"
             }
         })
         .to_string(),
@@ -330,6 +330,12 @@ fn trusted_rollout_recovery_can_attest_unobservable_reasoning() {
 #[test]
 fn reasoning_unobservable_attestation_reaches_ready() {
     let record = live_typed_record();
+    assert!(super::typed_subagent_start_binding_is_valid(
+        &record,
+        "root",
+        "asp_explorer",
+        true,
+    ));
     assert!(typed_subagent_start_proves_canonical_typed_binding(
         &record,
         "root",

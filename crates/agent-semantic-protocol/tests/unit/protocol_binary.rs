@@ -1,4 +1,4 @@
-use super::{install_protocol_binary_targets, protocol_binary_artifact_digest};
+use super::{install_protocol_binary_target, protocol_binary_artifact_digest};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[test]
@@ -19,8 +19,9 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
     let secondary_target = root.join("bin-secondary/asp");
     std::fs::write(&source, b"asp artifact one").expect("write source");
 
-    install_protocol_binary_targets(&source, &[target.clone(), secondary_target.clone()])
-        .expect("install protocol binary");
+    install_protocol_binary_target(&source, &target).expect("install protocol binary");
+    install_protocol_binary_target(&source, &secondary_target)
+        .expect("install secondary protocol binary");
     let source_digest = protocol_binary_artifact_digest(&source).expect("source identity");
     let target_digest = protocol_binary_artifact_digest(&target).expect("target identity");
     assert_eq!(source_digest, target_digest);
@@ -66,8 +67,9 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
         protocol_binary_artifact_digest(&target),
         Some(target_digest)
     );
-    install_protocol_binary_targets(&source, &[target.clone(), secondary_target.clone()])
-        .expect("replace public target");
+    install_protocol_binary_target(&source, &target).expect("replace public target");
+    install_protocol_binary_target(&source, &secondary_target)
+        .expect("replace secondary public target");
     let second_artifact = std::fs::canonicalize(&target).expect("second artifact");
     assert_eq!(
         second_artifact,
@@ -83,4 +85,77 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
         Some(changed_digest)
     );
     std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn unrelated_path_asp_is_never_selected_or_modified() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-binary-unrelated-path-gate-{}-{nonce}",
+        std::process::id()
+    ));
+    let current_dir = root.join("current");
+    let ambient_dir = root.join("ambient");
+    std::fs::create_dir_all(&current_dir).expect("create current dir");
+    std::fs::create_dir_all(&ambient_dir).expect("create ambient dir");
+    let current_exe = current_dir.join(super::SEMANTIC_AGENT_PROTOCOL_BIN);
+    let ambient_asp = ambient_dir.join(super::SEMANTIC_AGENT_PROTOCOL_BIN);
+    std::fs::write(&current_exe, b"current").expect("write current asp");
+    std::fs::write(&ambient_asp, b"ambient-sentinel").expect("write ambient asp");
+
+    let error = super::resolve_protocol_binary_install_target(&current_exe, None, &[ambient_dir])
+        .expect_err("unrelated PATH asp must fail closed");
+
+    assert!(error.contains("refusing to update unrelated PATH binary"));
+    assert_eq!(
+        std::fs::read(&ambient_asp).expect("read ambient sentinel"),
+        b"ambient-sentinel"
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn explicit_bin_root_selects_exactly_one_target() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-binary-explicit-root-gate-{}-{nonce}",
+        std::process::id()
+    ));
+    let current_exe = root.join(super::SEMANTIC_AGENT_PROTOCOL_BIN);
+    let explicit_bin = root.join("explicit-bin");
+    let ambient_bin = root.join("ambient-bin");
+    std::fs::create_dir_all(&explicit_bin).expect("create explicit bin");
+    std::fs::create_dir_all(&ambient_bin).expect("create ambient bin");
+    std::fs::write(&current_exe, b"current").expect("write current asp");
+    std::fs::write(
+        ambient_bin.join(super::SEMANTIC_AGENT_PROTOCOL_BIN),
+        b"ambient-sentinel",
+    )
+    .expect("write ambient asp");
+
+    let target = super::resolve_protocol_binary_install_target(
+        &current_exe,
+        Some(&explicit_bin),
+        &[ambient_bin],
+    )
+    .expect("resolve explicit target");
+
+    assert_eq!(
+        target,
+        explicit_bin.join(super::SEMANTIC_AGENT_PROTOCOL_BIN)
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn install_plan_capture_rejects_non_asp_process_identity() {
+    let error = super::ProtocolBinaryInstallPlan::capture()
+        .expect_err("unit test executable must not be accepted as the ASP install source");
+    assert!(error.contains("semantic hook setup must run through `asp`"));
 }

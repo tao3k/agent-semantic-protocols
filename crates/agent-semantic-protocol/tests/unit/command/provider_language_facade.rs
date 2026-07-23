@@ -37,3 +37,39 @@ fn structural_item_code_query_routes_to_provider_backend() {
         "structural item query leaked owner file: {stdout}"
     );
 }
+
+#[test]
+fn exact_structural_selector_does_not_require_a_term() {
+    let selector = "typescript://languages/typescript-lang-project-harness/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery";
+    let mut failures = Vec::new();
+
+    for projection in [None, Some("--names-only")] {
+        let mut args = vec![
+            "typescript",
+            "query",
+            "--selector",
+            selector,
+            "--workspace",
+            ".",
+        ];
+        if let Some(projection) = projection {
+            args.push(projection);
+        }
+
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args(args)
+            .current_dir(workspace_root())
+            .output()
+            .expect("run exact structural selector query");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() || stderr.contains("query requires at least one --term") {
+            failures.push(format!(
+                "projection={projection:?} status={} stderr={stderr}",
+                output.status
+            ));
+        }
+    }
+
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

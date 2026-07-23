@@ -142,7 +142,7 @@ fn scoped_owner_query_requires_interface_but_code_locator_replays_from_workspace
 }
 
 #[test]
-fn owner_tests_are_asp_owned_and_owner_items_require_provider_interface() {
+fn owner_tests_are_asp_owned_and_owner_items_use_provider_interface() {
     let root = temp_project_root("search-owner-fast-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -179,9 +179,59 @@ fn owner_tests_are_asp_owned_and_owner_items_require_provider_interface() {
     );
     let owner_tests_stdout = String::from_utf8(owner_tests.stdout).expect("stdout");
     assert!(
-        owner_tests_stdout.contains("T=test:path(src/lib.rs)!tests"),
+        owner_tests_stdout.contains("O=owner:path(src/lib.rs)!owner"),
         "{owner_tests_stdout}"
     );
+    assert!(
+        owner_tests_stdout.contains("no-covering-tests-indexed"),
+        "{owner_tests_stdout}"
+    );
+    assert!(
+        !owner_tests_stdout.contains("T=test:path("),
+        "{owner_tests_stdout}"
+    );
+    assert!(
+        !owner_tests_stdout.contains(":covers"),
+        "{owner_tests_stdout}"
+    );
+
+    let dotted_owner_tests = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "reasoning",
+            "owner-tests",
+            "--owner",
+            "./src/lib.rs",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run dotted asp rust search reasoning owner-tests");
+    assert!(
+        dotted_owner_tests.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&dotted_owner_tests.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(dotted_owner_tests.stdout).expect("dotted stdout"),
+        owner_tests_stdout
+    );
+    assert!(
+        !marker.exists(),
+        "ASP-owned owner-tests must not invoke the language provider"
+    );
+
+    std::fs::write(
+        root.join("src/core.rs"),
+        "struct QueryExpr;\n\nfn parse_query_expr() {}\n",
+    )
+    .expect("write provider-owned source");
+    crate::provider_command::support::write_rust_owner_frontier_provider(&root);
 
     let owner_items = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
@@ -190,10 +240,10 @@ fn owner_tests_are_asp_owned_and_owner_items_require_provider_interface() {
             "rust",
             "search",
             "owner",
-            "src/lib.rs",
+            "src/core.rs",
             "items",
             "--query",
-            "render_fast_prime_search",
+            "parse_query_expr",
             "--workspace",
             ".",
             "--view",
@@ -208,16 +258,16 @@ fn owner_tests_are_asp_owned_and_owner_items_require_provider_interface() {
     );
     let owner_items_stdout = String::from_utf8(owner_items.stdout).expect("stdout");
     assert!(
-        owner_items_stdout.contains("alg=asp-dynamic-owner-items-v1"),
+        owner_items_stdout.contains("alg=item-frontier"),
         "{owner_items_stdout}"
     );
     assert!(
-        owner_items_stdout.contains("render_fast_prime_search"),
+        owner_items_stdout.contains("parse_query_expr"),
         "{owner_items_stdout}"
     );
     assert!(
-        !marker.exists(),
-        "dynamic owner-items should not invoke the provider-owned interface"
+        !owner_items_stdout.contains("[graph-route]"),
+        "{owner_items_stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
 }

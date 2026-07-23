@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-#[path = "support/match_config.rs"]
+#[path = "../support/match_config.rs"]
 mod match_config;
 
 #[test]

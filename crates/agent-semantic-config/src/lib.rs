@@ -14,14 +14,14 @@ mod layout;
 
 pub use hook_client_config::HookClientStructuredFormat;
 pub use hook_client_config::{
-    AspProjectConfigFile, AspProjectHookConfig, CLIENT_HOOK_CONFIG_SCHEMA_ID,
-    CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientActionAuthority, HookClientActionKind,
-    HookClientActionSubjectKind, HookClientAgentOrgArtifactsArchiveWarningConfig,
-    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig,
-    HookClientAgentSessionMessagesConfig, HookClientAgentsConfig, HookClientAuthorityProjection,
-    HookClientCommandWrapper, HookClientConfigDecision, HookClientConfigFile,
-    HookClientConfigReasonKind, HookClientConfigRouteKind, HookClientConfigStdinMode,
-    HookClientEffectProjection, HookClientFlagPresence, HookClientInvocationShape,
+    AgentActionAuthorityRule, AgentActionEffectRule, AspProjectConfigFile, AspProjectHookConfig,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientActionAuthority,
+    HookClientActionKind, HookClientActionSubjectKind,
+    HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
+    HookClientAgentSessionGuideConfig, HookClientAgentSessionMessagesConfig,
+    HookClientAgentsConfig, HookClientCommandWrapper, HookClientConfigDecision,
+    HookClientConfigFile, HookClientConfigReasonKind, HookClientConfigRouteKind,
+    HookClientConfigStdinMode, HookClientFlagPresence, HookClientInvocationShape,
     HookClientLazyProviderPolicy, HookClientRecoveryPromptConfig, HookClientResidentAgentConfig,
     HookClientRuleConfig, HookClientRuleDispatchConfig, HookClientRuleDispatchTransport,
     HookClientRuleMatchConfig, HookClientRuleRouteConfig, HookClientWrapperMatch,

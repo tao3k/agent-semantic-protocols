@@ -806,10 +806,26 @@ pub(in crate::engine) async fn lookup_exact_selector_projection_v1(
     if !db_path.exists() {
         return Ok(None);
     }
-    let connection = connect_turso_client_db(db_path).await?;
-    if !crate::engine::turso::turso_table_exists(&connection, "asp_exact_selector_projection_v1")
-        .await?
+    let connection = match connect_turso_client_db(db_path).await {
+        Ok(connection) => connection,
+        Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    let table_exists = match crate::engine::turso::turso_table_exists(
+        &connection,
+        "asp_exact_selector_projection_v1",
+    )
+    .await
     {
+        Ok(table_exists) => table_exists,
+        Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    if !table_exists {
         return Ok(None);
     }
     let projection_mode = exact_projection_mode_v1_name(key.projection_mode);
@@ -847,23 +863,33 @@ pub(in crate::engine) async fn lookup_exact_selector_projection_v1(
         "failed to query Turso exact-selector projection",
     )
     .await?;
-    let Some(row) = rows
+    let next_row = rows
         .next()
         .await
-        .map_err(|error| format!("failed to read Turso exact-selector projection: {error}"))?
-    else {
+        .map_err(|error| format!("failed to read Turso exact-selector projection: {error}"));
+    let Some(row) = (match next_row {
+        Ok(row) => row,
+        Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    }) else {
         return Ok(None);
     };
     let record_json = row
         .get::<String>(0)
         .map_err(|error| format!("failed to read Turso exact-selector record JSON: {error}"))?;
-    let record = serde_json::from_str(&record_json)
-        .map_err(|error| format!("failed to decode Turso exact-selector record: {error}"))?;
-    let validated = agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1::hydrate(
+    let record = match serde_json::from_str(&record_json) {
+        Ok(record) => record,
+        Err(_) => return Ok(None),
+    };
+    let validated = match agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1::hydrate(
         record,
         key,
-    )
-    .map_err(|miss| format!("failed to validate Turso exact-selector record: {miss:?}"))?;
+    ) {
+        Ok(validated) => validated,
+        Err(_) => return Ok(None),
+    };
     Ok(Some(validated))
 }
 
@@ -879,10 +905,21 @@ pub(in crate::engine) async fn persist_exact_selector_projection_v1(
     .map_err(|miss| format!("refusing invalid exact-selector projection write: {miss:?}"))?;
     let record_json = serde_json::to_string(record)
         .map_err(|error| format!("failed to encode Turso exact-selector record: {error}"))?;
-    let connection = connect_turso_client_db(db_path).await?;
-    ensure_turso_source_index_schema(&connection).await?;
+    let connection = match connect_turso_client_db(db_path).await {
+        Ok(connection) => connection,
+        Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    if let Err(error) = ensure_turso_source_index_schema(&connection).await {
+        if crate::engine::turso_lock_policy::is_turso_lock_error(&error) {
+            return Ok(());
+        }
+        return Err(error);
+    }
     let projection_mode = exact_projection_mode_v1_name(key.projection_mode);
-    run_turso_operation(
+    if let Err(error) = run_turso_operation(
         || async {
             connection
                 .execute(
@@ -916,7 +953,13 @@ pub(in crate::engine) async fn persist_exact_selector_projection_v1(
         },
         "failed to persist Turso exact-selector projection",
     )
-    .await?;
+    .await
+    {
+        if crate::engine::turso_lock_policy::is_turso_lock_error(&error) {
+            return Ok(());
+        }
+        return Err(error);
+    }
     Ok(())
 }
 
