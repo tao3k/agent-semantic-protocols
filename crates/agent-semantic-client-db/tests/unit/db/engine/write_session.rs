@@ -293,14 +293,14 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
         )
         .expect("read existing resident child");
 
-    assert_eq!(first.session_id, first_child_id);
-    assert_eq!(duplicate.session_id, first_child_id);
+    assert_eq!(first.session_id(), first_child_id);
+    assert_eq!(duplicate.session_id(), first_child_id);
     assert_eq!(
         registry
             .session_by_name(project_id, root_session_id, "asp-explore")
             .expect("lookup resident child")
             .expect("resident child row")
-            .session_id,
+            .session_id(),
         first_child_id
     );
     drop(registry);
@@ -382,13 +382,16 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
         )
         .expect("claim replacement resident child");
 
-    assert_eq!(replacement.session_id, "archived-claim-replacement");
+    assert_eq!(
+        replacement.session_id(),
+        "archived-claim-replacement"
+    );
     assert_eq!(
         registry
             .session_by_name(project_id, root_session_id, "asp-explore")
             .expect("lookup replacement resident child")
             .expect("replacement resident child row")
-            .session_id,
+            .session_id(),
         "archived-claim-replacement"
     );
     drop(registry);

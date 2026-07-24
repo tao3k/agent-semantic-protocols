@@ -309,8 +309,8 @@ fn interactive_session_record<'a>(
     let live_message_target_bound = root_session_id
         .is_some_and(|root| agent_session_message_target_is_live_bound(record, root));
     AgentSessionInteractiveSession {
-        child_session_id: &record.session_id,
-        status: &record.status,
+        child_session_id: record.session_id(),
+        status: record.status(),
         role: &record.role,
         model: record.model(),
         model_observation_source: record.model_observation_source.as_deref(),

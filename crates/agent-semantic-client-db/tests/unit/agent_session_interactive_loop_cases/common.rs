@@ -1,9 +1,5 @@
 pub(super) use agent_semantic_client_db::agent_session_registry::{
-    AgentSessionLoopState, AgentSessionRecord, ResidentChildBootstrapMenuInput,
-    SameChildRuntimeOverrideState, agent_session_message_target_is_currently_routable,
-    agent_session_message_target_is_live_bound, classify_same_child_runtime_override_state,
-    resident_child_bootstrap_menu, resident_child_host_runtime_refresh_eligible,
-    resident_child_runtime_repair_menu, typed_runtime_observation_matches_profile,
+    AgentSessionRecord, typed_runtime_observation_matches_profile,
 };
 
 pub(super) fn active_record(
@@ -11,21 +7,21 @@ pub(super) fn active_record(
     message_target_id: Option<&str>,
 ) -> AgentSessionRecord {
     AgentSessionRecord {
-        project_id: "project".to_string(),
-        root_session_id: "root".to_string(),
-        session_id: "child".to_string(),
+        project_id: "project".into(),
+        root_session_id: "root".into(),
+        session_id: "child".into(),
         physical_generation: 1,
         configured_agent_type: Some("asp_explorer".to_string()),
         profile_evidence_json: None,
         message_target_id: message_target_id.map(str::to_string),
-        parent_session_id: Some("root".to_string()),
-        name: "asp-explore".to_string(),
+        parent_session_id: Some("root".into()),
+        name: "asp-explore".into(),
         role: "subagent,search".to_string(),
         model: model.map(str::to_string),
         model_observation_source: model.map(|_| "codex.subagent-start".to_string()),
         model_observed_at: model.map(|_| 1),
         model_evidence_ref: model.map(|_| "turn:test".to_string()),
-        status: "active".to_string(),
+        status: "active".into(),
         created_at: 1,
         updated_at: 1,
         last_seen_at: Some(1),
@@ -70,7 +66,7 @@ pub(super) fn rollout_and_host_tree_bound_record() -> AgentSessionRecord {
 
 pub(super) fn testing_record(message_target_id: Option<&str>) -> AgentSessionRecord {
     let mut record = active_record(Some("gpt-5.4-mini"), message_target_id);
-    record.name = "asp-testing".to_string();
+    record.name = "asp-testing".into();
     record.role = "build,subagent,testing".to_string();
     record.configured_agent_type = Some("asp_testing".to_string());
     record

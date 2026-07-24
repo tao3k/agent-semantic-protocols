@@ -131,28 +131,28 @@ pub struct ProviderSearchCapabilities {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderSourceSnapshotDescriptor {
-    pub descriptor_id: String,
-    pub descriptor_version: String,
-    pub language_id: String,
-    pub packet_schema_id: String,
-    pub exact_source_packet_schema_id: String,
-    pub canonical_item_selector_schema_id: String,
-    pub source_snapshot_envelope_schema_id: String,
-    pub derived_artifact_evidence_schema_id: String,
-    pub algorithm: String,
-    pub authority: String,
-    pub exact_selector_resolution: String,
-    pub overlay_mode: String,
+    descriptor_id: String,
+    descriptor_version: String,
+    language_id: String,
+    packet_schema_id: String,
+    exact_source_packet_schema_id: String,
+    canonical_item_selector_schema_id: String,
+    source_snapshot_envelope_schema_id: String,
+    derived_artifact_evidence_schema_id: String,
+    algorithm: String,
+    authority: String,
+    exact_selector_resolution: String,
+    overlay_mode: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderSemanticFactsDescriptor {
-    pub descriptor_id: String,
-    pub descriptor_version: String,
-    pub packet_schema_ids: Vec<String>,
-    pub fact_kinds: Vec<String>,
-    pub intent_axes: Vec<ProviderSemanticFactsIntentAxis>,
+    descriptor_id: String,
+    descriptor_version: String,
+    packet_schema_ids: Vec<String>,
+    fact_kinds: Vec<String>,
+    intent_axes: Vec<ProviderSemanticFactsIntentAxis>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -167,23 +167,23 @@ pub struct ProviderSemanticFactsIntentAxis {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderQueryPackDescriptor {
-    pub descriptor_id: String,
-    pub descriptor_version: String,
-    pub language_id: String,
+    descriptor_id: String,
+    descriptor_version: String,
+    language_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub semantic_facts_descriptor_id: Option<String>,
+    semantic_facts_descriptor_id: Option<String>,
     #[serde(default)]
-    pub term_role_overrides: Vec<ProviderQueryPackTermRoleOverride>,
-    pub recipes: Vec<ProviderQueryPackRecipe>,
+    term_role_overrides: Vec<ProviderQueryPackTermRoleOverride>,
+    recipes: Vec<ProviderQueryPackRecipe>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderQueryPackTermRoleOverride {
-    pub term: String,
-    pub role: String,
+    term: String,
+    role: String,
     #[serde(default)]
-    pub case_sensitive: bool,
+    case_sensitive: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

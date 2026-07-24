@@ -37,7 +37,15 @@ fn record() -> ExactSelectorProjectionRecordV1 {
         b"normalized-parser-facts",
     );
     let structural_selector = "rust://crates/example/src/lib.rs#item/function/run".to_owned();
+    let canonical_item_selector =
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(
+                "rust", "function", "run",
+            ),
+            structural_selector.as_str(),
+        );
     let projection_digest = derive_projection_digest_v1(
+        &canonical_item_selector,
         &structural_selector,
         ExactProjectionModeV1::Code,
         &parser_fact_digest,
@@ -60,6 +68,7 @@ fn record() -> ExactSelectorProjectionRecordV1 {
             parser_identity_digest: digest('e'),
             query_pack_digest: digest('f'),
             parser_fact_digest,
+            canonical_item_selector,
             structural_selector,
             projection_mode: ExactProjectionModeV1::Code,
             projection_digest,

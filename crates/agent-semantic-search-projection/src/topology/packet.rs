@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+/// Resolve the topology root from typed packet facts.
 pub(super) fn graph_root(packet: &Value, mode: &str) -> String {
     if matches!(mode, "prime" | "package") {
         return packet_string(packet, &["header", "fields", "package"])

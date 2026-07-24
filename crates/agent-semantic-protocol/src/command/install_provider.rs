@@ -138,8 +138,7 @@ fn run_install_hook(args: &[String]) -> Result<(), String> {
 
 fn run_install_plugin(args: &[String]) -> Result<(), String> {
     if args.is_empty() || has_help_flag(args) {
-        println!("{}", install_plugin_usage());
-        return Ok(());
+        return super::cli_help::print_install_plugin_help();
     }
 
     match args.first().map(String::as_str) {
@@ -881,10 +880,6 @@ fn usage() -> String {
 
 fn install_hook_usage() -> String {
     "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]".to_string()
-}
-
-fn install_plugin_usage() -> String {
-    "usage: asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]".to_string()
 }
 
 #[cfg(test)]

@@ -1,6 +1,38 @@
 #+title: Canonical item identity across language harnesses
 
 * Decision
+** Structural selector scope grammar
+
+The public structural selector remains v1 and serializes the complete ordered
+identity. Its grammar is:
+
+#+begin_src text
+<language>://<owner>#item/<kind>/<symbol>
+  [/scope/<relation>/<kind>/<symbol>]*
+#+end_src
+
+Every =kind=, =symbol=, =relation=, and scope component MUST be encoded as an
+RFC 3986 URI component. Only =ALPHA / DIGIT / "-" / "." / "_" / "~"= remain
+unescaped; all other UTF-8 bytes use uppercase percent encoding. Scope segments
+MUST appear in the same order as =CanonicalItemIdentityV1.scopes=. Providers
+MUST reject malformed, incomplete, reordered, or non-canonical encodings.
+
+An identity without scopes ends after its item symbol. An identity with scopes
+MUST encode every scope; an unscoped alias cannot select a scoped item when
+more than one live identity shares owner, kind, and symbol. For Rust
+conditional compilation, the query-pack-registered scope is:
+
+#+begin_src text
+relation = conditional-compilation
+kind     = cfg
+symbol   = normalized cfg predicate
+#+end_src
+
+For example, opposite =cfg(feature = "x")= and
+=cfg(not(feature = "x"))= items have different canonical selectors even when
+their owner, item kind, and symbol are identical. Root ASP validates and
+transports these scope segments; it MUST NOT construct or discard them.
+
 
 The public structural-selector protocol remains v1. Every registered language
 harness MUST emit and resolve =asp.canonical-item-selector.v1=. ASP core

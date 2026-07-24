@@ -572,36 +572,43 @@ pub(in crate::command) fn record_subagent_start_target_present(
     )
 }
 
-pub(in crate::command) fn record_trusted_resident_hook_target_present(
-    registry: &AgentSessionRegistry,
-    project_id: &str,
-    root_session_id: &str,
-    resident_name: &str,
-    canonical_target: &str,
-    observed_at: i64,
-) -> Result<(), String> {
-    write_host_tree_observation(
-        registry,
-        &HostResidentTargetObservation {
+pub(in crate::command) struct TrustedResidentHookTargetPresentInput<'a> {
+    pub project_id: &'a str,
+    pub root_session_id: &'a str,
+    pub resident_name: &'a str,
+    pub canonical_target: &'a str,
+    pub observed_at: i64,
+}
+
+impl TrustedResidentHookTargetPresentInput<'_> {
+    fn observation(&self) -> HostResidentTargetObservation {
+        HostResidentTargetObservation {
             schema_id: HOST_TREE_SCHEMA_ID.to_string(),
             schema_version: HOST_TREE_SCHEMA_VERSION.to_string(),
-            root_session_id: root_session_id.to_string(),
-            resident_name: resident_name.to_string(),
+            root_session_id: self.root_session_id.to_string(),
+            resident_name: self.resident_name.to_string(),
             target_status: "present".to_string(),
-            canonical_target: Some(canonical_target.to_string()),
+            canonical_target: Some(self.canonical_target.to_string()),
             identity_status: "verified".to_string(),
             source: TRUSTED_RESIDENT_HOOK_SOURCE.to_string(),
             probe_evidence_ref: None,
-            observed_at,
-            expires_at: observed_at + NATIVE_SUBAGENT_START_OBSERVATION_TTL_SECONDS,
-        },
-    )?;
+            observed_at: self.observed_at,
+            expires_at: self.observed_at + NATIVE_SUBAGENT_START_OBSERVATION_TTL_SECONDS,
+        }
+    }
+}
+
+pub(in crate::command) fn record_trusted_resident_hook_target_present(
+    registry: &AgentSessionRegistry,
+    input: TrustedResidentHookTargetPresentInput<'_>,
+) -> Result<(), String> {
+    write_host_tree_observation(registry, &input.observation())?;
     if let Some(record) =
         registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
-            project_id,
+            project_id: input.project_id,
             session_id: None,
-            root_session_id: Some(root_session_id),
-            name: Some(resident_name),
+            root_session_id: Some(input.root_session_id),
+            name: Some(input.resident_name),
         })?
     {
         let expected_agent_type = record
@@ -613,7 +620,7 @@ pub(in crate::command) fn record_trusted_resident_hook_target_present(
                 registry,
                 Some(&record),
                 true,
-                Some(canonical_target),
+                Some(input.canonical_target),
                 expected_agent_type,
                 record.model.as_deref(),
                 record.model.as_deref(),

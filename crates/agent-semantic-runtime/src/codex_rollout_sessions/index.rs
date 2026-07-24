@@ -11,43 +11,45 @@ use super::topology::{
     thread_spawn_child_session_ids_for_rollout,
 };
 use super::types::CodexRolloutSessionIndex;
+use crate::agent_session_status::RuntimeSessionId;
 
 /// Build a root-scoped Codex rollout session index.
 pub fn codex_rollout_session_index(
-    root_session_id: &str,
+    root_session_id: &RuntimeSessionId,
 ) -> Result<Option<CodexRolloutSessionIndex>, String> {
     codex_rollout_session_index_for_sessions(root_session_id, std::iter::empty::<&str>())
 }
 
 /// Build a root-scoped Codex rollout session index, including known child sessions.
 pub fn codex_rollout_session_index_for_sessions<'a, I>(
-    root_session_id: &str,
+    root_session_id: &RuntimeSessionId,
     session_ids: I,
 ) -> Result<Option<CodexRolloutSessionIndex>, String>
 where
     I: IntoIterator<Item = &'a str>,
 {
+    let root_session_id_text = root_session_id.as_str();
     let sessions_dir = codex_sessions_dir()?;
     if !sessions_dir.is_dir() {
         return Ok(None);
     }
     let mut child_session_ids: BTreeSet<String> = session_ids
         .into_iter()
-        .filter(|session_id| !session_id.is_empty() && *session_id != root_session_id)
+        .filter(|session_id| !session_id.is_empty() && *session_id != root_session_id_text)
         .map(str::to_string)
         .collect();
-    let mut rollout_paths = match codex_rollout_paths_for_session_id(&sessions_dir, root_session_id)
-    {
-        Ok(paths) => paths,
-        Err(error)
-            if error.starts_with("Codex rollout invariant broken: no rollout JSONL found") =>
-        {
-            Vec::new()
-        }
-        Err(error) => return Err(error),
-    };
+    let mut rollout_paths =
+        match codex_rollout_paths_for_session_id(&sessions_dir, root_session_id_text) {
+            Ok(paths) => paths,
+            Err(error)
+                if error.starts_with("Codex rollout invariant broken: no rollout JSONL found") =>
+            {
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        };
     let root_attributed_rollout_paths =
-        rg_rollout_paths_for_session_id(&sessions_dir, root_session_id)?;
+        rg_rollout_paths_for_session_id(&sessions_dir, root_session_id_text)?;
     rollout_paths.extend(root_attributed_rollout_paths.iter().cloned());
     let trace_rollout_index = std::env::var_os("ASP_CODEX_ROLLOUT_INDEX_TRACE").is_some();
     if trace_rollout_index {
@@ -55,7 +57,7 @@ where
             "{}",
             serde_json::json!({
                 "trace": "codex-rollout-index-discovery",
-                "rootSessionId": root_session_id,
+                "rootSessionId": root_session_id_text,
                 "rootAttributedPathCount": root_attributed_rollout_paths.len(),
                 "rootAttributedPaths": root_attributed_rollout_paths,
             })
@@ -100,7 +102,7 @@ where
         }
         let topology_lines = rollout_topology_lines(&rollout_path)?;
         let mut spawned_child_session_ids =
-            thread_spawn_child_session_ids_for_rollout(&topology_lines, root_session_id);
+            thread_spawn_child_session_ids_for_rollout(&topology_lines, root_session_id.as_str());
         spawned_child_session_ids.extend(spawned_agent_ids_for_rollout(&topology_lines));
         host_agent_path_by_session.extend(spawned_agent_paths_for_rollout(&topology_lines));
         for child_session_id in spawned_child_session_ids {
@@ -135,32 +137,33 @@ where
             skipped_rollout_count += 1;
             continue;
         };
-        if let Some(agent_path) = host_agent_path_by_session.get(&metadata.session_id) {
+        if let Some(agent_path) = host_agent_path_by_session.get(metadata.session_id.as_str()) {
             metadata
                 .agent_path
                 .get_or_insert_with(|| agent_path.clone());
             metadata
                 .parent_thread_id
-                .get_or_insert_with(|| root_session_id.to_string());
+                .get_or_insert_with(|| root_session_id.as_str().to_string());
             metadata
                 .root_session_id
-                .get_or_insert_with(|| root_session_id.to_string());
-            if metadata.parent_thread_id.as_deref() == Some(root_session_id) {
+                .get_or_insert_with(|| root_session_id.as_str().to_string());
+            if metadata.parent_thread_id.as_deref() == Some(root_session_id.as_str()) {
                 metadata
                     .thread_source
                     .get_or_insert_with(|| "subagent".to_string());
                 metadata.spawn_depth.get_or_insert(1);
             }
         }
-        let root_attribution_matches = metadata.root_session_id.as_deref() == Some(root_session_id)
-            || metadata.session_id == root_session_id
-            || metadata.parent_thread_id.as_deref() == Some(root_session_id);
+        let root_attribution_matches = metadata.root_session_id.as_deref()
+            == Some(root_session_id.as_str())
+            || metadata.session_id.as_str() == root_session_id.as_str()
+            || metadata.parent_thread_id.as_deref() == Some(root_session_id.as_str());
         if trace_rollout_index {
             eprintln!(
                 "{}",
                 serde_json::json!({
                     "trace": "codex-rollout-index-candidate",
-                    "rootSessionId": root_session_id,
+                    "rootSessionId": root_session_id.as_str(),
                     "sessionId": metadata.session_id,
                     "actualRootSessionId": metadata.root_session_id,
                     "parentThreadId": metadata.parent_thread_id,
@@ -180,8 +183,8 @@ where
             continue;
         }
         scanned_rollout_count += 1;
-        activity_by_session.insert(metadata.session_id.clone(), activity);
-        if metadata.session_id == root_session_id {
+        activity_by_session.insert(metadata.session_id.as_str().to_string().into(), activity);
+        if metadata.session_id.as_str() == root_session_id.as_str() {
             continue;
         }
         records.push(metadata);
@@ -190,12 +193,15 @@ where
         return Ok(None);
     }
     Ok(Some(CodexRolloutSessionIndex {
-        root_session_id: root_session_id.to_string(),
+        root_session_id: root_session_id.as_str().to_string().into(),
         sessions_dir,
         scanned_rollout_count,
         skipped_rollout_count,
         records,
         activity_by_session,
-        missing_rollout_by_session,
+        missing_rollout_by_session: missing_rollout_by_session
+            .into_iter()
+            .map(|(session_id, reason)| (session_id.into(), reason))
+            .collect(),
     }))
 }

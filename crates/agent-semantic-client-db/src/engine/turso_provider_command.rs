@@ -217,20 +217,30 @@ fn turso_provider_command_selection_from_row(
         .map_err(|error| format!("failed to decode Turso provider command prefix: {error}"))?;
     Ok(ClientDbProviderCommandSelection::new(
         row.get::<String>(0)
-            .map_err(|error| format!("failed to read Turso manifest id: {error}"))?,
+            .map_err(|error| format!("failed to read Turso manifest id: {error}"))?
+            .into(),
         row.get::<String>(1)
-            .map_err(|error| format!("failed to read Turso manifest digest: {error}"))?,
+            .map_err(|error| format!("failed to read Turso manifest digest: {error}"))?
+            .into(),
         row.get::<String>(2)
-            .map_err(|error| format!("failed to read Turso language id: {error}"))?,
+            .map_err(|error| format!("failed to read Turso language id: {error}"))?
+            .into(),
         row.get::<String>(3)
-            .map_err(|error| format!("failed to read Turso provider id: {error}"))?,
+            .map_err(|error| format!("failed to read Turso provider id: {error}"))?
+            .into(),
         row.get::<String>(4)
-            .map_err(|error| format!("failed to read Turso binary: {error}"))?,
+            .map_err(|error| format!("failed to read Turso binary: {error}"))?
+            .into(),
         row.get::<String>(5)
-            .map_err(|error| format!("failed to read Turso execution: {error}"))?,
-        provider_command_prefix,
+            .map_err(|error| format!("failed to read Turso execution: {error}"))?
+            .into(),
+        provider_command_prefix
+            .into_iter()
+            .map(Into::into)
+            .collect(),
         row.get::<Option<String>>(7)
-            .map_err(|error| format!("failed to read Turso executable path: {error}"))?,
+            .map_err(|error| format!("failed to read Turso executable path: {error}"))?
+            .map(Into::into),
         row.get::<Option<i64>>(8)
             .map_err(|error| format!("failed to read Turso executable length: {error}"))?,
         row.get::<Option<i64>>(9)

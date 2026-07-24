@@ -43,6 +43,46 @@ use super::turso_syntax::{
     upsert_turso_syntax_query_replay,
 };
 
+macro_rules! client_db_engine_id {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+        pub struct $name(String);
+
+        impl $name {
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_string())
+            }
+        }
+    };
+}
+
+client_db_engine_id!(
+    /// State Core repository id owned by the DB engine.
+    ClientDbRepoId
+);
+client_db_engine_id!(
+    /// State Core workspace id owned by the DB engine.
+    ClientDbWorkspaceId
+);
+client_db_engine_id!(
+    /// State Core scope id owned by the DB engine.
+    ClientDbScopeId
+);
+
 /// Resolved DB Engine paths and backend selection for one State Core workspace.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbEngine {
@@ -52,9 +92,9 @@ pub struct ClientDbEngine {
     db_path: PathBuf,
     manifest_path: PathBuf,
     artifact_path: PathBuf,
-    repo_id: String,
-    workspace_id: String,
-    scope_id: String,
+    repo_id: ClientDbRepoId,
+    workspace_id: ClientDbWorkspaceId,
+    scope_id: ClientDbScopeId,
 }
 
 /// DB Engine diagnostic report for CLI and analyzer-facing receipts.
@@ -71,9 +111,9 @@ pub struct ClientDbEngineReport {
     pub db_path: PathBuf,
     pub manifest_path: PathBuf,
     pub artifact_path: PathBuf,
-    pub repo_id: String,
-    pub workspace_id: String,
-    pub scope_id: String,
+    pub repo_id: ClientDbRepoId,
+    pub workspace_id: ClientDbWorkspaceId,
+    pub scope_id: ClientDbScopeId,
 }
 
 impl ClientDbEngineReport {
@@ -129,17 +169,17 @@ impl ClientDbEngineReport {
 
     #[must_use]
     pub fn repo_id(&self) -> &str {
-        &self.repo_id
+        self.repo_id.as_str()
     }
 
     #[must_use]
     pub fn workspace_id(&self) -> &str {
-        &self.workspace_id
+        self.workspace_id.as_str()
     }
 
     #[must_use]
     pub fn scope_id(&self) -> &str {
-        &self.scope_id
+        self.scope_id.as_str()
     }
 }
 
@@ -218,9 +258,9 @@ impl ClientDbEngine {
             db_path: Self::db_path_for_client_dir(&state.paths.client_dir),
             manifest_path: state.paths.client_manifest_json.clone(),
             artifact_path: state.paths.artifacts_dir.clone(),
-            repo_id: state.repo.repo_id.to_string(),
-            workspace_id: state.workspace.workspace_id.to_string(),
-            scope_id: state.scope_id.to_string(),
+            repo_id: ClientDbRepoId::from(state.repo.repo_id.to_string()),
+            workspace_id: ClientDbWorkspaceId::from(state.workspace.workspace_id.to_string()),
+            scope_id: ClientDbScopeId::from(state.scope_id.to_string()),
         }
     }
 
@@ -750,19 +790,19 @@ impl ClientDbEngine {
     /// Stable State Core repo identity.
     #[must_use]
     pub fn repo_id(&self) -> &str {
-        &self.repo_id
+        self.repo_id.as_str()
     }
 
     /// Stable State Core workspace identity.
     #[must_use]
     pub fn workspace_id(&self) -> &str {
-        &self.workspace_id
+        self.workspace_id.as_str()
     }
 
     /// Stable State Core scope identity.
     #[must_use]
     pub fn scope_id(&self) -> &str {
-        &self.scope_id
+        self.scope_id.as_str()
     }
 
     fn turso_backend(&self) -> TursoClientDbEngineBackend {

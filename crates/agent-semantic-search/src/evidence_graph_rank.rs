@@ -3,15 +3,42 @@
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
 
+macro_rules! evidence_graph_rank_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+    };
+}
+
+evidence_graph_rank_text!(EvidenceGraphNodeId);
+evidence_graph_rank_text!(EvidenceGraphNodeKind);
+evidence_graph_rank_text!(EvidenceGraphNodeLabel);
+evidence_graph_rank_text!(EvidenceGraphNodePath);
+evidence_graph_rank_text!(EvidenceGraphNodeSelector);
+evidence_graph_rank_text!(EvidenceGraphNodeQueryKey);
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EvidenceGraphRankNode {
     pub ordinal: usize,
-    pub id: String,
-    pub kind: String,
-    pub label: String,
-    pub path: Option<String>,
-    pub selector: Option<String>,
-    pub query_keys: Vec<String>,
+    pub id: EvidenceGraphNodeId,
+    pub kind: EvidenceGraphNodeKind,
+    pub label: EvidenceGraphNodeLabel,
+    pub path: Option<EvidenceGraphNodePath>,
+    pub selector: Option<EvidenceGraphNodeSelector>,
+    pub query_keys: Vec<EvidenceGraphNodeQueryKey>,
     pub outgoing_edge_count: usize,
 }
 

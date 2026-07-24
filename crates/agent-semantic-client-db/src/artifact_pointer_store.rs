@@ -83,14 +83,56 @@ LIMIT ?6
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactPointerKey {
-    pub repo_id: String,
-    pub workspace_id: String,
-    pub scope_id: String,
-    pub pointer_kind: String,
-    pub pointer_name: String,
+    pub(crate) repo_id: String,
+    pub(crate) workspace_id: String,
+    pub(crate) scope_id: String,
+    pub(crate) pointer_kind: String,
+    pub(crate) pointer_name: String,
 }
 
 impl ClientDbArtifactPointerKey {
+    #[must_use]
+    pub fn new(
+        repo_id: impl Into<String>,
+        workspace_id: impl Into<String>,
+        scope_id: impl Into<String>,
+        pointer_kind: impl Into<String>,
+        pointer_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            repo_id: repo_id.into(),
+            workspace_id: workspace_id.into(),
+            scope_id: scope_id.into(),
+            pointer_kind: pointer_kind.into(),
+            pointer_name: pointer_name.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn repo_id(&self) -> &str {
+        &self.repo_id
+    }
+
+    #[must_use]
+    pub fn workspace_id(&self) -> &str {
+        &self.workspace_id
+    }
+
+    #[must_use]
+    pub fn scope_id(&self) -> &str {
+        &self.scope_id
+    }
+
+    #[must_use]
+    pub fn pointer_kind(&self) -> &str {
+        &self.pointer_kind
+    }
+
+    #[must_use]
+    pub fn pointer_name(&self) -> &str {
+        &self.pointer_name
+    }
+
     fn validate(&self) -> Result<(), StorageError> {
         if [
             &self.repo_id,

@@ -45,11 +45,11 @@ pub enum StorageAuthorityKind {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoragePartitionKey {
-    pub repo_id: String,
-    pub workspace_id: String,
-    pub scope_id: String,
-    pub session_id: String,
-    pub agent_id: String,
+    pub repo_id: StorageRepoId,
+    pub workspace_id: StorageWorkspaceId,
+    pub scope_id: StorageScopeId,
+    pub session_id: StorageSessionId,
+    pub agent_id: StorageAgentId,
 }
 
 impl StoragePartitionKey {
@@ -88,9 +88,9 @@ impl StoragePartitionKey {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionEvent {
-    pub event_id: String,
-    pub turn_id: String,
-    pub event_kind: String,
+    pub event_id: StorageSessionEventId,
+    pub turn_id: StorageTurnId,
+    pub event_kind: StorageSessionEventKind,
     pub payload: Vec<u8>,
     pub created_at_ms: i64,
 }
@@ -98,10 +98,10 @@ pub struct SessionEvent {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageRetryPolicy {
-    pub max_attempts: u32,
-    pub base_delay_ms: u64,
-    pub max_delay_ms: u64,
-    pub jitter_ms: u64,
+    max_attempts: u32,
+    base_delay_ms: u64,
+    max_delay_ms: u64,
+    jitter_ms: u64,
 }
 
 impl Default for StorageRetryPolicy {
@@ -218,11 +218,11 @@ pub enum StorageTransactionState {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionEventBatchWriteReceipt {
-    pub schema_id: String,
-    pub batch_id: String,
+    pub schema_id: StorageReceiptSchemaId,
+    pub batch_id: StorageSessionEventBatchId,
     pub partition: StoragePartitionKey,
     pub authority: StorageAuthorityKind,
-    pub backend: String,
+    pub backend: StorageBackendId,
     pub backend_version: String,
     pub optimization_profile: StorageOptimizationProfile,
     pub transaction_mode: StorageTransactionMode,

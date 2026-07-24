@@ -1,12 +1,10 @@
 use agent_semantic_client_db::agent_session_registry::{
-    AgentSessionLoopState, AgentSessionRecord, ResidentChildBootstrapMenuInput,
-    SameChildRuntimeOverrideState, agent_session_message_target_is_currently_routable,
-    agent_session_message_target_is_live_bound, classify_same_child_runtime_override_state,
-    resident_child_bootstrap_menu, resident_child_host_runtime_refresh_eligible,
-    resident_child_runtime_repair_menu, typed_runtime_observation_matches_profile,
+    AgentSessionLoopState, ResidentChildBootstrapMenuInput,
+    agent_session_message_target_is_live_bound, resident_child_bootstrap_menu,
+    resident_child_host_runtime_refresh_eligible,
 };
 
-use super::common::{active_record, rollout_and_host_tree_bound_record, testing_record};
+use super::common::active_record;
 
 #[test]
 fn missing_record_requires_audit_before_create() {

@@ -570,7 +570,7 @@ fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
         "#!/bin/sh\n\
          printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\n\
          cat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\n\
-         printf '[graph-frontier] external=true\\n'\n",
+         printf '%s\\n' '{\"schemaId\":\"agent.semantic-protocols.semantic-graph-turbo-result\",\"schemaVersion\":\"1\",\"protocolId\":\"agent.semantic-protocols.semantic-language\",\"protocolVersion\":\"1\",\"packetKind\":\"graph-turbo-result\",\"profile\":\"owner-query\",\"algorithm\":\"typed-ppr-diverse\",\"seedIds\":[\"query:parser\"],\"rankedNodes\":[{\"id\":\"query:parser\",\"kind\":\"query\",\"role\":\"term\",\"value\":\"parser\",\"action\":\"lexical\"},{\"id\":\"owner:cli\",\"kind\":\"owner\",\"role\":\"path\",\"value\":\"src/cli.rs\",\"action\":\"owner\"}],\"edges\":[{\"source\":\"query:parser\",\"target\":\"owner:cli\",\"relation\":\"matches\",\"weight\":1.5}]}'\n",
     )
     .unwrap();
     make_executable(&graph_turbo);
@@ -604,11 +604,13 @@ fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "[graph-frontier] external=true\n"
+        "[search-frontier] projection=ranked-frontier density=terse profile=owner-query algorithm=typed-ppr-diverse nodes=2\n\
+         I=query:parser kind=query action=lexical value=parser\n\
+         I=owner:cli kind=owner action=owner value=src/cli.rs\n"
     );
     assert_eq!(
         fs::read_to_string(&args_path).unwrap(),
-        "rank\n-\n--format\ncompact\n"
+        "rank\n-\n--format\njson\n"
     );
     assert!(
         fs::read_to_string(&stdin_path)

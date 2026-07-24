@@ -319,6 +319,33 @@ fallback = ["gpt-5.4-mini"]
     }
 
     #[test]
+    fn install_plugin_codex_help_uses_standard_sections_and_global_default() {
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args(["install", "plugin", "--codex", "--help"])
+            .output()
+            .expect("run asp install plugin --codex --help");
+        assert!(
+            output.status.success(),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("Usage: asp install plugin"),
+            "stdout={stdout}"
+        );
+        assert!(stdout.contains("Arguments:"), "stdout={stdout}");
+        assert!(stdout.contains("Options:"), "stdout={stdout}");
+        assert!(
+            stdout.contains("Install globally (default when no scope flag is given)"),
+            "stdout={stdout}"
+        );
+        assert!(stdout.contains("--project"), "stdout={stdout}");
+        assert!(stdout.contains("[default: .]"), "stdout={stdout}");
+    }
+
+    #[test]
     fn install_plugin_codex_global_skips_project_plugin_cache() {
         let root = temp_project_root("codex-plugin-global-scope");
         let codex_home = root.join(".codex-home");

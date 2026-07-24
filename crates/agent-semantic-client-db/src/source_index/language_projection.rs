@@ -23,16 +23,28 @@ pub const CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_VERSION: &str = "1";
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientDbLanguageProjection {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub protocol_id: String,
-    pub protocol_version: String,
-    pub language_id: String,
-    pub harness: ClientDbLanguageProjectionHarness,
-    pub sources: Vec<ClientDbLanguageProjectionSource>,
-    pub owners: Vec<ClientDbLanguageProjectionOwner>,
-    pub items: Vec<ClientDbLanguageProjectionItem>,
-    pub relations: Vec<ClientDbLanguageProjectionRelation>,
+    schema_id: String,
+    schema_version: String,
+    protocol_id: String,
+    protocol_version: String,
+    language_id: String,
+    harness: ClientDbLanguageProjectionHarness,
+    sources: Vec<ClientDbLanguageProjectionSource>,
+    owners: Vec<ClientDbLanguageProjectionOwner>,
+    items: Vec<ClientDbLanguageProjectionItem>,
+    relations: Vec<ClientDbLanguageProjectionRelation>,
+}
+
+impl ClientDbLanguageProjection {
+    #[must_use]
+    pub fn language_id(&self) -> &str {
+        &self.language_id
+    }
+
+    #[must_use]
+    pub fn harness(&self) -> &ClientDbLanguageProjectionHarness {
+        &self.harness
+    }
 }
 
 /// Parser identity attached to a language projection.
@@ -42,6 +54,23 @@ pub struct ClientDbLanguageProjectionHarness {
     pub harness_id: String,
     pub parser_abi: String,
     pub selector_dialect: String,
+}
+
+impl ClientDbLanguageProjectionHarness {
+    #[must_use]
+    pub fn harness_id(&self) -> &str {
+        &self.harness_id
+    }
+
+    #[must_use]
+    pub fn parser_abi(&self) -> &str {
+        &self.parser_abi
+    }
+
+    #[must_use]
+    pub fn selector_dialect(&self) -> &str {
+        &self.selector_dialect
+    }
 }
 
 /// One parser-owned source identity. Digests belong to the ASP lifecycle.
@@ -68,30 +97,30 @@ pub enum ClientDbLanguageProjectionSourceKind {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientDbLanguageProjectionOwner {
-    pub owner_id: String,
-    pub source_id: String,
-    pub kind: Option<String>,
-    pub name: Option<String>,
+    owner_id: String,
+    source_id: String,
+    kind: Option<String>,
+    name: Option<String>,
 }
 
 /// Parser-owned exact item selector.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientDbLanguageProjectionItem {
-    pub item_id: String,
-    pub owner_id: String,
-    pub kind: String,
-    pub name: String,
-    pub selector: String,
+    item_id: String,
+    owner_id: String,
+    kind: String,
+    name: String,
+    selector: String,
 }
 
 /// One typed relation preserved for EvidenceGraph import.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientDbLanguageProjectionRelation {
-    pub from: ClientDbLanguageProjectionNodeRef,
-    pub kind: String,
-    pub to: ClientDbLanguageProjectionNodeRef,
+    from: ClientDbLanguageProjectionNodeRef,
+    kind: String,
+    to: ClientDbLanguageProjectionNodeRef,
 }
 
 /// Reference to a parser-owned or external projection node.

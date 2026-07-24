@@ -3,7 +3,6 @@ mod turso_sync_storage_tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_db::turso_sync_storage::{
-    TURSO_SYNC_OPERATION_RECEIPT_SCHEMA_ID, TursoSyncOperation, TursoSyncOperationOutcome,
     TursoSyncProfileConfig, TursoSyncProfileMode, TursoSyncStorage, TursoSyncStorageErrorCode,
 };
 

@@ -69,6 +69,28 @@ fn receipt_binds_materialized_targets_and_rejects_drift() {
 }
 
 #[test]
+fn receipt_accepts_content_equivalent_binary_alias_and_rejects_alias_drift() {
+    let (root, binary, activation, digest) = fixture();
+    let alias = root
+        .join("workspace-bin/.asp-artifacts/blake3-256")
+        .join(&digest)
+        .join("asp");
+    fs::create_dir_all(alias.parent().expect("alias parent")).expect("alias parent");
+    fs::copy(&binary, &alias).expect("copy content-equivalent alias");
+
+    materialize_active_asp_artifact_receipt(&binary, &digest, &activation, &[])
+        .expect("materialize receipt");
+    verify_active_asp_artifact_receipt(&activation, &[&binary, &alias])
+        .expect("content-equivalent alias must verify");
+
+    fs::write(&alias, b"asp-drift!").expect("drift alias with equal byte length");
+    let error = verify_active_asp_artifact_receipt(&activation, &[&binary, &alias])
+        .expect_err("content-drifted alias must fail");
+    assert!(error.contains("content identity mismatch"), "{error}");
+    fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[test]
 fn warm_receipt_metadata_verification_p95_is_under_ten_milliseconds() {
     let (root, binary, activation, digest) = fixture();
     let mut providers = Vec::new();

@@ -124,15 +124,17 @@ impl AgentStorage for TursoMvccAgentStorage {
             let rows = self
                 .store
                 .read_partition_page(
-                    &request.partition.canonical_key(),
-                    request
-                        .after
-                        .as_ref()
-                        .map(|cursor| (cursor.created_at_ms, cursor.event_id.as_str())),
-                    request.limit,
+                    request.partition.canonical_key().into(),
+                    request.after.as_ref().map(|cursor| {
+                        crate::turso_mvcc_keyset::TursoMvccPageCursor {
+                            created_at_ms: cursor.created_at_ms,
+                            event_id: cursor.event_id.as_str().into(),
+                        }
+                    }),
+                    request.limit.into(),
                 )
                 .await
-                .map_err(classify_turso_storage_error)?;
+                .map_err(|error| classify_turso_storage_error(error.to_string()))?;
             let after = request
                 .after
                 .as_ref()

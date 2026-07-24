@@ -118,6 +118,18 @@ source_index_value_type!(
     ClientDbSourceIndexQueryKey
 );
 source_index_value_type!(
+    /// Stable structural selector identity retained by the source index.
+    ClientDbSourceIndexSelectorId
+);
+source_index_value_type!(
+    /// Optional symbol label projected by the language provider.
+    ClientDbSourceIndexSelectorSymbol
+);
+source_index_value_type!(
+    /// Optional item kind projected by the language provider.
+    ClientDbSourceIndexSelectorKind
+);
+source_index_value_type!(
     /// Source authority for a selector or owner row.
     ClientDbSourceIndexSource
 );
@@ -221,24 +233,24 @@ impl ClientDbSourceIndexLookupState {
 /// Agent-facing source-index candidate row returned by the DB facade.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexCandidate {
-    pub path: String,
+    pub path: ClientDbSourceIndexCandidatePath,
     pub language_id: Option<LanguageId>,
     pub provider_id: Option<ProviderId>,
     pub source_kind: ClientDbSourceIndexSourceKind,
     pub line_count: Option<u32>,
-    pub query_keys: Vec<String>,
+    pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     /// Parser-owned item identity associated with the bounded selector proof.
-    pub selector_symbol: Option<String>,
+    pub selector_symbol: Option<ClientDbSourceIndexSelectorSymbol>,
     /// Parser-owned item kind associated with the bounded selector proof.
-    pub selector_kind: Option<String>,
+    pub selector_kind: Option<ClientDbSourceIndexSelectorKind>,
     pub selector_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
 }
 
 /// Provider/parser proof that a source-index candidate has a bounded payload.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelectorPayloadProof {
-    pub structural_selector: String,
-    pub payload_kind: String,
+    pub structural_selector: ClientDbSourceIndexStructuralSelector,
+    pub payload_kind: ClientDbSourceIndexSelectorPayloadKind,
     pub bounded: bool,
 }
 
@@ -335,9 +347,9 @@ pub struct ClientDbSourceIndexCandidateLookupResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelector {
     pub owner_path: ClientDbSourceIndexPath,
-    pub selector_id: String,
-    pub symbol: Option<String>,
-    pub kind: Option<String>,
+    pub selector_id: ClientDbSourceIndexSelectorId,
+    pub symbol: Option<ClientDbSourceIndexSelectorSymbol>,
+    pub kind: Option<ClientDbSourceIndexSelectorKind>,
     pub start_line: u32,
     pub end_line: u32,
     pub source: ClientDbSourceIndexSource,
@@ -501,7 +513,7 @@ pub struct ClientDbSourceIndexCandidateLookup {
 pub struct ClientDbSourceIndexSelectorLookup {
     pub project_root: PathBuf,
     pub language_id: Option<LanguageId>,
-    pub kind: Option<String>,
+    pub kind: Option<ClientDbSourceIndexSelectorKind>,
     pub query: Option<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
 }

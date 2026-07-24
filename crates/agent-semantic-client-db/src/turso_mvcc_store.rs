@@ -101,38 +101,38 @@ impl TursoMvccStoreConfig {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccEvent {
-    pub partition_key: String,
-    pub event_id: String,
-    pub payload: Vec<u8>,
-    pub created_at_ms: i64,
+    partition_key: String,
+    event_id: String,
+    payload: Vec<u8>,
+    created_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccOptimizationReceipt {
-    pub schema_id: String,
-    pub profile: String,
-    pub connection_lanes: usize,
-    pub partition_shards: usize,
-    pub statement_cache: String,
-    pub insert_rows_per_statement: usize,
-    pub transaction_mode: String,
-    pub mvcc: bool,
-    pub passive_checkpoint: bool,
-    pub multiprocess_wal: bool,
-    pub fts: bool,
+    schema_id: String,
+    profile: String,
+    connection_lanes: usize,
+    partition_shards: usize,
+    statement_cache: String,
+    insert_rows_per_statement: usize,
+    transaction_mode: String,
+    mvcc: bool,
+    passive_checkpoint: bool,
+    multiprocess_wal: bool,
+    fts: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccBatchWriteReceipt {
-    pub schema_id: String,
-    pub attempted_rows: usize,
-    pub committed_rows: usize,
-    pub retry_count: usize,
-    pub busy_count: usize,
-    pub snapshot_conflict_count: usize,
-    pub retry_delay_ms: u64,
+    schema_id: String,
+    attempted_rows: usize,
+    committed_rows: usize,
+    retry_count: usize,
+    busy_count: usize,
+    snapshot_conflict_count: usize,
+    retry_delay_ms: u64,
     pub optimization: TursoMvccOptimizationReceipt,
 }
 

@@ -6,7 +6,7 @@ use super::core::{
     AgentSessionRegistry, block_on_agent_session_registry_async,
     connect_turso_agent_session_registry,
 };
-use super::types::AgentSessionRecord;
+use super::types::{AgentSessionId, AgentSessionProjectId, AgentSessionRecord, AgentSessionStatus};
 
 impl AgentSessionRegistry {
     /// Atomically mark a resident child orphaned and revoke its native route.
@@ -18,17 +18,20 @@ impl AgentSessionRegistry {
     /// longer resolve.
     pub fn invalidate_session_live_binding(
         &self,
-        project_id: &str,
-        session_id: &str,
-        status: &str,
+        project_id: impl Into<AgentSessionProjectId>,
+        session_id: impl Into<AgentSessionId>,
+        status: impl Into<AgentSessionStatus>,
         now: i64,
     ) -> Result<Option<AgentSessionRecord>, String> {
+        let project_id = project_id.into();
+        let session_id = session_id.into();
+        let status = status.into();
         let changed =
             block_on_agent_session_registry_async(turso_invalidate_session_live_binding(
                 self.db_path(),
-                project_id,
-                session_id,
-                status,
+                project_id.as_str(),
+                session_id.as_str(),
+                status.as_str(),
                 now,
             ))?;
         if !changed {

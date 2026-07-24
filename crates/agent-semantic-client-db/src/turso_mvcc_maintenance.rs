@@ -12,17 +12,17 @@ pub const TURSO_MVCC_MAINTENANCE_RECEIPT_SCHEMA_ID: &str = "asp.turso-mvcc-maint
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccMaintenanceReceipt {
-    pub schema_id: String,
-    pub backend: String,
-    pub backend_version: String,
-    pub passive_checkpoint: bool,
-    pub cache_flush_count: usize,
-    pub database_bytes: u64,
-    pub wal_bytes: u64,
-    pub shared_memory_bytes: u64,
-    pub total_file_bytes: u64,
-    pub elapsed_micros: u64,
-    pub checkpoint_counter_observable: bool,
+    schema_id: String,
+    backend: String,
+    backend_version: String,
+    passive_checkpoint: bool,
+    cache_flush_count: usize,
+    database_bytes: u64,
+    wal_bytes: u64,
+    shared_memory_bytes: u64,
+    total_file_bytes: u64,
+    elapsed_micros: u64,
+    checkpoint_counter_observable: bool,
 }
 
 impl TursoMvccStore {

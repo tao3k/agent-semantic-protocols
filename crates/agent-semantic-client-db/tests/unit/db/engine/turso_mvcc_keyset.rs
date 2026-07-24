@@ -71,7 +71,7 @@ async fn turso_mvcc_database_keyset_uses_limit_plus_one_and_stable_tie_break() {
     assert_eq!(receipt.retry_delay_ms, 0);
 
     let first = store
-        .read_partition_page("keyset-partition", None, 2)
+    .read_partition_page("keyset-partition".into(), None, 2.into())
         .await
         .expect("read first database keyset page");
     assert_eq!(first.len(), 3, "backend must fetch limit + 1");
@@ -80,7 +80,14 @@ async fn turso_mvcc_database_keyset_uses_limit_plus_one_and_stable_tie_break() {
     assert_eq!(first[2].event_id, "event-c");
 
     let second = store
-        .read_partition_page("keyset-partition", Some((10, "event-b")), 2)
+    .read_partition_page(
+        "keyset-partition".into(),
+        Some(agent_semantic_client_db::TursoMvccPageCursor {
+            created_at_ms: 10,
+            event_id: "event-b".into(),
+        }),
+        2.into(),
+    )
         .await
         .expect("read second database keyset page");
     assert_eq!(second.len(), 1);

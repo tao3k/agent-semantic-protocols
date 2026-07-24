@@ -14,7 +14,7 @@
 #+SEE_ALSO: docs/10-19-rfcs/10.14-semantic-fact-frontier-feedback.org (014) — next-stage
 #+  ontology, flow profiles, receipt memory, and context precision benchmarks.
 
-* One-sentence summary
+* Search projection summary
 
 Every agent-facing =search= response carries a typed decision graph feature:
 schema-owned semantic graph facts are projected into role-typed aliases,
@@ -394,6 +394,49 @@ This RFC does not replace JSON schema packets.  =semantic-graph.v1= and
 =semantic-search-packet.v1= remain the canonical machine contract.
 
 * Canonical data boundary
+** Typed search projection boundary
+
+Language providers MUST produce a schema-valid =SemanticSearchPacketV1= from
+parser-owned facts before any agent-facing rendering occurs. A provider MUST
+NOT render graph, owner, evidence, or topology text and then reparse that text
+to recover semantic facts.
+
+The only rendering flow is:
+
+#+begin_src text
+SemanticSearchPacketV1
+  -> SearchProjectionRequestV1
+  -> SearchProjectionRenderer
+  -> RenderedSearchProjectionV1
+#+end_src
+
+=SearchProjectionRequestV1= selects a semantic projection such as =owner=,
+=evidence=, or =topology=. Output density is an independent renderer option
+with values such as =terse=, =standard=, and =expanded=. Density MUST NOT
+create a parallel packet type, graph model, cache authority, or renderer
+interface.
+
+=SearchProjectionRenderer= has one implementation boundary owned by the
+lightweight =agent-semantic-search-projection= kernel. Language harnesses,
+root ASP, and client adapters
+consume that boundary; they MUST NOT own copied graph renderers, item seed
+parsers, line-protocol reparsers, or language-private projection pipelines.
+
+Canonical item identity remains provider-owned. The shared renderer validates
+and transports =CanonicalItemSelectorV1= without reconstructing it from
+=ownerPath=, =read=, source ranges, symbol strings, or language-specific
+hints. A missing canonical selector is a typed projection error, never an
+owner-only fallback and never a range selector.
+
+All registered-language gates MUST prove the following invariants against real
+provider packets:
+
+- the provider packet validates before rendering;
+- owner, evidence, and topology projections consume the same packet identity;
+- changing density does not change nodes, selectors, ranks, or evidence facts;
+- no provider-local renderer or text-to-packet semantic bridge is reachable;
+- line ranges remain display metadata and cannot become item identity.
+
 
 The graph feature is a renderer over schema-owned facts:
 

@@ -3,11 +3,34 @@ use tree_sitter::{Language, Parser, QueryCursor};
 
 use crate::compiled_query::CompiledSyntaxQuery;
 
+macro_rules! native_query_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+    };
+}
+
+native_query_text!(NativeQueryNodeKind);
+native_query_text!(NativeQueryText);
+
 /// One capture returned by a canonical Tree-sitter query execution.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeQueryNode {
-    pub node_kind: String,
-    pub text: String,
+    pub node_kind: NativeQueryNodeKind,
+    pub text: NativeQueryText,
     pub start_byte: usize,
     pub end_byte: usize,
     pub start_line: usize,
@@ -95,8 +118,8 @@ fn snapshot_node(node: tree_sitter::Node<'_>, source: &str) -> Result<NativeQuer
         .map_err(|error| format!("invalid UTF-8 node text: {error}"))?
         .to_string();
     Ok(NativeQueryNode {
-        node_kind: node.kind().to_string(),
-        text,
+        node_kind: NativeQueryNodeKind::from(node.kind().to_string()),
+        text: NativeQueryText::from(text),
         start_byte: node.start_byte(),
         end_byte: node.end_byte(),
         start_line: node.start_position().row + 1,

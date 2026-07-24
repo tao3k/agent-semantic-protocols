@@ -22,6 +22,57 @@ const DENY_REPLAY_WINDOW_MS: u128 = 3 * 60 * 1000;
 const HOOK_EVENT_STATE_TAIL_BYTES: u64 = 1024 * 1024;
 const HOOK_EVENT_STATE_TAIL_LINE_CAP: usize = 4096;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventSessionId(String);
+
+impl HookEventSessionId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for HookEventSessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for HookEventSessionId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventTranscriptPath(String);
+
+impl HookEventTranscriptPath {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for HookEventTranscriptPath {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for HookEventTranscriptPath {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventStateError(String);
+
+impl From<String> for HookEventStateError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 fn should_preserve_agent_session_route_message(decision: &HookDecision) -> bool {
     decision.has_configured_resident_dispatch()
         || decision.fields.contains_key("agentSessionAction")
@@ -217,9 +268,9 @@ pub fn append_hook_event_state(
 /// Return whether the current prompt/session already recorded subagent context.
 pub fn has_recorded_subagent_context(
     project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<bool, String> {
+    session_id: Option<HookEventSessionId>,
+    transcript_path: Option<HookEventTranscriptPath>,
+) -> Result<bool, HookEventStateError> {
     if session_id.is_none() && transcript_path.is_none() {
         return Ok(false);
     }

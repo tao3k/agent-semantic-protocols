@@ -7,6 +7,30 @@ use crate::document_candidates::{
     DocumentSearchCandidate, DocumentSearchCandidateRequest, collect_document_search_candidates,
 };
 
+macro_rules! search_pipe_source_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+    };
+}
+
+search_pipe_source_text!(SearchPipeSourceTraceSource);
+search_pipe_source_text!(SearchPipeSourceTraceStatus);
+search_pipe_source_text!(SearchPipeSourceArtifactDigest);
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SearchPipeSourceMode {
     Auto,
@@ -16,14 +40,14 @@ pub enum SearchPipeSourceMode {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeSourceAcquisitionTrace {
-    pub source: String,
-    pub status: String,
+    pub source: SearchPipeSourceTraceSource,
+    pub status: SearchPipeSourceTraceStatus,
     pub matched: usize,
     pub missing: usize,
     pub normalized: usize,
     pub elapsed: Option<Duration>,
     pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
-    pub artifact_digest: Option<String>,
+    pub artifact_digest: Option<SearchPipeSourceArtifactDigest>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -44,8 +44,8 @@ pub struct SearchPipeLanguageId<'a>(&'a str);
 pub struct SearchPipeQueryText<'a>(&'a str);
 
 impl<'a> SearchPipeLanguageId<'a> {
-    pub const fn from_language_id(language_id: &'a str) -> Self {
-        Self(language_id)
+    pub const fn from_language_id(language_id: Self) -> Self {
+        language_id
     }
 }
 
@@ -234,16 +234,13 @@ pub fn search_pipe_unique_query_terms(
 
 #[must_use]
 pub fn search_pipe_typed_query_terms(
-    language_id: &str,
-    query: &str,
+    language_id: SearchPipeLanguageId<'_>,
+    query: SearchPipeQueryText<'_>,
     query_pack_descriptor: SearchPipeQueryPackDescriptor<'_>,
 ) -> Vec<SearchPipeQueryTerm> {
     let clauses = search_pipe_query_clauses(
-        SearchPipeQueryClausesRequest::new(
-            SearchPipeLanguageId::new(language_id),
-            SearchPipeQueryText::new(query),
-        )
-        .with_query_pack_descriptor(query_pack_descriptor),
+        SearchPipeQueryClausesRequest::new(language_id, query)
+            .with_query_pack_descriptor(query_pack_descriptor),
     );
     search_pipe_unique_query_terms(&clauses)
 }
@@ -533,12 +530,16 @@ fn is_weak_natural_term(raw: &str) -> bool {
     )
 }
 pub fn search_pipe_semantic_facts_intent(
-    language_id: &str,
-    query: &str,
+    language_id: SearchPipeLanguageId<'_>,
+    query: SearchPipeQueryText<'_>,
     query_pack_descriptor: SearchPipeQueryPackDescriptor<'_>,
     descriptor: SearchPipeSemanticFactsDescriptor<'_>,
 ) -> SearchPipeSemanticFactsIntentDecision {
-    if query.split_whitespace().any(search_pipe_is_path_like_token) {
+    if query
+        .as_str()
+        .split_whitespace()
+        .any(search_pipe_is_path_like_token)
+    {
         return SearchPipeSemanticFactsIntentDecision {
             requested: false,
             descriptor_id: descriptor.descriptor_id.to_owned(),

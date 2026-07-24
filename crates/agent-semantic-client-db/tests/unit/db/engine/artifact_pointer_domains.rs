@@ -20,13 +20,13 @@ mod artifact_pointer_domain_tests {
     }
 
     fn key(pointer_kind: &str) -> ClientDbArtifactPointerKey {
-        ClientDbArtifactPointerKey {
-            repo_id: "repo:domain-test".to_owned(),
-            workspace_id: "workspace:domain-test".to_owned(),
-            scope_id: "scope:domain-test".to_owned(),
-            pointer_kind: pointer_kind.to_owned(),
-            pointer_name: "current".to_owned(),
-        }
+        ClientDbArtifactPointerKey::new(
+            "repo:domain-test",
+            "workspace:domain-test",
+            "scope:domain-test",
+            pointer_kind,
+            "current",
+        )
     }
 
     fn root(label: &str) -> String {

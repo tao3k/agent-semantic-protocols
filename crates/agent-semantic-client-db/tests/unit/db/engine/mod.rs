@@ -1,9 +1,7 @@
 use std::{
-    env,
     ffi::{OsStr, OsString},
     fs,
     path::{Path, PathBuf},
-    process::Command,
     sync::{Arc, Barrier},
     thread,
 };

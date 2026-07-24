@@ -222,12 +222,14 @@ pub fn verify_active_asp_artifact_receipt(
         activation_path,
         receipt.activation_leaf(),
         "activation",
+        MaterializationMatchPolicy::Exact,
     )?);
     for asp_path in asp_paths {
         leaf_fingerprints.push(verify_materialized_leaf(
             asp_path,
             receipt.asp_binary_leaf(),
             "ASP binary",
+            MaterializationMatchPolicy::ContentEquivalentAlias,
         )?);
     }
     for leaf in &receipt.leaves {
@@ -241,6 +243,7 @@ pub fn verify_active_asp_artifact_receipt(
             Path::new(&leaf.materialized_path),
             leaf,
             leaf.artifact_kind.canonical_name(),
+            MaterializationMatchPolicy::Exact,
         )?);
     }
     remember_verified_active_receipt(
@@ -333,13 +336,21 @@ fn current_metadata_matches_fingerprint(
         && change_time_unix_nanos(&metadata) == fingerprint.change_time_unix_nanos)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MaterializationMatchPolicy {
+    Exact,
+    ContentEquivalentAlias,
+}
+
 fn verify_materialized_leaf(
     path: &Path,
     leaf: &ActiveArtifactLeafV1,
     label: &str,
+    match_policy: MaterializationMatchPolicy,
 ) -> Result<ActiveArtifactMetadataFingerprint, String> {
     let canonical = canonical_regular_file(path, label)?;
-    if canonical != Path::new(&leaf.materialized_path) {
+    let is_receipt_materialization = canonical == Path::new(&leaf.materialized_path);
+    if !is_receipt_materialization && match_policy == MaterializationMatchPolicy::Exact {
         return Err(format!(
             "{label} target mismatch: actual={} receipt={}",
             canonical.display(),
@@ -363,7 +374,8 @@ fn verify_materialized_leaf(
         modified_unix_nanos,
         change_time_unix_nanos,
     };
-    if modified_unix_nanos == leaf.modified_unix_nanos
+    if is_receipt_materialization
+        && modified_unix_nanos == leaf.modified_unix_nanos
         && change_time_unix_nanos == leaf.change_time_unix_nanos
     {
         return Ok(fingerprint);

@@ -1,4 +1,5 @@
 [workspace]
+
 members = [
     "build-support/asp-rust-project-harness-policy",
     "crates/agent-semantic-rust-policy-types",
@@ -21,7 +22,12 @@ exclude = ["languages/orgize", "languages/rust-lang-project-harness"]
 resolver = "2"
 
 [workspace.package]
+version = "0.1.0"
+rust-version = "1.95"
+license = "MIT"
 edition = "2024"
+
+[workspace.lints]
 
 [workspace.dependencies]
 agent-semantic-hook = { path = "crates/agent-semantic-hook" }

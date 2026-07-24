@@ -588,19 +588,22 @@ impl CompiledHookRule {
             .map(|dispatch| {
                 let resident = resident_agents
                     .iter()
-                    .find(|resident| resident.enabled && resident.name == dispatch.resident_name)
+                    .find(|resident| {
+                        resident.enabled && resident.name == dispatch.resident_name.as_str()
+                    })
                     .ok_or_else(|| {
                         format!(
                             "rule `{}` dispatch references unavailable resident `{}`",
-                            config.id, dispatch.resident_name
+                            config.id,
+                            dispatch.resident_name.as_str()
                         )
                     })?;
                 Ok::<CompiledRuleDispatch, String>(CompiledRuleDispatch {
                     transport: dispatch.transport,
-                    resident_name: dispatch.resident_name,
+                    resident_name: dispatch.resident_name.as_str().to_owned(),
                     resident_codex_agent_name: resident.codex_agent_name.clone(),
                     resident_role: resident.role.clone(),
-                    receipt_kind: dispatch.receipt_kind,
+                    receipt_kind: dispatch.receipt_kind.as_str().to_owned(),
                     lazy_provider: dispatch.lazy_provider,
                 })
             })

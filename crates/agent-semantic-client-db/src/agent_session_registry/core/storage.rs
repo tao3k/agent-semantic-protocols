@@ -623,10 +623,11 @@ async fn turso_register_session_once(
     )
     .await?
     .ok_or_else(|| "registered Turso session was not readable".to_string())?;
-    if registered.session_id != request.session_id {
+    if registered.session_id() != request.session_id {
         return Err(format!(
             "resident slot is owned by generation {} (child {}); replacement requires exact compare-and-swap",
-            registered.physical_generation, registered.session_id
+            registered.physical_generation,
+            registered.session_id()
         ));
     }
     Ok(registered)

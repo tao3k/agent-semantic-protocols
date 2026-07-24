@@ -35,13 +35,13 @@ fn temp_db(name: &str) -> PathBuf {
 }
 
 fn artifact_key(iteration: usize) -> ClientDbArtifactPointerKey {
-    ClientDbArtifactPointerKey {
-        repo_id: "repo:slo-matrix".to_owned(),
-        workspace_id: "workspace:slo-matrix".to_owned(),
-        scope_id: "scope:slo-matrix".to_owned(),
-        pointer_kind: "topology-root".to_owned(),
-        pointer_name: format!("iteration-{iteration}"),
-    }
+    ClientDbArtifactPointerKey::new(
+        "repo:slo-matrix",
+        "workspace:slo-matrix",
+        "scope:slo-matrix",
+        "topology-root",
+        format!("iteration-{iteration}"),
+    )
 }
 
 fn resident_set_kib() -> u64 {

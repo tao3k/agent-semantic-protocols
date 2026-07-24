@@ -70,9 +70,9 @@ pub fn import_language_projection(
 fn language_projection_registry_fingerprint(projection: &ClientDbLanguageProjection) -> String {
     format!(
         "language-projection:{}:{}:{}:{}",
-        projection.language_id,
-        projection.harness.harness_id,
-        projection.harness.parser_abi,
-        projection.harness.selector_dialect,
+        projection.language_id(),
+        projection.harness().harness_id(),
+        projection.harness().parser_abi(),
+        projection.harness().selector_dialect(),
     )
 }

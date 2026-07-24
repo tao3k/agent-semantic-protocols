@@ -32,15 +32,15 @@ impl ExactSelectorProjectionRecordV1 {
             .validate_shape()
             .map_err(|_| ExactSelectorMerkleMissV1::InvalidProofShape)?;
 
-        if self.proof.language_id != key.language_id
-            || &self.proof.workspace_root_digest != key.workspace_root_digest
-            || self.proof.owner_path != key.owner_path
-            || &self.proof.owner_subtree_digest != key.owner_subtree_digest
-            || &self.proof.source_blob_digest != key.source_blob_digest
-            || &self.proof.parser_identity_digest != key.parser_identity_digest
-            || &self.proof.query_pack_digest != key.query_pack_digest
-            || self.proof.structural_selector != key.structural_selector
-            || self.proof.projection_mode != key.projection_mode
+        if self.proof.language_id() != key.language_id
+            || self.proof.workspace_root_digest() != key.workspace_root_digest
+            || self.proof.owner_path() != key.owner_path
+            || self.proof.owner_subtree_digest() != key.owner_subtree_digest
+            || self.proof.source_blob_digest() != key.source_blob_digest
+            || self.proof.parser_identity_digest() != key.parser_identity_digest
+            || self.proof.query_pack_digest() != key.query_pack_digest
+            || self.proof.structural_selector() != key.structural_selector
+            || self.proof.projection_mode() != &key.projection_mode
         {
             return Err(ExactSelectorMerkleMissV1::IdentityMismatch);
         }
@@ -136,13 +136,13 @@ fn lookup_key_matches_proof(
     key: &ExactSelectorMerkleLookupKeyV1<'_>,
     proof: &ExactSelectorMerkleProofV1,
 ) -> bool {
-    key.language_id == proof.language_id
-        && key.workspace_root_digest == &proof.workspace_root_digest
-        && key.owner_path == proof.owner_path
-        && key.owner_subtree_digest == &proof.owner_subtree_digest
-        && key.source_blob_digest == &proof.source_blob_digest
-        && key.parser_identity_digest == &proof.parser_identity_digest
-        && key.query_pack_digest == &proof.query_pack_digest
-        && key.structural_selector == proof.structural_selector
-        && key.projection_mode == proof.projection_mode
+    key.language_id == proof.language_id()
+        && key.workspace_root_digest == proof.workspace_root_digest()
+        && key.owner_path == proof.owner_path()
+        && key.owner_subtree_digest == proof.owner_subtree_digest()
+        && key.source_blob_digest == proof.source_blob_digest()
+        && key.parser_identity_digest == proof.parser_identity_digest()
+        && key.query_pack_digest == proof.query_pack_digest()
+        && key.structural_selector == proof.structural_selector()
+        && &key.projection_mode == proof.projection_mode()
 }

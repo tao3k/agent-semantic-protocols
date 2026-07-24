@@ -23,13 +23,13 @@ fn temp_db(name: &str) -> PathBuf {
 }
 
 fn key(pointer_name: impl Into<String>) -> ClientDbArtifactPointerKey {
-    ClientDbArtifactPointerKey {
-        repo_id: "repo:benchmark".to_owned(),
-        workspace_id: "workspace:benchmark".to_owned(),
-        scope_id: "scope:benchmark".to_owned(),
-        pointer_kind: "semantic-index-root".to_owned(),
-        pointer_name: pointer_name.into(),
-    }
+    ClientDbArtifactPointerKey::new(
+        "repo:benchmark",
+        "workspace:benchmark",
+        "scope:benchmark",
+        "semantic-index-root",
+        pointer_name,
+    )
 }
 
 fn root(label: &str) -> String {

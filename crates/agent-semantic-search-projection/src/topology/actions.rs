@@ -4,6 +4,7 @@ use super::packet::{
     graph_root, header_field_scalar, is_owner_item_query_packet, packet_query, packet_view,
 };
 
+/// Action facts consumed by the topology projection pipeline.
 #[derive(Clone, Copy)]
 pub(super) struct GraphActionSpec {
     pub(super) node_type: &'static str,

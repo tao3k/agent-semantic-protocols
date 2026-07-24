@@ -43,12 +43,30 @@ pub struct HookClientRuleConfig {
 }
 
 /// Typed execution dispatch emitted by a matched hook rule.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct HookClientResidentName(String);
+
+impl HookClientResidentName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct HookClientReceiptKind(String);
+
+impl HookClientReceiptKind {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleDispatchConfig {
     pub transport: HookClientRuleDispatchTransport,
-    pub resident_name: String,
-    pub receipt_kind: String,
+    pub resident_name: HookClientResidentName,
+    pub receipt_kind: HookClientReceiptKind,
     #[serde(default)]
     pub lazy_provider: Option<HookClientLazyProviderPolicy>,
 }

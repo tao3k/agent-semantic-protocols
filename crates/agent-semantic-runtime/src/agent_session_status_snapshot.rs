@@ -8,41 +8,74 @@ use crate::agent_session_status::{
     agent_session_timeout_semantics, current_agent_runtime_session,
 };
 
+macro_rules! status_snapshot_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            #[allow(dead_code)]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+    };
+}
+
+status_snapshot_text!(AgentSessionHostClient);
+status_snapshot_text!(AgentSessionHostThreadId);
+status_snapshot_text!(AgentSessionHostStatusSource);
+status_snapshot_text!(AgentSessionHostStatus);
+status_snapshot_text!(AgentSessionHostStatusReason);
+
 /// Runtime facts rendered by `asp agent session status`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentSessionRuntimeStatusSnapshot {
     /// Host client that owns the probed thread, when one is known.
-    pub host_client: Option<String>,
+    host_client: Option<AgentSessionHostClient>,
     /// Host thread id used for status probing.
-    pub host_thread_id: Option<String>,
+    host_thread_id: Option<AgentSessionHostThreadId>,
     /// Source that produced host status.
-    pub host_status_source: String,
+    host_status_source: AgentSessionHostStatusSource,
     /// Normalized host status.
-    pub host_status: String,
+    host_status: AgentSessionHostStatus,
     /// Human-readable reason for the host status.
-    pub host_status_reason: String,
+    host_status_reason: AgentSessionHostStatusReason,
     /// Raw host status payload when the host exposes one.
-    pub host_raw_status: Option<String>,
+    host_raw_status: Option<String>,
     /// Combined registry/host/artifact health status.
-    pub health_status: String,
+    health_status: String,
     /// Timeout semantics used by resident agent sessions.
-    pub timeout_semantics: &'static str,
+    timeout_semantics: &'static str,
     /// Whether duplicate resident workers are allowed.
-    pub duplicate_worker_allowed: bool,
+    duplicate_worker_allowed: bool,
     /// Artifact directory inspected for session activity.
-    pub artifacts_dir: String,
+    artifacts_dir: String,
     /// Normalized artifact freshness status.
-    pub artifact_status: String,
+    artifact_status: String,
     /// Staleness threshold used for artifact freshness.
-    pub artifact_stale_after_seconds: i64,
+    artifact_stale_after_seconds: i64,
     /// Latest artifact update timestamp.
-    pub last_artifact_updated_at: Option<i64>,
+    last_artifact_updated_at: Option<i64>,
     /// Latest artifact age in seconds.
-    pub artifact_age_seconds: Option<i64>,
+    artifact_age_seconds: Option<i64>,
     /// Latest artifact path, when available.
-    pub last_artifact_path: Option<String>,
+    last_artifact_path: Option<String>,
     /// Suggested next action for the session.
-    pub next_action: String,
+    next_action: String,
 }
 
 /// Request for building one runtime status snapshot.
@@ -103,11 +136,13 @@ pub fn agent_session_runtime_status_snapshot(
         artifacts.status,
     );
     Ok(AgentSessionRuntimeStatusSnapshot {
-        host_client: host_probe.client,
-        host_thread_id: host_probe.thread_id,
-        host_status_source: host_probe.source.as_str().to_string(),
-        host_status: host_probe.status.as_str().to_string(),
-        host_status_reason: host_probe.reason,
+        host_client: host_probe.client.map(AgentSessionHostClient::from),
+        host_thread_id: host_probe.thread_id.map(AgentSessionHostThreadId::from),
+        host_status_source: AgentSessionHostStatusSource::from(
+            host_probe.source.as_str().to_string(),
+        ),
+        host_status: AgentSessionHostStatus::from(host_probe.status.as_str().to_string()),
+        host_status_reason: AgentSessionHostStatusReason::from(host_probe.reason),
         host_raw_status: host_probe.raw_status,
         health_status: health_status.as_str().to_string(),
         timeout_semantics: agent_session_timeout_semantics(),

@@ -114,10 +114,12 @@ pub(super) fn record_trusted_resident_hook_presence(
         .as_secs() as i64;
     crate::command::agent_session_registry::agent_session_registry_host_capability::record_trusted_resident_hook_target_present(
         &registry,
-        &session.root_session_id,
-        resident_child_name,
-        &session.project_id,
-        &format!("/root/{resident_codex_agent_name}"),
-        observed_at,
+        crate::command::agent_session_registry::agent_session_registry_host_capability::TrustedResidentHookTargetPresentInput {
+            project_id: &session.project_id,
+            root_session_id: &session.root_session_id,
+            resident_name: resident_child_name,
+            canonical_target: &format!("/root/{resident_codex_agent_name}"),
+            observed_at,
+        },
     )
 }

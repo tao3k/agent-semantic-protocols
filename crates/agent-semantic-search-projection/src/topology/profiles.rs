@@ -55,11 +55,11 @@ pub(super) fn graph_profiles_line(packet: &Value, aliases: &[GraphAlias]) -> Opt
 }
 
 fn graph_profile_entry(profile: &Value, aliases: &[GraphAlias]) -> Option<String> {
-    let profile_name = compact_profile_atom(profile.get("profile")?.as_str()?)?;
+    let profile_name = terse_profile_atom(profile.get("profile")?.as_str()?)?;
     let mut handles = Vec::new();
     for selector in profile.get("selectors")?.as_array()? {
-        let alias = compact_alias_handle(selector.get("alias")?.as_str()?)?;
-        let selector_kind = compact_profile_atom(selector.get("kind")?.as_str()?)?;
+        let alias = terse_alias_handle(selector.get("alias")?.as_str()?)?;
+        let selector_kind = terse_profile_atom(selector.get("kind")?.as_str()?)?;
         let required = selector
             .get("required")
             .and_then(Value::as_bool)
@@ -81,7 +81,7 @@ fn graph_profile_entry(profile: &Value, aliases: &[GraphAlias]) -> Option<String
         .as_array()?
         .iter()
         .filter_map(Value::as_str)
-        .filter_map(compact_profile_atom)
+        .filter_map(terse_profile_atom)
         .collect::<Vec<_>>();
     if returns.is_empty() {
         return None;
@@ -94,7 +94,7 @@ fn graph_profile_entry(profile: &Value, aliases: &[GraphAlias]) -> Option<String
     ))
 }
 
-fn compact_profile_atom(value: &str) -> Option<&str> {
+fn terse_profile_atom(value: &str) -> Option<&str> {
     let value = value.trim();
     (!value.is_empty()
         && value
@@ -103,7 +103,7 @@ fn compact_profile_atom(value: &str) -> Option<&str> {
     .then_some(value)
 }
 
-fn compact_alias_handle(value: &str) -> Option<&str> {
+fn terse_alias_handle(value: &str) -> Option<&str> {
     let value = value.trim();
     (!value.is_empty()
         && value

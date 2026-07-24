@@ -6,6 +6,27 @@
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchPreflightLanguageId(String);
+
+impl SearchPreflightLanguageId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SearchPreflightLanguageId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for SearchPreflightLanguageId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
 /// Result of applying search command preflight to raw CLI arguments.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SearchCommandPreflightOutcome {
@@ -19,7 +40,7 @@ pub enum SearchCommandPreflightOutcome {
 
 /// Search command preflight request passed from thin CLI command facades.
 pub struct SearchCommandPreflightRequest<'a> {
-    language_id: &'a str,
+    language_id: &'a SearchPreflightLanguageId,
     workspace: Option<&'a Path>,
     project_root: &'a Path,
     command: SearchCommandPreflightCommand<'a>,
@@ -44,7 +65,7 @@ impl<'a> OwnerItemsLanguageAdmission<'a> {
 impl<'a> SearchCommandPreflightRequest<'a> {
     /// Build a preflight request for `search owner <owner> items`.
     pub fn owner_items(
-        language_id: &'a str,
+        language_id: &'a SearchPreflightLanguageId,
         owner: &'a Path,
         workspace: Option<&'a Path>,
         project_root: &'a Path,
@@ -84,7 +105,7 @@ pub fn preflight_search_command(request: SearchCommandPreflightRequest<'_>) -> R
 
 /// Validate raw `asp <language> search ...` arguments when a preflight route applies.
 pub fn preflight_search_command_args(
-    language_id: &str,
+    language_id: &SearchPreflightLanguageId,
     args: &[String],
     project_root: &Path,
 ) -> SearchCommandPreflightOutcome {
@@ -93,7 +114,7 @@ pub fn preflight_search_command_args(
 
 /// Validate raw owner-item arguments against the activated provider's source contract.
 pub fn preflight_search_command_args_with_owner_language_admission(
-    language_id: &str,
+    language_id: &SearchPreflightLanguageId,
     args: &[String],
     project_root: &Path,
     admission: OwnerItemsLanguageAdmission<'_>,
@@ -157,7 +178,7 @@ pub fn source_extension_is_declared(extension: &str, expected_extensions: &[Stri
 
 /// Validate raw search arguments using only the invocation root and `--workspace` text.
 pub fn preflight_search_command_args_at_invocation_root(
-    language_id: &str,
+    language_id: &SearchPreflightLanguageId,
     args: &[String],
     invocation_root: &Path,
 ) -> SearchCommandPreflightOutcome {

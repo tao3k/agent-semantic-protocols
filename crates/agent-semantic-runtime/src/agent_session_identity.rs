@@ -36,13 +36,17 @@ pub fn has_current_agent_runtime_session() -> bool {
 #[must_use]
 pub fn current_agent_runtime_root_session_id() -> Option<String> {
     let session = current_agent_runtime_session()?;
-    codex_rollout_root_session_id(&session.id)
+    let runtime_session_id =
+        crate::agent_session_status::RuntimeSessionId::from(session.id.as_str());
+    codex_rollout_root_session_id(&runtime_session_id)
         .or_else(|| Some(session.recall_session_id().to_string()))
 }
 
 /// Resolve the root id recorded in Codex rollout metadata for `session_id`.
 #[must_use]
-pub(crate) fn codex_rollout_root_session_id(session_id: &str) -> Option<String> {
+pub(crate) fn codex_rollout_root_session_id(
+    session_id: &crate::agent_session_status::RuntimeSessionId,
+) -> Option<String> {
     codex_rollout_session_metadata(session_id)
         .ok()
         .flatten()
@@ -62,10 +66,12 @@ pub fn agent_session_registration_identity(
             "asp agent session register requires --child-session-id or an agent session env"
                 .to_string()
         })?;
+    let session_id_for_rollout =
+        crate::agent_session_status::RuntimeSessionId::from(session_id.as_str());
     let root_session_id = request
         .root_session_id
         .map(str::to_string)
-        .or_else(|| codex_rollout_root_session_id(&session_id))
+        .or_else(|| codex_rollout_root_session_id(&session_id_for_rollout))
         .or_else(|| {
             runtime_session
                 .as_ref()

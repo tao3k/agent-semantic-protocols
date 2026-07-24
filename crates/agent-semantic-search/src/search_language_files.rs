@@ -4,6 +4,27 @@ use agent_semantic_hook::builtin_provider_manifests;
 use std::collections::BTreeSet;
 use std::path::Path;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchLanguageId(String);
+
+impl SearchLanguageId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SearchLanguageId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for SearchLanguageId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
 /// Source/config file matcher built from provider manifest defaults.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct LanguageFileSpec {
@@ -80,12 +101,12 @@ impl LanguageFileSpec {
 
 /// Build a language-specific file matcher from provider manifest defaults.
 #[must_use]
-pub fn language_file_spec(language_id: &str) -> LanguageFileSpec {
+pub fn language_file_spec(language_id: &SearchLanguageId) -> LanguageFileSpec {
     let manifests = builtin_provider_manifests();
     LanguageFileSpec::from_provider_defaults(
         manifests
             .iter()
-            .filter(|manifest| manifest.language_id == language_id)
+            .filter(|manifest| manifest.language_id == language_id.as_str())
             .flat_map(|manifest| manifest.source.default_extensions.iter()),
         manifests
             .iter()

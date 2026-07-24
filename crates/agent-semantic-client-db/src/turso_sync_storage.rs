@@ -68,14 +68,14 @@ pub struct TursoSyncStatsReceipt {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoSyncOperationReceipt {
-    pub schema_id: String,
-    pub operation: TursoSyncOperation,
-    pub outcome: TursoSyncOperationOutcome,
-    pub elapsed_ms: u64,
-    pub pulled_changes: Option<bool>,
-    pub stats: Option<TursoSyncStatsReceipt>,
-    pub error_kind: Option<String>,
-    pub error_digest: Option<String>,
+    schema_id: String,
+    operation: TursoSyncOperation,
+    outcome: TursoSyncOperationOutcome,
+    elapsed_ms: u64,
+    pulled_changes: Option<bool>,
+    stats: Option<TursoSyncStatsReceipt>,
+    error_kind: Option<String>,
+    error_digest: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

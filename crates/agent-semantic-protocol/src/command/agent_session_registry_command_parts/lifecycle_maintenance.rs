@@ -46,9 +46,13 @@ pub(in crate::command::agent_session_registry) fn gc_sessions(
         lifecycle_target_session(registry, args, &project_id).map(|record| vec![record])?
     } else {
         registry.query_sessions(
-            &project_id,
-            root_session_id.as_deref(),
-            args.name.as_deref(),
+            project_id.as_str(),
+            root_session_id
+                .as_deref()
+                .map(agent_semantic_client_db::AgentSessionRootSessionId::from),
+            args.name
+                .as_deref()
+                .map(agent_semantic_client_db::AgentSessionResidentName::from),
         )?
     };
     let inspected = candidates.len();
@@ -87,9 +91,13 @@ pub(in crate::command::agent_session_registry) fn reconcile_sessions(
     let now = agent_session_unix_timestamp()?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let sessions = registry.query_sessions(
-        &project_id,
-        root_session_id.as_deref(),
-        args.name.as_deref(),
+        project_id.as_str(),
+        root_session_id
+            .as_deref()
+            .map(agent_semantic_client_db::AgentSessionRootSessionId::from),
+        args.name
+            .as_deref()
+            .map(agent_semantic_client_db::AgentSessionResidentName::from),
     )?;
     let reconciled_session_ids = sessions
         .iter()

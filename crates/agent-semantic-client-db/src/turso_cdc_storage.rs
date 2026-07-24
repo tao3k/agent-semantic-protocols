@@ -7,6 +7,65 @@ use serde::{Deserialize, Serialize};
 pub const TURSO_CDC_PAGE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.client-db.turso-cdc-page-receipt.v1";
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TursoCdcStorageError(String);
+
+impl TursoCdcStorageError {
+    pub fn message(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for TursoCdcStorageError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for TursoCdcStorageError {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+impl std::fmt::Display for TursoCdcStorageError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
+    }
+}
+
+impl std::error::Error for TursoCdcStorageError {}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TursoCdcChangeId(i64);
+
+impl TursoCdcChangeId {
+    pub const fn as_i64(self) -> i64 {
+        self.0
+    }
+}
+
+impl From<i64> for TursoCdcChangeId {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TursoCdcPageLimit(usize);
+
+impl TursoCdcPageLimit {
+    pub const fn as_usize(self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for TursoCdcPageLimit {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TursoCdcCaptureMode {
@@ -48,29 +107,29 @@ pub enum TursoCdcChangeKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoCdcChange {
-    pub change_id: i64,
-    pub change_time: i64,
-    pub change_txn_id: i64,
-    pub kind: TursoCdcChangeKind,
-    pub raw_change_type: i64,
-    pub table_name: Option<String>,
-    pub row_id: Option<String>,
-    pub before: Option<Vec<u8>>,
-    pub after: Option<Vec<u8>>,
-    pub updates: Option<Vec<u8>>,
+    change_id: i64,
+    change_time: i64,
+    change_txn_id: i64,
+    kind: TursoCdcChangeKind,
+    raw_change_type: i64,
+    table_name: Option<String>,
+    row_id: Option<String>,
+    before: Option<Vec<u8>>,
+    after: Option<Vec<u8>>,
+    updates: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoCdcPageReceipt {
-    pub schema_id: String,
-    pub profile: String,
-    pub capture_mode: TursoCdcCaptureMode,
-    pub after_change_id: Option<i64>,
-    pub limit: usize,
-    pub has_more: bool,
-    pub next_change_id: Option<i64>,
-    pub changes: Vec<TursoCdcChange>,
+    schema_id: String,
+    profile: String,
+    capture_mode: TursoCdcCaptureMode,
+    after_change_id: Option<i64>,
+    limit: usize,
+    has_more: bool,
+    next_change_id: Option<i64>,
+    changes: Vec<TursoCdcChange>,
 }
 
 pub struct TursoCdcStorage {
@@ -119,11 +178,12 @@ impl TursoCdcStorage {
 
     pub async fn read_page(
         &self,
-        after_change_id: Option<i64>,
-        limit: usize,
-    ) -> Result<TursoCdcPageReceipt, String> {
+        after_change_id: Option<TursoCdcChangeId>,
+        limit: TursoCdcPageLimit,
+    ) -> Result<TursoCdcPageReceipt, TursoCdcStorageError> {
+        let limit = limit.as_usize();
         if !(1..=1_000).contains(&limit) {
-            return Err("CDC page limit must be between 1 and 1000".to_owned());
+            return Err("CDC page limit must be between 1 and 1000".into());
         }
         let query = format!(
             r#"SELECT change_id, change_time, change_txn_id, change_type, table_name,
@@ -136,7 +196,13 @@ impl TursoCdcStorage {
         );
         let mut rows = self
             .connection
-            .query(&query, (after_change_id.unwrap_or(0), (limit + 1) as i64))
+            .query(
+                &query,
+                (
+                    after_change_id.map_or(0, TursoCdcChangeId::as_i64),
+                    (limit + 1) as i64,
+                ),
+            )
             .await
             .map_err(|error| format!("failed to query Turso CDC page: {error}"))?;
         let mut changes = Vec::with_capacity(limit + 1);
@@ -192,7 +258,7 @@ impl TursoCdcStorage {
             schema_id: TURSO_CDC_PAGE_RECEIPT_SCHEMA_ID.to_owned(),
             profile: "cdc-non-mvcc".to_owned(),
             capture_mode: self.mode,
-            after_change_id,
+            after_change_id: after_change_id.map(TursoCdcChangeId::as_i64),
             limit,
             has_more,
             next_change_id,

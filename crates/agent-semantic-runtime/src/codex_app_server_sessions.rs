@@ -2,7 +2,10 @@
 
 use serde_json::Value;
 
-use crate::{CodexRolloutSessionMetadata, codex_rollout_session_metadata};
+use crate::{
+    CodexRolloutSessionMetadata, agent_session_status::RuntimeSessionId,
+    codex_rollout_session_metadata,
+};
 
 /// Visibility of the reasoning field on a successful or failed Codex runtime
 /// observation.  Historical rollout values are deliberately kept separate.
@@ -29,9 +32,9 @@ pub struct CodexChildSessionEvidence {
 /// app-server is unavailable, ASP leaves lifecycle bootstrap in `Audit`
 /// instead of blocking unrelated tool use.
 pub fn codex_app_server_child_session_evidence(
-    root_session_id: &str,
+    root_session_id: &RuntimeSessionId,
 ) -> Result<Vec<CodexChildSessionEvidence>, String> {
-    let Some(threads) = read_direct_child_threads(root_session_id) else {
+    let Some(threads) = read_direct_child_threads(root_session_id.as_str()) else {
         let records = crate::codex_rollout_sessions::codex_rollout_session_index_for_sessions(
             root_session_id,
             std::iter::empty::<&str>(),
@@ -50,22 +53,22 @@ pub fn codex_app_server_child_session_evidence(
         })
         .unwrap_or_default();
         trace(
-            root_session_id,
+            root_session_id.as_str(),
             "app-server-unavailable-rollout-fallback",
             serde_json::json!({ "recordCount": records.len() }),
         );
         return Ok(records);
     };
     trace(
-        root_session_id,
+        root_session_id.as_str(),
         "thread-list-received",
         serde_json::json!({ "threadCount": threads.len() }),
     );
     let mut records = Vec::new();
     for thread in &threads {
-        if let Some(mut record) = child_rollout_metadata(thread, root_session_id)? {
+        if let Some(mut record) = child_rollout_metadata(thread, root_session_id.as_str())? {
             let rollout_reasoning_effort = record.reasoning_effort.clone();
-            let runtime = read_thread_runtime_observation(&record.session_id);
+            let runtime = read_thread_runtime_observation(record.session_id.as_str());
             let (runtime_reasoning_effort, runtime_reasoning_visibility) = match runtime {
                 Some(runtime) => {
                     record.model = runtime.model.or(record.model);
@@ -87,18 +90,17 @@ pub fn codex_app_server_child_session_evidence(
         }
     }
     trace(
-        root_session_id,
+        root_session_id.as_str(),
         "complete",
         serde_json::json!({ "recordCount": records.len() }),
     );
     Ok(records)
 }
 
-/// Compatibility projection for callers that only need child metadata.  The
-/// reasoning value remains rollout-owned; callers that make lifecycle
-/// decisions must consume `codex_app_server_child_session_evidence` instead.
+/// Runtime projection for callers that only need child metadata.  The reasoning
+/// value remains rollout-owned; lifecycle decisions consume typed evidence.
 pub fn codex_app_server_child_session_metadata(
-    root_session_id: &str,
+    root_session_id: &RuntimeSessionId,
 ) -> Result<Vec<CodexRolloutSessionMetadata>, String> {
     codex_app_server_child_session_evidence(root_session_id).map(|records| {
         records
@@ -374,7 +376,9 @@ fn child_rollout_metadata(
             "/source/sub_agent/thread_spawn/agent_path",
         ],
     );
-    let rollout_metadata = codex_rollout_session_metadata(child_session_id)?;
+    let child_session_id_typed =
+        crate::agent_session_status::RuntimeSessionId::from(child_session_id);
+    let rollout_metadata = codex_rollout_session_metadata(&child_session_id_typed)?;
     trace(
         root_session_id,
         "child-candidate",
@@ -388,7 +392,7 @@ fn child_rollout_metadata(
     let Some(mut metadata) = rollout_metadata else {
         return Ok(None);
     };
-    metadata.session_id = child_session_id.to_string();
+    metadata.session_id = child_session_id_typed;
     metadata.root_session_id = Some(root_session_id.to_string());
     metadata.parent_thread_id = Some(root_session_id.to_string());
     metadata.thread_source = Some("subagent".to_string());

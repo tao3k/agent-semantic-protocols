@@ -1,10 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-result.v1.schema.json",
-  "title": "Semantic Graph Turbo Result",
-  "description": "Schema-owned typed frontier ranking result emitted by asp-graph-turbo. This packet records ranking evidence and frontier actions; it is not a prompt-facing renderer template.",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-graph-turbo-result.v1.schema.json",
+  "title": "Semantic Graph Turbo Result v1",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "schemaId",
     "schemaVersion",
@@ -14,29 +12,8 @@
     "profile",
     "algorithm",
     "seedIds",
-    "budget",
-    "kindBudgets",
-    "profiles",
-    "rank",
     "rankedNodes",
-    "frontier",
-    "scores",
-    "edges",
-    "mergedWindows",
-    "profileCompatibility",
-    "profileMatrices",
-    "sourceSinkFrontier",
-    "typedPaths",
-    "flowLite",
-    "packetFingerprint",
-    "graphCache",
-    "algorithmTrace",
-    "rankExplanations",
-    "receiptAdjustments",
-    "evidenceReliability",
-    "algorithmMetrics",
-    "omit",
-    "avoid"
+    "edges"
   ],
   "properties": {
     "schemaId": {
@@ -55,70 +32,26 @@
       "const": "graph-turbo-result"
     },
     "profile": {
-      "enum": [
-        "owner-query",
-        "query-deps",
-        "owner-tests",
-        "prime",
-        "read-frontier",
-        "failure-frontier",
-        "field-impact",
-        "type-impact",
-        "collection-impact",
-        "failure-evidence",
-        "test-selection",
-        "affected",
-        "evidence-quality",
-        "rust-evidence-quality"
-      ]
+      "type": "string",
+      "minLength": 1
     },
     "algorithm": {
-      "const": "typed-ppr-diverse"
+      "type": "string",
+      "minLength": 1
     },
     "seedIds": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/nodeId"
-      },
-      "uniqueItems": true
-    },
-    "budget": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "kindBudgets": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "profiles": {
-      "type": "array",
-      "items": {
-        "enum": [
-          "owner-query",
-          "query-deps",
-          "owner-tests",
-          "prime",
-          "read-frontier",
-          "failure-frontier",
-          "field-impact",
-          "type-impact",
-          "collection-impact",
-          "failure-evidence",
-          "test-selection",
-          "affected",
-          "evidence-quality",
-          "rust-evidence-quality"
-        ]
+        "type": "string",
+        "minLength": 1
       },
       "uniqueItems": true
     },
     "rank": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/nodeId"
+        "type": "string",
+        "minLength": 1
       },
       "uniqueItems": true
     },
@@ -128,1161 +61,88 @@
         "$ref": "#/$defs/node"
       }
     },
-    "frontier": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/frontierEntry"
-      }
-    },
-    "frontierActions": {
-      "description": "Typed graph-owned frontier actions projected by graph turbo. Compact frontierActions text is a rendering of these facts and must not be parsed as the action authority.",
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/frontierAction"
-      }
-    },
-    "scores": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "number"
-      }
-    },
     "edges": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/edge"
       }
     },
-    "mergedWindows": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/mergedWindow"
-      }
-    },
-    "profileCompatibility": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/profileCompatibility"
-      }
-    },
-    "profileMatrices": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/profileMatrixSummary"
-      }
-    },
-    "sourceSinkFrontier": {
-      "$ref": "#/$defs/sourceSinkFrontier"
-    },
     "typedPaths": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/typedPath"
+        "type": "object"
       }
     },
-    "flowLite": {
-      "$ref": "#/$defs/flowLite"
+    "frontier": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     },
-    "packetFingerprint": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
-    "graphCache": {
-      "$ref": "#/$defs/graphCache"
+    "algorithmMetrics": {
+      "type": "object"
     },
     "algorithmTrace": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/algorithmTraceStep"
+        "type": "object"
       }
-    },
-    "rankExplanations": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/rankExplanation"
-      }
-    },
-    "receiptAdjustments": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/receiptAdjustment"
-      }
-    },
-    "evidenceReliability": {
-      "$ref": "#/$defs/evidenceReliability"
-    },
-    "algorithmMetrics": {
-      "$ref": "#/$defs/algorithmMetrics"
-    },
-    "omit": {
-      "type": "array",
-      "items": {
-        "enum": [
-          "code",
-          "full-score-vector",
-          "full-graph",
-          "full-source",
-          "unrelated-functions",
-          "wide-windows"
-        ]
-      },
-      "uniqueItems": true
-    },
-    "avoid": {
-      "type": "array",
-      "items": {
-        "enum": [
-          "raw-read",
-          "repeat-owner",
-          "broad-lexical",
-          "manual-window-scan",
-          "duplicate-read",
-          "seen-selector"
-        ]
-      },
-      "uniqueItems": true
-    },
-    "readMemory": {
-      "$ref": "#/$defs/readMemory"
     }
   },
   "$defs": {
-    "evidenceReliability": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "profile",
-        "reliable",
-        "score",
-        "findingCount",
-        "blockingCount",
-        "gates",
-        "findings"
-      ],
-      "properties": {
-        "profile": {
-          "enum": [
-            "owner-query",
-            "query-deps",
-            "owner-tests",
-            "prime",
-            "read-frontier",
-            "failure-frontier",
-            "field-impact",
-            "type-impact",
-            "collection-impact",
-            "failure-evidence",
-            "test-selection",
-            "affected",
-            "evidence-quality",
-            "rust-evidence-quality"
-          ]
-        },
-        "reliable": {
-          "type": "boolean"
-        },
-        "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "findingCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "blockingCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "gates": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]*$"
-          },
-          "uniqueItems": true
-        },
-        "findings": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/evidenceReliabilityFinding"
-          }
-        }
-      }
-    },
-    "evidenceReliabilityFinding": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "id",
-        "kind",
-        "severity",
-        "nodeId",
-        "action",
-        "message",
-        "blocking",
-        "evidence"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "severity": {
-          "enum": [
-            "error",
-            "warning",
-            "info"
-          ]
-        },
-        "nodeId": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "action": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "message": {
-          "type": "string",
-          "minLength": 1
-        },
-        "blocking": {
-          "type": "boolean"
-        },
-        "evidence": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      }
-    },
-    "nodeId": {
-      "type": "string",
-      "minLength": 1
-    },
     "node": {
       "type": "object",
-      "additionalProperties": false,
       "required": [
         "id",
-        "kind",
-        "role",
-        "value",
-        "action"
+        "kind"
       ],
       "properties": {
         "id": {
-          "$ref": "#/$defs/nodeId"
+          "type": "string",
+          "minLength": 1
         },
         "kind": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
+          "minLength": 1
         },
         "role": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
+          "type": "string"
         },
         "value": {
-          "type": "string",
-          "minLength": 1
+          "type": "string"
         },
         "action": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "pattern": "^[a-z][a-z0-9_-]*$"
+          "type": "string"
         }
-      }
-    },
-    "frontierEntry": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "nodeId",
-        "action",
-        "score"
-      ],
-      "properties": {
-        "nodeId": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "action": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "score": {
-          "type": "number"
-        }
-      }
-    },
-    "frontierAction": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "rank",
-        "actionId",
-        "actionKind",
-        "selector",
-        "owner",
-        "symbol",
-        "sourceNodeId",
-        "next",
-        "capabilityId",
-        "target",
-        "targetRole",
-        "fields"
-      ],
-      "properties": {
-        "rank": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "actionId": {
-          "type": "string",
-          "pattern": "^[A-Z][0-9]+$"
-        },
-        "actionKind": {
-          "enum": [
-            "selector",
-            "reasoning",
-            "query-code"
-          ]
-        },
-        "selector": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "minLength": 1
-        },
-        "owner": {
-          "type": "string",
-          "minLength": 1
-        },
-        "symbol": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "minLength": 1
-        },
-        "sourceNodeId": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "next": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "capabilityId": {
-          "enum": [
-            "query",
-            "search-reasoning"
-          ]
-        },
-        "target": {
-          "type": "string",
-          "minLength": 1
-        },
-        "targetRole": {
-          "enum": [
-            "selector",
-            "owner"
-          ]
-        },
-        "fields": {
-          "type": "object",
-          "propertyNames": {
-            "not": {
-              "enum": [
-                "command",
-                "argv"
-              ]
-            }
-          },
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            ]
-          }
-        }
-      }
+      },
+      "additionalProperties": true
     },
     "edge": {
       "type": "object",
-      "additionalProperties": false,
       "required": [
         "source",
         "target",
-        "relation",
-        "weight"
+        "relation"
       ],
       "properties": {
         "source": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "target": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "relation": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "weight": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        },
-        "originalSource": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "originalTarget": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "reversed": {
-          "type": "boolean"
-        }
-      }
-    },
-    "mergedWindow": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "startLine",
-        "endLine",
-        "nodeIds"
-      ],
-      "properties": {
-        "path": {
           "type": "string",
           "minLength": 1
         },
-        "startLine": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endLine": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "nodeIds": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeId"
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        }
-      }
-    },
-    "profileCompatibility": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "profile",
-        "compatible",
-        "allowedRelations",
-        "allowedTransitions",
-        "kindBonus",
-        "relationWeightMultiplier",
-        "frontierActions"
-      ],
-      "properties": {
-        "profile": {
-          "enum": [
-            "owner-query",
-            "query-deps",
-            "owner-tests",
-            "prime",
-            "read-frontier",
-            "failure-frontier",
-            "field-impact",
-            "type-impact",
-            "collection-impact",
-            "failure-evidence",
-            "test-selection",
-            "affected",
-            "evidence-quality",
-            "rust-evidence-quality"
-          ]
-        },
-        "compatible": {
-          "type": "boolean"
-        },
-        "allowedRelations": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]*$"
-          },
-          "uniqueItems": true
-        },
-        "allowedTransitions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/allowedTransition"
-          },
-          "uniqueItems": true
-        },
-      "kindBonus": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "number"
-        }
-      },
-      "relationWeightMultiplier": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "number"
-        }
-      },
-      "frontierActions": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]*$"
-          }
-        }
-      }
-    },
-    "allowedTransition": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "sourceKind",
-        "targetKind"
-      ],
-      "properties": {
-        "sourceKind": {
+        "target": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
+          "minLength": 1
         },
-        "targetKind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        }
-      }
-    },
-    "profileMatrixSummary": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "profile",
-        "relationCount",
-        "transitionCount",
-        "supportedEdgeCount",
-        "reachableEdgeCount",
-        "density",
-        "relationMatrixCount",
-        "zeroEdgeRelationCount",
-        "transitionNonZeroCount",
-        "transitionWeightMass",
-        "relationChannels"
-      ],
-      "properties": {
-        "profile": {
-          "enum": [
-            "owner-query",
-            "query-deps",
-            "owner-tests",
-            "prime",
-            "read-frontier",
-            "failure-frontier",
-            "field-impact",
-            "type-impact",
-            "collection-impact",
-            "failure-evidence",
-            "test-selection",
-            "affected",
-            "evidence-quality",
-            "rust-evidence-quality"
-          ]
-        },
-        "relationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "transitionCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "supportedEdgeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "reachableEdgeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "density": {
-          "type": "number",
-          "minimum": 0
-        },
-        "relationMatrixCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "zeroEdgeRelationCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "transitionNonZeroCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "transitionWeightMass": {
-          "type": "number",
-          "minimum": 0
-        },
-        "relationChannels": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/relationChannelSummary"
-          }
-        }
-      }
-    },
-    "relationChannelSummary": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "relation",
-        "supportedEdgeCount",
-        "reachableEdgeCount",
-        "weightMass",
-        "reachableWeightMass",
-        "matrixNonZeroCount",
-        "rankedContributionMass",
-        "frontierContributionMass"
-      ],
-      "properties": {
         "relation": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
+          "minLength": 1
         },
-        "supportedEdgeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "reachableEdgeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "weightMass": {
-          "type": "number",
-          "minimum": 0
-        },
-        "reachableWeightMass": {
-          "type": "number",
-          "minimum": 0
-        },
-        "matrixNonZeroCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "rankedContributionMass": {
-          "type": "number",
-          "minimum": 0
-        },
-        "frontierContributionMass": {
-          "type": "number",
-          "minimum": 0
-        }
-      }
-    },
-    "sourceSinkFrontier": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "sourceIds",
-        "sinkIds"
-      ],
-      "properties": {
-        "sourceIds": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeId"
-          },
-          "uniqueItems": true
-        },
-        "sinkIds": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeId"
-          },
-          "uniqueItems": true
-        }
-      }
-    },
-    "typedPath": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "id",
-        "pathKind",
-        "source",
-        "sink",
-        "nodeIds",
-        "relations",
-        "cost",
-        "score",
-        "rank"
-      ],
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^P[0-9]+$"
-        },
-        "pathKind": {
-          "enum": [
-            "constrained-shortest",
-            "k-shortest"
-          ]
-        },
-        "source": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "sink": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "nodeIds": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeId"
-          },
-          "minItems": 2
-        },
-        "relations": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]*$"
-          }
-        },
-        "cost": {
-          "type": "number"
-        },
-        "score": {
-          "type": "number"
-        },
-        "rank": {
-          "type": "integer",
-          "minimum": 1
-        }
-      }
-    },
-    "flowLite": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "rankedPathIds"
-      ],
-      "properties": {
-        "rankedPathIds": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^P[0-9]+$"
-          },
-          "uniqueItems": true
-        }
-      }
-    },
-    "graphCache": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "key",
-        "status",
-        "backend",
-        "entries"
-      ],
-      "properties": {
-        "key": {
-          "type": "string",
-          "pattern": "^sha256:([a-z][a-z0-9_-]*:)?[0-9a-f]{64}$"
-        },
-        "status": {
-          "enum": [
-            "hit",
-            "miss",
-            "disabled"
-          ]
-        },
-        "backend": {
-          "const": "scipy-csr"
-        },
-        "entries": {
-          "type": "integer",
-          "minimum": 0
-        }
-      }
-    },
-    "algorithmTraceStep": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "step",
-        "engine",
-        "fields"
-      ],
-      "properties": {
-        "step": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "engine": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "fields": {
-          "type": "object"
-        }
-      }
-    },
-    "rankExplanation": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "nodeId",
-        "score",
-        "depth",
-        "reasons"
-      ],
-      "properties": {
-        "nodeId": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "score": {
-          "type": "number"
-        },
-        "depth": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "reasons": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      }
-    },
-    "receiptAdjustment": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "nodeId",
-        "effect",
-        "scoreDelta",
-        "reason"
-      ],
-      "properties": {
-        "nodeId": {
-          "$ref": "#/$defs/nodeId"
-        },
-        "effect": {
-          "enum": [
-            "boost",
-            "penalty"
-          ]
-        },
-        "scoreDelta": {
-          "type": "number"
-        },
-        "reason": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        }
-      }
-    },
-    "algorithmMetrics": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "nodeCount",
-        "edgeCount",
-        "selectedEdgeCount",
-        "reachableNodeCount",
-        "rankedNodeCount",
-        "pathCount",
-        "pathBackend",
-        "pathFallbackCount",
-        "pathPairCount",
-        "pathCandidateCount",
-        "mergedWindowCount",
-        "cacheStatus",
-        "relationChannelCount",
-        "pprIterations",
-        "pprResidual",
-        "pprDanglingMassLast",
-        "pprMassSum",
-        "readLoopSecondPassSuppressedCount",
-        "readLoopDuplicateSelectorSuppressedCount",
-        "readLoopAdjacentRangeMergedCount",
-        "readLoopSameOwnerSuppressedCount"
-      ],
-      "properties": {
-        "nodeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "edgeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "selectedEdgeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "reachableNodeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "rankedNodeCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "pathCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "pathBackend": {
-          "enum": [
-            "python-bfs-small",
-            "scipy-yen",
-            "scipy-dijkstra",
-            "python-bfs-fallback"
-          ]
-        },
-        "pathFallbackCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "pathPairCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "pathCandidateCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "mergedWindowCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "cacheStatus": {
-          "enum": [
-            "hit",
-            "miss",
-            "disabled"
-          ]
-        },
-        "depthCacheStatus": {
-          "enum": [
-            "hit",
-            "miss",
-            "disabled",
-            "unknown"
-          ]
-        },
-        "pprCacheStatus": {
-          "enum": [
-            "hit",
-            "miss",
-            "disabled",
-            "unknown"
-          ]
-        },
-        "reachableEdgesCacheStatus": {
-          "enum": [
-            "hit",
-            "miss",
-            "disabled",
-            "unknown"
-          ]
-        },
-        "readLoopDirectCodeActionCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "readLoopDuplicateSelectorCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "readLoopAdjacentRangeWindowCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "readLoopSameOwnerScanCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "readMemorySuppressedCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "receiptBoostCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "receiptPenaltyCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "relationChannelCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "pprIterations": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "pprResidual": {
-          "type": "number",
-          "minimum": 0
-        },
-        "pprDanglingMassLast": {
-          "type": "number",
-          "minimum": 0
-        },
-        "pprMassSum": {
-          "type": "number",
-          "minimum": 0
-        },
-        "readLoopSecondPassSuppressedCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "readLoopDuplicateSelectorSuppressedCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "readLoopAdjacentRangeMergedCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "readLoopSameOwnerSuppressedCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "querySeedPriorCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "querySeedPriorMass": {
-          "type": "number"
-        },
-        "queryPackageCohesionCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryPackageDriftPenaltyCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryPackageCohesionDelta": {
-          "type": "number"
-        },
-        "queryClauseCoverageCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryClauseCoverageDelta": {
-          "type": "number"
-        },
-        "queryLocalEvidenceBoostCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryLocalEvidencePenaltyCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryLocalEvidenceDelta": {
-          "type": "number"
-        },
-        "queryTopologyMembershipCandidateCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryTopologyMembershipBoostCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryTopologyMembershipPenaltyCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryTopologyMembershipDirectCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryTopologyMembershipNearbyCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "queryTopologyMembershipCoverageRate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "queryTopologyMembershipDriftRate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "queryTopologyMembershipDelta": {
+        "weight": {
           "type": "number"
         }
-      }
-    },
-    "readMemory": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "seenSelectors",
-        "suppressedSelectors"
-      ],
-      "properties": {
-        "seenSelectors": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "uniqueItems": true
-        },
-        "suppressedSelectors": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "uniqueItems": true
-        }
-      }
+      },
+      "additionalProperties": true
     }
-  }
+  },
+  "additionalProperties": true
 }

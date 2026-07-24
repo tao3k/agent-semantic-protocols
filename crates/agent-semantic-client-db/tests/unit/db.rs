@@ -101,7 +101,7 @@ fn absent_host_target_atomically_revokes_live_binding() {
         .expect("invalidate live binding")
         .expect("updated session");
 
-    assert_eq!(orphaned.status, "orphan-risk");
+    assert_eq!(orphaned.status(), "orphan-risk");
     assert_eq!(orphaned.message_target_id, None);
     let metadata: serde_json::Value =
         serde_json::from_str(&orphaned.metadata_json).expect("metadata json");
@@ -267,7 +267,7 @@ fn resident_session_replacement_is_exact_compare_and_swap() {
             },
         )
         .expect("replace exact old child");
-    assert_eq!(replaced.session_id, "child-new");
+    assert_eq!(replaced.session_id(), "child-new");
     assert_eq!(replaced.physical_generation, 2);
     assert!(
         agent_semantic_client_db::agent_session_message_target_is_live_bound(
@@ -298,7 +298,7 @@ fn resident_session_replacement_is_exact_compare_and_swap() {
         .session_by_name("project-1", "root-session", "asp-explore")
         .expect("read route")
         .expect("route exists");
-    assert_eq!(current.session_id, "child-new");
+    assert_eq!(current.session_id(), "child-new");
     assert_eq!(current.physical_generation, 2);
     let _ = std::fs::remove_dir_all(root);
 }
@@ -458,8 +458,8 @@ fn agent_session_registry_storage_is_turso_owned() {
         })
         .expect("register session through Turso DB crate");
 
-    assert_eq!(record.root_session_id, "root-session");
-    assert_eq!(record.session_id, "child-session");
+    assert_eq!(record.root_session_id(), "root-session");
+    assert_eq!(record.session_id(), "child-session");
     assert_eq!(record.model.as_deref(), Some("gpt-test"));
     assert_eq!(
         record.model_observation_source.as_deref(),
@@ -470,7 +470,15 @@ fn agent_session_registry_storage_is_turso_owned() {
     assert!(record.is_routable_at(1_800_000_001));
     assert_eq!(
         registry
-            .query_sessions("project-1", Some("root-session"), Some("asp-explore"))
+            .query_sessions(
+                "project-1",
+                Some(agent_semantic_client_db::AgentSessionRootSessionId::from(
+                    "root-session",
+                )),
+                Some(agent_semantic_client_db::AgentSessionResidentName::from(
+                    "asp-explore",
+                )),
+            )
             .expect("query session")
             .len(),
         1
@@ -619,10 +627,18 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
         })
         .expect("move stale child mapping to new root");
 
-    assert_eq!(record.root_session_id, "new-root");
+    assert_eq!(record.root_session_id(), "new-root");
     assert_eq!(
         registry
-            .query_sessions("project-1", Some("old-root"), Some("asp-explore"))
+            .query_sessions(
+                "project-1",
+                Some(agent_semantic_client_db::AgentSessionRootSessionId::from(
+                    "old-root",
+                )),
+                Some(agent_semantic_client_db::AgentSessionResidentName::from(
+                    "asp-explore",
+                )),
+            )
             .expect("query old root")
             .len(),
         0
@@ -632,7 +648,7 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
             .session_by_id("project-1", "child-session")
             .expect("lookup moved child")
             .expect("child exists")
-            .root_session_id,
+            .root_session_id(),
         "new-root"
     );
 
@@ -729,14 +745,20 @@ fn agent_session_registry_survives_concurrent_process_register_stress() {
     let registry =
         AgentSessionRegistry::open_or_create_state_root(&state_root).expect("open registry");
     let sessions = registry
-        .query_sessions("project-process-stress", None, Some("asp-explore"))
+        .query_sessions(
+            "project-process-stress",
+            None,
+            Some(agent_semantic_client_db::AgentSessionResidentName::from(
+                "asp-explore",
+            )),
+        )
         .expect("query process stress sessions");
     assert_eq!(sessions.len(), writer_count);
     for writer_id in 0..writer_count {
         assert!(
-            sessions.iter().any(|session| session.session_id
+            sessions.iter().any(|session| session.session_id()
                 == format!("child-session-{writer_id}")
-                && session.root_session_id == format!("root-session-{writer_id}")),
+                && session.root_session_id() == format!("root-session-{writer_id}")),
             "missing process writer {writer_id} session in {sessions:?}"
         );
     }
@@ -785,8 +807,12 @@ fn agent_session_registry_concurrent_process_register_shared_route_does_not_uniq
     let sessions = registry
         .query_sessions(
             "project-process-stress",
-            Some("root-session"),
-            Some("asp-explore"),
+            Some(agent_semantic_client_db::AgentSessionRootSessionId::from(
+                "root-session",
+            )),
+            Some(agent_semantic_client_db::AgentSessionResidentName::from(
+                "asp-explore",
+            )),
         )
         .expect("query shared route process stress session");
     assert_eq!(
@@ -795,7 +821,7 @@ fn agent_session_registry_concurrent_process_register_shared_route_does_not_uniq
         "shared route register should converge to one routable row"
     );
     assert!(
-        sessions[0].session_id.starts_with("child-session-"),
+        sessions[0].session_id().starts_with("child-session-"),
         "unexpected shared route winner: {:?}",
         sessions[0]
     );

@@ -14,12 +14,11 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
-    ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexImportAssemblyRequest,
-    ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
-    ClientDbSourceIndexLookupState, ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey,
-    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSelectorPayloadProof, ClientDbSourceIndexSource, build_source_index_import,
-    source_index_import_with_file_hashes,
+    ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
+    ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexPath,
+    ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile,
+    ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorPayloadProof,
+    ClientDbSourceIndexSource, build_source_index_import, source_index_import_with_file_hashes,
 };
 
 #[path = "engine_source_index/exact_selector_projection.rs"]

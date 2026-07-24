@@ -21,13 +21,13 @@ mod artifact_pointer_tests {
     }
 
     fn key(pointer_name: impl Into<String>) -> ClientDbArtifactPointerKey {
-        ClientDbArtifactPointerKey {
-            repo_id: "repo:test".to_owned(),
-            workspace_id: "workspace:test".to_owned(),
-            scope_id: "scope:test".to_owned(),
-            pointer_kind: "semantic-index-root".to_owned(),
-            pointer_name: pointer_name.into(),
-        }
+        ClientDbArtifactPointerKey::new(
+            "repo:test",
+            "workspace:test",
+            "scope:test",
+            "semantic-index-root",
+            pointer_name,
+        )
     }
 
     fn root(label: &str) -> String {

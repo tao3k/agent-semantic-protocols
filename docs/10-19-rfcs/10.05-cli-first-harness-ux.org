@@ -38,7 +38,7 @@ always-read document.
 - [[file:10.05-cli-first-harness-ux/10.05.00-overview.org][Overview And Non-Goals]] :: One-sentence summary through What NOT to build: the anti-patterns.
 - [[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface.org][Search Query Surface]] :: CLI is the protocol: search plus query surface.
 - [[file:10.05-cli-first-harness-ux/10.05.15-tool-health-and-search-history.org][Tool Health And Search History]] :: Required external tool health plus artifact-backed search command feedback.
-- [[file:10.05-cli-first-harness-ux/10.05.20-prime-compact-graph.org][Prime And Compact Graph]] :: The two-phase search model: deep prime → multi-pipe through Graph-first view controls.
+- [[file:10.05-cli-first-harness-ux/10.05.20-prime-search-flow.org][Prime Search Flow]] :: The two-phase search model: deep prime → multi-pipe through graph-first projection controls.
 - [[file:10.05-cli-first-harness-ux/10.05.30-ingest-pattern-views.org][Ingest Pattern And View Reference]] :: External candidate adapters: =search ingest= through Search view reference (graph-first).
 - [[file:10.05-cli-first-harness-ux/10.05.35-validation-exit-codes.org][Validation And Exit Codes]] :: Snapshot test requirements through Exit codes.
 - [[file:10.05-cli-first-harness-ux/10.05.40-daemon-guide-hooks.org][Daemon Guide And Hooks]] :: Local daemon design through Hooks: inject reminders, don't plan.

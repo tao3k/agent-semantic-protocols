@@ -60,6 +60,7 @@ mod hashing_tests;
 
 pub mod active_artifact_merkle_v1;
 pub mod canonical_item_identity;
+pub mod structural_selector;
 
 #[cfg(test)]
 #[path = "../tests/unit/canonical_item_identity.rs"]

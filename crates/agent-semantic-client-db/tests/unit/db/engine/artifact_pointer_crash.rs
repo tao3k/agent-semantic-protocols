@@ -25,13 +25,13 @@ mod artifact_pointer_crash_tests {
     }
 
     fn key() -> ClientDbArtifactPointerKey {
-        ClientDbArtifactPointerKey {
-            repo_id: "repo:crash-test".to_owned(),
-            workspace_id: "workspace:crash-test".to_owned(),
-            scope_id: "scope:crash-test".to_owned(),
-            pointer_kind: "topology-root".to_owned(),
-            pointer_name: "current".to_owned(),
-        }
+        ClientDbArtifactPointerKey::new(
+            "repo:crash-test",
+            "workspace:crash-test",
+            "scope:crash-test",
+            "topology-root",
+            "current",
+        )
     }
 
     fn durable_root() -> String {

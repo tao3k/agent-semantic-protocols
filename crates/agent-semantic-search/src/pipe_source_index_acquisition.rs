@@ -5,30 +5,60 @@ use std::path::{Path, PathBuf};
 use crate::SearchPipeCandidate;
 use crate::pipe_source::intent_terms_all_path_like;
 
+macro_rules! source_index_acquisition_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+    };
+}
+
+source_index_acquisition_text!(SearchPipeSourceIndexPath);
+source_index_acquisition_text!(SearchPipeSourceIndexLanguageId);
+source_index_acquisition_text!(SearchPipeSourceIndexProviderId);
+source_index_acquisition_text!(SearchPipeSourceIndexSourceKind);
+source_index_acquisition_text!(SearchPipeSourceIndexQueryKey);
+source_index_acquisition_text!(SearchPipeSourceIndexStructuralSelector);
+source_index_acquisition_text!(SearchPipeSourceIndexPayloadKind);
+source_index_acquisition_text!(SearchPipeSourceIndexLookupState);
+source_index_acquisition_text!(SearchPipeSourceIndexArtifactDigest);
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeSourceIndexCandidate {
-    pub path: String,
-    pub language_id: Option<String>,
-    pub provider_id: Option<String>,
-    pub source_kind: String,
+    pub path: SearchPipeSourceIndexPath,
+    pub language_id: Option<SearchPipeSourceIndexLanguageId>,
+    pub provider_id: Option<SearchPipeSourceIndexProviderId>,
+    pub source_kind: SearchPipeSourceIndexSourceKind,
     pub line_count: Option<u32>,
-    pub query_keys: Vec<String>,
+    pub query_keys: Vec<SearchPipeSourceIndexQueryKey>,
     pub selector_proof: Option<SearchPipeSelectorPayloadProof>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeSelectorPayloadProof {
-    pub structural_selector: String,
-    pub payload_kind: String,
+    pub structural_selector: SearchPipeSourceIndexStructuralSelector,
+    pub payload_kind: SearchPipeSourceIndexPayloadKind,
     pub bounded: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeSourceIndexLookup {
-    pub state: String,
+    pub state: SearchPipeSourceIndexLookupState,
     pub candidates: Vec<SearchPipeSourceIndexCandidate>,
     pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
-    pub index_artifact_digest: Option<String>,
+    pub index_artifact_digest: Option<SearchPipeSourceIndexArtifactDigest>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

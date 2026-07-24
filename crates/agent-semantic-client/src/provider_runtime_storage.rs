@@ -8,10 +8,12 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_db::storage_contract::{
     AgentStorage, SESSION_EVENT_BATCH_SCHEMA_ID, SessionEvent, SessionEventBatch,
-    SessionEventBatchWriteReceipt, StorageOptimizationProfile, StoragePartitionKey,
-    StorageRetryPolicy, StorageTransactionMode,
+    SessionEventBatchWriteReceipt, StorageAgentId, StorageOptimizationProfile, StoragePartitionKey,
+    StorageRepoId, StorageRetryPolicy, StorageScopeId, StorageSessionId, StorageTransactionMode,
+    StorageWorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -104,33 +106,55 @@ impl From<&str> for ProviderRuntimeRootSessionId {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProviderRuntimeStorageContext {
-    pub repo_id: String,
-    pub workspace_id: String,
-    pub scope_id: String,
-    pub session_id: String,
-    pub root_session_id: String,
-    pub agent_id: String,
-    pub invocation_id: String,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderRuntimeMethod(String);
+
+impl ProviderRuntimeMethod {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for ProviderRuntimeMethod {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ProviderRuntimeMethod {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProviderExecutionStorageEvent {
-    pub phase: String,
-    pub provider_method: String,
-    pub language_id: String,
-    pub status_code: i32,
-    pub stdout_digest: String,
-    pub stderr_digest: String,
-    pub receipt_present: bool,
-    pub root_session_id: String,
+pub(crate) struct ProviderRuntimeStorageContext {
+    pub(crate) repo_id: String,
+    pub(crate) workspace_id: String,
+    pub(crate) scope_id: String,
+    pub(crate) session_id: String,
+    pub(crate) root_session_id: String,
+    pub(crate) agent_id: String,
+    pub(crate) invocation_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProviderExecutionStorageEvent {
+    phase: String,
+    provider_method: String,
+    language_id: String,
+    status_code: i32,
+    stdout_digest: String,
+    stderr_digest: String,
+    receipt_present: bool,
+    root_session_id: String,
 }
 
 impl ProviderExecutionStorageEvent {
-    pub fn from_output(
+    fn from_output(
         phase: impl Into<String>,
         provider_method: impl Into<String>,
         language_id: impl Into<String>,
@@ -164,7 +188,7 @@ pub struct ProviderRuntimeStorageAdapter {
 #[derive(Clone)]
 pub struct ProviderRuntimeStorageBinding {
     pub adapter: ProviderRuntimeStorageAdapter,
-    pub context: ProviderRuntimeStorageContext,
+    pub(crate) context: ProviderRuntimeStorageContext,
     event_db_path: std::path::PathBuf,
 }
 
@@ -269,14 +293,16 @@ impl ProviderRuntimeStorageBinding {
 
     pub fn record_invocation_start(
         &self,
-        provider_method: &str,
-        language_id: &str,
+        provider_method: impl Into<ProviderRuntimeMethod>,
+        language_id: impl Into<LanguageId>,
     ) -> Result<SessionEventBatchWriteReceipt, String> {
+        let provider_method = provider_method.into();
+        let language_id = language_id.into();
         let created_at_ms = current_time_millis();
         let event = ProviderExecutionStorageEvent::from_output(
             "invocation-start",
-            provider_method,
-            language_id,
+            provider_method.as_str(),
+            language_id.as_str(),
             0,
             &[],
             &[],
@@ -316,7 +342,7 @@ impl ProviderRuntimeStorageAdapter {
         Ok(self)
     }
 
-    pub async fn append_provider_execution_async(
+    pub(crate) async fn append_provider_execution_async(
         &self,
         context: &ProviderRuntimeStorageContext,
         event: &ProviderExecutionStorageEvent,
@@ -336,11 +362,11 @@ impl ProviderRuntimeStorageAdapter {
             schema_id: SESSION_EVENT_BATCH_SCHEMA_ID.to_owned(),
             batch_id,
             partition: StoragePartitionKey {
-                repo_id: context.repo_id.clone(),
-                workspace_id: context.workspace_id.clone(),
-                scope_id: context.scope_id.clone(),
-                session_id: context.session_id.clone(),
-                agent_id: context.agent_id.clone(),
+                repo_id: StorageRepoId::from(context.repo_id.clone()),
+                workspace_id: StorageWorkspaceId::from(context.workspace_id.clone()),
+                scope_id: StorageScopeId::from(context.scope_id.clone()),
+                session_id: StorageSessionId::from(context.session_id.clone()),
+                agent_id: StorageAgentId::from(context.agent_id.clone()),
             },
             optimization_profile: self.optimization_profile,
             transaction_mode: self.transaction_mode,
@@ -359,7 +385,7 @@ impl ProviderRuntimeStorageAdapter {
             .map_err(|error| format!("{:?}: {}", error.code, error.message))
     }
 
-    pub fn append_provider_execution(
+    pub(crate) fn append_provider_execution(
         &self,
         context: &ProviderRuntimeStorageContext,
         event: &ProviderExecutionStorageEvent,

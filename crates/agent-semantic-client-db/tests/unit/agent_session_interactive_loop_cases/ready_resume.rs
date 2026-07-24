@@ -1,12 +1,8 @@
 use agent_semantic_client_db::agent_session_registry::{
-    AgentSessionLoopState, AgentSessionRecord, ResidentChildBootstrapMenuInput,
-    SameChildRuntimeOverrideState, agent_session_message_target_is_currently_routable,
-    agent_session_message_target_is_live_bound, classify_same_child_runtime_override_state,
-    resident_child_bootstrap_menu, resident_child_host_runtime_refresh_eligible,
-    resident_child_runtime_repair_menu, typed_runtime_observation_matches_profile,
+    AgentSessionLoopState, ResidentChildBootstrapMenuInput, resident_child_bootstrap_menu,
 };
 
-use super::common::{active_record, rollout_and_host_tree_bound_record, testing_record};
+use super::common::active_record;
 
 #[test]
 fn aligned_routable_record_is_ready() {
@@ -215,7 +211,7 @@ fn host_tree_absent_with_typed_spawn_allows_one_canonical_replacement() {
 #[test]
 fn historical_orphan_is_never_offered_as_a_live_rebind_target() {
     let mut record = active_record(Some("gpt-5.4-mini"), Some("historical-child"));
-    record.status = "orphan-risk".to_string();
+    record.status = "orphan-risk".into();
     let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
         platform: "codex",
         name: "asp-explore",
@@ -243,7 +239,7 @@ fn historical_orphan_is_never_offered_as_a_live_rebind_target() {
 #[test]
 fn host_present_completed_resident_is_resumed_instead_of_cleaned_up() {
     let mut record = active_record(Some("gpt-5.4-mini"), Some("child"));
-    record.status = "archived".to_string();
+    record.status = "archived".into();
     let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
         platform: "codex",
         name: "asp-explore",

@@ -5,7 +5,7 @@ use super::aliases::{
     self, graph_aliases, graph_edge_lines, graph_frontier, graph_legend_line, graph_rank,
     graph_syntax_lines, is_owner_item_query,
 };
-use super::api::{COMPACT_GRAPH_MICRO_LEGEND, GraphRenderOptions};
+use super::api::{TERSE_GRAPH_MICRO_LEGEND, TopologyProjectionOptions};
 use super::header::graph_header;
 use super::packet::{
     fallback_algorithm, graph_root, is_owner_item_query_packet, packet_string, packet_view,
@@ -19,7 +19,10 @@ const PRIME_GRAPH_LEGEND: &str =
 const PRIME_OWNER_ONLY_LEGEND: &str =
     "legend: ID=kind:role(value)!next; entries profile(selectors=>returns)";
 
-pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOptions) -> String {
+pub(super) fn render_search_topology_projection(
+    packet: &Value,
+    options: TopologyProjectionOptions,
+) -> String {
     fn graph_avoid_line(packet: &Value) -> Option<String> {
         let actions = packet.get("avoidNextActions")?.as_array()?;
         let kinds = actions
@@ -54,6 +57,7 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
         owner_item_query_packet,
         query_term_count(packet),
     );
+    header.push_str(&format!(" density={}", options.density.as_str()));
     if prime_mode {
         header.push_str(&format!(" budget=handles:{seed_limit}"));
     }
@@ -66,7 +70,7 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
     } else if prime_mode {
         PRIME_GRAPH_LEGEND.to_string()
     } else {
-        COMPACT_GRAPH_MICRO_LEGEND.to_string()
+        TERSE_GRAPH_MICRO_LEGEND.to_string()
     });
     lines.push(if prime_owner_only_frontier {
         "aliases: owner:{O=owner}".to_string()

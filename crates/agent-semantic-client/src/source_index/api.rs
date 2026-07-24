@@ -133,6 +133,28 @@ pub struct CurrentSourceIndexSnapshot {
     pub source_blobs: std::collections::BTreeMap<String, Vec<u8>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceIndexOwnerPath(String);
+
+impl SourceIndexOwnerPath {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SourceIndexOwnerPath {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for SourceIndexOwnerPath {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProviderSourceSnapshotEnvelopeV1<'a> {
@@ -281,16 +303,19 @@ pub fn current_source_index_snapshot(
 /// live parser.
 pub fn current_source_index_snapshot_for_owner(
     project_root: &Path,
-    owner_path: &str,
-    language_id: &str,
-    provider_id: &str,
+    owner_path: impl Into<SourceIndexOwnerPath>,
+    language_id: impl Into<LanguageId>,
+    provider_id: impl Into<ProviderId>,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
+    let owner_path = owner_path.into();
+    let language_id = language_id.into();
+    let provider_id = provider_id.into();
     let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
     current_source_index_snapshot_for_owner_with_registry(
         project_root,
-        owner_path,
-        language_id,
-        provider_id,
+        owner_path.as_str(),
+        language_id.as_str(),
+        provider_id.as_str(),
         &provider_registry,
     )
 }
@@ -303,16 +328,19 @@ pub fn current_source_index_snapshot_for_owner_from_activation(
     project_root: &Path,
     activation_path: &Path,
     activation: &agent_semantic_hook::HookRuntime,
-    owner_path: &str,
-    language_id: &str,
-    provider_id: &str,
+    owner_path: impl Into<SourceIndexOwnerPath>,
+    language_id: impl Into<LanguageId>,
+    provider_id: impl Into<ProviderId>,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
+    let owner_path = owner_path.into();
+    let language_id = language_id.into();
+    let provider_id = provider_id.into();
     let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
     current_source_index_snapshot_for_owner_with_registry(
         project_root,
-        owner_path,
-        language_id,
-        provider_id,
+        owner_path.as_str(),
+        language_id.as_str(),
+        provider_id.as_str(),
         &provider_registry,
     )
 }

@@ -121,9 +121,13 @@ pub(super) fn release_terminal_owner_before_typed_start(
         )?;
     let Some(existing) = registry
         .query_sessions(
-            &project_id,
-            Some(root_session_id),
-            Some(asp_session_policy.resident_child_name()),
+            project_id.as_str(),
+            Some(agent_semantic_client_db::AgentSessionRootSessionId::from(
+                root_session_id,
+            )),
+            Some(agent_semantic_client_db::AgentSessionResidentName::from(
+                asp_session_policy.resident_child_name(),
+            )),
         )?
         .into_iter()
         .find(|existing| {

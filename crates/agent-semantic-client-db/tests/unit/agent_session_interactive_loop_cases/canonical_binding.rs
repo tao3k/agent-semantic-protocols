@@ -1,9 +1,8 @@
 use agent_semantic_client_db::agent_session_registry::{
-    AgentSessionLoopState, AgentSessionRecord, ResidentChildBootstrapMenuInput,
-    SameChildRuntimeOverrideState, agent_session_message_target_is_currently_routable,
-    agent_session_message_target_is_live_bound, classify_same_child_runtime_override_state,
+    AgentSessionLoopState, ResidentChildBootstrapMenuInput, SameChildRuntimeOverrideState,
+    agent_session_message_target_is_currently_routable, classify_same_child_runtime_override_state,
     resident_child_bootstrap_menu, resident_child_host_runtime_refresh_eligible,
-    resident_child_runtime_repair_menu, typed_runtime_observation_matches_profile,
+    resident_child_runtime_repair_menu,
 };
 
 use super::common::{active_record, rollout_and_host_tree_bound_record, testing_record};
@@ -29,17 +28,18 @@ fn testing_resident_projects_testing_profile_and_canonical_target() {
     assert!(
         menu.choices[0]
             .platform_action
-            .contains("configured resident slot")
+            .contains("exact denied command")
+    );
+    assert!(menu.choices[0].platform_action.contains("action=send"));
+    assert!(
+        menu.choices[0]
+            .platform_action
+            .contains("action=wait/complete")
     );
     assert!(
         menu.choices[0]
             .platform_action
-            .contains("verified canonical message target")
-    );
-    assert!(
-        menu.choices[0]
-            .platform_action
-            .contains("configured receipt kind")
+            .contains("must never resend")
     );
     assert!(menu.choices[0].platform_action.contains("dispatch-claim"));
     assert!(!menu.choices[0].platform_action.contains("asp_explorer"));
@@ -233,13 +233,13 @@ fn canonical_path_without_trusted_identity_source_is_not_live_bound() {
 #[test]
 fn pending_fresh_same_child_runtime_mismatch_requires_typed_replacement() {
     let mut record = active_record(Some("gpt-5.6-sol"), Some("/root/asp_explorer"));
-    record.status = "replacement-required".to_string();
+    record.status = "replacement-required".into();
 
     assert!(!resident_child_host_runtime_refresh_eligible(
         false, &record, "root"
     ));
     assert_eq!(
-        classify_same_child_runtime_override_state(&record.status, false, true),
+        classify_same_child_runtime_override_state(record.status(), false, true),
         SameChildRuntimeOverrideState::ReplacementRequired,
     );
 

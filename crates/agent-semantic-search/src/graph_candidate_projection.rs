@@ -6,6 +6,27 @@ const HOT_CONTEXT_BEFORE_LINES: usize = 8;
 const HOT_CONTEXT_AFTER_LINES: usize = 12;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GraphCandidateLanguageId(String);
+
+impl GraphCandidateLanguageId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for GraphCandidateLanguageId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for GraphCandidateLanguageId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GraphProjectionCandidate {
     pub(crate) path: String,
     pub(crate) line: usize,
@@ -97,14 +118,14 @@ impl GraphProjectionCandidate {
 }
 
 pub struct GraphCandidateItemNodesRequest<'a> {
-    language_id: &'a str,
+    language_id: &'a GraphCandidateLanguageId,
     candidates: &'a [GraphProjectionCandidate],
     limit: usize,
 }
 
 impl<'a> GraphCandidateItemNodesRequest<'a> {
     pub fn new(
-        language_id: &'a str,
+        language_id: &'a GraphCandidateLanguageId,
         candidates: &'a [GraphProjectionCandidate],
         limit: usize,
     ) -> Self {
@@ -117,14 +138,14 @@ impl<'a> GraphCandidateItemNodesRequest<'a> {
 }
 
 pub struct GraphCandidateHotNodesRequest<'a> {
-    language_id: &'a str,
+    language_id: &'a GraphCandidateLanguageId,
     candidates: &'a [GraphProjectionCandidate],
     limit: usize,
 }
 
 impl<'a> GraphCandidateHotNodesRequest<'a> {
     pub fn new(
-        language_id: &'a str,
+        language_id: &'a GraphCandidateLanguageId,
         candidates: &'a [GraphProjectionCandidate],
         limit: usize,
     ) -> Self {

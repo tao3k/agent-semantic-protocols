@@ -18,6 +18,7 @@ pub mod turso_agent_storage;
 pub mod turso_cdc_storage;
 pub mod turso_encrypted_storage;
 mod turso_mvcc_keyset;
+pub use turso_mvcc_keyset::{TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey};
 mod turso_mvcc_maintenance;
 pub mod turso_mvcc_store;
 mod turso_mvcc_typed;
@@ -30,7 +31,8 @@ pub use agent_session_registry::{
     AGENT_SESSION_STATUS_IDLE, AGENT_SESSION_STATUS_INVALID, AgentSessionDispatchClaimRequest,
     AgentSessionDispatchClaimResult, AgentSessionDispatchCompleteRequest,
     AgentSessionDispatchLeaseRecord, AgentSessionLookupRequest, AgentSessionRecord,
-    AgentSessionRegisterRequest, AgentSessionRegistry, AgentSessionToolEventRequest,
+    AgentSessionRegisterRequest, AgentSessionRegistry, AgentSessionResidentName,
+    AgentSessionRootSessionId, AgentSessionToolEventRequest,
     agent_session_message_target_is_currently_routable, agent_session_message_target_is_live_bound,
     agent_session_normalized_metadata_json, agent_session_status_is_routable,
     agent_session_unix_timestamp,

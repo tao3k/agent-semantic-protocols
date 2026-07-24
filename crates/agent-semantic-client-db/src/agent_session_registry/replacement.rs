@@ -7,7 +7,7 @@ use super::{
         AgentSessionRegistry, block_on_agent_session_registry_async,
         connect_turso_agent_session_registry, turso_session_by_name,
     },
-    types::{AgentSessionRecord, AgentSessionRegisterRequest},
+    types::{AgentSessionId, AgentSessionRecord, AgentSessionRegisterRequest},
 };
 
 impl AgentSessionRegistry {
@@ -17,12 +17,13 @@ impl AgentSessionRegistry {
     /// newer native child that already claimed the same root/name route.
     pub fn replace_resident_session(
         &self,
-        expected_session_id: &str,
+        expected_session_id: impl Into<AgentSessionId>,
         request: AgentSessionRegisterRequest<'_>,
     ) -> Result<AgentSessionRecord, String> {
+        let expected_session_id = expected_session_id.into();
         block_on_agent_session_registry_async(turso_replace_resident_session(
             self.db_path(),
-            expected_session_id,
+            expected_session_id.as_str(),
             request,
         ))
     }

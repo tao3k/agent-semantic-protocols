@@ -14,7 +14,7 @@ pub const AGENT_SESSION_STATUS_INVALID: &str = "invalid";
 macro_rules! agent_session_registry_id {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
         pub struct $name(String);
 
         impl $name {
@@ -40,6 +40,18 @@ macro_rules! agent_session_registry_id {
                 Self(value.to_string())
             }
         }
+
+        impl From<&String> for $name {
+            fn from(value: &String) -> Self {
+                Self(value.clone())
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
     };
 }
 
@@ -52,6 +64,10 @@ agent_session_registry_id!(
     AgentSessionRootSessionId
 );
 agent_session_registry_id!(
+    /// Concrete child session id registered by the host.
+    AgentSessionId
+);
+agent_session_registry_id!(
     /// Configured resident lane name such as `asp-explore`.
     AgentSessionResidentName
 );
@@ -59,19 +75,86 @@ agent_session_registry_id!(
     /// Exact resident dispatch identity.
     AgentSessionDispatchIdentity
 );
-
+agent_session_registry_id!(
+    /// Agent session routing lifecycle status.
+    AgentSessionStatus
+);
+agent_session_registry_id!(
+    /// Configured typed-agent role captured from native evidence.
+    AgentSessionConfiguredAgentType
+);
+agent_session_registry_id!(
+    /// Durable typed profile evidence JSON captured from native evidence.
+    AgentSessionProfileEvidenceJson
+);
+agent_session_registry_id!(
+    /// Native host message-agent target id.
+    AgentSessionMessageTargetId
+);
+agent_session_registry_id!(
+    /// Agent role advertised by the registry lane.
+    AgentSessionRole
+);
+agent_session_registry_id!(
+    /// Model id observed by a trusted native host source.
+    AgentSessionModelId
+);
+agent_session_registry_id!(
+    /// Trusted native source identifier stored with the model observation.
+    AgentSessionModelObservationSourceId
+);
+agent_session_registry_id!(
+    /// Stable native evidence reference for auditing the model observation.
+    AgentSessionModelEvidenceRef
+);
+agent_session_registry_id!(
+    /// Latest tool event kind observed for this session.
+    AgentSessionToolEventKind
+);
+agent_session_registry_id!(
+    /// Latest command line recorded for this session.
+    AgentSessionCommandLine
+);
+agent_session_registry_id!(
+    /// Latest compact evidence reference produced by this session.
+    AgentSessionEvidenceRef
+);
+agent_session_registry_id!(
+    /// Caller metadata plus validation receipt JSON.
+    AgentSessionMetadataJson
+);
+agent_session_registry_id!(
+    /// Digest of the exact canonical command payload.
+    AgentSessionCommandDigest
+);
+agent_session_registry_id!(
+    /// Canonical command JSON consumed by resident dispatch.
+    AgentSessionCanonicalCommandJson
+);
+agent_session_registry_id!(
+    /// Native target selected for a resident delivery attempt.
+    AgentSessionDeliveryTargetId
+);
+agent_session_registry_id!(
+    /// Physical child generation that owns a resident delivery attempt.
+    AgentSessionDeliveryGenerationId
+);
+agent_session_registry_id!(
+    /// Durable dispatch lease state.
+    AgentSessionDispatchLeaseStatus
+);
 /// Durable agent session registry row stored in the Turso DB Engine.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AgentSessionRecord {
     /// Stable State Core project scope that owns this session row.
     #[serde(rename = "projectId")]
-    pub project_id: String,
+    pub project_id: AgentSessionProjectId,
     /// Root Codex session id used as the routing tree root.
     #[serde(rename = "rootSessionId")]
-    pub root_session_id: String,
+    pub root_session_id: AgentSessionRootSessionId,
     /// Concrete Codex session id registered for this agent.
     #[serde(rename = "sessionId")]
-    pub session_id: String,
+    pub session_id: AgentSessionId,
     /// Monotonic physical child generation within the stable resident slot.
     #[serde(rename = "physicalGeneration")]
     pub physical_generation: i64,
@@ -80,40 +163,40 @@ pub struct AgentSessionRecord {
         rename = "configuredAgentType",
         skip_serializing_if = "Option::is_none"
     )]
-    pub configured_agent_type: Option<String>,
+    pub configured_agent_type: Option<AgentSessionConfiguredAgentType>,
     /// Durable typed profile evidence, kept separate from replaceable heartbeat metadata.
     #[serde(
         rename = "profileEvidenceJson",
         skip_serializing_if = "Option::is_none"
     )]
-    pub profile_evidence_json: Option<String>,
+    pub profile_evidence_json: Option<AgentSessionProfileEvidenceJson>,
     /// Native host message-agent target id, when it differs from durable session identity.
     #[serde(rename = "messageTargetId", skip_serializing_if = "Option::is_none")]
-    pub message_target_id: Option<String>,
+    pub message_target_id: Option<AgentSessionMessageTargetId>,
     /// Optional parent session id when this row represents a delegated agent.
     #[serde(rename = "parentSessionId", skip_serializing_if = "Option::is_none")]
-    pub parent_session_id: Option<String>,
+    pub parent_session_id: Option<AgentSessionId>,
     /// Stable registry lane name, such as `asp-explore`.
-    pub name: String,
+    pub name: AgentSessionResidentName,
     /// Agent role advertised by the registry lane.
-    pub role: String,
+    pub role: AgentSessionRole,
     /// Model id observed by a trusted native host source.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<AgentSessionModelId>,
     /// Trusted native source that produced the model observation.
     #[serde(
         rename = "modelObservationSource",
         skip_serializing_if = "Option::is_none"
     )]
-    pub model_observation_source: Option<String>,
+    pub model_observation_source: Option<AgentSessionModelObservationSourceId>,
     /// Unix timestamp when the native host model observation was produced.
     #[serde(rename = "modelObservedAt", skip_serializing_if = "Option::is_none")]
     pub model_observed_at: Option<i64>,
     /// Stable native evidence reference for auditing the model observation.
     #[serde(rename = "modelEvidenceRef", skip_serializing_if = "Option::is_none")]
-    pub model_evidence_ref: Option<String>,
+    pub model_evidence_ref: Option<AgentSessionModelEvidenceRef>,
     /// Durable routing status stored in the registry.
-    pub status: String,
+    pub status: AgentSessionStatus,
     /// Unix timestamp when this row was first created.
     #[serde(rename = "createdAt")]
     pub created_at: i64,
@@ -134,23 +217,23 @@ pub struct AgentSessionRecord {
     pub archived_at: Option<i64>,
     /// Latest tool event kind observed for this session.
     #[serde(rename = "lastToolEvent", skip_serializing_if = "Option::is_none")]
-    pub last_tool_event: Option<String>,
+    pub last_tool_event: Option<AgentSessionToolEventKind>,
     /// Latest command line recorded for this session.
     #[serde(rename = "lastCommand", skip_serializing_if = "Option::is_none")]
-    pub last_command: Option<String>,
+    pub last_command: Option<AgentSessionCommandLine>,
     /// Latest compact evidence reference produced by this session.
     #[serde(rename = "lastEvidenceRef", skip_serializing_if = "Option::is_none")]
-    pub last_evidence_ref: Option<String>,
+    pub last_evidence_ref: Option<AgentSessionEvidenceRef>,
     /// Caller metadata plus validation receipt JSON.
     #[serde(rename = "metadataJson")]
-    pub metadata_json: String,
+    pub metadata_json: AgentSessionMetadataJson,
 }
 
 impl AgentSessionRecord {
     /// Return whether this session can receive routed work at `now`.
     #[must_use]
     pub fn is_routable_at(&self, now: i64) -> bool {
-        super::agent_session_status_is_routable(&self.status)
+        super::agent_session_status_is_routable(self.status.as_str())
             && self.expires_at.is_none_or(|expires| expires > now)
     }
 }
@@ -163,9 +246,11 @@ impl AgentSessionRecord {
 #[must_use]
 pub fn agent_session_message_target_is_live_bound(
     record: &AgentSessionRecord,
-    current_root_session_id: &str,
+    current_root_session_id: impl Into<AgentSessionRootSessionId>,
 ) -> bool {
-    if !agent_session_status_is_routable(&record.status) {
+    let current_root_session_id = current_root_session_id.into();
+    let current_root_session_id = current_root_session_id.as_str();
+    if !agent_session_status_is_routable(record.status()) {
         return false;
     }
     let Some(message_target_id) = record
@@ -220,10 +305,11 @@ pub fn agent_session_message_target_is_live_bound(
 #[must_use]
 pub fn agent_session_message_target_is_currently_routable(
     record: &AgentSessionRecord,
-    current_root_session_id: &str,
+    current_root_session_id: impl Into<AgentSessionRootSessionId>,
     fresh_host_transport_verified: bool,
     now: i64,
 ) -> bool {
+    let current_root_session_id = current_root_session_id.into();
     fresh_host_transport_verified
         && record.is_routable_at(now)
         && agent_session_message_target_is_live_bound(record, current_root_session_id)
@@ -270,19 +356,19 @@ impl AgentSessionRecord {
     /// Stable State Core project scope that owns this session row.
     #[must_use]
     pub fn project_id(&self) -> &str {
-        &self.project_id
+        self.project_id.as_str()
     }
 
     /// Root Codex session id used as the routing tree root.
     #[must_use]
     pub fn root_session_id(&self) -> &str {
-        &self.root_session_id
+        self.root_session_id.as_str()
     }
 
     /// Concrete Codex session id registered for this agent.
     #[must_use]
     pub fn session_id(&self) -> &str {
-        &self.session_id
+        self.session_id.as_str()
     }
 
     /// Native host message-agent target id, when available.
@@ -300,13 +386,13 @@ impl AgentSessionRecord {
     /// Stable registry lane name, such as `asp-explore`.
     #[must_use]
     pub fn name(&self) -> &str {
-        &self.name
+        self.name.as_str()
     }
 
     /// Agent role advertised by the registry lane.
     #[must_use]
     pub fn role(&self) -> &str {
-        &self.role
+        self.role.as_str()
     }
 
     /// Optional model id observed or requested for this agent session.
@@ -318,7 +404,7 @@ impl AgentSessionRecord {
     /// Durable routing status stored in the registry.
     #[must_use]
     pub fn status(&self) -> &str {
-        &self.status
+        self.status.as_str()
     }
 
     /// Unix timestamp when this row was first created.
@@ -378,7 +464,7 @@ impl AgentSessionRecord {
     /// Caller metadata plus validation receipt JSON.
     #[must_use]
     pub fn metadata_json(&self) -> &str {
-        &self.metadata_json
+        self.metadata_json.as_str()
     }
 }
 
@@ -403,55 +489,56 @@ pub fn agent_session_unix_timestamp() -> Result<i64, String> {
 }
 
 /// Request for registering or updating one named agent session.
-pub struct AgentSessionRegisterRequest<'a> {
+pub struct AgentSessionRegisterRequest {
     /// Stable State Core project scope that owns the registration.
-    pub project_id: &'a str,
+    pub project_id: AgentSessionProjectId,
     /// Root Codex session id for this agent topology.
-    pub root_session_id: &'a str,
+    pub root_session_id: AgentSessionRootSessionId,
     /// Concrete child session id to register or refresh.
-    pub session_id: &'a str,
+    pub session_id: AgentSessionId,
     /// Native host message-agent target id for sending follow-up messages.
-    pub message_target_id: Option<&'a str>,
+    pub message_target_id: Option<AgentSessionMessageTargetId>,
     /// Optional parent session id for delegated agents.
-    pub parent_session_id: Option<&'a str>,
+    pub parent_session_id: Option<AgentSessionId>,
     /// Stable registry lane name, such as `asp-explore`.
-    pub name: &'a str,
+    pub name: AgentSessionResidentName,
     /// Agent role advertised to routing and validation.
-    pub role: &'a str,
+    pub role: AgentSessionRole,
     /// Optional model observation produced by a trusted native host source.
-    pub model_observation: Option<AgentSessionModelObservationRef<'a>>,
+    pub model_observation: Option<AgentSessionModelObservationRef>,
     /// Durable routing status to store.
-    pub status: &'a str,
+    pub status: AgentSessionStatus,
     /// Optional expiration timestamp for routability.
     pub expires_at: Option<i64>,
     /// Caller metadata plus validation receipt JSON.
-    pub metadata_json: &'a str,
+    pub metadata_json: AgentSessionMetadataJson,
     /// Mutation timestamp supplied by the caller.
     pub now: i64,
 }
 
 /// Request for locating a single session row by a stable registry key.
-pub struct AgentSessionLookupRequest<'a> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentSessionLookupRequest {
     /// Stable State Core project scope that owns the lookup.
-    pub project_id: &'a str,
+    pub project_id: AgentSessionProjectId,
     /// Optional concrete child session id.
-    pub session_id: Option<&'a str>,
+    pub session_id: Option<AgentSessionId>,
     /// Optional root session id for the lookup tree.
-    pub root_session_id: Option<&'a str>,
+    pub root_session_id: Option<AgentSessionRootSessionId>,
     /// Optional stable registry lane name.
-    pub name: Option<&'a str>,
+    pub name: Option<AgentSessionResidentName>,
 }
 
 /// Request for recording the latest tool event observed for one agent session.
-pub struct AgentSessionToolEventRequest<'a> {
+pub struct AgentSessionToolEventRequest {
     /// Concrete Codex session id whose routing receipt should be updated.
-    pub session_id: &'a str,
+    pub session_id: AgentSessionId,
     /// Tool event kind observed for this session.
-    pub tool_event: &'a str,
+    pub tool_event: AgentSessionToolEventKind,
     /// Optional command line associated with the event.
-    pub command: Option<&'a str>,
+    pub command: Option<AgentSessionCommandLine>,
     /// Optional compact evidence reference associated with the event.
-    pub evidence_ref: Option<&'a str>,
+    pub evidence_ref: Option<AgentSessionEvidenceRef>,
     /// Mutation timestamp supplied by the caller.
     pub now: i64,
 }
@@ -475,13 +562,13 @@ pub struct AgentSessionDispatchIdentityInput<'a> {
 pub struct AgentSessionDispatchDerivedIdentity {
     /// Versioned logical identity shared by claims across processes and turns.
     #[serde(rename = "dispatchIdentity")]
-    pub dispatch_identity: String,
+    pub dispatch_identity: AgentSessionDispatchIdentity,
     /// SHA-256 digest of the canonical argv JSON.
     #[serde(rename = "commandDigest")]
-    pub command_digest: String,
+    pub command_digest: AgentSessionCommandDigest,
     /// Canonical JSON array consumed by dispatch execution.
     #[serde(rename = "canonicalCommandJson")]
-    pub canonical_command_json: String,
+    pub canonical_command_json: AgentSessionCanonicalCommandJson,
 }
 
 /// Durable dispatch lease for one exact resident-child command.
@@ -489,30 +576,30 @@ pub struct AgentSessionDispatchDerivedIdentity {
 pub struct AgentSessionDispatchLeaseRecord {
     /// Stable State Core project scope that owns this dispatch.
     #[serde(rename = "projectId")]
-    pub project_id: String,
+    pub project_id: AgentSessionProjectId,
     /// Root Codex session id for the resident topology.
     #[serde(rename = "rootSessionId")]
-    pub root_session_id: String,
+    pub root_session_id: AgentSessionRootSessionId,
     /// Stable resident registry lane name.
-    pub name: String,
+    pub name: AgentSessionResidentName,
     /// Logical identity derived from root, canonical target, and exact command.
     #[serde(rename = "dispatchIdentity")]
-    pub dispatch_identity: String,
+    pub dispatch_identity: AgentSessionDispatchIdentity,
     /// Digest of the exact command payload guarded by this identity.
     #[serde(rename = "commandDigest")]
-    pub command_digest: String,
+    pub command_digest: AgentSessionCommandDigest,
     /// Native target selected for the current delivery attempt.
     #[serde(rename = "deliveryTargetId", skip_serializing_if = "Option::is_none")]
-    pub delivery_target_id: Option<String>,
+    pub delivery_target_id: Option<AgentSessionDeliveryTargetId>,
     /// Physical child generation that owns the current delivery attempt.
     /// For Codex this is the exact child session id, not the canonical path.
     #[serde(
         rename = "deliveryGenerationId",
         skip_serializing_if = "Option::is_none"
     )]
-    pub delivery_generation_id: Option<String>,
+    pub delivery_generation_id: Option<AgentSessionDeliveryGenerationId>,
     /// Lease state: `in-flight`, `orphaned-awaiting-rebind`, or `terminal`.
-    pub status: String,
+    pub status: AgentSessionDispatchLeaseStatus,
     /// Number of distinct native target generations authorized to deliver.
     #[serde(rename = "attemptCount")]
     pub attempt_count: u32,
@@ -527,7 +614,7 @@ pub struct AgentSessionDispatchLeaseRecord {
     pub completed_at: Option<i64>,
     /// Compact terminal evidence reference.
     #[serde(rename = "evidenceRef", skip_serializing_if = "Option::is_none")]
-    pub evidence_ref: Option<String>,
+    pub evidence_ref: Option<AgentSessionEvidenceRef>,
 }
 
 /// Result of atomically claiming one resident dispatch identity.

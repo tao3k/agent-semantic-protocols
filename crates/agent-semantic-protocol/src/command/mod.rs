@@ -12,6 +12,7 @@ pub(crate) use agent_session_registry::{
 };
 pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;
+mod cli_help;
 mod client_backend_worker;
 mod dispatch;
 mod dispatch_agent_session_policy;

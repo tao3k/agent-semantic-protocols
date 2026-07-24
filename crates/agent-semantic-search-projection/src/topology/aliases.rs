@@ -161,17 +161,17 @@ pub(super) fn graph_legend_line(aliases: &[GraphAlias]) -> String {
     let mut entries = vec![format!("{SEARCH_ROOT_ID}=search")];
     let mut seen = BTreeSet::new();
     for alias in aliases {
-        let compact_id = compact_alias_id(&alias.id);
-        if seen.contains(&(compact_id.to_string(), alias.node_type)) {
+        let family_id = alias_family_id(&alias.id);
+        if seen.contains(&(family_id.to_string(), alias.node_type)) {
             continue;
         }
         let id = if seen
             .iter()
-            .any(|(existing, node_type)| existing == compact_id && *node_type != alias.node_type)
+            .any(|(existing, node_type)| existing == family_id && *node_type != alias.node_type)
         {
             alias.id.as_str()
         } else {
-            compact_id
+            family_id
         };
         if seen.insert((id.to_string(), alias.node_type)) {
             entries.push(format!("{id}={}", alias.node_type));
@@ -231,7 +231,7 @@ fn graph_rank_aliases(aliases: &[GraphAlias], owner_item_query: bool) -> Vec<&Gr
         .collect()
 }
 
-fn compact_alias_id(id: &str) -> &str {
+fn alias_family_id(id: &str) -> &str {
     id.trim_end_matches(|character: char| character.is_ascii_digit())
 }
 

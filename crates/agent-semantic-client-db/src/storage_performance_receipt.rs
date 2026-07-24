@@ -35,18 +35,18 @@ impl StorageLatencyDistributionMicros {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageSloMatrixReceipt {
-    pub schema_id: String,
-    pub long_ingestion_rows: usize,
-    pub long_ingestion_batch_rows: usize,
-    pub long_ingestion_latency_micros: StorageLatencyDistributionMicros,
-    pub recovered_rows: usize,
-    pub mixed_pressure_iterations: usize,
-    pub mixed_pressure_latency_micros: StorageLatencyDistributionMicros,
-    pub resident_set_kib: u64,
-    pub database_bytes: u64,
-    pub wal_bytes: u64,
-    pub shm_bytes: u64,
-    pub passive_checkpoint: bool,
+    schema_id: StorageSloMatrixReceiptSchemaId,
+    long_ingestion_rows: usize,
+    long_ingestion_batch_rows: usize,
+    long_ingestion_latency_micros: StorageLatencyDistributionMicros,
+    recovered_rows: usize,
+    mixed_pressure_iterations: usize,
+    mixed_pressure_latency_micros: StorageLatencyDistributionMicros,
+    resident_set_kib: u64,
+    database_bytes: u64,
+    wal_bytes: u64,
+    shm_bytes: u64,
+    passive_checkpoint: bool,
 }
 
 fn percentile(sorted: &[u64], percentile: usize) -> u64 {

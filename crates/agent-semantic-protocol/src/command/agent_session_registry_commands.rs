@@ -213,8 +213,15 @@ pub(super) fn list_sessions(
         }
     };
     registry.refresh_expired_sessions()?;
-    let mut sessions =
-        registry.query_sessions(&project_id, root_filter.as_deref(), args.name.as_deref())?;
+    let mut sessions = registry.query_sessions(
+        project_id.as_str(),
+        root_filter
+            .as_deref()
+            .map(agent_semantic_client_db::AgentSessionRootSessionId::from),
+        args.name
+            .as_deref()
+            .map(agent_semantic_client_db::AgentSessionResidentName::from),
+    )?;
     if args.active {
         let now = agent_session_unix_timestamp()?;
         sessions.retain(|session| session.is_routable_at(now));

@@ -5,45 +5,132 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceScopeProviderId(String);
+
+impl WorkspaceScopeProviderId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for WorkspaceScopeProviderId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceScopeLanguageId(String);
+
+impl WorkspaceScopeLanguageId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for WorkspaceScopeLanguageId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceScopeId(String);
+
+impl WorkspaceScopeId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for WorkspaceScopeId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceScopePackageId(String);
+
+impl WorkspaceScopePackageId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for WorkspaceScopePackageId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceScopeAnchorKind(String);
+
+impl From<String> for WorkspaceScopeAnchorKind {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceScopeAnchorSha256(String);
+
+impl From<String> for WorkspaceScopeAnchorSha256 {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceScopePackageName(String);
+
+impl From<String> for WorkspaceScopePackageName {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticWorkspaceAnchor {
-    pub kind: String,
-    pub path: PathBuf,
-    pub sha256: String,
+    kind: WorkspaceScopeAnchorKind,
+    path: PathBuf,
+    sha256: WorkspaceScopeAnchorSha256,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticWorkspacePackage {
-    pub package_id: String,
-    pub name: String,
-    pub root: PathBuf,
-    pub manifest_path: PathBuf,
+    package_id: WorkspaceScopePackageId,
+    name: WorkspaceScopePackageName,
+    root: PathBuf,
+    manifest_path: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticWorkspaceScope {
-    pub workspace_id: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub package_manager: String,
-    pub source_extensions: Vec<String>,
-    pub discovery_root: PathBuf,
-    pub anchors: Vec<SemanticWorkspaceAnchor>,
-    pub packages: Vec<SemanticWorkspacePackage>,
+    workspace_id: String,
+    language_id: String,
+    provider_id: String,
+    package_manager: String,
+    source_extensions: Vec<String>,
+    discovery_root: PathBuf,
+    anchors: Vec<SemanticWorkspaceAnchor>,
+    packages: Vec<SemanticWorkspacePackage>,
     pub fingerprint: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticWorkspaceScopeSet {
-    pub scopes: Vec<SemanticWorkspaceScope>,
+    scopes: Vec<SemanticWorkspaceScope>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkspaceCandidateAdmission {
-    pub workspace_id: String,
-    pub package_id: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub canonical_path: PathBuf,
+    workspace_id: WorkspaceScopeId,
+    package_id: WorkspaceScopePackageId,
+    language_id: WorkspaceScopeLanguageId,
+    provider_id: WorkspaceScopeProviderId,
+    canonical_path: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -55,12 +142,12 @@ pub struct WorkspaceCandidateRejection {
 impl SemanticWorkspaceScope {
     pub fn matches_provider_identity(
         &self,
-        provider_id: &str,
-        language_id: &str,
+        provider_id: &WorkspaceScopeProviderId,
+        language_id: &WorkspaceScopeLanguageId,
         discovery_root: &Path,
     ) -> bool {
-        self.provider_id == provider_id
-            && self.language_id == language_id
+        self.provider_id == provider_id.as_str()
+            && self.language_id == language_id.as_str()
             && self.discovery_root == discovery_root
     }
 
@@ -203,7 +290,7 @@ impl SemanticWorkspaceScope {
     pub fn admit_candidate(
         &self,
         candidate: &Path,
-        language_id: &str,
+        language_id: &WorkspaceScopeLanguageId,
     ) -> Result<WorkspaceCandidateAdmission, WorkspaceCandidateRejection> {
         self.admit_candidate_from(&self.discovery_root, candidate, language_id)
     }
@@ -212,13 +299,14 @@ impl SemanticWorkspaceScope {
         &self,
         candidate_base: &Path,
         candidate: &Path,
-        language_id: &str,
+        language_id: &WorkspaceScopeLanguageId,
     ) -> Result<WorkspaceCandidateAdmission, WorkspaceCandidateRejection> {
-        if language_id != self.language_id {
+        if language_id.as_str() != self.language_id {
             return Err(WorkspaceCandidateRejection {
                 reason_kind: "candidate-language-mismatch",
                 detail: format!(
-                    "candidate language {language_id} does not match workspace language {}",
+                    "candidate language {} does not match workspace language {}",
+                    language_id.as_str(),
                     self.language_id
                 ),
             });

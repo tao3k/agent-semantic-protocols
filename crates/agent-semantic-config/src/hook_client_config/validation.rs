@@ -36,15 +36,21 @@ fn validate_rule_dispatches(
             continue;
         };
         let prefix = format!("rules[{}].dispatch", rule.id);
-        validate_non_empty(&format!("{prefix}.residentName"), &dispatch.resident_name)?;
-        validate_non_empty(&format!("{prefix}.receiptKind"), &dispatch.receipt_kind)?;
+        validate_non_empty(
+            &format!("{prefix}.residentName"),
+            dispatch.resident_name.as_str(),
+        )?;
+        validate_non_empty(
+            &format!("{prefix}.receiptKind"),
+            dispatch.receipt_kind.as_str(),
+        )?;
         if !resident_agents
             .iter()
-            .any(|agent| agent.enabled && agent.name == dispatch.resident_name)
+            .any(|agent| agent.enabled && agent.name == dispatch.resident_name.as_str())
         {
             return Err(format!(
                 "{prefix}.residentName `{}` must name an enabled agents.residentAgents entry",
-                dispatch.resident_name
+                dispatch.resident_name.as_str()
             ));
         }
     }

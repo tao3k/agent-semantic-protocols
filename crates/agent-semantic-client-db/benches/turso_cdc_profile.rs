@@ -39,7 +39,7 @@ fn turso_cdc_profile(c: &mut Criterion) {
         ))
         .expect("create CDC benchmark fixture");
     let mut cursor = runtime
-        .block_on(storage.read_page(None, 1_000))
+        .block_on(storage.read_page(None, 1_000.into()))
         .expect("read CDC setup cursor")
         .next_change_id;
     let mut next_id = 0_i64;
@@ -72,7 +72,7 @@ fn turso_cdc_profile(c: &mut Criterion) {
                     .await
                     .expect("commit CDC benchmark batch");
                 let page = storage
-                    .read_page(cursor, 1_000)
+                    .read_page(cursor.map(Into::into), 1_000.into())
                     .await
                     .expect("read CDC benchmark tail");
                 assert_eq!(
@@ -115,7 +115,7 @@ fn turso_cdc_profile(c: &mut Criterion) {
                     .await
                     .expect("roll back CDC benchmark batch");
                 let page = storage
-                    .read_page(cursor, 1_000)
+                    .read_page(cursor.map(Into::into), 1_000.into())
                     .await
                     .expect("read CDC tail after rollback");
                 assert!(

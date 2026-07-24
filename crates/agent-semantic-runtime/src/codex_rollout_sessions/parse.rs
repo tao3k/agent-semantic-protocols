@@ -124,7 +124,7 @@ pub(crate) fn parse_rollout_file(
                             .map(|duration| duration.as_secs() as i64)
                     });
                 metadata = Some(crate::CodexRolloutSessionMetadata {
-                    session_id,
+                    session_id: session_id.into(),
                     rollout_path: rollout_path.to_path_buf(),
                     rollout_created_at_unix,
                     root_session_id: first_json_string(
@@ -262,18 +262,18 @@ pub(crate) fn parse_rollout_file(
                         .map(str::to_string)
                         .or(current_turn_id);
                     activity = Some(CodexRolloutActivityReport {
-                        status: "closed".to_string(),
+                        status: "closed".to_string().into(),
                         rollout_path: rollout_path.to_path_buf(),
                         last_event_at: payload.get("timestamp").and_then(Value::as_i64),
-                        last_event_kind: Some("event_msg".to_string()),
+                        last_event_kind: Some("event_msg".to_string().into()),
                         last_heartbeat_at: payload.get("timestamp").and_then(Value::as_i64),
-                        last_heartbeat_kind: Some("event_msg".to_string()),
+                        last_heartbeat_kind: Some("event_msg".to_string().into()),
                         recent_heartbeats: Vec::new(),
                         seconds_since_heartbeat: None,
-                        current_turn_id: current_turn_id.clone(),
-                        last_running_session_id: last_running_session_id.clone(),
+                        current_turn_id: current_turn_id.clone().map(Into::into),
+                        last_running_session_id: last_running_session_id.clone().map(Into::into),
                         running_session_closed: true,
-                        last_terminal_event: last_terminal_event.clone(),
+                        last_terminal_event: last_terminal_event.clone().map(Into::into),
                         agent_instruction: None,
                         scanned_line_count: line_count,
                     });
@@ -286,7 +286,7 @@ pub(crate) fn parse_rollout_file(
         return Ok(None);
     };
     let activity = activity.unwrap_or_else(|| CodexRolloutActivityReport {
-        status: "active".to_string(),
+        status: "active".to_string().into(),
         rollout_path: rollout_path.to_path_buf(),
         last_event_at: None,
         last_event_kind: None,
@@ -294,10 +294,10 @@ pub(crate) fn parse_rollout_file(
         last_heartbeat_kind: None,
         recent_heartbeats: Vec::new(),
         seconds_since_heartbeat: None,
-        current_turn_id,
-        last_running_session_id,
+        current_turn_id: current_turn_id.map(Into::into),
+        last_running_session_id: last_running_session_id.map(Into::into),
         running_session_closed: false,
-        last_terminal_event,
+        last_terminal_event: last_terminal_event.map(Into::into),
         agent_instruction: None,
         scanned_line_count: line_count,
     });

@@ -12,6 +12,49 @@ use std::{
 
 const CODEX_ROLLOUT_METADATA_HEADER_LINE_LIMIT: usize = 32;
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RuntimeSessionId(String);
+
+impl RuntimeSessionId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for RuntimeSessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RuntimeSessionId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+impl std::fmt::Display for RuntimeSessionId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSessionStatusError(String);
+
+impl From<String> for RuntimeSessionStatusError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<RuntimeSessionStatusError> for String {
+    fn from(value: RuntimeSessionStatusError) -> Self {
+        value.0
+    }
+}
+
 /// Runtime-visible agent session discovered from host environment variables.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,25 +76,25 @@ impl AgentRuntimeSession {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexRolloutSessionMetadata {
-    pub session_id: String,
-    pub rollout_path: PathBuf,
-    pub rollout_created_at_unix: Option<i64>,
-    pub root_session_id: Option<String>,
-    pub parent_thread_id: Option<String>,
-    pub thread_source: Option<String>,
-    pub agent_role: Option<String>,
-    pub agent_nickname: Option<String>,
-    pub agent_path: Option<String>,
-    pub spawn_depth: Option<i64>,
-    pub model_provider: Option<String>,
-    pub cli_version: Option<String>,
-    pub cwd: Option<String>,
-    pub model: Option<String>,
-    pub collaboration_model: Option<String>,
-    pub reasoning_effort: Option<String>,
-    pub sandbox_policy: Option<String>,
-    pub approval_policy: Option<String>,
-    pub permission_profile: Option<String>,
+    pub(crate) session_id: RuntimeSessionId,
+    pub(crate) rollout_path: PathBuf,
+    pub(crate) rollout_created_at_unix: Option<i64>,
+    pub(crate) root_session_id: Option<String>,
+    pub(crate) parent_thread_id: Option<String>,
+    pub(crate) thread_source: Option<String>,
+    pub(crate) agent_role: Option<String>,
+    pub(crate) agent_nickname: Option<String>,
+    pub(crate) agent_path: Option<String>,
+    pub(crate) spawn_depth: Option<i64>,
+    pub(crate) model_provider: Option<String>,
+    pub(crate) cli_version: Option<String>,
+    pub(crate) cwd: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) collaboration_model: Option<String>,
+    pub(crate) reasoning_effort: Option<String>,
+    pub(crate) sandbox_policy: Option<String>,
+    pub(crate) approval_policy: Option<String>,
+    pub(crate) permission_profile: Option<String>,
 }
 
 /// Resolve Codex rollout metadata for a session id from local Codex JSONL logs.
@@ -59,14 +102,14 @@ pub struct CodexRolloutSessionMetadata {
 /// This is a passive adapter: it does not send a prompt, resume a session, or
 /// depend on an experimental app-server socket.
 pub fn codex_rollout_session_metadata(
-    session_id: &str,
-) -> Result<Option<CodexRolloutSessionMetadata>, String> {
+    session_id: &RuntimeSessionId,
+) -> Result<Option<CodexRolloutSessionMetadata>, RuntimeSessionStatusError> {
     let sessions_dir = codex_sessions_dir()?;
     if !sessions_dir.is_dir() {
         return Ok(None);
     }
-    for path in codex_rollout_paths_for_session_id(&sessions_dir, session_id)? {
-        if let Some(metadata) = read_codex_rollout_metadata(&path, session_id)? {
+    for path in codex_rollout_paths_for_session_id(&sessions_dir, session_id.as_str())? {
+        if let Some(metadata) = read_codex_rollout_metadata(&path, session_id.as_str())? {
             return Ok(Some(metadata));
         }
     }
@@ -75,7 +118,7 @@ pub fn codex_rollout_session_metadata(
 
 /// Resolve Codex rollout metadata only when it is inside a registration window.
 pub fn codex_rollout_session_metadata_recent(
-    session_id: &str,
+    session_id: &RuntimeSessionId,
     reference_unix: i64,
     max_age_seconds: i64,
 ) -> Result<Option<CodexRolloutSessionMetadata>, String> {
@@ -129,7 +172,7 @@ fn read_codex_rollout_metadata(
         .map_err(|error| format!("failed to open Codex rollout {}: {error}", path.display()))?;
     let reader = BufReader::new(file);
     let mut metadata = CodexRolloutSessionMetadata {
-        session_id: session_id.to_string(),
+        session_id: RuntimeSessionId::from(session_id),
         rollout_path: path.to_path_buf(),
         rollout_created_at_unix: path_unix_timestamp(path)?,
         root_session_id: None,

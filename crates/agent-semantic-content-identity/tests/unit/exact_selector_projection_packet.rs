@@ -8,34 +8,47 @@ fn builder_binds_source_parser_facts_and_projection_bytes() {
     let parser_digest = canonical_content_digest_v1(b"parser", &[b"rs-harness"]);
     let query_pack_digest = canonical_content_digest_v1(b"query-pack", &[b"rust"]);
     let structural_selector = "rust://src/lib.rs#item/function/example";
+    let language_id =
+        crate::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from("rust");
+    let provider_id =
+        crate::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from("rs-harness");
+    let owner_path =
+        crate::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from("src/lib.rs");
+    let typed_structural_selector =
+        crate::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(
+            structural_selector,
+        );
     let canonical_item_selector = CanonicalItemSelectorV1::new(
         CanonicalItemIdentityV1::new("rust", "function", "example"),
         structural_selector,
     );
     let packet = build_exact_selector_projection_packet_v1(
-        "rust",
-        "rs-harness",
+        &language_id,
+        &provider_id,
         canonical_item_selector.clone(),
         &parser_digest,
         &query_pack_digest,
-        "src/lib.rs",
-        structural_selector,
+        &owner_path,
+        &typed_structural_selector,
         ExactProjectionModeV1::Code,
         b"fn example() {}\n",
         br#"{"kind":"fn","name":"example"}"#,
         b"fn example() {}\n",
     );
     assert_eq!(packet.schema_version, "1");
-    assert_eq!(packet.projection_payload_base64, "Zm4gZXhhbXBsZSgpIHt9Cg==");
+    assert_eq!(
+        packet.projection_payload_base64.as_str(),
+        "Zm4gZXhhbXBsZSgpIHt9Cg=="
+    );
 
     let changed = build_exact_selector_projection_packet_v1(
-        "rust",
-        "rs-harness",
+        &language_id,
+        &provider_id,
         canonical_item_selector,
         &parser_digest,
         &query_pack_digest,
-        "src/lib.rs",
-        structural_selector,
+        &owner_path,
+        &typed_structural_selector,
         ExactProjectionModeV1::Code,
         b"fn example() { todo!() }\n",
         br#"{"kind":"fn","name":"example"}"#,

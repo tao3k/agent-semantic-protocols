@@ -2,11 +2,11 @@ use agent_semantic_client_db::turso_agent_storage::TursoMvccAgentStorage;
 
 fn turso_agent_storage_partition() -> StoragePartitionKey {
     StoragePartitionKey {
-        repo_id: "repo".to_string(),
-        workspace_id: "workspace".to_string(),
-        scope_id: "scope".to_string(),
-        session_id: "session".to_string(),
-        agent_id: "agent".to_string(),
+        repo_id: "repo".into(),
+        workspace_id: "workspace".into(),
+        scope_id: "scope".into(),
+        session_id: "session".into(),
+        agent_id: "agent".into(),
     }
 }
 

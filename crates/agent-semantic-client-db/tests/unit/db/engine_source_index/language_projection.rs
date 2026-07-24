@@ -115,7 +115,10 @@ async fn harness_projection_imports_without_source_text_projection() {
         .find(|candidate| candidate.path == "src/projection.ss")
         .expect("projection candidate");
     assert_eq!(candidate.selector_symbol.as_deref(), Some("run"));
-    assert_eq!(candidate.selector_kind.as_deref(), Some("function"));
+    assert_eq!(
+        candidate.selector_kind.as_ref().map(|kind| kind.as_str()),
+        Some("function")
+    );
 
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);

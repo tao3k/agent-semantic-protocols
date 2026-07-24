@@ -47,7 +47,7 @@ pub(crate) fn run_provider_method(
     ) {
         Ok(Some(storage)) => {
             if let Err(error) =
-                storage.record_invocation_start(&provider_method_name, language_id.as_str())
+                storage.record_invocation_start(provider_method_name.as_str(), language_id.clone())
             {
                 debug_client_stage(&format!(
                     "provider-method:runtime-storage-record-unavailable:{error}"

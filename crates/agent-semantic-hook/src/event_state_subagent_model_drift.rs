@@ -7,15 +7,76 @@ use serde_json::Value;
 
 use crate::event_state::{HOOK_EVENT_STATE_FILE, read_hook_event_state_tail};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubagentRuntimeRootSessionId(String);
+
+impl SubagentRuntimeRootSessionId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SubagentRuntimeRootSessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for SubagentRuntimeRootSessionId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubagentRuntimeDriftError(String);
+
+impl From<String> for SubagentRuntimeDriftError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+macro_rules! subagent_runtime_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+    };
+}
+
+subagent_runtime_text!(SubagentRuntimeChildSessionId);
+subagent_runtime_text!(SubagentRuntimeAgentType);
+subagent_runtime_text!(SubagentRuntimeModelId);
+subagent_runtime_text!(SubagentRuntimeReasoningEffort);
+
 /// Latest native subagent start whose runtime model or reasoning drifted from ASP config.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubagentRuntimeDriftObservation {
-    pub root_session_id: String,
-    pub child_session_id: String,
-    pub observed_agent_type: String,
-    pub expected_agent_type: String,
-    pub observed_model: Option<String>,
-    pub observed_reasoning_effort: Option<String>,
+    root_session_id: SubagentRuntimeRootSessionId,
+    child_session_id: SubagentRuntimeChildSessionId,
+    observed_agent_type: SubagentRuntimeAgentType,
+    expected_agent_type: SubagentRuntimeAgentType,
+    observed_model: Option<SubagentRuntimeModelId>,
+    observed_reasoning_effort: Option<SubagentRuntimeReasoningEffort>,
     pub consecutive_observation_count: usize,
 }
 
@@ -166,16 +227,16 @@ mod reasoning_evidence_tests;
 /// runtime required by the preceding replacement state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubagentRuntimeRebindVerifiedObservation {
-    pub root_session_id: String,
-    pub child_session_id: String,
-    pub observed_agent_type: String,
-    pub expected_agent_type: String,
-    pub previous_observed_model: Option<String>,
-    pub previous_observed_reasoning_effort: Option<String>,
-    pub observed_model: String,
-    pub observed_reasoning_effort: Option<String>,
-    pub expected_model: String,
-    pub expected_reasoning_effort: Option<String>,
+    pub root_session_id: SubagentRuntimeRootSessionId,
+    pub child_session_id: SubagentRuntimeChildSessionId,
+    pub observed_agent_type: SubagentRuntimeAgentType,
+    pub expected_agent_type: SubagentRuntimeAgentType,
+    pub previous_observed_model: Option<SubagentRuntimeModelId>,
+    pub previous_observed_reasoning_effort: Option<SubagentRuntimeReasoningEffort>,
+    pub observed_model: SubagentRuntimeModelId,
+    pub observed_reasoning_effort: Option<SubagentRuntimeReasoningEffort>,
+    pub expected_model: SubagentRuntimeModelId,
+    pub expected_reasoning_effort: Option<SubagentRuntimeReasoningEffort>,
     /// Host-owned reasoning evidence captured at the same lifecycle boundary.
     /// This intentionally preserves an omitted field instead of coalescing it
     /// with rollout or profile configuration.
@@ -202,8 +263,8 @@ pub type UnmanagedSubagentStartObservation = SubagentRuntimeDriftObservation;
 /// Return the newest host-observed subagent runtime drift for one root session.
 pub fn latest_subagent_runtime_rebind_observation(
     project_root: &Path,
-    root_session_id: &str,
-) -> Result<Option<SubagentRuntimeRebindObservation>, String> {
+    root_session_id: &SubagentRuntimeRootSessionId,
+) -> Result<Option<SubagentRuntimeRebindObservation>, SubagentRuntimeDriftError> {
     let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
     if !state_path.is_file() {
         return Ok(None);
@@ -446,8 +507,8 @@ fn verified_runtime_rebind_observation(
 /// Return only the active drift branch for compatibility with existing callers.
 pub fn latest_subagent_runtime_drift(
     project_root: &Path,
-    root_session_id: &str,
-) -> Result<Option<SubagentRuntimeDriftObservation>, String> {
+    root_session_id: &SubagentRuntimeRootSessionId,
+) -> Result<Option<SubagentRuntimeDriftObservation>, SubagentRuntimeDriftError> {
     Ok(
         match latest_subagent_runtime_rebind_observation(project_root, root_session_id)? {
             Some(SubagentRuntimeRebindObservation::Drift(observation)) => Some(observation),
@@ -458,8 +519,8 @@ pub fn latest_subagent_runtime_drift(
 
 pub fn latest_subagent_runtime_rebind_verified(
     project_root: &Path,
-    root_session_id: &str,
-) -> Result<Option<SubagentRuntimeRebindVerifiedObservation>, String> {
+    root_session_id: &SubagentRuntimeRootSessionId,
+) -> Result<Option<SubagentRuntimeRebindVerifiedObservation>, SubagentRuntimeDriftError> {
     Ok(
         match latest_subagent_runtime_rebind_observation(project_root, root_session_id)? {
             Some(SubagentRuntimeRebindObservation::Verified(observation)) => Some(observation),
@@ -505,26 +566,24 @@ fn is_runtime_drift_action(event: &Value, action: Option<&str>) -> bool {
                 == Some("host-created-unmanaged-agent"))
 }
 
-/// Backward-compatible model-drift query.
 pub fn latest_subagent_model_drift(
     project_root: &Path,
-    root_session_id: &str,
-) -> Result<Option<SubagentModelDriftObservation>, String> {
+    root_session_id: &SubagentRuntimeRootSessionId,
+) -> Result<Option<SubagentModelDriftObservation>, SubagentRuntimeDriftError> {
     latest_subagent_runtime_drift(project_root, root_session_id)
 }
 
-/// Backward-compatible profile-drift query.
 pub fn latest_subagent_profile_drift(
     project_root: &Path,
-    root_session_id: &str,
-) -> Result<Option<SubagentProfileDriftObservation>, String> {
+    root_session_id: &SubagentRuntimeRootSessionId,
+) -> Result<Option<SubagentProfileDriftObservation>, SubagentRuntimeDriftError> {
     latest_subagent_runtime_drift(project_root, root_session_id)
 }
 
 /// Return the newest unmanaged native subagent start for one root session.
 pub fn latest_unmanaged_subagent_start(
     project_root: &Path,
-    root_session_id: &str,
-) -> Result<Option<UnmanagedSubagentStartObservation>, String> {
+    root_session_id: &SubagentRuntimeRootSessionId,
+) -> Result<Option<UnmanagedSubagentStartObservation>, SubagentRuntimeDriftError> {
     latest_subagent_runtime_drift(project_root, root_session_id)
 }

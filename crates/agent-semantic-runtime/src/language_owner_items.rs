@@ -59,13 +59,13 @@ pub enum LanguageOwnerItemsRuntimeOutcome {
 /// Runtime-owned performance receipt for one owner-items resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguageOwnerItemsRuntimeReceipt {
-    pub outcome: String,
-    pub provider_process_count: usize,
-    pub stdout_bytes: usize,
-    pub stderr_bytes: usize,
-    pub cache_hit: bool,
-    pub fallback_reason: String,
-    pub elapsed_ms: u128,
+    outcome: String,
+    provider_process_count: usize,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    cache_hit: bool,
+    fallback_reason: String,
+    elapsed_ms: u128,
 }
 
 /// Run owner-items dispatch through the shared provider-owned policy.

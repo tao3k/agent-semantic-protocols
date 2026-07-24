@@ -53,11 +53,12 @@ pub fn provider_process_limits_from_environment() -> Result<ProviderProcessLimit
         }
         _ => Some(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES),
     };
-    Ok(ProviderProcessLimits {
+    Ok(ProviderProcessLimits::new(
         timeout,
+        None,
+        None,
         memory_limit_bytes,
-        ..ProviderProcessLimits::default()
-    })
+    ))
 }
 
 /// Captured result from a provider process run.
@@ -127,7 +128,7 @@ pub async fn run_provider_process_async_with_framing(
     spec: ProviderProcessSpec,
     framing: ProviderProcessFraming,
 ) -> Result<ProviderProcessOutput, ProviderProcessError> {
-    let timeout_ms = spec.limits.timeout.map(|timeout| timeout.as_millis());
+    let timeout_ms = spec.limits.timeout().map(|timeout| timeout.as_millis());
     let span = info_span!(
         "provider_process",
         program = %spec.program,
@@ -195,7 +196,7 @@ fn provider_command(spec: &ProviderProcessSpec, stdin_mode: &StdinMode) -> Comma
         .current_dir(&spec.cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    configure_provider_process(&mut command, spec.limits.memory_limit_bytes);
+    configure_provider_process(&mut command, spec.limits.memory_limit_bytes());
     for (key, value) in &spec.env {
         command.env(key, value);
     }
@@ -228,7 +229,7 @@ fn configure_provider_process(command: &mut Command, memory_limit_bytes: Option<
             #[cfg(not(target_os = "macos"))]
             if let Some(memory_limit_bytes) = memory_limit_bytes {
                 let mut limit = std::mem::MaybeUninit::<libc::rlimit>::uninit();
-                if libc::getrlimit(provider_memory_resource(), limit.as_mut_ptr()) != 0 {
+                if libc::getrlimit(libc::RLIMIT_AS, limit.as_mut_ptr()) != 0 {
                     return Err(std::io::Error::last_os_error());
                 }
                 let mut limit = limit.assume_init();
@@ -238,18 +239,13 @@ fn configure_provider_process(command: &mut Command, memory_limit_bytes: Option<
                 } else {
                     requested.min(limit.rlim_max)
                 };
-                if libc::setrlimit(provider_memory_resource(), &limit) != 0 {
+                if libc::setrlimit(libc::RLIMIT_AS, &limit) != 0 {
                     return Err(std::io::Error::last_os_error());
                 }
             }
             Ok(())
         });
     }
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-const fn provider_memory_resource() -> libc::c_int {
-    libc::RLIMIT_AS
 }
 
 #[cfg(not(unix))]
@@ -283,14 +279,14 @@ fn spawn_provider_io_tasks(
         stdin: tokio::spawn(write_stdin(stdin, stdin_mode)),
         stdout: tokio::spawn(capture_output_stream(
             stdout,
-            limits.max_stdout_bytes,
+            limits.max_stdout_bytes(),
             ProviderOutputStream::Stdout,
             stdout_mode,
             framing.stdout,
         )),
         stderr: tokio::spawn(capture_output_stream(
             stderr,
-            limits.max_stderr_bytes,
+            limits.max_stderr_bytes(),
             ProviderOutputStream::Stderr,
             stderr_mode,
             framing.stderr,
@@ -311,7 +307,7 @@ async fn collect_provider_output(
     } = tasks;
     let child_pid = child.id();
 
-    let status = if let Some(timeout) = limits.timeout {
+    let status = if let Some(timeout) = limits.timeout() {
         tokio::select! {
             biased;
             result = child.wait() => {
@@ -338,8 +334,8 @@ async fn collect_provider_output(
                 });
                 }
             }
-            _ = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes) => {
-                let limit_bytes = limits.memory_limit_bytes.expect("memory monitor requires limit");
+            _ = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes()) => {
+                let limit_bytes = limits.memory_limit_bytes().expect("memory monitor requires limit");
                 warn!(limit_bytes, "provider process exceeded memory limit; requesting kill");
                 terminate_provider_process(&mut child).await;
                 let _ = join_transport_task(stdin_task, "stdin").await;
@@ -356,8 +352,8 @@ async fn collect_provider_output(
             result = child.wait() => {
                 result.map_err(|source| ProviderProcessError::Wait { source })?
             }
-            _ = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes) => {
-                let limit_bytes = limits.memory_limit_bytes.expect("memory monitor requires limit");
+            _ = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes()) => {
+                let limit_bytes = limits.memory_limit_bytes().expect("memory monitor requires limit");
                 terminate_provider_process(&mut child).await;
                 let _ = join_transport_task(stdin_task, "stdin").await;
                 let (stdout, stderr) = join_readers_after_timeout(stdout_task, stderr_task).await;
@@ -441,7 +437,7 @@ fn provider_process_receipt(
 ) -> ProviderProcessReceipt {
     let exit_signal = provider_exit_signal(status.as_ref());
     let status_success = status.is_some_and(|status| status.success());
-    let memory_limit_enforced = cfg!(unix) && limits.memory_limit_bytes.is_some();
+    let memory_limit_enforced = cfg!(unix) && limits.memory_limit_bytes().is_some();
     let memory_limit_suspected =
         memory_limit_enforced && exit_signal.is_some_and(memory_limit_failure_signal);
     let termination_reason = if memory_limit_exceeded {
@@ -457,7 +453,7 @@ fn provider_process_receipt(
     } else {
         "exit-code"
     };
-    ProviderProcessReceipt {
+    ProviderProcessReceipt::from_input(crate::process_contract::ProviderProcessReceiptInput {
         elapsed: start.elapsed(),
         status_code: status.and_then(|status| status.code()),
         status_success,
@@ -470,11 +466,11 @@ fn provider_process_receipt(
         timed_out,
         memory_limit_exceeded,
         exit_signal,
-        memory_limit_bytes: limits.memory_limit_bytes,
+        memory_limit_bytes: limits.memory_limit_bytes(),
         memory_limit_enforced,
         abnormal_termination: timed_out || memory_limit_exceeded || !status_success,
         termination_reason: termination_reason.to_string(),
-    }
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -555,11 +551,17 @@ fn provider_exit_signal(_status: Option<&ExitStatus>) -> Option<i32> {
     None
 }
 
+#[cfg(unix)]
 fn memory_limit_failure_signal(signal: i32) -> bool {
     matches!(
         signal,
         libc::SIGKILL | libc::SIGSEGV | libc::SIGABRT | libc::SIGBUS
     )
+}
+
+#[cfg(not(unix))]
+const fn memory_limit_failure_signal(_: i32) -> bool {
+    false
 }
 
 async fn write_stdin(

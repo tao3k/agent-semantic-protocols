@@ -134,7 +134,7 @@ Owners are ranked, not listed alphabetically:
 
 Search providers may run bounded graph algorithms over their native reasoning
 tree to make LLM planning cheaper.  The graph is an internal computation input;
-the prompt-facing packet gets only compact graph evidence and synthesis inside
+the prompt-facing packet gets only ranked graph evidence and synthesis inside
 the existing =search= result.  The graph vocabulary is owned by
 =schemas/semantic-graph.v1.schema.json= and embedded into search packets through
 compatible =nodes=, =edges=, and =searchSynthesis= fields.  Providers must not
@@ -166,17 +166,17 @@ separate prompt-facing protocol.
 For =search prime --view seeds=, providers should still use their native parser
 and reasoning tree.  A seed packet built from directory/file discovery alone is
 too close to a path list and causes the LLM to fan out across unrelated files.
-The compact seed packet should run the same owner graph ranking as full prime
+The terse-density seed projection should run the same owner graph ranking as full prime
 and derive its frontier actions from =searchSynthesis=:
 
 Prime is a /decision primer/, not a candidate answer.  Prompt-facing prime output
-MUST say that explicitly with a compact decision row carrying at least:
+MUST say that explicitly with a terse-density decision row carrying at least:
 =purpose=decision-primer=, =answer=false=, =code=false=, the available search
 capabilities, the first-hop ladder, history fields owned by ASP artifacts, risk
 guidance, and the canonical next command shape
-=search pipe '<question-or-feature-term>' --workspace . --view seeds=.  The shared ASP graph
-renderer and any provider-local fast-prime renderer MUST emit the same
-decision-primer contract before owner/dependency/test graph facts.
+=search pipe '<question-or-feature-term>' --workspace . --view seeds=.  The shared search
+projection renderer MUST emit the same decision-primer contract before
+owner/dependency/test graph facts.
 Provider-local prime may expose owner/dependency/test graph facts, but
 artifact-history counters such as =directReadRisk=, =repeatedPrime=,
 =repeatedPipe=, and =bestPath= are ASP client facts and should be identified as
@@ -207,7 +207,7 @@ For =search owner <path> --view seeds=, providers should emit
 frontier owners, finding owners, and owner/test seeds.  This makes the next
 agent step a graph decision instead of a new round of text fragments.
 
-RFC 006 owns the compact rendering.  The old single =|synthesis= line is
+RFC 006 owns search projection and output-density semantics.  The old single =|synthesis= line is
 superseded by graph-integrated rank and frontier facts:
 
 #+begin_src text
@@ -220,11 +220,11 @@ L>{T:frontier}
 rank=L,T frontier=L.owner,T.owner
 #+end_src
 
-Agent-facing graph feature semantics are specified separately in RFC 006,
-=docs/10-19-rfcs/10.06-agent-compact-graph-feature.org=.  RFC 005 owns the CLI surface and
+Agent-facing search projection semantics are specified separately in RFC 006,
+=docs/10-19-rfcs/10.06-agent-search-projection.org=.  RFC 005 owns the CLI surface and
 search/query command lifecycle; RFC 006 owns the LLM-oriented graph facts,
-rank, compact projection, and next-action semantics shared by all =search=
-surfaces.
+rank, semantic projection, output density, and next-action semantics shared by
+all =search= surfaces.
 
 ** Agent-facing locator boundary
 Prime and pipe renderers must not let compatibility line ranges become the graph identity that drives the next action. Compact graph aliases and frontier actions should render parser-owned identity first, such as =structuralSelector=, semantic handle ids, native fact ids, owner/item names, and tree-sitter query recipes. =displayLineRange= and =sourceLocatorHint= may be shown as auxiliary facts, but they are not the executable selector for =syntax= or =owner-items= actions.
@@ -494,7 +494,7 @@ The agent never receives "server unavailable" as an error — only as a
 =daemon=missing= diagnostic field when a provider chooses to expose daemon
 status, which is informational.
 
-* Compact format specification: line protocol + ASCII graph
+* Density format specification: line protocol + ASCII projection
 
 =<lang-harness> search= output is a /line protocol/, not a Markdown report.
 It inherits the existing Rust harness compact contract: stable tags, single
@@ -669,7 +669,7 @@ structure before hits.  =hits= is opt-in per query.
 
 Override with =--view graph|hits|both|seeds=.
 
-* Output mode: compact is the default
+* Output density: terse is the default
 
 =rs-harness= is agent-first.  All commands render compact text by default.
 There is no =--compact= flag.  =--json= is for structured consumers.  Provider

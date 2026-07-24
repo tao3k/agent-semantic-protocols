@@ -1,0 +1,14 @@
+[package]
+name = "agent-semantic-search-projection"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Typed, language-neutral search projection renderer for ASP"
+
+[dependencies]
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

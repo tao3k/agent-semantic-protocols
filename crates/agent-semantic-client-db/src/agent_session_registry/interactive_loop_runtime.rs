@@ -5,7 +5,9 @@ use super::interactive_loop_types::{
     AgentSessionInteractiveChoice, AgentSessionInteractiveMenu, AgentSessionLoopState,
     AgentSessionLoopTraceStep,
 };
-use super::types::{AgentSessionRecord, agent_session_message_target_is_live_bound};
+use super::types::{
+    AgentSessionRecord, AgentSessionRootSessionId, agent_session_message_target_is_live_bound,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SameChildRuntimeOverrideState {
@@ -36,11 +38,12 @@ pub fn classify_same_child_runtime_override_state(
 pub fn resident_child_host_runtime_refresh_eligible(
     registry_routable: bool,
     record: &AgentSessionRecord,
-    current_root_session_id: &str,
+    current_root_session_id: impl Into<AgentSessionRootSessionId>,
 ) -> bool {
+    let current_root_session_id = current_root_session_id.into();
     registry_routable
-        || (record.status == "replacement-required"
-            && agent_session_message_target_is_live_bound(record, current_root_session_id))
+        || (record.status() == "replacement-required"
+            && agent_session_message_target_is_live_bound(record, current_root_session_id.as_str()))
 }
 
 pub fn resident_child_runtime_repair_menu(

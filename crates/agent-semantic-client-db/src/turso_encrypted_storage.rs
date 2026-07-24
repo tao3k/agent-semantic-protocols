@@ -84,13 +84,13 @@ impl fmt::Debug for TursoEncryptedProfileConfig {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoEncryptionFileReceipt {
-    pub schema_id: String,
-    pub cipher: TursoEncryptionCipher,
-    pub database_bytes: u64,
-    pub wal_bytes: u64,
-    pub shm_bytes: u64,
-    pub plaintext_probe_len: usize,
-    pub plaintext_probe_present: bool,
+    schema_id: String,
+    cipher: TursoEncryptionCipher,
+    database_bytes: u64,
+    wal_bytes: u64,
+    shm_bytes: u64,
+    plaintext_probe_len: usize,
+    plaintext_probe_present: bool,
 }
 
 pub struct TursoEncryptedStorage {

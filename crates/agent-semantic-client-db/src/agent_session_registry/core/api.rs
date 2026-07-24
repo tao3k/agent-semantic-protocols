@@ -11,10 +11,10 @@ use super::storage::{
 use crate::agent_session_registry::types::{
     AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED, AGENT_SESSION_STATUS_INVALID,
     AgentSessionDispatchClaimRequest, AgentSessionDispatchClaimResult,
-    AgentSessionDispatchCompleteRequest, AgentSessionDispatchLeaseRecord,
+    AgentSessionDispatchCompleteRequest, AgentSessionDispatchLeaseRecord, AgentSessionId,
     AgentSessionLookupRequest, AgentSessionProjectId, AgentSessionRecord,
     AgentSessionRegisterRequest, AgentSessionResidentName, AgentSessionRootSessionId,
-    AgentSessionToolEventRequest, agent_session_unix_timestamp,
+    AgentSessionStatus, AgentSessionToolEventRequest, agent_session_unix_timestamp,
 };
 
 impl AgentSessionRegistry {
@@ -54,28 +54,33 @@ impl AgentSessionRegistry {
     /// Return one registered session by its concrete session id.
     pub fn session_by_id(
         &self,
-        project_id: &str,
-        session_id: &str,
+        project_id: impl Into<AgentSessionProjectId>,
+        session_id: impl Into<AgentSessionId>,
     ) -> Result<Option<AgentSessionRecord>, String> {
+        let project_id = project_id.into();
+        let session_id = session_id.into();
         block_on_agent_session_registry_async(turso_session_by_id(
             &self.db_path,
-            project_id,
-            session_id,
+            project_id.as_str(),
+            session_id.as_str(),
         ))
     }
 
     /// Return one registered session by its stable root/name route.
     pub fn session_by_name(
         &self,
-        project_id: &str,
-        root_session_id: &str,
-        name: &str,
+        project_id: impl Into<AgentSessionProjectId>,
+        root_session_id: impl Into<AgentSessionRootSessionId>,
+        name: impl Into<AgentSessionResidentName>,
     ) -> Result<Option<AgentSessionRecord>, String> {
+        let project_id = project_id.into();
+        let root_session_id = root_session_id.into();
+        let name = name.into();
         block_on_agent_session_registry_async(turso_session_by_name(
             &self.db_path,
-            project_id,
-            root_session_id,
-            name,
+            project_id.as_str(),
+            root_session_id.as_str(),
+            name.as_str(),
         ))
     }
 
@@ -145,16 +150,19 @@ impl AgentSessionRegistry {
     /// Update one session row to the supplied routing status.
     pub fn update_session_status(
         &self,
-        project_id: &str,
-        session_id: &str,
-        status: &str,
+        project_id: impl Into<AgentSessionProjectId>,
+        session_id: impl Into<AgentSessionId>,
+        status: impl Into<AgentSessionStatus>,
         now: i64,
     ) -> Result<bool, String> {
+        let project_id = project_id.into();
+        let session_id = session_id.into();
+        let status = status.into();
         block_on_agent_session_registry_async(turso_update_session_status(
             &self.db_path,
-            project_id,
-            session_id,
-            status,
+            project_id.as_str(),
+            session_id.as_str(),
+            status.as_str(),
             now,
         ))
     }
@@ -162,24 +170,28 @@ impl AgentSessionRegistry {
     /// Mark one session row invalid.
     pub fn mark_session_invalid(
         &self,
-        project_id: &str,
-        session_id: &str,
+        project_id: impl Into<AgentSessionProjectId>,
+        session_id: impl Into<AgentSessionId>,
         now: i64,
     ) -> Result<bool, String> {
+        let project_id = project_id.into();
+        let session_id = session_id.into();
         self.update_session_status(project_id, session_id, AGENT_SESSION_STATUS_INVALID, now)
     }
 
     /// Archive one session row.
     pub fn archive_session(
         &self,
-        project_id: &str,
-        session_id: &str,
+        project_id: impl Into<AgentSessionProjectId>,
+        session_id: impl Into<AgentSessionId>,
         now: i64,
     ) -> Result<bool, String> {
+        let project_id = project_id.into();
+        let session_id = session_id.into();
         block_on_agent_session_registry_async(turso_set_archived_status(
             &self.db_path,
-            project_id,
-            session_id,
+            project_id.as_str(),
+            session_id.as_str(),
             AGENT_SESSION_STATUS_ARCHIVED,
             Some(now),
             now,
@@ -189,14 +201,16 @@ impl AgentSessionRegistry {
     /// Unarchive one session row.
     pub fn unarchive_session(
         &self,
-        project_id: &str,
-        session_id: &str,
+        project_id: impl Into<AgentSessionProjectId>,
+        session_id: impl Into<AgentSessionId>,
         now: i64,
     ) -> Result<bool, String> {
+        let project_id = project_id.into();
+        let session_id = session_id.into();
         block_on_agent_session_registry_async(turso_set_archived_status(
             &self.db_path,
-            project_id,
-            session_id,
+            project_id.as_str(),
+            session_id.as_str(),
             AGENT_SESSION_STATUS_ACTIVE,
             None,
             now,
@@ -204,11 +218,17 @@ impl AgentSessionRegistry {
     }
 
     /// Delete one session row.
-    pub fn delete_session(&self, project_id: &str, session_id: &str) -> Result<bool, String> {
+    pub fn delete_session(
+        &self,
+        project_id: impl Into<AgentSessionProjectId>,
+        session_id: impl Into<AgentSessionId>,
+    ) -> Result<bool, String> {
+        let project_id = project_id.into();
+        let session_id = session_id.into();
         block_on_agent_session_registry_async(turso_delete_session(
             &self.db_path,
-            project_id,
-            session_id,
+            project_id.as_str(),
+            session_id.as_str(),
         ))
     }
 
@@ -221,23 +241,25 @@ impl AgentSessionRegistry {
     /// Return one registered session by its concrete session id across all projects.
     pub fn session_by_id_any_project(
         &self,
-        session_id: &str,
+        session_id: impl Into<AgentSessionId>,
     ) -> Result<Option<AgentSessionRecord>, String> {
+        let session_id = session_id.into();
         block_on_agent_session_registry_async(turso_session_by_id_any_project(
             &self.db_path,
-            session_id,
+            session_id.as_str(),
         ))
     }
 
     /// Return the project id for the most recent session registered under one root.
     pub fn project_id_for_root_session_id(
         &self,
-        root_session_id: &str,
+        root_session_id: impl Into<AgentSessionRootSessionId>,
     ) -> Result<Option<String>, String> {
+        let root_session_id = root_session_id.into();
         Ok(
             block_on_agent_session_registry_async(turso_session_for_root_session_id_any_project(
                 &self.db_path,
-                root_session_id,
+                root_session_id.as_str(),
             ))?
             .map(|record| record.project_id),
         )

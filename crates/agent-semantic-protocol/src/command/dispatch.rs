@@ -25,6 +25,9 @@ use super::sync::run_sync_command;
 
 pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> {
     normalize_agent_session_command_args(&mut args)?;
+    if super::cli_help::print_help_if_requested(&args)? {
+        return Ok(());
+    }
     reject_agent_platform_json_output(&args)?;
     reject_file_workspace_for_search(&args)?;
     match args.first().map(String::as_str) {

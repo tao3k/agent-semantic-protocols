@@ -51,6 +51,34 @@ fn receipt_is_sorted_and_binds_every_leaf() {
 }
 
 #[test]
+fn content_root_is_stable_across_materialization_roots() {
+    let activation = leaf(
+        "state/activation.json",
+        ActiveArtifactKindV1::Activation,
+        b"activation",
+    );
+    let binary = leaf(
+        "runtime/bin/by-digest/abc/asp",
+        ActiveArtifactKindV1::AspBinary,
+        b"asp",
+    );
+    let receipt =
+        ActiveAspArtifactReceiptV1::build("asp-runtime", vec![activation.clone(), binary.clone()])
+            .expect("canonical receipt");
+
+    let mut alias = binary;
+    alias.materialized_path = "/workspace/.bin/.asp-artifacts/blake3-256/abc/asp".to_string();
+    let aliased = ActiveAspArtifactReceiptV1::build("asp-runtime", vec![activation, alias])
+        .expect("aliased receipt");
+
+    assert_eq!(receipt.artifact_root_digest, aliased.artifact_root_digest);
+    assert_ne!(
+        receipt.materialization_root_digest,
+        aliased.materialization_root_digest
+    );
+}
+
+#[test]
 fn receipt_rejects_duplicate_or_missing_required_leaves() {
     let binary = leaf(
         "runtime/bin/by-digest/abc/asp",

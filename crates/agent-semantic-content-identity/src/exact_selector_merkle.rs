@@ -7,27 +7,92 @@ pub const EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION: &str = "1";
 pub const EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM: &str = "blake3-256";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ParserLanguageIdV1(String);
+
+impl ParserLanguageIdV1 {
+    #[must_use]
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for ParserLanguageIdV1 {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<String> for ParserLanguageIdV1 {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExactSelectorMerkleProofV1 {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub digest_algorithm: String,
+    schema_id: String,
+    schema_version: String,
+    digest_algorithm: String,
     pub language_id: String,
-    pub workspace_root_digest: ContentDigestV1,
-    pub owner_path: String,
-    pub owner_subtree_digest: ContentDigestV1,
-    pub owner_inclusion_proof: Vec<MerkleInclusionStepV1>,
-    pub source_blob_digest: ContentDigestV1,
-    pub parser_identity_digest: ContentDigestV1,
-    pub query_pack_digest: ContentDigestV1,
-    pub parser_fact_digest: ContentDigestV1,
+    workspace_root_digest: ContentDigestV1,
+    owner_path: String,
+    owner_subtree_digest: ContentDigestV1,
+    owner_inclusion_proof: Vec<MerkleInclusionStepV1>,
+    source_blob_digest: ContentDigestV1,
+    parser_identity_digest: ContentDigestV1,
+    query_pack_digest: ContentDigestV1,
+    parser_fact_digest: ContentDigestV1,
     pub canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
     pub structural_selector: String,
     pub projection_mode: ExactProjectionModeV1,
     pub projection_digest: ContentDigestV1,
 }
 
+pub(crate) struct ExactSelectorMerkleProofInputV1 {
+    pub(crate) language_id: ParserLanguageIdV1,
+    pub(crate) workspace_root_digest: ContentDigestV1,
+    pub(crate) owner_path: String,
+    pub(crate) owner_subtree_digest: ContentDigestV1,
+    pub(crate) owner_inclusion_proof: Vec<MerkleInclusionStepV1>,
+    pub(crate) source_blob_digest: ContentDigestV1,
+    pub(crate) parser_identity_digest: ContentDigestV1,
+    pub(crate) query_pack_digest: ContentDigestV1,
+    pub(crate) parser_fact_digest: ContentDigestV1,
+    pub(crate) canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
+    pub(crate) structural_selector: String,
+    pub(crate) projection_mode: ExactProjectionModeV1,
+    pub(crate) projection_digest: ContentDigestV1,
+}
+
 impl ExactSelectorMerkleProofV1 {
+    pub(crate) fn from_input(input: ExactSelectorMerkleProofInputV1) -> Self {
+        Self {
+            schema_id: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID.to_owned(),
+            schema_version: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION.to_owned(),
+            digest_algorithm: EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM.to_owned(),
+            language_id: input.language_id.as_str().to_owned(),
+            workspace_root_digest: input.workspace_root_digest,
+            owner_path: input.owner_path,
+            owner_subtree_digest: input.owner_subtree_digest,
+            owner_inclusion_proof: input.owner_inclusion_proof,
+            source_blob_digest: input.source_blob_digest,
+            parser_identity_digest: input.parser_identity_digest,
+            query_pack_digest: input.query_pack_digest,
+            parser_fact_digest: input.parser_fact_digest,
+            canonical_item_selector: input.canonical_item_selector,
+            structural_selector: input.structural_selector,
+            projection_mode: input.projection_mode,
+            projection_digest: input.projection_digest,
+        }
+    }
+
     pub fn validate_shape(&self) -> Result<(), ExactSelectorMerkleProofError> {
         if self.schema_id != EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID {
             return Err(ExactSelectorMerkleProofError::SchemaId);
@@ -38,13 +103,13 @@ impl ExactSelectorMerkleProofV1 {
         if self.digest_algorithm != EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM {
             return Err(ExactSelectorMerkleProofError::DigestAlgorithm);
         }
-        if self.language_id.trim().is_empty() {
+        if self.language_id.as_str().trim().is_empty() {
             return Err(ExactSelectorMerkleProofError::LanguageId);
         }
         self.canonical_item_selector
             .validate()
             .map_err(|_| ExactSelectorMerkleProofError::CanonicalItemSelector)?;
-        if self.canonical_item_selector.language_id != self.language_id
+        if self.canonical_item_selector.language_id.as_str() != self.language_id.as_str()
             || self.canonical_item_selector.structural_selector != self.structural_selector
         {
             return Err(ExactSelectorMerkleProofError::CanonicalItemSelector);
@@ -64,10 +129,46 @@ impl ExactSelectorMerkleProofV1 {
         }
         Ok(())
     }
+
+    pub fn language_id(&self) -> &str {
+        self.language_id.as_str()
+    }
+
+    pub fn workspace_root_digest(&self) -> &ContentDigestV1 {
+        &self.workspace_root_digest
+    }
+
+    pub fn owner_path(&self) -> &str {
+        &self.owner_path
+    }
+
+    pub fn owner_subtree_digest(&self) -> &ContentDigestV1 {
+        &self.owner_subtree_digest
+    }
+
+    pub fn source_blob_digest(&self) -> &ContentDigestV1 {
+        &self.source_blob_digest
+    }
+
+    pub fn parser_identity_digest(&self) -> &ContentDigestV1 {
+        &self.parser_identity_digest
+    }
+
+    pub fn query_pack_digest(&self) -> &ContentDigestV1 {
+        &self.query_pack_digest
+    }
+
+    pub fn structural_selector(&self) -> &str {
+        &self.structural_selector
+    }
+
+    pub fn projection_mode(&self) -> &ExactProjectionModeV1 {
+        &self.projection_mode
+    }
 }
 
 pub fn derive_parser_fact_digest_v1(
-    language_id: &str,
+    language_id: &ParserLanguageIdV1,
     parser_identity_digest: &ContentDigestV1,
     query_pack_digest: &ContentDigestV1,
     source_blob_digest: &ContentDigestV1,
@@ -76,7 +177,7 @@ pub fn derive_parser_fact_digest_v1(
     canonical_digest_v1(
         b"asp.parser-fact.v1",
         &[
-            language_id.as_bytes(),
+            language_id.as_str().as_bytes(),
             parser_identity_digest.as_str().as_bytes(),
             query_pack_digest.as_str().as_bytes(),
             source_blob_digest.as_str().as_bytes(),

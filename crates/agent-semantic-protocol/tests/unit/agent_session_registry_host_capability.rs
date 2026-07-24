@@ -25,6 +25,27 @@ fn host_resident_target_observation_accepts_followup_ack_source() {
 }
 
 #[test]
+fn trusted_resident_hook_input_preserves_project_root_and_resident_identity() {
+    let input = TrustedResidentHookTargetPresentInput {
+        project_id: "project-1",
+        root_session_id: "root-1",
+        resident_name: "asp-testing",
+        canonical_target: "/root/asp_testing",
+        observed_at: 100,
+    };
+    let observation = input.observation();
+
+    assert_eq!(input.project_id, "project-1");
+    assert_eq!(observation.root_session_id, "root-1");
+    assert_eq!(observation.resident_name, "asp-testing");
+    assert_eq!(
+        observation.canonical_target.as_deref(),
+        Some("/root/asp_testing")
+    );
+    assert_eq!(observation.source, TRUSTED_RESIDENT_HOOK_SOURCE);
+}
+
+#[test]
 fn unroutable_host_target_requires_canonical_probe_evidence() {
     let mut observation = HostResidentTargetObservation {
         schema_id: HOST_TREE_SCHEMA_ID.to_string(),
@@ -74,15 +95,13 @@ fn absent_observation_cannot_be_consumed_as_replacement_lease() {
     };
 
     write_host_tree_observation(&registry, &observation).expect("write absent observation");
-    assert!(
-        !consume_fresh_unroutable_resident_target_observation(
-            &registry,
-            "root",
-            "asp-explore",
-            15,
-        )
-        .expect("reject absent replacement lease")
-    );
+    assert!(!consume_fresh_unroutable_resident_target_observation(
+        &registry,
+        "root",
+        "asp-explore",
+        15,
+    )
+    .expect("reject absent replacement lease"));
     assert!(
         fresh_host_resident_target_observation(&registry, "root", "asp-explore", 15)
             .expect("read absent observation")
@@ -98,14 +117,12 @@ fn absent_observation_cannot_be_consumed_as_replacement_lease() {
         consume_fresh_unroutable_resident_target_observation(&registry, "root", "asp-explore", 15,)
             .expect("consume unroutable replacement lease")
     );
-    assert!(
-        !consume_fresh_unroutable_resident_target_observation(
-            &registry,
-            "root",
-            "asp-explore",
-            15,
-        )
-        .expect("fence duplicate replacement lease")
-    );
+    assert!(!consume_fresh_unroutable_resident_target_observation(
+        &registry,
+        "root",
+        "asp-explore",
+        15,
+    )
+    .expect("fence duplicate replacement lease"));
     let _ = std::fs::remove_dir_all(root);
 }
