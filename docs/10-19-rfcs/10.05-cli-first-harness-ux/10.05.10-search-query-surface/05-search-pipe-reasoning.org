@@ -1,0 +1,125 @@
+** Search pipe first-stage action ordering
+=search pipe <question> --view seeds= is the source-language agent frontier for deep natural-language questions. Its =recommendedNext= must be selected from query quality and owner/package evidence, not only from graph rank. When package cohesion is low, a finder preview that already names package-local owners should promote =owner-items= before a global =rg-query-set= refinement. Exact =fd-query= remains first when it contains a strong API or owner symbol and there is no reliable owner preview. Best-owner tie breaks must be deterministic so the header, graph request, and materialized next command agree.
+When =search owner <owner> items --query <terms> --view seeds= cannot produce parser item matches, it must still emit a typed recovery frontier. The no-hit output should keep =reason=no-owner-item-match= and add =recommendedNext=scoped-rg-query= plus a materialized =asp rg -query <terms> <owner>= command scoped to that owner. A no-hit owner query is a narrowing failure, not a terminal failure or permission to repeat broad workspace search.
+
+When owner-items does produce parser item matches, its default executable
+frontier must be skeleton-first.  The first materialized action is
+=item-skeleton= with =projection=skeleton= and a parser-owned structural
+selector.  =syntax-outline= follows as the next non-code outline projection,
+and exact source transport is a later =query-code= action that carries
+=requiresExact=true= and =codePolicy=exact-only=.  =displayLineRange= and
+=sourceLocatorHint= may be shown for human inspection and source transport
+debugging, but they must not become the default =recommendedNext= selector.
+The compact reason for this path is =owner-item-skeleton-ready=.
+
+=direct-source-read= is a hook recovery fallback, not a normal selector
+strategy.  It must require an explicit =--from-hook direct-source-read= and a
+non-empty =--fallback-reason= explaining why parser-owned structural lookup or
+skeleton/outline projection was unavailable.  Whole-file fallback and wide
+line-range fallback are disabled on the default path; a small bounded range may
+be used only after the fallback reason is visible.  Agents must prefer
+=item-skeleton=, =syntax-outline=, or another structural query action before
+requesting exact code.
+
+Owner item granularity is not limited to top-level declarations. The owner-items
+contract is owner-scoped parser evidence: if a language parser or its shared
+fast-owner source reader can prove a language-native intra-owner syntax item, the
+item is eligible for =owner-items= output. For Gerbil Scheme this includes POO
+syntax/operator forms such as =.o=, =.@=, =.mix=, =.def=, =defgeneric=,
+=defmethod=, and =defclass= when they occur in the queried owner. Pipe-style
+queries such as =.o|.@|.mix= must be split into alternatives before matching, so
+agents can ask for a cluster of related syntax items without falling back to raw
+text search.
+
+Low-cohesion =fdPreview= is allowed to promote =owner-items= ahead of query-pack
+refinement only when the preview is backed by strong owner-seed evidence from the
+current query result. A preview produced by a single project/package-level symbol
+is treated as weak owner evidence; in that case the first-stage action compiler
+must let best-owner coverage or split query-pack evidence participate before it
+materializes an owner-items command. This rule is evidence-derived: it uses
+query-pack quality, package cohesion, owner-seed count, and strong coverage. It
+must not inspect or special-case library names.
+** Evidence-derived term classification
+ASP clients and shared search surfaces must not maintain fixed vocabularies of "generic", "important", or "ecosystem" symbols such as API, SDK, CLI, UI, HTTP, Tokio, Playwright, Vite, Effect, or package-specific API names to suppress or promote query terms. These labels are searchable project facts, not protocol constants.
+
+Term classification must be derived from the current command's evidence:
+
+- query parsing decides whether a token is a symbol, concept, context term, path term, or package axis
+- parser/provider facts decide whether a token has declaration, owner, type-surface, semantic-handle, or dependency evidence
+- finder facts decide whether a token has path, owner-preview, or scoped-content evidence
+- analyzer/history facts may explain repeated failure patterns, but they must not change agent-facing ranking through hidden vocabulary shortcuts
+
+A fixed term list may exist only as test input or documentation example. It must not be a runtime rule used by =search pipe=, graph-turbo seed selection, =fd-query= construction, owner selection, or no-hit recovery. When a domain label appears useful, the correct optimization path is to make the provider expose it as a parser-owned handle, package fact, dependency fact, type surface, or finder candidate, then let graph-turbo rank that evidence.
+
+Owner selection may use structural path-role evidence, but only when the evidence is language-neutral and query-conditioned. For example, owners under structural test, unittest, spec, fixture, baseline, case, template, example, sample, demo, or benchmark paths may be ranked below source owners when the query does not strongly ask for those artifact roles. A mixed implementation query that merely mentions tests should still prefer source owners for the primary =owner-items= action; explicit multi-token artifact intent such as =tests cases= or =template example= keeps those owners eligible. This is not an ecosystem symbol rule: it does not name Tokio, Playwright, TypeScript, Vite, package APIs, or project-specific symbols, and it must be visible in shared search behavior rather than hidden in a provider-private shortcut.
+
+Low-cohesion fallback owner-items should also be query-axis aware. When the chosen fallback owner covers fewer than half of the query terms that would be sent to =owner-items=, the first action should stay with query-pack refinement instead of producing a likely partial selector. Strong artifact-role queries keep their artifact owner exception; otherwise this gate prefers a slower but clearer refinement step over a misleading executable selector.
+** Evidence-State Reasoning Tree Gate
+
+Search flow is a reasoning tree, not a mandatory pipeline. Providers expose
+route capabilities, preconditions, costs, projections, and typed
+=actionFrontier= entries; the agent chooses the next route from the current
+evidence state.
+
+Seed and prime routes are orientation stages for unknown or low-evidence
+states. They are not valid default roots when the prompt, hook recovery packet,
+previous search packet, failure transcript, or CLI diagnostic already provides a
+known owner, symbol, structural selector, dependency, changed file, or bounded
+=recommendedNext= action.
+
+Dependency-topology routes are similarly evidence-gated. A dependency node in
+the graph is not enough to promote =search-deps= as the first action when the
+query only overlaps a natural-language token such as =tree=. The route
+precondition is explicit dependency intent, such as dependency, deps, package,
+crate, cargo, npm, pip, or import wording, or a full dependency literal such as
+=tree-sitter= or =serde= in the query. Search-protocol meta queries that
+discuss audit evidence, route choice, =search-deps= behavior, seed usage, line
+selectors, expected tests, or closure plans must not be treated as
+dependency-topology intent even when they mention dependency terms or dependency
+literals.
+
+Search packets that include seed planning MUST expose a compact seed-overuse
+gate. The gate must include =firstActionMatchesEvidenceState=,
+=reasoningTreeRouteShown=, =chosenRoutePreconditionsMet=,
+=unnecessarySeedCount=, =seedWhenKnownOwnerCount=,
+=seedWhenKnownSymbolCount=, and =seedWhenKnownSelectorCount=. These fields are
+contract evidence for agents and sandtable checks. They do not move arbitrary
+natural-language intent planning into the harness.
+* Language Harness JSON Boundary
+
+Language harnesses are provider packet producers at the ASP boundary. When the
+Rust ASP client or cache/replay path invokes =languages/*-harness=, the stable
+contract is =--json= structured output only; compact rendering, frontier
+rendering, replay rendering, and human failure text belong to ASP/client code
+after schema validation. Harness-local benchmark manifests normalize into
+=schemas/semantic-scenario-benchmark.v1.schema.json=: =benchmark.toml= is the
+TOML syntax, =benchmark.ss= is the Gerbil syntax, and both carry policy ids
+governed by =schemas/semantic-agent-policy-id.v1.schema.json= using
+=<LANGUAGE>-AGENT-<TAGS>-<NUMBER>=.
+* Hot-path scenario receipt gate
+
+** Metadata-only view dispatch
+
+Views whose evidence is fully available from the provider registry, language
+manifest, or project metadata are a distinct hot-path class. They MUST produce
+the existing =semantic-search-packet= v1 shape without materializing a full
+semantic report, parser owner graph, source index, or database migration. This
+includes =env=, =runtime-source=, =lang=, =std=, =capability=, =extension=,
+=pattern=, and =compare= where the selected provider declares their facts as
+metadata-only.
+
+The authoritative command remains =asp <language> search <view>=. Fast-path
+dispatch is an internal provider implementation detail: it may not change the
+language id, provider id, method, packet schema, render mode, or next-action
+contract. A metadata-only packet reports only its declared facts and must not
+claim parser-derived owners, imports, exports, or source evidence.
+
+Large-library performance scenarios MUST execute these commands through the
+=asp <language>= wrapper and retain one receipt per command. The gate must
+reject a metadata-only view that falls through to whole-project semantic report
+construction, rather than compensating by loosening the command budget.
+Search/query changes that affect Rust-owned fast routing must be representable by =schemas/semantic-hot-path-performance-gate.v1.schema.json=. This is part of the shared search/query contract, not a private test detail.
+
+Scenario gates must record the command, phase, provider process count and elapsed time, native finder process count and elapsed time, render duration, and stdout bytes. Index-backed fields such as SourceIndex, FactIndex, DependencyIndex, and GraphTurbo duration should be added to the same receipt as those subsystems become active.
+
+A selector-seeded =search pipe= scenario should assert =providerProcessCount=0= and =nativeFinderProcessCount=0= before exact projection, with a sub-millisecond target and a tight millisecond ceiling. Scenario fixtures must validate this typed gate data and the rendered packet shape directly, instead of measuring debug binary startup as search latency.

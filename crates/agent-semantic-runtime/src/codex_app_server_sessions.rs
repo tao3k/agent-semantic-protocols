@@ -2,45 +2,117 @@
 
 use serde_json::Value;
 
-use crate::{CodexRolloutSessionMetadata, codex_rollout_session_metadata};
+use crate::{
+    CodexRolloutSessionMetadata, agent_session_status::RuntimeSessionId,
+    codex_rollout_session_metadata,
+};
 
-/// Reads direct native Codex child sessions for one root task.
+/// Visibility of the reasoning field on a successful or failed Codex runtime
+/// observation.  Historical rollout values are deliberately kept separate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexReasoningVisibility {
+    Observed,
+    FieldOmitted,
+    TransportFailed,
+}
+
+/// Provenance-preserving runtime and rollout evidence for one child.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexChildSessionEvidence {
+    pub metadata: CodexRolloutSessionMetadata,
+    pub runtime_reasoning_effort: Option<String>,
+    pub runtime_reasoning_visibility: CodexReasoningVisibility,
+    pub rollout_reasoning_effort: Option<String>,
+}
+
+/// Reads direct native Codex child evidence for one root task without
+/// destructively coalescing runtime and rollout reasoning values.
 ///
 /// This recovery lane is intentionally fail-soft: if the installed Codex
 /// app-server is unavailable, ASP leaves lifecycle bootstrap in `Audit`
 /// instead of blocking unrelated tool use.
-pub fn codex_app_server_child_session_metadata(
-    root_session_id: &str,
-) -> Result<Vec<CodexRolloutSessionMetadata>, String> {
-    let Some(threads) = read_direct_child_threads(root_session_id) else {
-        return Ok(Vec::new());
+pub fn codex_app_server_child_session_evidence(
+    root_session_id: &RuntimeSessionId,
+) -> Result<Vec<CodexChildSessionEvidence>, String> {
+    let Some(threads) = read_direct_child_threads(root_session_id.as_str()) else {
+        let records = crate::codex_rollout_sessions::codex_rollout_session_index_for_sessions(
+            root_session_id,
+            std::iter::empty::<&str>(),
+        )?
+        .map(|index| {
+            index
+                .records
+                .into_iter()
+                .map(|metadata| CodexChildSessionEvidence {
+                    rollout_reasoning_effort: metadata.reasoning_effort.clone(),
+                    metadata,
+                    runtime_reasoning_effort: None,
+                    runtime_reasoning_visibility: CodexReasoningVisibility::TransportFailed,
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+        trace(
+            root_session_id.as_str(),
+            "app-server-unavailable-rollout-fallback",
+            serde_json::json!({ "recordCount": records.len() }),
+        );
+        return Ok(records);
     };
     trace(
-        root_session_id,
+        root_session_id.as_str(),
         "thread-list-received",
         serde_json::json!({ "threadCount": threads.len() }),
     );
     let mut records = Vec::new();
     for thread in &threads {
-        if let Some(mut record) = child_rollout_metadata(thread, root_session_id)? {
-            if let Some(runtime) = read_thread_runtime_observation(&record.session_id) {
-                record.model = runtime.model.or(record.model);
-                record.reasoning_effort = runtime.reasoning_effort.or(record.reasoning_effort);
-            }
-            records.push(record);
+        if let Some(mut record) = child_rollout_metadata(thread, root_session_id.as_str())? {
+            let rollout_reasoning_effort = record.reasoning_effort.clone();
+            let runtime = read_thread_runtime_observation(record.session_id.as_str());
+            let (runtime_reasoning_effort, runtime_reasoning_visibility) = match runtime {
+                Some(runtime) => {
+                    record.model = runtime.model.or(record.model);
+                    let visibility = if runtime.reasoning_effort.is_some() {
+                        CodexReasoningVisibility::Observed
+                    } else {
+                        CodexReasoningVisibility::FieldOmitted
+                    };
+                    (runtime.reasoning_effort, visibility)
+                }
+                None => (None, CodexReasoningVisibility::TransportFailed),
+            };
+            records.push(CodexChildSessionEvidence {
+                metadata: record,
+                runtime_reasoning_effort,
+                runtime_reasoning_visibility,
+                rollout_reasoning_effort,
+            });
         }
     }
     trace(
-        root_session_id,
+        root_session_id.as_str(),
         "complete",
         serde_json::json!({ "recordCount": records.len() }),
     );
     Ok(records)
 }
 
-struct CodexThreadRuntimeObservation {
-    model: Option<String>,
-    reasoning_effort: Option<String>,
+/// Runtime projection for callers that only need child metadata.  The reasoning
+/// value remains rollout-owned; lifecycle decisions consume typed evidence.
+pub fn codex_app_server_child_session_metadata(
+    root_session_id: &RuntimeSessionId,
+) -> Result<Vec<CodexRolloutSessionMetadata>, String> {
+    codex_app_server_child_session_evidence(root_session_id).map(|records| {
+        records
+            .into_iter()
+            .map(|evidence| evidence.metadata)
+            .collect()
+    })
+}
+
+pub(crate) struct CodexThreadRuntimeObservation {
+    pub(crate) model: Option<String>,
+    pub(crate) reasoning_effort: Option<String>,
 }
 
 /// Reads the runtime settings owned by Codex for an existing child thread.
@@ -50,6 +122,70 @@ struct CodexThreadRuntimeObservation {
 /// its own settings.  This is therefore the host-owned runtime evidence lane
 /// used to complete typed resident validation.
 fn read_thread_runtime_observation(
+    child_session_id: &str,
+) -> Option<CodexThreadRuntimeObservation> {
+    CodexHostEvidenceAdapter::from_environment().read_thread_runtime_observation(child_session_id)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum CodexHostEvidenceAdapter {
+    LiveAppServer,
+    RolloutOnly,
+    Fixture(std::path::PathBuf),
+}
+
+impl CodexHostEvidenceAdapter {
+    fn from_environment() -> Self {
+        if let Some(path) = std::env::var_os("ASP_CODEX_HOST_EVIDENCE_FIXTURE") {
+            return Self::Fixture(path.into());
+        }
+        match std::env::var("ASP_CODEX_HOST_EVIDENCE_MODE").as_deref() {
+            Ok("rollout-only") => Self::RolloutOnly,
+            _ => Self::LiveAppServer,
+        }
+    }
+
+    pub(crate) fn read_thread_runtime_observation(
+        &self,
+        child_session_id: &str,
+    ) -> Option<CodexThreadRuntimeObservation> {
+        match self {
+            Self::LiveAppServer => read_live_thread_runtime_observation(child_session_id),
+            Self::RolloutOnly => None,
+            Self::Fixture(path) => {
+                let fixture = read_host_evidence_fixture(path)?;
+                let runtime = fixture.get("runtime")?.get(child_session_id)?;
+                Some(CodexThreadRuntimeObservation {
+                    model: runtime
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    reasoning_effort: runtime
+                        .get("reasoningEffort")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                })
+            }
+        }
+    }
+
+    pub(crate) fn read_direct_child_threads(&self, root_session_id: &str) -> Option<Vec<Value>> {
+        match self {
+            Self::LiveAppServer => read_live_direct_child_threads(root_session_id),
+            Self::RolloutOnly => None,
+            Self::Fixture(path) => read_host_evidence_fixture(path)?
+                .get("threads")?
+                .as_array()
+                .cloned(),
+        }
+    }
+}
+
+fn read_host_evidence_fixture(path: &std::path::Path) -> Option<Value> {
+    serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+}
+
+fn read_live_thread_runtime_observation(
     child_session_id: &str,
 ) -> Option<CodexThreadRuntimeObservation> {
     let codex_binary = std::env::var_os("ASP_CODEX_BIN").unwrap_or_else(|| "codex".into());
@@ -94,12 +230,25 @@ fn read_thread_runtime_observation(
         return None;
     }
     let stdout = child.stdout.take()?;
-    let response = std::io::BufRead::lines(std::io::BufReader::new(stdout))
-        .map_while(Result::ok)
-        .filter_map(|line| serde_json::from_str::<Value>(&line).ok())
-        .find(|value| value.get("id").and_then(Value::as_i64) == Some(2));
+    let (response_sender, response_receiver) = std::sync::mpsc::sync_channel(1);
+    let response_reader = std::thread::spawn(move || {
+        let response = std::io::BufRead::lines(std::io::BufReader::new(stdout))
+            .map_while(Result::ok)
+            .filter_map(|line| serde_json::from_str::<Value>(&line).ok())
+            .find(|value| value.get("id").and_then(Value::as_i64) == Some(2));
+        let _ = response_sender.send(response);
+    });
+    let timeout_ms = std::env::var("ASP_CODEX_APP_SERVER_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(2_500);
+    let response = response_receiver
+        .recv_timeout(std::time::Duration::from_millis(timeout_ms))
+        .ok()
+        .flatten();
     let _ = child.kill();
     let _ = child.wait();
+    let _ = response_reader.join();
     let response = response?;
     if response.get("error").is_some() {
         return None;
@@ -117,6 +266,10 @@ fn read_thread_runtime_observation(
 }
 
 fn read_direct_child_threads(root_session_id: &str) -> Option<Vec<Value>> {
+    CodexHostEvidenceAdapter::from_environment().read_direct_child_threads(root_session_id)
+}
+
+fn read_live_direct_child_threads(root_session_id: &str) -> Option<Vec<Value>> {
     let codex_binary = std::env::var_os("ASP_CODEX_BIN").unwrap_or_else(|| "codex".into());
     let mut child = match std::process::Command::new(codex_binary)
         .args(["app-server", "--stdio"])
@@ -223,7 +376,9 @@ fn child_rollout_metadata(
             "/source/sub_agent/thread_spawn/agent_path",
         ],
     );
-    let rollout_metadata = codex_rollout_session_metadata(child_session_id)?;
+    let child_session_id_typed =
+        crate::agent_session_status::RuntimeSessionId::from(child_session_id);
+    let rollout_metadata = codex_rollout_session_metadata(&child_session_id_typed)?;
     trace(
         root_session_id,
         "child-candidate",
@@ -237,7 +392,7 @@ fn child_rollout_metadata(
     let Some(mut metadata) = rollout_metadata else {
         return Ok(None);
     };
-    metadata.session_id = child_session_id.to_string();
+    metadata.session_id = child_session_id_typed;
     metadata.root_session_id = Some(root_session_id.to_string());
     metadata.parent_thread_id = Some(root_session_id.to_string());
     metadata.thread_source = Some("subagent".to_string());

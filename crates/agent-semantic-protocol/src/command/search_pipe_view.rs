@@ -20,12 +20,12 @@ use super::search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsCo
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_query_pack::query_clause_texts;
 use super::search_pipe_render::render_ingest_frontier;
-use super::search_pipe_seed_decision::SeedActionIntent;
 use serde_json::Value;
 
 pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
+    pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     pub(super) locator_root: &'a Path,
     pub(super) cache_home: &'a Path,
     pub(super) surface: &'a str,
@@ -49,6 +49,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
     let SearchPipeViewRequest {
         language_id,
         project_root,
+        source_snapshot,
         locator_root,
         cache_home,
         surface,
@@ -74,7 +75,13 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
     };
     let candidates = display_candidates.as_slice();
     let graph_query_clauses = query
-        .map(|query| query_clause_texts(language_id, query))
+        .map(|query| {
+            super::search_pipe_provider_facts::with_query_pack_descriptor(
+                provider_context,
+                |descriptor| query_clause_texts(language_id, query, descriptor),
+            )
+        })
+        .transpose()?
         .unwrap_or_default();
     match view {
         "graph-turbo-request" => {
@@ -82,11 +89,11 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 surface,
                 language_id,
                 dependency_root: project_root,
+                source_snapshot,
                 cache_home,
                 query,
                 query_clauses: &graph_query_clauses,
                 candidates,
-                precomputed_quality: None,
                 pipes,
                 source,
                 candidate_sources,
@@ -106,6 +113,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             print!("{request}");
         }
         "seeds" => render_search_pipe_seeds_view(SearchPipeSeedsViewRequest {
+            source_snapshot,
             language_id,
             project_root,
             locator_root,
@@ -130,8 +138,14 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             reject_non_graph_turbo_receipt(frontier_receipt)?;
             print!("{}", render_ingest_frontier(candidates, pipes));
             if include_pipe_plan && let Some(query) = query {
-                let quality = analyze_search_pipe_quality(language_id, query, candidates);
+                let quality = super::search_pipe_provider_facts::with_query_pack_descriptor(
+                    provider_context,
+                    |descriptor| {
+                        analyze_search_pipe_quality(language_id, query, candidates, descriptor)
+                    },
+                )?;
                 print_search_pipe_header(SearchPipeHeader {
+                    source_snapshot,
                     surface,
                     language_id,
                     project_root,
@@ -151,9 +165,8 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         scopes,
                         query,
                         candidates,
-                        precomputed_quality: Some(quality.clone()),
+                        quality: quality.clone(),
                         ranked_compact: None,
-                        seed_action_intents: &[],
                         read_memory_selectors,
                         dependency_action_targets: &[],
                     })
@@ -167,6 +180,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
 struct SearchPipeSeedsViewRequest<'a> {
     language_id: &'a str,
     project_root: &'a Path,
+    source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     locator_root: &'a Path,
     cache_home: &'a Path,
     surface: &'a str,
@@ -189,6 +203,7 @@ struct SearchPipeSeedsViewRequest<'a> {
 fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Result<(), String> {
     let render_started_at = Instant::now();
     let SearchPipeSeedsViewRequest {
+        source_snapshot,
         language_id,
         project_root,
         locator_root,
@@ -210,18 +225,27 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         graph_query_clauses,
     } = request;
     let quality_started_at = Instant::now();
-    let quality = query.map(|query| analyze_search_pipe_quality(language_id, query, candidates));
+    let quality = query
+        .map(|query| {
+            super::search_pipe_provider_facts::with_query_pack_descriptor(
+                provider_context,
+                |descriptor| {
+                    analyze_search_pipe_quality(language_id, query, candidates, descriptor)
+                },
+            )
+        })
+        .transpose()?;
     let quality_elapsed = quality_started_at.elapsed();
     let graph_started_at = Instant::now();
     let request_packet = graph_turbo_request(&GraphTurboSearchPipeRequest {
         surface,
         language_id,
         dependency_root: project_root,
+        source_snapshot,
         cache_home,
         query,
         query_clauses: graph_query_clauses,
         candidates,
-        precomputed_quality: quality.as_ref(),
         pipes,
         source,
         candidate_sources,
@@ -246,7 +270,6 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     }
     let receipt_elapsed = receipt_started_at.elapsed();
     let seed_started_at = Instant::now();
-    let seed_action_intents = seed_action_intents(&request_packet);
     let dependency_action_targets = dependency_action_targets_from_graph(&request_packet, query);
     let seed_plan_line = include_pipe_plan
         .then(|| seed_plan_detail_line(&request_packet))
@@ -269,9 +292,10 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
                 scopes,
                 query,
                 candidates,
-                precomputed_quality: quality.clone(),
+                quality: quality
+                    .clone()
+                    .expect("quality is computed whenever a query exists"),
                 ranked_compact: ranked_compact.as_deref(),
-                seed_action_intents: &seed_action_intents,
                 read_memory_selectors,
                 dependency_action_targets: &dependency_action_targets,
             })
@@ -297,6 +321,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
             },
         );
         print_search_pipe_header(SearchPipeHeader {
+            source_snapshot,
             surface,
             language_id,
             project_root,
@@ -379,6 +404,7 @@ fn elapsed_millis(duration: Duration) -> u64 {
 }
 
 struct SearchPipeHeader<'a> {
+    source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
     surface: &'a str,
     language_id: &'a str,
     project_root: &'a Path,
@@ -392,6 +418,7 @@ struct SearchPipeHeader<'a> {
 
 fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
     let SearchPipeHeader {
+        source_snapshot,
         surface,
         language_id,
         project_root,
@@ -405,6 +432,23 @@ fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
     println!(
         "[{surface}] lang={language_id} view={view} source={source} ranker=graph-turbo:owner-query"
     );
+    let source_kind = match source_snapshot.source_kind {
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem => "filesystem",
+        agent_semantic_content_identity::SourceSnapshotKind::EditorBuffer => "editor-buffer",
+        agent_semantic_content_identity::SourceSnapshotKind::GitTree => "git-tree",
+        agent_semantic_content_identity::SourceSnapshotKind::DerivedOverlay => "derived-overlay",
+    };
+    println!(
+        "sourceSnapshot=schemaId={} algorithm={} rootDigest={} sourceKind={} leafCount={} baseRootDigest={} providerDigest={} dirtyPathsDigest={}",
+        source_snapshot.schema_id,
+        source_snapshot.algorithm,
+        source_snapshot.root_digest,
+        source_kind,
+        source_snapshot.leaf_count,
+        source_snapshot.base_root_digest.as_deref().unwrap_or("-"),
+        source_snapshot.provider_digest,
+        source_snapshot.dirty_paths_digest.as_deref().unwrap_or("-"),
+    );
     println!("query={query}");
     if let Some(workspace) = workspace_label(project_root, locator_root) {
         println!("workspace={workspace}");
@@ -415,15 +459,18 @@ fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
         quality.query_pack_quality,
         shell_quote(query)
     );
-    println!("{}", quality.query_terms_line(language_id, query));
+    let query_terms = if quality.query_terms.is_empty() {
+        "-".to_string()
+    } else {
+        quality.query_terms.join(",")
+    };
+    println!("queryTerms={query_terms}");
     for line in quality.lines() {
         println!("{line}");
     }
     println!("sourceTrace={}", compact_source_trace(source_trace));
     println!("{}", quality.handles_line());
-    println!(
-        "nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector"
-    );
+    println!("nextClasses=search-deps,owner-items,treesitter-query,query-selector");
 }
 
 fn shell_quote(value: &str) -> String {
@@ -477,22 +524,6 @@ fn seed_plan_detail_line(packet: &Value) -> Option<String> {
     Some(format!(
         "seedPlanDetail=quality={quality} queryOwnerSeedCount={query_owner_seed_count} selectedSeedCount={selected_seed_count} riskFactors={risk_factors} recommendedActions={recommended_actions} flow={flow} firstActionMatchesEvidenceState={first_action_matches_evidence_state} reasoningTreeRouteShown={reasoning_tree_route_shown} chosenRoutePreconditionsMet={chosen_route_preconditions_met} unnecessarySeedCount={unnecessary_seed_count} seedWhenKnownOwnerCount={seed_when_known_owner_count} seedWhenKnownSymbolCount={seed_when_known_symbol_count} seedWhenKnownSelectorCount={seed_when_known_selector_count}"
     ))
-}
-
-fn seed_action_intents(packet: &Value) -> Vec<SeedActionIntent> {
-    packet
-        .get("seedPlan")
-        .and_then(|seed_plan| seed_plan.get("recommendedActions"))
-        .and_then(Value::as_array)
-        .map(|actions| {
-            actions
-                .iter()
-                .filter_map(Value::as_str)
-                .filter(|action| !action.is_empty())
-                .filter_map(SeedActionIntent::from_seed_plan_action)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
 }
 
 fn compact_string_array(value: Option<&Value>) -> String {

@@ -25,6 +25,12 @@ fn base_receipt() -> ClientReceipt {
             stdout_truncated: false,
             stderr_truncated: false,
             timed_out: false,
+            exit_signal: None,
+            memory_limit_bytes: None,
+            memory_limit_enforced: false,
+            memory_limit_exceeded: false,
+            abnormal_termination: false,
+            termination_reason: None,
             elapsed_ms: ElapsedMillis::new(0),
         },
     )

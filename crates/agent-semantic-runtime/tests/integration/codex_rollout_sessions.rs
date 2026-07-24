@@ -228,8 +228,8 @@ esac
         env::set_var("CODEX_HOME", &root);
         env::set_var("ASP_CODEX_BIN", &fake_codex);
     }
-    let records = agent_semantic_runtime::codex_app_server_child_session_metadata(root_session_id)
-        .expect("read app-server child metadata");
+    let records = agent_semantic_runtime::codex_app_server_child_session_evidence(root_session_id)
+        .expect("read app-server child evidence");
     restore_codex_home(previous_codex_home);
     unsafe {
         match previous_codex_bin {
@@ -240,13 +240,19 @@ esac
     fs::remove_dir_all(&root).ok();
 
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].session_id, session_id);
-    assert_eq!(records[0].model.as_deref(), Some("gpt-5.4-mini"));
-    assert_eq!(records[0].reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(records[0].metadata.session_id, session_id);
+    assert_eq!(records[0].metadata.model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(records[0].runtime_reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(
+        records[0].runtime_reasoning_visibility,
+        agent_semantic_runtime::CodexReasoningVisibility::Observed
+    );
+    assert_eq!(records[0].rollout_reasoning_effort, None);
+    assert_eq!(records[0].metadata.reasoning_effort, None);
 }
 
 #[test]
-fn missing_runtime_reasoning_preserves_rollout_reasoning_effort() {
+fn missing_runtime_reasoning_keeps_runtime_and_rollout_evidence_separate() {
     let _env_guard = ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -255,6 +261,17 @@ fn missing_runtime_reasoning_preserves_rollout_reasoning_effort() {
     let root = temp_codex_home("codex-runtime-null-preserves-rollout-reasoning");
     let rollout_dir = root.join("sessions").join("2026").join("07").join("04");
     fs::create_dir_all(&rollout_dir).expect("create rollout dir");
+    fs::write(
+        rollout_dir.join(format!(
+            "rollout-2026-07-04T08-36-34-{root_session_id}.jsonl"
+        )),
+        format!(
+            r#"{{"type":"session_meta","payload":{{"id":"{root_session_id}","session_id":"{root_session_id}","parent_thread_id":"{root_session_id}","thread_source":"user","agent_role":"user"}}}}
+{{"timestamp":"2026-07-04T08:36:34Z","type":"response_item","payload":{{"type":"thread_spawn","id":"{session_id}","parent_thread_id":"{root_session_id}","agent_role":"asp_explorer"}}}}
+"#
+        ),
+    )
+    .expect("write root rollout topology");
     fs::write(
         rollout_dir.join(format!("rollout-2026-07-04T08-36-35-{session_id}.jsonl")),
         format!(
@@ -299,8 +316,12 @@ esac
         env::set_var("CODEX_HOME", &root);
         env::set_var("ASP_CODEX_BIN", &fake_codex);
     }
-    let records = agent_semantic_runtime::codex_app_server_child_session_metadata(root_session_id)
-        .expect("read app-server child metadata");
+    let records = agent_semantic_runtime::codex_app_server_child_session_evidence(root_session_id)
+        .expect("read app-server child evidence");
+    fs::write(&fake_codex, "#!/bin/sh\nexit 1\n").expect("replace fake codex with failure");
+    let transport_failed_records =
+        agent_semantic_runtime::codex_app_server_child_session_evidence(root_session_id)
+            .expect("retain rollout evidence when app-server transport fails");
     restore_codex_home(previous_codex_home);
     unsafe {
         match previous_codex_bin {
@@ -311,7 +332,25 @@ esac
     fs::remove_dir_all(&root).ok();
 
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(records[0].runtime_reasoning_effort, None);
+    assert_eq!(
+        records[0].runtime_reasoning_visibility,
+        agent_semantic_runtime::CodexReasoningVisibility::FieldOmitted
+    );
+    assert_eq!(records[0].rollout_reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(records[0].metadata.reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(transport_failed_records.len(), 1);
+    assert_eq!(transport_failed_records[0].runtime_reasoning_effort, None);
+    assert_eq!(
+        transport_failed_records[0].runtime_reasoning_visibility,
+        agent_semantic_runtime::CodexReasoningVisibility::TransportFailed
+    );
+    assert_eq!(
+        transport_failed_records[0]
+            .rollout_reasoning_effort
+            .as_deref(),
+        Some("low")
+    );
 }
 
 fn temp_codex_home(label: &str) -> std::path::PathBuf {

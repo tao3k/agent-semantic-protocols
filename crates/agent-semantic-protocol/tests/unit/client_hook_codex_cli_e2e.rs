@@ -29,13 +29,7 @@ fn codex_cli_hook_enforcement_probe_reports_real_status_when_enabled() {
     let codex_home = write_codex_home_fixture(&root);
 
     let test_path = prepend_path(&bin_dir);
-    let install = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &test_path)
-        .env("CODEX_HOME", &codex_home)
-        .args(["install", "plugin", "--codex", "."])
-        .output()
-        .expect("run asp install plugin");
+    let install = run_install_plugin(&root, &test_path, &codex_home);
     assert!(
         install.status.success(),
         "asp install plugin failed: stdout={} stderr={}",
@@ -74,12 +68,38 @@ fn codex_cli_hook_enforcement_probe_reports_real_status_when_enabled() {
     let _ = fs::remove_dir_all(root);
 }
 
+fn run_install_plugin(root: &Path, test_path: &std::ffi::OsStr, codex_home: &Path) -> Output {
+    let mut command = install_plugin_command(root, test_path, codex_home);
+    command.output().expect("run asp install plugin")
+}
+
+fn install_plugin_command(root: &Path, test_path: &std::ffi::OsStr, codex_home: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command
+        .current_dir(root)
+        .env("PATH", test_path)
+        .env("CODEX_HOME", codex_home)
+        .args(["install", "plugin", "--codex", "."]);
+    command
+}
+
 fn run_hook_doctor_probe(
     root: &Path,
     test_path: &std::ffi::OsStr,
     codex_home: &Path,
     codex_cli: &Path,
 ) -> Output {
+    execute_hook_doctor_probe(hook_doctor_probe_command(
+        root, test_path, codex_home, codex_cli,
+    ))
+}
+
+fn hook_doctor_probe_command(
+    root: &Path,
+    test_path: &std::ffi::OsStr,
+    codex_home: &Path,
+    codex_cli: &Path,
+) -> Command {
     let activation = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
@@ -97,6 +117,10 @@ fn run_hook_doctor_probe(
             activation.to_str().expect("activation path is utf8"),
             ".",
         ]);
+    command
+}
+
+fn execute_hook_doctor_probe(mut command: Command) -> Output {
     command.output().expect("run asp hook doctor")
 }
 

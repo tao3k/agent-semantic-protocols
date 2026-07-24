@@ -5,16 +5,43 @@ use serde_json::Value;
 const SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-tree-sitter-query";
 
+macro_rules! syntax_query_replay_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+    };
+}
+
+syntax_query_replay_text!(SyntaxQueryMatchLocator);
+syntax_query_replay_text!(SyntaxQueryCaptureLocator);
+syntax_query_replay_text!(SyntaxQueryCaptureName);
+syntax_query_replay_text!(SyntaxQueryNodeType);
+syntax_query_replay_text!(SyntaxQueryFieldName);
+syntax_query_replay_text!(SyntaxQueryCapturedText);
+
 /// One syntax capture row projected from a replay packet or DB row.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SyntaxQueryReplayCapture {
-    pub match_locator: String,
-    pub capture_locator: String,
-    pub capture_name: String,
-    pub capture_node_type: Option<String>,
-    pub item_node_type: Option<String>,
-    pub field: Option<String>,
-    pub text: String,
+    pub match_locator: SyntaxQueryMatchLocator,
+    pub capture_locator: SyntaxQueryCaptureLocator,
+    pub capture_name: SyntaxQueryCaptureName,
+    pub capture_node_type: Option<SyntaxQueryNodeType>,
+    pub item_node_type: Option<SyntaxQueryNodeType>,
+    pub field: Option<SyntaxQueryFieldName>,
+    pub text: SyntaxQueryCapturedText,
 }
 
 /// Request for rendering DB-backed syntax query replay rows.

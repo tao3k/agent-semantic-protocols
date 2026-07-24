@@ -29,6 +29,28 @@ use crate::source_index::{
 const SOURCE_INDEX_REFRESH_INDEX_OWNER: &str = "db-engine";
 const SOURCE_INDEX_REFRESH_PHASE: &str = "source-index-db-engine";
 
+fn source_index_refresh_artifact_evidence(
+    report: &crate::source_index::SourceIndexRefreshReport,
+) -> agent_semantic_content_identity::DerivedSourceArtifactEvidence {
+    agent_semantic_content_identity::DerivedSourceArtifactEvidence::current(
+        agent_semantic_content_identity::DerivedSourceArtifactKind::SourceIndex,
+        report.index_artifact_digest(),
+        report.source_snapshot().clone(),
+    )
+}
+
+fn source_index_lookup_artifact_evidence(
+    result: &crate::source_index::SourceIndexLookupResult,
+) -> Option<agent_semantic_content_identity::DerivedSourceArtifactEvidence> {
+    Some(
+        agent_semantic_content_identity::DerivedSourceArtifactEvidence::current(
+            agent_semantic_content_identity::DerivedSourceArtifactKind::SourceIndex,
+            result.index_artifact_digest.as_deref()?,
+            result.source_snapshot.clone()?,
+        ),
+    )
+}
+
 pub(crate) fn run_cache(
     project_root: &Path,
     facade_language_id: Option<&LanguageId>,
@@ -50,7 +72,7 @@ pub(crate) fn run_cache(
                 &ProviderId::from(checkout.index_owner.as_str()),
             )?;
             println!(
-                "[asp-cache-runtime-source] status=ready language={} stateNamespace={} checkout={} statePathPolicy=asp-state-managed indexOwner={} sourceIndex=refreshed indexGeneration={} reused={} files={} owners={} selectors={} rawSourceStored=false",
+                "[asp-cache-runtime-source] status=ready language={} stateNamespace={} checkout={} statePathPolicy=asp-state-managed indexOwner={} sourceIndex=refreshed indexGeneration={} reused={} files={} owners={} selectors={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false",
                 checkout.language_id,
                 checkout.state_namespace,
                 checkout.checkout,
@@ -59,7 +81,10 @@ pub(crate) fn run_cache(
                 source_index_report.reused_generation(),
                 source_index_report.file_count(),
                 source_index_report.owner_count(),
-                source_index_report.selector_count()
+                source_index_report.selector_count(),
+                source_index_report.source_snapshot().root_digest.as_str(),
+                source_index_report.source_snapshot().provider_digest.as_str(),
+                source_index_report.index_artifact_digest()
             );
             println!(
                 "|sourceRef manager=git repository={} checkout={}",
@@ -71,11 +96,14 @@ pub(crate) fn run_cache(
                 checkout.index_owner
             );
             println!(
-                "|sourceIndex db={} generation={} reused={} projectRoot={} rawSourceStored=false",
+                "|sourceIndex db={} generation={} reused={} projectRoot={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false",
                 source_index_report.db_path().display(),
                 source_index_report.generation_id(),
                 source_index_report.reused_generation(),
-                checkout.checkout_dir.display()
+                checkout.checkout_dir.display(),
+                source_index_report.source_snapshot().root_digest.as_str(),
+                source_index_report.source_snapshot().provider_digest.as_str(),
+                source_index_report.index_artifact_digest()
             );
             println!("next=asp cache import");
             if receipt_json {
@@ -98,6 +126,9 @@ pub(crate) fn run_cache(
                         "fileCount": source_index_report.file_count(),
                         "ownerCount": source_index_report.owner_count(),
                         "selectorCount": source_index_report.selector_count(),
+                        "sourceSnapshot": source_index_report.source_snapshot(),
+                        "indexArtifactDigest": source_index_report.index_artifact_digest(),
+                        "artifactEvidence": source_index_refresh_artifact_evidence(&source_index_report),
                         "rawSourceStored": false,
                         "projectRoot": checkout.checkout_dir.display().to_string()
                     },
@@ -178,8 +209,14 @@ pub(crate) fn run_cache(
             let manifest = ClientCacheManifest::load_from_path(state_layout.cache_manifest_path())?;
             let cache_root = state_layout.client_cache_dir();
             ClientDbEngine::import_manifest_from_client_dir(cache_root, &manifest)?;
+            let source_snapshot =
+                crate::source_index::current_source_index_snapshot(project_root)?;
             let structural_index_imported_count =
-                import_structural_index_artifacts(cache_root, &manifest)?;
+                import_structural_index_artifacts(
+                    cache_root,
+                    &manifest,
+                    &source_snapshot.source_snapshot,
+                )?;
             let db_report = ClientDbEngine::inspect_client_dir(cache_root);
             let mut receipt =
                 ClientReceipt::cache_report(ClientMethod::CacheImport, provenance, &cache_report);
@@ -212,13 +249,16 @@ pub(crate) fn run_cache(
             let refresh_project_root = parse_cache_workspace(project_root, rest)?;
             let report = crate::source_index::rebuild_source_index(&refresh_project_root)?;
             println!(
-                "[asp-cache-source-index] status=rebuilt route=local-cache db={} generation={} reused={} files={} owners={} selectors={} rawSourceStored=false indexOwner={}",
+                "[asp-cache-source-index] status=rebuilt route=local-cache db={} generation={} reused={} files={} owners={} selectors={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false indexOwner={}",
                 report.db_path().display(),
                 report.generation_id(),
                 report.reused_generation(),
                 report.file_count(),
                 report.owner_count(),
                 report.selector_count(),
+                report.source_snapshot().root_digest.as_str(),
+                report.source_snapshot().provider_digest.as_str(),
+                report.index_artifact_digest(),
                 source_index_refresh_index_owner()
             );
             println!(
@@ -237,6 +277,9 @@ pub(crate) fn run_cache(
                     "fileCount": report.file_count(),
                     "ownerCount": report.owner_count(),
                     "selectorCount": report.selector_count(),
+                    "sourceSnapshot": report.source_snapshot(),
+                    "indexArtifactDigest": report.index_artifact_digest(),
+                    "artifactEvidence": source_index_refresh_artifact_evidence(&report),
                     "rawSourceStored": false,
                     "indexOwner": source_index_refresh_index_owner()
                 });
@@ -248,7 +291,7 @@ pub(crate) fn run_cache(
             let refresh_project_root = parse_cache_workspace(project_root, rest)?;
             let Some(report) = refresh_source_index(&refresh_project_root)? else {
                 println!(
-                    "[asp-cache-source-index] status=cold-required route=local-cache db=- generation=- reused=false files=0 owners=0 selectors=0 rawSourceStored=false indexOwner={}",
+                    "[asp-cache-source-index] status=cold-required route=local-cache db=- generation=- reused=false files=0 owners=0 selectors=0 snapshotRoot=- providerDigest=- indexArtifactDigest=- rawSourceStored=false indexOwner={}",
                     source_index_refresh_index_owner()
                 );
                 println!(
@@ -271,6 +314,9 @@ pub(crate) fn run_cache(
                         "fileCount": 0,
                         "ownerCount": 0,
                         "selectorCount": 0,
+                        "sourceSnapshot": null,
+                        "indexArtifactDigest": null,
+                        "artifactEvidence": null,
                         "rawSourceStored": false,
                         "indexOwner": source_index_refresh_index_owner(),
                         "next": "asp cache source-index rebuild"
@@ -280,13 +326,16 @@ pub(crate) fn run_cache(
                 return Ok(());
             };
             println!(
-                "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} reused={} files={} owners={} selectors={} rawSourceStored=false indexOwner={}",
+                "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} reused={} files={} owners={} selectors={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false indexOwner={}",
                 report.db_path().display(),
                 report.generation_id(),
                 report.reused_generation(),
                 report.file_count(),
                 report.owner_count(),
                 report.selector_count(),
+                report.source_snapshot().root_digest.as_str(),
+                report.source_snapshot().provider_digest.as_str(),
+                report.index_artifact_digest(),
                 source_index_refresh_index_owner()
             );
             println!(
@@ -305,6 +354,9 @@ pub(crate) fn run_cache(
                     "fileCount": report.file_count(),
                     "ownerCount": report.owner_count(),
                     "selectorCount": report.selector_count(),
+                    "sourceSnapshot": report.source_snapshot(),
+                    "indexArtifactDigest": report.index_artifact_digest(),
+                    "artifactEvidence": source_index_refresh_artifact_evidence(&report),
                     "rawSourceStored": false,
                     "indexOwner": source_index_refresh_index_owner()
                 });
@@ -314,28 +366,61 @@ pub(crate) fn run_cache(
         }
         [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "lookup" => {
             let spec = parse_source_index_lookup_args(project_root, rest)?;
+            let source_snapshot = if let Some(index_owner) = spec.index_owner.as_deref() {
+                let language_id = facade_language_id.ok_or_else(|| {
+                    "--index-owner requires a language-scoped `asp <language> cache source-index lookup` request"
+                        .to_string()
+                })?;
+                crate::source_index::current_runtime_source_index_snapshot(
+                    project_root,
+                    &spec.index_root,
+                    language_id,
+                    &ProviderId::from(index_owner),
+                )?
+            } else {
+                crate::source_index::current_source_index_snapshot(&spec.index_root)?
+            };
             let result = lookup_source_index_in_cache(SourceIndexLookupRequest {
                 cache_project_root: project_root,
                 indexed_project_root: &spec.index_root,
                 language_id: facade_language_id,
                 query: &spec.query,
                 limit: spec.limit,
+                source_snapshot: &source_snapshot.source_snapshot,
             })?;
             if result.candidates.is_empty() {
                 println!(
-                    "noOutput reason=source-index-{} query={} indexRoot={}",
+                    "noOutput reason=source-index-{} query={} indexRoot={} snapshotRoot={} providerDigest={} indexArtifactDigest={}",
                     result.state.as_str(),
                     spec.query,
-                    spec.index_root.display()
+                    spec.index_root.display(),
+                    result
+                        .source_snapshot
+                        .as_ref()
+                        .map_or("-", |snapshot| snapshot.root_digest.as_str()),
+                    result
+                        .source_snapshot
+                        .as_ref()
+                        .map_or("-", |snapshot| snapshot.provider_digest.as_str()),
+                    result.index_artifact_digest.as_deref().unwrap_or("-")
                 );
             } else {
                 println!(
-                    "[asp-cache-source-index] status={} route=local-cache db={} indexRoot={} query={} candidates={} rawSourceStored=false",
+                    "[asp-cache-source-index] status={} route=local-cache db={} indexRoot={} query={} candidates={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false",
                     result.state.as_str(),
                     result.db_path.display(),
                     spec.index_root.display(),
                     spec.query,
-                    result.candidates.len()
+                    result.candidates.len(),
+                    result
+                        .source_snapshot
+                        .as_ref()
+                        .map_or("-", |snapshot| snapshot.root_digest.as_str()),
+                    result
+                        .source_snapshot
+                        .as_ref()
+                        .map_or("-", |snapshot| snapshot.provider_digest.as_str()),
+                    result.index_artifact_digest.as_deref().unwrap_or("-")
                 );
                 for candidate in &result.candidates {
                     println!(
@@ -366,8 +451,12 @@ pub(crate) fn run_cache(
                     "route": "local-cache",
                     "dbPath": result.db_path.display().to_string(),
                     "indexRoot": spec.index_root.display().to_string(),
+                    "indexOwner": spec.index_owner,
                     "query": spec.query,
                     "limit": spec.limit,
+                    "sourceSnapshot": result.source_snapshot.as_ref(),
+                    "indexArtifactDigest": result.index_artifact_digest.as_deref(),
+                    "artifactEvidence": source_index_lookup_artifact_evidence(&result),
                     "rawSourceStored": false,
                     "candidates": result.candidates.iter().map(|candidate| {
                         json!({
@@ -494,7 +583,7 @@ pub(crate) fn run_cache(
             Ok(())
         }
         _ => Err(
-            "usage: asp cache <status|import|source-index refresh [--workspace <path>]|source-index rebuild [--workspace <path>]|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--workspace <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
+            "usage: asp cache <status|import|source-index refresh [--workspace <path>]|source-index rebuild [--workspace <path>]|source-index lookup --query <term> [--index-root <path>] [--index-owner <provider>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--workspace <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
                 .to_string(),
         ),
     }
@@ -528,6 +617,7 @@ fn parse_cache_workspace(project_root: &Path, args: &[String]) -> Result<PathBuf
 struct SourceIndexLookupSpec {
     query: String,
     index_root: PathBuf,
+    index_owner: Option<String>,
     limit: u32,
 }
 
@@ -537,12 +627,14 @@ fn parse_source_index_lookup_args(
 ) -> Result<SourceIndexLookupSpec, String> {
     let mut query = None;
     let mut index_root = None;
+    let mut index_owner = None;
     let mut limit = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--query" => query = Some(next_flag_value("--query", &mut iter)?),
             "--index-root" => index_root = Some(next_flag_value("--index-root", &mut iter)?),
+            "--index-owner" => index_owner = Some(next_flag_value("--index-owner", &mut iter)?),
             "--limit" => {
                 let value = next_flag_value("--limit", &mut iter)?;
                 limit = Some(
@@ -567,6 +659,7 @@ fn parse_source_index_lookup_args(
     Ok(SourceIndexLookupSpec {
         query: query.ok_or_else(|| "--query is required".to_string())?,
         index_root,
+        index_owner,
         limit: limit.unwrap_or(8),
     })
 }
@@ -707,7 +800,10 @@ fn cache_status_line(
 ) -> &'static str {
     match cache_report.status {
         CacheManifestStatus::Unavailable => "unavailable",
-        CacheManifestStatus::Missing => "missing",
+        CacheManifestStatus::Missing => match db_report {
+            Some(report) if db_report_has_indexed_content(report) => "available",
+            _ => "missing",
+        },
         CacheManifestStatus::Invalid => "invalid",
         CacheManifestStatus::Present => match db_report {
             Some(report)
@@ -719,6 +815,14 @@ fn cache_status_line(
             Some(_) | None => "unimported",
         },
     }
+}
+
+fn db_report_has_indexed_content(report: &ClientDbReport) -> bool {
+    report.status == ClientDbStatus::Present
+        && (report.generation_count > 0
+            || report.source_index_generation_count > 0
+            || report.source_index_owner_count > 0
+            || report.source_index_selector_count > 0)
 }
 
 fn print_db_engine_status(engine_report: Option<&ClientDbEngineReport>) {
@@ -758,17 +862,13 @@ fn print_db_status(db_report: Option<&ClientDbReport>) {
             })
             .unwrap_or_default();
         println!(
-            "|db path={} status={} generations={} syntaxRows={}/{}/{} structuralIndex={}/{}/{}/{} sourceIndex={}/{}/{} artifactEvents={} rawSourceStored={}{}",
+            "|db path={} status={} generations={} syntaxRows={}/{}/{} sourceIndex={}/{}/{} artifactEvents={} rawSourceStored={}{}",
             db_report.db_path.display(),
             db_report.status.as_str(),
             db_report.generation_count,
             db_report.syntax_row_generation_count,
             db_report.syntax_row_match_count,
             db_report.syntax_row_capture_count,
-            db_report.structural_index_generation_count,
-            db_report.structural_index_owner_count,
-            db_report.structural_index_symbol_count,
-            db_report.structural_index_dependency_usage_count,
             db_report.source_index_generation_count,
             db_report.source_index_owner_count,
             db_report.source_index_selector_count,
@@ -785,7 +885,7 @@ fn print_db_status(db_report: Option<&ClientDbReport>) {
         }
     } else {
         println!(
-            "|db path=unavailable status=unavailable generations=0 syntaxRows=0/0/0 structuralIndex=0/0/0/0 sourceIndex=0/0/0 artifactEvents=0 rawSourceStored=false journalMode=unknown synchronous=unknown busyTimeoutMs=unknown foreignKeys=false"
+            "|db path=unavailable status=unavailable generations=0 syntaxRows=0/0/0 sourceIndex=0/0/0 artifactEvents=0 rawSourceStored=false journalMode=unknown synchronous=unknown busyTimeoutMs=unknown foreignKeys=false"
         );
     }
 }
@@ -797,12 +897,6 @@ fn apply_db_report_to_receipt(receipt: &mut ClientReceipt, db_report: &ClientDbR
     receipt.client_db_syntax_row_generation_count = Some(db_report.syntax_row_generation_count);
     receipt.client_db_syntax_row_match_count = Some(db_report.syntax_row_match_count);
     receipt.client_db_syntax_row_capture_count = Some(db_report.syntax_row_capture_count);
-    receipt.client_db_structural_index_generation_count =
-        Some(db_report.structural_index_generation_count);
-    receipt.client_db_structural_index_owner_count = Some(db_report.structural_index_owner_count);
-    receipt.client_db_structural_index_symbol_count = Some(db_report.structural_index_symbol_count);
-    receipt.client_db_structural_index_dependency_usage_count =
-        Some(db_report.structural_index_dependency_usage_count);
     receipt.client_db_source_index_generation_count = Some(db_report.source_index_generation_count);
     receipt.client_db_source_index_owner_count = Some(db_report.source_index_owner_count);
     receipt.client_db_source_index_selector_count = Some(db_report.source_index_selector_count);

@@ -65,9 +65,7 @@ pub(crate) fn search_cache_forwarded_args(args: &[String]) -> std::borrow::Cow<'
 
 fn query_export_method(request: &ClientRequest) -> String {
     let args = &request.forwarded_args;
-    if request.is_hook_direct_source_read() {
-        "query/direct-source-read".to_string()
-    } else if has_tree_sitter_query(args) {
+    if has_tree_sitter_query(args) {
         "query/tree-sitter".to_string()
     } else if is_selector_code_query(args) {
         "query/code".to_string()
@@ -147,8 +145,8 @@ const PRIME_DECISION_PRIMER_RENDER_ABI: &str = concat!(
     "purpose=decision-primer;",
     "answer=false;",
     "code=false;",
-    "capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
-    "ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code;",
+    "capabilities=pipe,lexical,owner-items,selector-code,treesitter-query;",
+    "ladder=pipe>lexical>owner-items>selector-code;",
     "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
     "risk=broad-direct-read,manual-window-scan,repeat-prime;",
     "next=search pipe <question-or-feature-term> --view seeds"

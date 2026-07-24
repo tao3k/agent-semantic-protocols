@@ -1,0 +1,568 @@
+** Wire contract: semantic language registry + shared =semantic-search= JSON Schema
+*** Provider-owned query pack descriptor
+
+Every parser-owned search view MUST receive the descriptor from its activated
+provider, including plain =search lexical= requests that do not require
+dependency topology or semantic facts. Carrying provider contract context is
+independent from starting a provider process: execution remains plan-driven,
+but query composition MUST NOT drop the descriptor merely because the current
+plan can use only the local Merkle snapshot and parser projection.
+
+Workspace-scope capability names are provider-owned contract values. =cargo-workspace-membership= denotes Rust/Cargo membership evidence, while =package-manager-workspace-scope= denotes language-neutral package-manager workspace-scope search evidence. Every emitted capability name MUST validate against the active package-local capability schema; the common registry schema continues to own descriptor shape rather than a global cross-language name enum.
+
+Language registration and activation are part of the query-pack authority chain, not compatibility surfaces. The provider manifest, language registry record, serialized activation, and resolved runtime provider MUST carry the same required typed descriptor and canonical content identity. Missing, omitted, or drifted descriptors MUST fail closed before the language becomes routable; activation resolution MUST NOT restore descriptor content from an embedded Rust manifest.
+
+The breaking cutover uses versioned provider-manifest, language-registry, and hook-activation schemas. The active runtime accepts only the new versions; it does not retain v1 parsing, optional descriptor fields, aliases, or automatic descriptor backfill.
+Every registered source-language harness MUST publish a versioned query-pack descriptor. The
+descriptor is separate from semantic-facts production: a language such as =gerbil-scheme= may
+publish lexical query composition even before it supports =search/semantic-facts=. Document-only
+providers that do not register a source-language search surface are outside this requirement.
+
+The shared schema owns the language-neutral shape:
+
+- exact =languageId= and descriptor =id=/=version=
+- typed term-role overrides
+- ordered query-pack recipes whose clauses reference declared intent axes
+- token classification policy expressed as data, never router string branches
+- declared semantic-facts axes when a recipe requires provider facts
+
+Each harness manifest owns its concrete terms and recipes. The router MUST select the descriptor
+from the activated provider record, validate it against the shared schema, and compose clauses
+without matching language names. Missing, invalid, or activation-omitted descriptors are explicit
+capability states; the router MUST NOT restore a central Rust fallback.
+
+Language identity is exact. In particular, =gerbil-scheme= remains =gerbil-scheme= throughout the
+manifest, activation record, query packet, source trace, and provider dispatch. It MUST NOT be
+normalized to =scheme=.
+
+The initial migration removes the central concrete policies from
+=search_pipe_query_pack.rs=: TypeScript =Effect= role classification, concrete next-query pack
+recipes, and project-shaped token exceptions. Generic tokenization, deduplication, clause coverage,
+and descriptor composition remain shared search-engine behavior.
+
+
+Every provider first advertises through the semantic language registry, then
+maps native search packets to the shared =semantic-search= wire contract when
+=--json= is requested.  The registry and packet schemas live at:
+
+#+begin_src text
+schemas/semantic-language-registry.v1.schema.json
+schemas/semantic-search-packet.v1.schema.json
+schemas/semantic-query-packet.v1.schema.json
+schemas/semantic-read-packet.v1.schema.json
+schemas/semantic-source-location.v1.schema.json
+schemas/semantic-tree-sitter-query.v1.schema.json
+schemas/semantic-tree-sitter-provenance.v1.schema.json
+#+end_src
+
+The protocol repository's =schemas/= directory is the source of truth.
+Provider packages that run their own CI from independent checkouts may carry
+package-local copies at the same relative paths.  Their tests should validate
+against the package-local files, and monorepo/submodule checkouts should compare
+the package-local copies with the repository source schemas to prevent drift.
+
+Tree-sitter query is the portable syntax ABI for query/search/read provenance,
+but it is not a reason to collapse the three packet envelopes into one generic
+packet.  =semantic-query-packet=, =semantic-search-packet=, and
+=semantic-read-packet= keep separate required fields and consumer semantics.
+Shared path/range fields such as =projectPath=, =lineRange=, =location=, and
+=sourceLocator= converge through =semantic-source-location.v1.schema.json=.
+Shared syntax provenance fields such as =syntaxQueryRef=, =syntaxMatchRefs=,
+=syntaxCaptureRefs=, and =syntaxAnchor= must converge through
+=semantic-tree-sitter-provenance.v1.schema.json= so providers do not maintain
+parallel copies of the same tree-sitter reference shape.
+
+Agent-facing guides must expose the syntax ABI as routes, not as another
+packet family or a cache inspection workflow.  The compact guide route rows are
+the public decision contract:
+
+#+begin_src text
+|route syntax-locate selectors=S:tree-sitter-query,R:range returns=locator,capture,frontier code=false
+|route syntax-code selectors=S:tree-sitter-query,R:exact-selector returns=code code=pure
+|route read-plan selectors=R:selector,T:term returns=owners,tests,window-set code=false
+|route query-code selectors=O:owner,Q:symbol returns=code code=pure
+#+end_src
+
+Provider guide output should be split by use, not by implementation owner.  The
+agent-facing line protocols are:
+
+#+begin_src text
+[guide] lang=<language> provider=<asp-provider> protocol=guide.v1 root=.
+[query-guide] lang=<language> provider=<asp-provider> protocol=query-guide.v1 root=.
+[treesitter-query-guide] lang=<language> engine=tree-sitter protocol=treesitter-query-guide.v1 root=.
+#+end_src
+
+=guide= is the provider's default agent-facing guide command and emits the
+=guide.v1= protocol.  It teaches surfaces and flows, and should point
+code-shaped syntax work to =query guide treesitter .= before an agent writes an
+inline =--treesitter-query=.  =query guide= teaches stdout contracts, read-plan
+contracts, and pure-code requirements.  =query guide treesitter= teaches
+tree-sitter S-expression shape, captures, predicates, native enrichment fields,
+catalog templates, and the rules for multi-match =--code=.  Hook recovery
+messages should refer to these guides when the agent used raw language-source
+tools: for example, a Rust =PreToolUse= denial for =Read=, =cat=, =sed=, or
+=rg= over =.rs= source should explain that raw Rust source access is replaced by
+=asp rust guide= as the main progressive tool map, with =asp rust search guide=,
+=asp rust query guide=, and =asp rust query guide treesitter= listed only as
+specialized reference guides when that decision is needed.  Guide commands do
+not require a positional =.= workspace argument.  Providers may accept
+=--workspace <workspace-root>= when project-local capabilities or examples need
+context, but the base guide surface is a provider capability interface rather
+than a repository scan command.
+The concrete recovery route should return to parser-owned discovery rather than
+asking the agent to execute a path/range source transport.  If the owner is
+known, recovery should route to =asp rust search owner <owner> items --query
+<symbol-or-term> --workspace <workspace-root> --view seeds=.  If the frontier
+already contains a parser-owned item identity, the next action is =asp rust
+query --selector <rust://...#item/...> --workspace <workspace-root> --code=.
+=--from-hook direct-source-read= remains an internal low-priority fallback for
+bounded exact-window recovery after parser-owned frontier evidence has already
+failed; it must not be the prompt-facing guide or recovery default.
+
+=guide --code= extends =guide.v1= instead of introducing another search or query
+subcommand.  Its job is to teach the agent one high-quality, source-backed code
+pattern with the smallest useful prompt surface: a short source comment when one
+is present and the complete function/macro/use block that demonstrates the
+pattern.  The compact =guide= output owns the exemplar metadata: topic,
+selector, comment selector, code selector, =nextCommand=, and =moreCommand=.
+When =--code= is present, stdout must contain only the extracted source comment
+and source code.  It must not print =primaryExemplar= rows, =|code begin=
+markers, protocol headers, compressed pseudo-code, or other renderer metadata.
+Default =guide --code= prints one provider-selected source excerpt.  Additional
+examples are progressive and explicit through commands exposed by the non-code
+guide packet, such as =asp gerbil-scheme guide --code --topic
+higher-order-control --more=.  Renderers must not silently expand to several
+examples, print broad source windows, inline stale code copies, or replace
+selector-backed source with free-form prose.  =guide --code --selector
+<exact-selector>= is pure source extraction after the provider has already
+exposed a guidance selector.
+
+The agent-prefixed guide spelling is physically removed.
+Compatibility aliases and their tests or manual-debug entry points MUST be physically removed;
+registry output, generated skills, hook recovery messages, tests, and RFC
+examples must use =guide= as the main command name and keep
+=query guide treesitter .= as a low-frequency reference.
+This keeps the low-frequency tool map stable and prevents agents from reading
+multiple guide bodies before they know whether they need search, query, syntax,
+or verification detail.
+
+Hook recovery reason text is a compact Markdown prompt, not a second JSON
+schema and not a line-protocol template.  The authoritative
+platform-independent envelope remains the existing
+=agent.semantic-protocols.hook.decision= packet in =additionalContext=; the
+=permissionDecisionReason= / =systemMessage= string is the low-token agent
+instruction.  It must avoid inline guide bodies and use a progressive decision
+ladder:
+
+#+begin_src text
+# ASP Hook Recovery
+
+The pre-tool hook blocked `<reason>` on language source.
+
+## Stop
+Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands on the matched source.
+
+## Run Next
+```sh
+asp <language> search owner <owner> items --query '<symbol-or-term>' --workspace . --view seeds
+```
+
+## Agent Flow
+Follow this flow after the hook recovery command gives you a frontier or exact parser-owned locator.
+
+1. Start from the language guide when you need the agent tool map: `asp <language> guide --workspace .`.
+2. Map the project with `asp <language> search prime --workspace . --view seeds`.
+3. Choose an owner, query, dependency, test, or syntax profile from the user intent and seed frontier.
+4. When syntax location is needed, read `asp <language> query guide treesitter .`.
+5. Execute `asp <language> query --treesitter-query '<pattern>' .` for a capture/frontier result.
+6. Select one exact parser-owned item locator from the frontier.
+7. Extract pure code with `asp <language> query --selector <language://path#item/kind/name> --workspace . --code`.
+8. Treat stdout from `query --code` as pure source code only.
+9. Patch with `apply_patch` by default, or use provider `ast-patch` only when hook config enables semantic AST patching and a provider dry-run receipt validates the structural/mechanical edit.
+
+## Rules
+- Search is for discovery and should not inline code.
+- Query with `--code` is for exact or unique code extraction.
+- Tree-sitter query is the syntax base; native parser facts enrich the capture/frontier.
+- Do not read full guide bodies unless the current step needs that guide.
+#+end_src
+
+The renderer must branch on the loaded hook config.  Generated Codex hook
+configs set =experimental.semanticAstPatch.enabled = false=, so
+=permissionDecisionReason= must tell agents to patch with =apply_patch= and not
+route ordinary edits through provider =ast-patch= unless that option is enabled.
+
+Project discovery must ignore hidden directories by default across Rust,
+TypeScript, and Python providers.  This includes heavy local state directories
+such as =.devenv=, =.direnv=, =.cache=, and generated tool caches.  A hidden
+directory may be scanned only when project config explicitly allows it.  The
+shared ASP config surface is =asp.toml=:
+
+#+begin_src toml
+[discovery]
+ignoredDirNames = ["vendor"]
+includeHiddenDirNames = [".agent-fixtures"]
+
+[providers.rust]
+enabled = true
+binary = ".bin/rs-harness"
+
+[providers.typescript]
+enabled = false
+#+end_src
+
+Providers may keep language-specific policy config in their existing files, but
+file discovery must merge the nearest =asp.toml= discovery settings before
+walking source trees or running fd/rg prefilters.  =ignoredDirNames= is an
+additive deny-list.  =includeHiddenDirNames= is the only supported exception to
+the default hidden-directory prune rule.
+
+Hook activation must also merge =asp.toml= provider settings before writing
+=activation.json=.  =providers.<language>.enabled = false= removes that language
+from hook source matching and from the =asp <language>= facade for the activated
+project.  =providers.<language>.binary= pins the detected executable used for
+provider runtime profiles; relative paths resolve from the project root.  The
+activation keeps the manifest-owned =binary= identity stable and records the
+detected executable in =providerCommandPrefix=, so manifest digest checks remain
+stable while runtime output can show the actual bin path.
+
+To keep guide prompts stable, =guide= is the low-frequency agent tool map.  It
+should be generated from a typed provider catalog rather than hand-written
+inline prose.  =guide= should not inline the full =query guide= or
+=treesitter-query-guide= bodies; it should reference them:
+
+#+begin_src text
+[search-guide] protocol=search-guide.v1
+profiles:
+  overview-prime:
+    command=search prime --view seeds
+    returns=owner/query/dependency/test/finding handles
+  owner-items:
+    args=owner:path query:term
+    returns=symbol/item frontier
+  owner-tests:
+    args=owner:path
+    returns=test frontier
+  query-deps:
+    args=query:term dependency:pkg
+    returns=dependency usage owners/tests
+  path:
+    args=from:typed-node to:typed-node
+    returns=shortest relation path
+  read-frontier:
+    args=range:path@start:end
+    returns=symbol/window frontier without code
+avoid=raw-read,manual-window-scan,full-json,natural-language-intent
+#+end_src
+
+The paired prime output should expose the current handles and available profile
+follow-ups, not code or full item lists:
+
+#+begin_src text
+[search-prime] root=<project-root> alg=budgeted-prime-frontier-v1 budget=handles:12
+legend: ID=kind:role(value)!next; profiles P(args); frontier ID.next
+profiles=owner-items(O,Q),owner-tests(O,T),query-deps(Q,D)
+omit=items,blocks,code,full-test-list
+avoid=raw-read,full-json,broad-lexical
+#+end_src
+
+=--treesitter-query= is precise syntax locate/capture/frontier.  Adding
+=--code= to an exact selector turns it into pure code extraction.  Search and
+read-plan flows must return locators/frontier rather than inline code.  Plain
+=query --code= writes only code to stdout, and =--workspace <workspace-root>=
+is the independent workspace override when a root must be specified.  JSON
+artifacts, DB Engine cache ids, and receipts are debugging/integration surfaces
+and should not appear in the default guide output or non-JSON query output.
+=python -m tools tree-sitter validate search-read-plan-frontier-contract= is
+the package-local executable gate for this search/read-plan rule across Rust,
+TypeScript, and Python.  =python -m tools tree-sitter validate exact-direct-read-contract= is the paired gate for exact selector-code:
+non-=--code= output must be bounded =read-owner= source window or =read-plan=
+frontier protocol output, must keep code omitted and provide executable read locators, and =--code= output must be pure source text.  The repository runs the
+composite =python -m tools tree-sitter validate contracts= command from
+=check-tree-sitter-query-contracts= in the local provider gate and from the CI
+schema/provider gate after the root =asp= binary and TypeScript provider are
+built.
+
+Agent-facing guide acceptance:
+
+#+begin_src text
+guide-main        command="asp <language> guide --workspace ." lowFrequency=true inlineSubguides=false
+guide-help        command="asp <language> guide --help ." output=help code=false json=false
+search-prime      output=handles/profiles/frontier code=false json=false
+syntax-locate     command="query --treesitter-query <pattern>" output=locator/frontier code=false
+syntax-code       command="query --selector <exact> --treesitter-query <pattern> --code" output=pure-code
+hook-recovery     output=markdown-prompt runNext=owner-items detectedBinaries=runtime-profile
+debug-surfaces    json,receipts,cachePaths,artifactIds hiddenFromDefault=true
+retired-routes    agent-prefixed-guide,search-wrapper-hook-query,ts-query,syntax-query rejectedFromGuides=true
+#+end_src
+
+The guide acceptance rule is intentionally prompt-facing.  It does not require
+every provider to emit identical internal diagnostics, but it does require that
+the command text copied by an agent is stable, low-token, and executable through
+the =asp <language>= facade.  Default guide output must not include full
+schema bodies, cache inspection recipes, or multiple language-specific guide
+bodies.  It should point to specialized guides only when the current decision
+needs them.
+
+Schema evolution rules:
+
+#+begin_src text
+Additive v1 change     add optional fields, enum members, or descriptors
+Breaking change        new versioned schema file and schemaVersion, coordinated by RFC
+Provider adoption      update package-local copies and sync tests together
+Registry advertisement advertise every emitted schema id/version/path
+Client behavior        accept known schema versions; reject unknown versions with a compact diagnostic
+#+end_src
+
+Never change the meaning of a v1 field in place.  If an agent could interpret
+old and new packets differently, the change is breaking and needs a new schema
+version plus registry advertisement.
+
+Registry identity fields:
+
+#+begin_src text
+registryId      = agent.semantic-protocols.semantic-language-registry
+registryVersion = 1
+protocolId      = agent.semantic-protocols.semantic-language
+protocolVersion = 1
+languageId      = rust | typescript | julia | python | ...
+providerId      = rs-harness | ts-harness | jl-harness | ...
+binary          = rs-harness | ts-harness | jl-harness | ...
+namespace       = agent.semantic-protocols.languages.<languageId>.<providerId>
+methods         = search/prime | search/dependency | check/full | agent/doctor | ...
+methodDescriptors = method + command + view/input + output modes + schemas
+#+end_src
+
+=methods= is the callable truth.  The shared packet schema can contain a
+cross-language =view= enum, but that enum does not advertise provider
+capability.  Agents should only call methods present in the registry and use
+=methodDescriptors= to discover the command grammar: whether a method is a
+=search= view, which schema it emits, whether it requires one query positional,
+whether it consumes stdin, whether =--package= is accepted, and whether
+compact/JSON output is supported.  A =search/*= descriptor must carry its
+=view=, emitted schema ids, and CLI input semantics; a =check/*= descriptor must
+not pretend to be a search view; an =agent/*= descriptor only covers machine
+surfaces such as =agent/doctor= or =agent/registry= and only requires
+=outputSchemaIds= when =supportsJson=true=.  Text-only helper methods such as
+=guide= can be registry-described without inventing a JSON schema they do not
+emit.
+
+A =query/*= descriptor must use =command="query"=, must not carry a search
+=view=, and must advertise the schema it emits.  For owner-local item lookup,
+providers should expose a descriptor such as =query/owner-items= with
+=input="owner-path"=, =requiredOptions=["--term"]=,
+=outputSchemaIds=["agent.semantic-protocols.semantic-query-packet"]=,
+=querySetScopes=["owner"]=, and =outputModes= such as =compact=, =json=,
+=code=, and =names=.  That makes query repair discoverable through
+=agent doctor --json= rather than hidden in hook prose.
+
+When a search view embeds a shared sub-schema inside the search packet, the
+descriptor must advertise both the packet schema and that sub-schema.  For
+example, =search/public-external-types= emits the stable
+=semantic-search-packet= envelope and may populate =typeSurfaces= entries owned
+by =semantic-type-surface=, so providers list both schema ids in
+=outputSchemaIds=.  This keeps client validation and cache keys contract-visible
+without turning provider-local type systems into shared protocol fields.
+
+Registry invariants are deliberately strict:
+
+#+begin_src text
+languageId   stable lowercase source language id, not a file extension list
+providerId   stable provider implementation id, e.g. ts-harness
+binary       exact executable name the agent should invoke
+namespace    agent.semantic-protocols.languages.<languageId>.<providerId>
+methods      complete callable set
+descriptors  exactly one descriptor for every method, no extras, no duplicates
+#+end_src
+
+Providers advertise exactly one semantic-language identity in the registry.
+Extra local entry points, if a package has any, are outside the protocol and
+must not appear in registry output, generated guides, schemas, or RFC examples.
+For TypeScript, the only advertised provider and binary is =ts-harness=.
+
+The descriptor command must match the method prefix.  For =search/<view>=,
+=view= must be the method suffix, =outputSchemaIds= must include
+=agent.semantic-protocols.semantic-search-packet=, and the descriptor owns CLI
+input semantics such as =requiresQuery=, =acceptsStdin=, and
+=supportsPackageScope=.  CLI parsers should consume this provider metadata
+instead of maintaining a second hard-coded view registry.  Each provider's
+tests should compare =methods= and =methodDescriptors= as sets and reject
+duplicate descriptor methods.
+
+Descriptor grammar is intentionally small in v1:
+
+#+begin_src text
+command              search | check | agent
+view                 search method suffix only
+requiresQuery         exactly one query positional before PROJECT_ROOT
+acceptsStdin          stdin is part of the method input
+supportsPackageScope  --package <package-id> is accepted
+supportsQuerySet      --query-set <term> may replace the single query positional
+acceptedQuerySetSelectors exact-set | prefix-set | stdin-path-set
+querySetScopes        project | package | owner contexts accepted by --query-set
+acceptedPipes         final-only pipe names accepted after the method query
+capabilities          direct searchable surfaces for this method
+ingestRequiredFor     surfaces that must route through search ingest
+fallbacks             bounded provider fallbacks for weak or missing query hits
+clients               agent clients or hooks with specialized command shapes
+requiredOptions       options required by the specialized input shape
+input                 compact human-readable grammar for non-default input
+supportsJson          --json is accepted
+supportsCompact       compact text is accepted/default
+outputModes           descriptor-advertised output modes, e.g. compact, json, code, names, outline
+outputSchemaIds       JSON schemas emitted when supportsJson=true
+#+end_src
+
+If a provider needs additional public controls, they must be added to the
+descriptor schema first.  Provider-private flags may exist for local debugging,
+but they are not semantic-language protocol until they are registry-described.
+This keeps agent clients from learning accidental flags or inferring CLI shape
+from the shared packet =view= enum.
+
+Search capability descriptors answer the two questions agents need before they
+spend tokens expanding context:
+
+#+begin_src text
+capabilities      what the provider can search directly
+ingestRequiredFor what needs rg/fd/external expansion then search ingest
+fallbacks         what bounded provider-owned recovery can run after a miss
+#+end_src
+
+The common registry schema owns only the descriptor shape:
+=languageId=, =namespace=, and =name=.  It must not maintain one global enum for
+TypeScript, Rust, Python, Julia, and JavaScript capability names.  Each language
+harness owns its language-specific capability schema under that language
+repository's =schemas/= directory and can advertise that schema in its provider
+registry.
+
+The protocol repository may keep language-specific schema templates under root
+=schemas/=, for example
+=schemas/typescript-semantic-capabilities-template.v1.schema.json= and
+=schemas/python-semantic-capabilities-template.v1.schema.json=.  Those templates
+document the expected active schema shape and vocabulary, but the provider's own
+repository still carries the active schema it advertises and validates in CI.
+
+For example, a TypeScript provider can advertise
+=languageId=typescript namespace=typescript name=parser-visible-source-text-search=
+for =search/lexical= while also advertising TypeScript-scoped
+=ingestRequiredFor= records for docs text, schema JSON, generated artifacts,
+and other non-parser text.  Agents should use that registry fact before reading
+packet notes or running external search.
+
+Minimal multi-pipe support is also registry-described.  A provider advertises
+=acceptedPipes= on the source method, for example TypeScript =search/lexical=
+can advertise =owner,tests= and accept:
+
+#+begin_src shell
+ts-harness search lexical OrderStatus owner tests .
+#+end_src
+
+The output remains one final packet; intermediate pipe packets are not rendered.
+
+Search packet identity fields:
+
+#+begin_src text
+schemaId        = agent.semantic-protocols.semantic-search-packet
+schemaVersion   = 1
+protocolId      = agent.semantic-protocols.semantic-language
+protocolVersion = 1
+languageId      = rust | typescript | julia | python | ...
+providerId      = rs-harness | ts-harness | jl-harness | ...
+binary          = rs-harness | ts-harness | jl-harness | ...
+namespace       = agent.semantic-protocols.languages.<languageId>.<providerId>
+method          = search/workspace | search/prime | search/dependency | search/deps | ...
+view            = workspace | prime | owner | dependency | deps | symbol |
+                  callsite | import | cfg | patterns | pattern | docs |
+                  api | public-external-types | policy | tests | lexical |
+                  reasoning | env | runtime-source | lang | std |
+                  capability | extension | compare | text | ingest
+#+end_src
+
+The schema owns the stable packet envelope: =header=, =packages=, =nodes=,
+=edges=, =owners=, =items=, =hits=, =findings=, =nextActions=, =notes=, and
+optional =inputDetection=.  Optional =typeSurfaces= carries shared public API
+and dependency type surface facts when a view has parser-owned type evidence.
+Language-specific facts must go under typed
+=fields= maps instead of changing the envelope.  Search views are consumers of
+native parser facts, not substitutes for them: TypeScript package dependency
+facts come from the TypeScript JSON AST for =package.json=, source usage comes
+from TypeScript import-resolution facts, Rust dependency facts come from Cargo
+metadata/TOML parsing, Julia facts come from JuliaSyntax and project metadata,
+and Python facts come from =ast= plus project metadata.  This lets TypeScript,
+Rust, Julia, Python, and later harnesses preserve compiler-native facts while
+giving agent clients one JSON shape to validate and cache.
+
+Providers may also expose optional manifest-level package and extension
+capability facts without changing the packet class.  =projectPackage= is the
+provider-owned package manifest summary for the active project root, such as a
+Cargo package, Python project, Julia package, or Gerbil =gerbil.pkg= package.
+=extensions[]= is a compact provider capability projection for optional package
+extensions that are activated by manifest facts.  Shared fields are limited to
+name, activation source, package manager, package name, dependencies, and
+capability labels; language-specific package-manager details remain in
+=fields=.  For example, a Gerbil provider can expose =poo= when
+=gerbil.pkg= declares =package: clan/poo= or a =gerbil-poo= dependency, while
+the ASP client still treats =gxpkg= layout and dependency resolution as
+provider-owned facts.
+
+Compact text remains the default prompt surface.  JSON is the cross-language
+artifact and test contract.
+
+Semantic handles are the shared layer for non-code facts that agents still need
+to query precisely.  They cover stable things that are not necessarily parser
+items: policy rule ids, schema fixtures, test cases, config keys, CLI command
+surfaces, dependency API handles, and provider capability names.  The
+=schemas/semantic-handle.v1.schema.json= contract owns the cross-language
+fields: stable id, kind, source, title, aliases, labels, owner path,
+implementation owner, test paths, locations, relations, and provider-owned
+=fields=.  Search packets and query packets can embed these facts through
+optional =semanticHandles=.
+
+This is deliberately not a Python-only policy shortcut.  Rust harness policy
+ids, TypeScript schema fixture names, Python rule ids, Julia package checks, and
+future provider-specific facts should all use the same handle shape when the
+fact is stable and useful as an agent query target.  Provider implementations
+remain language-native; the shared protocol only makes the handle observable.
+
+Policy-rule lookup is the motivating example:
+
+#+begin_src shell
+<lang-harness> search policy <rule-id-or-alias> owner tests --workspace . --view seeds
+#+end_src
+
+Expected compact facts:
+
+#+begin_example
+|handle kind=policy-rule id=PY-PROJ-R001 title="src layout" aliases=src-layout,packaged-project-layout owner=src/python_lang_project_harness/_project_policy_catalog.py implementation=src/python_lang_project_harness/_project_policy_layout.py tests=tests/unit/harness/project_policy/test_layout.py
+|next owner:src/python_lang_project_harness/_project_policy_layout.py,tests:tests/unit/harness/project_policy/test_layout.py
+#+end_example
+
+Owner item query should not pretend these ids are function names.  If a selected
+owner is a catalog, the provider may expose a handle-scoped pipe or query mode:
+
+#+begin_src shell
+<lang-harness> search owner <catalog-path> handles --query <rule-id-or-alias> .
+#+end_src
+
+That output should return =semanticHandles= first and code only when the agent
+asks for the implementation owner or exact item.  For broad owner-local
+discovery such as =test=, =minimal_packet=, or =parse_=, providers should return
+=outputMode=names= or =outline= before code windows.
+
+Type surface facts are the first shared sub-schema extracted from the search
+envelope.  =schemas/semantic-type-surface.v1.schema.json= owns only the
+language-neutral facts that an agent can use across providers: type name, kind,
+role, owner path, visibility, member shape, external origin, and version scope.
+It intentionally does not model full Rust, TypeScript, Python, Julia, or future
+provider type systems.  Language-specific type-checker details remain
+provider-owned =fields= facts or provider-local schemas.  Search packets can
+embed these shared facts through optional =typeSurfaces=, primarily for
+=search api=, =search public-external-types=, and parser-native query outputs
+that need contract-visible type surfaces instead of stringly =fields= only.
+
+This mirrors the useful part of Language Server Protocol naming discipline:
+=protocolId= identifies the semantic-language protocol, =namespace= identifies
+the concrete provider method space, =languageId= identifies the source
+language, =providerId= identifies the implementation, and =binary= names the
+executable.  Agent clients should route by registry identity and method, not by
+hard-coded platform-specific argument structs.

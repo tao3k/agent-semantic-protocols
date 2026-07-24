@@ -1,31 +1,36 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.local/schemas/semantic-document-query-packet.v1.schema.json",
-  "title": "Semantic Document Query Packet",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-document-query-packet.v1.schema.json",
+  "title": "Semantic Document Query Packet v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schemaId",
     "schemaVersion",
+    "schemaAuthority",
     "protocolId",
     "protocolVersion",
     "languageId",
     "providerId",
-    "binary",
     "namespace",
+    "binary",
     "method",
     "projectRoot",
     "query",
-    "queryTerms",
     "queryKind",
     "querySurface",
+    "queryTerms",
     "documentMode",
     "matchCount",
     "matchLimit",
+    "truncated",
     "matchesTruncated",
-    "documentFacts",
     "contentBlocks",
-    "truncated"
+    "documentFacts",
+    "sourceSnapshot",
+    "resolutionEvidence",
+    "itemDigest",
+    "executionCommandDigest"
   ],
   "properties": {
     "schemaId": {
@@ -34,60 +39,50 @@
     "schemaVersion": {
       "const": "1"
     },
+    "schemaAuthority": {
+      "const": "https://tao3k.github.io/agent-semantic-protocols/schemas/"
+    },
     "protocolId": {
       "const": "agent.semantic-protocols.semantic-language"
     },
     "protocolVersion": {
-      "const": "1"
+      "$ref": "#/$defs/nonEmptyString"
     },
     "languageId": {
-      "$ref": "semantic-document-search-packet.v1.schema.json#/$defs/documentLanguageId"
+      "$ref": "#/$defs/nonEmptyString"
     },
     "providerId": {
-      "const": "orgize"
-    },
-    "binary": {
-      "const": "asp"
+      "$ref": "#/$defs/nonEmptyString"
     },
     "namespace": {
-      "type": "string",
-      "pattern": "^agent\\.semantic-protocols\\.languages\\.(org|md)\\.orgize$"
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "binary": {
+      "$ref": "#/$defs/nonEmptyString"
     },
     "method": {
       "const": "query/document"
     },
     "projectRoot": {
-      "type": "string",
-      "minLength": 1
+      "$ref": "#/$defs/nonEmptyString"
     },
     "query": {
-      "type": "string"
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "queryKind": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "querySurface": {
+      "$ref": "#/$defs/nonEmptyString"
     },
     "queryTerms": {
       "type": "array",
-      "minItems": 1,
       "items": {
-        "type": "string",
-        "minLength": 1
+        "$ref": "#/$defs/nonEmptyString"
       }
     },
-    "queryKind": {
-      "enum": [
-        "term",
-        "selector"
-      ]
-    },
-    "querySurface": {
-      "enum": [
-        "metadata",
-        "content"
-      ]
-    },
     "documentMode": {
-      "enum": [
-        "metadata",
-        "content"
-      ]
+      "$ref": "#/$defs/nonEmptyString"
     },
     "matchCount": {
       "type": "integer",
@@ -97,14 +92,11 @@
       "type": "integer",
       "minimum": 1
     },
-    "matchesTruncated": {
+    "truncated": {
       "type": "boolean"
     },
-    "documentFacts": {
-      "type": "array",
-      "items": {
-        "$ref": "semantic-document-search-packet.v1.schema.json#/$defs/documentFact"
-      }
+    "matchesTruncated": {
+      "type": "boolean"
     },
     "contentBlocks": {
       "type": "array",
@@ -112,56 +104,244 @@
         "$ref": "#/$defs/contentBlock"
       }
     },
-    "truncated": {
-      "type": "boolean"
+    "documentFacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/documentFact"
+      }
+    },
+    "sourceSnapshot": {
+      "$ref": "#/$defs/sourceSnapshotEvidence"
+    },
+    "resolutionEvidence": {
+      "$ref": "#/$defs/resolutionEvidence"
+    },
+    "itemDigest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "executionCommandDigest": {
+      "$ref": "#/$defs/sha256Digest"
     }
   },
   "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hexDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "lineRange"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "lineRange": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
     "contentBlock": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-      "kind",
-      "documentPath",
-      "structuralSelector",
-      "location",
+        "content",
+        "documentPath",
+        "kind",
+        "location",
         "parserAuthority",
-        "content"
+        "structuralSelector",
+        "itemDigest"
       ],
       "properties": {
-        "kind": {
-          "enum": [
-            "selector",
-            "element"
-          ]
-        },
-    "documentPath": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
-    },
-    "structuralSelector": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
-    },
-    "location": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
-    },
-        "parserAuthority": {
-          "$ref": "semantic-document-search-packet.v1.schema.json#/$defs/parserAuthority"
-        },
-        "contentKind": {
-          "$ref": "semantic-content-compaction.v1.schema.json#/$defs/contentKind"
-        },
-        "criticality": {
-          "$ref": "semantic-content-compaction.v1.schema.json#/$defs/criticality"
-        },
-        "sourceFingerprint": {
-          "type": "string",
-          "minLength": 1
-        },
-        "compaction": {
-          "$ref": "semantic-content-compaction.v1.schema.json#/$defs/compaction"
-        },
         "content": {
           "type": "string"
+        },
+        "documentPath": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "kind": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "parserAuthority": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "structuralSelector": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "itemDigest": {
+          "$ref": "#/$defs/blake3Digest"
+        }
+      }
+    },
+    "documentFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attributes",
+        "documentPath",
+        "id",
+        "kind",
+        "location",
+        "name",
+        "parserAuthority",
+        "queryKeys",
+        "sourceKind",
+        "structuralSelector",
+        "textSnippet"
+      ],
+      "properties": {
+        "attributes": {
+          "type": "object",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "documentPath": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "kind": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parserAuthority": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "queryKeys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "sourceKind": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "structuralSelector": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "textSnippet": {
+          "type": "string"
+        }
+      }
+    },
+    "sourceSnapshotEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "algorithm",
+        "rootDigest",
+        "sourceKind",
+        "leafCount",
+        "providerDigest"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "asp.source-snapshot.v1"
+        },
+        "algorithm": {
+          "const": "blake3-merkle-v1"
+        },
+        "rootDigest": {
+          "$ref": "#/$defs/hexDigest"
+        },
+        "sourceKind": {
+          "enum": [
+            "filesystem",
+            "editor-buffer",
+            "git-tree",
+            "derived-overlay"
+          ]
+        },
+        "leafCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "providerDigest": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "baseRootDigest": {
+          "$ref": "#/$defs/hexDigest"
+        },
+        "dirtyPathsDigest": {
+          "$ref": "#/$defs/hexDigest"
+        }
+      }
+    },
+    "resolutionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "snapshotRoot",
+        "authority",
+        "state"
+      ],
+      "properties": {
+        "schemaId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "snapshotRoot": {
+          "$ref": "#/$defs/hexDigest"
+        },
+        "authority": {
+          "enum": [
+            "live-parser",
+            "content-cache",
+            "derived-index"
+          ]
+        },
+        "state": {
+          "enum": [
+            "live-hit",
+            "artifact-cache-hit",
+            "owner-not-in-snapshot",
+            "selector-path-namespace-mismatch",
+            "item-not-in-live-owner",
+            "parser-failed",
+            "index-unavailable"
+          ]
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "ownerBlobDigest": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "parserArtifactDigest": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "indexArtifactDigest": {
+          "$ref": "#/$defs/nonEmptyString"
         }
       }
     }

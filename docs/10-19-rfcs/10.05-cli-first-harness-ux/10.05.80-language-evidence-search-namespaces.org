@@ -578,6 +578,8 @@ asp gerbil-scheme search compare std :std/sugar active documented .
 
 * Index ownership contract
 
+Warm generation reuse MUST compare the latest stored generation with a complete current membership and file-hash feed obtained for the current invocation. Registry equality and caller-supplied dirty paths are routing or optimization evidence only; they MUST NOT authorize reuse when the complete current feed has not been proved equivalent. A mismatch invalidates semantic negatives and routes to the explicit ASP-owned refresh or rebuild path before lookup results are served.
+
 Language providers and language project harnesses expose structural index feeds;
 they do not own persistent or incremental index state.  A provider feed may
 contain parser-owned owners, symbols, dependency usages, source locators, file

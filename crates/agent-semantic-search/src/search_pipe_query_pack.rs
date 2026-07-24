@@ -44,8 +44,8 @@ pub struct SearchPipeLanguageId<'a>(&'a str);
 pub struct SearchPipeQueryText<'a>(&'a str);
 
 impl<'a> SearchPipeLanguageId<'a> {
-    pub const fn from_language_id(language_id: &'a str) -> Self {
-        Self(language_id)
+    pub const fn from_language_id(language_id: Self) -> Self {
+        language_id
     }
 }
 
@@ -67,29 +67,83 @@ impl SearchPipeTermRole {
 }
 
 #[must_use]
-pub fn search_pipe_query_clauses(
-    request: SearchPipeQueryClausesRequest<'_>,
+pub fn search_pipe_query_clauses<'a>(
+    request: SearchPipeQueryClausesRequest<'a, SearchPipeQueryPackDescriptor<'a>>,
 ) -> Vec<SearchPipeQueryClause> {
     let language_id = request.language_id.as_str();
     let query = request.query.as_str();
+    let query_pack_descriptor = request.query_pack_descriptor;
     let explicit = query
         .split('|')
         .map(str::trim)
         .filter(|clause| !clause.is_empty())
         .map(|raw_clause| SearchPipeQueryClause {
-            terms: search_pipe_query_terms(language_id, raw_clause),
+            terms: search_pipe_query_terms(language_id, raw_clause, query_pack_descriptor),
         })
         .filter(|clause| !clause.terms.is_empty())
         .collect::<Vec<_>>();
-    if query.contains('|') {
-        return explicit;
-    }
-    auto_query_clauses(explicit)
+    explicit
 }
 
-pub struct SearchPipeQueryClausesRequest<'a> {
+pub struct SearchPipeQueryClausesRequest<'a, QueryPackDescriptor> {
     language_id: SearchPipeLanguageId<'a>,
     query: SearchPipeQueryText<'a>,
+    query_pack_descriptor: QueryPackDescriptor,
+}
+
+pub struct SearchPipeQueryPackDescriptorMissing;
+
+#[derive(Clone, Copy, Debug)]
+pub struct SearchPipeSemanticFactsIntentAxis<'a> {
+    pub axis: &'a str,
+    pub terms: &'a [String],
+    pub roles: &'a [String],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SearchPipeSemanticFactsDescriptor<'a> {
+    pub descriptor_id: &'a str,
+    pub descriptor_version: &'a str,
+    pub intent_axes: &'a [SearchPipeSemanticFactsIntentAxis<'a>],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SearchPipeQueryPackTermRoleOverride<'a> {
+    pub term: &'a str,
+    pub role: &'a str,
+    pub case_sensitive: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SearchPipeQueryPackClause<'a> {
+    pub terms: &'a [String],
+    pub roles: &'a [String],
+    pub intent_axes: &'a [String],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SearchPipeQueryPackRecipe<'a> {
+    pub recipe_id: &'a str,
+    pub trigger_terms: &'a [String],
+    pub trigger_match: &'a str,
+    pub clauses: &'a [SearchPipeQueryPackClause<'a>],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SearchPipeQueryPackDescriptor<'a> {
+    pub descriptor_id: &'a str,
+    pub descriptor_version: &'a str,
+    pub language_id: &'a str,
+    pub term_role_overrides: &'a [SearchPipeQueryPackTermRoleOverride<'a>],
+    pub recipes: &'a [SearchPipeQueryPackRecipe<'a>],
+}
+
+pub struct SearchPipeSemanticFactsIntentDecision {
+    pub requested: bool,
+    pub descriptor_id: String,
+    pub descriptor_version: String,
+    pub matched_axes: Vec<String>,
+    pub matched_terms: Vec<String>,
 }
 
 impl<'a> SearchPipeLanguageId<'a> {
@@ -116,18 +170,36 @@ impl<'a> SearchPipeQueryText<'a> {
     }
 }
 
-impl<'a> SearchPipeQueryClausesRequest<'a> {
+impl<'a> SearchPipeQueryClausesRequest<'a, SearchPipeQueryPackDescriptorMissing> {
     #[must_use]
     pub const fn new(
         language_id: SearchPipeLanguageId<'a>,
         query: SearchPipeQueryText<'a>,
     ) -> Self {
-        Self { language_id, query }
+        Self {
+            language_id,
+            query,
+            query_pack_descriptor: SearchPipeQueryPackDescriptorMissing,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_query_pack_descriptor(
+        self,
+        query_pack_descriptor: SearchPipeQueryPackDescriptor<'a>,
+    ) -> SearchPipeQueryClausesRequest<'a, SearchPipeQueryPackDescriptor<'a>> {
+        SearchPipeQueryClausesRequest {
+            language_id: self.language_id,
+            query: self.query,
+            query_pack_descriptor,
+        }
     }
 }
 
 #[must_use]
-pub fn search_pipe_query_clause_texts(request: SearchPipeQueryClausesRequest<'_>) -> Vec<String> {
+pub fn search_pipe_query_clause_texts<'a>(
+    request: SearchPipeQueryClausesRequest<'a, SearchPipeQueryPackDescriptor<'a>>,
+) -> Vec<String> {
     search_pipe_query_clauses(request)
         .into_iter()
         .map(|clause| {
@@ -158,6 +230,19 @@ pub fn search_pipe_unique_query_terms(
             }
             terms
         })
+}
+
+#[must_use]
+pub fn search_pipe_typed_query_terms(
+    language_id: SearchPipeLanguageId<'_>,
+    query: SearchPipeQueryText<'_>,
+    query_pack_descriptor: SearchPipeQueryPackDescriptor<'_>,
+) -> Vec<SearchPipeQueryTerm> {
+    let clauses = search_pipe_query_clauses(
+        SearchPipeQueryClausesRequest::new(language_id, query)
+            .with_query_pack_descriptor(query_pack_descriptor),
+    );
+    search_pipe_unique_query_terms(&clauses)
 }
 
 #[must_use]
@@ -208,39 +293,46 @@ pub fn search_pipe_role_terms(
 
 #[must_use]
 pub fn search_pipe_next_query_pack_hint(
+    descriptor: SearchPipeQueryPackDescriptor<'_>,
     context_terms: &[String],
     owner_seed_terms: &[String],
     concept_terms: &[String],
 ) -> Option<String> {
-    if owner_seed_terms.len() < 2 {
+    if descriptor.descriptor_id.is_empty()
+        || descriptor.descriptor_version != "1"
+        || owner_seed_terms.len() < 2
+    {
         return None;
     }
     let mut clauses = vec![owner_seed_terms.join(" ")];
-    if concept_terms
+    let observed_terms = context_terms
         .iter()
-        .any(|term| term.eq_ignore_ascii_case("concurrency"))
-    {
-        clauses.push("concurrency runtime scheduling".to_string());
-    } else if !concept_terms.is_empty() {
-        clauses.push(concept_terms.join(" "));
-    }
-    if owner_seed_terms
-        .iter()
-        .any(|term| term.eq_ignore_ascii_case("Scope"))
-    {
-        clauses.push("Scope lifecycle".to_string());
-    }
-    if owner_seed_terms
-        .iter()
-        .any(|term| term.eq_ignore_ascii_case("Queue"))
-        && owner_seed_terms
-            .iter()
-            .any(|term| term.eq_ignore_ascii_case("Stream"))
-    {
-        clauses.push("Queue Stream backpressure".to_string());
+        .chain(owner_seed_terms)
+        .chain(concept_terms)
+        .collect::<Vec<_>>();
+    for recipe in descriptor.recipes {
+        let matches_term = |trigger: &String| {
+            observed_terms
+                .iter()
+                .any(|observed| observed.eq_ignore_ascii_case(trigger))
+        };
+        let matches = match recipe.trigger_match {
+            "all" => recipe.trigger_terms.iter().all(matches_term),
+            _ => recipe.trigger_terms.iter().any(matches_term),
+        };
+        if matches {
+            for clause in recipe.clauses {
+                let clause = clause.terms.join(" ");
+                if !clause.is_empty() && !clauses.contains(&clause) {
+                    clauses.push(clause);
+                }
+            }
+        }
     }
     if clauses.len() == 1 && !context_terms.is_empty() {
         clauses.push(context_terms.join(" "));
+    } else if clauses.len() == 1 && !concept_terms.is_empty() {
+        clauses.push(concept_terms.join(" "));
     }
     Some(clauses.join("|"))
 }
@@ -260,9 +352,28 @@ pub fn search_pipe_query_candidate_matches_term(
         || candidate.text.to_ascii_lowercase().contains(&term.lower)
 }
 
-fn term_role(language_id: &str, raw: &str) -> SearchPipeTermRole {
-    if language_id == "typescript" && matches!(raw, "Effect") {
-        return SearchPipeTermRole::Context;
+fn term_role(
+    language_id: &str,
+    raw: &str,
+    query_pack_descriptor: SearchPipeQueryPackDescriptor<'_>,
+) -> SearchPipeTermRole {
+    if let Some(role_override) = (query_pack_descriptor.language_id == language_id)
+        .then_some(query_pack_descriptor)
+        .and_then(|descriptor| {
+            descriptor.term_role_overrides.iter().find(|role_override| {
+                if role_override.case_sensitive {
+                    role_override.term == raw
+                } else {
+                    role_override.term.eq_ignore_ascii_case(raw)
+                }
+            })
+        })
+    {
+        return match role_override.role {
+            "context" => SearchPipeTermRole::Context,
+            "symbol" => SearchPipeTermRole::Symbol,
+            _ => SearchPipeTermRole::Concept,
+        };
     }
     if is_weak_natural_term(raw) {
         return SearchPipeTermRole::Context;
@@ -280,7 +391,11 @@ fn term_role(language_id: &str, raw: &str) -> SearchPipeTermRole {
     SearchPipeTermRole::Concept
 }
 
-fn search_pipe_query_terms(language_id: &str, raw_clause: &str) -> Vec<SearchPipeQueryTerm> {
+fn search_pipe_query_terms(
+    language_id: &str,
+    raw_clause: &str,
+    query_pack_descriptor: SearchPipeQueryPackDescriptor<'_>,
+) -> Vec<SearchPipeQueryTerm> {
     raw_clause
         .split(|character: char| character == ',' || character.is_whitespace())
         .flat_map(query_token_fragments)
@@ -290,7 +405,7 @@ fn search_pipe_query_terms(language_id: &str, raw_clause: &str) -> Vec<SearchPip
             role: if fragment.force_symbol {
                 SearchPipeTermRole::Symbol
             } else {
-                term_role(language_id, &fragment.raw)
+                term_role(language_id, &fragment.raw, query_pack_descriptor)
             },
         })
         .fold(Vec::new(), |mut terms, term| {
@@ -365,52 +480,12 @@ fn should_split_slash_compound(raw: &str) -> bool {
     })
 }
 
-fn auto_query_clauses(explicit: Vec<SearchPipeQueryClause>) -> Vec<SearchPipeQueryClause> {
-    let Some(single) = explicit.first() else {
-        return explicit;
-    };
-    if explicit.len() != 1 || single.terms.len() < 6 {
-        return explicit;
-    }
-
-    let mut path_terms = Vec::new();
-    let mut package_terms = Vec::new();
-    let mut symbol_terms = Vec::new();
-    let mut concept_terms = Vec::new();
-    let mut context_terms = Vec::new();
-    for term in &single.terms {
-        if search_pipe_is_path_like_token(&term.raw) {
-            path_terms.push(term.clone());
-        } else if is_package_like_token(&term.raw) {
-            package_terms.push(term.clone());
-        } else {
-            match term.role {
-                SearchPipeTermRole::Symbol => symbol_terms.push(term.clone()),
-                SearchPipeTermRole::Concept => concept_terms.push(term.clone()),
-                SearchPipeTermRole::Context => context_terms.push(term.clone()),
-            }
-        }
-    }
-
-    let mut clauses = [path_terms, package_terms, symbol_terms, concept_terms]
-        .into_iter()
-        .filter(|terms| !terms.is_empty())
-        .map(|terms| SearchPipeQueryClause { terms })
-        .collect::<Vec<_>>();
-    if clauses.is_empty() && !context_terms.is_empty() {
-        clauses.push(SearchPipeQueryClause {
-            terms: context_terms,
-        });
-    }
-    if clauses.len() > 1 { clauses } else { explicit }
-}
-
 fn is_owner_seed_token(raw: &str) -> bool {
     search_pipe_is_path_like_token(raw) || is_package_like_token(raw)
 }
 
 fn is_package_like_token(raw: &str) -> bool {
-    raw.matches('-').count() >= 2 && !matches!(raw, "long-field-signatures")
+    raw.matches('-').count() >= 2
 }
 
 fn is_weak_natural_term(raw: &str) -> bool {
@@ -452,5 +527,80 @@ fn is_weak_natural_term(raw: &str) -> bool {
             | "natural"
             | "term"
             | "terms"
+    )
+}
+pub fn search_pipe_semantic_facts_intent(
+    language_id: SearchPipeLanguageId<'_>,
+    query: SearchPipeQueryText<'_>,
+    query_pack_descriptor: SearchPipeQueryPackDescriptor<'_>,
+    descriptor: SearchPipeSemanticFactsDescriptor<'_>,
+) -> SearchPipeSemanticFactsIntentDecision {
+    if query
+        .as_str()
+        .split_whitespace()
+        .any(search_pipe_is_path_like_token)
+    {
+        return SearchPipeSemanticFactsIntentDecision {
+            requested: false,
+            descriptor_id: descriptor.descriptor_id.to_owned(),
+            descriptor_version: descriptor.descriptor_version.to_owned(),
+            matched_axes: Vec::new(),
+            matched_terms: Vec::new(),
+        };
+    }
+    let clauses = search_pipe_query_clauses(
+        SearchPipeQueryClausesRequest::new(
+            SearchPipeLanguageId::new(language_id),
+            SearchPipeQueryText::new(query),
+        )
+        .with_query_pack_descriptor(query_pack_descriptor),
+    );
+    let terms = search_pipe_unique_query_terms(&clauses);
+    let mut matched_axes = Vec::new();
+    let mut matched_terms = Vec::new();
+    let has_symbol_anchor = terms
+        .iter()
+        .any(|term| matches!(term.role, SearchPipeTermRole::Symbol));
+    for term in &terms {
+        for intent_axis in descriptor.intent_axes {
+            if !intent_axis.roles.is_empty()
+                && !intent_axis
+                    .roles
+                    .iter()
+                    .any(|role| semantic_fact_role_matches(role, term.role))
+            {
+                continue;
+            }
+            if !intent_axis
+                .terms
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(&term.raw))
+            {
+                continue;
+            }
+            if !matched_axes.iter().any(|axis| axis == intent_axis.axis) {
+                matched_axes.push(intent_axis.axis.to_owned());
+            }
+            if !matched_terms.iter().any(|matched| matched == &term.lower) {
+                matched_terms.push(term.lower.clone());
+            }
+        }
+    }
+    let requested = matched_terms.len() >= 2 || (matched_terms.len() == 1 && has_symbol_anchor);
+    SearchPipeSemanticFactsIntentDecision {
+        requested,
+        descriptor_id: descriptor.descriptor_id.to_owned(),
+        descriptor_version: descriptor.descriptor_version.to_owned(),
+        matched_axes,
+        matched_terms,
+    }
+}
+
+fn semantic_fact_role_matches(role: &str, term_role: SearchPipeTermRole) -> bool {
+    matches!(
+        (role, term_role),
+        ("context", SearchPipeTermRole::Context)
+            | ("concept", SearchPipeTermRole::Concept)
+            | ("symbol", SearchPipeTermRole::Symbol)
     )
 }

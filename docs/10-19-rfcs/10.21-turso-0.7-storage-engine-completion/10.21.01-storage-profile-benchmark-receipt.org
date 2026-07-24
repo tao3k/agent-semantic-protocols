@@ -1,0 +1,67 @@
+#+title: Turso 0.7 Storage Profile Benchmark Receipt
+#+subtitle: Fixed scenario baseline for agent-semantic-client-db
+#+date: 2026-07-20
+#+startup: overview
+
+* Receipt identity
+
+- schemaId :: =asp.turso-storage-profile-benchmark-receipt.v1=
+- owner :: =crates/agent-semantic-client-db=
+- benchmark target :: =turso_storage_profiles=
+- command :: =direnv exec . cargo bench -p agent-semantic-client-db --bench turso_storage_profiles=
+- command result :: exit 0
+- fixed source :: =crates/agent-semantic-client-db/benches/turso_storage_profiles.rs=
+- backend :: =turso 0.7.0=
+- plot backend :: Criterion =plotters=; =gnuplot= was not installed
+
+* Fixed scenarios
+
+| Scenario | Time interval | Throughput interval | Sampling note |
+|-
+| Compatibility Immediate, native transaction, 32 rows | 715.25--856.66 us | 37.354--44.740 Kelem/s | 12/100 high outliers |
+| MVCC passive checkpoint, typed retry, 32 rows | 1.8670--4.4947 ms | 7.1194--17.140 Kelem/s | 19/100 high outliers; 5 s target was too short |
+| Compatibility Immediate, real Busy, release after 2 ms | 10.220--11.298 ms | n/a | 1/10 high mild outlier; typed Busy assertion passed |
+| MVCC passive append plus cacheflush and file receipt, 32 rows | 1.7128--5.9909 ms | 5.3414--18.683 Kelem/s | fixed maintenance path |
+| MVCC database keyset, limit 100 of 1000 | 4.5713--6.3435 ms | 15.764--21.876 Kelem/s | 3/100 high mild outliers |
+| Compatibility Immediate database keyset, limit 100 | 688.09--863.56 us | 115.80--145.33 Kelem/s | 4/100 high outliers |
+| Production provider runtime adapter, MVCC passive, 1 event | 199.92--326.53 us | 3.0625--5.0020 Kelem/s | no reported outliers |
+
+* Scenario assertions
+
+- The real-Busy benchmark holds a second =BEGIN IMMEDIATE= writer, releases it
+  after 2 ms, and fails the benchmark if =busyCount= is zero.
+- The MVCC append benchmark consumes the typed =retryCount=, =busyCount=,
+  =snapshotConflictCount=, and =retryDelayMs= receipt fields.
+- Both read benchmarks execute database-side keyset queries.  The MVCC unit
+  scenario separately proves =limit + 1= and =(createdAtMs,eventId)= tie-break
+  behavior.
+- The maintenance benchmark appends a batch, calls Turso 0.7 =cacheflush= on
+  every long-lived lane, and consumes the persisted file-size receipt.
+
+* Fixed correctness companions
+
+- =turso_mvcc_database_keyset_uses_limit_plus_one_and_stable_tie_break=
+- =turso_mvcc_typed_duplicate_aborts_without_retrying=
+- =turso_mvcc_passive_checkpoint_flushes_and_recovers_one_mebibyte_payload=
+- =immediate_profile_uses_atomic_native_transaction_and_database_keyset=
+- =immediate_profile_duplicate_aborts_the_whole_batch=
+- =immediate_profile_busy_contention_is_typed_retried_and_receipted=
+- =provider_runtime_storage_real_binding_persists_to_isolated_turso_profile=
+
+The production adapter benchmark is fixed at
+=crates/agent-semantic-client/benches/provider_runtime_storage.rs= and runs as
+=cargo bench -p agent-semantic-client --bench provider_runtime_storage=.
+
+* Conservative interpretation
+
+This receipt is a fixed baseline, not a claim that one profile is globally
+fastest.  The current single-stream workload favors Compatibility Immediate.
+MVCC must be judged on independent-writer concurrency, conflict rate, recovery,
+checkpoint growth, resident memory, and long-ingestion stability.
+
+The MVCC append distribution is noisy and Criterion reported that the configured
+5 s sampling target was insufficient.  A closure receipt therefore still needs
+explicit p50/p95/p99, RSS, database/WAL bytes over time, and a longer ingestion
+window.  Turso 0.7 exposes =cacheflush= but not a public passive-checkpoint
+completion counter; the maintenance receipt records
+=checkpointCounterObservable=false= instead of inventing a value.

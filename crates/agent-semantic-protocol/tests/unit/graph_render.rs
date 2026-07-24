@@ -185,18 +185,20 @@ fn sample_owner_items_packet() -> serde_json::Value {
         "items": [
             {
                 "name": "payload_string",
-                "kind": "fn",
+                "kind": "function",
                 "ownerPath": "crates/agent-semantic-hook/src/tool_action.rs",
                 "fields": {
-                    "read": "crates/agent-semantic-hook/src/tool_action.rs:212:214"
+                    "read": "crates/agent-semantic-hook/src/tool_action.rs:212:214",
+                    "structuralSelector": "rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/payload_string"
                 }
             },
             {
                 "name": "collect_tool_actions",
-                "kind": "fn",
+                "kind": "function",
                 "ownerPath": "crates/agent-semantic-hook/src/tool_action.rs",
                 "fields": {
-                    "read": "crates/agent-semantic-hook/src/tool_action.rs:216:419"
+                    "read": "crates/agent-semantic-hook/src/tool_action.rs:216:419",
+                    "structuralSelector": "rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/collect_tool_actions"
                 }
             }
         ],
@@ -206,14 +208,20 @@ fn sample_owner_items_packet() -> serde_json::Value {
                 "target": "command_source_paths",
                 "targetRole": "symbol",
                 "ownerPath": "crates/agent-semantic-hook/src/tool_action.rs",
-                "read": "crates/agent-semantic-hook/src/tool_action.rs:397:401"
+                "read": "crates/agent-semantic-hook/src/tool_action.rs:397:401",
+                "fields": {
+                    "structuralSelector": "rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/command_source_paths"
+                }
             },
             {
                 "kind": "hot",
                 "target": "nested_action_from_tool_use",
                 "targetRole": "symbol",
                 "ownerPath": "crates/agent-semantic-hook/src/tool_action.rs",
-                "read": "crates/agent-semantic-hook/src/tool_action.rs:567:568"
+                "read": "crates/agent-semantic-hook/src/tool_action.rs:567:568",
+                "fields": {
+                    "structuralSelector": "rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/nested_action_from_tool_use"
+                }
             }
         ],
         "notes": [
@@ -339,11 +347,11 @@ fn shared_renderer_projects_owner_items_into_query_item_hot_frontier() {
         "Q=query:term(tool_action|structured|payload|command_intent|from_payload|from_action)!query"
     ));
     assert!(output.contains(
-        "I=item:symbol(payload_string)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/payload_string!syntax"
+        "I=item:symbol(payload_string)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/payload_string!syntax"
     ));
-    assert!(output.contains("I2=item:symbol(collect_tool_actions)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/collect_tool_actions!syntax"));
-    assert!(output.contains("H=hot:symbol(command_source_paths)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/hot/command_source_paths!syntax"));
-    assert!(output.contains("syntax I selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/payload_string pattern='((function_item name: (_) @function.name) (#eq? @function.name \"payload_string\"))'"));
+    assert!(output.contains("I2=item:symbol(collect_tool_actions)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/collect_tool_actions!syntax"));
+    assert!(output.contains("H=hot:symbol(command_source_paths)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/command_source_paths!syntax"));
+    assert!(output.contains("syntax I selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/payload_string pattern='((function_item name: (_) @function.name) (#eq? @function.name \"payload_string\"))'"));
     assert!(
         !output.contains(
             "I=item:symbol(payload_string)@crates/agent-semantic-hook/src/tool_action.rs:"
@@ -365,6 +373,45 @@ fn shared_renderer_projects_owner_items_into_query_item_hot_frontier() {
     assert!(output.contains("avoid=inline-code-in-search,raw-read,repeat-owner"));
     assert!(!output.contains("S=symbol"));
     assert!(!output.contains("frontier=O.owner"));
+}
+
+#[test]
+fn shared_renderer_never_reconstructs_item_identity_from_owner_or_range_hints() {
+    let mut packet = sample_owner_items_packet();
+    for item in packet["items"]
+        .as_array_mut()
+        .expect("owner-items fixture must contain items")
+    {
+        item["fields"]
+            .as_object_mut()
+            .expect("item fields must be an object")
+            .remove("structuralSelector");
+    }
+    for action in packet["nextActions"]
+        .as_array_mut()
+        .expect("owner-items fixture must contain next actions")
+    {
+        action
+            .as_object_mut()
+            .expect("next action must be an object")
+            .remove("fields");
+    }
+
+    let output = render_search_graph_packet(
+        &packet,
+        GraphRenderOptions {
+            seed_limit: Some(12),
+        },
+    );
+
+    assert!(!output.contains("#item/"), "{output}");
+    assert!(!output.contains("syntax I selector="), "{output}");
+    assert!(
+        !output.contains(
+            "I=item:symbol(payload_string)@crates/agent-semantic-hook/src/tool_action.rs:"
+        ),
+        "{output}"
+    );
 }
 
 #[test]
@@ -523,7 +570,7 @@ fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
         "#!/bin/sh\n\
          printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\n\
          cat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\n\
-         printf '[graph-frontier] external=true\\n'\n",
+         printf '%s\\n' '{\"schemaId\":\"agent.semantic-protocols.semantic-graph-turbo-result\",\"schemaVersion\":\"1\",\"protocolId\":\"agent.semantic-protocols.semantic-language\",\"protocolVersion\":\"1\",\"packetKind\":\"graph-turbo-result\",\"profile\":\"owner-query\",\"algorithm\":\"typed-ppr-diverse\",\"seedIds\":[\"query:parser\"],\"rankedNodes\":[{\"id\":\"query:parser\",\"kind\":\"query\",\"role\":\"term\",\"value\":\"parser\",\"action\":\"lexical\"},{\"id\":\"owner:cli\",\"kind\":\"owner\",\"role\":\"path\",\"value\":\"src/cli.rs\",\"action\":\"owner\"}],\"edges\":[{\"source\":\"query:parser\",\"target\":\"owner:cli\",\"relation\":\"matches\",\"weight\":1.5}]}'\n",
     )
     .unwrap();
     make_executable(&graph_turbo);
@@ -557,11 +604,13 @@ fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "[graph-frontier] external=true\n"
+        "[search-frontier] projection=ranked-frontier density=terse profile=owner-query algorithm=typed-ppr-diverse nodes=2\n\
+         I=query:parser kind=query action=lexical value=parser\n\
+         I=owner:cli kind=owner action=owner value=src/cli.rs\n"
     );
     assert_eq!(
         fs::read_to_string(&args_path).unwrap(),
-        "rank\n-\n--format\ncompact\n"
+        "rank\n-\n--format\njson\n"
     );
     assert!(
         fs::read_to_string(&stdin_path)

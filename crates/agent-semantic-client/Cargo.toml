@@ -1,11 +1,14 @@
 [package]
 name = "agent-semantic-client"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "Thin agent semantic client over native semantic language providers."
 license = "MIT"
 
 [dependencies]
+blake3.workspace = true
+agent-semantic-content-identity.workspace = true
+agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
 bytes = { workspace = true }
 ignore = { workspace = true }
 which = { workspace = true }
@@ -23,11 +26,16 @@ toml = { workspace = true }
 
 
 [dev-dependencies]
+jsonschema = { workspace = true }
 criterion = { workspace = true }
 asp-rust-project-harness-policy.workspace = true
 
 [[bench]]
 name = "client_microbench"
+harness = false
+
+[[bench]]
+name = "provider_runtime_storage"
 harness = false
 
 [build-dependencies]

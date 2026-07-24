@@ -36,10 +36,7 @@ pub(crate) fn provider_cache_probe(
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
 ) -> Option<ProviderCacheProbe> {
-    if request.is_hook_direct_source_read()
-        || request.is_source_content_output()
-        || is_structural_item_code_query(request)
-    {
+    if request.is_source_content_output() || is_structural_item_code_query(request) {
         return None;
     }
     let effective_project_root = cache_project_root_for_request(project_root, request);

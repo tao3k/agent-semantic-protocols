@@ -68,6 +68,7 @@ fn completed_turn(
 
 #[test]
 fn completed_v2_turn_preserves_runtime_drift_for_same_child_resume() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-completed-turn");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -97,6 +98,7 @@ fn completed_v2_turn_preserves_runtime_drift_for_same_child_resume() {
 
 #[test]
 fn repeated_same_child_drift_counts_failed_runtime_rebind() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-repeated-rebind");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -126,6 +128,7 @@ fn repeated_same_child_drift_counts_failed_runtime_rebind() {
 
 #[test]
 fn resumed_turn_stop_counts_as_fresh_runtime_observation_without_new_start() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-resume-stop");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -153,6 +156,7 @@ fn resumed_turn_stop_counts_as_fresh_runtime_observation_without_new_start() {
 
 #[test]
 fn matching_runtime_on_untyped_child_does_not_clear_drift() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-resume-repaired");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";
@@ -180,6 +184,7 @@ fn matching_runtime_on_untyped_child_does_not_clear_drift() {
 
 #[test]
 fn fresh_typed_replacement_start_clears_drift() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-typed-replacement");
     let root_session_id = "root-thread";
     write_events(
@@ -214,6 +219,7 @@ fn fresh_typed_replacement_start_clears_drift() {
 
 #[test]
 fn explicit_resident_archive_supersedes_runtime_drift() {
+    let _state_home = super::event_state::AspStateHomeGuard::activate_isolated();
     let root = fixture_root("runtime-drift-explicit-archive");
     let root_session_id = "root-thread";
     let child_session_id = "resident-child";

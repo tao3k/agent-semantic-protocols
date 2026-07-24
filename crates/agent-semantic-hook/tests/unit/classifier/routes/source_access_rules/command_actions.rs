@@ -1,0 +1,260 @@
+use agent_semantic_hook::{DecisionKind, DecisionRouteKind, ReasonKind, classify_hook};
+use serde_json::json;
+
+use super::support::registry;
+
+#[test]
+fn claude_grep_tool_matches_source_access_rule() {
+    let decision = classify_hook(
+        &registry(),
+        "claude",
+        "pre-tool",
+        &json!({
+            "toolName": "Grep",
+            "tool_name": "Grep",
+            "toolInput": {
+                "pattern": "HookDecision",
+                "glob": "*.rs",
+                "path": "crates/agent-semantic-hook/src"
+            },
+            "tool_input": {
+                "pattern": "HookDecision",
+                "glob": "*.rs",
+                "path": "crates/agent-semantic-hook/src"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
+    assert!(decision.routes.is_empty());
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(|value| value.as_str()),
+        Some("deny-raw-registered-source-search-action")
+    );
+    assert!(
+        decision
+            .message
+            .contains("registered source belong in `asp <language> search`")
+    );
+    assert!(decision.subject.command.is_none());
+}
+
+#[test]
+fn codex_search_command_action_matches_source_access_rule() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "toolName": "command_execution",
+            "tool_name": "command_execution",
+            "toolInput": {
+                "commandActions": [{
+                    "type": "search",
+                    "command": "rg -n -g '*.rs' HookDecision crates/agent-semantic-hook/src",
+                    "query": "HookDecision",
+                    "path": "crates/agent-semantic-hook/src"
+                }]
+            },
+            "tool_input": {
+                "commandActions": [{
+                    "type": "search",
+                    "command": "rg -n -g '*.rs' HookDecision crates/agent-semantic-hook/src",
+                    "query": "HookDecision",
+                    "path": "crates/agent-semantic-hook/src"
+                }]
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
+    assert!(decision.routes.is_empty());
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(|value| value.as_str()),
+        Some("deny-raw-registered-source-search-action")
+    );
+    assert!(
+        decision
+            .message
+            .contains("registered source belong in `asp <language> search`")
+    );
+}
+
+#[test]
+fn git_object_and_tree_reads_match_source_access_rule() {
+    for command in [
+        "git show HEAD:crates/agent-semantic-hook/src/lib.rs",
+        "git show --stat HEAD",
+        "git ls-tree -r HEAD",
+        "git diff HEAD -- crates/agent-semantic-hook/src/lib.rs",
+        "git diff --name-only",
+        "git diff",
+        "git diff --cached",
+        "git diff --stat",
+    ] {
+        let decision = classify_hook(
+            &registry(),
+            "codex",
+            "pre-tool",
+            &json!({
+                "toolName": "Bash",
+                "toolInput": {"command": command}
+            }),
+        );
+
+        assert_eq!(decision.decision, DecisionKind::Deny, "command={command}");
+        assert_eq!(
+            decision.reason_kind,
+            ReasonKind::RawBroadSearch,
+            "command={command}"
+        );
+        assert!(
+            decision
+                .fields
+                .get("configRuleId")
+                .and_then(|value| value.as_str())
+                .is_some_and(|rule_id| rule_id.starts_with("deny-uncontrolled-")),
+            "command={command} decision={decision:#?}"
+        );
+        assert!(decision.routes.is_empty(), "command={command}");
+        assert!(!decision.message.is_empty(), "command={command}");
+    }
+}
+
+#[test]
+fn codex_listfiles_source_dir_routes_to_ingest() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "toolName": "command_execution",
+            "tool_name": "command_execution",
+            "toolInput": {
+                "commandActions": [{
+                    "type": "listFiles",
+                    "command": "ls crates/agent-semantic-hook/src",
+                    "path": "crates/agent-semantic-hook/src"
+                }]
+            },
+            "tool_input": {
+                "commandActions": [{
+                    "type": "listFiles",
+                    "command": "ls crates/agent-semantic-hook/src",
+                    "path": "crates/agent-semantic-hook/src"
+                }]
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
+    assert_eq!(
+        decision.subject.command.as_deref(),
+        Some("ls crates/agent-semantic-hook/src")
+    );
+}
+
+#[test]
+fn codex_listfiles_core_shape_preserves_cmd() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "toolName": "command_execution",
+            "tool_name": "command_execution",
+            "toolInput": {
+                "commandActions": [{
+                    "type": "list_files",
+                    "cmd": "ls crates/agent-semantic-hook/src",
+                    "path": "crates/agent-semantic-hook/src"
+                }]
+            },
+            "tool_input": {
+                "commandActions": [{
+                    "type": "list_files",
+                    "cmd": "ls crates/agent-semantic-hook/src",
+                    "path": "crates/agent-semantic-hook/src"
+                }]
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
+    assert_eq!(
+        decision.subject.command.as_deref(),
+        Some("ls crates/agent-semantic-hook/src")
+    );
+}
+
+#[test]
+fn codex_listfiles_non_source_path_is_allowed() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "toolName": "command_execution",
+            "tool_name": "command_execution",
+            "toolInput": {
+                "commandActions": [{
+                    "type": "listFiles",
+                    "command": "ls docs",
+                    "path": "docs"
+                }]
+            },
+            "tool_input": {
+                "commandActions": [{
+                    "type": "listFiles",
+                    "command": "ls docs",
+                    "path": "docs"
+                }]
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.reason_kind, ReasonKind::None);
+}
+
+#[test]
+fn codex_command_action_not_detected_in_arbitrary_payload() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "toolName": "metadata_tool",
+            "tool_name": "metadata_tool",
+            "toolInput": {
+                "metadata": {
+                    "type": "listFiles",
+                    "command": "not a command action",
+                    "path": "crates/agent-semantic-hook/src"
+                }
+            },
+            "tool_input": {
+                "metadata": {
+                    "type": "listFiles",
+                    "command": "not a command action",
+                    "path": "crates/agent-semantic-hook/src"
+                }
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.reason_kind, ReasonKind::None);
+}

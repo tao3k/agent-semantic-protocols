@@ -7,6 +7,29 @@ use std::path::{Path, PathBuf};
 /// Default maximum number of Gerbil dependency index exports returned by one search.
 pub const DEFAULT_GERBIL_DEPS_SEARCH_LIMIT: usize = 80;
 
+/// Validated Gerbil distribution module identifier, such as `:std/srfi/13`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GerbilDepsModuleId(String);
+
+impl GerbilDepsModuleId {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for GerbilDepsModuleId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for GerbilDepsModuleId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
 /// Search request for exports in an active Gerbil distribution module.
 pub struct GerbilDepsSearchRequest {
     /// Gerbil module identifier, such as `:std/srfi/13`.
@@ -151,8 +174,12 @@ fn query_export_with_home(
 }
 
 /// Validate that a Gerbil module identifier is specific enough for deps search.
-pub fn gerbil_deps_validate_module_id(module_id: &str) -> Result<(), String> {
-    let Some(path) = module_id.strip_prefix(':') else {
+pub fn gerbil_deps_validate_module_id(
+    module_id: impl Into<GerbilDepsModuleId>,
+) -> Result<GerbilDepsModuleId, String> {
+    let module_id = module_id.into();
+    let module_id_str = module_id.as_str();
+    let Some(path) = module_id_str.strip_prefix(':') else {
         return Err("module-id-required".to_string());
     };
     if path.is_empty()
@@ -165,7 +192,7 @@ pub fn gerbil_deps_validate_module_id(module_id: &str) -> Result<(), String> {
     {
         return Err("specific-module-id-required".to_string());
     }
-    Ok(())
+    Ok(module_id)
 }
 
 /// Validate that a selector export name cannot escape the module source tree.
@@ -189,15 +216,24 @@ pub fn gerbil_deps_query_terms(query: &str) -> Vec<String> {
 }
 
 /// Build the compact `only-in` import form for matched Gerbil exports.
-pub fn gerbil_deps_minimal_import(module_id: &str, names: &[String]) -> String {
-    format!("(import (only-in {module_id} {}))", names.join(" "))
+pub fn gerbil_deps_minimal_import(
+    module_id: impl Into<GerbilDepsModuleId>,
+    names: &[String],
+) -> String {
+    let module_id = module_id.into();
+    format!(
+        "(import (only-in {} {}))",
+        module_id.as_str(),
+        names.join(" ")
+    )
 }
 
 /// Build the stable selector for an export in a Gerbil module.
-pub fn gerbil_deps_selector_for(module_id: &str, name: &str) -> String {
+pub fn gerbil_deps_selector_for(module_id: impl Into<GerbilDepsModuleId>, name: &str) -> String {
+    let module_id = module_id.into();
     format!(
         "gerbil:/{}#export/{name}",
-        module_id.trim_start_matches(':')
+        module_id.as_str().trim_start_matches(':')
     )
 }
 

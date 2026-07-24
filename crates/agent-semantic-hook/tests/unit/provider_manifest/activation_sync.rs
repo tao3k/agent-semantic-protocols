@@ -51,6 +51,7 @@ fn generated_activation_sync_refreshes_newly_available_parent_workspace_provider
 
 #[test]
 fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
+    let _home_lock = super::HOME_ENV_LOCK.lock().expect("lock HOME env");
     let root = temp_root("stale-coverage-defaults");
     fs::create_dir_all(root.join(".bin")).expect("create bin dir");
     fs::write(
@@ -61,6 +62,9 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     let rs_harness = root.join(".bin/rs-harness");
     fs::write(&rs_harness, "#!/bin/sh\nexit 0\n").expect("write rust provider bin");
     make_executable(&rs_harness);
+    let gslph = root.join(".bin/gslph");
+    fs::write(&gslph, "#!/bin/sh\nexit 0\n").expect("write Gerbil provider bin");
+    make_executable(&gslph);
 
     let activation_path = test_activation_path(&root, &root);
     let mut activation = build_default_activation(&root).expect("build activation");

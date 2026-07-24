@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
-use agent_semantic_client_core::{CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId};
+use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
 use serde::Deserialize;
 
 use super::types::{
@@ -23,16 +23,28 @@ pub const CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_VERSION: &str = "1";
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientDbLanguageProjection {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub protocol_id: String,
-    pub protocol_version: String,
-    pub language_id: String,
-    pub harness: ClientDbLanguageProjectionHarness,
-    pub sources: Vec<ClientDbLanguageProjectionSource>,
-    pub owners: Vec<ClientDbLanguageProjectionOwner>,
-    pub items: Vec<ClientDbLanguageProjectionItem>,
-    pub relations: Vec<ClientDbLanguageProjectionRelation>,
+    schema_id: String,
+    schema_version: String,
+    protocol_id: String,
+    protocol_version: String,
+    language_id: String,
+    harness: ClientDbLanguageProjectionHarness,
+    sources: Vec<ClientDbLanguageProjectionSource>,
+    owners: Vec<ClientDbLanguageProjectionOwner>,
+    items: Vec<ClientDbLanguageProjectionItem>,
+    relations: Vec<ClientDbLanguageProjectionRelation>,
+}
+
+impl ClientDbLanguageProjection {
+    #[must_use]
+    pub fn language_id(&self) -> &str {
+        &self.language_id
+    }
+
+    #[must_use]
+    pub fn harness(&self) -> &ClientDbLanguageProjectionHarness {
+        &self.harness
+    }
 }
 
 /// Parser identity attached to a language projection.
@@ -42,6 +54,23 @@ pub struct ClientDbLanguageProjectionHarness {
     pub harness_id: String,
     pub parser_abi: String,
     pub selector_dialect: String,
+}
+
+impl ClientDbLanguageProjectionHarness {
+    #[must_use]
+    pub fn harness_id(&self) -> &str {
+        &self.harness_id
+    }
+
+    #[must_use]
+    pub fn parser_abi(&self) -> &str {
+        &self.parser_abi
+    }
+
+    #[must_use]
+    pub fn selector_dialect(&self) -> &str {
+        &self.selector_dialect
+    }
 }
 
 /// One parser-owned source identity. Digests belong to the ASP lifecycle.
@@ -68,30 +97,30 @@ pub enum ClientDbLanguageProjectionSourceKind {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientDbLanguageProjectionOwner {
-    pub owner_id: String,
-    pub source_id: String,
-    pub kind: Option<String>,
-    pub name: Option<String>,
+    owner_id: String,
+    source_id: String,
+    kind: Option<String>,
+    name: Option<String>,
 }
 
 /// Parser-owned exact item selector.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientDbLanguageProjectionItem {
-    pub item_id: String,
-    pub owner_id: String,
-    pub kind: String,
-    pub name: String,
-    pub selector: String,
+    item_id: String,
+    owner_id: String,
+    kind: String,
+    name: String,
+    selector: String,
 }
 
 /// One typed relation preserved for EvidenceGraph import.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientDbLanguageProjectionRelation {
-    pub from: ClientDbLanguageProjectionNodeRef,
-    pub kind: String,
-    pub to: ClientDbLanguageProjectionNodeRef,
+    from: ClientDbLanguageProjectionNodeRef,
+    kind: String,
+    to: ClientDbLanguageProjectionNodeRef,
 }
 
 /// Reference to a parser-owned or external projection node.
@@ -115,11 +144,18 @@ pub enum ClientDbLanguageProjectionNodeKind {
 /// Generic lifecycle input for importing parser-owned projection facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbLanguageProjectionImportRequest {
-    pub generation_id: CacheGenerationId,
     pub project_root: PathBuf,
     pub previous_file_hashes: Option<Vec<ClientCacheFileHash>>,
     pub registry_fingerprint: String,
     pub projection: ClientDbLanguageProjection,
+}
+
+/// Content-addressed language projection prepared for source-index persistence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbLanguageProjectionImport {
+    pub source_index: super::types::ClientDbSourceIndexImport,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub membership_change_set: super::types::ClientDbSourceIndexMembershipChangeSet,
 }
 
 /// Rows derived from parser facts without reading or parsing language source text.
@@ -307,202 +343,6 @@ pub(crate) fn language_projection_source_index_rows(
     })
 }
 
-/// Project parser-owned semantic facts into the shared EvidenceGraph vocabulary.
-pub(crate) fn language_projection_evidence_graph(
-    import: &crate::ClientDbSourceIndexImport,
-    projection: &ClientDbLanguageProjection,
-) -> Result<crate::evidence_graph::ClientDbEvidenceGraph, String> {
-    projection.validate()?;
-    let mut graph = crate::evidence_graph::empty_evidence_graph(
-        import.generation_id.as_str(),
-        import.project_root.clone(),
-    );
-    let language_id = Some(projection.language_id.clone());
-    let provider_id = Some(projection.harness.harness_id.clone());
-    let mut node_ids = BTreeMap::<String, String>::new();
-    let mut source_paths = BTreeMap::<String, String>::new();
-
-    for source in &projection.sources {
-        let node_id = language_projection_graph_node_id(
-            import.generation_id.as_str(),
-            "source",
-            &source.source_id,
-        );
-        source_paths.insert(source.source_id.clone(), source.path.clone());
-        node_ids.insert(
-            language_projection_node_ref_key("source", &source.source_id),
-            node_id.clone(),
-        );
-        graph
-            .nodes
-            .push(crate::evidence_graph::ClientDbEvidenceGraphNode {
-                id: node_id,
-                kind: "source-file",
-                semantic_kind: None,
-                label: source.path.clone(),
-                path: Some(source.path.clone()),
-                selector: None,
-                query_keys: language_projection_graph_query_keys([source.path.as_str()]),
-                language_id: language_id.clone(),
-                provider_id: provider_id.clone(),
-            });
-    }
-    for owner in &projection.owners {
-        let source_path = source_paths.get(&owner.source_id).ok_or_else(|| {
-            format!(
-                "language projection owner {} is missing source {}",
-                owner.owner_id, owner.source_id
-            )
-        })?;
-        let node_id = language_projection_graph_node_id(
-            import.generation_id.as_str(),
-            "owner",
-            &owner.owner_id,
-        );
-        node_ids.insert(
-            language_projection_node_ref_key("owner", &owner.owner_id),
-            node_id.clone(),
-        );
-        let mut query_key_values = vec![source_path.clone()];
-        if let Some(kind) = &owner.kind {
-            query_key_values.push(kind.clone());
-        }
-        if let Some(name) = &owner.name {
-            query_key_values.push(name.clone());
-        }
-        graph
-            .nodes
-            .push(crate::evidence_graph::ClientDbEvidenceGraphNode {
-                id: node_id,
-                kind: "source-owner",
-                semantic_kind: owner.kind.clone(),
-                label: owner.name.clone().unwrap_or_else(|| source_path.clone()),
-                path: Some(source_path.clone()),
-                selector: None,
-                query_keys: language_projection_graph_query_keys(
-                    query_key_values.iter().map(String::as_str),
-                ),
-                language_id: language_id.clone(),
-                provider_id: provider_id.clone(),
-            });
-    }
-    for item in &projection.items {
-        let owner = projection
-            .owners
-            .iter()
-            .find(|owner| owner.owner_id == item.owner_id)
-            .ok_or_else(|| {
-                format!(
-                    "language projection item {} is missing owner {}",
-                    item.item_id, item.owner_id
-                )
-            })?;
-        let source_path = source_paths.get(&owner.source_id).ok_or_else(|| {
-            format!(
-                "language projection item {} is missing source {}",
-                item.item_id, owner.source_id
-            )
-        })?;
-        let node_id =
-            language_projection_graph_node_id(import.generation_id.as_str(), "item", &item.item_id);
-        node_ids.insert(
-            language_projection_node_ref_key("item", &item.item_id),
-            node_id.clone(),
-        );
-        graph
-            .nodes
-            .push(crate::evidence_graph::ClientDbEvidenceGraphNode {
-                id: node_id,
-                kind: "selector",
-                semantic_kind: Some(item.kind.clone()),
-                label: item.name.clone(),
-                path: Some(source_path.clone()),
-                selector: Some(item.selector.clone()),
-                query_keys: language_projection_graph_query_keys([
-                    item.kind.as_str(),
-                    item.name.as_str(),
-                ]),
-                language_id: language_id.clone(),
-                provider_id: provider_id.clone(),
-            });
-    }
-    for relation in &projection.relations {
-        let from = language_projection_relation_node_id(
-            import.generation_id.as_str(),
-            &relation.from,
-            &mut node_ids,
-            &mut graph,
-            language_id.as_deref(),
-            provider_id.as_deref(),
-        )?;
-        let to = language_projection_relation_node_id(
-            import.generation_id.as_str(),
-            &relation.to,
-            &mut node_ids,
-            &mut graph,
-            language_id.as_deref(),
-            provider_id.as_deref(),
-        )?;
-        let kind = language_projection_relation_kind(&relation.kind).ok_or_else(|| {
-            format!(
-                "unsupported language projection relation kind {}",
-                relation.kind
-            )
-        })?;
-        graph
-            .edges
-            .push(crate::evidence_graph::ClientDbEvidenceGraphEdge { from, to, kind });
-    }
-    Ok(graph)
-}
-
-fn language_projection_relation_node_id(
-    generation_id: &str,
-    node: &ClientDbLanguageProjectionNodeRef,
-    node_ids: &mut BTreeMap<String, String>,
-    graph: &mut crate::evidence_graph::ClientDbEvidenceGraph,
-    language_id: Option<&str>,
-    provider_id: Option<&str>,
-) -> Result<String, String> {
-    let kind = match &node.kind {
-        ClientDbLanguageProjectionNodeKind::Source => "source",
-        ClientDbLanguageProjectionNodeKind::Owner => "owner",
-        ClientDbLanguageProjectionNodeKind::Item => "item",
-        ClientDbLanguageProjectionNodeKind::External => "external",
-    };
-    let key = language_projection_node_ref_key(kind, &node.id);
-    if let Some(node_id) = node_ids.get(&key) {
-        return Ok(node_id.clone());
-    }
-    if kind != "external" {
-        return Err(format!("language projection graph is missing node {key}"));
-    }
-    let node_id = language_projection_graph_node_id(generation_id, kind, &node.id);
-    node_ids.insert(key, node_id.clone());
-    graph
-        .nodes
-        .push(crate::evidence_graph::ClientDbEvidenceGraphNode {
-            id: node_id.clone(),
-            kind: "external",
-            semantic_kind: None,
-            label: node.id.clone(),
-            path: None,
-            selector: None,
-            query_keys: Vec::new(),
-            language_id: language_id.map(str::to_string),
-            provider_id: provider_id.map(str::to_string),
-        });
-    Ok(node_id)
-}
-
-fn language_projection_graph_node_id(generation_id: &str, kind: &str, id: &str) -> String {
-    format!("language-projection:{generation_id}:{kind}:{id}")
-}
-
-fn language_projection_node_ref_key(kind: &str, id: &str) -> String {
-    format!("{kind}:{id}")
-}
-
 fn language_projection_relation_kind(kind: &str) -> Option<&'static str> {
     match kind {
         "contains" => Some("contains"),
@@ -511,15 +351,6 @@ fn language_projection_relation_kind(kind: &str) -> Option<&'static str> {
         "references" => Some("references"),
         _ => None,
     }
-}
-
-fn language_projection_graph_query_keys<'a>(
-    values: impl IntoIterator<Item = &'a str>,
-) -> Vec<String> {
-    projection_query_keys(values)
-        .into_iter()
-        .map(|key| key.as_str().to_string())
-        .collect()
 }
 
 fn projection_query_keys<'a>(

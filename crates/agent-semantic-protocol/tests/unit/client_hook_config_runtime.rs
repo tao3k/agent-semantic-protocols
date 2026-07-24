@@ -334,9 +334,12 @@ fn root_owned_rust_activation_json() -> String {
         .find(|manifest| manifest.language_id == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
+    let routes =
+        agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     serde_json::to_string_pretty(&json!({
         "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
         "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
+        "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
         "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": ".",
@@ -347,7 +350,14 @@ fn root_owned_rust_activation_json() -> String {
             "languageId": manifest.language_id,
             "providerId": manifest.provider_id,
             "binary": manifest.binary,
+            "execution": manifest.execution,
             "providerCommandPrefix": [],
+            "executionCommandDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "searchCapabilities": manifest.search_capabilities,
+            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+            "queryPackDescriptor": manifest.query_pack_descriptor,
+            "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
+            "routes": routes,
             "coverage": {
                 "packageRoots": ["."],
                 "sourceRoots": ["src", "tests", "crates", "examples", "benches"],

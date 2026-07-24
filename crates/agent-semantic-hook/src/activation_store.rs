@@ -1,6 +1,7 @@
 //! Activation loading and provider manifest defaults for `agent-semantic-hook`.
 
-use crate::protocol_activation::{HookActivation, HookRuntime, parse_activation};
+use crate::protocol_activation::protocol_activation_manifest::{HookActivation, HookRuntime};
+use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::{
     ProviderCommandSelection, build_default_activation, provider_command_selections,
     provider_manifests,
@@ -25,14 +26,31 @@ pub fn load_or_sync_activation(
     project_root: &Path,
 ) -> Result<HookRuntime, String> {
     if is_generated_activation_path_for_project(activation_path, project_root) {
-        return sync_activation(project_root, activation_path).or_else(|sync_error| {
-            load_activation(activation_path).map_err(|load_error| {
-                format!(
-                    "{load_error}; failed to sync generated activation {}: {sync_error}",
-                    activation_path.display()
-                )
-            })
-        });
+        if let Ok(current_exe) = std::env::current_exe()
+            && crate::verify_active_asp_artifact_receipt(activation_path, &[&current_exe]).is_ok()
+        {
+            return load_activation(activation_path);
+        }
+        return match sync_activation(project_root, activation_path) {
+            Ok(runtime) => {
+                crate::materialize_active_asp_artifact_receipt_for_current_process(
+                    activation_path,
+                    &runtime,
+                )?;
+                Ok(runtime)
+            }
+            Err(sync_error) => {
+                runtime_from_current_default_activation(project_root).or_else(|runtime_error| {
+                    load_activation(activation_path).map_err(|load_error| {
+                        format!(
+                            "{load_error}; failed to sync generated activation {}: {sync_error}; \
+                         failed to build in-memory generated activation: {runtime_error}",
+                            activation_path.display()
+                        )
+                    })
+                })
+            }
+        };
     }
     load_activation(activation_path)
 }
@@ -105,6 +123,8 @@ fn activation_matches_provider_command_selections(
     activation: &HookActivation,
     current_selections: &[ProviderCommandSelection],
 ) -> bool {
+    let current_registry_digest = crate::provider_registry::semantic_registry_digest();
+    let manifests = provider_manifests();
     activation.providers.len() == current_selections.len()
         && activation
             .providers
@@ -118,6 +138,18 @@ fn activation_matches_provider_command_selections(
                     && provider.binary == selection.binary
                     && provider.execution == selection.execution
                     && provider.provider_command_prefix == selection.provider_command_prefix
+                    && provider.semantic_registry_digest == current_registry_digest
+                    && manifests
+                        .iter()
+                        .find(|manifest| {
+                            manifest.manifest_id == provider.manifest_id
+                                && manifest.language_id == provider.language_id
+                                && manifest.provider_id == provider.provider_id
+                        })
+                        .and_then(|manifest| {
+                            crate::provider_registry::materialize_provider_routes(manifest).ok()
+                        })
+                        .is_some_and(|routes| routes == provider.routes)
             })
 }
 
@@ -140,6 +172,11 @@ fn activation_matches_current_manifest_coverage(activation: &HookActivation) -> 
 fn sync_activation(project_root: &Path, activation_path: &Path) -> Result<HookRuntime, String> {
     let sync = load_or_refresh_default_activation(activation_path, project_root)?;
     activation_to_runtime(&sync.activation)
+}
+
+fn runtime_from_current_default_activation(project_root: &Path) -> Result<HookRuntime, String> {
+    let activation = build_default_activation(project_root)?;
+    activation_to_runtime(&activation)
 }
 
 fn activation_to_runtime(activation: &HookActivation) -> Result<HookRuntime, String> {

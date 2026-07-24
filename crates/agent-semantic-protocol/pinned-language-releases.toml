@@ -4,7 +4,6 @@ repo = "tao3k/rust-lang-project-harness"
 version = "v0.1.2"
 downloadBaseUrl = "https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2"
 binary = "rs-harness"
-workspaceBinary = "languages/rust-lang-project-harness/target/release/rs-harness"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
@@ -17,8 +16,6 @@ repo = "tao3k/typescript-lang-project-harness"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/tao3k/typescript-lang-project-harness/releases/download/v0.1.0"
 binary = "ts-harness"
-workspaceBinary = "languages/typescript-lang-project-harness/dist/src/cli/main.js"
-workspaceInstall = "symlink"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
@@ -30,7 +27,6 @@ repo = "tao3k/python-lang-project-harness"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/tao3k/python-lang-project-harness/releases/download/v0.1.0"
 binary = "py-harness"
-workspaceBinary = "languages/python-lang-project-harness/.venv/bin/py-harness"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
@@ -42,7 +38,6 @@ repo = "JuliaCN/JuliaLangProjectHarness.jl"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/JuliaCN/JuliaLangProjectHarness.jl/releases/download/v0.1.0"
 binary = "asp-julia-harness"
-workspaceBinary = "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",

@@ -22,6 +22,13 @@ pub struct SearchPipeCandidate {
     pub confidence: String,
 }
 
+/// Search-pipe candidates bound to the canonical snapshot searched.
+#[derive(Clone, Debug)]
+pub struct SearchPipeCandidateCollection {
+    pub source_snapshot: agent_semantic_artifacts::SourceSnapshotEvidence,
+    pub candidates: Vec<SearchPipeCandidate>,
+}
+
 /// Request for `search pipe` candidate collection.
 pub struct SearchPipeCandidateRequest<'a> {
     pub language_id: &'a str,
@@ -31,6 +38,8 @@ pub struct SearchPipeCandidateRequest<'a> {
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
+    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub provider_digest: &'a str,
     pub require_multi_clause: bool,
     pub limit: usize,
 }
@@ -50,7 +59,7 @@ pub struct SearchPipePathCandidateRequest<'a> {
 /// Collect search pipe candidates without leaking routing logic into CLI code.
 pub fn collect_search_pipe_candidates(
     request: SearchPipeCandidateRequest<'_>,
-) -> Result<Vec<SearchPipeCandidate>, String> {
+) -> Result<SearchPipeCandidateCollection, String> {
     let terms = query_terms(request.query);
     if terms.is_empty() {
         return Err("search pipe requires a non-empty query".to_string());
@@ -70,14 +79,18 @@ pub fn collect_search_pipe_candidates(
         owners: request.owners,
         ignore_dirs: request.ignore_dirs,
         include_hidden_dirs: request.include_hidden_dirs,
+        base_snapshot: request.base_snapshot,
+        provider_digest: request.provider_digest,
         file_matches: &|path| file_spec.matches(path),
         limit: request.limit,
     })
-    .map(|candidates| {
-        candidates
+    .map(|collection| SearchPipeCandidateCollection {
+        source_snapshot: collection.source_snapshot,
+        candidates: collection
+            .candidates
             .into_iter()
             .map(SearchPipeCandidate::from)
-            .collect()
+            .collect(),
     })
 }
 

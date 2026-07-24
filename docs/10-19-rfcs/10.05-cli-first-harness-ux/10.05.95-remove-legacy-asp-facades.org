@@ -1,0 +1,28 @@
+#+TITLE: Remove Legacy ASP Facades
+
+* Decision
+
+Legacy ASP facades are removed, not translated, redirected, or retained behind
+a compatibility materializer. The language facade is a registered language ID;
+search and query routes are accepted only through the current configured command
+intent policy.
+
+The =InvalidAspFacade= decision materializer and its classifier, language guess,
+hard-coded deny fields, and =asp fd=/=asp rg= recovery text MUST NOT exist. An
+unknown ASP token is handled only by the current configured rule set and CLI
+parser. Hook code MUST NOT invent a replacement facade or route it to a resident
+agent.
+
+The root =asp fd= and =asp rg= query-wrapper surfaces are also Legacy. Their
+dispatch, wrapper-specific scope/preview/quality/frontier modules, usage text,
+and command-producing fallbacks are deleted. Current search uses
+=asp <language> search ...= and exact parser-owned query selectors only.
+
+* Closure proof
+
+- the config model has no =InvalidAspFacade= variant;
+- the hook config dispatcher has no matching materializer arm;
+- classifier source has no invalid-facade helpers or hard-coded legacy commands;
+- the generated/default config has no =invalid-asp-facade= materializer rule;
+- tests prove the removed config value is rejected and current configured ASP
+  search/query routes continue to classify normally.

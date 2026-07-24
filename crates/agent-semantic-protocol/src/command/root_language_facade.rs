@@ -8,7 +8,7 @@ use agent_semantic_hook::{
     HookRuntime, default_activation_path, discover_activation_path, parse_hook_activation,
 };
 
-use super::provider::{
+use super::provider_dispatch::{
     is_language_facade, run_language_command, unsupported_language_facade_message,
 };
 

@@ -472,16 +472,22 @@ fn search_pipe_package_option_scopes_search_overlay_frontier_without_provider_sp
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("source=search-overlay"), "{stdout}");
     assert!(
-        stdout.contains("fdPreview=ownerCandidates=program.ts"),
+        stdout.contains("sourceSnapshot=schemaId=asp.source-snapshot.v1")
+            && stdout.contains("sourceKind=editor-buffer")
+            && stdout.contains("rootDigest=")
+            && stdout.contains("baseRootDigest=")
+            && stdout.contains("providerDigest=")
+            && stdout.contains("dirtyPathsDigest="),
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "nextCommand=asp fd -query 'createProgram|createProgramConfig' --workspace src/compiler"
-        ),
+        stdout.contains("nextCommand=asp typescript search owner")
+            && stdout.contains("--workspace src/compiler --view seeds"),
         "{stdout}"
     );
+    assert!(!stdout.contains("nextCommand=asp fd"), "{stdout}");
     assert!(!stdout.contains("src/server/program.ts"), "{stdout}");
     assert!(!stdout.contains("actionFrontier="), "{stdout}");
     assert!(!stdout.contains("recommendedNext="), "{stdout}");

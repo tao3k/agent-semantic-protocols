@@ -3,15 +3,14 @@ use agent_semantic_hook::{
     HOOK_PROTOCOL_VERSION, RuntimeProviderHealthStatus, builtin_provider_manifests,
     provider_manifest_digest,
 };
-use serde_json::json;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId, ProviderExecution, ProviderId,
-    ProviderRegistrySnapshot, ResolvedProvider, RuntimeProfileStatus,
+    ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId, ProviderId, ProviderRegistrySnapshot,
+    ResolvedProvider, RuntimeProfileStatus, test_support::resolved_provider,
 };
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -41,20 +40,10 @@ fn runtime_profile_status_maps_from_hook_health_status() {
 
 #[test]
 fn activation_provider_prefix_is_metadata_not_client_invocation() {
-    let provider = ResolvedProvider {
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        binary: "rs-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: vec!["./.bin/rs-harness".to_string()],
-        runtime_command_argv: Some(vec!["/opt/homebrew/bin/rs-harness".to_string()]),
-        runtime_profile_status: Some(RuntimeProfileStatus::Available),
-        package_roots: vec![".".to_string()],
-        source_roots: vec!["src".to_string()],
-        config_files: vec!["Cargo.toml".to_string()],
-        source_extensions: vec!["rs".to_string()],
-        ignored_path_prefixes: Vec::new(),
-    };
+    let mut provider = resolved_provider();
+    provider.provider_command_prefix = vec!["./.bin/rs-harness".to_string()];
+    provider.runtime_command_argv = Some(vec!["/opt/homebrew/bin/rs-harness".to_string()]);
+    provider.runtime_profile_status = Some(RuntimeProfileStatus::Available);
 
     assert_eq!(
         provider.provider_command_prefix,
@@ -79,22 +68,15 @@ fn provider_registry_evidence_tracks_provider_identity_and_existing_scope_dirs()
         "[package]\nname='core'\n",
     )
     .expect("write config file");
+    let mut provider = resolved_provider();
+    provider.package_roots = vec!["crates/core".to_string()];
+    provider.source_roots = vec!["src".to_string()];
+    provider.config_files = vec!["Cargo.toml".to_string()];
+    provider.source_extensions = vec!["rs".to_string()];
+    provider.ignored_path_prefixes = vec!["target".to_string()];
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join(".cache/activation.json"),
-        providers: vec![ResolvedProvider {
-            language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
-            binary: "rs-harness".to_string(),
-            execution: ProviderExecution::ExternalProcess,
-            provider_command_prefix: vec!["rs-harness".to_string()],
-            runtime_command_argv: Some(vec!["/usr/bin/rs-harness".to_string()]),
-            runtime_profile_status: Some(RuntimeProfileStatus::Available),
-            package_roots: vec!["crates/core".to_string()],
-            source_roots: vec!["src".to_string()],
-            config_files: vec!["Cargo.toml".to_string()],
-            source_extensions: vec!["rs".to_string()],
-            ignored_path_prefixes: vec!["target".to_string()],
-        }],
+        providers: vec![provider],
     };
 
     let evidence = snapshot.evidence(&root);
@@ -109,6 +91,117 @@ fn provider_registry_evidence_tracks_provider_identity_and_existing_scope_dirs()
 }
 
 #[test]
+fn provider_registry_fingerprint_binds_complete_semantic_descriptor() {
+    let root = temp_root("provider-registry-semantic-fingerprint");
+    std::fs::create_dir_all(&root).expect("create root");
+    let baseline_provider = resolved_provider();
+    let baseline = provider_evidence_fingerprint(&root, baseline_provider.clone());
+    let baseline_schemas = baseline_provider
+        .semantic_facts_descriptor
+        .as_ref()
+        .expect("semantic descriptor")
+        .packet_schema_ids
+        .clone();
+
+    let mut mutations = Vec::new();
+    let mut descriptor_id = baseline_provider.clone();
+    descriptor_id
+        .semantic_facts_descriptor
+        .as_mut()
+        .expect("semantic descriptor")
+        .descriptor_id = "semantic.changed".to_string();
+    mutations.push(descriptor_id);
+    let mut descriptor_version = baseline_provider.clone();
+    descriptor_version
+        .semantic_facts_descriptor
+        .as_mut()
+        .expect("semantic descriptor")
+        .descriptor_version = "2".to_string();
+    mutations.push(descriptor_version);
+    let mut language = baseline_provider.clone();
+    language.language_id = LanguageId::from("rust-variant");
+    mutations.push(language);
+    let mut producer = baseline_provider.clone();
+    producer.provider_id = ProviderId::from("rs-harness-variant");
+    mutations.push(producer);
+    let mut families = baseline_provider.clone();
+    families
+        .semantic_facts_descriptor
+        .as_mut()
+        .expect("semantic descriptor")
+        .fact_kinds = vec!["changed-family".to_string()];
+    mutations.push(families);
+    let mut intent = baseline_provider;
+    intent
+        .semantic_facts_descriptor
+        .as_mut()
+        .expect("semantic descriptor")
+        .intent_axes[0]
+        .terms = vec!["changed-intent".to_string()];
+    mutations.push(intent);
+    let mut absent = resolved_provider();
+    absent.semantic_facts_descriptor = None;
+    mutations.push(absent);
+
+    for mutated in mutations {
+        if let Some(descriptor) = mutated.semantic_facts_descriptor.as_ref() {
+            assert_eq!(descriptor.packet_schema_ids, baseline_schemas);
+        }
+        assert_ne!(provider_evidence_fingerprint(&root, mutated), baseline);
+    }
+    std::fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn provider_registry_fingerprint_binds_complete_search_capabilities() {
+    let root = temp_root("provider-registry-search-capabilities-fingerprint");
+    std::fs::create_dir_all(&root).expect("create root");
+    let baseline_provider = resolved_provider();
+    let baseline = provider_evidence_fingerprint(&root, baseline_provider.clone());
+    let mut mutations = Vec::new();
+
+    let mut owner_items = baseline_provider.clone();
+    owner_items.search_capabilities.owner_items = !owner_items.search_capabilities.owner_items;
+    mutations.push(owner_items);
+    let mut semantic_facts = baseline_provider.clone();
+    semantic_facts.search_capabilities.semantic_facts =
+        !semantic_facts.search_capabilities.semantic_facts;
+    mutations.push(semantic_facts);
+    let mut dependency_topology = baseline_provider.clone();
+    dependency_topology.search_capabilities.dependency_topology =
+        !dependency_topology.search_capabilities.dependency_topology;
+    mutations.push(dependency_topology);
+    let mut dependency_topology_metadata = baseline_provider.clone();
+    dependency_topology_metadata
+        .search_capabilities
+        .dependency_topology_metadata = !dependency_topology_metadata
+        .search_capabilities
+        .dependency_topology_metadata;
+    mutations.push(dependency_topology_metadata);
+    let mut workspace_scope = baseline_provider.clone();
+    workspace_scope.search_capabilities.workspace_scope =
+        !workspace_scope.search_capabilities.workspace_scope;
+    mutations.push(workspace_scope);
+    let mut source_snapshot = baseline_provider;
+    source_snapshot.search_capabilities.source_snapshot = None;
+    mutations.push(source_snapshot);
+
+    for mutated in mutations {
+        assert_ne!(provider_evidence_fingerprint(&root, mutated), baseline);
+    }
+    std::fs::remove_dir_all(root).expect("remove temp root");
+}
+
+fn provider_evidence_fingerprint(root: &std::path::Path, provider: ResolvedProvider) -> String {
+    ProviderRegistrySnapshot {
+        activation_path: root.join(".cache/activation.json"),
+        providers: vec![provider],
+    }
+    .evidence(root)
+    .fingerprint
+}
+
+#[test]
 fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
     let root = temp_root("activation-prefix-snapshot");
     let activation_path = root.join("activation.json");
@@ -117,30 +210,43 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
         .find(|manifest| manifest.language_id == "python")
         .expect("python manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
-    let activation = json!({
-        "schemaId": HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": HOOK_ACTIVATION_SCHEMA_VERSION,
-        "protocolId": HOOK_PROTOCOL_ID,
-        "protocolVersion": HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
-        "generatedBy": { "runtime": "asp", "version": "test" },
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
-            "providerCommandPrefix": ["missing-python-provider-prefix"],
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": manifest.source.default_source_roots,
-                "configFiles": manifest.source.default_config_files,
-                "sourceExtensions": manifest.source.default_extensions,
-                "ignoredPathPrefixes": manifest.source.default_ignored_path_prefixes
-            }
-        }]
-    });
+    let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
+        .expect("python provider routes");
+    let activation = agent_semantic_hook::HookActivation {
+        schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
+        schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
+        protocol_id: HOOK_PROTOCOL_ID.to_string(),
+        protocol_version: HOOK_PROTOCOL_VERSION.to_string(),
+        project_root: ".".to_string(),
+        generated_by: agent_semantic_hook::ActivationGeneratedBy {
+            runtime: "asp".to_string(),
+            version: "test".to_string(),
+        },
+        generated_at: None,
+        providers: vec![agent_semantic_hook::ActivatedProviderConfig {
+            manifest_id: manifest.manifest_id,
+            manifest_digest,
+            language_id: manifest.language_id,
+            provider_id: manifest.provider_id,
+            binary: manifest.binary,
+            execution: manifest.execution,
+            provider_command_prefix: vec!["missing-python-provider-prefix".to_string()],
+            execution_command_digest: "test-execution-command-digest".to_string(),
+            search_capabilities: manifest.search_capabilities,
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+            query_pack_descriptor: manifest.query_pack_descriptor,
+            semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
+            routes,
+            coverage: agent_semantic_hook::ActivationCoverage {
+                package_roots: vec![".".to_string()],
+                source_roots: manifest.source.default_source_roots,
+                config_files: manifest.source.default_config_files,
+                source_extensions: manifest.source.default_extensions,
+                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+            },
+        }],
+    };
     std::fs::write(
         &activation_path,
         serde_json::to_string_pretty(&activation).expect("activation json"),
@@ -180,30 +286,43 @@ fn explicit_activation_path_keeps_requested_project_root() {
         .expect("python manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let expected_project_root = child.display().to_string();
-    let activation = json!({
-        "schemaId": HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": HOOK_ACTIVATION_SCHEMA_VERSION,
-        "protocolId": HOOK_PROTOCOL_ID,
-        "protocolVersion": HOOK_PROTOCOL_VERSION,
-        "projectRoot": expected_project_root,
-        "generatedBy": { "runtime": "asp", "version": "test" },
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
-            "providerCommandPrefix": ["py-harness"],
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": manifest.source.default_source_roots,
-                "configFiles": manifest.source.default_config_files,
-                "sourceExtensions": manifest.source.default_extensions,
-                "ignoredPathPrefixes": manifest.source.default_ignored_path_prefixes
-            }
-        }]
-    });
+    let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
+        .expect("python provider routes");
+    let activation = agent_semantic_hook::HookActivation {
+        schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
+        schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
+        protocol_id: HOOK_PROTOCOL_ID.to_string(),
+        protocol_version: HOOK_PROTOCOL_VERSION.to_string(),
+        project_root: expected_project_root.clone(),
+        generated_by: agent_semantic_hook::ActivationGeneratedBy {
+            runtime: "asp".to_string(),
+            version: "test".to_string(),
+        },
+        generated_at: None,
+        providers: vec![agent_semantic_hook::ActivatedProviderConfig {
+            manifest_id: manifest.manifest_id,
+            manifest_digest,
+            language_id: manifest.language_id,
+            provider_id: manifest.provider_id,
+            binary: manifest.binary,
+            execution: manifest.execution,
+            provider_command_prefix: vec!["py-harness".to_string()],
+            execution_command_digest: "test-execution-command-digest".to_string(),
+            search_capabilities: manifest.search_capabilities,
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+            query_pack_descriptor: manifest.query_pack_descriptor,
+            semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
+            routes,
+            coverage: agent_semantic_hook::ActivationCoverage {
+                package_roots: vec![".".to_string()],
+                source_roots: manifest.source.default_source_roots,
+                config_files: manifest.source.default_config_files,
+                source_extensions: manifest.source.default_extensions,
+                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+            },
+        }],
+    };
     std::fs::write(
         &activation_path,
         serde_json::to_string_pretty(&activation).expect("activation json"),

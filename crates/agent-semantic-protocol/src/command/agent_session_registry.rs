@@ -6,10 +6,15 @@ mod agent_session_registry_args;
 mod agent_session_registry_bootstrap;
 #[path = "agent_session_registry_codex.rs"]
 mod agent_session_registry_codex;
+#[path = "agent_session_registry_command_parts/mod.rs"]
+mod agent_session_registry_command_parts;
 #[path = "agent_session_registry_commands.rs"]
 mod agent_session_registry_commands;
+pub(in crate::command::agent_session_registry) use agent_session_registry_commands::stale_invalid_session_should_be_idle;
+#[path = "agent_session_registry_dispatch.rs"]
+mod agent_session_registry_dispatch;
 #[path = "agent_session_registry_host_capability.rs"]
-mod agent_session_registry_host_capability;
+pub(in crate::command) mod agent_session_registry_host_capability;
 pub(super) use agent_session_registry_host_capability::record_subagent_start_target_present;
 #[path = "agent_session_registry_lifecycle_audit.rs"]
 mod agent_session_registry_lifecycle_audit;
@@ -29,12 +34,15 @@ mod agent_session_registry_rollout_adopt;
 mod agent_session_registry_rollout_lookup;
 #[path = "agent_session_registry_state.rs"]
 mod agent_session_registry_state;
+pub(crate) use agent_session_registry_state::payload_live_target_resident_identity_proof;
+pub(crate) use agent_session_registry_state::payload_live_target_resident_identity_status;
 #[path = "agent_session_registry_tool_event.rs"]
 mod agent_session_registry_tool_event;
 #[path = "agent_session_registry_validation.rs"]
 mod agent_session_registry_validation;
 pub(crate) use agent_session_registry_validation::{
     expected_model_for_session_profile, expected_reasoning_effort_for_session_profile,
+    rollout_metadata_matches_managed_agent_profile, validate_session_profile,
 };
 
 use agent_semantic_client_db::AgentSessionRegistry;
@@ -48,18 +56,19 @@ use agent_session_registry_args::{
     SessionArgs, SessionCommand, agent_usage, session_guide, session_usage,
 };
 use agent_session_registry_codex::run_codex_session_wrapper;
+use agent_session_registry_command_parts::{
+    close_session, gc_sessions, reconcile_sessions, status_session,
+};
 use agent_session_registry_commands::{
-    close_session, gc_sessions, lifecycle_audit_session, list_sessions, reconcile_sessions,
-    register_session, show_session, smoke_session, status_session,
+    lifecycle_audit_session, list_sessions, register_session, show_session, smoke_session,
 };
 use agent_session_registry_state::open_or_create_default_registry;
 use std::{env, path::PathBuf};
 
 pub(crate) use agent_session_registry_state::{
-    ResidentChildIdentityProof, codex_transcript_resident_child_identity_proof,
-    current_agent_session_id, current_registered_session, current_registered_session_identity,
-    current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
-    registered_resident_session_for_root, registered_root_session_id,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity,
+    current_registered_session, current_resident_child_identity_proof, current_root_session_id,
+    has_current_agent_session, registered_resident_session_for_root, registered_root_session_id,
 };
 pub(crate) use agent_session_registry_tool_event::record_current_session_tool_event;
 
@@ -77,6 +86,8 @@ pub(crate) fn run_agent_command(args: &[String]) -> Result<(), String> {
     }
 }
 
+use self::agent_session_registry_state::{project_session_scope_id, resolved_root_session_id};
+
 pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
     let args = SessionArgs::parse(args)?;
     if args.help {
@@ -90,13 +101,32 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
 
     let project_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let registry = match args.state_root.as_deref() {
-        Some(state_root) => {
+    let projection_only = matches!(
+        &args.command,
+        SessionCommand::Bootstrap | SessionCommand::Show | SessionCommand::Status
+    );
+    let registry = match (projection_only, args.state_root.as_deref()) {
+        (true, Some(state_root)) => {
+            let state_root =
+                AgentSessionRegistry::resolve_state_root_override(&project_root, state_root);
+            AgentSessionRegistry::open_existing_state_root_read_only(state_root)?.ok_or_else(
+                || {
+                    "registryStatus=missing registryWriteStatus=not-attempted; run `asp sync` before resident lifecycle projection"
+                        .to_string()
+                },
+            )?
+        }
+        (true, None) => AgentSessionRegistry::open_existing_project_read_only(&project_root)?
+            .ok_or_else(|| {
+                "registryStatus=missing registryWriteStatus=not-attempted; run `asp sync` before resident lifecycle projection"
+                    .to_string()
+            })?,
+        (false, Some(state_root)) => {
             let state_root =
                 AgentSessionRegistry::resolve_state_root_override(&project_root, state_root);
             AgentSessionRegistry::open_or_create_state_root(state_root)?
         }
-        None => open_or_create_default_registry(&project_root)?,
+        (false, None) => open_or_create_default_registry(&project_root)?,
     };
 
     match args.command {
@@ -108,6 +138,21 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         }
         SessionCommand::ObserveHostTree => {
             agent_session_registry_host_capability::observe_host_tree(&registry, &args)
+        }
+        SessionCommand::ObserveHostAck => {
+            agent_session_registry_host_capability::observe_host_ack(&registry, &args)
+        }
+        SessionCommand::DispatchClaim => {
+            agent_session_registry_dispatch::claim_dispatch(&registry, &args)
+        }
+        SessionCommand::DispatchExecute => {
+            agent_session_registry_dispatch::execute_dispatch(&registry, &args)
+        }
+        SessionCommand::DispatchComplete => {
+            agent_session_registry_dispatch::complete_dispatch(&registry, &args)
+        }
+        SessionCommand::DispatchMarkOrphaned => {
+            agent_session_registry_dispatch::mark_dispatch_orphaned(&registry, &args)
         }
         SessionCommand::Register => register_session(&registry, &args),
         SessionCommand::List => list_sessions(&registry, &args),
@@ -397,7 +442,7 @@ fn sandbox_verification_status(expected: Option<&str>, actual: Option<&str>) -> 
 #[path = "../../tests/unit/agent_session_registry_sandbox.rs"]
 mod sandbox_verification_status_tests;
 
-pub(crate) fn normalized_metadata_with_roles(
+pub(in crate::command::agent_session_registry) fn normalized_metadata_with_roles(
     metadata_json: Option<&str>,
     validation: &SessionValidationReport,
     roles: &[String],

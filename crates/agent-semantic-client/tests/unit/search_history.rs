@@ -34,13 +34,13 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     )
     .expect("write artifact");
     std::fs::write(
-        artifact_dir.join("prompt-output/rust-query-direct-source-read-abc123.command.json"),
+        artifact_dir.join("prompt-output/rust-query-code-abc123.command.json"),
         r#"{
   "eventTimestampMs": 111111,
   "providerCommands": [
     {
       "startedAtMs": 222222,
-      "argv": ["rs-harness", "query", "--from-hook", "direct-source-read", "--selector", "src/lib.rs:1-10", "--code"],
+      "argv": ["rs-harness", "query", "--selector", "src/lib.rs:1-10", "--code"],
       "languageId": "rust"
     },
     {
@@ -52,56 +52,6 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
 }"#,
     )
     .expect("write direct-read command artifact");
-    std::fs::create_dir_all(artifact_dir.join("analysis-metadata"))
-        .expect("create analysis metadata artifact dir");
-    std::fs::write(
-        artifact_dir.join("analysis-metadata/rust-search-prime-abc123.json"),
-        r#"{
-  "schemaId": "agent.semantic-protocols.client-history-analysis-metadata",
-  "schemaVersion": "1",
-  "protocolId": "agent.semantic-protocols.client",
-  "protocolVersion": "1",
-  "eventTimestampMs": 444444,
-  "sourceArtifactId": "prompt-output/rust-search-prime-abc123.txt",
-  "sourceArtifactKind": "prompt-output",
-  "languageId": "rust",
-  "providerId": "rs-harness",
-  "projectRoot": ".",
-  "method": "search/prime",
-  "exportMethod": "search/prime",
-  "query": "ownerCandidates=src/lib.rs",
-  "target": "",
-  "developerMode": {
-    "defaultEnabled": true,
-    "storageOnly": true
-  },
-  "agentFacingOutput": {
-    "unchanged": true,
-    "metadataSurface": "history-analysis"
-  },
-  "request": {
-    "method": "search",
-    "languageId": "rust",
-    "forwardedArgs": ["prime", "--view", "seeds", "."]
-  },
-  "artifact": {
-    "bytes": 20,
-    "fnv64": "0000000000000001"
-  },
-  "output": {
-    "bytes": 20,
-    "lineCount": 1,
-    "fnv64": "0000000000000001"
-  },
-  "analysis": {
-    "recognizedLineCount": 1,
-    "fieldLines": {
-      "ownerCandidates": "src/lib.rs"
-    }
-  }
-}"#,
-    )
-    .expect("write analysis metadata artifact");
     std::fs::create_dir_all(artifact_dir.join("semantic-tree-sitter-query"))
         .expect("create syntax query artifact dir");
     std::fs::write(
@@ -168,8 +118,8 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     );
     assert!(
         events.iter().any(|event| {
-            event.artifact_path == "prompt-output/rust-query-direct-source-read-abc123.command.json"
-                && event.method == "query/direct-source-read"
+            event.artifact_path == "prompt-output/rust-query-code-abc123.command.json"
+                && event.method == "query/code"
                 && event.target == "src/lib.rs:1-10"
                 && event.timestamp_ms == 222222
         }),
@@ -177,20 +127,10 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     );
     assert!(
         events.iter().any(|event| {
-            event.artifact_path == "prompt-output/rust-query-direct-source-read-abc123.command.json"
+            event.artifact_path == "prompt-output/rust-query-code-abc123.command.json"
                 && event.method == "query/code"
                 && event.target == "src/main.rs:20-24"
                 && event.timestamp_ms == 333333
-        }),
-        "{events:?}"
-    );
-    assert!(
-        events.iter().any(|event| {
-            event.artifact_path == "analysis-metadata/rust-search-prime-abc123.json"
-                && event.kind == "analysis-metadata"
-                && event.method == "search/prime"
-                && event.query == "ownerCandidates=src/lib.rs"
-                && event.timestamp_ms == 444444
         }),
         "{events:?}"
     );

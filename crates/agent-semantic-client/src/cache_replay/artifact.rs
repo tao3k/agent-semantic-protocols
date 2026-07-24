@@ -110,7 +110,7 @@ pub(crate) fn load_replay_artifact(
         None
     }
 
-    if request.is_hook_direct_source_read() || request.is_source_content_output() {
+    if request.is_source_content_output() {
         return None;
     }
     if !replay_file_hashes_match(&generation_hit.project_root, &generation_hit.file_hashes) {

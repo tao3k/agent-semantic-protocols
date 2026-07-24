@@ -6,8 +6,12 @@ use std::process::Command;
 use std::os::unix::fs::PermissionsExt;
 
 mod activation_bin;
+pub(crate) use activation_bin::HOME_ENV_LOCK;
 mod activation_sync;
 mod builtin;
+mod provider_manifest_contract;
+mod provider_query_pack_descriptor;
+mod provider_semantic_facts_descriptor;
 
 fn temp_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!(
@@ -40,3 +44,4 @@ fn make_executable(path: &std::path::Path) {
 
 #[cfg(not(unix))]
 fn make_executable(_path: &std::path::Path) {}
+mod registered_language_canonical_identity;

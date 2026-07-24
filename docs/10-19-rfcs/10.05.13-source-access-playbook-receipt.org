@@ -1,0 +1,55 @@
+#+title: Source Access Playbook Receipt
+
+* Status
+
+P0 implementation contract.
+
+* Problem
+
+The hook matching engine already selects =materialize-source-access-policy=,
+but the materializer still renders a long Legacy prompt that repeats resident
+agent initialization guidance and the obsolete =[asp-search-subagent]= text
+contract.  The configured =~/.codex/agents/*= profile owns the child role and
+prompt.  Repeating that role in every deny message increases tokens and search
+rounds, and can drift from the current =asp.search.playbook-receipt= contract.
+
+* Contract
+
+Source-access authorization and hook interception are distinct typed lanes.
+An intercepted raw filesystem/source command remains a hard deny and routes to
+the parser-owned ASP search frontier.  By contrast, an explicit
+=asp source-access read-file= request is the user-approved read lane: it emits
+an =allow= decision with =authorization=user-approved= and MUST NOT synthesize
+a provider query route.  Provider-capability reads use the separate
+=provider-capability= authorization.  Tests and clients MUST NOT infer the old
+hard-deny contract merely from the =read-file= operation name.
+
+The hook matching engine owns action matching and rule precedence.  The source
+access materializer owns only typed decision projection:
+
+- =reasonKind= and =operationIntent=
+- the parser-owned ASP route
+- resident target identity and lifecycle action
+- =recoveryRef= and replay identity
+- one compact human-readable message
+
+The message MUST name the denial reason, the selected ASP command, and exactly
+one next action.  It MUST NOT restate the agent role prompt, registration
+procedure, source-body policy, or the Legacy =[asp-search-subagent]= format.
+Resident evidence uses =asp.search.playbook-receipt= as defined by the agent
+profile and search packet contract.
+
+* Compatibility
+
+Structured fields remain authoritative.  Clients that need detailed lifecycle
+copy read the configured compact templates; the top-level message is not an
+agent initialization prompt.  Legacy receipt wording is removed from generated
+Codex and Claude hook decisions and from install smoke expectations.
+
+* Acceptance
+
+- direct Read and raw broad search are selected by config rules
+- both materialize the same typed source-access decision family
+- the top-level message contains no =[asp-search-subagent]= or registration prose
+- the message exposes one executable ASP route and one next action
+- install, config, hook, and real-project receipts agree

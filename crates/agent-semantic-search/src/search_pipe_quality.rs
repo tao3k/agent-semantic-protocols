@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::{SearchPipeQueryTerm, SearchPipeTermRole, query_wrapper_package_key};
+use crate::{SearchPipeQueryTerm, SearchPipeTermRole};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeCohesionTerm {
@@ -20,7 +20,17 @@ impl SearchPipeCohesionTerm {
 
 #[must_use]
 pub fn search_pipe_package_key(path: &str) -> String {
-    query_wrapper_package_key(path)
+    let parts = path
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>();
+    if let Some(index) = parts.iter().position(|part| *part == "packages") {
+        return parts[index..(index + 3).min(parts.len())].join("/");
+    }
+    if let Some(index) = parts.iter().position(|part| *part == "crates") {
+        return parts[index..(index + 2).min(parts.len())].join("/");
+    }
+    parts.into_iter().take(2).collect::<Vec<_>>().join("/")
 }
 
 #[must_use]
@@ -144,42 +154,6 @@ pub fn search_pipe_query_pack_quality(
 }
 
 #[must_use]
-pub fn search_pipe_fd_query_terms(
-    terms: &[SearchPipeQueryTerm],
-    weak_terms: &[String],
-    strong_matched: &[String],
-    risks: &[String],
-) -> Option<String> {
-    let symbol_terms = terms
-        .iter()
-        .filter(|term| matches!(term.role, SearchPipeTermRole::Symbol))
-        .filter(|term| {
-            weak_terms.is_empty()
-                || weak_terms.iter().any(|weak| weak == &term.raw)
-                || strong_matched.iter().any(|matched| matched == &term.raw)
-        })
-        .map(|term| term.raw.clone())
-        .collect::<Vec<_>>();
-    if !symbol_terms.is_empty() {
-        return Some(symbol_terms.join("|"));
-    }
-    if !risks
-        .iter()
-        .any(|risk| matches!(risk.as_str(), "single-broad-clause" | "package-drift"))
-    {
-        return None;
-    }
-    let owner_axis_terms = terms
-        .iter()
-        .filter(|term| !matches!(term.role, SearchPipeTermRole::Symbol))
-        .filter(|term| search_pipe_fd_owner_axis_term(&term.raw))
-        .map(|term| term.raw.clone())
-        .take(8)
-        .collect::<Vec<_>>();
-    (!owner_axis_terms.is_empty()).then(|| owner_axis_terms.join("|"))
-}
-
-#[must_use]
 pub fn search_pipe_missing_path_terms(
     terms: &[SearchPipeQueryTerm],
     global_matched: &[String],
@@ -202,42 +176,6 @@ pub fn search_pipe_owner_seed_terms(
         .filter(|term| !crate::search_pipe_is_path_like_token(term))
         .filter(|term| !missing_path_terms.iter().any(|missing| missing == term))
         .collect()
-}
-
-#[must_use]
-pub fn search_pipe_fd_owner_axis_term(term: &str) -> bool {
-    let lower = term.to_ascii_lowercase();
-    if lower.len() < 4 {
-        return false;
-    }
-    if matches!(
-        lower.as_str(),
-        "query"
-            | "search"
-            | "pipe"
-            | "fd"
-            | "rg"
-            | "owner"
-            | "owners"
-            | "graph"
-            | "turbo"
-            | "command"
-            | "commands"
-            | "frontier"
-            | "frontiers"
-            | "action"
-            | "actions"
-            | "result"
-            | "results"
-            | "quality"
-            | "wide"
-            | "drift"
-            | "handoff"
-    ) {
-        return false;
-    }
-    term.chars()
-        .all(|ch| ch == '.' || ch == '_' || ch == '-' || ch.is_ascii_alphanumeric())
 }
 
 fn is_high_value_term(term: &SearchPipeQueryTerm) -> bool {

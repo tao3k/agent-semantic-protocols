@@ -171,6 +171,10 @@
         "dependencyTopologyMetadata": {
           "type": "boolean",
           "default": false
+        },
+        "workspaceScope": {
+          "type": "boolean",
+          "default": false
         }
       }
     },
@@ -234,9 +238,12 @@
         "dependencyTopology": {
           "$ref": "#/$defs/commandTemplate"
         },
-        "dependencyTopologyMetadata": {
-          "$ref": "#/$defs/commandTemplate"
-        },
+      "dependencyTopologyMetadata": {
+        "$ref": "#/$defs/commandTemplate"
+      },
+      "workspaceScope": {
+        "$ref": "#/$defs/commandTemplate"
+      },
         "guide": {
           "$ref": "#/$defs/commandTemplate"
         },

@@ -2,17 +2,18 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
+use agent_semantic_client_core::{CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId};
 use agent_semantic_client_db::{
     ClientDbEngine, ClientDbSourceIndexImport, ClientDbSourceIndexLookupState,
     ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSelector,
-    client_db_source_index_generation_id,
 };
 
 const SOURCE_INDEX_WARM_REUSE_GATE: Duration = Duration::from_millis(750);
 const SOURCE_INDEX_HASH_REUSE_GATE: Duration = Duration::from_millis(25);
 #[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE: Duration = Duration::from_secs(1);
+#[cfg(not(debug_assertions))]
+const SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE: Duration = Duration::from_secs(1);
 #[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_ONE_PERCENT_REFRESH_GATE: Duration = Duration::from_millis(500);
 #[cfg(not(debug_assertions))]
@@ -49,10 +50,43 @@ async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
     assert_eq!(refresh.selector_count, 1_193);
     assert_eq!(refresh.changed_owner_count, 1_193);
     assert_eq!(refresh.removed_owner_count, 0);
-    assert_eq!(refresh.posting_write_count, 20_281);
+    assert_eq!(
+        refresh.posting_write_count, 6_308,
+        "cold-write receipt must match the deterministic 16-term owner frontier"
+    );
     assert!(
         elapsed < SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE,
         "1193-owner source-index cold write exceeded V1 DB gate: elapsed={elapsed:?} gate={SOURCE_INDEX_1193_OWNER_COLD_WRITE_GATE:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(not(debug_assertions))]
+#[tokio::test(flavor = "current_thread")]
+async fn source_index_1278_owner_posting_frontier_cold_write_stays_inside_v1_gate() {
+    let _test_guard = source_index_refresh_test_guard();
+    let root = temp_project_root("source-index-1278-owner-posting-frontier-cold-write");
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&client_dir).expect("create client dir");
+    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
+
+    let request = large_high_term_refresh_request(&project_root, 1_278, 32);
+    let started_at = Instant::now();
+    let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request)
+        .expect("write bounded-posting source-index snapshot");
+    let elapsed = started_at.elapsed();
+
+    assert_eq!(refresh.owner_count, 1_278);
+    assert_eq!(refresh.selector_count, 1_278);
+    assert!(
+        (12_000..=20_448).contains(&refresh.posting_write_count),
+        "posting frontier must remain large enough to exercise bulk writes while retaining at most 16 ranked terms per owner: refresh={refresh:?}"
+    );
+    assert!(
+        elapsed < SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE,
+        "posting-frontier source-index cold write exceeded V1 DB gate: elapsed={elapsed:?} gate={SOURCE_INDEX_POSTING_FRONTIER_COLD_WRITE_GATE:?}"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -133,6 +167,7 @@ async fn source_index_1193_owner_high_fanout_lookup_stays_inside_v1_gate() {
     let cold_started_at = Instant::now();
     let cold_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &crate::snapshot_fixture::source_snapshot_evidence(),
         "source",
         Some(&LanguageId::from("rust")),
         128,
@@ -193,13 +228,23 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        large_refresh_request(&project_root, 2),
-    )
-    .expect("write initial two-owner source-index snapshot");
+    let initial_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for_files(1, 2);
+    let mut initial_request = large_refresh_request(&project_root, 2);
+    initial_request.import.generation_id =
+        agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+            &initial_snapshot,
+        );
+    initial_request.source_snapshot = initial_snapshot;
+    ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, initial_request)
+        .expect("write initial two-owner source-index snapshot");
 
     let mut pruned_request = large_refresh_request(&project_root, 2);
+    let pruned_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(2);
+    pruned_request.import.generation_id =
+        agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+            &pruned_snapshot,
+        );
+    pruned_request.source_snapshot = pruned_snapshot.clone();
     pruned_request.file_count = 1;
     pruned_request.import.file_hashes.pop();
     pruned_request.import.owners.pop();
@@ -210,15 +255,22 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
     assert!(!pruned.reused_generation);
     assert_eq!(pruned.owner_count, 1);
     assert_eq!(pruned.selector_count, 1);
-    assert_eq!(pruned.changed_owner_count, 0);
+    assert_eq!(
+        pruned.changed_owner_count, 1,
+        "a removal-only generation materializes retained owners into the new immutable snapshot"
+    );
     assert_eq!(pruned.removed_owner_count, 1);
-    assert_eq!(pruned.posting_write_count, 0);
+    assert_eq!(
+        pruned.posting_write_count, 16,
+        "a removal-only generation materializes retained postings into the new immutable snapshot"
+    );
 
     let rust_language_id = LanguageId::from("rust");
     let lookup_deadline = Instant::now() + Duration::from_secs(15);
     let lookup = loop {
         let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
             &client_dir,
+            &pruned_snapshot,
             "source_index_large_owner_1",
             Some(&rust_language_id),
             8,
@@ -265,6 +317,7 @@ async fn source_index_lookup_bounds_query_bytes_terms_and_candidate_limit() {
     let bounded = loop {
         let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
             &client_dir,
+            &crate::snapshot_fixture::source_snapshot_evidence(),
             "shared_lookup_token",
             Some(&rust_language_id),
             u32::MAX,
@@ -290,6 +343,7 @@ async fn source_index_lookup_bounds_query_bytes_terms_and_candidate_limit() {
         .join(" ");
     let term_bounded = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &crate::snapshot_fixture::source_snapshot_evidence(),
         &term_bounded_query,
         Some(&rust_language_id),
         8,
@@ -302,6 +356,7 @@ async fn source_index_lookup_bounds_query_bytes_terms_and_candidate_limit() {
     let oversized_query = "x".repeat(16 * 1024 + 1);
     let error = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &crate::snapshot_fixture::source_snapshot_evidence(),
         &oversized_query,
         Some(&rust_language_id),
         8,
@@ -341,6 +396,7 @@ async fn source_index_failed_cold_write_rolls_back_visible_rows() {
     let language_id = LanguageId::from("rust");
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &crate::snapshot_fixture::source_snapshot_evidence(),
         "source_index_perf_fixture",
         Some(&language_id),
         8,
@@ -484,45 +540,101 @@ fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() 
 }
 
 #[test]
-fn source_index_refresh_rewrites_canonical_snapshot_after_file_hash_changes() {
+fn source_index_refresh_reuses_generation_after_restoring_snapshot_identity() {
     let _test_guard = source_index_refresh_test_guard();
-    let root = temp_project_root("source-index-refresh-republish-historical-hash");
+    let root = temp_project_root("source-index-refresh-restore-snapshot-identity");
     let client_dir = root.join("client");
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    let first = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        refresh_request(&project_root),
-    )
-    .expect("write initial source-index facts");
+    let first_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(1);
+    let mut first_request = refresh_request(&project_root);
+    first_request.import.generation_id =
+        agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+            &first_snapshot,
+        );
+    first_request.source_snapshot = first_snapshot.clone();
+    let first =
+        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, first_request)
+            .expect("write initial source-index facts");
     assert!(!first.reused_generation);
 
     let mut changed_request = refresh_request(&project_root);
     changed_request.import.file_hashes[0].sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+    let changed_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(2);
+    changed_request.import.generation_id =
+        agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+            &changed_snapshot,
+        );
+    changed_request.source_snapshot = changed_snapshot;
     let changed =
         ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
             .expect("publish changed source-index membership");
     assert!(!changed.reused_generation);
 
-    let restored = ClientDbEngine::refresh_source_index_import_from_client_dir(
+    let mut restored_request = refresh_request(&project_root);
+    restored_request.import.generation_id =
+        agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+            &first_snapshot,
+        );
+    restored_request.source_snapshot = first_snapshot;
+    let restored =
+        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, restored_request)
+            .expect("republish historical source-index facts");
+    assert_eq!(
+        restored.generation_id, first.generation_id,
+        "first={:?} changed={:?} restored={:?}",
+        first.generation_id, changed.generation_id, restored.generation_id
+    );
+    assert_ne!(
+        restored.generation_id, changed.generation_id,
+        "first={:?} changed={:?} restored={:?}",
+        first.generation_id, changed.generation_id, restored.generation_id
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_refresh_detects_selector_change_without_file_hash_change() {
+    let _test_guard = source_index_refresh_test_guard();
+    let root = temp_project_root("source-index-selector-only-refresh");
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&client_dir).expect("create client dir");
+    std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
+
+    ClientDbEngine::refresh_source_index_import_from_client_dir(
         &client_dir,
         refresh_request(&project_root),
     )
-    .expect("republish historical source-index facts");
-    assert!(!restored.reused_generation);
-    assert_ne!(restored.generation_id, first.generation_id);
-    assert_ne!(restored.generation_id, changed.generation_id);
+    .expect("write initial source-index facts");
+
+    let mut changed_request = refresh_request(&project_root);
+    changed_request.import.selectors[0].source =
+        "pub fn source_index_perf_fixture() { changed(); }".into();
+    let changed =
+        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
+            .expect("publish selector-only source-index change");
+
+    assert!(!changed.reused_generation);
+    assert_eq!(changed.owner_count, 1);
+    assert_eq!(changed.selector_count, 1);
+    assert_eq!(changed.changed_owner_count, 1);
+    assert!(changed.posting_write_count > 0);
 
     let _ = std::fs::remove_dir_all(root);
 }
 
 fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
     ClientDbSourceIndexRefreshRequest {
+        membership_change_set:
+            agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         file_count: 1,
+        source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
         import: ClientDbSourceIndexImport {
-            generation_id: client_db_source_index_generation_id(),
+            generation_id: CacheGenerationId::from("snapshot-bound-source-index-perf"),
             project_root: project_root.to_path_buf(),
             schema_id: "agent-semantic-client-db.source-index".to_string().into(),
             schema_version: "1".into(),
@@ -593,9 +705,12 @@ fn large_refresh_request(
         });
     }
     ClientDbSourceIndexRefreshRequest {
+        membership_change_set:
+            agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         file_count: owner_count,
+        source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
         import: ClientDbSourceIndexImport {
-            generation_id: client_db_source_index_generation_id(),
+            generation_id: CacheGenerationId::from("snapshot-bound-source-index-large"),
             project_root: project_root.to_path_buf(),
             schema_id: "agent-semantic-client-db.source-index".to_string().into(),
             schema_version: "1".into(),
@@ -604,6 +719,22 @@ fn large_refresh_request(
             selectors,
         },
     }
+}
+
+#[cfg(not(debug_assertions))]
+fn large_high_term_refresh_request(
+    project_root: &Path,
+    owner_count: u32,
+    unique_terms_per_owner: u32,
+) -> ClientDbSourceIndexRefreshRequest {
+    let mut request = large_refresh_request(project_root, owner_count);
+    for (owner_index, owner) in request.import.owners.iter_mut().enumerate() {
+        owner.query_keys.extend(
+            (0..unique_terms_per_owner)
+                .map(|term_index| format!("z{owner_index:04}q{term_index:02}unique").into()),
+        );
+    }
+    request
 }
 
 fn run_git(project_root: &Path, args: impl IntoIterator<Item = &'static str>) {
@@ -626,13 +757,4 @@ fn temp_project_root(label: &str) -> PathBuf {
         .expect("system time")
         .as_nanos();
     std::env::temp_dir().join(format!("asp-{label}-{nonce}"))
-}
-#[test]
-fn source_index_generation_ids_are_monotonic() {
-    let first = client_db_source_index_generation_id();
-    let second = client_db_source_index_generation_id();
-
-    assert!(first.as_str().starts_with("source-index-"));
-    assert!(second.as_str().starts_with("source-index-"));
-    assert!(first.as_str() < second.as_str());
 }

@@ -1,13 +1,20 @@
 [package]
 name = "asp-rust-project-harness-policy"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 publish = false
 build = "build.rs"
 
 [dependencies]
 rust-lang-project-harness = { workspace = true }
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true
 
 [build-dependencies]
 rust-lang-project-harness = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "performance_verification"
+harness = false

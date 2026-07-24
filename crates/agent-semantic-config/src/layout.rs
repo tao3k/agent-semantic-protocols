@@ -286,7 +286,3 @@ fn command_git_toplevel(project_root: &Path) -> Option<PathBuf> {
         Some(canonicalize_if_possible(PathBuf::from(path)))
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/unit/runtime_layout.rs"]
-mod runtime_layout_tests;

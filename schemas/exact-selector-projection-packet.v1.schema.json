@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-selector-projection-packet.v1.schema.json",
+  "title": "Exact Selector Projection Packet v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "digestAlgorithm",
+    "languageId",
+    "providerId",
+    "canonicalItemSelector",
+    "parserIdentityDigest",
+    "queryPackDigest",
+    "ownerPath",
+    "sourceBlobDigest",
+    "parserFactDigest",
+    "structuralSelector",
+    "projectionMode",
+    "projectionEncoding",
+    "projectionPayloadBase64"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.exact-selector-projection-packet"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "digestAlgorithm": {
+      "const": "blake3-256"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonicalItemSelector": {
+      "$ref": "canonical-item-selector.v1.schema.json"
+    },
+    "parserIdentityDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "queryPackDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/].*"
+    },
+    "sourceBlobDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "parserFactDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "structuralSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectionMode": {
+      "enum": ["code", "skeleton", "names", "verbatim"]
+    },
+    "projectionEncoding": {
+      "const": "base64"
+    },
+    "projectionPayloadBase64": {
+      "type": "string",
+      "contentEncoding": "base64"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

@@ -24,34 +24,25 @@ mod lexical_search_frame;
 mod owner_items_source_index_trace;
 mod pipe_candidates;
 mod pipe_source;
+mod pipe_source_document_acquisition;
+mod pipe_source_index_acquisition;
 mod pipe_source_index_projection;
 mod pipe_source_lexical_frame;
-pub use pipe_source::SearchPipeSelectorPayloadProof;
-mod graph_owner_item_route;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
 mod query_packet_replay;
-mod query_wrapper_candidates;
-mod query_wrapper_quality;
-mod query_wrapper_scan;
-mod query_wrapper_scan_source;
+mod scope_topology_candidates;
 mod search_candidate;
 mod search_language_files;
 mod search_lexical_replay;
 mod search_overlay;
 mod search_packet_replay;
 mod search_pipe_evidence;
-mod search_pipe_quality;
+pub mod search_pipe_quality;
 mod search_pipe_query_pack;
 mod search_query_budget;
 mod search_subagent_receipt;
 mod source_index_lookup;
-
-pub use graph_owner_item_route::{
-    GraphOwnerItemEvidence, GraphOwnerItemRenderRequest, GraphOwnerItemRoute,
-    GraphOwnerItemRouteRequest, GraphSemanticKind, rank_graph_owner_items,
-    render_graph_owner_item_frontier,
-};
 
 mod source_index_rank;
 pub use source_index_rank::{
@@ -61,14 +52,16 @@ pub use source_index_rank::{
 mod structural_index_search;
 pub mod syntax_query_replay;
 mod turso_overlay_search;
+mod workspace_scope;
 
 pub use document_candidates::{
     DocumentSearchCandidate, DocumentSearchCandidateCollection, DocumentSearchCandidateRequest,
     collect_document_search_candidates,
 };
 pub use dynamic_candidates::{
-    DynamicSearchCandidate, DynamicSearchCandidateRequest, DynamicSearchRootCandidateRequest,
-    IngestSearchCandidate, collect_dynamic_lexical_overlay_candidates,
+    DynamicSearchCandidate, DynamicSearchCandidateCollection, DynamicSearchCandidateRequest,
+    DynamicSearchRootCandidateRequest, IngestSearchCandidate,
+    collect_dynamic_lexical_overlay_candidates,
     collect_dynamic_lexical_overlay_candidates_from_roots, collect_ingest_search_candidates,
 };
 pub use dynamic_overlay::{
@@ -121,19 +114,22 @@ pub use owner_items_source_index_trace::{
     render_owner_items_source_index_trace, source_index_owner_query,
 };
 pub use pipe_candidates::{
-    SearchPipeCandidate, SearchPipeCandidateRequest, collect_search_pipe_candidates,
+    SearchPipeCandidate, SearchPipeCandidateCollection, SearchPipeCandidateRequest,
+    collect_search_pipe_candidates,
 };
 pub use pipe_source::{
     SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
     SearchPipeFailureAcquisitionRequest, SearchPipeSearchOverlayAcquisition,
     SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
-    SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
+    SearchPipeSourceAcquisitionTrace, SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
+    collect_search_pipe_document_acquisition, collect_search_pipe_failure_acquisition,
+    collect_search_pipe_search_overlay_acquisition, failure_candidate_query,
+};
+pub use pipe_source_index_acquisition::{
+    SearchPipeSelectorPayloadProof, SearchPipeSourceIndexAcquisition,
     SearchPipeSourceIndexAcquisitionRequest, SearchPipeSourceIndexCandidate,
     SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate, SearchPipeSourceIndexLookup,
-    SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
-    collect_search_pipe_document_acquisition, collect_search_pipe_failure_acquisition,
-    collect_search_pipe_search_overlay_acquisition, collect_search_pipe_source_index_acquisition,
-    failure_candidate_query,
+    collect_search_pipe_source_index_acquisition, search_pipe_source_index_query_gate,
 };
 pub use prompt_output_replay::{
     PromptOutputFingerprintRequest, PromptOutputReplayRequest, is_prime_seed_search_request,
@@ -147,31 +143,10 @@ pub use provider_candidate_annotations::{
 pub use query_packet_replay::{
     QueryPacketReplayRequest, query_packet_matches_request, render_query_packet_stdout,
 };
-pub use query_wrapper_candidates::{
-    QueryWrapperCandidateCollection, QueryWrapperSearchRequest, QueryWrapperSearchSourceIndexTrace,
-    QueryWrapperSearchStageTraceProjection, QueryWrapperSearchSurface,
-    QueryWrapperSourceIndexTraceProjection, collect_query_wrapper_candidate_collection,
-    query_wrapper_ranked_search_candidates, query_wrapper_search_stage_trace_projection,
-    query_wrapper_source_index_trace_projection,
-};
-pub use query_wrapper_quality::{
-    QueryWrapperClauseCoverage, QueryWrapperQuality, QueryWrapperQualityCandidate,
-    QueryWrapperSearchClause, analyze_query_wrapper_quality, query_wrapper_axis_terms,
-    query_wrapper_candidate_matches_term, query_wrapper_clauses, query_wrapper_owner_candidates,
-    query_wrapper_package_clusters, query_wrapper_package_clusters_from_paths,
-    query_wrapper_package_key, query_wrapper_rg_scope_next, query_wrapper_terms,
-    query_wrapper_unique_clause_terms,
-};
-pub use query_wrapper_scan::{
-    QUERY_WRAPPER_CANDIDATE_LIMIT, QueryCandidateAppend, QueryWrapperCandidate,
-    QueryWrapperCandidateSurface, QueryWrapperScanConfig, QueryWrapperSearchCandidateCollection,
-    QueryWrapperSearchCandidateRequest, QueryWrapperSourceIndexCandidate,
-    QueryWrapperSourceIndexCandidateRequest, QueryWrapperSourceIndexCollection,
-    QueryWrapperSourceIndexLookup, QueryWrapperSourceIndexRequest, append_query_candidates,
-    augment_package_path_candidates,
-};
-pub use query_wrapper_scan_source::{
-    collect_query_wrapper_search_candidates, collect_query_wrapper_source_index_candidates,
+pub use scope_topology_candidates::{
+    SEARCH_PIPE_SCOPE_TOPOLOGY_CANDIDATE_LIMIT, SEARCH_PIPE_SCOPE_TOPOLOGY_ENTRY_VISIT_LIMIT,
+    SEARCH_PIPE_SCOPE_TOPOLOGY_SOURCE, SearchPipeScopeTopologyAcquisitionRequest,
+    collect_search_pipe_scope_topology_acquisition, merge_search_pipe_source_acquisitions,
 };
 pub use search_candidate::structural_index_hit_to_search_candidate;
 pub use search_candidate::{
@@ -202,21 +177,23 @@ pub use search_pipe_evidence::{
 };
 pub use search_pipe_quality::{
     SearchPipeCohesionTerm, is_search_pipe_package_axis_term, search_pipe_candidate_packages,
-    search_pipe_fd_owner_axis_term, search_pipe_fd_query_terms, search_pipe_missing_path_terms,
-    search_pipe_owner_seed_terms, search_pipe_package_cohesion, search_pipe_package_key,
-    search_pipe_quality_risks, search_pipe_query_pack_quality,
+    search_pipe_missing_path_terms, search_pipe_owner_seed_terms, search_pipe_package_cohesion,
+    search_pipe_package_key, search_pipe_quality_risks, search_pipe_query_pack_quality,
 };
 pub use search_pipe_query_pack::{
     SearchPipeClauseCoverage, SearchPipeLanguageId, SearchPipeQueryClause,
-    SearchPipeQueryClausesRequest, SearchPipeQueryPackCandidate, SearchPipeQueryTerm,
-    SearchPipeQueryText, SearchPipeTermRole, search_pipe_clause_coverages,
-    search_pipe_is_path_like_token, search_pipe_next_query_pack_hint,
+    SearchPipeQueryClausesRequest, SearchPipeQueryPackCandidate, SearchPipeQueryPackClause,
+    SearchPipeQueryPackDescriptor, SearchPipeQueryPackRecipe, SearchPipeQueryPackTermRoleOverride,
+    SearchPipeQueryTerm, SearchPipeQueryText, SearchPipeSemanticFactsDescriptor,
+    SearchPipeSemanticFactsIntentAxis, SearchPipeSemanticFactsIntentDecision, SearchPipeTermRole,
+    search_pipe_clause_coverages, search_pipe_is_path_like_token, search_pipe_next_query_pack_hint,
     search_pipe_query_candidate_matches_term, search_pipe_query_clause_texts,
-    search_pipe_query_clauses, search_pipe_role_terms, search_pipe_unique_query_terms,
+    search_pipe_query_clauses, search_pipe_role_terms, search_pipe_typed_query_terms,
+    search_pipe_unique_query_terms,
 };
 pub use search_query_budget::{
-    SearchQueryBudgetBlock, search_query_budget_block, search_query_terms,
-    search_rg_terms_budget_block, search_terms_budget_block, specific_search_term,
+    SearchQueryBudgetBlock, SearchQueryBudgetRequest, search_query_budget_block,
+    search_query_terms, search_terms_budget_block, specific_search_term,
 };
 pub use search_subagent_receipt::{
     SEARCH_SUBAGENT_GRAPH_ROUTE_RECEIPT_SCHEMA, search_subagent_graph_route_receipt,
@@ -244,8 +221,13 @@ pub use syntax_query_replay::{
     render_semantic_tree_sitter_query_stdout,
 };
 pub use turso_overlay_search::{
-    TursoOverlaySearchDocument, TursoOverlaySearchHit, bootstrap_turso_overlay_search_store,
-    search_turso_overlay_documents, upsert_turso_overlay_search_document,
+    TursoOverlaySearchDocument, TursoOverlaySearchHit, TursoOverlaySearchScope,
+    bootstrap_turso_overlay_search_store, replace_turso_overlay_search_document_generation,
+    search_turso_overlay_documents,
+};
+pub use workspace_scope::{
+    SemanticWorkspaceAnchor, SemanticWorkspacePackage, SemanticWorkspaceScope,
+    SemanticWorkspaceScopeSet, WorkspaceCandidateAdmission, WorkspaceCandidateRejection,
 };
 
 #[cfg(test)]
@@ -295,8 +277,8 @@ mod provider_candidate_annotations_tests;
 #[path = "../tests/unit/query_packet_replay.rs"]
 mod query_packet_replay_tests;
 #[cfg(test)]
-#[path = "../tests/unit/query_wrapper_candidates.rs"]
-mod query_wrapper_candidates_tests;
+#[path = "../tests/unit/scope_topology_candidates.rs"]
+mod scope_topology_candidates_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_candidate.rs"]
 mod search_candidate_tests;
@@ -324,11 +306,19 @@ mod search_pipe_quality_tests;
 mod search_pipe_query_pack_tests;
 pub mod search_planner;
 #[cfg(test)]
-#[path = "../tests/unit/search_query_budget.rs"]
-mod search_query_budget_tests;
-#[cfg(test)]
 #[path = "../tests/unit/source_index_rank.rs"]
 mod source_index_rank_tests;
 #[cfg(test)]
-#[path = "../tests/unit/syntax_query_replay.rs"]
-mod syntax_query_replay_tests;
+#[path = "../tests/unit/workspace_scope.rs"]
+mod workspace_scope_tests;
+pub use search_pipe_query_pack::search_pipe_semantic_facts_intent;
+#[cfg(test)]
+#[path = "../tests/unit/source_snapshot_fixture.rs"]
+mod source_snapshot_fixture;
+
+#[cfg(test)]
+extern crate self as agent_semantic_search;
+
+#[cfg(test)]
+#[path = "../tests/unit/query_pack_fixture.rs"]
+mod query_pack_fixture;

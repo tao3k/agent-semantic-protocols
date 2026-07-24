@@ -17,15 +17,17 @@ use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
 use super::install_provider::run_install_command;
 use super::paths::run_paths_command;
-use super::provider::run_language_command;
+use super::provider_dispatch::run_language_command;
 use super::root_language_facade::run_root_language_facade;
 use super::run_protocol_version_command;
-use super::search_query_wrapper::{is_query_wrapper, run_query_wrapper_command};
 use super::source_access::run_source_access_command;
 use super::sync::run_sync_command;
 
 pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> {
     normalize_agent_session_command_args(&mut args)?;
+    if super::cli_help::print_help_if_requested(&args)? {
+        return Ok(());
+    }
     reject_agent_platform_json_output(&args)?;
     reject_file_workspace_for_search(&args)?;
     match args.first().map(String::as_str) {
@@ -33,8 +35,15 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
             println!("{}", usage());
             Ok(())
         }
-        Some("--version" | "-V") => run_protocol_version_command(&args[1..]),
-        Some("guide" | "providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap") => {
+        Some("version" | "--version" | "-V") => run_protocol_version_command(&args[1..]),
+        Some("--contract-fingerprint") => {
+            println!("{}", agent_semantic_config::hook_client_contract_fingerprint());
+            Ok(())
+        }
+        Some(
+            "guide" | "providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap" | "fd"
+            | "rg",
+        ) => {
             run_client_command(args)
         }
         Some("search") if args.get(1).is_some_and(|arg| arg == "history") => {
@@ -54,7 +63,6 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]),
-        Some(command) if is_query_wrapper(command) => run_query_wrapper_command(command, &args[1..]),
         Some(language_id) => run_language_command(language_id, &args[1..]),
         _ => Err(usage()),
     }

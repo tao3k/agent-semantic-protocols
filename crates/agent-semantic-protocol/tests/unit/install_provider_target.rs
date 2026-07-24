@@ -64,9 +64,12 @@ fn provider_invocation_rejects_missing_home_local_bin_without_fallback() {
     let error = resolve_provider_binary_invocation("rust", "rs-harness", Some(&home))
         .expect_err("missing home-local provider should fail");
 
+    assert!(error.contains("state=provider-binary-missing"), "{error}");
+    assert!(error.contains("language=rust"), "{error}");
+    assert!(error.contains("binary=rs-harness"), "{error}");
+    assert!(error.contains("installMode=locked-release"), "{error}");
     assert!(
-        error.contains("provider binary `rs-harness` for language `rust` must be installed at"),
+        error.contains("nextCommand=asp install language rust"),
         "{error}"
     );
-    assert!(error.contains("asp install language rust"), "{error}");
 }

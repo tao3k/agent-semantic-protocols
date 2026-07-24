@@ -219,12 +219,20 @@ fn provider_source_scope_workspace_scope_timeout_falls_back_to_manifest() {
 }
 
 fn provider() -> ResolvedProvider {
+    let manifest = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == "rust")
+        .expect("rust provider manifest");
     ResolvedProvider {
+        manifest_id: "rust-test-manifest".to_string(),
+        manifest_digest: "sha256:rust-test-manifest".to_string(),
+        namespace: "rust".to_string(),
         language_id: "rust".into(),
         provider_id: "rs-harness".into(),
         binary: "rs-harness".to_string(),
         execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: Vec::new(),
+        execution_command_digest: "test-execution-command-digest".to_string(),
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: Vec::new(),
@@ -232,6 +240,9 @@ fn provider() -> ResolvedProvider {
         config_files: Vec::new(),
         source_extensions: Vec::new(),
         ignored_path_prefixes: Vec::new(),
+        search_capabilities: manifest.search_capabilities,
+        query_pack_descriptor: manifest.query_pack_descriptor,
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor,
     }
 }
 

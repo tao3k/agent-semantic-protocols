@@ -4,6 +4,27 @@ use serde_json::{Value, json};
 
 use crate::{GraphProjectionCandidate, language_file_spec, stable_graph_node_id};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GraphTopologyLanguageId(String);
+
+impl GraphTopologyLanguageId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for GraphTopologyLanguageId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for GraphTopologyLanguageId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GraphTopologyProjection {
     pub nodes: Vec<Value>,
@@ -11,14 +32,14 @@ pub struct GraphTopologyProjection {
 }
 
 pub struct GraphTopologyProjectionRequest<'a> {
-    language_id: &'a str,
+    language_id: &'a GraphTopologyLanguageId,
     workspace_root: &'a Path,
     candidates: &'a [GraphProjectionCandidate],
 }
 
 impl<'a> GraphTopologyProjectionRequest<'a> {
     pub fn new(
-        language_id: &'a str,
+        language_id: &'a GraphTopologyLanguageId,
         workspace_root: &'a Path,
         candidates: &'a [GraphProjectionCandidate],
     ) -> Self {

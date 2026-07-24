@@ -1,0 +1,245 @@
+** Source owner context is provider query transport, not root read transport
+
+The durable discovery path is parser-native =search= output.  Providers should
+return compact parser-owned evidence: owners, items, tests, dependency edges,
+findings, and =searchSynthesis=.  Once the hook has one exact selected source
+path, the root runtime must route back to the owning provider's parser query
+surface.  Root-level read recovery is removed and must not be advertised as the
+recovery route.  If
+=semantic-read-packet= is useful, it is emitted by the language provider as an
+optional =query/*= output schema after that route has been followed.  The
+read-plan frontier shape is part of the active provider-owned read-packet
+contract; providers must not advertise a separate retired recovery route.
+
+Direct source reads and exact wrapper reads should be denied and rerouted to a
+compact code window:
+
+#+begin_src shell
+asp <language> query --from-hook direct-source-read --selector <project-path[:line-range]> --code .
+#+end_src
+
+The hook decision packet must label that recovery route as =kind=query=.
+Provider output may still contain owner, item, test, and read-locator facts, but
+the executable route is the provider query surface, not a =search owner= route.
+This keeps exact source paths, wrapper line locators such as =rtk read
+src/lib.rs:10:20=, and cross-language direct reads on the same semantic
+transport.
+
+Broad selector reads should instead route to provider =query --from-hook=,
+=query --term ...=, =search lexical ... owner tests=, or =search ingest ...=
+depending on the evidence already available.  The provider owns the parser
+facts, frontier selection, owner item projection, and broad discovery; the hook
+only classifies and routes.
+
+The hook-facing =query --from-hook= form is for broad selectors where no single
+owner is known, for example =Read *.ts= or =less **/*.tsx= paired with concrete
+terms from the agent's intent:
+
+#+begin_src shell
+asp <language> query --from-hook direct-source-read \
+  --selector '**/*.{ts,tsx,js}' \
+  --intent inspect-cli-search \
+  --term parseSearchArgs \
+  --term querySets \
+  --surface owners,tests \
+  --workspace . --view seeds
+#+end_src
+
+It is a compact route into the provider's parser-owned query layer.  It should
+emit bounded query evidence: query coverage, owner candidates, item candidates,
+test seeds when requested, and any visible runtime prefilter cost.  It must not
+expand the matched files into source text.  Internal direct-read recovery is not
+an agent-facing wildcard query route and must not appear in guide, recovery, or
+next-action output. Providers must not advertise or accept the retired
+search-query hook form as a compatibility alias; keeping both forms creates
+route drift and breaks guide-quality replay.
+
+When the only known selector is one exact project-relative source path and the
+agent has no reliable item query yet, the next action is =search owner <path>
+items --workspace <workspace-root> --view seeds=.  This is parser-owned compact
+context, not source rendering: it lists item names, line ranges, read locators,
+and owner/test frontiers so the next step can be a precise item query or focused
+edit.  The =--from-hook direct-source-read= form remains available only as a
+low-priority bounded fallback after parser-owned frontier evidence has selected
+the exact small window.
+
+Rust adds Cargo-native views under the same search namespace:
+
+#+begin_src shell
+rs-harness search prime
+rs-harness search targets
+rs-harness search deps
+rs-harness search deps <dep[/subpath][@version][::api]>
+rs-harness search deps <dep[/subpath][@version][::api]> public-api
+#+end_src
+
+=search dependency= is a high-level composite view: native package/dependency
+facts + source usage + owner graph in one compact output.  For Rust,
+=search deps= is the practical dependency-version API usage view: manifest
+version/feature/target facts and local API usage owners for the version range
+declared by the current workspace.  If a query asks for =dep@version= that does
+not match the workspace declaration, the packet must mark it as
+=versionScope=external= and avoid presenting current owner usage as evidence
+for that external version.  Current workspace versions are reported as
+=currentWorkspaceVersion= when a lockfile or manifest exact version proves the
+value.  For current workspace versions,
+=::api= narrows owner hits to dependency owners that also mention the API token.
+=search prime= is the low-token entry point with graph structure.
+
+** Multi-pipe: deterministic packet composition
+
+A provider can optionally chain multiple pipe stages in one invocation.  This
+is an RFC target for providers that can keep the packet final-only and
+deterministic; agents must still treat the registry's =methods= and
+=methodDescriptors= as the callable truth:
+
+#+begin_src shell
+<lang-harness> search <source> <pipe1> <pipe2> ...
+rg -n "<query>" <roots> | <lang-harness> search ingest <pipe1> <pipe2> ...
+#+end_src
+
+Source stages (produce the initial packet):
+
+#+begin_src text
+prime                 project reasoning-tree
+dependency <dep>      dependency fact + source usage + owner graph
+features <feature>    feature -> optional-dep -> target cfg chain
+deps <dep>            native manifest dependency facts
+symbol <symbol>       symbol definition + callsites
+callsite <symbol>     all usage sites
+pattern <recipe>      structural recipe search
+ingest                stdin auto-sniff (rg -n / fd / git diff)
+#+end_src
+
+Candidate pipe stages (enrich the packet, all optional):
+
+#+begin_src text
+owners      resolve to owner graph nodes
+items       resolve to intra-file items
+tests       find owned tests/benches/examples
+examples    find owned examples
+benches     find owned benches
+docs        attach API docs facts (kind, signature, feature, async, ...)
+public-api  mark whether dependency types leak into public API
+cfg         attach cfg / target facts
+features    expand feature graph
+dependents  who depends on this owner/dep
+#+end_src
+
+Each pipe is a deterministic transform.  The CLI renders only the final
+packet.  The agent client selects the pipe combination based on the task; the CLI
+never infers intent.
+
+Examples:
+
+#+begin_src shell
+# Dependency change with docs and test coverage:
+rs-harness search dependency ignore items docs tests --package file-search
+
+# Feature/cfg change across owners and docs:
+rs-harness search features io-uring cfg owners tests docs --package tokio
+
+# Public API leakage check:
+rs-harness search dependency bytes public-api docs tests --package tokio
+
+# External candidate stream with grouping:
+rg -n "require_git|git_ignore|parents" agent-rs/file-search | rs-harness search ingest items tests
+#+end_src
+
+When a provider advertises diagnostic tracing, it should return a compact
+stage list rather than full intermediate packets:
+
+#+begin_src text
+[search-trace] source=dependency query=ignore pipes=items,docs,tests
+|stage dependency cargo=1 owners=1
+|stage items owners=1 items=4
+|stage docs docs=1
+|stage tests tests=1
+#+end_src
+
+*** Dev-mode command log
+
+Providers may record every =*-harness= CLI invocation when development mode is
+explicitly enabled:
+
+#+begin_src shell
+SEMANTIC_PROTOCOL_DEV_MODE=1
+#+end_src
+
+This is a provider debugging surface, not an agent prompt surface.  Its purpose
+is to measure real command count, latency, repeated search loops, view/pipeline
+selection, and hook reroute behavior without asking the agent to expand source
+or request JSON during normal exploration.
+
+The canonical cache location is:
+
+#+begin_src text
+$PRJ_CACHE_HOME/semantic_protocol/<language>/<provider>/commands/YYYY-MM-DDTHH-MM-SSZ-000001-<event-id>.jsonl
+#+end_src
+
+If =SEMANTIC_PROTOCOL_TRACE_DIR= is set, providers should write under that
+directory instead of deriving =PRJ_CACHE_HOME=.  If neither location can be
+resolved, the log write is silently disabled.  Command execution must not fail
+because a dev-mode log directory cannot be created or appended.
+
+Each JSONL row must validate against
+=semantic-dev-command-log.v1.schema.json=.  Providers record argv, cwd,
+project root, language/provider identity, normalized command method,
+=startedAtUtc=, =finishedAtUtc=, elapsed time, exit code, and stdout/stderr
+byte counts.  Providers must not record full stdout/stderr content by default;
+those streams can contain source text, private paths, or model-visible prompt
+material.  Obvious secret-bearing arguments such as =--token=, =--api-key=,
+=--password=, and =--secret= must be redacted in the recorded argv.
+
+The file name carries a UTC second timestamp for human directory inspection,
+but analysis tools should sort by row fields rather than file names.  Within a
+session, providers should allocate a best-effort monotonically increasing
+=sessionOrdinal= before command execution starts.  The ordinal is provider
+local; fan-out analyzers that combine Rust, TypeScript, Python, and other
+providers should sort by =sessionId=, =startedAtUtc=, =sessionOrdinal=, and
+=eventId= rather than assuming a single global counter.  When a client can pass
+context directly, it should set =SEMANTIC_PROTOCOL_SESSION_ID=,
+=SEMANTIC_PROTOCOL_PARENT_EVENT_ID=, and =SEMANTIC_PROTOCOL_HOOK_RUN_ID=.
+Because real agents often remember a hook warning and then invoke =*-harness=
+directly without any hook-provided environment, hook runtimes may also write a
+short-lived active-context marker:
+
+#+begin_src text
+$PRJ_CACHE_HOME/semantic_protocol/dev-context/<project-root-hash>.json
+#+end_src
+
+Providers should read that marker only as a best-effort development trace aid,
+with a short TTL.  The marker must validate against
+=semantic-dev-active-context.v1.schema.json=.  Providers should mark inherited
+command events with =fields.contextSource= =active-context=.  When no
+environment or active marker exists, the provider may fall back to a
+project-scoped session id.  This makes the trace useful for reconstructing
+which model step fanned out into which harness commands, even when commands
+overlap, finish out of order, or run after the original hook event has already
+returned.
+
+The command log is implemented at each provider CLI entrypoint.  The root hook
+may pass hook context such as a hook run id through environment variables, but
+it is not the primary log owner: direct CLI usage, sandtable replay, and
+hook-rerouted commands should all land in the same provider-owned log stream.
+
+Internal model:
+
+#+begin_src rust
+struct SearchPacket {
+    header: SearchHeader,
+    packages: Vec<PackageFact>,
+    cargo: Vec<CargoFact>,
+    owners: Vec<OwnerFact>,
+    items: Vec<ItemFact>,
+    docs: Vec<DocsFact>,
+    tests: Vec<TestFact>,
+    edges: Vec<EdgeFact>,
+    next: Vec<NextAction>,
+}
+
+trait SearchPipe {
+    fn apply(&self, ctx: &SearchContext, packet: SearchPacket) -> SearchPacket;
+}
+#+end_src
+

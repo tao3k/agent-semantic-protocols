@@ -3,22 +3,22 @@
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::{
-    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheFileHash,
-    ClientDbJournalMode, ClientDbStatus, LanguageId, ProviderId, SemanticSchemaId,
+    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheFileHash, ClientDbStatus,
+    LanguageId, ProviderId, SemanticSchemaId,
 };
 use serde::{Deserialize, Serialize};
 
 /// Current Turso DB Engine schema version for the local agent semantic client DB.
 pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 
-/// Runtime DB pragmas retained for receipt shape compatibility.
+/// Read-only diagnostic summary for the active DB Engine path.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbRuntimePragmas {
-    pub journal_mode: ClientDbJournalMode,
-    pub synchronous: i64,
-    pub busy_timeout_ms: i64,
-    pub foreign_keys: bool,
+    journal_mode: String,
+    synchronous: i64,
+    busy_timeout_ms: i64,
+    foreign_keys: bool,
 }
 
 /// Read-only diagnostic summary for the active DB Engine path.
@@ -32,15 +32,12 @@ pub struct ClientDbReport {
     pub syntax_row_generation_count: u32,
     pub syntax_row_match_count: u32,
     pub syntax_row_capture_count: u32,
-    pub structural_index_generation_count: u32,
-    pub structural_index_owner_count: u32,
-    pub structural_index_symbol_count: u32,
-    pub structural_index_dependency_usage_count: u32,
     pub source_index_generation_count: u32,
     pub source_index_owner_count: u32,
     pub source_index_selector_count: u32,
     pub artifact_event_count: u32,
     pub raw_source_stored: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_pragmas: Option<ClientDbRuntimePragmas>,
     pub reason: Option<String>,
 }
@@ -93,17 +90,68 @@ pub struct ClientDbGenerationHit {
     pub artifact_ids: Vec<CacheArtifactId>,
 }
 
-/// Cached provider command selection for one activation context.
+macro_rules! client_db_provider_command_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+    };
+}
+
+client_db_provider_command_text!(
+    /// Provider manifest identifier selected for execution.
+    ClientDbProviderManifestId
+);
+client_db_provider_command_text!(
+    /// Provider manifest digest selected for execution.
+    ClientDbProviderManifestDigest
+);
+client_db_provider_command_text!(
+    /// Provider binary identity selected for execution.
+    ClientDbProviderBinary
+);
+client_db_provider_command_text!(
+    /// Provider execution mode selected for execution.
+    ClientDbProviderExecution
+);
+client_db_provider_command_text!(
+    /// One provider command prefix argument.
+    ClientDbProviderCommandArg
+);
+client_db_provider_command_text!(
+    /// Resolved provider executable path.
+    ClientDbProviderExecutablePath
+);
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbProviderCommandSelection {
-    pub manifest_id: String,
-    pub manifest_digest: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub binary: String,
-    pub execution: String,
-    pub provider_command_prefix: Vec<String>,
-    pub executable_path: Option<String>,
+    pub manifest_id: ClientDbProviderManifestId,
+    pub manifest_digest: ClientDbProviderManifestDigest,
+    pub language_id: LanguageId,
+    pub provider_id: ProviderId,
+    pub binary: ClientDbProviderBinary,
+    pub execution: ClientDbProviderExecution,
+    pub provider_command_prefix: Vec<ClientDbProviderCommandArg>,
+    pub executable_path: Option<ClientDbProviderExecutablePath>,
     pub executable_len: Option<i64>,
     pub executable_mtime_ms: Option<i64>,
 }
@@ -112,14 +160,14 @@ impl ClientDbProviderCommandSelection {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        manifest_id: String,
-        manifest_digest: String,
-        language_id: String,
-        provider_id: String,
-        binary: String,
-        execution: String,
-        provider_command_prefix: Vec<String>,
-        executable_path: Option<String>,
+        manifest_id: ClientDbProviderManifestId,
+        manifest_digest: ClientDbProviderManifestDigest,
+        language_id: LanguageId,
+        provider_id: ProviderId,
+        binary: ClientDbProviderBinary,
+        execution: ClientDbProviderExecution,
+        provider_command_prefix: Vec<ClientDbProviderCommandArg>,
+        executable_path: Option<ClientDbProviderExecutablePath>,
         executable_len: Option<i64>,
         executable_mtime_ms: Option<i64>,
     ) -> Self {
@@ -139,42 +187,44 @@ impl ClientDbProviderCommandSelection {
 
     #[must_use]
     pub fn manifest_id(&self) -> &str {
-        &self.manifest_id
+        self.manifest_id.as_str()
     }
 
     #[must_use]
     pub fn manifest_digest(&self) -> &str {
-        &self.manifest_digest
+        self.manifest_digest.as_str()
     }
 
     #[must_use]
     pub fn language_id(&self) -> &str {
-        &self.language_id
+        self.language_id.as_str()
     }
 
     #[must_use]
     pub fn provider_id(&self) -> &str {
-        &self.provider_id
+        self.provider_id.as_str()
     }
 
     #[must_use]
     pub fn binary(&self) -> &str {
-        &self.binary
+        self.binary.as_str()
     }
 
     #[must_use]
     pub fn execution(&self) -> &str {
-        &self.execution
+        self.execution.as_str()
     }
 
     #[must_use]
-    pub fn provider_command_prefix(&self) -> &[String] {
+    pub fn provider_command_prefix(&self) -> &[ClientDbProviderCommandArg] {
         &self.provider_command_prefix
     }
 
     #[must_use]
     pub fn executable_path(&self) -> Option<&str> {
-        self.executable_path.as_deref()
+        self.executable_path
+            .as_ref()
+            .map(ClientDbProviderExecutablePath::as_str)
     }
 
     #[must_use]
@@ -248,41 +298,41 @@ impl ClientDbArtifactEvent {
 /// Graph-turbo artifact event row stored in the active DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbArtifactEvent {
-    pub artifact_path: String,
-    pub event_ordinal: u32,
-    pub timestamp_ms: i64,
-    pub kind: String,
-    pub language: String,
-    pub method: String,
-    pub target: String,
-    pub query: String,
-    pub project_root: String,
-    pub project_root_arg: String,
-    pub bytes: u64,
+    artifact_path: String,
+    event_ordinal: u32,
+    timestamp_ms: i64,
+    kind: String,
+    language: String,
+    method: String,
+    target: String,
+    query: String,
+    project_root: String,
+    project_root_arg: String,
+    bytes: u64,
 }
 
 /// Merkle hash value used by artifact graph roots, edges, and proof receipts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactHash {
-    pub algorithm: String,
-    pub value: String,
+    algorithm: String,
+    value: String,
 }
 
 /// Queryable Merkle artifact root stored in the active DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactRoot {
-    pub repo_id: String,
-    pub workspace_id: String,
-    pub scope_id: String,
-    pub generation: String,
-    pub root_kind: String,
-    pub root_hash: ClientDbArtifactHash,
-    pub node_hash: ClientDbArtifactHash,
-    pub producer_hash: Option<ClientDbArtifactHash>,
-    pub schema_hash: Option<ClientDbArtifactHash>,
-    pub content_hash: Option<ClientDbArtifactHash>,
+    repo_id: String,
+    workspace_id: String,
+    scope_id: String,
+    generation: String,
+    root_kind: String,
+    root_hash: ClientDbArtifactHash,
+    node_hash: ClientDbArtifactHash,
+    producer_hash: Option<ClientDbArtifactHash>,
+    schema_hash: Option<ClientDbArtifactHash>,
+    content_hash: Option<ClientDbArtifactHash>,
 }
 
 /// Queryable edge between two Merkle artifact roots.
@@ -300,34 +350,34 @@ pub struct ClientDbArtifactEdge {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactRepairChainFrame {
-    pub frame_kind: String,
-    pub root: ClientDbArtifactRoot,
-    pub content_hash: ClientDbArtifactHash,
-    pub parents: Vec<ClientDbArtifactEdge>,
+    frame_kind: String,
+    root: ClientDbArtifactRoot,
+    content_hash: ClientDbArtifactHash,
+    parents: Vec<ClientDbArtifactEdge>,
 }
 
 /// Compact proof receipt summary persisted for artifact graph queries.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbProofReceipt {
-    pub receipt_id: String,
-    pub obligation_id: String,
-    pub recipe_id: String,
-    pub checker: String,
-    pub environment: String,
-    pub okay: bool,
-    pub trust_level: String,
-    pub summary_for_agent: String,
-    pub root: ClientDbArtifactRoot,
+    receipt_id: String,
+    obligation_id: String,
+    recipe_id: String,
+    checker: String,
+    environment: String,
+    okay: bool,
+    trust_level: String,
+    summary_for_agent: String,
+    root: ClientDbArtifactRoot,
 }
 
 /// Compact agent-facing render of queryable artifact graph facts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactGraphCompactRender {
-    pub frame_count: u32,
-    pub proof_receipt_count: u32,
-    pub lines: Vec<String>,
+    frame_count: u32,
+    proof_receipt_count: u32,
+    lines: Vec<String>,
 }
 
 impl ClientDbArtifactGraphCompactRender {

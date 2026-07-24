@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{
+use agent_semantic_config::{
     ProjectCacheSource, ProjectEnvStatus, ProjectRuntimeEnv, project_cache_root_with_env,
     project_runtime_layout_with_env,
 };

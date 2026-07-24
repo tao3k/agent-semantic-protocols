@@ -8,6 +8,9 @@ mod agent_session_status_snapshot;
 mod agent_session_validation_report;
 mod async_bridge;
 mod codex_app_server_sessions;
+pub use codex_app_server_sessions::{
+    CodexChildSessionEvidence, CodexReasoningVisibility, codex_app_server_child_session_evidence,
+};
 mod codex_rollout_sessions;
 pub use codex_app_server_sessions::codex_app_server_child_session_metadata;
 mod git;
@@ -85,6 +88,10 @@ mod language_owner_items_tests;
 #[cfg(test)]
 #[path = "../tests/unit/timeout_policy.rs"]
 mod timeout_policy_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/host_evidence_adapter.rs"]
+mod host_evidence_adapter_tests;
 pub use state::{
     discover_project_activation_path, is_project_activation_path, project_root_for_activation_path,
 };

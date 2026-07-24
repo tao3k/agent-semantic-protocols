@@ -3,7 +3,7 @@ use std::process::Command;
 use serde_json::json;
 use std::path::Path;
 
-pub(super) fn write_codex_asp_explore_rollout(
+pub(in super::super) fn write_codex_asp_explore_rollout(
     root: &Path,
     root_session_id: &str,
     child_session_id: &str,
@@ -95,6 +95,7 @@ pub(super) fn write_codex_asp_explore_rollout(
         .expect("write test Codex rollout");
 }
 
+#[allow(dead_code)]
 pub(super) fn write_codex_v2_asp_explorer_rollout(
     root: &Path,
     root_session_id: &str,
@@ -123,6 +124,7 @@ pub(super) fn write_codex_v2_asp_explorer_rollout(
         .expect("write test Codex v2 rollout");
 }
 
+#[allow(dead_code)]
 pub(super) fn append_codex_rollout_terminal_event(
     root: &Path,
     child_session_id: &str,

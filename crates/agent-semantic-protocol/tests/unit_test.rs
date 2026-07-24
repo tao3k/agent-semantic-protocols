@@ -12,6 +12,10 @@ mod command_build_profile;
 
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;
+#[path = "unit/cli_help.rs"]
+mod cli_help;
+#[path = "unit/cli_help_model.rs"]
+mod cli_help_model;
 #[path = "unit/client_hook_claude_smoke.rs"]
 mod client_hook_claude_smoke;
 #[path = "unit/client_hook_codex_cli_e2e.rs"]

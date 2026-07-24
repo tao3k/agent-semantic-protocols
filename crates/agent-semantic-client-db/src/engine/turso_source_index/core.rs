@@ -14,14 +14,10 @@ use crate::types::normalized_project_root;
 
 use crate::engine::{
     turso::connect_turso_client_db,
-    turso::turso_table_column_exists,
-    turso_operation_lock::acquire_turso_operation_lock,
-    turso_statement::{
-        execute_turso_statement_with_lock_retry, run_turso_operation_with_lock_retry,
-    },
+    turso_statement::{execute_turso_statement, run_turso_operation},
 };
 
-pub(super) const TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION: i64 = 3;
+pub(in crate::engine) const TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION: i64 = 3;
 
 pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
     connection: &turso::Connection,
@@ -33,6 +29,8 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             schema_version TEXT NOT NULL,
             generation_id TEXT NOT NULL,
             file_hashes_json TEXT NOT NULL,
+            source_snapshot_json TEXT NOT NULL DEFAULT '',
+            selector_fingerprint TEXT NOT NULL DEFAULT '',
             owner_count INTEGER NOT NULL,
             selector_count INTEGER NOT NULL,
             updated_at_ms INTEGER NOT NULL,
@@ -42,6 +40,7 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             project_root TEXT NOT NULL,
             schema_id TEXT NOT NULL,
             schema_version TEXT NOT NULL,
+            generation_id TEXT NOT NULL,
             file_hash TEXT NOT NULL,
             owner_path TEXT NOT NULL,
             language_id TEXT,
@@ -52,7 +51,7 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             selector_facts_json TEXT NOT NULL,
             term_tokens_json TEXT NOT NULL,
             selector_count INTEGER NOT NULL,
-            PRIMARY KEY (project_root, schema_id, schema_version, owner_path)
+            PRIMARY KEY (project_root, schema_id, schema_version, generation_id, owner_path)
         )",
         "CREATE TABLE IF NOT EXISTS asp_source_index_layout_v1 (
             project_root TEXT NOT NULL,
@@ -66,50 +65,48 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             project_root TEXT NOT NULL,
             schema_id TEXT NOT NULL,
             schema_version TEXT NOT NULL,
+            generation_id TEXT NOT NULL,
             token TEXT NOT NULL,
             owner_path TEXT NOT NULL,
-            PRIMARY KEY (project_root, schema_id, schema_version, token, owner_path)
+            PRIMARY KEY (project_root, schema_id, schema_version, generation_id, token, owner_path)
+        )",
+        "CREATE TABLE IF NOT EXISTS asp_exact_selector_projection_v1 (
+            language_id TEXT NOT NULL,
+            workspace_root_digest TEXT NOT NULL,
+            owner_path TEXT NOT NULL,
+            owner_subtree_digest TEXT NOT NULL,
+            source_blob_digest TEXT NOT NULL,
+            parser_identity_digest TEXT NOT NULL,
+            query_pack_digest TEXT NOT NULL,
+            structural_selector TEXT NOT NULL,
+            projection_mode TEXT NOT NULL,
+            record_json TEXT NOT NULL,
+            PRIMARY KEY (
+                language_id,
+                workspace_root_digest,
+                owner_path,
+                owner_subtree_digest,
+                source_blob_digest,
+                parser_identity_digest,
+                query_pack_digest,
+                structural_selector,
+                projection_mode
+            )
         )",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             statement,
             "failed to bootstrap Turso source-index schema",
         )
         .await?;
     }
-    if !turso_table_column_exists(connection, "asp_source_index_owner_v1", "term_tokens_json")
-        .await?
-    {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "ALTER TABLE asp_source_index_owner_v1 ADD COLUMN term_tokens_json TEXT NOT NULL DEFAULT '[]'",
-            "failed to migrate Turso source-index owner token projection",
-        )
-        .await?;
-    }
-    if !turso_table_column_exists(
-        connection,
-        "asp_source_index_layout_v1",
-        "token_projection_generation_id",
-    )
-    .await?
-    {
-        execute_turso_statement_with_lock_retry(
-            connection,
-            "ALTER TABLE asp_source_index_layout_v1 ADD COLUMN token_projection_generation_id TEXT NOT NULL DEFAULT ''",
-            "failed to migrate Turso source-index token projection generation",
-        )
-        .await?;
-    }
 
     for statement in [
         "CREATE INDEX IF NOT EXISTS asp_source_index_owner_v1_lookup_idx
-            ON asp_source_index_owner_v1(project_root, schema_id, schema_version, language_id, owner_path)",
-        "CREATE INDEX IF NOT EXISTS asp_source_index_token_owner_v1_owner_idx
-            ON asp_source_index_token_owner_v1(project_root, schema_id, schema_version, owner_path, token)",
+            ON asp_source_index_owner_v1(project_root, schema_id, schema_version, generation_id, language_id, owner_path)",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             statement,
             "failed to bootstrap Turso source-index schema",
@@ -120,15 +117,25 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
 }
 
 async fn ensure_turso_source_index_schema(connection: &turso::Connection) -> Result<bool, String> {
-    match run_turso_operation_with_lock_retry(
+    match validate_turso_source_index_schema(connection).await {
+        Ok(()) => Ok(false),
+        Err(error) if error.contains("no such table") || error.contains("no such column") => {
+            reset_turso_source_index_schema(connection).await?;
+            bootstrap_turso_source_index_schema(connection).await?;
+            validate_turso_source_index_schema(connection).await?;
+            Ok(true)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn validate_turso_source_index_schema(connection: &turso::Connection) -> Result<(), String> {
+    run_turso_operation(
         || async {
             connection
-                .query("SELECT 1 FROM asp_source_index_layout_v1 LIMIT 1", ())
-                .await
-                .map_err(|error| error.to_string())?;
-            connection
                 .query(
-                    "SELECT token_projection_generation_id
+                    "SELECT project_root, schema_id, schema_version,
+                            term_projection_version, token_projection_generation_id
                      FROM asp_source_index_layout_v1
                      LIMIT 1",
                     (),
@@ -136,25 +143,73 @@ async fn ensure_turso_source_index_schema(connection: &turso::Connection) -> Res
                 .await
                 .map_err(|error| error.to_string())?;
             connection
-                .query("SELECT 1 FROM asp_source_index_token_v1 LIMIT 1", ())
+                .query(
+                    "SELECT project_root, schema_id, schema_version, generation_id,
+                            file_hash, owner_path, language_id, provider_id, source_kind,
+                            line_count, query_keys_json, selector_facts_json,
+                            term_tokens_json, selector_count
+                     FROM asp_source_index_owner_v1
+                     LIMIT 1",
+                    (),
+                )
                 .await
                 .map_err(|error| error.to_string())?;
             connection
-                .query("SELECT 1 FROM asp_source_index_token_owner_v1 LIMIT 1", ())
+                .query(
+                    "SELECT project_root, schema_id, schema_version, generation_id,
+                            file_hashes_json, source_snapshot_json, selector_fingerprint,
+                            owner_count, selector_count, updated_at_ms
+                     FROM asp_source_index_scope_v1
+                     LIMIT 1",
+                    (),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            connection
+                .query(
+                    "SELECT project_root, schema_id, schema_version, generation_id,
+                            token, owner_path
+                     FROM asp_source_index_token_owner_v1
+                     LIMIT 1",
+                    (),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            connection
+                .query(
+                    "SELECT language_id, workspace_root_digest, owner_path,
+                            owner_subtree_digest, source_blob_digest,
+                            parser_identity_digest, query_pack_digest,
+                            structural_selector, projection_mode, record_json
+                     FROM asp_exact_selector_projection_v1
+                     LIMIT 1",
+                    (),
+                )
                 .await
                 .map_err(|error| error.to_string())
         },
         "failed to inspect Turso source-index schema layout",
     )
-    .await
-    {
-        Ok(_) => Ok(false),
-        Err(error) if error.contains("no such table") || error.contains("no such column") => {
-            bootstrap_turso_source_index_schema(connection).await?;
-            Ok(true)
-        }
-        Err(error) => Err(error),
+    .await?;
+    Ok(())
+}
+
+async fn reset_turso_source_index_schema(connection: &turso::Connection) -> Result<(), String> {
+    for table in [
+        "asp_exact_selector_projection_v1",
+        "asp_source_index_token_owner_v1",
+        "asp_source_index_owner_v1",
+        "asp_source_index_layout_v1",
+        "asp_source_index_scope_v1",
+    ] {
+        execute_turso_statement(
+            connection,
+            &format!("DROP TABLE IF EXISTS {table}"),
+            "failed to reset noncanonical Turso source-index schema",
+        )
+        .await?;
     }
+    Ok(())
 }
 
 fn source_index_db_trace(stage: &str, started: std::time::Instant) {
@@ -166,7 +221,8 @@ fn source_index_db_trace(stage: &str, started: std::time::Instant) {
     }
 }
 
-use super::facts::{turso_source_index_projection_ready, write_turso_source_index_rows};
+use super::facts::write_turso_source_index_rows;
+use super::readiness::turso_source_index_projection_ready;
 
 pub async fn refresh_turso_source_index_import(
     db_path: &Path,
@@ -174,20 +230,25 @@ pub async fn refresh_turso_source_index_import(
 ) -> Result<ClientDbSourceIndexRefreshReport, String> {
     let _source_index_write_guard = turso_source_index_access_lock(db_path).write_owned().await;
     let trace_started = std::time::Instant::now();
+    let source_snapshot_json =
+        serde_json::to_string(&request.source_snapshot).map_err(|error| {
+            format!("failed to serialize Turso source-index source snapshot evidence: {error}")
+        })?;
+    super::membership::validate_source_index_membership_change_set(&request)?;
+    let membership_change_set = request.membership_change_set;
     let import = request.import;
     if import.file_hashes.is_empty() {
         return Err("source index import requires file hash evidence".to_string());
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "source-index-refresh")?;
     source_index_db_trace("operation-lock-acquired", trace_started);
     crate::engine::turso_bootstrap::bootstrap_turso_source_index_db(db_path).await?;
     source_index_db_trace("base-bootstrap-complete", trace_started);
     let connection = connect_turso_client_db(db_path).await?;
     source_index_db_trace("write-connection-open", trace_started);
-    let source_index_schema_migrated = ensure_turso_source_index_schema(&connection).await?;
+    let source_index_schema_rebuilt = ensure_turso_source_index_schema(&connection).await?;
     source_index_db_trace(
-        if source_index_schema_migrated {
-            "source-index-schema-migrated"
+        if source_index_schema_rebuilt {
+            "source-index-schema-rebuilt"
         } else {
             "source-index-schema-verified"
         },
@@ -201,6 +262,7 @@ pub async fn refresh_turso_source_index_import(
         &import,
         &project_root,
         &file_hashes_json,
+        &source_snapshot_json,
         request.file_count,
     )
     .await?
@@ -209,23 +271,30 @@ pub async fn refresh_turso_source_index_import(
         return Ok(refresh);
     }
     source_index_db_trace("reuse-probe-missed", trace_started);
-    let write_stats =
-        write_turso_source_index_rows(&connection, &import, &project_root, &file_hashes_json)
-            .await?;
+    let write_stats = write_turso_source_index_rows(
+        &connection,
+        &import,
+        &membership_change_set,
+        &project_root,
+        &file_hashes_json,
+        &source_snapshot_json,
+    )
+    .await?;
     source_index_db_trace("rows-written", trace_started);
     let (owner_count, selector_count) = turso_source_index_scope_row_counts(
         &connection,
         &project_root,
         import.schema_id.as_str(),
         import.schema_version.as_str(),
+        write_stats.physical_generation_id.as_str(),
     )
     .await?;
     let expected_owner_count = import.owners.len().min(u32::MAX as usize) as u32;
     let expected_selector_count = import.selectors.len().min(u32::MAX as usize) as u32;
-    if owner_count != expected_owner_count || selector_count != expected_selector_count {
+    if owner_count != expected_owner_count || selector_count < expected_selector_count {
         return Err(format!(
             "Turso source-index refresh did not persist generation rows: generation={} expectedOwners={} persistedOwners={} expectedSelectors={} persistedSelectors={}",
-            import.generation_id.as_str(),
+            write_stats.physical_generation_id.as_str(),
             expected_owner_count,
             owner_count,
             expected_selector_count,
@@ -233,7 +302,7 @@ pub async fn refresh_turso_source_index_import(
         ));
     }
     Ok(ClientDbSourceIndexRefreshReport {
-        generation_id: import.generation_id,
+        generation_id: write_stats.physical_generation_id.clone().into(),
         reused_generation: false,
         file_count: request.file_count,
         owner_count,
@@ -250,7 +319,7 @@ pub async fn latest_turso_source_index_file_hashes(
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
 ) -> Result<Option<Vec<ClientCacheFileHash>>, String> {
-    let Some((_, file_hashes_json, _, _)) =
+    let Some((_, file_hashes_json, _, _, _)) =
         latest_turso_source_index_generation(db_path, project_root, schema_id, schema_version)
             .await?
     else {
@@ -267,12 +336,15 @@ pub async fn latest_turso_source_index_stats(
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
 ) -> Result<Option<ClientDbSourceIndexStats>, String> {
-    let Some((generation_id, _, owner_count, selector_count)) =
+    let Some((generation_id, _, source_snapshot_json, owner_count, selector_count)) =
         latest_turso_source_index_generation(db_path, project_root, schema_id, schema_version)
             .await?
     else {
         return Ok(None);
     };
+    let source_snapshot = serde_json::from_str(&source_snapshot_json).map_err(|error| {
+        format!("failed to decode latest Turso source-index source snapshot evidence: {error}")
+    })?;
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
     let normalized_project_root = normalized_project_root(project_root);
@@ -290,6 +362,7 @@ pub async fn latest_turso_source_index_stats(
         generation_id: generation_id.into(),
         owner_count,
         selector_count,
+        source_snapshot,
     }))
 }
 
@@ -299,7 +372,7 @@ pub async fn latest_turso_source_index_scope_files(
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
 ) -> Result<Option<Vec<ClientDbSourceIndexScopeFile>>, String> {
-    let Some((_generation_id, _, _, _)) =
+    let Some((generation_id, _, _, _, _)) =
         latest_turso_source_index_generation(db_path, project_root, schema_id, schema_version)
             .await?
     else {
@@ -308,7 +381,7 @@ pub async fn latest_turso_source_index_scope_files(
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
     let normalized_project_root = normalized_project_root(project_root);
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -317,11 +390,13 @@ pub async fn latest_turso_source_index_scope_files(
                      WHERE project_root = ?1
                        AND schema_id = ?2
                        AND schema_version = ?3
+                       AND generation_id = ?4
                      ORDER BY owner_path",
                     (
                         normalized_project_root.as_str(),
                         schema_id.as_str(),
                         schema_version.as_str(),
+                        generation_id.as_str(),
                     ),
                 )
                 .await
@@ -382,17 +457,19 @@ pub async fn lookup_reusable_turso_source_index_generation(
     let project_root = normalized_project_root(project_root);
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
-                    "SELECT generation_id, owner_count, selector_count
+                    "SELECT generation_id, owner_count, selector_count, source_snapshot_json
                      FROM asp_source_index_scope_v1
                      WHERE project_root = ?1
                        AND schema_id = ?2
-                       AND schema_version = ?3
-                       AND file_hashes_json = ?4
-                     LIMIT 1",
+  AND schema_version = ?3
+  AND file_hashes_json = ?4
+  AND source_snapshot_json <> ''
+ORDER BY updated_at_ms DESC, generation_id DESC
+LIMIT 1",
                     (
                         project_root.as_str(),
                         schema_id.as_str(),
@@ -428,6 +505,12 @@ pub async fn lookup_reusable_turso_source_index_generation(
             .map_err(|error| format!("failed to read Turso source-index selector count: {error}"))?
             .max(0)
             .min(i64::from(u32::MAX)) as u32,
+        source_snapshot: serde_json::from_str(&row.get::<String>(3).map_err(|error| {
+            format!("failed to read Turso source-index source snapshot evidence: {error}")
+        })?)
+        .map_err(|error| {
+            format!("failed to decode Turso source-index source snapshot evidence: {error}")
+        })?,
     }))
 }
 
@@ -436,23 +519,25 @@ async fn latest_turso_source_index_generation(
     project_root: &Path,
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
-) -> Result<Option<(String, String, u32, u32)>, String> {
+) -> Result<Option<(String, String, String, u32, u32)>, String> {
     if !db_path.exists() {
         return Ok(None);
     }
     let project_root = normalized_project_root(project_root);
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
-                    "SELECT generation_id, file_hashes_json, owner_count, selector_count
+                    "SELECT generation_id, file_hashes_json, source_snapshot_json, owner_count, selector_count
                      FROM asp_source_index_scope_v1
-                     WHERE project_root = ?1
-                       AND schema_id = ?2
-                       AND schema_version = ?3
-                     LIMIT 1",
+WHERE project_root = ?1
+  AND schema_id = ?2
+  AND schema_version = ?3
+  AND source_snapshot_json <> ''
+ORDER BY updated_at_ms DESC, generation_id DESC
+LIMIT 1",
                     (
                         project_root.as_str(),
                         schema_id.as_str(),
@@ -477,15 +562,55 @@ async fn latest_turso_source_index_generation(
             .map_err(|error| format!("failed to read Turso source-index generation id: {error}"))?,
         row.get::<String>(1)
             .map_err(|error| format!("failed to read Turso source-index file hashes: {error}"))?,
-        row.get::<i64>(2)
+        row.get::<String>(2).map_err(|error| {
+            format!("failed to read Turso source-index source snapshot evidence: {error}")
+        })?,
+        row.get::<i64>(3)
             .map_err(|error| format!("failed to read Turso source-index owner count: {error}"))?
             .max(0)
             .min(i64::from(u32::MAX)) as u32,
-        row.get::<i64>(3)
+        row.get::<i64>(4)
             .map_err(|error| format!("failed to read Turso source-index selector count: {error}"))?
             .max(0)
             .min(i64::from(u32::MAX)) as u32,
     )))
+}
+
+pub(super) fn turso_source_index_selector_fingerprint(
+    import: &ClientDbSourceIndexImport,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    fn update_text(hasher: &mut Sha256, value: &str) {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update((import.selectors.len() as u64).to_be_bytes());
+    for selector in &import.selectors {
+        update_text(&mut hasher, selector.owner_path.as_str());
+        update_text(&mut hasher, selector.selector_id.as_str());
+        update_text(&mut hasher, selector.symbol.as_deref().unwrap_or_default());
+        update_text(&mut hasher, selector.kind.as_deref().unwrap_or_default());
+        hasher.update(selector.start_line.to_be_bytes());
+        hasher.update(selector.end_line.to_be_bytes());
+        update_text(&mut hasher, selector.source.as_str());
+        hasher.update((selector.query_keys.len() as u64).to_be_bytes());
+        for query_key in &selector.query_keys {
+            update_text(&mut hasher, query_key.as_str());
+        }
+        match &selector.payload_proof {
+            Some(proof) => {
+                hasher.update([1]);
+                update_text(&mut hasher, proof.structural_selector.as_str());
+                update_text(&mut hasher, proof.payload_kind.as_str());
+                hasher.update([u8::from(proof.bounded)]);
+            }
+            None => hasher.update([0]),
+        }
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 async fn reusable_turso_source_index_generation(
@@ -493,9 +618,11 @@ async fn reusable_turso_source_index_generation(
     import: &ClientDbSourceIndexImport,
     project_root: &str,
     file_hashes_json: &str,
+    source_snapshot_json: &str,
     file_count: u32,
 ) -> Result<Option<ClientDbSourceIndexRefreshReport>, String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    let selector_fingerprint = turso_source_index_selector_fingerprint(import)?;
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -505,13 +632,15 @@ async fn reusable_turso_source_index_generation(
                        AND schema_id = ?2
                        AND schema_version = ?3
                        AND file_hashes_json = ?4
+                       AND source_snapshot_json = ?5
+                       AND selector_fingerprint = ?6
                        AND EXISTS (
                            SELECT 1
                            FROM asp_source_index_layout_v1 AS layout
                            WHERE layout.project_root = asp_source_index_scope_v1.project_root
                              AND layout.schema_id = asp_source_index_scope_v1.schema_id
                              AND layout.schema_version = asp_source_index_scope_v1.schema_version
-                             AND layout.term_projection_version = ?5
+                             AND layout.term_projection_version = ?7
                              AND layout.token_projection_generation_id = asp_source_index_scope_v1.generation_id
                        )
                        AND EXISTS (
@@ -520,6 +649,15 @@ async fn reusable_turso_source_index_generation(
                            WHERE token_owner.project_root = asp_source_index_scope_v1.project_root
                              AND token_owner.schema_id = asp_source_index_scope_v1.schema_id
                              AND token_owner.schema_version = asp_source_index_scope_v1.schema_version
+                             AND token_owner.generation_id = asp_source_index_scope_v1.generation_id
+                       )
+                       AND EXISTS (
+                           SELECT 1
+                           FROM asp_source_index_owner_v1 AS owner
+                           WHERE owner.project_root = asp_source_index_scope_v1.project_root
+                             AND owner.schema_id = asp_source_index_scope_v1.schema_id
+                             AND owner.schema_version = asp_source_index_scope_v1.schema_version
+                             AND owner.generation_id = asp_source_index_scope_v1.generation_id
                        )
                      LIMIT 1",
                     (
@@ -527,6 +665,8 @@ async fn reusable_turso_source_index_generation(
                         import.schema_id.as_str(),
                         import.schema_version.as_str(),
                         file_hashes_json,
+                        source_snapshot_json,
+                        selector_fingerprint.as_str(),
                         TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
                     ),
                 )
@@ -560,6 +700,7 @@ async fn reusable_turso_source_index_generation(
         project_root,
         import.schema_id.as_str(),
         import.schema_version.as_str(),
+        generation_id.as_str(),
     )
     .await?;
     if owner_count != metadata_owner_count || selector_count != metadata_selector_count {
@@ -579,13 +720,14 @@ async fn reusable_turso_source_index_generation(
     }))
 }
 
-async fn turso_source_index_scope_row_counts(
+pub(super) async fn turso_source_index_scope_row_counts(
     connection: &turso::Connection,
     project_root: &str,
     schema_id: &str,
     schema_version: &str,
+    generation_id: &str,
 ) -> Result<(u32, u32), String> {
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -593,8 +735,9 @@ async fn turso_source_index_scope_row_counts(
                      FROM asp_source_index_owner_v1
                      WHERE project_root = ?1
                        AND schema_id = ?2
-                       AND schema_version = ?3",
-                    (project_root, schema_id, schema_version),
+                       AND schema_version = ?3
+                       AND generation_id = ?4",
+                    (project_root, schema_id, schema_version, generation_id),
                 )
                 .await
                 .map_err(|error| error.to_string())
@@ -649,4 +792,192 @@ pub(in crate::engine) fn turso_source_index_access_lock(
     let lock = std::sync::Arc::new(tokio::sync::RwLock::new(()));
     locks.insert(lock_path, std::sync::Arc::downgrade(&lock));
     lock
+}
+
+pub(in crate::engine) async fn lookup_exact_selector_projection_v1(
+    db_path: &Path,
+    key: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1<'_>,
+) -> Result<
+    Option<
+        agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1,
+    >,
+    String,
+> {
+    if !db_path.exists() {
+        return Ok(None);
+    }
+    let connection = match connect_turso_client_db(db_path).await {
+        Ok(connection) => connection,
+        Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    let table_exists = match crate::engine::turso::turso_table_exists(
+        &connection,
+        "asp_exact_selector_projection_v1",
+    )
+    .await
+    {
+        Ok(table_exists) => table_exists,
+        Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    if !table_exists {
+        return Ok(None);
+    }
+    let projection_mode = exact_projection_mode_v1_name(key.projection_mode);
+    let mut rows = run_turso_operation(
+        || async {
+            connection
+                .query(
+                    "SELECT record_json
+                     FROM asp_exact_selector_projection_v1
+                     WHERE language_id = ?1
+                       AND workspace_root_digest = ?2
+                       AND owner_path = ?3
+                       AND owner_subtree_digest = ?4
+                       AND source_blob_digest = ?5
+                       AND parser_identity_digest = ?6
+                       AND query_pack_digest = ?7
+                       AND structural_selector = ?8
+                       AND projection_mode = ?9
+                     LIMIT 1",
+                    (
+                        key.language_id,
+                        key.workspace_root_digest.as_str(),
+                        key.owner_path,
+                        key.owner_subtree_digest.as_str(),
+                        key.source_blob_digest.as_str(),
+                        key.parser_identity_digest.as_str(),
+                        key.query_pack_digest.as_str(),
+                        key.structural_selector,
+                        projection_mode,
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to query Turso exact-selector projection",
+    )
+    .await?;
+    let next_row = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Turso exact-selector projection: {error}"));
+    let Some(row) = (match next_row {
+        Ok(row) => row,
+        Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    }) else {
+        return Ok(None);
+    };
+    let record_json = row
+        .get::<String>(0)
+        .map_err(|error| format!("failed to read Turso exact-selector record JSON: {error}"))?;
+    let record = match serde_json::from_str(&record_json) {
+        Ok(record) => record,
+        Err(_) => return Ok(None),
+    };
+    let validated = match agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1::hydrate(
+        record,
+        key,
+    ) {
+        Ok(validated) => validated,
+        Err(_) => return Ok(None),
+    };
+    Ok(Some(validated))
+}
+
+pub(in crate::engine) async fn persist_exact_selector_projection_v1(
+    db_path: &Path,
+    key: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1<'_>,
+    record: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorProjectionRecordV1,
+) -> Result<(), String> {
+    agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1::hydrate(
+        record.clone(),
+        key,
+    )
+    .map_err(|miss| format!("refusing invalid exact-selector projection write: {miss:?}"))?;
+    let record_json = serde_json::to_string(record)
+        .map_err(|error| format!("failed to encode Turso exact-selector record: {error}"))?;
+    let connection = match connect_turso_client_db(db_path).await {
+        Ok(connection) => connection,
+        Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    if let Err(error) = ensure_turso_source_index_schema(&connection).await {
+        if crate::engine::turso_lock_policy::is_turso_lock_error(&error) {
+            return Ok(());
+        }
+        return Err(error);
+    }
+    let projection_mode = exact_projection_mode_v1_name(key.projection_mode);
+    if let Err(error) = run_turso_operation(
+        || async {
+            connection
+                .execute(
+                    "INSERT OR REPLACE INTO asp_exact_selector_projection_v1 (
+                        language_id,
+                        workspace_root_digest,
+                        owner_path,
+                        owner_subtree_digest,
+                        source_blob_digest,
+                        parser_identity_digest,
+                        query_pack_digest,
+                        structural_selector,
+                        projection_mode,
+                        record_json
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    (
+                        key.language_id,
+                        key.workspace_root_digest.as_str(),
+                        key.owner_path,
+                        key.owner_subtree_digest.as_str(),
+                        key.source_blob_digest.as_str(),
+                        key.parser_identity_digest.as_str(),
+                        key.query_pack_digest.as_str(),
+                        key.structural_selector,
+                        projection_mode,
+                        record_json.as_str(),
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to persist Turso exact-selector projection",
+    )
+    .await
+    {
+        if crate::engine::turso_lock_policy::is_turso_lock_error(&error) {
+            return Ok(());
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn exact_projection_mode_v1_name(
+    mode: agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1,
+) -> &'static str {
+    match mode {
+        agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code => {
+            "code"
+        }
+        agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Skeleton => {
+            "skeleton"
+        }
+        agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Names => {
+            "names"
+        }
+        agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Verbatim => {
+            "verbatim"
+        }
+    }
 }

@@ -5,10 +5,8 @@ use std::path::Path;
 use crate::types::{ClientDbProviderCommandSelection, normalized_project_root};
 
 use super::turso::connect_turso_client_db;
-use super::turso_operation_lock::acquire_turso_operation_lock;
 use super::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_statement_with_lock_retry,
-    run_turso_operation_with_lock_retry,
+    execute_turso_operation, execute_turso_statement, run_turso_operation,
 };
 
 async fn bootstrap_turso_provider_command_schema(
@@ -33,7 +31,7 @@ async fn bootstrap_turso_provider_command_schema(
         "CREATE INDEX IF NOT EXISTS asp_provider_command_selection_project_idx
             ON asp_provider_command_selection(project_root, context_fingerprint)",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             statement,
             "failed to bootstrap Turso provider command selection schema",
@@ -50,8 +48,6 @@ pub async fn replace_turso_provider_command_selections(
     selections: &[ClientDbProviderCommandSelection],
 ) -> Result<(), String> {
     let project_root = normalized_project_root(project_root);
-    let _operation_lock =
-        acquire_turso_operation_lock(db_path, "provider-command-selection-replace")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_provider_command_schema(&connection).await?;
     replace_turso_provider_command_selections_with_connection(
@@ -69,13 +65,13 @@ async fn replace_turso_provider_command_selections_with_connection(
     context_fingerprint: &str,
     selections: &[ClientDbProviderCommandSelection],
 ) -> Result<(), String> {
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         connection,
         "BEGIN IMMEDIATE",
         "failed to begin Turso provider command selection transaction",
     )
     .await?;
-    if let Err(error) = execute_turso_operation_with_lock_retry(
+    if let Err(error) = execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -98,7 +94,7 @@ async fn replace_turso_provider_command_selections_with_connection(
             .map_err(|error| {
                 format!("failed to serialize Turso provider command prefix: {error}")
             })?;
-        if let Err(error) = execute_turso_operation_with_lock_retry(
+        if let Err(error) = execute_turso_operation(
             || async {
                 connection
                     .execute(
@@ -142,7 +138,7 @@ async fn replace_turso_provider_command_selections_with_connection(
             return Err(error);
         }
     }
-    if let Err(error) = execute_turso_statement_with_lock_retry(
+    if let Err(error) = execute_turso_statement(
         connection,
         "COMMIT",
         "failed to commit Turso provider command selection transaction",
@@ -156,7 +152,7 @@ async fn replace_turso_provider_command_selections_with_connection(
 }
 
 async fn rollback_turso_provider_command_selection_transaction(connection: &turso::Connection) {
-    let _ = execute_turso_statement_with_lock_retry(
+    let _ = execute_turso_statement(
         connection,
         "ROLLBACK",
         "failed to rollback Turso provider command selection transaction",
@@ -175,7 +171,7 @@ pub async fn lookup_turso_provider_command_selections(
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_provider_command_schema(&connection).await?;
     let project_root = normalized_project_root(project_root);
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(
@@ -221,20 +217,30 @@ fn turso_provider_command_selection_from_row(
         .map_err(|error| format!("failed to decode Turso provider command prefix: {error}"))?;
     Ok(ClientDbProviderCommandSelection::new(
         row.get::<String>(0)
-            .map_err(|error| format!("failed to read Turso manifest id: {error}"))?,
+            .map_err(|error| format!("failed to read Turso manifest id: {error}"))?
+            .into(),
         row.get::<String>(1)
-            .map_err(|error| format!("failed to read Turso manifest digest: {error}"))?,
+            .map_err(|error| format!("failed to read Turso manifest digest: {error}"))?
+            .into(),
         row.get::<String>(2)
-            .map_err(|error| format!("failed to read Turso language id: {error}"))?,
+            .map_err(|error| format!("failed to read Turso language id: {error}"))?
+            .into(),
         row.get::<String>(3)
-            .map_err(|error| format!("failed to read Turso provider id: {error}"))?,
+            .map_err(|error| format!("failed to read Turso provider id: {error}"))?
+            .into(),
         row.get::<String>(4)
-            .map_err(|error| format!("failed to read Turso binary: {error}"))?,
+            .map_err(|error| format!("failed to read Turso binary: {error}"))?
+            .into(),
         row.get::<String>(5)
-            .map_err(|error| format!("failed to read Turso execution: {error}"))?,
-        provider_command_prefix,
+            .map_err(|error| format!("failed to read Turso execution: {error}"))?
+            .into(),
+        provider_command_prefix
+            .into_iter()
+            .map(Into::into)
+            .collect(),
         row.get::<Option<String>>(7)
-            .map_err(|error| format!("failed to read Turso executable path: {error}"))?,
+            .map_err(|error| format!("failed to read Turso executable path: {error}"))?
+            .map(Into::into),
         row.get::<Option<i64>>(8)
             .map_err(|error| format!("failed to read Turso executable length: {error}"))?,
         row.get::<Option<i64>>(9)

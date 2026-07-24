@@ -1,7 +1,7 @@
 //! Install command routing and pinned language provider installer.
 
 use agent_semantic_runtime::{ensure_project_provider_lock_dir, project_runtime_state};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use super::hook_runtime::{run_codex_plugin_install_args, run_hook_runtime_args};
 use super::install_provider_archive::{
     asset_name, binary_file_name, checksum_for_archive, download_release_archive,
-    install_archive_binary, install_executable_entrypoint, install_linked_entrypoint, path_segment,
-    release_asset_url, sha256_file,
+    install_archive_binary, install_executable_entrypoint, path_segment, release_asset_url,
+    sha256_file,
 };
-use super::install_provider_release::{ProviderReleaseSpec, WorkspaceInstallMode};
+use super::install_provider_release::ProviderReleaseSpec;
 use super::install_provider_target::{
     ProviderBinaryInstallTarget, home_dir, resolve_provider_binary_install_target,
 };
@@ -21,6 +21,12 @@ use super::org_capture;
 
 #[cfg(test)]
 use super::install_provider_archive::{checksum_name, parse_sha256_checksum};
+
+use super::install_provider_workspace_artifact::capture_workspace_artifact_snapshot;
+use super::install_provider_workspace_cas::install_workspace_artifact_from_cas;
+use super::install_provider_workspace_materialization::{
+    rendered_workspace_command_env, resolve_workspace_relative_path, run_dependency_materialization,
+};
 
 const PINNED_LANGUAGE_RELEASES_TOML: &str = include_str!("../../pinned-language-releases.toml");
 
@@ -40,10 +46,20 @@ struct PinnedLanguageReleaseEntry {
     archive_prefix: Option<String>,
     archive_binary: Option<String>,
     require_native_binary: Option<bool>,
-    workspace_binary: Option<String>,
-    #[serde(default)]
-    workspace_install: WorkspaceInstallMode,
     supported_targets: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct WorkspaceBuildSpec {
+    program: String,
+    #[serde(default)]
+    args: Vec<String>,
+    working_directory: String,
+    source_snapshot_anchors: Vec<String>,
+    derived_paths: Vec<String>,
+    #[serde(default)]
+    env: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Default)]
@@ -55,6 +71,7 @@ struct InstallArgs {
 
 pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
+        Some("binary") => run_install_binary(&args[1..]),
         Some("hook") => run_install_hook(&args[1..]),
         Some("plugin") => run_install_plugin(&args[1..]),
         Some("language") => run_install_provider(&args[1..]),
@@ -65,6 +82,40 @@ pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
         None => Err(usage()),
         Some(_) => Err(usage()),
     }
+}
+
+fn run_install_binary(args: &[String]) -> Result<(), String> {
+    let mut target = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--target" => {
+                if target.is_some() {
+                    return Err(
+                        "asp install binary accepts exactly one --target install root".to_string(),
+                    );
+                }
+                target = Some(args.get(index + 1).ok_or_else(usage).map(PathBuf::from)?);
+                index += 2;
+            }
+            "help" | "--help" | "-h" => {
+                println!("{}", usage());
+                return Ok(());
+            }
+            _ => return Err(usage()),
+        }
+    }
+    let target = target.ok_or_else(usage)?;
+    let source = env::current_exe()
+        .map_err(|error| format!("failed to resolve current ASP binary: {error}"))?;
+    let installed = super::protocol_binary::install_protocol_binary_target(&source, &target)?;
+    println!(
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic",
+        installed.path.display(),
+        installed.status,
+        installed.artifact_digest,
+    );
+    Ok(())
 }
 
 fn run_install_hook(args: &[String]) -> Result<(), String> {
@@ -87,8 +138,7 @@ fn run_install_hook(args: &[String]) -> Result<(), String> {
 
 fn run_install_plugin(args: &[String]) -> Result<(), String> {
     if args.is_empty() || has_help_flag(args) {
-        println!("{}", install_plugin_usage());
-        return Ok(());
+        return super::cli_help::print_install_plugin_help();
     }
 
     match args.first().map(String::as_str) {
@@ -109,28 +159,46 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let Some(language_id) = args.first().map(String::as_str) else {
         return Err(usage());
     };
-    let spec = provider_release(language_id)?;
+    if matches!(language_id, "help" | "--help" | "-h") {
+        return Err(usage());
+    }
     let install_args = parse_install_args(&args[1..])?;
-    let rev = spec.release_version.as_str();
     let target = match install_args.target {
         Some(target) => target,
         None => host_target_triple().ok_or_else(|| {
             "failed to infer host target; pass --target <target-triple>".to_string()
         })?,
     };
-    validate_target(&spec, &target)?;
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let project_root = absolute_project_root(&invocation_root, &install_args.project_root);
+    if install_args.from_workspace {
+        let descriptor = super::install_provider_workspace_descriptor::workspace_install_descriptor_for_language(
+            language_id,
+        )?;
+        let provider_binary = binary_file_name(&descriptor.binary, &target);
+        let install_target = resolve_provider_binary_install_target(
+            language_id,
+            &provider_binary,
+            home_dir().as_deref(),
+        )?;
+        return install_workspace_provider_binary(
+            &descriptor,
+            language_id,
+            &project_root,
+            &target,
+            &install_target,
+        );
+    }
+    let spec = provider_release(language_id)?;
+    let rev = spec.release_version.as_str();
+    validate_target(&spec, &target)?;
     let provider_binary = binary_file_name(&spec.binary, &target);
     let install_target = resolve_provider_binary_install_target(
         &spec.language_id,
         &provider_binary,
         home_dir().as_deref(),
     )?;
-    if install_args.from_workspace {
-        return install_workspace_provider_binary(&spec, &project_root, &install_target);
-    }
     let provider_lock_dir = ensure_project_provider_lock_dir(&install_args.project_root)?;
     let provider_package_dir = provider_lock_dir
         .join(&spec.language_id)
@@ -160,25 +228,38 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         install_executable_entrypoint(&installed_entrypoint, &runtime_artifact)?;
     }
     let installed = runtime_artifact;
-    let lock_path = provider_lock_dir.join(format!("{}.lock.toml", spec.language_id));
+    let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     write_provider_lock(
         &lock_path,
         &ProviderInstallLock {
+            schema_id: "asp.provider-install-lock.v1",
             language_id: &spec.language_id,
             provider_id: &spec.provider_id,
-            repo: &spec.repo,
-            rev,
+            source_kind: "release",
+            repo: Some(&spec.repo),
+            rev: Some(rev),
             target: &target,
             binary: &spec.binary,
             installed_path: &installed,
             package_path: &provider_package_dir,
             sha256: &actual_sha256,
             source: archive_source,
+            source_snapshot_root: None,
+            source_snapshot_algorithm: None,
+            source_leaf_count: None,
+            provider_digest: None,
+            build_recipe_digest: None,
+            artifact_digest: None,
+            artifact_leaf_count: None,
+            artifact_entrypoint: None,
+            artifact_entrypoint_sha256: None,
+            installed_entrypoint_digest: None,
+            launcher_digest: None,
         },
     )?;
     let org_state_sync = org_capture::run_org_state_sync(&project_root)?;
     println!(
-        "[asp-install] provider={} language={} rev={} target={} binary={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} installMode=locked-release rev={} target={} binary={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
         spec.provider_id,
         spec.language_id,
         rev,
@@ -250,58 +331,366 @@ fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
     Ok(parsed)
 }
 
-fn install_workspace_provider_binary(
-    spec: &ProviderReleaseSpec,
+#[derive(Debug)]
+pub(super) struct WorkspaceBuildReceipt {
+    pub(super) source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub(super) build_recipe_digest: String,
+    pub(super) artifact_digest: String,
+    pub(super) artifact_leaf_count: usize,
+    pub(super) entrypoint_sha256: String,
+}
+
+#[derive(Debug)]
+pub(super) struct MaterializedWorkspaceArtifact {
+    pub(super) source_cas_root: PathBuf,
+    pub(super) build_root: PathBuf,
+    pub(super) workspace_root: PathBuf,
+    pub(super) workspace_entrypoint: PathBuf,
+    pub(super) entrypoint_relative: PathBuf,
+    pub(super) launch:
+        Option<super::install_provider_workspace_artifact::WorkspaceArtifactLaunchSpec>,
+}
+
+fn workspace_build_recipe_digest(
+    spec: &super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor,
+    build: &WorkspaceBuildSpec,
+) -> Result<String, String> {
+    let mut payload = serde_json::to_vec(build)
+        .map_err(|error| format!("failed to encode workspace build recipe: {error}"))?;
+    payload.push(0);
+    payload.extend_from_slice(spec.binary.as_bytes());
+    payload.push(0);
+    let dependency_materialization =
+        serde_json::to_vec(&spec.dependency_materialization).map_err(|error| {
+            format!("failed to encode workspace dependency materialization recipe: {error}")
+        })?;
+    payload.extend_from_slice(&dependency_materialization);
+    payload.push(0);
+    let artifact = serde_json::to_vec(&spec.workspace_artifact)
+        .map_err(|error| format!("failed to encode workspace artifact recipe: {error}"))?;
+    payload.extend_from_slice(&artifact);
+    Ok(agent_semantic_content_identity::hash_blob(&payload).value)
+}
+
+fn rendered_workspace_build_env(
+    build: &WorkspaceBuildSpec,
+    workspace_root: &Path,
+) -> std::collections::BTreeMap<String, String> {
+    rendered_workspace_command_env(&build.env, workspace_root)
+}
+
+fn materialize_workspace_provider_binary(
+    spec: &super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor,
     project_root: &Path,
-    install_target: &ProviderBinaryInstallTarget,
-) -> Result<(), String> {
-    let workspace_binary = spec.workspace_binary.as_ref().map_or_else(
-        || Err(format!(
-            "provider {} has no configured workspace artifact; add workspaceBinary to its pinned release entry before using --from-workspace",
-            spec.language_id
-        )),
-        |path| Ok(project_root.join(path)),
-    )?;
-    if !workspace_binary.is_file() {
+    state: &agent_semantic_runtime::ProjectRuntimeState,
+) -> Result<(MaterializedWorkspaceArtifact, WorkspaceBuildReceipt), String> {
+    let artifact = spec.workspace_artifact.clone();
+    let live_workspace_artifact_root =
+        resolve_workspace_relative_path(project_root, &artifact.root, "workspaceArtifact.root")?;
+    let build = &spec.workspace_build;
+    if build.program.trim().is_empty() {
         return Err(format!(
-            "configured workspace provider artifact is missing at {}; build the provider before running `asp install language {} --from-workspace`",
-            workspace_binary.display(),
-            spec.language_id
+            "provider {} workspaceBuild program must not be empty",
+            spec.provider_id
         ));
     }
-    let state = project_runtime_state(project_root)?;
-    let runtime_artifact = state.runtime_bin_dir.join(&spec.binary);
-    install_workspace_entrypoint(spec, &workspace_binary, &runtime_artifact)?;
-    if install_target.path != runtime_artifact {
-        install_workspace_entrypoint(spec, &workspace_binary, &install_target.path)?;
+    let program_name = Path::new(&build.program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(build.program.as_str());
+    if matches!(program_name, "sh" | "bash" | "zsh" | "fish") {
+        return Err(format!(
+            "provider {} workspaceBuild must use an executable plus argv, not a shell interpreter",
+            spec.provider_id
+        ));
     }
+    let live_working_directory = resolve_workspace_relative_path(
+        project_root,
+        &build.working_directory,
+        "workingDirectory",
+    )?;
+    if !live_working_directory.is_dir() {
+        return Err(format!(
+            "provider {} workspaceBuild working directory is missing at {}",
+            spec.provider_id,
+            live_working_directory.display()
+        ));
+    }
+    let derived_paths = build
+        .derived_paths
+        .iter()
+        .map(|path| resolve_workspace_relative_path(project_root, path, "derivedPaths"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let live_source_snapshot_anchors = build
+        .source_snapshot_anchors
+        .iter()
+        .map(|path| resolve_workspace_relative_path(project_root, path, "sourceSnapshotAnchors"))
+        .collect::<Result<Vec<_>, _>>()?;
+    if let Some(anchor) = live_source_snapshot_anchors.iter().find(|anchor| {
+        derived_paths
+            .iter()
+            .any(|derived| anchor.starts_with(derived))
+    }) {
+        return Err(format!(
+            "provider {} workspaceBuild source snapshot anchor must not be inside a derivedPaths boundary: {}",
+            spec.provider_id,
+            anchor.display()
+        ));
+    }
+    if !derived_paths
+        .iter()
+        .any(|derived| live_workspace_artifact_root.starts_with(derived))
+    {
+        return Err(format!(
+            "provider {} workspaceArtifact.root {} must be contained by one workspaceBuild.derivedPaths boundary",
+            spec.provider_id,
+            live_workspace_artifact_root.display()
+        ));
+    }
+    let build_recipe_digest = workspace_build_recipe_digest(spec, build)?;
+    let before = capture_workspace_build_snapshot(
+        project_root,
+        &derived_paths,
+        &live_source_snapshot_anchors,
+        &build_recipe_digest,
+    )?;
+    let source_cas_root = materialize_workspace_source_cas(state, project_root, &before)?;
+    let sandbox = materialize_workspace_build_sandbox(
+        state,
+        &spec.provider_id,
+        &build_recipe_digest,
+        &source_cas_root,
+        &before,
+    )?;
+    if let Some(materialization) = &spec.dependency_materialization {
+        run_dependency_materialization(
+            materialization,
+            &spec.provider_id,
+            project_root,
+            &sandbox.root,
+        )?;
+    }
+    let working_directory = resolve_workspace_relative_path(
+        &sandbox.root,
+        &build.working_directory,
+        "workingDirectory",
+    )?;
+    fs::create_dir_all(&working_directory).map_err(|error| {
+        format!(
+            "failed to create pinned workspace build directory {}: {error}",
+            working_directory.display()
+        )
+    })?;
+    let workspace_artifact_root =
+        resolve_workspace_relative_path(&sandbox.root, &artifact.root, "workspaceArtifact.root")?;
+    let derived_paths = build
+        .derived_paths
+        .iter()
+        .map(|path| resolve_workspace_relative_path(&sandbox.root, path, "derivedPaths"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let source_snapshot_anchors = build
+        .source_snapshot_anchors
+        .iter()
+        .map(|path| resolve_workspace_relative_path(&sandbox.root, path, "sourceSnapshotAnchors"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let configured_program = Path::new(&build.program);
+    let build_program = if configured_program.is_absolute() {
+        configured_program
+            .strip_prefix(project_root)
+            .map(|relative| sandbox.root.join(relative))
+            .unwrap_or_else(|_| configured_program.to_path_buf())
+    } else {
+        configured_program.to_path_buf()
+    };
+    let mut command = std::process::Command::new(&build_program);
+    command
+        .args(&build.args)
+        .current_dir(&working_directory)
+        .env("ASP_WORKSPACE_ROOT", &sandbox.root)
+        .envs(rendered_workspace_build_env(build, &sandbox.root));
+    let status = command.status().map_err(|error| {
+        format!(
+            "failed to start workspace build for provider {} with program `{}`: {error}",
+            spec.provider_id,
+            build_program.display()
+        )
+    })?;
+    if !status.success() {
+        return Err(format!(
+            "workspace build failed for provider {} with status {status}",
+            spec.provider_id
+        ));
+    }
+    let after = capture_workspace_build_snapshot(
+        &sandbox.root,
+        &derived_paths,
+        &source_snapshot_anchors,
+        &build_recipe_digest,
+    )?;
+    if before.evidence.root_digest != after.evidence.root_digest
+        || before.evidence.leaf_count != after.evidence.leaf_count
+    {
+        let changed_paths = before.changed_paths(&after).join(",");
+        return Err(format!(
+            "pinned workspace source changed inside provider {} build sandbox: beforeRoot={} afterRoot={} changedPaths={changed_paths}",
+            spec.provider_id, before.evidence.root_digest, after.evidence.root_digest
+        ));
+    }
+    let workspace_artifact_metadata = fs::symlink_metadata(&workspace_artifact_root).map_err(|error| {
+        format!(
+            "workspace build for provider {} completed without producing configured artifact root {}: {error}",
+            spec.provider_id,
+            workspace_artifact_root.display()
+        )
+    })?;
+    let entrypoint_relative = PathBuf::from(&artifact.entrypoint);
+    if entrypoint_relative.is_absolute()
+        || entrypoint_relative.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        return Err(format!(
+            "provider {} workspaceArtifact.entrypoint must be artifact-relative without parent traversal: {}",
+            spec.provider_id, artifact.entrypoint
+        ));
+    }
+    let workspace_entrypoint = if workspace_artifact_metadata.file_type().is_file() {
+        if artifact.entrypoint != "." {
+            return Err(format!(
+                "provider {} single-file workspaceArtifact.entrypoint must be `.`",
+                spec.provider_id
+            ));
+        }
+        workspace_artifact_root.clone()
+    } else if workspace_artifact_metadata.file_type().is_dir() {
+        workspace_artifact_root.join(&entrypoint_relative)
+    } else {
+        return Err(format!(
+            "provider {} workspaceArtifact.root has unsupported type at {}",
+            spec.provider_id,
+            workspace_artifact_root.display()
+        ));
+    };
+    if !workspace_entrypoint.is_file() {
+        return Err(format!(
+            "workspace build for provider {} completed without producing configured entrypoint {}",
+            spec.provider_id,
+            workspace_entrypoint.display()
+        ));
+    }
+    let artifact_snapshot = capture_workspace_artifact_snapshot(&workspace_artifact_root)?;
+    let entrypoint_sha256 = sha256_file(&workspace_entrypoint)?;
+    let build_root = sandbox.persist();
+    Ok((
+        MaterializedWorkspaceArtifact {
+            source_cas_root,
+            build_root,
+            workspace_root: workspace_artifact_root,
+            workspace_entrypoint,
+            entrypoint_relative,
+            launch: artifact.launch,
+        },
+        WorkspaceBuildReceipt {
+            source_snapshot: before.evidence,
+            build_recipe_digest,
+            artifact_digest: artifact_snapshot.root_digest,
+            artifact_leaf_count: artifact_snapshot.leaf_count,
+            entrypoint_sha256,
+        },
+    ))
+}
+
+fn install_workspace_provider_binary(
+    spec: &super::install_provider_workspace_descriptor::ProviderWorkspaceInstallDescriptor,
+    language_id: &str,
+    project_root: &Path,
+    target: &str,
+    install_target: &ProviderBinaryInstallTarget,
+) -> Result<(), String> {
+    let state = project_runtime_state(project_root)?;
+    let (workspace_artifact, build_receipt) =
+        materialize_workspace_provider_binary(spec, project_root, &state)?;
+    let runtime_artifact = state.runtime_bin_dir.join(&spec.binary);
+    let installed = install_workspace_artifact_from_cas(
+        spec,
+        &state,
+        &workspace_artifact,
+        &build_receipt,
+        &runtime_artifact,
+        &install_target.path,
+    );
+    let cleanup = remove_workspace_snapshot_tree(&workspace_artifact.build_root);
+    let installed = installed?;
+    cleanup?;
+    let provider_lock_dir = ensure_project_provider_lock_dir(project_root)?;
+    let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
+    write_provider_lock(
+        &lock_path,
+        &ProviderInstallLock {
+            schema_id: "asp.provider-install-lock.v1",
+            language_id,
+            provider_id: &spec.provider_id,
+            source_kind: "workspace",
+            repo: None,
+            rev: None,
+            target,
+            binary: &spec.binary,
+            installed_path: &runtime_artifact,
+            package_path: &installed.cas_root,
+            sha256: &installed.installed_sha256,
+            source: format!(
+                "workspace+blake3://{}",
+                build_receipt.source_snapshot.root_digest
+            ),
+            source_snapshot_root: Some(&build_receipt.source_snapshot.root_digest),
+            source_snapshot_algorithm: Some(&build_receipt.source_snapshot.algorithm),
+            source_leaf_count: Some(build_receipt.source_snapshot.leaf_count),
+            provider_digest: Some(&build_receipt.source_snapshot.provider_digest),
+            build_recipe_digest: Some(&build_receipt.build_recipe_digest),
+            artifact_digest: Some(&build_receipt.artifact_digest),
+            artifact_leaf_count: Some(build_receipt.artifact_leaf_count),
+            artifact_entrypoint: Some(&workspace_artifact.entrypoint_relative),
+            artifact_entrypoint_sha256: Some(&build_receipt.entrypoint_sha256),
+            installed_entrypoint_digest: Some(&installed.installed_digest),
+            launcher_digest: installed.launcher_digest.as_deref(),
+        },
+    )?;
     let org_state_sync = org_capture::run_org_state_sync(project_root)?;
     println!(
-        "[asp-install] provider={} language={} source=workspace-artifact workspaceInstall={} binary={} workspaceArtifact={} installedPath={} runtimeArtifact={} installTargetSource={} runtimeBinDir={} orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} installMode=develop-workspace source=workspace-build binary={} workspaceSourceCAS={} workspaceArtifact={} workspaceEntrypoint={} immutableArtifact={} immutableEntrypoint={} installedPath={} runtimeArtifact={} installTargetSource={} runtimeBinDir={} sourceSnapshotRoot={} sourceSnapshotAlgorithm={} sourceLeafCount={} providerDigest={} buildRecipeDigest={} artifactDigest={} artifactLeafCount={} artifactEntrypointSha256={} installedEntrypointDigest={} sha256={} launcherDigest={} lock={} orgState={} orgStateSync={}",
         spec.provider_id,
-        spec.language_id,
-        spec.workspace_install.as_str(),
+        language_id,
         spec.binary,
-        workspace_binary.display(),
+        workspace_artifact.source_cas_root.display(),
+        workspace_artifact.workspace_root.display(),
+        workspace_artifact.workspace_entrypoint.display(),
+        installed.cas_root.display(),
+        installed.cas_entrypoint.display(),
         install_target.path.display(),
         runtime_artifact.display(),
         install_target.source,
         state.runtime_bin_dir.display(),
+        build_receipt.source_snapshot.root_digest,
+        build_receipt.source_snapshot.algorithm,
+        build_receipt.source_snapshot.leaf_count,
+        build_receipt.source_snapshot.provider_digest,
+        build_receipt.build_recipe_digest,
+        build_receipt.artifact_digest,
+        build_receipt.artifact_leaf_count,
+        build_receipt.entrypoint_sha256,
+        installed.installed_digest,
+        installed.installed_sha256,
+        installed.launcher_digest.as_deref().unwrap_or("none"),
+        lock_path.display(),
         state.protocol_home.join("org").display(),
         org_state_sync.status,
     );
     Ok(())
-}
-
-fn install_workspace_entrypoint(
-    spec: &ProviderReleaseSpec,
-    source: &Path,
-    target: &Path,
-) -> Result<(), String> {
-    match spec.workspace_install {
-        WorkspaceInstallMode::Copy => install_executable_entrypoint(source, target),
-        WorkspaceInstallMode::Symlink => install_linked_entrypoint(source, target),
-    }
 }
 
 fn required_value<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str, String> {
@@ -312,8 +701,7 @@ fn required_value<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'
 }
 
 fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
-    let mut manifest: PinnedLanguageReleaseManifest = toml::from_str(PINNED_LANGUAGE_RELEASES_TOML)
-        .map_err(|error| format!("failed to parse pinned language releases: {error}"))?;
+    let mut manifest = pinned_language_release_manifest()?;
     let Some(entry) = manifest.languages.remove(language_id) else {
         let supported = manifest
             .languages
@@ -322,7 +710,7 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
             .collect::<Vec<_>>()
             .join(", ");
         return Err(format!(
-            "unsupported provider language `{language_id}`; pinned languages: {supported}"
+            "[asp-install-error] state=locked-release-unavailable installMode=locked-release language={language_id} reason=language-not-pinned pinnedLanguages={supported}"
         ));
     };
     Ok(ProviderReleaseSpec {
@@ -334,11 +722,20 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
         archive_prefix: entry.archive_prefix.unwrap_or_else(|| entry.binary.clone()),
         archive_binary: entry.archive_binary.unwrap_or_else(|| entry.binary.clone()),
         require_native_binary: entry.require_native_binary.unwrap_or(false),
-        workspace_binary: entry.workspace_binary,
-        workspace_install: entry.workspace_install,
         binary: entry.binary,
         supported_targets: entry.supported_targets,
     })
+}
+
+pub(super) fn has_pinned_language_release(language_id: &str) -> Result<bool, String> {
+    Ok(pinned_language_release_manifest()?
+        .languages
+        .contains_key(language_id))
+}
+
+fn pinned_language_release_manifest() -> Result<PinnedLanguageReleaseManifest, String> {
+    toml::from_str(PINNED_LANGUAGE_RELEASES_TOML)
+        .map_err(|error| format!("failed to parse pinned language releases: {error}"))
 }
 
 fn host_target_triple() -> Option<String> {
@@ -369,32 +766,102 @@ fn validate_target(spec: &ProviderReleaseSpec, target: &str) -> Result<(), Strin
 }
 
 struct ProviderInstallLock<'a> {
+    schema_id: &'a str,
     language_id: &'a str,
     provider_id: &'a str,
-    repo: &'a str,
-    rev: &'a str,
+    source_kind: &'a str,
+    repo: Option<&'a str>,
+    rev: Option<&'a str>,
     target: &'a str,
     binary: &'a str,
     installed_path: &'a Path,
     package_path: &'a Path,
     sha256: &'a str,
     source: String,
+    source_snapshot_root: Option<&'a str>,
+    source_snapshot_algorithm: Option<&'a str>,
+    source_leaf_count: Option<usize>,
+    provider_digest: Option<&'a str>,
+    build_recipe_digest: Option<&'a str>,
+    artifact_digest: Option<&'a str>,
+    artifact_leaf_count: Option<usize>,
+    artifact_entrypoint: Option<&'a Path>,
+    artifact_entrypoint_sha256: Option<&'a str>,
+    installed_entrypoint_digest: Option<&'a str>,
+    launcher_digest: Option<&'a str>,
 }
 
 fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<(), String> {
-    let contents = format!(
-        "language = \"{}\"\nprovider = \"{}\"\nrepo = \"{}\"\nrev = \"{}\"\ntarget = \"{}\"\nbinary = \"{}\"\ninstalledPath = \"{}\"\npackagePath = \"{}\"\nsha256 = \"{}\"\nsource = \"{}\"\n",
+    let mut contents = format!(
+        "schemaId = \"{}\"\nlanguage = \"{}\"\nprovider = \"{}\"\nsourceKind = \"{}\"\n",
+        toml_escape(lock.schema_id),
         toml_escape(lock.language_id),
         toml_escape(lock.provider_id),
-        toml_escape(lock.repo),
-        toml_escape(lock.rev),
+        toml_escape(lock.source_kind),
+    );
+    if let Some(repo) = lock.repo {
+        contents.push_str(&format!("repo = \"{}\"\n", toml_escape(repo)));
+    }
+    if let Some(rev) = lock.rev {
+        contents.push_str(&format!("rev = \"{}\"\n", toml_escape(rev)));
+    }
+    contents.push_str(&format!(
+        "target = \"{}\"\nbinary = \"{}\"\ninstalledPath = \"{}\"\npackagePath = \"{}\"\nsha256 = \"{}\"\nsource = \"{}\"\n",
         toml_escape(lock.target),
         toml_escape(lock.binary),
         toml_escape(&lock.installed_path.display().to_string()),
         toml_escape(&lock.package_path.display().to_string()),
         toml_escape(lock.sha256),
         toml_escape(&lock.source),
-    );
+    ));
+    if let Some(value) = lock.source_snapshot_root {
+        contents.push_str(&format!(
+            "sourceSnapshotRoot = \"{}\"\n",
+            toml_escape(value)
+        ));
+    }
+    if let Some(value) = lock.source_snapshot_algorithm {
+        contents.push_str(&format!(
+            "sourceSnapshotAlgorithm = \"{}\"\n",
+            toml_escape(value)
+        ));
+    }
+    if let Some(value) = lock.source_leaf_count {
+        contents.push_str(&format!("sourceLeafCount = {value}\n"));
+    }
+    if let Some(value) = lock.provider_digest {
+        contents.push_str(&format!("providerDigest = \"{}\"\n", toml_escape(value)));
+    }
+    if let Some(value) = lock.build_recipe_digest {
+        contents.push_str(&format!("buildRecipeDigest = \"{}\"\n", toml_escape(value)));
+    }
+    if let Some(value) = lock.artifact_digest {
+        contents.push_str(&format!("artifactDigest = \"{}\"\n", toml_escape(value)));
+    }
+    if let Some(value) = lock.artifact_leaf_count {
+        contents.push_str(&format!("artifactLeafCount = {value}\n"));
+    }
+    if let Some(value) = lock.artifact_entrypoint {
+        contents.push_str(&format!(
+            "artifactEntrypoint = \"{}\"\n",
+            toml_escape(&value.display().to_string())
+        ));
+    }
+    if let Some(value) = lock.artifact_entrypoint_sha256 {
+        contents.push_str(&format!(
+            "artifactEntrypointSha256 = \"{}\"\n",
+            toml_escape(value)
+        ));
+    }
+    if let Some(value) = lock.installed_entrypoint_digest {
+        contents.push_str(&format!(
+            "installedEntrypointDigest = \"{}\"\n",
+            toml_escape(value)
+        ));
+    }
+    if let Some(value) = lock.launcher_digest {
+        contents.push_str(&format!("launcherDigest = \"{}\"\n", toml_escape(value)));
+    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
@@ -408,17 +875,17 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>] [--from-workspace]\n       language provider releases are pinned by asp by default; --from-workspace deploys the configured workspace artifact to the ASP runtime home and its canonical $HOME/.local/bin entrypoint".to_string()
+    "usage: asp install binary --target <path>\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)".to_string()
 }
 
 fn install_hook_usage() -> String {
     "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]".to_string()
 }
 
-fn install_plugin_usage() -> String {
-    "usage: asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]".to_string()
-}
-
 #[cfg(test)]
 #[path = "../../tests/unit/install_provider.rs"]
 mod install_provider_tests;
+use super::install_provider_workspace_source::{
+    capture_workspace_build_snapshot, materialize_workspace_build_sandbox,
+    materialize_workspace_source_cas, remove_workspace_snapshot_tree,
+};

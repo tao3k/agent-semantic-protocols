@@ -67,6 +67,15 @@ workspace.
 
 * Root Rust Runtime
 
+Configured-resident denies project to exactly one executable v1
+interactive-loop command.  The Agent enters the selected resident session
+directly and must not interpret routing fields, recovery prose, or receipt
+metadata first.  The complete typed decision remains durable in hook event
+state and is available through =--emit decision= for machine validation; the
+normal Codex/Claude deny envelope omits that serialized decision from
+=additionalContext=.  This is a breaking refinement of the existing v1
+contract, not a new schema version.
+
 The v1 implementation target is the shared protocol binary in this repository.
 The hook runtime itself stays in the =agent-semantic-hook= library crate:
 
@@ -615,6 +624,8 @@ under =$ASP_STATE_HOME/hooks/config.toml= or
 
 * Classifier
 
+One shared ASP command-intent matcher MUST exclusively own the public language-command grammar, classification precedence, policy-membership checks, and canonical typed route identifiers. Its result is a typed =AspCommandIntentMatch= containing the language id, intent, =AspCommandRouteId=, optional parsed selector, and any rejection reason. Hook code may locate and normalize an ASP invocation, but it MUST consume this match and MUST NOT independently match =guide=, =search=, or =query= subcommands, re-evaluate flag precedence, synthesize route strings, or reparse selector text. The protocol session router consumes the same typed result.
+
 The classifier is deterministic and evidence-first.  It evaluates one
 normalized invocation against the activated provider dispatch index and current
 hook state.
@@ -766,6 +777,12 @@ PATH set.  This bootstrap boundary exists so an older hook cannot permanently
 prevent installation of the parser or routing fix that replaces it.
 
 ** Resident runtime rebind control intent
+:PROPERTIES:
+:CUSTOM_ID: resident-runtime-rebind-control-intent
+:END:
+
+The canonical resident lifecycle and its release evidence are owned by
+[[file:10.15.02-codex-resident-agent-lifecycle-v1.org::#regression-gates][RFC 10.15.02 regression gates]].
 
 A resident-child runtime mismatch is repaired on the existing canonical child;
 it is never evidence that a replacement child should be created.  The repair
@@ -965,6 +982,8 @@ return the equivalent compact command, usually preserving the search route and
 adding =--view seeds= when the provider supports it.
 
 ** Decisions
+
+=fields.aspCommandRoute= MUST be serialized from the canonical =AspCommandRouteId= produced by the shared matcher. Existing wire values such as =guide=, =search-prime=, =search-pipe=, =query-selector=, =query-reasoning=, and =query-direct-read-fallback= remain compatibility values of that typed identifier; hook materializers MUST NOT recreate them with local string formatting.
 
 The decision order is:
 

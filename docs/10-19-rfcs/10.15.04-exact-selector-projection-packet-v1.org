@@ -1,0 +1,122 @@
+#+title: RFC 10.15.04 - Exact Selector Projection Packet v1
+#+status: implementation
+
+* Problem
+
+The exact structural-query command currently reaches =run_provider_command= as
+argv and terminal side effects.  That boundary does not own a parsed selector,
+projection mode, parser identity, query-pack identity, projection payload, or a
+client DB handle.  It therefore cannot safely construct an exact-selector
+Merkle lookup key.  Recovering those fields from stdout text or argv windows
+would recreate the legacy heuristic architecture.
+
+* Decision
+
+Exact structural queries use one typed v1 packet at the provider/client
+boundary.  The provider owns parser facts and projection bytes.  The client
+owns workspace membership, Merkle inclusion, persistence, and warm-hit policy.
+There is no compatibility parser for untyped exact-query stdout.
+
+** Provider-owned packet
+
+The provider emits =agent.semantic-protocols.exact-selector-projection-packet=
+with schema version =1=.  It contains:
+
+- language and provider identity
+- parser-identity and query-pack BLAKE3-256 digests
+- normalized owner path and source-blob digest
+- parser-fact digest
+- structural selector and projection mode
+- projection encoding and projection payload
+
+The packet is data, not terminal guidance.  Human rendering happens only after
+the client validates the packet.
+
+** Pinned exact-query projection boundary
+
+The typed identity arguments belong to the generic exact-source query branch
+that consumes =asp.exact-source-snapshot-envelope.v1=. A provider MUST build
+the v1 projection packet from the pinned owner bytes and parser facts resolved
+from that envelope. Wiring the arguments only into a separate native
+tree-sitter/catalog command is incomplete because the wrapper's exact
+selector flow does not execute that branch.
+
+The old =asp.exact-source-query-result.v1= stdout object is not a compatibility
+surface. Exact-query success emits only
+=agent.semantic-protocols.exact-selector-projection-packet=; exact-query
+failure is an error and cannot be persisted or hydrated as a projection.
+
+** Client-owned enrichment
+
+The client verifies provider identity against the active manifest, verifies the
+owner/source digest against the current source snapshot, derives the sorted v1
+workspace Merkle tree, creates the owner inclusion proof, and derives the exact
+projection digest.  Only then may it construct and persist
+=ExactSelectorProjectionRecordV1=.
+
+Activation identities are content-derived, not label-derived:
+
+- parser identity uses domain =asp.parser-identity.v1= over provider ID,
+  execution-command digest, and semantic-registry digest
+- query-pack identity uses domain =asp.query-pack-identity.v1= over the compact
+  canonical JSON serialization of the typed query-pack descriptor
+
+The client passes both derived digests as typed exact-query arguments.  The
+provider packet must echo them, and the client rejects any mismatch before
+Merkle enrichment.  Descriptor ID/version strings are never substituted for a
+content digest.
+
+** Hydration boundary
+
+Turso stores the owned record under the complete nine-field
+=ExactSelectorMerkleLookupKeyV1=.  A write performs the complete proof and
+projection validation.  A read decodes the owned record and performs the same
+validation before producing the private
+=ValidatedExactSelectorProjectionV1= state.
+
+The validated state may reuse its proof within the same immutable record, but
+every request must bind all nine lookup-key fields.  Callers cannot construct a
+validated state directly.
+
+* Command flow
+
+#+begin_src text
+typed CLI exact query
+  -> parse selector and projection mode
+  -> current typed source snapshot + active provider identities
+  -> construct nine-field lookup key
+  -> Turso lookup and validated hydration
+     -> hit: render immutable projection payload; zero provider/parser/write
+     -> miss: execute provider and decode typed v1 projection packet
+          -> client Merkle enrichment and full validation
+          -> atomic Turso persist
+          -> render validated payload
+#+end_src
+
+The provider process is never launched before the validated lookup completes.
+Cache corruption, snapshot drift, identity drift, or malformed packets fail
+closed to a typed miss or explicit error; they never return cached bytes.
+
+* Performance contract
+
+- validated in-memory lookup p95: at most 100 microseconds
+- 1,024 validated in-memory lookups p95: at most 10 milliseconds
+- warm exact-query command p95: at most 10 milliseconds after resident DB and
+  activation hydration
+- warm-hit parser process count: zero
+- warm-hit content-store, Turso, and manifest write counts: zero
+
+Build or link latency is reported separately and cannot be hidden by increasing
+runtime timeouts.
+
+* Acceptance
+
+1. The shared v1 packet schema validates provider output.
+2. Rust provider and client use the typed packet without stdout-prefix parsing.
+3. Turso persistence rejects invalid records and lookup never exposes an
+   unvalidated record.
+4. A real exact query returns the same projection on cold and warm paths.
+5. The warm receipt proves zero provider/parser/write side effects and the
+   latency budgets above.
+6. Other language providers have a registry-visible alignment status; no
+   Rust-private field is added to the shared packet.

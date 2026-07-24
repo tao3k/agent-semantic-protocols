@@ -47,9 +47,10 @@ pub(crate) fn run_language_command_with_config(
     }
     if is_document_command(command) {
         let _generic_session_env = GenericSessionEnvGuard::remove_for(language_id);
+        let document_args = args.to_vec();
         return agent::run_document_command_with_walk_config(
             document_language(language_id)?,
-            args.to_vec(),
+            document_args,
             DocumentWalkConfig::new(
                 config.search.ignore_dirs.clone(),
                 config.search.include_hidden_dirs.clone(),

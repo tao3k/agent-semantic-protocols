@@ -1,0 +1,80 @@
+#+title: Turso 0.7 Local Sync Server End-to-End Receipt
+#+property: header-args :eval never
+
+* Scope
+
+This receipt closes the real push/pull success path without requiring a Turso
+Cloud account.  The fixture downloads the official platform-specific
+=tursodb= v0.7.0 release into a temporary directory, verifies the publisher's
+SHA-256 file, starts its local sync server on an ephemeral loopback port, and
+uses two =agent-semantic-client-db= sync clients.  It neither installs a global
+binary nor changes =TURSO_CLIENT_DB_SCHEMA_VERSION= from =1=.
+
+* Fixed command
+
+#+begin_src sh
+./scripts/test-turso-sync-server-v0.7.sh
+#+end_src
+
+The script is explicit and networked dependency preparation.  The ordinary
+unit-test suite remains offline and does not silently download a binary.  The
+script runs both the ignored external-fixture test and its registered
+benchmark.
+
+* Scenario test
+
+The fixed test
+=db_engine::pinned_v0_7_sync_server_push_pull_checkpoint_and_stats= performs
+the following sequence:
+
+1. open clients A and B against the pinned local server;
+2. create a table and write locally through client A;
+3. push through A and require an =Applied= typed receipt;
+4. pull through B and require =Applied= plus =pulledChanges=true=;
+5. read the exact row through B;
+6. release rows and connections before checkpointing;
+7. require =Applied= checkpoint and =Observed= typed stats.
+
+Receipt: =1 passed, 0 failed, 0 ignored= for the explicit fixture run.
+
+* Benchmark receipt
+
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.client-db.turso-sync-server-benchmark-receipt.v1",
+  "tursoVersion": "0.7.0",
+  "iterations": 32,
+  "pushedRows": 32,
+  "pulledRows": 32,
+  "pushLatencyMicros": {
+    "sampleCount": 32,
+    "p50": 22304,
+    "p95": 39158,
+    "p99": 39760,
+    "max": 39760
+  },
+  "pullLatencyMicros": {
+    "sampleCount": 32,
+    "p50": 14621,
+    "p95": 22143,
+    "p99": 48692,
+    "max": 48692
+  },
+  "checkpointLatencyMicros": 3249,
+  "networkReceivedBytes": 271087,
+  "networkSentBytes": 124,
+  "mainWalSize": 0
+}
+#+end_src
+
+The run recovered all =32= pushed rows through client B.  Local loopback push
+latency measured =22.304/39.158/39.760 ms= at p50/p95/p99; pull measured
+=14.621/22.143/48.692 ms=.  These are baseline observations, not universal
+service-level guarantees.
+
+* Ownership verdict
+
+The implementation and fixture consume the existing
+=agent-semantic-client-db::turso_sync_storage= owner.  No
+=agent-semantic-client-store= crate or dependency was introduced, and no
+storage/domain dependency was placed under =languages/=.

@@ -1,11 +1,11 @@
 //! Bootstrap migrations for agent session registry storage.
 
-use crate::engine::turso_statement::execute_turso_operation_with_lock_retry;
+use crate::engine::turso_statement::execute_turso_operation;
 
 pub(super) async fn dedupe_turso_agent_sessions_by_session_id(
     connection: &turso::Connection,
 ) -> Result<(), String> {
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute(

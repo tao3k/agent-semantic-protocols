@@ -1,0 +1,44 @@
+#+TITLE: Editor-buffer overlays as Merkle deltas
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Normative and breaking. Providers implementing source snapshot authority MUST
+consume editor state as a versioned Merkle delta. An editor buffer is not an
+out-of-band fallback and MUST NOT be merged through a source-index database.
+
+* Input contract
+
+The public input is =asp.exact-source-snapshot-envelope.v1=. A delta contains an optional
+=baseRootDigest= CAS guard and ordered-independent changes keyed by normalized
+workspace-relative path. An upsert carries the complete UTF-8 buffer. A delete
+removes the path from the derived snapshot.
+
+Providers MUST reject duplicate paths, absolute paths, parent traversal, and a
+supplied =baseRootDigest= that differs from the captured filesystem root.
+
+* Snapshot derivation
+
+For every query, the provider:
+
+1. captures filesystem bytes and derives the base WorkspaceSnapshot;
+2. verifies the optional base-root guard;
+3. hashes upsert bytes with the shared content-identity blob function;
+4. applies upserts and deletes to both the pinned byte map and snapshot leaves;
+5. derives =dirtyPathsDigest= from the delta paths and operations;
+6. emits a new root with =sourceKind=editor-buffer= and
+   =baseRootDigest=<captured filesystem root>=.
+
+All parsing, module traversal, item resolution, and artifact lookup MUST read
+from the derived pinned byte map. Cache keys MUST therefore change when an
+unsaved buffer changes, even when no database or filesystem index has observed
+that change.
+
+* Concurrency and cache rules
+
+The overlay file is read once before resolution. The captured bytes, delta, and
+derived root form one immutable query input. A parser or index artifact may be
+reused only when its key includes the derived owner blob digest and provider
+identity. Failure to read or validate the delta is a query failure, never a
+reason to silently query the base snapshot.
+

@@ -59,47 +59,6 @@ fn owner_items_search_writeback_replays_prompt_output_artifact() {
 
     assert_eq!(replay.stdout, stdout.as_bytes());
     assert_eq!(probe.db_write_count, 2);
-    let cache_report = ClientCacheManifest::inspect_project(&root);
-    let cache_root = cache_report.cache_root.expect("cache root");
-    let analysis_dir = artifacts_root_from_cache_root(&cache_root).join("analysis-metadata");
-    let analysis_entries = std::fs::read_dir(&analysis_dir)
-        .expect("analysis metadata dir")
-        .collect::<Result<Vec<_>, _>>()
-        .expect("analysis metadata entries");
-    assert_eq!(analysis_entries.len(), 1, "{analysis_entries:?}");
-    let metadata: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(analysis_entries[0].path()).expect("metadata bytes"))
-            .expect("metadata json");
-    assert_eq!(
-        metadata
-            .pointer("/schemaId")
-            .and_then(serde_json::Value::as_str),
-        Some("agent.semantic-protocols.client-history-analysis-metadata")
-    );
-    assert_eq!(
-        metadata
-            .pointer("/agentFacingOutput/unchanged")
-            .and_then(serde_json::Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        metadata
-            .pointer("/request/forwardedArgs/0")
-            .and_then(serde_json::Value::as_str),
-        Some("owner")
-    );
-    assert_eq!(
-        metadata
-            .pointer("/query")
-            .and_then(serde_json::Value::as_str),
-        Some("Event")
-    );
-    assert_eq!(
-        metadata
-            .pointer("/analysis/fieldLines/header")
-            .and_then(serde_json::Value::as_str),
-        Some("[search-owner] q=src/export/event.rs pkg=. own=1 item=1 itemQuery=Event")
-    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -242,7 +201,7 @@ fn prime_seed_prompt_output_writeback_adds_search_output_replay_artifact() {
             ".".to_string(),
         ]);
     let stdout = "[search-prime] root=. alg=fast-prime-frontier-v1\n\
-|decision purpose=decision-primer answer=false code=false capabilities=pipe,lexical,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>lexical>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"\n\
+|decision purpose=decision-primer answer=false code=false capabilities=pipe,lexical,owner-items,selector-code,treesitter-query ladder=pipe>lexical>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"\n\
 aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\
 G>{O:selects}\n\

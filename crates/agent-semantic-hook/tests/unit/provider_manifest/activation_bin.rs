@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use super::{git_init, make_executable, temp_root};
 
-static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 struct HomeEnvGuard {
     previous: Option<OsString>,
@@ -61,6 +61,10 @@ fn default_activation_records_project_bin_provider_prefix() {
         julia.provider_command_prefix
     );
     assert!(julia.coverage.package_roots.contains(&".".to_string()));
+    assert_eq!(
+        julia.query_pack_descriptor.descriptor_id.as_str(),
+        "julia.query-pack"
+    );
 
     fs::remove_dir_all(root).expect("remove temp root");
 }
@@ -197,7 +201,27 @@ fn default_activation_accepts_languages_bin_provider_override() {
     make_executable(&provider_bin);
     write_agent_config(
         &root,
-        "[languages.rust]\nbin = \"tools/custom-rs-harness\"\n",
+        r#"[languages.rust]
+bin = "tools/custom-rs-harness"
+
+[providers.typescript]
+enabled = false
+
+[providers.python]
+enabled = false
+
+[providers.julia]
+enabled = false
+
+[providers.gerbil-scheme]
+enabled = false
+
+[providers.org]
+enabled = false
+
+[providers.md]
+enabled = false
+"#,
     );
 
     let activation = build_default_activation(&root).expect("build activation");
@@ -222,10 +246,30 @@ fn default_activation_accepts_languages_bin_provider_override() {
 fn asp_toml_can_disable_document_language_hook_activation() {
     let root = temp_root("document-provider-disable");
     fs::create_dir_all(root.join(".bin")).expect("create project bin");
-    let asp_bin = root.join(".bin/asp");
+    let asp_bin = root.join(".bin/orgize");
     fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
     make_executable(&asp_bin);
-    write_agent_config(&root, "[providers.org]\nenabled = false\n");
+    write_agent_config(
+        &root,
+        r#"[providers.rust]
+enabled = false
+
+[providers.typescript]
+enabled = false
+
+[providers.python]
+enabled = false
+
+[providers.julia]
+enabled = false
+
+[providers.gerbil-scheme]
+enabled = false
+
+[providers.org]
+enabled = false
+"#,
+    );
 
     let activation = build_default_activation(&root).expect("build activation");
 
@@ -241,13 +285,13 @@ fn asp_toml_can_disable_document_language_hook_activation() {
         .find(|provider| provider.language_id == "md")
         .expect("md provider remains enabled");
     assert_eq!(md.provider_id, "orgize");
-    assert_eq!(md.binary, "asp");
-    assert_eq!(md.execution.as_str(), "embedded");
+    assert_eq!(md.binary, "orgize");
+    assert_eq!(md.execution.as_str(), "external-process");
     assert!(
         md.provider_command_prefix
             .first()
-            .is_some_and(|command| command.ends_with("/.bin/asp")),
-        "document provider should route through the project asp facade: {:?}",
+            .is_some_and(|command| command.ends_with("/.bin/orgize")),
+        "document provider should route through the project orgize binary: {:?}",
         md.provider_command_prefix
     );
 
@@ -258,9 +302,12 @@ fn asp_toml_can_disable_document_language_hook_activation() {
 fn top_level_asp_toml_no_longer_configures_provider_activation() {
     let root = temp_root("top-level-ignored");
     fs::create_dir_all(root.join(".bin")).expect("create project bin");
-    let asp_bin = root.join(".bin/asp");
+    let asp_bin = root.join(".bin/orgize");
     fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
     make_executable(&asp_bin);
+    let gerbil_bin = root.join(".bin/gslph");
+    fs::write(&gerbil_bin, "#!/bin/sh\nexit 0\n").expect("write gerbil bin");
+    make_executable(&gerbil_bin);
     fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
         .expect("write ignored top-level asp.toml");
 

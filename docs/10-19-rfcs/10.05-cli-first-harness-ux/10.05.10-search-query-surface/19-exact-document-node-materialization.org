@@ -1,0 +1,38 @@
+#+title: Exact Document Node Materialization
+
+* Status
+
+Required for the typed search architecture.
+
+* Contract
+** Activated byte-pinned projection
+
+Document query and exact materialization MUST execute through the activated language provider. The ASP dispatcher MUST NOT short-circuit Org or Markdown commands into an embedded document agent, synthesize an =orgize= identity for an =asp= process, or accept a provider packet that is not bound to the activation execution identity.
+
+The active contract is =semantic-document-query-packet.v1=. It MUST carry the exact structural selector, bounded content, a canonical =SourceSnapshotEvidence= packet, an =itemDigest= over the projected bytes, and the activation-owned =executionCommandDigest=. The provider process receives the expected execution digest from the activation authority, emits it in the packet, and the ASP dispatcher cross-checks it before returning any content. Missing or mismatched snapshot, item, or execution evidence fails closed.
+
+The runtime MUST publish and accept only the complete packet v1 contract. There is no v2 alias, compatibility projection, dual-read, or in-memory version upgrade. An incomplete legacy-shaped v1 packet that omits required byte-pinned evidence is invalid. A selector-only hit, a line range, stable replay, or exit status zero is routing evidence, not byte-pinned content evidence.
+
+
+Document providers MUST expose a lossless exact-node projection for a parser-owned
+structural selector.  The projection is named =--verbatim= and is distinct from
+=--content=: =--content= remains a normalized reasoning projection, while
+=--verbatim= returns the parser fact's inclusive source range without whitespace
+folding.
+
+=--verbatim= MUST require exactly one structural selector and exactly one matching
+parser fact.  It MUST reject JSON output, term/kind/field filters, direct-read
+mode, and whole-document selection.  The provider MUST derive the source path and
+line range from the resolved parser fact; callers may not supply or reconstruct a
+raw path window.
+
+Hook authorization MUST treat this exact-node projection as parser-owned evidence.
+It MUST NOT redirect it through legacy direct-source-read, filesystem scanning,
+or a client-side raw source fallback.
+
+* Search architecture consequence
+
+RFC maintenance and agent evidence materialization use the same structural
+selector authority as search.  A successful owner/selector receipt therefore
+has one continuation: exact parser-node materialization.  There is no fd/rg/raw
+file compatibility continuation.

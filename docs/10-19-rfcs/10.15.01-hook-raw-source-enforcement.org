@@ -51,3 +51,11 @@ Codex hook surface for:
 4. directory Read actions with and without a trailing slash;
 5. reasoning ASP commands, invalid facades, control-plane commands, and testing
    lanes as independent controls.
+* Config-owned permanent raw-source denial
+Raw source materialization policy is owned by the declarative hook rule engine and the canonical hook =config.toml= template.  Commands that can materialize provider-owned source MUST be matched by stable config rule ids and provider-derived source globs.  The Rust classifier MUST NOT maintain a parallel command allowlist or raw-read compatibility classifier.
+
+A source-access receipt, recovery replay, resident-child owner receipt, or successful parser projection changes only the next safe route.  It MUST NOT disable, consume, or otherwise unlock a raw-source deny rule.  Repeating the same raw command after recovery therefore remains denied by the same config rule id.
+
+The default config template MUST derive its source globs from the active provider source-extension set.  User and project rules may replace a built-in declaration only through the existing stable-id merge contract; runtime recovery state is not a rule override surface.
+
+Shell materialization is classified entirely by declarative rule fields such as =argvPrefixAny=, =commandContainsAny=, =argvSourceGlobAny=, and =pathGlobAny=.  Inline interpreter rules MUST combine the configured read API marker with a provider-derived source path; an API marker by itself is insufficient because non-source inputs must not be denied as source access.  =decisionMaterializer=source-access= remains only for normalized native Read and directory actions that need provider-owned typed routes.  It MUST NOT inspect shell command families, interpreter APIs, or raw-search compatibility intents.

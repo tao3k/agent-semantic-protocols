@@ -16,6 +16,7 @@ pub(crate) enum ResidentChildIdentityProof {
     RegistryExact,
     CodexTranscriptRegistryExact,
     CodexRolloutMetadata,
+    CodexHookPayloadLiveTarget,
 }
 
 pub(crate) fn registered_root_session_id(
@@ -52,25 +53,16 @@ pub(crate) fn current_registered_session(
     Ok(Some(record))
 }
 
-pub(crate) fn current_registered_session_identity(
-    project_root: &Path,
-) -> Result<Option<AgentSessionRecord>, String> {
-    let Some(session) = current_agent_runtime_session() else {
-        return Ok(None);
-    };
-    let Some(registry) = open_existing_registry(project_root)? else {
-        return Ok(None);
-    };
-    let project_id = project_session_scope_id(&registry, project_root)?;
-    registry.session_by_id(&project_id, &session.id)
-}
-
 pub(crate) fn current_resident_child_identity_proof(
     project_root: &Path,
     resident_child_name: &str,
     resident_agent_role: &str,
 ) -> Result<Option<ResidentChildIdentityProof>, String> {
-    let Some(session) = current_agent_runtime_session() else {
+    // Collaboration children keep their own identity in CODEX_THREAD_ID even
+    // when the runtime session projection falls back to the root task.  Use
+    // the canonical current-session resolver here so old/resumed children are
+    // not looked up under the root identity.
+    let Some(session_id) = current_agent_session_id() else {
         return Ok(None);
     };
     let registry = open_existing_registry(project_root)?;
@@ -79,7 +71,7 @@ pub(crate) fn current_resident_child_identity_proof(
         .map(|registry| project_session_scope_id(registry, project_root))
         .transpose()?;
     if let (Some(registry), Some(project_id)) = (registry.as_ref(), project_id.as_deref())
-        && let Some(record) = registry.session_by_id(project_id, &session.id)?
+        && let Some(record) = registry.session_by_id(project_id, &session_id)?
     {
         return Ok(
             (record.name == resident_child_name || record.role == resident_agent_role)
@@ -87,14 +79,14 @@ pub(crate) fn current_resident_child_identity_proof(
         );
     }
 
-    let Some(metadata) = agent_semantic_runtime::codex_rollout_session_metadata(&session.id)?
+    let Some(metadata) = agent_semantic_runtime::codex_rollout_session_metadata(&session_id)?
     else {
         return Ok(None);
     };
     let Some(root_session_id) = metadata.root_session_id.as_deref() else {
         return Ok(None);
     };
-    if root_session_id == session.id
+    if root_session_id == session_id
         || !super::agent_session_registry_validation::rollout_metadata_matches_managed_agent_profile(
             resident_child_name,
             resident_agent_role,
@@ -133,12 +125,89 @@ pub(crate) fn transcript_resident_child_identity_proof(
         .then_some(ResidentChildIdentityProof::CodexTranscriptRegistryExact))
 }
 
-pub(crate) fn codex_transcript_resident_child_identity_proof(
+pub(crate) fn payload_live_target_resident_identity_proof(
+    project_root: &Path,
+    payload_agent_id: Option<&str>,
+    root_session_id: &str,
+    resident_child_name: &str,
+    resident_agent_role: &str,
+    resident_codex_agent_name: &str,
+) -> Result<Option<ResidentChildIdentityProof>, String> {
+    let Some(_payload_agent_id) = payload_agent_id
+        .map(str::trim)
+        .filter(|agent_id| !agent_id.is_empty() && *agent_id != root_session_id)
+    else {
+        return Ok(None);
+    };
+    let Some(registry) = open_existing_registry(project_root)? else {
+        return Ok(None);
+    };
+    let project_id = project_session_scope_id(&registry, project_root)?;
+    let Some(record) =
+        registry.session_by_name(&project_id, root_session_id, resident_child_name)?
+    else {
+        return Ok(None);
+    };
+    let expected_target = format!("/root/{resident_codex_agent_name}");
+    Ok((record.root_session_id == root_session_id
+        && record.session_id != record.root_session_id
+        && (record.name == resident_child_name || record.role == resident_agent_role)
+        && record.message_target_id() == Some(expected_target.as_str())
+        && agent_semantic_client_db::agent_session_message_target_is_live_bound(
+            &record,
+            root_session_id,
+        ))
+    .then_some(ResidentChildIdentityProof::CodexHookPayloadLiveTarget))
+}
+
+pub(crate) fn payload_live_target_resident_identity_status(
+    project_root: &Path,
+    payload_agent_id: Option<&str>,
+    root_session_id: &str,
+    resident_child_name: &str,
+    resident_agent_role: &str,
+    resident_codex_agent_name: &str,
+) -> Result<&'static str, String> {
+    let Some(_payload_agent_id) = payload_agent_id
+        .map(str::trim)
+        .filter(|agent_id| !agent_id.is_empty() && *agent_id != root_session_id)
+    else {
+        return Ok("missing-or-root-payload-agent-id");
+    };
+    let expected_target = format!("/root/{resident_codex_agent_name}");
+    let Some(registry) = open_existing_registry(project_root)? else {
+        return Ok("missing-registry");
+    };
+    let project_id = project_session_scope_id(&registry, project_root)?;
+    let Some(record) =
+        registry.session_by_name(&project_id, root_session_id, resident_child_name)?
+    else {
+        return Ok("missing-resident-slot");
+    };
+    if record.root_session_id != root_session_id || record.session_id == record.root_session_id {
+        return Ok("root-or-session-mismatch");
+    }
+    if record.name != resident_child_name && record.role != resident_agent_role {
+        return Ok("role-mismatch");
+    }
+    if record.message_target_id() != Some(expected_target.as_str()) {
+        return Ok("message-target-mismatch");
+    }
+    if !agent_semantic_client_db::agent_session_message_target_is_live_bound(
+        &record,
+        root_session_id,
+    ) {
+        return Ok("not-live-bound");
+    }
+    Ok("matched")
+}
+
+pub(crate) fn codex_transcript_resident_child_identity(
     project_root: &Path,
     payload: &serde_json::Value,
     resident_child_name: &str,
     resident_agent_role: &str,
-) -> Result<Option<ResidentChildIdentityProof>, String> {
+) -> Result<Option<(ResidentChildIdentityProof, String)>, String> {
     let root_session_id = payload_string_field(payload, &["session_id", "sessionId"]);
     let transcript_session_id =
         payload_string_field(payload, &["transcript_path", "transcriptPath"])
@@ -151,13 +220,14 @@ pub(crate) fn codex_transcript_resident_child_identity_proof(
     if transcript_session_id == root_session_id {
         return Ok(None);
     }
-    transcript_resident_child_identity_proof(
+    let proof = transcript_resident_child_identity_proof(
         project_root,
         transcript_session_id,
         root_session_id,
         resident_child_name,
         resident_agent_role,
-    )
+    )?;
+    Ok(proof.map(|proof| (proof, transcript_session_id.to_string())))
 }
 
 fn payload_string_field(payload: &serde_json::Value, names: &[&str]) -> Option<String> {

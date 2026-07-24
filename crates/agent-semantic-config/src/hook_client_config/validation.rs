@@ -2,90 +2,56 @@
 
 use std::collections::HashSet;
 
-use super::model::{
+use super::agent_runtime::HookClientResidentAgentConfig;
+use super::document::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
-    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig,
-    HookClientAspCommandIntentPolicyConfig, HookClientConfigFile, HookClientRecoveryPromptConfig,
-    HookClientResidentAgentConfig, HookClientRuleConfig, HookClientRuleMatchConfig,
-    HookClientRuleRouteConfig,
+    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig, HookClientConfigFile,
+    HookClientRecoveryPromptConfig,
 };
+use super::routing::{HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig};
 
 pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
+    validate_optional_non_empty(
+        "contractFingerprint",
+        config.contract_fingerprint.as_deref(),
+    )?;
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_recovery_prompt(&config.recovery_prompt)?;
     validate_agent_session_guide(&config.agent_session_guide)?;
     validate_agent_session_messages(&config.agent_session_messages)?;
     validate_resident_agents(&config.agents.resident_agents)?;
-    validate_execution_lanes(&config.execution_lanes)?;
-    validate_asp_command_intent_policy(&config.asp_command_intent_policy)?;
+    validate_rule_dispatches(&config.rules, &config.agents.resident_agents)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules)
 }
 
-fn validate_execution_lanes(
-    lanes: &super::model::HookClientExecutionLanesConfig,
+fn validate_rule_dispatches(
+    rules: &[HookClientRuleConfig],
+    resident_agents: &[HookClientResidentAgentConfig],
 ) -> Result<(), String> {
-    let testing = &lanes.testing;
-    validate_optional_non_empty(
-        "executionLanes.testing.receiptKind",
-        Some(testing.receipt_kind.as_str()),
-    )?;
-    if testing.enabled && testing.command_prefixes.is_empty() {
-        return Err(
-            "executionLanes.testing.commandPrefixes must not be empty when enabled".to_string(),
-        );
-    }
-    validate_non_empty_values(
-        "executionLanes.testing.commandPrefixes[]",
-        &testing.command_prefixes,
-    )?;
-    validate_unique_values(
-        "executionLanes.testing.commandPrefixes[]",
-        &testing.command_prefixes,
-    )
-}
-
-fn validate_asp_command_intent_policy(
-    policy: &HookClientAspCommandIntentPolicyConfig,
-) -> Result<(), String> {
-    for (label, values) in [
-        (
-            "aspCommandIntentPolicy.controlPlane.rootCommands[]",
-            &policy.control_plane.root_commands,
-        ),
-        (
-            "aspCommandIntentPolicy.reasoning.rootCommands[]",
-            &policy.reasoning.root_commands,
-        ),
-        (
-            "aspCommandIntentPolicy.reasoning.searchRoutes[]",
-            &policy.reasoning.search_routes,
-        ),
-        (
-            "aspCommandIntentPolicy.reasoning.queryFlags[]",
-            &policy.reasoning.query_flags,
-        ),
-        (
-            "aspCommandIntentPolicy.exactEvidence.queryProjectionFlags[]",
-            &policy.exact_evidence.query_projection_flags,
-        ),
-        (
-            "aspCommandIntentPolicy.exactEvidence.queryProjectionViews[]",
-            &policy.exact_evidence.query_projection_views,
-        ),
-        (
-            "aspCommandIntentPolicy.exactEvidence.selectorKinds[]",
-            &policy.exact_evidence.selector_kinds,
-        ),
-        (
-            "aspCommandIntentPolicy.directReadFallback.fromHookValues[]",
-            &policy.direct_read_fallback.from_hook_values,
-        ),
-    ] {
-        if values.iter().any(|value| value.trim().is_empty()) {
-            return Err(format!("{label} must not contain empty values"));
+    for rule in rules.iter().filter(|rule| rule.enabled) {
+        let Some(dispatch) = rule.dispatch.as_ref() else {
+            continue;
+        };
+        let prefix = format!("rules[{}].dispatch", rule.id);
+        validate_non_empty(
+            &format!("{prefix}.residentName"),
+            dispatch.resident_name.as_str(),
+        )?;
+        validate_non_empty(
+            &format!("{prefix}.receiptKind"),
+            dispatch.receipt_kind.as_str(),
+        )?;
+        if !resident_agents
+            .iter()
+            .any(|agent| agent.enabled && agent.name == dispatch.resident_name.as_str())
+        {
+            return Err(format!(
+                "{prefix}.residentName `{}` must name an enabled agents.residentAgents entry",
+                dispatch.resident_name.as_str()
+            ));
         }
     }
     Ok(())
@@ -115,7 +81,7 @@ fn validate_agent_session_guide(config: &HookClientAgentSessionGuideConfig) -> R
 }
 
 fn validate_agent_session_messages(
-    config: &super::model::HookClientAgentSessionMessagesConfig,
+    config: &super::document::HookClientAgentSessionMessagesConfig,
 ) -> Result<(), String> {
     validate_optional_non_empty(
         "agentSessionMessages.sourceAccessCompactSubagent",
@@ -164,31 +130,15 @@ fn validate_resident_agent(config: &HookClientResidentAgentConfig) -> Result<(),
             Some(config.codex_agent_name.as_str()),
         )?;
     }
-    validate_optional_non_empty(
-        "agents.residentAgents[].lifecycle",
-        Some(config.lifecycle.as_str()),
-    )?;
     validate_non_empty_values("agents.residentAgents[].roles[]", &config.roles)?;
     validate_unique_values("agents.residentAgents[].roles[]", &config.roles)?;
     for role in &config.roles {
-        validate_session_role("agents.residentAgents[].roles[]", role)?;
+        validate_binary_name("agents.residentAgents[].roles[]", role)?;
     }
     validate_non_empty_values("agents.residentAgents[].permissions[]", &config.permissions)?;
     validate_unique_values("agents.residentAgents[].permissions[]", &config.permissions)?;
     for permission in &config.permissions {
         validate_session_permission("agents.residentAgents[].permissions[]", permission)?;
-    }
-    for prefix in &config.main_allowed_asp_command_prefixes {
-        validate_optional_non_empty(
-            "agents.residentAgents[].mainAllowedAspCommandPrefixes[]",
-            Some(prefix.as_str()),
-        )?;
-    }
-    for prefix in &config.command_prefixes {
-        validate_optional_non_empty(
-            "agents.residentAgents[].commandPrefixes[]",
-            Some(prefix.as_str()),
-        )?;
     }
     Ok(())
 }
@@ -236,6 +186,12 @@ fn validate_rule_schema_shape(rules: &[HookClientRuleConfig]) -> Result<(), Stri
         validate_unique_values("rules[].languageIds", &rule.language_ids)?;
         validate_identifiers("rules[].languageIds[]", &rule.language_ids)?;
         validate_match_schema_shape(&rule.match_config)?;
+        if rule.decision_materializer.is_some() && !rule.routes.is_empty() {
+            return Err(format!(
+                "hook rule `{}` cannot combine decisionMaterializer with static routes",
+                rule.id
+            ));
+        }
         for route in &rule.routes {
             validate_route_schema_shape(route)?;
         }
@@ -248,6 +204,7 @@ fn validate_match_schema_shape(match_config: &HookClientRuleMatchConfig) -> Resu
     validate_non_empty_values("rules[].match.toolAny[]", &match_config.tool_any)?;
     validate_non_empty_values("rules[].match.commandAny[]", &match_config.command_any)?;
     validate_argv_prefix_patterns("rules[].match.argvPrefixAny", &match_config.argv_prefix_any)?;
+    validate_argv_pattern_bindings(&match_config.argv_pattern_any)?;
     validate_non_empty_values(
         "rules[].match.commandContainsAny[]",
         &match_config.command_contains_any,
@@ -266,6 +223,77 @@ fn validate_match_schema_shape(match_config: &HookClientRuleMatchConfig) -> Resu
         "rules[].match.argvSourceExcludeFlagAny[]",
         &match_config.argv_source_exclude_flag_any,
     )?;
+    if let Some(projection) = match_config.structured_projection.as_ref() {
+        if !match_config.argv_workspace_regular_file {
+            return Err(
+                "rules[].match.structuredProjection requires argvWorkspaceRegularFile=true"
+                    .to_string(),
+            );
+        }
+        validate_required_binary_name(
+            "rules[].match.structuredProjection.binary",
+            &projection.binary,
+        )?;
+        validate_non_empty_values(
+            "rules[].match.structuredProjection.optionalSubcommandAny[]",
+            &projection.optional_subcommand_any,
+        )?;
+        validate_unique_values(
+            "rules[].match.structuredProjection.optionalSubcommandAny",
+            &projection.optional_subcommand_any,
+        )?;
+        validate_non_empty_values(
+            "rules[].match.structuredProjection.optionAny[]",
+            &projection.option_any,
+        )?;
+        validate_unique_values(
+            "rules[].match.structuredProjection.optionAny",
+            &projection.option_any,
+        )?;
+        for option in &projection.option_any {
+            if !option.starts_with('-') {
+                return Err(format!(
+                    "rules[].match.structuredProjection.optionAny value `{option}` must start with `-`"
+                ));
+            }
+        }
+        for (option, arity) in &projection.option_value_arity {
+            if !option.starts_with('-') || *arity == 0 {
+                return Err(format!(
+                    "rules[].match.structuredProjection.optionValueArity `{option}` must start with `-` and have positive arity"
+                ));
+            }
+            if projection.option_any.iter().any(|flag| flag == option) {
+                return Err(format!(
+                    "rules[].match.structuredProjection option `{option}` cannot be both value-free and value-owning"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_argv_pattern_bindings(patterns: &[Vec<String>]) -> Result<(), String> {
+    validate_argv_prefix_patterns("rules[].match.argvPatternAny", patterns)?;
+    for pattern in patterns {
+        let bindings = pattern
+            .iter()
+            .filter(|token| token.as_str() == "<registered-language>")
+            .count();
+        if bindings != 1 {
+            return Err(
+                "rules[].match.argvPatternAny[] must contain exactly one `<registered-language>` binding"
+                    .to_string(),
+            );
+        }
+        if pattern.iter().any(|token| {
+            token.starts_with('<') && token.ends_with('>') && token != "<registered-language>"
+        }) {
+            return Err(
+                "rules[].match.argvPatternAny[] contains an unknown schema binding".to_string(),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -416,12 +444,15 @@ fn validate_binary_name(field: &str, value: &str) -> Result<(), String> {
     }
 }
 
-fn validate_session_role(field: &str, value: &str) -> Result<(), String> {
-    match value {
-        "subagent" | "search" | "testing" | "build" | "checkpoint" => Ok(()),
-        _ => Err(format!(
-            "invalid {field} `{value}`; expected one of subagent, search, testing, build, checkpoint"
-        )),
+fn validate_required_binary_name(field: &str, value: &str) -> Result<(), String> {
+    let mut bytes = value.bytes();
+    if !matches!(bytes.next(), Some(byte) if byte.is_ascii_alphanumeric()) {
+        return Err(format!("invalid {field} `{value}`"));
+    }
+    if bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-')) {
+        Ok(())
+    } else {
+        Err(format!("invalid {field} `{value}`"))
     }
 }
 

@@ -1,0 +1,188 @@
+#+title: Hook matcher and resident dispatch authority
+#+startup: overview
+
+* Status
+
+Accepted for the v1 matcher migration.
+
+* Problem
+
+The generated hook config currently describes ASP command meaning twice.  A
+rule matches an observable argv pattern and declares an intent, while
+=aspCommandIntentPolicy= separately enumerates control-plane commands, search
+routes, projection flags, selector kinds, and invalid combinations.  Resident
+profiles also carry =lifecycle= and =mainAllowedAspCommandPrefixes= policy even
+though rule matching already owns command routing.
+
+These duplicate authorities can disagree.  In particular, =guide= can be both
+control-plane and reasoning, a rule match can be rejected by a second Rust
+classifier, and a resident identity can silently redefine which command family
+routes to it.
+
+* V1 authority
+
+The v1 hook contract has exactly two reusable configuration objects:
+
+- =rules= own observable match features, intent, decision, and optional
+  resident dispatch.  A rule is the complete policy unit and merges by stable
+  =id=; callers do not compose a second intent taxonomy after a rule matches.
+- =agents.residentAgents= own resident identity, permissions, client profile
+  mapping, and session lifetime.  They do not own command matching or command
+  intent.
+
+Command and search facts are not copied into hook config:
+
+- the ASP command schema owns control-plane command registration;
+- registered-language schema owns language identifiers;
+- provider query packs own search routes, query projection capabilities,
+  selector kinds, and invalid query combinations;
+- the hook matcher consumes those typed registries when expanding a rule
+  pattern such as =<registered-language>=.
+
+Therefore =aspCommandIntentPolicy=, resident =lifecycle=, and resident
+=mainAllowedAspCommandPrefixes= are not part of the v1 generated config.
+
+* Match receipt
+
+A successful rule match emits one typed receipt containing the stable rule id,
+declared intent, matched argv stage, resolved registered language when present,
+and resolved resident dispatch.  Search dispatch must not invoke a second
+=classify_search= or =classify_query= pass.  Exact-evidence validity remains a
+provider/query-pack contract and is enforced by the query command owner, not
+by hook prompt or argv heuristics.
+
+Resident authorization binds the declared resident name/role to the live host
+agent id and root session.  =canonicalTarget= is a dispatch hint only; absolute
+task-path equality is not an authorization key.  A resident child with valid
+live identity proof MUST execute its owned command family without being routed
+back to itself, including nested task paths.  This rule applies equally to
+search and test/build residents.
+
+* Merge behavior
+
+Generated base rules and project overlay rules merge by stable =id=.  Replacing
+a rule replaces the whole policy unit; individual intent taxonomies, command
+lists, and resident lifecycle fragments are never deep-merged.  Resident
+profiles merge independently by =name= and may be referenced by any number of
+rule dispatches.  A single overlay that declares the same rule =id= or resident
+=name= more than once is invalid; merge order must never become hidden policy.
+
+* Binary-owned freshness
+
+The generated base config is a fingerprint-bound artifact owned by the active
+=asp= binary.  Before evaluating the freshness gate, hook runtime MUST compare
+the configured fingerprint with its embedded v1 contract and atomically
+materialize the complete embedded template when the file is missing, invalid,
+or stale.  It MUST reload and validate the persisted bytes before continuing.
+This hot path MUST NOT call =asp sync= or any project/registry synchronization
+workflow.
+
+If the host sandbox does not allow persistence, the same invocation MUST
+classify from the binary-owned embedded config and emit an explicit deferred
+persistence receipt; a stale disk cache must not veto current binary authority.
+A warm current config performs no write.  Concurrent stale hook invocations
+must converge without a process lock or retry timeout.
+
+Binary deployment and generated config publication form one version transition.
+The installer publishes the immutable binary target and advances the public
+binary pointer before materializing that binary's complete config, because the
+new binary can safely bridge the short stale-config window from embedded
+authority while an old binary cannot interpret a newer config.  The active
+artifact receipt is published only after the binary and generated config have
+both been verified, so a mixed pair is never advertised as one active version.
+
+* Workspace documents and lazy projectors
+
+Raw materialization policy is independent of language source extensions.  A
+parsed shell stage that invokes a registered raw reader and carries any
+workspace-owned regular-file argument is denied.  Language extensions may
+select a provider after denial, but they MUST NOT decide whether the denial
+applies.  This closes direct reads of package manifests, JSON, TOML, lockfiles,
+and other project documents without maintaining another extension list.
+
+Structured projectors are optional capabilities declared by matcher config.
+The matcher probes a declared binary only after a candidate structured
+projection stage is parsed.  Availability is resolved from the current process
+PATH and executable filesystem state only after the rule becomes a candidate.
+No persistent cache or =asp sync= participates in capability activation;
+installing, replacing, removing, or changing the executable is observed by the
+next candidate evaluation.  A projector allow rule is enabled only when its
+binary is available.  A missing projector never authorizes a raw reader
+fallback.
+
+For JSON and TOML, the structured-projection receipt records =documentKind=,
+=projectorBinary=, =projectionKind=, and =bounded=.  Identity/root projections
+such as =jq .= are unbounded and denied.  Focused selectors may be allowed only
+when the corresponding projector binary is available.  Output budgeting and
+selector classification belong to the projector capability, not to filename
+extension heuristics in hook Rust.
+
+A bounded structured projection MUST be classified from one parser-owned Bash command stage and a grammar selected by =rules.match.structuredProjection=. That single TOML object declares =binary=, =documentFormat=, =filterGrammar=, =optionalSubcommandAny=, =optionAny=, and =optionValueArity=; hook Rust MUST NOT model projector binary names or their subcommands as enum variants. =bounded-path-v1= is the shared single-result field/index grammar. Identity, recursive descent, array iteration, compound filters, unknown option forms, multiple inputs, and multi-stage pipelines are denied before executable discovery, so a binary probe cannot turn an unbounded command into an allowed projection.
+
+The legacy source-extension template renderer, its default extension catalog, and its public compatibility entry points MUST be absent. Workspace regular-file ownership is the raw-materialization security boundary; document kind is only a projector capability constraint.
+
+* Activation failure authority
+
+When the activation contract cannot be loaded, no matcher rule or provider
+capability has been authorized.  The hook therefore fails closed for every
+tool action instead of reconstructing source intent from command strings,
+package names, argv suffixes, or path-like tokens.
+
+The only bootstrap exception is the typed activation-recovery command owned by
+the hook runtime.  Its purpose is to repair the missing activation contract;
+it does not authorize search, source projection, build execution, or a raw
+reader fallback.  Every other action receives the v1
+=activation-unavailable= reason and must retry only after activation is
+healthy.
+
+* Exact selector routing authority
+
+The v1 provider source-snapshot envelope must keep three digest domains
+distinct for every owner: =snapshotLeafDigest= proves workspace-tree
+membership, =blobDigest= addresses the CAS artifact, and
+=sourceContentDigest= is the canonical =blake3-256= digest of the exact owner
+bytes consumed by the parser. Exact-selector packets and Merkle lookup keys
+must use =sourceContentDigest=; they must never reinterpret the CAS blob digest
+as a source-content digest.
+
+The selected structural projection mode is part of the v1 request identity and
+must flow unchanged through router, provider packet, Merkle lookup key, and
+cache record. =--code= selects =Code=, =--names-only= selects =Names=,
+=--from-hook item-skeleton= selects =Skeleton=, and =--verbatim= selects
+=Verbatim=. When no projection flag is present, v1 defaults to =Code=. The
+provider must emit that mode explicitly in its packet; it must not fall back to
+term-query validation.
+
+=--json= controls the output envelope only. It is not a projection mode and
+must not alter exact-selector route selection. Agent-platform policy may reject
+JSON output before provider dispatch without changing the structural query
+contract.
+
+An exact structural selector is a complete query key.  Once =--selector=
+identifies a provider-owned structural item, routing must select the structural
+query path before ordinary term-query validation.  =--term= is neither required
+nor synthesized for this path.
+
+Projection flags such as =--code= and =--names-only= select the rendering of the
+same structural result; they do not decide whether the request is structural.
+A selector request must therefore never fall through to a query-pack entry point
+whose precondition is one or more terms.  Mixing =--selector= with an
+incompatible query mode is rejected as a typed mode conflict instead of being
+reinterpreted as a term query.
+
+This invariant is language neutral and belongs to the protocol/provider
+capability contract.  A provider may advertise the projections it supports,
+but it may not require a synthetic term once it accepts exact selectors.
+
+* Required absence gates
+
+The migration is complete only when:
+
+- generated config contains no =aspCommandIntentPolicy=;
+- resident profiles contain no =lifecycle= or
+  =mainAllowedAspCommandPrefixes=;
+- hook matching has no dependency on =HookClientAspCommandIntentPolicyConfig=;
+- a matched reasoning-search rule reaches its configured resident from the
+  matcher receipt alone;
+- control-plane, exact-evidence, and invalid-query facts are obtained from their
+  registered schema/query-pack owners rather than Rust default lists.

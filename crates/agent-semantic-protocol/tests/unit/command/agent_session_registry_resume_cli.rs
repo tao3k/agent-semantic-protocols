@@ -200,7 +200,7 @@ fn agent_session_resume_rejects_manually_registered_message_target_as_live() {
     );
     assert!(
         stdout.contains(
-            "messageTargetResultSource=\"persisted-message-target-without-live-attestation\""
+            "messageTargetResultSource=\"persisted-message-target-without-fresh-host-attestation\""
         ),
         "{stdout}"
     );
@@ -260,7 +260,7 @@ fn agent_session_resume_missing_session_checks_rollout_history_before_create() {
 }
 
 #[test]
-fn agent_session_resume_archived_same_root_reuses_existing_child_before_rollout_lookup() {
+fn agent_session_resume_archived_same_root_is_rejected_as_historical() {
     let state_root = temp_state_root("asp-resume-archived-same-root");
     let codex_home = temp_state_root("asp-resume-archived-same-root-codex-home");
     let agents_dir = state_root.join("agents");
@@ -343,37 +343,11 @@ fn agent_session_resume_archived_same_root_reuses_existing_child_before_rollout_
         ])
         .output()
         .expect("resume archived same-root resident");
-    assert_success("resume", &resume);
-
-    let stdout = String::from_utf8_lossy(&resume.stdout);
-    assert!(stdout.contains("registryStatus=\"archived\""), "{stdout}");
-    assert!(stdout.contains("registryRoutable=false"), "{stdout}");
+    assert!(!resume.status.success(), "resume unexpectedly succeeded");
+    let stderr = String::from_utf8_lossy(&resume.stderr);
     assert!(
-        stdout.contains("session=\"019f2c45-ba38-7000-8000-000000000032\""),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("rolloutHistoryStatus=\"not-needed\""),
-        "{stdout}"
-    );
-    assert!(stdout.contains("rolloutHistoryAction=\"none\""), "{stdout}");
-    assert!(
-        stdout.contains("nextAction=\"resume-archived-same-root-child-with-native-host\""),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "modelAlignmentAction=\"parent-resume-existing-archived-child-with-native-host\""
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("Session-start owns reactivation after the host resume"),
-        "{stdout}"
-    );
-    assert!(
-        !stdout.contains("create-resident-child-after-rollout-history-miss"),
-        "{stdout}"
+        stderr.contains("archived agent session is historical and cannot be resumed"),
+        "{stderr}"
     );
 
     let _ = fs::remove_dir_all(state_root);

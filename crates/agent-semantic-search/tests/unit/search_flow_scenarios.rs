@@ -10,8 +10,14 @@ use std::path::{Path, PathBuf};
 
 #[test]
 fn search_flow_source_index_owner_item_graph_chain_is_executable() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/dynamic_search/owner_items/core.rs".to_string(),
@@ -36,18 +42,25 @@ fn search_flow_source_index_owner_item_graph_chain_is_executable() {
     let owners: Vec<PathBuf> = Vec::new();
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
+    let query = "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match";
+    let query_terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        agent_semantic_search::search_pipe_typed_query_terms("rust", query, descriptor)
+    });
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match",
+        query,
+        query_terms: &query_terms,
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("source-index evidence graph chain acquisition");
 
@@ -255,26 +268,39 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
 
 #[test]
 fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "busy".to_string(),
         candidates: Vec::new(),
     };
     let owners: Vec<PathBuf> = Vec::new();
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
+    let query = "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match";
+    let query_terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        agent_semantic_search::search_pipe_typed_query_terms("rust", query, descriptor)
+    });
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match",
+        query,
+        query_terms: &query_terms,
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("busy source-index should short-circuit without overlay");
 
@@ -296,26 +322,39 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
 
 #[test]
 fn search_flow_cold_required_source_index_returns_overlay_skipped() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "cold-required".to_string(),
         candidates: Vec::new(),
     };
     let owners: Vec<PathBuf> = Vec::new();
     let ignore_dirs: Vec<String> = Vec::new();
     let include_hidden_dirs: Vec<String> = Vec::new();
+    let query = "source-index schema requires explicit rebuild SourceIndexLookup";
+    let query_terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        agent_semantic_search::search_pipe_typed_query_terms("rust", query, descriptor)
+    });
 
     let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
         language_id: "rust",
         project_root,
         locator_root: project_root,
-        query: "source-index schema requires explicit rebuild",
+        query,
+        query_terms: &query_terms,
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("cold-required source-index should short-circuit without overlay");
 

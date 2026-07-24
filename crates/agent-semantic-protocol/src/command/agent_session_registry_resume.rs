@@ -23,18 +23,19 @@ pub(super) fn resume_session(
         root_session_id: root_session_id.as_deref(),
         name: name.as_deref(),
     })?;
+    if record
+        .as_ref()
+        .is_some_and(|session| session.status == "archived")
+    {
+        return Err("archived agent session is historical and cannot be resumed".to_string());
+    }
     let now = agent_session_unix_timestamp()?;
-    let archived_same_root_resume_candidate = record.as_ref().is_some_and(|session| {
-        session.status == "archived"
-            && root_session_id.as_deref() == Some(session.root_session_id.as_str())
-            && name.as_deref() == Some(session.name.as_str())
-    });
     let lookup_name = name
         .as_deref()
         .or_else(|| record.as_ref().map(|session| session.name.as_str()));
     let mut rollout_history_status = "not-needed";
     let mut rollout_history_action = "none";
-    if record.is_none() && !archived_same_root_resume_candidate {
+    if record.is_none() {
         let preflight =
             super::agent_session_registry_profile::adopt_reusable_rollout_session_before_create(
                 registry,
@@ -78,9 +79,7 @@ pub(super) fn resume_session(
         .unwrap_or("");
     let message_target_ready = registry_routable && !message_target_id.is_empty();
     let routable = message_target_ready;
-    let next_action = if archived_same_root_resume_candidate {
-        "resume-archived-same-root-child-with-native-host"
-    } else if record.is_some() && !message_target_ready {
+    let next_action = if record.is_some() && !message_target_ready {
         "rebind-existing-child-target-with-native-same-child-resume"
     } else if registry_routable {
         if rollout_history_status == "adopted-reusable-rollout" {
@@ -140,27 +139,25 @@ pub(super) fn resume_session(
         .as_ref()
         .and_then(|validation| validation.actual_model.as_deref())
         .unwrap_or(model);
-    let model_alignment_action = if archived_same_root_resume_candidate {
-        "parent-resume-existing-archived-child-with-native-host"
-    } else if record.is_some() && !required_model.is_empty() && actual_model.is_empty() {
-        "resume-existing-child-for-runtime-observation"
-    } else if !required_model.is_empty()
-        && !actual_model.is_empty()
-        && required_model != actual_model
+    let model_alignment_action =
+        if record.is_some() && !required_model.is_empty() && actual_model.is_empty() {
+            "resume-existing-child-for-runtime-observation"
+        } else if !required_model.is_empty()
+            && !actual_model.is_empty()
+            && required_model != actual_model
+        {
+            "reenter-bootstrap-for-capability-gated-typed-replacement"
+        } else if record.is_some() && !message_target_ready {
+            "rebind-existing-child-target-with-native-same-child-resume"
+        } else if record.is_none() && !required_model.is_empty() {
+            "reenter-bootstrap-for-host-tree-and-typed-spawn-audit"
+        } else {
+            "none"
+        };
+    let model_alignment_message = if record.is_some()
+        && !required_model.is_empty()
+        && actual_model.is_empty()
     {
-        "reenter-bootstrap-for-capability-gated-typed-replacement"
-    } else if record.is_some() && !message_target_ready {
-        "rebind-existing-child-target-with-native-same-child-resume"
-    } else if record.is_none() && !required_model.is_empty() {
-        "reenter-bootstrap-for-host-tree-and-typed-spawn-audit"
-    } else {
-        "none"
-    };
-    let model_alignment_message = if archived_same_root_resume_candidate {
-        format!(
-            "The configured resident child {session_id} is archived for this root. The parent must use the host-native resume action for this same child, then rerun asp agent session status --name {resolved_name}. Session-start owns reactivation after the host resume; do not create or register a replacement."
-        )
-    } else if record.is_some() && !required_model.is_empty() && actual_model.is_empty() {
         format!(
             "Resume the same canonical resident child once to obtain a fresh SubagentStart model observation for required model {required_model}; missing observation is not model drift. Then rerun asp agent session bootstrap --name {resolved_name}."
         )

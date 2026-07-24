@@ -21,7 +21,8 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
 
     let ignore_dirs = vec!["target".to_string()];
     let include_hidden_dirs = Vec::new();
-    let candidates = collect_search_pipe_candidates(SearchPipeCandidateRequest {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let collection = collect_search_pipe_candidates(SearchPipeCandidateRequest {
         language_id: "rust",
         project_root: &root,
         locator_root: &root,
@@ -29,10 +30,13 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
         owners: &[],
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
         limit: 16,
         require_multi_clause: false,
     })
     .expect("collect pipe candidates");
+    let candidates = collection.candidates;
 
     assert!(
         candidates
@@ -52,6 +56,7 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
     let root = temp_root("asp-pipe-candidates-empty");
     let ignore_dirs = Vec::new();
     let include_hidden_dirs = Vec::new();
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let error = collect_search_pipe_candidates(SearchPipeCandidateRequest {
         language_id: "rust",
         project_root: &root,
@@ -60,6 +65,8 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
         owners: &[],
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
+        base_snapshot: &fixture.workspace,
+        provider_digest: fixture.provider_digest.as_str(),
         limit: 16,
         require_multi_clause: false,
     })
@@ -71,28 +78,27 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
 
 #[test]
 fn source_index_acquisition_gates_broad_generic_queries() {
-    let acquisition =
-        collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
-            intent: "search query route trace graph quality latency selector",
-            project_root: std::path::Path::new("."),
-            scopes: &[],
-            lookup: None,
-        })
-        .expect("generic query should be gated");
-
-    assert_eq!(
-        acquisition.decision,
-        SearchPipeSourceIndexDecision::QueryGate
-    );
-    let gate = acquisition.gate.expect("gate metadata");
-    assert_eq!(gate.term_count, 8);
-    assert_eq!(gate.generic_term_count, 8);
-    assert!(acquisition.candidates.is_empty());
+    let terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        crate::search_pipe_typed_query_terms(
+            "rust",
+            "search query budget block generic provider",
+            descriptor,
+        )
+    });
+    let gate =
+        crate::search_pipe_source_index_query_gate(&terms).expect("generic query should be gated");
+    assert_eq!(gate.term_count, 6);
+    assert_eq!(gate.generic_term_count, 6);
 }
 
 #[test]
 fn source_index_acquisition_defers_backend_for_path_like_miss() {
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "miss".to_string(),
         candidates: Vec::new(),
     };
@@ -118,7 +124,12 @@ fn source_index_acquisition_quarantines_stale_candidates_and_defers_overlay() {
     let root = std::env::temp_dir().join(format!("asp-source-index-drift-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("create drift fixture root");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "crates/agent-semantic-client/src/search_pipe_source.rs".to_string(),
@@ -166,7 +177,12 @@ fn source_index_acquisition_keeps_existing_rows_inventory_only() {
     std::fs::create_dir_all(&source_dir).expect("create inventory fixture source dir");
     std::fs::write(source_dir.join("lib.rs"), "pub fn current_owner() {}\n")
         .expect("write inventory fixture source");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/lib.rs".to_string(),
@@ -208,7 +224,12 @@ fn source_index_acquisition_uses_bounded_payload_proof_as_selector_ready() {
     std::fs::create_dir_all(&source_dir).expect("create ready fixture source dir");
     std::fs::write(source_dir.join("lib.rs"), "pub fn current_owner() {}\n")
         .expect("write ready fixture source");
+    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let index_artifact_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
+        source_snapshot: Some(snapshot.evidence.clone()),
+        index_artifact_digest: Some(index_artifact_digest.clone()),
         state: "hit".to_string(),
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/lib.rs".to_string(),
@@ -268,4 +289,4 @@ fn temp_root(prefix: &str) -> std::path::PathBuf {
             .as_nanos()
     ))
 }
-use crate::pipe_source::SearchPipeSelectorPayloadProof;
+use crate::SearchPipeSelectorPayloadProof;

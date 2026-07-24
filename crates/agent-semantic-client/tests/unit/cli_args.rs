@@ -325,3 +325,39 @@ fn temp_dir(name: &str) -> PathBuf {
     fs::create_dir_all(&path).expect("create temp dir");
     path
 }
+
+#[test]
+fn doctor_parser_preserves_global_invocation_fields() {
+    let cwd = temp_dir("doctor-global-fields");
+    let parsed = parse_client_args(vec!["doctor".to_string()], cwd.clone(), None)
+        .expect("plain doctor arguments must parse");
+
+    assert_eq!(parsed.command.as_deref(), Some("doctor"));
+    assert_eq!(parsed.activation_root, cwd);
+    assert_eq!(parsed.project_root, cwd);
+    assert!(parsed.forwarded_args.is_empty());
+    assert!(!parsed.receipt_json);
+    assert!(parsed.frontier_receipt_out.is_none());
+}
+
+#[test]
+fn doctor_parser_does_not_reinterpret_workspace_as_project_root() {
+    let cwd = temp_dir("doctor-workspace-forwarding");
+    let parsed = parse_client_args(
+        vec![
+            "doctor".to_string(),
+            "--workspace".to_string(),
+            "/tmp/project".to_string(),
+        ],
+        cwd.clone(),
+        None,
+    )
+    .expect("doctor workspace tokens must remain available for command validation");
+
+    assert_eq!(parsed.activation_root, cwd);
+    assert_eq!(parsed.project_root, cwd);
+    assert_eq!(
+        parsed.forwarded_args,
+        vec!["--workspace".to_string(), "/tmp/project".to_string()]
+    );
+}

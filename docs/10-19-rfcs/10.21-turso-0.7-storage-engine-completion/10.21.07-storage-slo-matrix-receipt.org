@@ -1,0 +1,73 @@
+#+title: Turso 0.7 Storage SLO Matrix Receipt
+#+property: header-args :eval never
+
+* Scope
+
+This receipt fixes the repeatable long-ingestion, recovery, mixed-pressure,
+latency-distribution, resident-memory, and database-growth scenario for the
+existing =agent-semantic-client-db= owner.  It does not introduce another
+storage crate, and it does not change the stable client DB schema version from
+=1=.
+
+* Command
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench turso_storage_slo_matrix
+#+end_src
+
+The command completed with exit status =0=.
+
+* Fixed scenario
+
+- Long ingestion writes =65,536= rows with =1 KiB= payloads in =256=-row
+  typed MVCC batches.
+- Each batch uses the client DB retry policy and contributes one latency
+  sample.
+- Mixed pressure executes =200= iterations combining a typed MVCC append,
+  artifact-pointer CAS, and a transaction on the separate non-MVCC CDC
+  authority.
+- Passive checkpoint maintenance runs before the files are measured.
+- The MVCC database is closed, reopened, and four long-ingestion partitions
+  are read back.  The benchmark fails unless all =65,536= rows recover.
+- RSS and DB/WAL/SHM byte counts are recorded in the typed JSON receipt.
+
+* Receipt
+
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.client-db.storage-slo-matrix-receipt.v1",
+  "longIngestionRows": 65536,
+  "longIngestionBatchRows": 256,
+  "longIngestionLatencyMicros": {
+    "sampleCount": 256,
+    "p50": 4406,
+    "p95": 276400,
+    "p99": 498462,
+    "max": 595910
+  },
+  "recoveredRows": 65536,
+  "mixedPressureIterations": 200,
+  "mixedPressureLatencyMicros": {
+    "sampleCount": 200,
+    "p50": 989,
+    "p95": 2961,
+    "p99": 6359,
+    "max": 393637
+  },
+  "residentSetKib": 326864,
+  "databaseBytes": 99835904,
+  "walBytes": 104285472,
+  "shmBytes": 0,
+  "passiveCheckpoint": true
+}
+#+end_src
+
+* Verdict
+
+The recovery invariant and mixed-pressure scenario pass, but this is a
+baseline receipt rather than an SLO claim.  Long-ingestion tail latency is
+materially wider than its median: p95 is =276.400 ms= and p99 is =498.462 ms=
+versus a =4.406 ms= p50.  The WAL is also larger than the main database after
+the passive checkpoint.  These values are intentionally preserved so future
+changes must demonstrate a measured improvement instead of relying on a
+throughput-only microbenchmark.

@@ -373,11 +373,18 @@ pub(super) fn asp_graph_owner_rank_cold_functional_path_stays_inside_scenario_ga
     ];
     let query_terms = vec!["dynamicOverlay".to_string(), "SearchRouter".to_string()];
     let submodule_paths = vec!["languages/rust".to_string()];
+    let source_snapshot = agent_semantic_content_identity::SourceSnapshotEvidence::new(
+        "a".repeat(64),
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        candidates.len(),
+        "b".repeat(64),
+    );
     let started_at = Instant::now();
     let ranked = agent_semantic_search::ranked_graph_owner_paths_for_submodule_paths(
         &candidates,
         &query_terms,
         &submodule_paths,
+        &source_snapshot,
     );
     let elapsed = started_at.elapsed();
     let elapsed_ms = elapsed.as_millis();

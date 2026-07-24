@@ -6,24 +6,9 @@ use agent_semantic_hook::{
     HookRuntime, builtin_provider_manifests, default_client_config_template, parse_hook_activation,
     provider_manifest_digest,
 };
-use serde_json::json;
 
 pub(super) fn asp_command() -> Command {
-    if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
-        return checked_asp_command(PathBuf::from(path), "ASP_TEST_ASP_BIN");
-    }
-    if let Some(path) = option_env!("CARGO_BIN_EXE_asp") {
-        return checked_asp_command(PathBuf::from(path), "CARGO_BIN_EXE_asp");
-    }
-    if let Ok(path) = std::env::var("CARGO_BIN_EXE_asp") {
-        return checked_asp_command(PathBuf::from(path), "CARGO_BIN_EXE_asp");
-    }
-    if let Some(path) = target_debug_asp() {
-        return Command::new(path);
-    }
-    panic!(
-        "agent-semantic-hook CLI tests require a fresh asp binary; run `cargo build -p agent-semantic-protocol --bin asp` or set ASP_TEST_ASP_BIN"
-    );
+    Command::new(asp_binary_path())
 }
 
 fn target_debug_asp() -> Option<PathBuf> {
@@ -37,14 +22,39 @@ fn target_debug_asp() -> Option<PathBuf> {
     Some(asp)
 }
 
-fn checked_asp_command(path: PathBuf, source: &str) -> Command {
+pub(super) fn asp_bin_dir() -> PathBuf {
+    asp_binary_path()
+        .parent()
+        .expect("asp binary must have parent directory")
+        .to_path_buf()
+}
+
+fn asp_binary_path() -> PathBuf {
+    if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
+        return checked_asp_path(PathBuf::from(path), "ASP_TEST_ASP_BIN");
+    }
+    if let Some(path) = option_env!("CARGO_BIN_EXE_asp") {
+        return checked_asp_path(PathBuf::from(path), "CARGO_BIN_EXE_asp");
+    }
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_asp") {
+        return checked_asp_path(PathBuf::from(path), "CARGO_BIN_EXE_asp");
+    }
+    if let Some(path) = target_debug_asp() {
+        return path;
+    }
+    panic!(
+        "agent-semantic-hook CLI tests require a fresh asp binary; run `cargo build -p agent-semantic-protocol --bin asp` or set ASP_TEST_ASP_BIN"
+    );
+}
+
+fn checked_asp_path(path: PathBuf, source: &str) -> PathBuf {
     assert!(
         path.exists(),
         "{source} points to a missing asp binary: {}",
         path.display()
     );
     assert_asp_binary_fresh(&path);
-    Command::new(path)
+    path
 }
 
 fn assert_asp_binary_fresh(binary: &Path) {
@@ -80,8 +90,16 @@ fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
         "crates/agent-semantic-protocol/src/command/org_capture_contract_materialize.rs",
         "crates/agent-semantic-protocol/src/command/hook_enforcement.rs",
         "crates/agent-semantic-config/src/hook_client_config.rs",
+        "crates/agent-semantic-hook/src/activation_store.rs",
         "crates/agent-semantic-hook/src/event_state.rs",
         "crates/agent-semantic-hook/src/hook_config/agent_org_config.rs",
+        "crates/agent-semantic-hook/src/provider_manifest.rs",
+        "crates/agent-semantic-hook/src/provider_registry.rs",
+        "crates/agent-semantic-hook/src/protocol_activation/digest.rs",
+        "crates/agent-semantic-hook/src/protocol_activation/protocol_activation_manifest.rs",
+        "crates/agent-semantic-hook/src/protocol_activation/protocol_activation_runtime.rs",
+        "languages/rust-lang-project-harness/provider/asp-provider-manifest.json",
+        "schemas/semantic-language-registry.providers.v1.json",
         "SKILL.org",
         "SKILL.contract.org",
     ]
@@ -107,30 +125,52 @@ pub(super) fn root_owned_rust_activation_json() -> String {
         .find(|manifest| manifest.language_id == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
-    serde_json::to_string_pretty(&json!({
-        "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
-        "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
-        "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
-        "generatedBy": {"runtime": "asp", "version": "test"},
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "providerCommandPrefix": [],
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": ["src", "tests", "crates", "examples", "benches"],
-                "configFiles": ["Cargo.toml", "Cargo.lock"],
-                "sourceExtensions": [".rs"],
-                "ignoredPathPrefixes": [".cache", ".direnv", ".git", ".idea", ".jj", ".run", ".vscode", "node_modules", "target", ".codex/harness-state", ".codex/rs-harness"]
-            }
-        }]
-    }))
-    .expect("serialize root-owned rust activation")
+    let routes = agent_semantic_hook::materialize_provider_routes(&manifest).expect("rust routes");
+    let provider_command_prefix = vec![
+        std::env::current_exe()
+            .expect("resolve test executable")
+            .display()
+            .to_string(),
+    ];
+    let execution_command_digest =
+        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
+            .expect("digest provider execution command");
+    let activation = agent_semantic_hook::HookActivation {
+        schema_id: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
+        schema_version: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        schema_authority: "https://tao3k.github.io/agent-semantic-protocols/schemas/".to_string(),
+        protocol_id: agent_semantic_hook::HOOK_PROTOCOL_ID.to_string(),
+        protocol_version: agent_semantic_hook::HOOK_PROTOCOL_VERSION.to_string(),
+        project_root: ".".to_string(),
+        generated_by: agent_semantic_hook::ActivationGeneratedBy {
+            runtime: "asp".to_string(),
+            version: "test".to_string(),
+        },
+        generated_at: None,
+        providers: vec![agent_semantic_hook::ActivatedProviderConfig {
+            manifest_id: manifest.manifest_id,
+            manifest_digest,
+            language_id: manifest.language_id,
+            provider_id: manifest.provider_id,
+            binary: manifest.binary,
+            execution: manifest.execution,
+            provider_command_prefix,
+            execution_command_digest,
+            search_capabilities: manifest.search_capabilities,
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+            query_pack_descriptor: manifest.query_pack_descriptor,
+            semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
+            routes,
+            coverage: agent_semantic_hook::ActivationCoverage {
+                package_roots: vec![".".to_string()],
+                source_roots: manifest.source.default_source_roots,
+                config_files: manifest.source.default_config_files,
+                source_extensions: manifest.source.default_extensions,
+                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+            },
+        }],
+    };
+    serde_json::to_string_pretty(&activation).expect("serialize root-owned rust activation")
 }
 
 pub(super) fn write_root_owned_rust_activation(root: &std::path::Path) -> PathBuf {

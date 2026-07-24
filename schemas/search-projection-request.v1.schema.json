@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SearchProjectionRequestV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "projectionId",
+    "density"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.search-projection-request.v1"
+    },
+    "schemaVersion": {
+      "const": "v1"
+    },
+    "projectionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "density": {
+      "enum": [
+        "terse",
+        "standard",
+        "expanded"
+      ]
+    },
+    "maxRows": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "maxBytes": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

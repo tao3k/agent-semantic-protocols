@@ -18,6 +18,7 @@ pub(super) fn run_provider_command(
     invocation: &[String],
     project_root: &Path,
     cache_home: &Path,
+    require_semantic_document_query_packet: bool,
 ) -> Result<(), String> {
     let (program, forwarded) = invocation
         .split_first()
@@ -31,9 +32,78 @@ pub(super) fn run_provider_command(
         cache_home,
     )?;
     write_facade_stream(language_id, provider, output.stderr.as_ref(), io::stderr())?;
+    if require_semantic_document_query_packet {
+        validate_semantic_document_query_packet(output.stdout.as_ref(), provider)?;
+    }
     write_facade_stream(language_id, provider, output.stdout.as_ref(), io::stdout())?;
     if !output.status.success() {
         std::process::exit(output.status.code().unwrap_or(1));
+    }
+    Ok(())
+}
+
+fn validate_semantic_document_query_packet(
+    stdout: &[u8],
+    provider: &ActivatedProvider,
+) -> Result<(), String> {
+    let packet = match serde_json::from_slice::<serde_json::Value>(stdout) {
+        Ok(packet) => packet,
+        Err(error) => {
+            return Err(format!(
+                "provider `{}` returned invalid document JSON: {error}",
+                provider.provider_id
+            ));
+        }
+    };
+    if packet.get("schemaId").and_then(serde_json::Value::as_str)
+        != Some("agent.semantic-protocols.semantic-document-query-packet")
+    {
+        return Ok(());
+    }
+
+    let schema_version = packet
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_str);
+    if schema_version != Some("1") {
+        return Err(format!(
+            "provider `{}` returned semantic document query packet schemaVersion `{}`; required `1`",
+            provider.provider_id,
+            schema_version.unwrap_or("<missing>")
+        ));
+    }
+    if !packet
+        .get("sourceSnapshot")
+        .is_some_and(serde_json::Value::is_object)
+    {
+        return Err(format!(
+            "provider `{}` returned semantic document query packet without sourceSnapshot evidence",
+            provider.provider_id
+        ));
+    }
+    if !packet
+        .get("itemDigest")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|digest| !digest.is_empty())
+    {
+        return Err(format!(
+            "provider `{}` returned semantic document query packet without itemDigest evidence",
+            provider.provider_id
+        ));
+    }
+    let packet_execution_digest = packet
+        .get("executionCommandDigest")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "provider `{}` returned semantic document query packet without executionCommandDigest",
+                provider.provider_id
+            )
+        })?;
+    if packet_execution_digest != provider.execution_command_digest {
+        return Err(format!(
+            "provider `{}` returned semantic document query packet executionCommandDigest `{packet_execution_digest}`; activation requires `{}`",
+            provider.provider_id, provider.execution_command_digest
+        ));
     }
     Ok(())
 }
@@ -177,6 +247,10 @@ fn run_provider_process_with_stdin(
     envs.insert(
         "ASP_RUNTIME_BIN_DIR".to_string(),
         runtime_bin.to_string_lossy().to_string(),
+    );
+    envs.insert(
+        "ASP_PROVIDER_EXECUTION_COMMAND_DIGEST".to_string(),
+        provider.execution_command_digest.clone(),
     );
     if let Ok(protocol_bin) = env::current_exe() {
         envs.insert(

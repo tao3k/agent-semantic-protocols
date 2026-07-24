@@ -72,8 +72,13 @@ fn owner_items_source_index_empty_index_renders_to_stdout_and_handles() {
 
 #[test]
 fn owner_items_source_index_lookup_trace_names_missing_db() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let production_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&fixture.evidence);
     let lookup = ClientDbSourceIndexLookupResult {
         db_path: PathBuf::from("client.turso"),
+        index_artifact_digest: Some(production_digest),
+        source_snapshot: Some(fixture.evidence.clone()),
         state: ClientDbSourceIndexLookupState::MissingDb,
         candidates: Vec::new(),
     };
@@ -86,8 +91,13 @@ fn owner_items_source_index_lookup_trace_names_missing_db() {
 
 #[test]
 fn owner_items_source_index_lookup_trace_names_cold_required_rebuild() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let production_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&fixture.evidence);
     let lookup = ClientDbSourceIndexLookupResult {
         db_path: PathBuf::from("client.turso"),
+        index_artifact_digest: Some(production_digest),
+        source_snapshot: Some(fixture.evidence.clone()),
         state: ClientDbSourceIndexLookupState::ColdRequired,
         candidates: Vec::new(),
     };
@@ -100,8 +110,13 @@ fn owner_items_source_index_lookup_trace_names_cold_required_rebuild() {
 
 #[test]
 fn owner_items_source_index_lookup_trace_projects_hit_path() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let production_digest =
+        agent_semantic_client_db::client_db_source_index_artifact_digest(&fixture.evidence);
     let lookup = ClientDbSourceIndexLookupResult {
         db_path: PathBuf::from("client.turso"),
+        index_artifact_digest: Some(production_digest),
+        source_snapshot: Some(fixture.evidence.clone()),
         state: ClientDbSourceIndexLookupState::Hit,
         candidates: vec![ClientDbSourceIndexCandidate {
             path: "src/lib.rs".to_string(),
@@ -111,6 +126,8 @@ fn owner_items_source_index_lookup_trace_projects_hit_path() {
             line_count: Some(12),
             query_keys: vec!["lib".to_string()],
             selector_proof: None,
+            selector_kind: None,
+            selector_symbol: None,
         }],
     };
     let line = render_owner_items_source_index_lookup_trace("src/lib.rs", &lookup);

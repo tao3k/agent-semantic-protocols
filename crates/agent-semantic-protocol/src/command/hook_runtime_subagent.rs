@@ -36,7 +36,20 @@ pub(super) fn install_claude_resident_agents(
     Ok(path)
 }
 
-pub(super) fn install_codex_resident_agents(
+pub(crate) fn install_codex_resident_agents(
+    codex_home: &Path,
+    subagent_model: &str,
+) -> Result<PathBuf, String> {
+    let path = refresh_codex_resident_search_agent(codex_home, subagent_model)?;
+    let testing_contents = codex_resident_testing_agent(subagent_model)?;
+    let testing_canonical_path = asp_agent_config_path("asp-testing", "codex", "toml")?;
+    write_agent_config(&testing_canonical_path, testing_contents.as_bytes())?;
+    let testing_path = codex_home.join("agents").join("asp-testing.toml");
+    project_agent_config(&testing_canonical_path, &testing_path)?;
+    Ok(path)
+}
+
+pub(crate) fn refresh_codex_resident_search_agent(
     codex_home: &Path,
     subagent_model: &str,
 ) -> Result<PathBuf, String> {
@@ -45,11 +58,6 @@ pub(super) fn install_codex_resident_agents(
     write_agent_config(&canonical_path, contents.as_bytes())?;
     let path = codex_home.join("agents").join("asp-explorer.toml");
     project_agent_config(&canonical_path, &path)?;
-    let testing_contents = codex_resident_testing_agent(subagent_model)?;
-    let testing_canonical_path = asp_agent_config_path("asp-testing", "codex", "toml")?;
-    write_agent_config(&testing_canonical_path, testing_contents.as_bytes())?;
-    let testing_path = codex_home.join("agents").join("asp-testing.toml");
-    project_agent_config(&testing_canonical_path, &testing_path)?;
     Ok(path)
 }
 
@@ -152,108 +160,51 @@ fn read_codex_primary_model(config_path: &Path) -> Result<Option<String>, String
 }
 
 fn codex_resident_search_agent(subagent_model: &str) -> Result<String, String> {
-    Ok(format!(
-        r#"name = "asp_explorer"
-description = "ASP search/query evidence explorer."
-nickname_candidates = ["ASP Explore", "ASP Reasoning", "ASP Search"]
-model = {}
-model_reasoning_effort = "low"
-sandbox_mode = "read-only"
-developer_instructions = """
-{}
-"""
-"#,
-        toml_basic_string(subagent_model)?,
-        resident_search_instructions()
-    ))
+    render_codex_agent(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../agents/asp-explorer_codex.toml"
+        )),
+        subagent_model,
+    )
 }
 
 fn codex_resident_testing_agent(subagent_model: &str) -> Result<String, String> {
-    Ok(format!(
-        r#"name = "asp_testing"
-description = "ASP test/build execution lane."
-nickname_candidates = ["ASP test", "ASP check", "ASP build"]
-model = {}
-model_reasoning_effort = "low"
-sandbox_mode = "workspace-write"
-developer_instructions = """
-Run only ASP-routed test, check, build, and compile commands for the current project.
-Do not edit files. Return compact evidence: command, exit status, failing target,
-first actionable error, and next command when useful.
-"""
-"#,
-        toml_basic_string(subagent_model)?
-    ))
+    render_codex_agent(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../agents/asp-testing_codex.toml"
+        )),
+        subagent_model,
+    )
 }
 
 fn claude_resident_search_agent(subagent_model: &str) -> Result<String, String> {
-    Ok(format!(
-        r#"---
-name: asp-explorer
-description: ASP search/query evidence explorer.
-tools: Bash, Read, Glob, Grep
-model: {}
-permissionMode: plan
-maxTurns: 8
----
-
-{}
-"#,
-        yaml_single_quoted(subagent_model)?,
-        resident_search_instructions()
-    ))
+    render_claude_agent(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../agents/asp-explorer_claude.md"
+        )),
+        subagent_model,
+    )
 }
 
 fn claude_resident_testing_agent(subagent_model: &str) -> Result<String, String> {
-    Ok(format!(
-        r#"---
-name: asp-testing
-description: ASP test/build execution lane.
-tools: Bash, Read, Glob, Grep
-model: {}
-permissionMode: acceptEdits
-maxTurns: 8
----
-
-Run only ASP-routed test, check, build, and compile commands for the current project.
-Do not edit files. Return compact evidence: command, exit status, failing target,
-first actionable error, and next command when useful.
-"#,
-        yaml_single_quoted(subagent_model)?
-    ))
+    render_claude_agent(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../agents/asp-testing_claude.md"
+        )),
+        subagent_model,
+    )
 }
 
-fn resident_search_instructions() -> &'static str {
-    r#"You are the ASP explorer.
+fn render_codex_agent(template: &str, model: &str) -> Result<String, String> {
+    Ok(template.replace("{{MODEL_TOML}}", &toml_basic_string(model)?))
+}
 
-Do not edit files.
-Own cheap but turn-expensive search work: search pipe, search owner, frontier ranking,
-owner/item discovery, dependency reachability, and test reachability.
-Use ASP provider commands before source reads, and prefer parser-owned owner, selector, and query-language routes.
-Follow ASP recommendedNext or nextCommand when present; stop retrying a command after a hook denial.
-Do not spawn subagents.
-
-Prefer:
-- asp <language> search lexical <seed> <related-seed> owner tests --workspace . --view seeds
-- asp fd -query '<owner-or-path terms>' .
-- asp rg -query '<content-or-error terms>' .
-- asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace . --view seeds
-- asp <language> search pipe '<refinement-query>' --workspace . --view seeds only after lexical/dependency evidence is ambiguous
-
-Return selector-only receipts for the parent agent:
-[asp-search-subagent]
-owner=<owner path>
-read=<parser-owned selector>
-item=<symbol or item identity, or ->
-next=<exact asp query command for the parent to run>
-
-The `next` command may be an exact source/document read, for example
-`asp rust query --selector <parser-owned-selector> --workspace . --code`,
-but you must not run that final exact read yourself.
-
-Do not return source bodies, snippets, line-range selectors, confidence labels,
-long explanations, or lists of what was not found. If several selectors are useful,
-return several compact `[asp-search-subagent]` receipts."#
+fn render_claude_agent(template: &str, model: &str) -> Result<String, String> {
+    Ok(template.replace("{{MODEL_YAML}}", &yaml_single_quoted(model)?))
 }
 
 fn validate_subagent_model(model: &str) -> Result<(), String> {

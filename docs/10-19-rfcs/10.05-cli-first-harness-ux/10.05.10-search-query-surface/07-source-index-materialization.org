@@ -1,0 +1,46 @@
+#+TITLE: Source Index Materialization
+#+PROPERTY: RFC_ID 10.05.10-source-index-materialization-v1
+
+* Evidence-state lifecycle
+
+=needs-cold-scan= is not a terminal search result.  Whenever =search prime= or
+another search surface emits that state, it MUST also emit one executable typed
+=recommendedNext= that materializes the missing source index.
+
+The v1 command surface is:
+
+#+begin_src sh
+asp <language> source-index materialize --workspace <root> --snapshot <digest>
+#+end_src
+
+The command consumes the provider activation contract and a source snapshot
+digest.  It MUST reject a stale or mismatched snapshot instead of silently
+scanning a different workspace state.
+
+* Merkle-keyed execution
+
+Materialization identity is derived from the provider digest, workspace source
+snapshot root, query-pack digest, schema digest, and harness binary digest.
+Identical identity reuses the existing artifact and returns a warm receipt in
+milliseconds.  A cold build writes to a content-addressed staging location and
+atomically publishes only after schema validation succeeds.
+
+Random per-run target directories are forbidden because they defeat compiled
+artifact reuse and turn freshness recovery into a full rebuild.
+
+* Typed v1 receipt
+
+The =source-index-materialization.v1= receipt includes:
+
+- language id, workspace identity, and provider id
+- requested and materialized source snapshot roots
+- provider, query-pack, schema, and harness digests
+- artifact digest and canonical artifact path
+- cache state: =warm-hit= or =cold-built=
+- changed membership set and writeback status
+- latency in milliseconds
+- terminal evidence state
+
+On success, the next search consumes this receipt and MUST NOT return the same
+=needs-cold-scan= state for the same identity.  On failure, the receipt contains
+a typed reason and no raw-source fallback instruction.

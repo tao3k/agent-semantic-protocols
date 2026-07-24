@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--agent-type-field present|absent] [--resident-target-status present|absent] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent|unroutable] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -13,6 +13,11 @@ pub(super) enum SessionCommand {
     Bootstrap,
     ObserveHostCapability,
     ObserveHostTree,
+    ObserveHostAck,
+    DispatchClaim,
+    DispatchExecute,
+    DispatchComplete,
+    DispatchMarkOrphaned,
     Register,
     List,
     Show,
@@ -56,6 +61,13 @@ pub(super) struct SessionArgs {
     pub(super) agent_type_field: Option<String>,
     pub(super) resident_target_status: Option<String>,
     pub(super) schema_digest: Option<String>,
+    pub(super) dispatch_identity: Option<String>,
+    pub(super) command_digest: Option<String>,
+    pub(super) command_json: Option<String>,
+    pub(super) receipt_kind: Option<String>,
+    pub(super) resident_bridge: bool,
+    pub(super) evidence_ref: Option<String>,
+    pub(super) canonical_target: Option<String>,
     pub(super) observation_ttl_seconds: i64,
 }
 
@@ -87,6 +99,13 @@ impl SessionArgs {
             agent_type_field: None,
             resident_target_status: None,
             schema_digest: None,
+            dispatch_identity: None,
+            command_digest: None,
+            command_json: None,
+            receipt_kind: None,
+            resident_bridge: false,
+            evidence_ref: None,
+            canonical_target: None,
             observation_ttl_seconds: 300,
         };
         let mut passthrough_codex_args = false;
@@ -107,6 +126,21 @@ impl SessionArgs {
                 }
                 "observe-host-tree" if index == 0 => {
                     parsed.command = SessionCommand::ObserveHostTree;
+                }
+                "observe-host-ack" if index == 0 => {
+                    parsed.command = SessionCommand::ObserveHostAck;
+                }
+                "dispatch-claim" if index == 0 => {
+                    parsed.command = SessionCommand::DispatchClaim;
+                }
+                "dispatch-execute" if index == 0 => {
+                    parsed.command = SessionCommand::DispatchExecute;
+                }
+                "dispatch-complete" if index == 0 => {
+                    parsed.command = SessionCommand::DispatchComplete;
+                }
+                "dispatch-mark-orphaned" | "dispatch-orphan" if index == 0 => {
+                    parsed.command = SessionCommand::DispatchMarkOrphaned;
                 }
                 "register" | "add" | "upsert" if index == 0 => {
                     parsed.command = SessionCommand::Register;
@@ -240,6 +274,37 @@ impl SessionArgs {
                     parsed.schema_digest =
                         Some(non_empty_flag(args, index, "--schema-digest")?.to_string());
                 }
+                "--dispatch-identity" => {
+                    index += 1;
+                    parsed.dispatch_identity =
+                        Some(non_empty_flag(args, index, "--dispatch-identity")?.to_string());
+                }
+                "--command-digest" => {
+                    index += 1;
+                    parsed.command_digest =
+                        Some(non_empty_flag(args, index, "--command-digest")?.to_string());
+                }
+                "--command-json" => {
+                    index += 1;
+                    parsed.command_json =
+                        Some(non_empty_flag(args, index, "--command-json")?.to_string());
+                }
+                "--receipt-kind" => {
+                    index += 1;
+                    parsed.receipt_kind =
+                        Some(non_empty_flag(args, index, "--receipt-kind")?.to_string());
+                }
+                "--resident-bridge" => parsed.resident_bridge = true,
+                "--evidence-ref" => {
+                    index += 1;
+                    parsed.evidence_ref =
+                        Some(non_empty_flag(args, index, "--evidence-ref")?.to_string());
+                }
+                "--canonical-target" => {
+                    index += 1;
+                    parsed.canonical_target =
+                        Some(non_empty_flag(args, index, "--canonical-target")?.to_string());
+                }
                 "--observation-ttl-seconds" => {
                     index += 1;
                     let value = non_empty_flag(args, index, "--observation-ttl-seconds")?;
@@ -300,7 +365,7 @@ fn guide_text_for(
         SessionCommand::Bootstrap => Some(
             "asp agent session bootstrap guide\n\
 Run the resident ASP child lifecycle loop as a structured menu. The loop prints state and choices only; the agent chooses a menu option, performs the platform-native action, then reruns bootstrap until state=Ready.\n\
-asp agent session bootstrap --name asp-explore",
+asp agent session bootstrap --name <residentChildName-from-hook-decision>",
         ),
         SessionCommand::ObserveHostCapability => Some(
             "asp agent session observe-host-capability guide\n\
@@ -312,7 +377,37 @@ asp agent session observe-host-capability --name asp-explore --agent-type-field 
             "asp agent session observe-host-tree guide\n\
 Record a short-lived observation of the canonical resident target in the native collaboration.list_agents tree for the active CODEX_THREAD_ID.\n\
 This receipt never accepts a child id and does not register a resident child.\n\
-asp agent session observe-host-tree --name asp-explore --resident-target-status present|absent",
+For present targets, pass the exact canonical path selected by the hook; the lane name is never used to infer it.\n\
+asp agent session observe-host-tree --name <resident-lane> --resident-target-status present --canonical-target /root/<agent>\n\
+asp agent session observe-host-tree --name <resident-lane> --resident-target-status absent",
+        ),
+        SessionCommand::ObserveHostAck => Some(
+            "asp agent session observe-host-ack guide\n\
+Record a short-lived acknowledgement that a host-native follow-up or dispatch to the canonical resident target succeeded in the active CODEX_THREAD_ID.\n\
+This receipt never accepts a child id, never creates a resident, and only refreshes an existing same-root resident binding.\n\
+Pass the exact canonical path used by the host-native follow-up; the lane name is never used to infer it.\n\
+asp agent session observe-host-ack --name <resident-lane> --canonical-target /root/<agent> [--evidence-ref <dispatch-or-followup-id>]",
+        ),
+        SessionCommand::DispatchClaim => Some(
+            "asp agent session dispatch-claim guide\n\
+Atomically claim or poll one exact resident command. Only action=send authorizes a native follow-up; action=wait polls the existing attempt and action=complete forbids replay.\n\
+Derive the stable identity from the verified canonical target, receipt kind, and exact argv. Explicit identity/digest values are accepted only when they match the derived values.\n\
+asp agent session dispatch-claim --name <resident-lane> --receipt-kind <kind> --command-json '<argv-json>'",
+        ),
+        SessionCommand::DispatchExecute => Some(
+            "asp agent session dispatch-execute guide\n\
+Execute one previously claimed exact argv and atomically record its terminal receipt. Root execution is allowed only through --resident-bridge bound to the fresh verified canonical target.\n\
+asp agent session dispatch-execute --name <resident-lane> --receipt-kind <kind> --command-json '<argv-json>' --resident-bridge",
+        ),
+        SessionCommand::DispatchComplete => Some(
+            "asp agent session dispatch-complete guide\n\
+Record one terminal compact receipt for an existing dispatch identity. Repeated completion is idempotent and permanently disables replay.\n\
+asp agent session dispatch-complete --name asp-explore --dispatch-identity <id> --command-digest <digest> --evidence-ref <ref>",
+        ),
+        SessionCommand::DispatchMarkOrphaned => Some(
+            "asp agent session dispatch-mark-orphaned guide\n\
+Mark an in-flight resident dispatch as orphaned-awaiting-rebind after the host proves the delivery target disappeared before a terminal receipt was recorded. This does not replay the command; the next verified generation may claim the same dispatch identity once.\n\
+asp agent session dispatch-mark-orphaned --name <resident-lane> --dispatch-identity <id> --command-digest <digest>",
         ),
         SessionCommand::Register => guide.register(),
         SessionCommand::List => guide.list(),
@@ -358,7 +453,7 @@ Fork is a saved-session operation, not the resident-child bootstrap workflow.\n\
 This does not create a resident ASP child session.\n\
 If no configured resident child is registered, do not use fork as bootstrap.\n\
 Use bootstrap flow instead:\n\
-asp agent session bootstrap --name asp-explore",
+asp agent session bootstrap --name <residentChildName-from-hook-decision>",
         ),
         SessionCommand::Archive => Some(
             "asp agent session archive guide\n\
@@ -427,10 +522,8 @@ fn load_agent_session_guide() -> agent_semantic_config::HookClientAgentSessionGu
         }
     }
 
-    load_agent_session_guide_from_str(
-        &agent_semantic_config::default_hook_client_config_template_for_source_extensions([".rs"]),
-    )
-    .unwrap_or_else(default_agent_session_guide)
+    load_agent_session_guide_from_str(&agent_semantic_config::default_hook_client_config_template())
+        .unwrap_or_else(default_agent_session_guide)
 }
 
 fn default_agent_session_guide() -> agent_semantic_config::HookClientAgentSessionGuideConfig {

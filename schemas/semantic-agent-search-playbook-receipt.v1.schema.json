@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-agent-search-playbook-receipt.v1.schema.json",
+  "title": "ASP Search Playbook Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "workspace", "intent", "state", "route", "evidence", "topology", "metrics", "reflection"],
+  "properties": {
+    "schemaId": {"const": "asp.search.playbook-receipt"},
+    "schemaVersion": {"const": "1"},
+    "workspace": {"type": "string", "minLength": 1},
+    "intent": {"type": "string", "minLength": 1},
+    "state": {"enum": ["completed", "refine", "failed"]},
+    "route": {
+      "type": "array",
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "kind", "status"],
+        "properties": {
+          "command": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["prime", "lexical", "dependency", "owner", "selector", "test", "policy", "pipe", "fd", "rg"]},
+          "status": {"enum": ["hit", "miss", "failed"]}
+        },
+        "allOf": [
+          {"if": {"properties": {"kind": {"const": "fd"}}}, "then": {"properties": {"command": {"pattern": "^asp\\s+fd\\s"}}}},
+          {"if": {"properties": {"kind": {"const": "rg"}}}, "then": {"properties": {"command": {"pattern": "^asp\\s+rg\\s"}}}},
+          {"if": {"properties": {"kind": {"const": "prime"}}}, "then": {"properties": {"command": {"pattern": "^asp\\s+[^\\s]+\\s+search\\s+prime\\b"}}}},
+          {"if": {"properties": {"kind": {"const": "pipe"}}}, "then": {"properties": {"command": {"pattern": "^asp\\s+[^\\s]+\\s+search\\s+pipe\\b"}}}}
+        ]
+      }
+    },
+    "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "edges", "frontier"],
+      "properties": {
+        "nodes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "edges": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "frontier": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    },
+    "next": {
+      "type": ["string", "null"],
+      "pattern": "^(?!asp\\s+search\\s)(?!.*<[^>]+>).+$"
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reasonKind", "detail"],
+      "properties": {
+          "reasonKind": {"enum": ["provider-unavailable", "selector-anchor-unavailable", "budget-exhausted", "candidate-out-of-scope", "candidate-language-mismatch", "candidate-provider-ambiguous"]},
+        "languageId": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands", "rounds", "latencyMs", "packetBytes", "repeatedTriggers", "missingEdges"],
+      "properties": {
+        "commands": {"type": "integer", "minimum": 0, "maximum": 3},
+        "rounds": {"type": "integer", "minimum": 1},
+        "latencyMs": {"type": "integer", "minimum": 0},
+        "packetBytes": {"type": "integer", "minimum": 0},
+        "repeatedTriggers": {"type": "integer", "minimum": 0},
+        "missingEdges": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    },
+    "reflection": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "failed"}}, "required": ["state"]},
+      "then": {"required": ["failure"], "properties": {"next": {"type": "null"}}},
+      "else": {"not": {"required": ["failure"]}}
+    }
+  ]
+}

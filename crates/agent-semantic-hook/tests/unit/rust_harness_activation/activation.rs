@@ -59,7 +59,7 @@ fn rust_harness_activation_uses_provider_identity() {
             .any(|extension| extension == ".rs")
     );
     let guide = provider.routes.guide.as_ref().expect("guide command");
-    assert_eq!(guide.argv, ["rs-harness", "guide", "{projectRoot}"]);
+    assert_eq!(guide.argv, ["rs-harness", "guide", "{workspace}"]);
 }
 
 #[test]
@@ -95,18 +95,13 @@ fn rust_harness_activation_routes_source_glob_search_to_lexical_frontier() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Lexical);
-    assert_eq!(decision.routes[0].provider_id, "rs-harness");
-    assert_eq!(decision.routes[0].binary, "asp");
-    let argv = &decision.routes[0].argv;
-    assert!(
-        argv.windows(2)
-            .any(|window| window[0] == "search" && window[1] == "lexical"),
-        "{argv:?}"
+    assert!(decision.routes.is_empty());
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(|value| value.as_str()),
+        Some("deny-uncontrolled-source-search-commands")
     );
-    assert!(argv.iter().any(|arg| arg == "HookDecision"), "{argv:?}");
-    assert!(
-        !argv.iter().any(|arg| arg == "direct-source-read"),
-        "{argv:?}"
-    );
+    assert!(decision.message.contains("ASP Explore"));
 }

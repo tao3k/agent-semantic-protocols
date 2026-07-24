@@ -1,8 +1,7 @@
 use std::path::Path;
 
 use agent_semantic_client_core::{
-    CacheExportMethod, ClientMethod, ClientRequest, LanguageId, ProviderExecution, ProviderId,
-    ResolvedProvider,
+    CacheExportMethod, ClientMethod, ClientRequest, ResolvedProvider,
 };
 
 use super::{exact_request_fingerprint, request_export_method};
@@ -50,18 +49,5 @@ fn dependency_search_alias_uses_deps_cache_method_and_fingerprint() {
 }
 
 fn rust_provider() -> ResolvedProvider {
-    ResolvedProvider {
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        binary: "rs-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: vec![".".to_string()],
-        source_roots: vec!["src".to_string()],
-        config_files: vec!["Cargo.toml".to_string()],
-        source_extensions: vec!["rs".to_string()],
-        ignored_path_prefixes: Vec::new(),
-    }
+    crate::test_support::resolved_provider("rust")
 }

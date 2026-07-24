@@ -3,10 +3,13 @@
 #[path = "unit/classifier/mod.rs"]
 mod classifier;
 
+#[path = "unit/active_artifact_receipt.rs"]
+mod active_artifact_receipt;
+
 #[path = "unit/client_hook_config.rs"]
 mod client_hook_config;
-#[path = "unit/client_hook_config_asp_command_intent.rs"]
-mod client_hook_config_asp_command_intent;
+#[path = "unit/read_only_subagent.rs"]
+mod read_only_subagent;
 
 #[path = "unit/codex_config.rs"]
 mod codex_config;
@@ -32,5 +35,3 @@ mod rust_harness_activation;
 mod rust_project_harness_gate;
 #[path = "unit/source_access.rs"]
 mod source_access;
-#[path = "unit/source_dump_range.rs"]
-mod source_dump_range;

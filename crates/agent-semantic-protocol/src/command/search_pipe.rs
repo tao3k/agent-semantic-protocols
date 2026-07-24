@@ -19,7 +19,9 @@ use super::search_pipe_model::SearchPipeSourceTrace;
 use super::search_pipe_owner_items_fast::{
     SearchOwnerItemsFastContext, run_search_owner_items_query_command,
 };
-use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
+use super::search_pipe_provider_facts::{
+    ProviderGraphFactsContext, collect_provider_graph_facts, collect_provider_workspace_scope,
+};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{render_empty_ingest_diagnostic, render_owner_tests_frontier};
 use super::search_pipe_selector_seed::{
@@ -49,6 +51,8 @@ pub(super) struct FastSearchContext<'a> {
     pub(super) config: &'a AspConfig,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
+    pub(super) source_index_snapshot:
+        &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
 }
 
 pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
@@ -89,6 +93,25 @@ pub(super) fn run_asp_fast_search_command(
     if is_search_ingest(args) {
         return run_search_ingest_command(args, &context);
     }
+    if is_search_owner_items_query(args) {
+        match preflight_search_command_args(context.language_id, args, context.project_root) {
+            SearchCommandPreflightOutcome::Rejected(error) => return Err(error),
+            SearchCommandPreflightOutcome::Passed
+            | SearchCommandPreflightOutcome::NotApplicable => {}
+        }
+        return run_search_owner_items_query_command(
+            args,
+            SearchOwnerItemsFastContext {
+                language_id: context.language_id,
+                project_root: context.project_root,
+                locator_root: context.locator_root,
+                cache_home: context.cache_home,
+                config: context.config,
+                provider_context: context.provider_context,
+                frontier_receipt: context.frontier_receipt,
+            },
+        );
+    }
     if is_search_lexical(args) {
         return run_search_lexical_command(args, &context);
     }
@@ -119,25 +142,6 @@ pub(super) fn run_asp_fast_search_command(
             context.frontier_receipt,
         );
     }
-    if is_search_owner_items_query(args) {
-        match preflight_search_command_args(context.language_id, args, context.project_root) {
-            SearchCommandPreflightOutcome::Rejected(error) => return Err(error),
-            SearchCommandPreflightOutcome::Passed
-            | SearchCommandPreflightOutcome::NotApplicable => {}
-        }
-        return run_search_owner_items_query_command(
-            args,
-            SearchOwnerItemsFastContext {
-                language_id: context.language_id,
-                project_root: context.project_root,
-                locator_root: context.locator_root,
-                cache_home: context.cache_home,
-                config: context.config,
-                provider_context: context.provider_context,
-                frontier_receipt: context.frontier_receipt,
-            },
-        );
-    }
     Err("unsupported ASP fast search command".to_string())
 }
 
@@ -155,20 +159,13 @@ fn is_search_ingest(args: &[String]) -> bool {
 
 fn is_search_lexical(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
-        && matches!(args.get(1).map(String::as_str), Some("lexical"))
-        && has_search_lexical_query(args)
-        && has_supported_fast_search_view(args)
-        && !args.iter().any(|arg| arg == "--json")
-        && !args
-            .iter()
-            .any(|arg| matches!(arg.as_str(), "--query-set" | "--owner" | "--dependency"))
+        && parse_lexical_args(args)
+            .is_ok_and(|request| matches!(request.view.as_str(), "seeds" | "graph-turbo-request"))
 }
 
-fn has_search_lexical_query(args: &[String]) -> bool {
-    args.get(2).is_some_and(|query| !query.starts_with('-'))
-        || args
-            .windows(2)
-            .any(|window| window[0] == "--query" && !window[1].trim().is_empty())
+pub(super) fn is_parser_owned_treesitter_query(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some("query"))
+        && args.iter().any(|arg| arg == "--treesitter-query")
 }
 
 fn is_search_failure(args: &[String]) -> bool {
@@ -249,7 +246,20 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         });
     }
     let budget_scopes = search_pipe_budget_scopes(&pipe_args);
-    if let Some(block) = search_query_budget_block(&pipe_args.seed_query, &budget_scopes, false) {
+    if pipe_args.view != "graph-turbo-request"
+        && let Some(block) = super::search_pipe_provider_facts::with_query_pack_descriptor(
+            context.provider_context,
+            |query_pack_descriptor| {
+                search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+                    language_id: context.language_id,
+                    query: &pipe_args.seed_query,
+                    scopes: &budget_scopes,
+                    explicit_filters: false,
+                    query_pack_descriptor,
+                })
+            },
+        )?
+    {
         print_search_query_budget_block(
             "search-pipe",
             context.language_id,
@@ -260,7 +270,14 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         );
         return Ok(());
     }
-    let acquisition =
+    let workspace_scope = collect_provider_workspace_scope(
+        context.language_id,
+        &project_root,
+        context.config,
+        context.provider_context,
+    )?;
+    let current_snapshot = context.source_index_snapshot;
+    let mut acquisition =
         dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
             language_id: context.language_id,
             project_root: &project_root,
@@ -273,14 +290,48 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
             collect_search_pipe_candidates(
                 context.language_id,
                 &project_root,
+                &current_snapshot,
                 context.locator_root,
                 &pipe_args.seed_query,
                 &pipe_args.scopes,
                 pipe_args.source,
                 context.config,
+                context.provider_context,
                 true,
             )
         })?;
+    let query_requests_semantic_facts = if let Some(provider_context) = context.provider_context {
+        super::search_pipe_provider_facts::query_requests_semantic_facts(
+            provider_context.provider,
+            &pipe_args.seed_query,
+        )?
+        .is_some()
+    } else {
+        false
+    };
+    if query_requests_semantic_facts {
+        if let Some(scope) = workspace_scope.as_ref() {
+            let topology_acquisition =
+                super::search_pipe_source::collect_workspace_scope_topology_acquisition(
+                    scope,
+                    context.locator_root,
+                    &context.config.search.ignore_dirs,
+                    &context.config.search.include_hidden_dirs,
+                )?;
+            super::search_pipe_source::merge_candidate_acquisitions(
+                &mut acquisition,
+                topology_acquisition,
+            );
+        }
+    }
+    if let Some(scope) = workspace_scope.as_ref() {
+        admit_search_pipe_candidates(
+            &mut acquisition,
+            scope,
+            context.language_id,
+            context.locator_root,
+        );
+    }
     let provider_facts_started_at = Instant::now();
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
@@ -297,9 +348,14 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     );
     let rendered_source = resolved_search_pipe_source(pipe_args.source, &acquisition);
     let surfaces = default_search_surfaces();
+    let source_snapshot = acquisition
+        .source_snapshot
+        .as_ref()
+        .unwrap_or(&current_snapshot.source_snapshot);
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: &project_root,
+        source_snapshot,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-pipe",
@@ -324,6 +380,49 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
+}
+
+fn admit_search_pipe_candidates(
+    acquisition: &mut CandidateAcquisition,
+    scope: &agent_semantic_search::SemanticWorkspaceScope,
+    language_id: &str,
+    locator_root: &Path,
+) {
+    let input_count = acquisition.candidates.len();
+    let mut rejection_kinds = std::collections::BTreeSet::new();
+    acquisition.candidates.retain(|candidate| {
+        match scope.admit_candidate_from(locator_root, Path::new(&candidate.path), language_id) {
+            Ok(_) => true,
+            Err(rejection) => {
+                rejection_kinds.insert(rejection.reason_kind);
+                false
+            }
+        }
+    });
+    let admitted_count = acquisition.candidates.len();
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "workspaceId".to_string(),
+        Value::from(scope.workspace_id.clone()),
+    );
+    fields.insert(
+        "rejectionKinds".to_string(),
+        Value::from(rejection_kinds.into_iter().collect::<Vec<_>>()),
+    );
+    acquisition.source_trace.push(
+        SearchPipeSourceTrace::new(
+            "workspace-scope",
+            if admitted_count == input_count {
+                "used"
+            } else {
+                "filtered"
+            },
+            admitted_count,
+            input_count.saturating_sub(admitted_count),
+            input_count,
+        )
+        .with_fields(fields),
+    );
 }
 
 fn resolved_search_pipe_source(source: SourceSpec, acquisition: &CandidateAcquisition) -> String {
@@ -375,15 +474,20 @@ fn print_search_query_budget_block(
     );
     println!(
         "nextCommand={}",
-        search_budget_next_command(query, workspace, scopes)
+        search_budget_next_command(language_id, query, workspace, scopes)
     );
     println!(
-        "refineHint=use path-or-symbol terms first; example: asp fd -query 'path-or-symbol|error-code' --workspace <scope>"
+        "refineHint=use typed path-or-symbol clauses first; example: asp {language_id} search lexical 'path-or-symbol|error-code' --workspace <scope> --view seeds"
     );
     println!("avoid=repeat-search-pipe,broad-lexical,raw-read,raw-rg,workspace-wide-rg");
 }
 
-fn search_budget_next_command(query: &str, workspace: Option<&Path>, scopes: &[PathBuf]) -> String {
+fn search_budget_next_command(
+    language_id: &str,
+    query: &str,
+    workspace: Option<&Path>,
+    scopes: &[PathBuf],
+) -> String {
     let terms = super::search_query_budget::search_query_terms(query)
         .into_iter()
         .filter(|term| specific_search_term(term))
@@ -400,7 +504,7 @@ fn search_budget_next_command(query: &str, workspace: Option<&Path>, scopes: &[P
         .or_else(|| workspace.map(|workspace| workspace.display().to_string()))
         .unwrap_or_else(|| "<scope>".to_string());
     format!(
-        "asp fd -query '{}' --workspace {}",
+        "asp {language_id} search lexical '{}' --workspace {} --view seeds",
         query,
         shell_arg(&scope)
     )
@@ -442,11 +546,46 @@ fn source_trace_with_provider_facts(
         "truncatedCandidates".to_string(),
         Value::from(provider_facts.truncated_candidates),
     );
+    if let Some(descriptor_id) = provider_facts.descriptor_id.as_ref() {
+        fields.insert(
+            "descriptorId".to_string(),
+            Value::from(descriptor_id.clone()),
+        );
+    }
+    if let Some(descriptor_version) = provider_facts.descriptor_version.as_ref() {
+        fields.insert(
+            "descriptorVersion".to_string(),
+            Value::from(descriptor_version.clone()),
+        );
+    }
+    fields.insert(
+        "matchedAxes".to_string(),
+        Value::Array(
+            provider_facts
+                .matched_axes
+                .iter()
+                .cloned()
+                .map(Value::from)
+                .collect(),
+        ),
+    );
+    fields.insert(
+        "matchedTerms".to_string(),
+        Value::Array(
+            provider_facts
+                .matched_terms
+                .iter()
+                .cloned()
+                .map(Value::from)
+                .collect(),
+        ),
+    );
     let skipped = node_count == 0
         && provider_facts.edges.is_empty()
         && provider_facts.input_candidates == 0
         && provider_facts.fact_candidates == 0
-        && provider_facts.truncated_candidates == 0;
+        && provider_facts.truncated_candidates == 0
+        && provider_facts.descriptor_id.is_none();
     let state = if skipped { "skipped" } else { "used" };
     trace.push(
         SearchPipeSourceTrace::new(
@@ -518,6 +657,7 @@ fn dependency_manifest_fast_acquisition(
             .with_fields(manifest_fields),
             SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0),
         ],
+        source_snapshot: None,
     })
 }
 
@@ -545,7 +685,7 @@ pub(super) fn search_workspace_root(
     normalize_path(&workspace)
 }
 
-fn normalize_path(path: &Path) -> PathBuf {
+pub(super) fn normalize_path(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
@@ -617,6 +757,8 @@ fn run_search_ingest_command(
     }
     let candidates =
         parse_ingest_candidates(context.project_root, context.locator_root, stdin.as_slice());
+    let current_snapshot =
+        agent_semantic_client::source_index::current_source_index_snapshot(context.project_root)?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         context.project_root,
@@ -628,6 +770,7 @@ fn run_search_ingest_command(
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: context.project_root,
+        source_snapshot: &current_snapshot.source_snapshot,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-ingest",
@@ -665,7 +808,18 @@ fn run_search_lexical_command(
             "search lexical supports --view seeds; GraphRouter is selected by the built-in route wrapper".to_string(),
         );
     }
-    if let Some(block) = search_query_budget_block(&pipe_args.query, &pipe_args.owners, false) {
+    if let Some(block) = super::search_pipe_provider_facts::with_query_pack_descriptor(
+        context.provider_context,
+        |query_pack_descriptor| {
+            search_query_budget_block(agent_semantic_search::SearchQueryBudgetRequest {
+                language_id: context.language_id,
+                query: &pipe_args.query,
+                scopes: &pipe_args.owners,
+                explicit_filters: false,
+                query_pack_descriptor,
+            })
+        },
+    )? {
         print_search_query_budget_block(
             "search-lexical",
             context.language_id,
@@ -681,14 +835,18 @@ fn run_search_lexical_command(
         context.locator_root,
         pipe_args.workspace.as_deref(),
     );
+    let current_snapshot =
+        agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
     let acquisition = collect_search_pipe_candidates(
         context.language_id,
         &project_root,
+        &current_snapshot,
         context.locator_root,
         &pipe_args.query,
         &pipe_args.owners,
         SourceSpec::Auto,
         context.config,
+        context.provider_context,
         false,
     )?;
     let provider_facts = collect_provider_graph_facts(
@@ -707,6 +865,7 @@ fn run_search_lexical_command(
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: &project_root,
+        source_snapshot: &current_snapshot.source_snapshot,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-lexical",

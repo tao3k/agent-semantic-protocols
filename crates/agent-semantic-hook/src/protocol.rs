@@ -14,6 +14,8 @@ pub const HOOK_ACTIVATION_SCHEMA_VERSION: &str = "1";
 pub const PROVIDER_MANIFEST_SCHEMA_ID: &str = "agent.semantic-protocols.hook.provider-manifest";
 /// Schema version for static semantic hook provider manifests.
 pub const PROVIDER_MANIFEST_SCHEMA_VERSION: &str = "1";
+pub const CANONICAL_SCHEMA_AUTHORITY: &str =
+    "https://tao3k.github.io/agent-semantic-protocols/schemas/";
 /// Schema identifier for shared hook decision packets.
 pub const HOOK_DECISION_SCHEMA_ID: &str = "agent.semantic-protocols.hook.decision";
 /// Schema version for shared hook decision packets.
@@ -78,9 +80,8 @@ fn action_blocks(action: ActionPolicy) -> bool {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Command templates that route denied tool use into semantic search.
 pub struct HookRoutes {
     pub prime: CommandTemplate,
     pub owner: CommandTemplate,
@@ -94,12 +95,36 @@ pub struct HookRoutes {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dependency_topology_metadata: Option<CommandTemplate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_scope: Option<CommandTemplate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub export_index: Option<CommandTemplate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guide: Option<CommandTemplate>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookRouteBindings {
+    pub prime: String,
+    pub owner: String,
+    pub lexical: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    pub ingest: String,
+    pub check_changed: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_topology: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_topology_metadata: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_index: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guide: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Argument template for a provider-owned semantic search command.
 pub struct CommandTemplate {
@@ -112,8 +137,7 @@ pub struct CommandTemplate {
     pub stdin_mode: Option<StdinMode>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 /// Shared decision packet emitted before platform-specific hook rendering.
 pub struct HookDecision {
     pub schema_id: &'static str,
@@ -128,8 +152,106 @@ pub struct HookDecision {
     pub subject: DecisionSubject,
     pub routes: Vec<DecisionRoute>,
     pub message: String,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: BTreeMap<String, Value>,
+}
+
+impl serde::Serialize for HookDecision {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SerializedHookDecision<'a> {
+            schema_id: &'a str,
+            schema_version: &'a str,
+            protocol_id: &'a str,
+            protocol_version: &'a str,
+            platform: &'a str,
+            event: &'a str,
+            decision: &'a DecisionKind,
+            reason_kind: &'a ReasonKind,
+            language_ids: &'a [String],
+            subject: &'a DecisionSubject,
+            routes: &'a [DecisionRoute],
+            message: &'a str,
+            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+            fields: &'a BTreeMap<String, Value>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            interactive_command: Option<agent_semantic_loop::ResidentInteractiveCommand>,
+        }
+
+        SerializedHookDecision {
+            schema_id: self.schema_id,
+            schema_version: self.schema_version,
+            protocol_id: self.protocol_id,
+            protocol_version: self.protocol_version,
+            platform: &self.platform,
+            event: &self.event,
+            decision: &self.decision,
+            reason_kind: &self.reason_kind,
+            language_ids: &self.language_ids,
+            subject: &self.subject,
+            routes: &self.routes,
+            message: &self.message,
+            fields: &self.fields,
+            interactive_command: self.configured_resident_interactive_command(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl HookDecision {
+    /// Whether an explicit config rule selected a complete resident dispatch.
+    pub fn has_configured_resident_dispatch(&self) -> bool {
+        self.fields
+            .get("agentSessionAction")
+            .and_then(Value::as_str)
+            == Some("dispatch-configured-resident")
+            && self.fields.get("transport").and_then(Value::as_str) == Some("resident-agent")
+            && ["residentName", "receiptKind", "targetAgentName"]
+                .into_iter()
+                .all(|field| {
+                    self.fields
+                        .get(field)
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| !value.is_empty())
+                })
+    }
+
+    /// Build the single v1 command that enters the configured resident loop.
+    pub fn configured_resident_interactive_command(
+        &self,
+    ) -> Option<agent_semantic_loop::ResidentInteractiveCommand> {
+        if !self.has_configured_resident_dispatch() {
+            return None;
+        }
+        let resident_name = self.fields.get("residentName")?.as_str()?;
+        let root_session_id = self
+            .fields
+            .get("rootSessionId")
+            .or_else(|| self.fields.get("sessionId"))
+            .and_then(Value::as_str);
+        let receipt_kind = self.fields.get("receiptKind").and_then(Value::as_str);
+        let command_json = self
+            .subject
+            .command
+            .as_deref()
+            .and_then(|command| serde_json::to_string(&["/bin/sh", "-c", command]).ok());
+        Some(
+            agent_semantic_loop::ResidentInteractiveCommand::bootstrap_with_dispatch(
+                resident_name,
+                root_session_id,
+                receipt_kind,
+                command_json.as_deref(),
+            ),
+        )
+    }
+
+    pub fn configured_resident_interactive_command_line(&self) -> Option<String> {
+        let command = self.configured_resident_interactive_command()?;
+        Some(crate::classifier::command_line(&command.argv))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -146,6 +268,7 @@ pub enum DecisionKind {
 /// Reason category for a hook decision.
 pub enum ReasonKind {
     None,
+    ActivationUnavailable,
     DirectSourceRead,
     BulkSourceDump,
     RawBroadSearch,
@@ -230,6 +353,45 @@ pub enum AgentHookError {
     InvalidOutput(serde_json::Error),
 }
 
+impl AgentHookError {
+    #[must_use]
+    pub const fn reason_kind(&self) -> &'static str {
+        match self {
+            Self::InvalidActivation(_) => "invalid-activation",
+            Self::InvalidActivationConfig(_) => "invalid-activation-config",
+            Self::InvalidPayload(_) => "invalid-payload",
+            Self::InvalidOutput(_) => "invalid-output",
+        }
+    }
+
+    #[must_use]
+    pub fn message(&self) -> String {
+        match self {
+            Self::InvalidActivation(error) => format!("invalid activation JSON: {error}"),
+            Self::InvalidActivationConfig(message) => message.clone(),
+            Self::InvalidPayload(error) => format!("invalid hook payload JSON: {error}"),
+            Self::InvalidOutput(error) => format!("invalid hook output JSON: {error}"),
+        }
+    }
+}
+
+impl std::fmt::Display for AgentHookError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.reason_kind(), self.message())
+    }
+}
+
+impl std::error::Error for AgentHookError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidActivation(error)
+            | Self::InvalidPayload(error)
+            | Self::InvalidOutput(error) => Some(error),
+            Self::InvalidActivationConfig(_) => None,
+        }
+    }
+}
+
 /// Parse a platform hook payload as JSON.
 pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
     serde_json::from_str(input).map_err(AgentHookError::InvalidPayload)
@@ -238,6 +400,17 @@ pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
 /// Render a shared hook decision into the selected platform response envelope.
 pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentHookError> {
     let message = platform_decision_message(decision);
+    if decision.decision == DecisionKind::Deny
+        && decision.configured_resident_interactive_command().is_some()
+    {
+        return Ok(json!({
+            "hookSpecificOutput": {
+                "hookEventName": platform_hook_event_name(&decision.event),
+                "permissionDecision": "deny",
+                "permissionDecisionReason": message.as_ref(),
+            }
+        }));
+    }
     let mut decision_value =
         serde_json::to_value(decision).map_err(AgentHookError::InvalidOutput)?;
     if message.as_ref() != decision.message
@@ -324,7 +497,11 @@ fn decision_has_warning(decision: &HookDecision) -> bool {
 }
 
 fn platform_decision_message(decision: &HookDecision) -> Cow<'_, str> {
-    if decision.decision == DecisionKind::Deny && is_subagent_context(decision) {
+    if decision.decision == DecisionKind::Deny
+        && let Some(command) = decision.configured_resident_interactive_command_line()
+    {
+        Cow::Owned(command)
+    } else if decision.decision == DecisionKind::Deny && is_subagent_context(decision) {
         Cow::Owned(subagent_deny_message(&decision.message))
     } else {
         Cow::Borrowed(&decision.message)

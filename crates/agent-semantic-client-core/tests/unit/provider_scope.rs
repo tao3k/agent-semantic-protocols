@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use super::{
-    ProviderExecution, ResolvedProvider, normalize_project_path, project_child_path,
-    provider_ignores_path, provider_supports_source_file, relative_project_path, scoped_child_path,
+    ResolvedProvider, normalize_project_path, project_child_path, provider_ignores_path,
+    provider_supports_source_file, relative_project_path, scoped_child_path,
+    test_support::resolved_provider,
 };
 
 #[test]
@@ -72,20 +73,7 @@ fn provider_ignore_prefix_matching_is_project_relative() {
 }
 
 fn provider() -> ResolvedProvider {
-    ResolvedProvider {
-        language_id: "rust".into(),
-        provider_id: "rs-harness".into(),
-        binary: "rs-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: Vec::new(),
-        source_roots: Vec::new(),
-        config_files: Vec::new(),
-        source_extensions: Vec::new(),
-        ignored_path_prefixes: Vec::new(),
-    }
+    resolved_provider()
 }
 
 trait ProviderFixtureExt {

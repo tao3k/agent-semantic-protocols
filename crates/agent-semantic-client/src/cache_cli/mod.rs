@@ -7,7 +7,6 @@ mod request;
 pub(crate) use request::search_cache_forwarded_args;
 mod structural_index_import;
 mod writeback;
-mod writeback_analysis_metadata;
 mod writeback_artifact_events;
 mod writeback_common;
 mod writeback_generation;
@@ -15,7 +14,6 @@ mod writeback_manifest;
 mod writeback_packet;
 mod writeback_provider_export;
 mod writeback_request;
-mod writeback_route_receipt;
 
 #[cfg(test)]
 #[path = "../../tests/unit/cache_cli/locator_artifact.rs"]

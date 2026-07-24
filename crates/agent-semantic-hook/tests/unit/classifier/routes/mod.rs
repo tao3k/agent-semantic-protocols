@@ -4,8 +4,8 @@ use super::{command, command_with_stdin, provider, provider_routes, typescript_p
 
 mod codex_command_actions;
 mod python_priority;
-mod raw_search;
 mod search_json;
+mod source_access_rules;
 mod wrappers;
 
 fn registry_with_python() -> HookRuntime {
@@ -15,33 +15,27 @@ fn registry_with_python() -> HookRuntime {
     }
 }
 
+fn document_provider(language_id: &str, extension: &str) -> ActivatedProvider {
+    let manifest = builtin_provider_manifest(language_id, "orgize");
+    let routes =
+        agent_semantic_hook::materialize_provider_routes(&manifest).expect("document routes");
+    provider(&manifest, &[extension], &[], &[], &[], routes)
+}
+
+fn registry_with_documents() -> HookRuntime {
+    HookRuntime {
+        project_root: ".".to_string(),
+        providers: vec![
+            document_provider("org", ".org"),
+            document_provider("md", ".md"),
+        ],
+    }
+}
+
 fn registry_with_rust_and_python() -> HookRuntime {
     HookRuntime {
         project_root: ".".to_string(),
         providers: vec![typescript_provider(), rust_provider(), python_provider()],
-    }
-}
-
-fn registry_with_prefixed_python() -> HookRuntime {
-    let mut python = provider(
-        "python",
-        "python-project-harness",
-        "python-project-harness",
-        "agent.semantic-protocols.languages.python.python-project-harness",
-        &[".py"],
-        &["Project.toml", "Manifest.toml"],
-        &["src", "test"],
-        &[".git", ".python"],
-        provider_routes("python-project-harness", None),
-    );
-    python.provider_command_prefix = vec![
-        "python".to_string(),
-        "-m".to_string(),
-        "tools.fake_provider".to_string(),
-    ];
-    HookRuntime {
-        project_root: ".".to_string(),
-        providers: vec![typescript_provider(), python],
     }
 }
 
@@ -73,10 +67,7 @@ fn rust_provider() -> ActivatedProvider {
         StdinMode::PipeCandidates,
     );
     provider(
-        "rust",
-        "rs-harness",
-        "rs-harness",
-        "agent.semantic-protocols.languages.rust.rs-harness",
+        &builtin_provider_manifest("rust", "rs-harness"),
         &[".rs"],
         &["Cargo.toml", "Cargo.lock"],
         &["src", "tests", "crates"],
@@ -86,33 +77,11 @@ fn rust_provider() -> ActivatedProvider {
 }
 
 fn python_provider() -> ActivatedProvider {
-    let mut routes = provider_routes(
-        "py-harness",
-        Some(command(&[
-            "asp",
-            "python",
-            "query",
-            "--selector",
-            "{selector}",
-            "{termArgs}",
-            "--surface",
-            "owners,tests",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds",
-        ])),
-    );
-    routes.owner = command(&["py-harness", "search", "owner", "{path}", "."]);
-    routes.ingest = command_with_stdin(
-        &["py-harness", "search", "ingest", "."],
-        StdinMode::PipeCandidates,
-    );
+    let manifest = builtin_provider_manifest("python", "py-harness");
+    let routes =
+        agent_semantic_hook::materialize_provider_routes(&manifest).expect("python routes");
     provider(
-        "python",
-        "py-harness",
-        "py-harness",
-        "agent.semantic-protocols.languages.python.py-harness",
+        &manifest,
         &[".py", ".pyi"],
         &["pyproject.toml"],
         &["src", "tests"],
@@ -120,3 +89,4 @@ fn python_provider() -> ActivatedProvider {
         routes,
     )
 }
+use super::builtin_provider_manifest;

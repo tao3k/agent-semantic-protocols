@@ -35,9 +35,13 @@ mod unix {
             .current_dir(&root)
             .env("CODEX_HOME", &codex_home)
             .env("PATH", prepend_path(&fake_bin))
+            .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
+            .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
+            .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
+            .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
             .env("ASP_STATE_HOME", root.join(".state"))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
-            .args(["install", "plugin", "--codex", "."])
+            .args(["install", "plugin", "--codex", "--project", "."])
             .output()
             .expect("run asp install plugin --codex");
         assert!(
@@ -48,6 +52,10 @@ mod unix {
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(stdout.contains("[plugin-install]"), "stdout={stdout}");
+        assert!(
+            stdout.contains("userConfigStatus=created"),
+            "stdout={stdout}"
+        );
         assert!(
             stdout.contains(
                 "pluginSkill=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org"
@@ -253,7 +261,7 @@ fallback = ["gpt-5.4-mini"]
             .env("PATH", prepend_path(&fake_bin))
             .env("ASP_STATE_HOME", root.join(".state"))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
-            .args(["install", "plugin", "--codex", "."])
+            .args(["install", "plugin", "--codex", "--project", "."])
             .output()
             .expect("run asp install plugin --codex");
         assert!(
@@ -308,6 +316,33 @@ fallback = ["gpt-5.4-mini"]
         assert_global_plugin_cache_refreshed(&root, &codex_home);
 
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    }
+
+    #[test]
+    fn install_plugin_codex_help_uses_standard_sections_and_global_default() {
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args(["install", "plugin", "--codex", "--help"])
+            .output()
+            .expect("run asp install plugin --codex --help");
+        assert!(
+            output.status.success(),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("Usage: asp install plugin"),
+            "stdout={stdout}"
+        );
+        assert!(stdout.contains("Arguments:"), "stdout={stdout}");
+        assert!(stdout.contains("Options:"), "stdout={stdout}");
+        assert!(
+            stdout.contains("Install globally (default when no scope flag is given)"),
+            "stdout={stdout}"
+        );
+        assert!(stdout.contains("--project"), "stdout={stdout}");
+        assert!(stdout.contains("[default: .]"), "stdout={stdout}");
     }
 
     #[test]
@@ -511,7 +546,7 @@ fallback = ["gpt-5.4-mini"]
             .join("0.1.0")
     }
 
-    fn temp_project_root(name: &str) -> PathBuf {
+    pub(super) fn temp_project_root(name: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
@@ -558,10 +593,171 @@ esac
     fn prepend_path(bin_dir: &Path) -> String {
         let existing = std::env::var_os("PATH").unwrap_or_default();
         let mut paths = std::env::split_paths(&existing).collect::<Vec<_>>();
+        paths.insert(0, asp_bin_dir());
         paths.insert(0, bin_dir.to_path_buf());
         std::env::join_paths(paths)
             .expect("join PATH")
             .to_string_lossy()
             .into_owned()
     }
+
+    fn asp_bin_dir() -> PathBuf {
+        Path::new(env!("CARGO_BIN_EXE_asp"))
+            .parent()
+            .expect("CARGO_BIN_EXE_asp has parent")
+            .to_path_buf()
+    }
+}
+#[test]
+fn claude_install_creates_managed_hook_config_and_sidecar() {
+    let root = unix::temp_project_root("managed-hook-config-create");
+    let output = run_claude_hook_install(&root);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=created"));
+    let config = managed_hook_config_path(&root);
+    assert!(config.is_file());
+    assert!(managed_config_sidecar(&config).is_file());
+    assert_no_managed_config_temporaries(config.parent().expect("config parent"));
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn claude_install_rejects_unproven_custom_config_without_stamping() {
+    let root = unix::temp_project_root("managed-hook-config-custom");
+    let config = managed_hook_config_path(&root);
+    let mut custom =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse template");
+    custom
+        .as_table_mut()
+        .expect("template table")
+        .remove("contractFingerprint");
+    custom["rules"][0]["message"] = toml::Value::String("custom managed rule message".to_string());
+    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
+    let custom_bytes = toml::to_string(&custom).expect("render custom");
+    std::fs::write(&config, &custom_bytes).expect("write custom");
+    let output = run_claude_hook_install(&root);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("user-config-contract-unproven"));
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("read config"),
+        custom_bytes
+    );
+    assert!(!managed_config_sidecar(&config).exists());
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn claude_install_rejects_unproven_config_without_fingerprint() {
+    let root = unix::temp_project_root("managed-hook-config-unproven");
+    let config = managed_hook_config_path(&root);
+    let mut unproven =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse template");
+    unproven
+        .as_table_mut()
+        .expect("template table")
+        .remove("contractFingerprint");
+    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
+    let unproven_bytes = toml::to_string(&unproven).expect("render unproven config");
+    std::fs::write(&config, &unproven_bytes).expect("write unproven config");
+
+    let output = run_claude_hook_install(&root);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("user-config-contract-unproven"));
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("read config"),
+        unproven_bytes
+    );
+    assert!(!managed_config_sidecar(&config).exists());
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn claude_install_migrates_stale_managed_config_when_sidecar_proves_ownership() {
+    let root = unix::temp_project_root("managed-hook-config-stale-sidecar");
+    let config = managed_hook_config_path(&root);
+    let mut stale =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse template");
+    stale["contractFingerprint"] = toml::Value::String("stale-contract".to_string());
+    let stale_bytes = toml::to_string(&stale).expect("render stale");
+    std::fs::create_dir_all(config.parent().expect("config parent")).expect("create config parent");
+    std::fs::write(&config, &stale_bytes).expect("write stale");
+    std::fs::write(
+        managed_config_sidecar(&config),
+        test_sha256(stale_bytes.as_bytes()),
+    )
+    .expect("write sidecar");
+    let output = run_claude_hook_install(&root);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("read config"),
+        agent_semantic_hook::default_client_config_template()
+    );
+    assert_no_managed_config_temporaries(config.parent().expect("config parent"));
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+fn run_claude_hook_install(root: &std::path::Path) -> std::process::Output {
+    let asp_bin_dir = std::path::Path::new(env!("CARGO_BIN_EXE_asp"))
+        .parent()
+        .expect("CARGO_BIN_EXE_asp has parent")
+        .to_path_buf();
+    let existing = std::env::var_os("PATH").unwrap_or_default();
+    let mut paths = std::env::split_paths(&existing).collect::<Vec<_>>();
+    paths.insert(0, asp_bin_dir.clone());
+    let path = std::env::join_paths(paths).expect("join PATH");
+    std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(root)
+        .env("PATH", path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
+        .env("ASP_STATE_HOME", root.join(".state"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["install", "hook", "--client", "claude", "."])
+        .output()
+        .expect("run claude hook install")
+}
+
+fn managed_config_sidecar(config: &std::path::Path) -> std::path::PathBuf {
+    config.with_file_name(format!(
+        "{}.managed.sha256",
+        config
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("config name")
+    ))
+}
+
+fn managed_hook_config_path(root: &std::path::Path) -> std::path::PathBuf {
+    root.join(".state").join("hooks").join("config.toml")
+}
+
+fn test_sha256(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn assert_no_managed_config_temporaries(dir: &std::path::Path) {
+    let temporaries = std::fs::read_dir(dir)
+        .expect("read config directory")
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp"))
+        .count();
+    assert_eq!(
+        temporaries,
+        0,
+        "managed config temporaries remain in {}",
+        dir.display()
+    );
 }

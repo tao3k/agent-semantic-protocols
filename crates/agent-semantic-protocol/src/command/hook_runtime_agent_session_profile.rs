@@ -50,28 +50,6 @@ pub(super) fn append_resident_agent_fields(
     }
 }
 
-pub(super) fn resident_agent_host_action(
-    platform: &str,
-    asp_session_policy: &AspSessionPolicy,
-    existing_child: bool,
-) -> String {
-    let agent_name = asp_session_policy.resident_codex_agent_name();
-    match (platform, existing_child) {
-        ("codex", true) => format!(
-            "Main Agent must reuse the unique `/root/{agent_name}` child: use `followup_task` when it is idle/completed or `send_message` when it is running; do not spawn a duplicate."
-        ),
-        ("codex", false) => format!(
-            "Main Agent must first reuse `/root/{agent_name}` if it exists. Only when absent, spawn exactly one child through a native surface that exposes `agent_type`, setting `agent_type={agent_name}`; `task_name` and task-message language do not select the registered role. If the surface omits `agent_type`, report `bootstrapBlocked=host-agent-type-unavailable` and do not create a generic child."
-        ),
-        (_, true) => format!(
-            "The host must resume the existing configured `{agent_name}` child instead of creating a duplicate."
-        ),
-        (_, false) => format!(
-            "The host must select configured profile `{agent_name}` and create one child only when no reusable identity exists."
-        ),
-    }
-}
-
 pub(super) fn reasoning_observation_mismatches_profile(
     observed: Option<&str>,
     expected: Option<&str>,

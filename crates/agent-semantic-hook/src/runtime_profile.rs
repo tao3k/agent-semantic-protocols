@@ -1,8 +1,10 @@
 //! Runtime provider command profiles derived from activation.
 
 use crate::executable::{ExecutableStatus, is_executable_file, resolve_executable_with_status};
-use crate::parse_activation;
-use crate::protocol_activation::{ActivatedProvider, HookActivation, HookRuntime};
+use crate::protocol_activation::protocol_activation_manifest::{
+    ActivatedProvider, HookActivation, HookRuntime,
+};
+use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::provider_manifests;
 use agent_semantic_runtime::{is_project_activation_path, project_root_for_activation_path};
 use serde::{Deserialize, Serialize};
@@ -55,7 +57,7 @@ pub struct RuntimeProviderProfile {
     pub provider_id: String,
     pub binary: String,
     #[serde(default)]
-    pub execution: crate::protocol_activation::ProviderExecution,
+    pub execution: crate::protocol_activation::protocol_activation_manifest::ProviderExecution,
     #[serde(default)]
     pub provider_command_prefix: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

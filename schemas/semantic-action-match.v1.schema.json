@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-action-match.v1.schema.json",
+  "title": "Semantic action match",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "actionAny": {
+      "$ref": "#/$defs/actionKinds"
+    },
+    "effectAny": {
+      "$ref": "#/$defs/actionKinds"
+    },
+    "subjectKindAny": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "registered-language-source",
+          "registered-language-source-pattern",
+          "provider-config-file",
+          "directory",
+          "structural-selector",
+          "other"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "authorityAny": {
+      "$ref": "#/$defs/authorities"
+    },
+    "authorityExcludeAny": {
+      "$ref": "#/$defs/authorities"
+    },
+    "authorityProjections": {
+      "type": "array",
+      "items": {
+        "$ref": "semantic-action-authority-projection.v1.schema.json"
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "actionKinds": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "read",
+          "edit",
+          "search",
+          "enumerate",
+          "execute",
+          "test",
+          "build",
+          "delete",
+          "unknown"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "authorities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "raw-host-action",
+          "raw-shell",
+          "parser-owned-exact-evidence",
+          "parser-owned-search",
+          "ast-patch-evidence",
+          "unknown"
+        ]
+      },
+      "uniqueItems": true
+    }
+  }
+}

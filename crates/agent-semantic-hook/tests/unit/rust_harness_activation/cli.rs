@@ -13,6 +13,7 @@ use super::support::{
 #[test]
 fn cli_doctor_accepts_root_owned_rust_activation() {
     let root = temp_project_root("doctor-activation");
+    super::support::write_default_client_hook_config(&root);
     let activation_path = write_root_owned_rust_activation(&root);
     let output = asp_command()
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
@@ -27,8 +28,12 @@ fn cli_doctor_accepts_root_owned_rust_activation() {
         .output()
         .expect("run agent-semantic-protocol doctor");
 
-    assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("doctor stdout");
+    let stderr = String::from_utf8(output.stderr).expect("doctor stderr");
+    assert!(
+        output.status.success(),
+        "doctor failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
     assert!(
         stdout.contains("[agent-doctor] status=ok")
             || stdout.contains("[agent-doctor] status=warning")
@@ -61,13 +66,20 @@ fn cli_doctor_reports_deny_for_codex_exec_command_source_dump() {
         .output()
         .expect("run agent-semantic-protocol doctor");
 
-    assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("doctor stdout");
+    let stderr = String::from_utf8(output.stderr).expect("doctor stderr");
+    assert!(
+        output.status.success(),
+        "doctor failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
     assert!(
         stdout.contains("[agent-doctor] status=ok")
             || stdout.contains("[agent-doctor] status=warning")
     );
     assert!(stdout.contains("clientConfigStatus=ok"));
+    assert!(stdout.contains("binaryContractStatus="));
+    assert!(stdout.contains("binaryContractFingerprint=hook-client-v1-"));
+    assert!(stdout.contains("activeContractFingerprint="));
     assert!(stdout.contains("classifierProbe=deny"));
     assert!(stdout.contains("classifierReason=bulk-source-dump"));
     assert!(stdout.contains("enforcement="), "{stdout}");

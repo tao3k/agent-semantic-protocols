@@ -80,7 +80,7 @@ fn codex_session_start_keeps_existing_resident_when_rollout_is_missing() {
 }
 
 #[test]
-fn codex_subagent_start_claims_a_new_child_only_after_explicit_archive() {
+fn codex_subagent_stop_preserves_resident_and_rejects_duplicate_start() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
@@ -106,7 +106,7 @@ fn codex_subagent_start_claims_a_new_child_only_after_explicit_archive() {
     assert_eq!(stop["decision"].as_str(), Some("allow"));
     assert_eq!(
         stop["fields"]["agentSessionAction"].as_str(),
-        Some("subagent-stop-archived-managed-child")
+        Some("subagent-stop-preserved-resident-idle")
     );
 
     let start = run_codex_hook_decision_with_env(
@@ -123,15 +123,15 @@ fn codex_subagent_start_claims_a_new_child_only_after_explicit_archive() {
         }),
         &[("CODEX_THREAD_ID", root_session_id)],
     );
-    assert_eq!(start["decision"].as_str(), Some("allow"));
-    assert!(
-        start["fields"]["agentSessionAction"].is_null(),
-        "unexpected replacement SubagentStart decision: {start}"
+    assert_eq!(start["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        start["fields"]["agentSessionAction"].as_str(),
+        Some("reuse-resident-child")
     );
-    let report = show_agent_session_json(&root, replacement_child_id);
+    let report = show_agent_session_json(&root, archived_child_id);
     assert_eq!(report["sessions"].as_array().map(Vec::len), Some(1));
     assert_eq!(
         report["sessions"][0]["sessionId"].as_str(),
-        Some(replacement_child_id)
+        Some(archived_child_id)
     );
 }

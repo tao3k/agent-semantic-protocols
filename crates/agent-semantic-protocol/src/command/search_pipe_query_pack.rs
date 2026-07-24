@@ -3,21 +3,35 @@
 use super::search_pipe_model::Candidate;
 use super::search_pipe_query_model::{ClauseCoverage, QueryClause, QueryTerm, TermRole};
 
-pub(super) fn query_clauses(language_id: &str, query: &str) -> Vec<QueryClause> {
-    agent_semantic_search::search_pipe_query_clauses(search_query_clauses_request(
-        language_id,
-        query,
-    ))
+pub(super) fn query_clauses(
+    language_id: &str,
+    query: &str,
+    query_pack_descriptor: agent_semantic_search::SearchPipeQueryPackDescriptor<'_>,
+) -> Vec<QueryClause> {
+    agent_semantic_search::search_pipe_query_clauses(
+        agent_semantic_search::SearchPipeQueryClausesRequest::new(
+            agent_semantic_search::SearchPipeLanguageId::new(language_id),
+            agent_semantic_search::SearchPipeQueryText::new(query),
+        )
+        .with_query_pack_descriptor(query_pack_descriptor),
+    )
     .into_iter()
     .map(query_clause_from_search)
     .collect()
 }
 
-pub(super) fn query_clause_texts(language_id: &str, query: &str) -> Vec<String> {
-    agent_semantic_search::search_pipe_query_clause_texts(search_query_clauses_request(
-        language_id,
-        query,
-    ))
+pub(super) fn query_clause_texts(
+    language_id: &str,
+    query: &str,
+    query_pack_descriptor: agent_semantic_search::SearchPipeQueryPackDescriptor<'_>,
+) -> Vec<String> {
+    agent_semantic_search::search_pipe_query_clause_texts(
+        agent_semantic_search::SearchPipeQueryClausesRequest::new(
+            agent_semantic_search::SearchPipeLanguageId::new(language_id),
+            agent_semantic_search::SearchPipeQueryText::new(query),
+        )
+        .with_query_pack_descriptor(query_pack_descriptor),
+    )
 }
 
 pub(super) fn unique_query_terms(clauses: &[QueryClause]) -> Vec<QueryTerm> {
@@ -68,11 +82,13 @@ pub(super) fn role_terms(terms: &[QueryTerm], role: TermRole) -> Vec<String> {
 }
 
 pub(super) fn next_query_pack_hint(
+    descriptor: agent_semantic_search::SearchPipeQueryPackDescriptor<'_>,
     context_terms: &[String],
     owner_seed_terms: &[String],
     concept_terms: &[String],
 ) -> Option<String> {
     agent_semantic_search::search_pipe_next_query_pack_hint(
+        descriptor,
         context_terms,
         owner_seed_terms,
         concept_terms,
@@ -127,14 +143,4 @@ fn search_role_from_protocol(role: TermRole) -> agent_semantic_search::SearchPip
         TermRole::Concept => agent_semantic_search::SearchPipeTermRole::Concept,
         TermRole::Symbol => agent_semantic_search::SearchPipeTermRole::Symbol,
     }
-}
-
-fn search_query_clauses_request<'a>(
-    language_id: &'a str,
-    query: &'a str,
-) -> agent_semantic_search::SearchPipeQueryClausesRequest<'a> {
-    agent_semantic_search::SearchPipeQueryClausesRequest::new(
-        agent_semantic_search::SearchPipeLanguageId::new(language_id),
-        agent_semantic_search::SearchPipeQueryText::new(query),
-    )
 }

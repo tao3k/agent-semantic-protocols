@@ -1,0 +1,72 @@
+#+TITLE: RFC 10.06.01 — Ranked Search Projection Source
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Worktree implementation contract.
+
+* Problem
+
+Search ranking and agent-facing rendering are separate responsibilities.
+The current graph-turbo integration asks the ranker for =--format compact= and
+passes the returned text directly to the agent.  That makes a ranker-specific
+presentation format part of the command path and prevents graph, owner, and
+future evidence sources from sharing one renderer interface.
+
+=compact= is not a protocol concept.  Output density belongs to the projection
+request and is expressed as =terse=, =standard=, or =expanded=.
+
+* Decision
+
+The search projection flow is:
+
+#+begin_src text
+typed search/evidence facts
+  -> graph-turbo rank --format json
+  -> semantic-graph-turbo-result.v1
+  -> SearchProjectionSource
+  -> SearchProjectionRenderer
+  -> rendered-search-projection.v1
+#+end_src
+
+Graph-turbo owns ranking only.  It MUST return the typed
+=agent.semantic-protocols.semantic-graph-turbo-result= packet.  It MUST NOT
+choose the final agent-facing text density.
+
+=SearchProjectionSource= is the language-neutral input boundary.  Both the
+semantic search packet and the graph-turbo result packet expose:
+
+- their validated JSON value;
+- a canonical semantic digest.
+
+=SearchProjectionRenderer= accepts any validated =SearchProjectionSource= plus
+a =search-projection-request.v1=.  A renderer chooses a projection such as
+=topology= or =ranked-frontier=; the request chooses the density and byte/row
+budgets.
+
+* Required invariants
+
+1. Public Rust and JSON contracts do not use =compact= as an interface,
+   projection, or density name.
+2. Command modules do not render graph-turbo stdout.
+3. Graph-turbo process output is parsed and validated as a v1 result packet
+   before rendering.
+4. Every rendered packet carries the semantic digest of its validated source.
+5. Unsupported source/projection combinations fail closed.
+6. Row and byte budgets are enforced by the renderer, not by command-local
+   string manipulation.
+
+* Breaking migration
+
+The former =rank - --format compact= command path is removed.  There is no
+plain-text compatibility branch.  The only graph-turbo command path used by
+ASP is =rank - --format json= followed by the shared projection renderer.
+
+* Validation gates
+
+- schema validation for a real graph-turbo JSON result;
+- source digest determinism;
+- the same renderer interface accepts semantic-search and ranked-graph inputs;
+- command integration rejects untyped stdout;
+- no active ASP Rust public contract contains the =compact= literal.

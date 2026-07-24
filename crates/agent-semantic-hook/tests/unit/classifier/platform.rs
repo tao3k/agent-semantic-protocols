@@ -162,10 +162,15 @@ fn read_only_subagent_write_denial_uses_sandbox_permission_context() {
         }
     });
     let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: true,
+        resident_enabled: true,
         managed_child_name: "asp-explore",
-        registered_name: "asp-explore",
-        registry_status: "active",
+        configured_codex_agent_name: "asp_explorer",
+        configured_role: "asp_explorer",
+        codex_hook_agent_id: Some("child-agent"),
+        codex_hook_agent_type: Some("explorer"),
+        resident_child_identity_proof: Some("codex-hook-payload-live-target"),
+        resident_child_session_id: Some("child-session"),
+        identity_status: "live-target-verified",
         sandbox_mode: Some("read-only"),
         session_id: "child-session",
     };
@@ -218,10 +223,15 @@ fn read_only_subagent_write_denial_ignores_unmanaged_subagents() {
         }
     });
     let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: false,
+        resident_enabled: false,
         managed_child_name: "asp-explore",
-        registered_name: "user-subagent",
-        registry_status: "active",
+        configured_codex_agent_name: "asp_explorer",
+        configured_role: "asp_explorer",
+        codex_hook_agent_id: Some("user-subagent"),
+        codex_hook_agent_type: Some("default"),
+        resident_child_identity_proof: None,
+        resident_child_session_id: None,
+        identity_status: "unverified",
         sandbox_mode: Some("read-only"),
         session_id: "child-session",
     };
@@ -237,10 +247,15 @@ fn read_only_subagent_write_denial_ignores_unmanaged_subagents() {
 #[test]
 fn read_only_subagent_receipt_accepts_graph_route_receipts() {
     let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: true,
+        resident_enabled: true,
         managed_child_name: "asp-explore",
-        registered_name: "asp-explore",
-        registry_status: "active",
+        configured_codex_agent_name: "asp_explorer",
+        configured_role: "asp_explorer",
+        codex_hook_agent_id: Some("child-agent"),
+        codex_hook_agent_type: Some("explorer"),
+        resident_child_identity_proof: Some("codex-hook-payload-live-target"),
+        resident_child_session_id: Some("child-session"),
+        identity_status: "live-target-verified",
         sandbox_mode: Some("read-only"),
         session_id: "child-session",
     };
@@ -273,10 +288,15 @@ fn read_only_subagent_receipt_accepts_graph_route_receipts() {
 #[test]
 fn read_only_subagent_receipt_blocks_broad_or_explanatory_receipts() {
     let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: true,
+        resident_enabled: true,
         managed_child_name: "asp-explore",
-        registered_name: "asp-explore",
-        registry_status: "active",
+        configured_codex_agent_name: "asp_explorer",
+        configured_role: "asp_explorer",
+        codex_hook_agent_id: Some("child-agent"),
+        codex_hook_agent_type: Some("explorer"),
+        resident_child_identity_proof: Some("codex-hook-payload-live-target"),
+        resident_child_session_id: Some("child-session"),
+        identity_status: "live-target-verified",
         sandbox_mode: Some("read-only"),
         session_id: "child-session",
     };
@@ -323,10 +343,15 @@ fn read_only_subagent_receipt_ignores_unmanaged_subagents() {
         "last_assistant_message": "ordinary user subagent final message"
     });
     let context = agent_semantic_hook::HookSubagentPermissionContext {
-        is_asp_managed: false,
+        resident_enabled: false,
         managed_child_name: "asp-explore",
-        registered_name: "user-subagent",
-        registry_status: "active",
+        configured_codex_agent_name: "asp_explorer",
+        configured_role: "asp_explorer",
+        codex_hook_agent_id: Some("user-subagent"),
+        codex_hook_agent_type: Some("default"),
+        resident_child_identity_proof: None,
+        resident_child_session_id: None,
+        identity_status: "unverified",
         sandbox_mode: Some("read-only"),
         session_id: "child-session",
     };

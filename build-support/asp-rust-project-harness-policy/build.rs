@@ -4,15 +4,9 @@ fn main() {
     config.verification_policy.profile_hints.push(
         rust_lang_project_harness::RustVerificationProfileHint::new(
             std::path::PathBuf::from("src/lib.rs"),
-            [
-                rust_lang_project_harness::RustOwnerResponsibility::LatencySensitive,
-                rust_lang_project_harness::RustOwnerResponsibility::AvailabilityCritical,
-            ],
+            [rust_lang_project_harness::RustOwnerResponsibility::AvailabilityCritical],
         )
-        .with_task_kinds([
-            rust_lang_project_harness::RustVerificationTaskKind::Performance,
-            rust_lang_project_harness::RustVerificationTaskKind::Stability,
-        ])
+        .with_task_kinds([rust_lang_project_harness::RustVerificationTaskKind::Stability])
         .with_rationale(
             "asp-rust-project-harness-policy owns build-support evidence graph policy for ASP",
         ),

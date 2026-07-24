@@ -4,7 +4,7 @@ use crate::provider_command::support::{
 };
 
 #[test]
-fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_spawn() {
+fn search_pipe_is_asp_owned_and_routes_bounded_cold_scan_without_provider_spawn() {
     let root = temp_project_root("search-pipe-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -41,8 +41,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.starts_with("[search-pipe]"), "{stdout}");
     assert!(
-        stdout
-            .contains("lang=rust view=seeds source=search-overlay ranker=graph-turbo:owner-query"),
+        stdout.contains("lang=rust view=seeds source=source-index ranker=graph-turbo:owner-query"),
         "{stdout}"
     );
     assert!(
@@ -66,25 +65,21 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         stdout.contains("ownerCoverage=bestOwner=src/generated/lib.rs"),
         "{stdout}"
     );
-    assert!(stdout.contains("search-overlay:used"), "{stdout}");
     assert!(
-        stdout.contains("handles=inputTerms=HookDecision,ClientReceipt contextTerms=- ownerSeedTerms=HookDecision,ClientReceipt conceptTerms=-"),
+        stdout.contains("sourceTrace=sourceIndex:fallthrough"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("parserHandles=HookDecision@src/generated/lib.rs:1"),
+        stdout.contains("acquisitionRoute=bounded-cold-scan"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("searchOverlayHandles=HookDecision,ClientReceipt"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector"
-        ),
-        "{stdout}"
-    );
+    assert!(stdout.contains("evidenceState=needs-cold-scan"), "{stdout}");
+    assert!(stdout.contains("fallbackReason=warm-miss"), "{stdout}");
+    assert!(stdout.contains("providerProcessCount=0"), "{stdout}");
+    assert!(stdout.contains("nativeFinderProcessCount=0"), "{stdout}");
+    assert!(stdout.contains("rg-proof:used"), "{stdout}");
+    assert!(!stdout.contains("fd-query"), "{stdout}");
+    assert!(!stdout.contains("rg-query"), "{stdout}");
     assert!(!stdout.contains("[graph-frontier]"), "{stdout}");
     assert!(!stdout.contains("evidenceNodes="), "{stdout}");
     assert!(!stdout.contains("evidenceEdges="), "{stdout}");
@@ -129,7 +124,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
     assert!(
         stdout.contains(
-            "nextCommand=asp rust search owner src/generated/lib.rs items --query 'HookDecision|ClientReceipt|hookdecision|clientreceipt' --workspace . --view seeds"
+            "nextCommand=asp rust search owner src/generated/lib.rs items --query 'HookDecision|ClientReceipt' --workspace . --view seeds"
         ),
         "{stdout}"
     );
@@ -158,6 +153,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         stdout.contains("avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read"),
         "{stdout}"
     );
+    assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -212,7 +208,7 @@ fn search_pipe_marks_missing_path_terms_as_non_selectors() {
 }
 
 #[test]
-fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
+fn gerbil_search_pipe_compacts_config_recall_without_provider_spawn() {
     let root = temp_project_root("gerbil-search-pipe-config-recall");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -258,15 +254,24 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("lang=gerbil-scheme"), "{stdout}");
-    assert!(stdout.contains("src/main.ss"), "{stdout}");
+    assert!(
+        stdout.contains("ownerCoverage=bestOwner=gerbil.pkg"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains(
-            "nextCommand=asp gerbil-scheme search owner gerbil.pkg items --query 'local|alias' --workspace . --view seeds"
+            "nextCommand=asp gerbil-scheme search owner gerbil.pkg items --query 'gerbil.pkg|build.ss|local|alias' --workspace . --view seeds"
         ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("packageCohesion=medium packages=build.ss,gerbil.pkg,src/main.ss"),
+        stdout.contains("packageCohesion=medium packages=build.ss,gerbil.pkg"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("fd-path:used"), "{stdout}");
+    assert!(stdout.contains("rg-proof:used"), "{stdout}");
+    assert!(
+        stdout.contains("omit=source,full-candidate-list"),
         "{stdout}"
     );
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
@@ -335,6 +340,52 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
     assert!(!stdout.contains("recommendedNext="), "{stdout}");
     assert!(!stdout.contains("subagentHint="), "{stdout}");
     assert!(!stdout.contains("treeSitterHandles="), "{stdout}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn parser_owned_treesitter_query_uses_activated_provider_descriptor() {
+    let root = temp_project_root("parser-owned-treesitter-query-provider-context");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(root.join("src/lib.rs"), "pub struct Fiber;\n").expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "query",
+            "--treesitter-query",
+            "(struct_item name: (type_identifier) @declaration.name (#eq? @declaration.name \"Fiber\"))",
+            "--workspace",
+            ".",
+        ])
+        .output()
+        .expect("run parser-owned treesitter query");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !receipt.contains("provider query-pack descriptor is required"),
+        "{receipt}"
+    );
+    assert!(
+        !marker.exists(),
+        "parser-owned treesitter query must not delegate to the provider binary"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

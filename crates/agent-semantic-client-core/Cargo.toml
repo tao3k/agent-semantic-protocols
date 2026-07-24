@@ -1,12 +1,12 @@
 [package]
 name = "agent-semantic-client-core"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "Core request, route, cache, and receipt contracts for the agent semantic client."
 license = "MIT"
 
 [dependencies]
-sha2 = "0.10"
+sha2.workspace = true
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }

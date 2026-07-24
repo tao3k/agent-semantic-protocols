@@ -1,0 +1,70 @@
+#+title: 10.05.36 Standard CLI Help Contract
+#+status: Draft
+
+* Status
+
+Draft implementation contract for standardizing every public =asp ... --help=
+surface.
+
+* Context
+
+The public CLI currently mixes dispatch-owned parsers with hand-written
+=usage:= strings.  These strings compress commands, arguments, options,
+aliases, and defaults into single lines.  They also drift from execution
+semantics: for example, Codex plugin installation defaults to global scope,
+but the old help did not expose that default or the explicit project scope.
+
+The problem is not command-specific wording.  Public help bypasses the Rust
+CLI command model, so fixing one string leaves the root command and sibling
+subcommands inconsistent.
+
+* Decision
+
+One shared =clap::Command= tree owns public CLI help.
+
+- =asp --help= and every public =asp <path> --help= render through that tree.
+- The command tree owns command descriptions, positional arguments, options,
+  aliases, conflicts, and displayed defaults.
+- Help is handled before provider, hook, agent, install, search, or query
+  execution dispatch.
+- Existing execution functions remain the behavior owners during this
+  migration.  Standardizing help must not silently replace provider or
+  control-plane execution semantics.
+- Public dispatch code must not add new hand-written =usage:= strings.
+- Dynamic language facades must project into the same help contract rather
+  than maintaining a separate compressed usage line.
+
+* Contract
+
+Standard help output contains the sections applicable to the selected
+command:
+
+- =Usage:=
+- =Commands:=
+- =Arguments:=
+- =Options:=
+
+Defaults and aliases are visible beside the option they govern.  In
+particular:
+
+- =asp install plugin --codex --help= identifies global installation as the
+  default scope.
+- Project-local Codex plugin enablement is selected explicitly with
+  =--project= or =--project-plugin=.
+- =PROJECT_ROOT= defaults to the current working directory and locates the
+  ASP plugin source; it does not implicitly select project scope.
+
+Unknown commands and execution errors remain owned by their existing
+dispatchers until a later parser migration.  This contract standardizes help
+first so output can converge without widening execution risk.
+
+* Validation
+
+- Snapshot or structural tests cover =asp --help= and each public first-level
+  command.
+- Representative nested coverage includes install plugin, install language,
+  hook doctor, agent session, search, query, graph, and a language facade.
+- Tests assert standard section headers and command-specific defaults rather
+  than one-line usage literals.
+- A runtime matrix verifies that =--help= exits successfully without invoking
+  the selected command's execution path.

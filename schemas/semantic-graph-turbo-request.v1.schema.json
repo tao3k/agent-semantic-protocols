@@ -12,6 +12,7 @@
     "protocolVersion",
     "packetKind",
     "surface",
+    "sourceSnapshot",
     "queryTerms",
     "profile",
     "algorithm",
@@ -137,8 +138,12 @@
         "auto",
         "provider",
         "finder",
+        "search-overlay",
         "ingest"
       ]
+    },
+    "sourceSnapshot": {
+      "$ref": "https://agent-semantic-protocols.dev/schemas/source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
     },
     "candidateSources": {
       "type": "array",
@@ -719,6 +724,13 @@
             "minLength": 1
           },
           "uniqueItems": true
+        },
+        "reachability": {
+          "description": "Whether the selected owner is proven reachable by the active language build graph. Parsed or ranked ownership alone must remain unknown.",
+          "enum": [
+            "verified",
+            "unknown"
+          ]
         }
       }
     },
@@ -785,6 +797,23 @@
         "query": {
           "type": "string",
           "minLength": 1
+        },
+        "requiredActor": {
+          "description": "Actor that can execute this exact router-produced action without another routing hop.",
+          "enum": [
+            "current-session",
+            "verified-resident-search-agent"
+          ]
+        },
+        "requiredCapability": {
+          "description": "Parser-owned capability required to execute this action.",
+          "enum": [
+            "owner-items"
+          ]
+        },
+        "executable": {
+          "description": "True only when the router has selected an actor that owns requiredCapability.",
+          "type": "boolean"
         }
       }
     },

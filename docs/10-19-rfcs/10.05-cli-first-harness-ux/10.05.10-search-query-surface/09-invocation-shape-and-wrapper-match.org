@@ -1,0 +1,108 @@
+#+title: Invocation Shape and Wrapper Match Contract
+
+* Status
+
+This section refines the host-native action policy with a command-neutral
+invocation model.  It supersedes any interpretation that derives a semantic
+read effect from hard-coded executable or subcommand names.
+
+* Normative boundary
+
+The policy engine MUST evaluate a typed action envelope rather than maintain a
+vocabulary such as ~rtk read~, ~cat~, or ~sed~ in Rust.  The envelope has four
+independent axes:
+
+- the host action supplied by the client, such as ~read~, ~edit~, or ~execute~;
+- an invocation shape: ~host-native~, ~command~, or ~wrapped-command~;
+- token roles for flags and operands; and
+- subjects classified from provider-registry source extensions while globs are
+  still unexpanded.
+
+Flags are modifiers, not evidence that an operand is safe.  Both an empty flag
+set and a non-empty flag set MUST preserve the same registered-source operand
+decision.
+
+* Producer and consumer ownership
+
+The Bash parser crate owns shell syntax and invocation normalization.  It
+produces wrapper-chain, executable, flag, and operand roles from the shell AST.
+The hook crate MUST consume those facts; it MUST NOT independently tokenize
+shell text or guess those roles.  The config crate owns the language-neutral
+predicate enums and wrapper-registry contract.
+
+This boundary also applies to future shells: each shell provider produces the
+shared invocation packet, while the hook matcher remains shell-neutral.
+
+* Direct and wrapped command matching
+
+A command action and a wrapped command action are separate match-engine facts:
+
+#+begin_src text
+command:
+  execute + flags* + registered-source-operand
+
+wrapped-command:
+  wrapper-chain+ + execute + flags* + registered-source-operand
+#+end_src
+
+The ~flags*~ position explicitly includes zero flags.  A deny rule MAY match
+both shapes in one typed predicate, but receipts MUST retain which shape was
+observed.
+
+Wrapper identity MUST come from client structure or a wrapper registry.  A
+provider or deployment can register wrappers without registering every command
+that may run inside them.  Rust matcher code MUST NOT contain wrapper names or
+inner command names.
+
+For example, ~rtk read *.rs~ is denied because the host action is ~execute~ and
+the unexpanded operand is a registered Rust source pattern.  The decision does
+not require the engine to know that ~rtk~ or ~read~ implies a read effect: an
+~execute~ action over a registered source subject fails closed when its typed
+effect is either ~read~ or ~unknown~.  If ~rtk~ is present in the wrapper
+registry, the same action also carries a ~wrapped-command~ receipt; that
+receipt refines evidence but is not the safety floor.  An explicit ~edit~
+effect does not match this source-read deny rule and remains owned by edit
+policy.
+
+* Authority
+
+Parser-owned authority is producer metadata.  It MUST be supplied by the host,
+provider route, or a typed registry projection.  It MUST NOT be inferred by
+scanning argv for command words.  Lexical compatibility allow rules MUST NOT
+bypass the typed action matcher.
+
+A registry projection declares a provider-command prefix containing a
+~<registered-language>~ slot and the authority it produces.  Projection
+succeeds only when that slot resolves through the active provider registry.
+For example, the default ASP projection covers
+~asp <registered-language> ...~ as one provider invocation family; policy does
+not enumerate ~query~, ~search~, ~cache~, or ~ast-patch~ subcommands.  A bare
+prefix without a registered-language resolution MUST NOT produce parser-owned
+authority.
+
+* Required predicates
+
+The shared matcher exposes these optional predicates:
+
+- ~actionAny~ and ~effectAny~;
+- ~subjectKindAny~;
+- ~authorityAny~ and ~authorityExcludeAny~;
+- ~authorityProjections~;
+- ~invocationShapeAny~;
+- ~wrapperMatchAny~; and
+- ~flagPresenceAny~.
+
+An empty predicate does not constrain that axis.  Values within one ~*Any~
+predicate are alternatives; non-empty predicates across different axes are
+conjunctive.  Therefore a source deny rule can accept both ~present~ and
+~absent~ flag facts without weakening its action or subject constraints.
+
+* Safety floor
+
+For registered-language source subjects, deployments SHOULD deny a host-native
+~read~ action with ~effect=read~ and a raw ~execute~ action with
+~effect=read|unknown~.  ~effect=unknown~ is the fail-closed alternative when no
+registered projection can prove a narrower effect.  ~effect=edit~ MUST NOT
+match the source-read deny rule; edit authorization is a separate typed policy.
+Parser-owned evidence is allowed only through typed authority produced before
+policy evaluation.

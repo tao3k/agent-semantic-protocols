@@ -2,6 +2,7 @@ use super::search_pipe_query_model::ClauseCoverage;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SearchPipeQuality {
+    pub(super) query_terms: Vec<String>,
     pub(super) clause_count: usize,
     pub(super) query_pack_quality: String,
     pub(super) global_matched: Vec<String>,
@@ -19,7 +20,6 @@ pub(super) struct SearchPipeQuality {
     pub(super) packages: Vec<String>,
     pub(super) risks: Vec<String>,
     pub(super) allow_query_selector: bool,
-    pub(super) fd_query: Option<String>,
     pub(super) context_terms: Vec<String>,
     pub(super) owner_seed_terms: Vec<String>,
     pub(super) concept_terms: Vec<String>,

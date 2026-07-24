@@ -176,6 +176,42 @@ This is the point where LLM behavior improves: the model is not merely told
 which branch is illegal, why it is illegal, and where the correction boundary
 lives.
 
+* Executable Next-Action Invariant
+
+Every evidence or graph state that exposes a =nextAction= MUST describe an
+action that the current actor can execute through the selected router path.  A
+router MUST NOT return an action and then reject the same exact action solely
+because it is being executed by the verified resident search agent selected by
+that router.
+
+When an action requires a different actor or capability, the packet MUST expose
+that precondition as structured data rather than leaving it implicit in prose:
+
+#+begin_src json
+{
+  "nextAction": "projection-import-required",
+  "requiredActor": "verified-resident-search-agent",
+  "requiredCapability": "parser-owned-projection-import",
+  "executable": true
+}
+#+end_src
+
+For parser-owned projection materialization, a verified resident ASP Explorer
+is an authorized executor.  The router MUST preserve the parsed language and
+owner constraints while handing the action to that resident.  It MUST NOT
+re-route the resident's exact command back to the same resident, and it MUST
+not fall back to an owner from another language when caller or test expansion
+misses.
+
+The invariant is observable at the search boundary:
+
+- an action marked =executable: true= succeeds for the named actor;
+- an action marked =executable: false= names the actor or capability transition
+  required before retry;
+- repeated execution of the same dispatch identity produces one receipt, not a
+  duplicated search block;
+- caller/test expansion remains pinned to the selected language and owner.
+
 * Next Boundary
 The current packet projection can already describe =provider-output= sources.
 The next boundary is to capture those sources from the Rust provider:

@@ -17,6 +17,10 @@ fn search_json_routes_to_compact_search() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::AgentSearchJson);
+    assert_eq!(
+        decision.fields.get("configRuleId"),
+        Some(&json!("deny-agent-search-json"))
+    );
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Lexical);
     assert_eq!(
         decision.routes[0].argv,
@@ -54,6 +58,10 @@ fn search_json_owner_routes_to_provider_owner_query() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::AgentSearchJson);
+    assert_eq!(
+        decision.fields.get("configRuleId"),
+        Some(&json!("deny-agent-search-json"))
+    );
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(
         decision.routes[0].argv,
@@ -63,15 +71,15 @@ fn search_json_owner_routes_to_provider_owner_query() {
             "search",
             "owner",
             "src/cli/agent-hooks.ts",
-            "items",
-            "--query",
-            "agent-hooks|AgentHooks|agentHooks",
-            "."
+            "--workspace",
+            ".",
+            "--view",
+            "seeds"
         ]
     );
     assert_eq!(
         decision.message,
-        "agent-search-json denied; route: asp typescript search owner src/cli/agent-hooks.ts items --query 'agent-hooks|AgentHooks|agentHooks' --workspace ."
+        "agent-search-json denied; route: asp typescript search owner src/cli/agent-hooks.ts --workspace . --view seeds"
     );
 }
 

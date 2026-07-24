@@ -246,15 +246,12 @@ fn registered_resident_child_transcript_allows_parser_owned_rust_search() {
     );
 
     assert_eq!(decision["decision"].as_str(), Some("allow"), "{decision}");
-    assert_eq!(decision["fields"]["registeredResidentChild"], true);
     assert_eq!(
-        decision["fields"]["residentChildIdentityProof"],
-        "codex-transcript-registry-exact"
+        decision["fields"]["agentSessionAction"],
+        "active-resident-child"
     );
-    assert_eq!(
-        decision["fields"]["residentChildParserOwnedAspCommand"],
-        true
-    );
+    assert_eq!(decision["fields"]["routingTerminal"], true);
+    assert_eq!(decision["fields"]["redispatchAllowed"], false);
     assert!(decision["fields"].get("requiredAction").is_none());
 }
 

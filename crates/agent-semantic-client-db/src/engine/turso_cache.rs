@@ -11,10 +11,9 @@ use agent_semantic_client_core::{
 use crate::types::{ClientDbGenerationHit, normalized_project_root};
 
 use super::turso::connect_turso_client_db;
-use super::turso_operation_lock::acquire_turso_operation_lock;
 use super::turso_statement::{
-    execute_turso_operation_with_lock_retry, execute_turso_prepared_statement_with_lock_retry,
-    execute_turso_statement_with_lock_retry, run_turso_operation_with_lock_retry,
+    execute_turso_operation, execute_turso_prepared_statement_with_lock_retry,
+    execute_turso_statement, run_turso_operation,
 };
 
 /// Bootstrap Turso cache-generation tables used by DB Engine replay lookup.
@@ -41,7 +40,7 @@ pub async fn bootstrap_turso_client_cache_schema(
         "CREATE INDEX IF NOT EXISTS asp_cache_generation_lookup_idx
             ON asp_cache_generation(language_id, provider_id, project_root, export_method, request_fingerprint, updated_at_ms)",
     ] {
-        execute_turso_statement_with_lock_retry(
+        execute_turso_statement(
             connection,
             statement,
             "failed to bootstrap Turso cache schema",
@@ -66,10 +65,9 @@ pub async fn upsert_turso_cache_generations(
     if manifest.generations.is_empty() {
         return Ok(0);
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "cache-generation-upsert")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_client_cache_schema(&connection).await?;
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "BEGIN TRANSACTION",
         "failed to begin Turso cache generation transaction",
@@ -112,7 +110,7 @@ pub async fn upsert_turso_cache_generations(
     {
         Ok(statement) => statement,
         Err(error) => {
-            let _ = execute_turso_statement_with_lock_retry(
+            let _ = execute_turso_statement(
                 &connection,
                 "ROLLBACK",
                 "failed to rollback Turso cache generation transaction after prepare",
@@ -154,7 +152,7 @@ pub async fn upsert_turso_cache_generations(
             ),
             "failed to upsert Turso cache generation",
         ) {
-            let _ = execute_turso_statement_with_lock_retry(
+            let _ = execute_turso_statement(
                 &connection,
                 "ROLLBACK",
                 "failed to rollback Turso cache generation transaction after upsert",
@@ -163,7 +161,7 @@ pub async fn upsert_turso_cache_generations(
             return Err(error);
         }
     }
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "COMMIT",
         "failed to commit Turso cache generation transaction",
@@ -174,10 +172,9 @@ pub async fn upsert_turso_cache_generations(
 
 /// Clear cache-generation metadata from the active Turso read model.
 pub async fn clear_turso_cache_generations(db_path: &Path) -> Result<(), String> {
-    let _operation_lock = acquire_turso_operation_lock(db_path, "cache-generation-clear")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_client_cache_schema(&connection).await?;
-    execute_turso_operation_with_lock_retry(
+    execute_turso_operation(
         || async {
             connection
                 .execute("DELETE FROM asp_cache_generation", ())
@@ -198,7 +195,6 @@ pub async fn prune_turso_cache_generations_to_manifest(
     if manifest.generations.is_empty() {
         return clear_turso_cache_generations(db_path).await;
     }
-    let _operation_lock = acquire_turso_operation_lock(db_path, "cache-generation-prune")?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_client_cache_schema(&connection).await?;
     let keep_ids = manifest
@@ -206,7 +202,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
         .iter()
         .map(|generation| generation.generation_id.clone())
         .collect::<std::collections::HashSet<CacheGenerationId>>();
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query("SELECT generation_id FROM asp_cache_generation", ())
@@ -232,7 +228,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
     if delete_ids.is_empty() {
         return Ok(());
     }
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "BEGIN TRANSACTION",
         "failed to begin Turso cache prune transaction",
@@ -244,7 +240,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
     {
         Ok(statement) => statement,
         Err(error) => {
-            let _ = execute_turso_statement_with_lock_retry(
+            let _ = execute_turso_statement(
                 &connection,
                 "ROLLBACK",
                 "failed to rollback Turso cache prune transaction after prepare",
@@ -261,7 +257,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
             [generation_id.as_str()],
             "failed to prune Turso cache generation",
         ) {
-            let _ = execute_turso_statement_with_lock_retry(
+            let _ = execute_turso_statement(
                 &connection,
                 "ROLLBACK",
                 "failed to rollback Turso cache prune transaction after delete",
@@ -270,7 +266,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
             return Err(error);
         }
     }
-    execute_turso_statement_with_lock_retry(
+    execute_turso_statement(
         &connection,
         "COMMIT",
         "failed to commit Turso cache prune transaction",
@@ -284,11 +280,37 @@ pub async fn invalidate_turso_cache_generations_for_project(
     db_path: &Path,
     project_root: &Path,
 ) -> Result<u32, String> {
-    let _operation_lock = acquire_turso_operation_lock(db_path, "cache-generation-invalidate")?;
-    let connection = connect_turso_client_db(db_path).await?;
-    bootstrap_turso_client_cache_schema(&connection).await?;
+    let initial_connection = async {
+        let connection = connect_turso_client_db(db_path).await?;
+        bootstrap_turso_client_cache_schema(&connection).await?;
+        Ok::<_, String>(connection)
+    }
+    .await;
+    let connection = match initial_connection {
+        Ok(connection) => connection,
+        Err(open_or_bootstrap_error) => {
+            reset_corrupt_turso_cache_files(db_path).map_err(|reset_error| {
+                format!(
+                    "failed to reset derived Turso cache after open/bootstrap error `{open_or_bootstrap_error}`: {reset_error}"
+                )
+            })?;
+            let connection = connect_turso_client_db(db_path).await.map_err(|retry_error| {
+                format!(
+                    "failed to recreate derived Turso cache after open/bootstrap error `{open_or_bootstrap_error}`: {retry_error}"
+                )
+            })?;
+            bootstrap_turso_client_cache_schema(&connection)
+                .await
+                .map_err(|retry_error| {
+                    format!(
+                        "failed to bootstrap recreated Turso cache after open/bootstrap error `{open_or_bootstrap_error}`: {retry_error}"
+                    )
+                })?;
+            connection
+        }
+    };
     let project_root = normalized_project_root(project_root);
-    let count = execute_turso_operation_with_lock_retry(
+    let count = execute_turso_operation(
         || async {
             connection
                 .execute(
@@ -302,6 +324,25 @@ pub async fn invalidate_turso_cache_generations_for_project(
     )
     .await?;
     Ok(count.min(u64::from(u32::MAX)) as u32)
+}
+
+fn reset_corrupt_turso_cache_files(db_path: &Path) -> Result<(), String> {
+    let mut paths = vec![db_path.to_path_buf()];
+    for suffix in ["-wal", "-shm", "-tshm"] {
+        let mut sidecar = db_path.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        paths.push(std::path::PathBuf::from(sidecar));
+    }
+    for path in paths {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!("failed to remove `{}`: {error}", path.display()));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Return recent matching cache generations from the active Turso read model.
@@ -320,7 +361,7 @@ pub async fn lookup_recent_turso_cache_generations(
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_client_cache_schema(&connection).await?;
     let project_root = normalized_project_root(project_root);
-    let mut rows = run_turso_operation_with_lock_retry(
+    let mut rows = run_turso_operation(
         || async {
             connection
                 .query(

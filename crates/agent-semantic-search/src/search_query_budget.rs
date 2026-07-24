@@ -10,14 +10,38 @@ pub struct SearchQueryBudgetBlock {
     pub term_count: usize,
 }
 
+pub struct SearchQueryBudgetRequest<'a> {
+    pub language_id: &'a str,
+    pub query: &'a str,
+    pub scopes: &'a [PathBuf],
+    pub explicit_filters: bool,
+    pub query_pack_descriptor: crate::search_pipe_query_pack::SearchPipeQueryPackDescriptor<'a>,
+}
+
 #[must_use]
 pub fn search_query_budget_block(
-    query: &str,
-    scopes: &[PathBuf],
-    explicit_filters: bool,
+    request: SearchQueryBudgetRequest<'_>,
 ) -> Option<SearchQueryBudgetBlock> {
-    let terms = search_query_terms(query);
-    search_terms_budget_block(&terms, scopes, explicit_filters)
+    let clauses = crate::search_pipe_query_clauses(
+        crate::SearchPipeQueryClausesRequest::new(
+            crate::SearchPipeLanguageId::new(request.language_id),
+            crate::SearchPipeQueryText::new(request.query),
+        )
+        .with_query_pack_descriptor(request.query_pack_descriptor),
+    );
+    let has_typed_anchor = clauses.len() >= 2
+        || crate::search_pipe_typed_query_terms(
+            request.language_id,
+            request.query,
+            request.query_pack_descriptor,
+        )
+        .iter()
+        .any(|term| matches!(term.role, crate::SearchPipeTermRole::Symbol));
+    if has_typed_anchor {
+        return None;
+    }
+    let terms = search_query_terms(request.query);
+    search_terms_budget_block(&terms, request.scopes, request.explicit_filters)
 }
 
 #[must_use]
@@ -35,8 +59,6 @@ pub fn search_terms_budget_block(
         .cloned()
         .collect::<Vec<_>>();
     let all_generic = terms.len() >= 2 && generic_terms.len() == terms.len();
-    let lacks_specific_anchor =
-        terms.len() >= 4 && !terms.iter().any(|term| specific_search_term(term));
     let too_many_terms = terms.len() >= 10 && generic_terms.len() >= 5;
     let generic_dominated =
         terms.len() >= 5 && generic_terms.len() >= 5 && generic_terms.len() * 2 >= terms.len();
@@ -45,31 +67,9 @@ pub fn search_terms_budget_block(
     } else {
         generic_terms
     };
-    (all_generic || lacks_specific_anchor || too_many_terms || generic_dominated).then_some(
-        SearchQueryBudgetBlock {
-            reason: if lacks_specific_anchor && !all_generic {
-                "query-needs-specific-anchor"
-            } else {
-                "query-too-broad"
-            },
-            generic_terms: displayed_generic_terms,
-            term_count: terms.len(),
-        },
-    )
-}
-
-#[must_use]
-pub fn search_rg_terms_budget_block(
-    terms: &[String],
-    scopes: &[PathBuf],
-    explicit_filters: bool,
-) -> Option<SearchQueryBudgetBlock> {
-    if explicit_filters || terms.len() < 5 || !broad_scope(scopes) {
-        return None;
-    }
-    Some(SearchQueryBudgetBlock {
+    (all_generic || too_many_terms || generic_dominated).then_some(SearchQueryBudgetBlock {
         reason: "query-too-broad",
-        generic_terms: terms.iter().take(6).cloned().collect(),
+        generic_terms: displayed_generic_terms,
         term_count: terms.len(),
     })
 }

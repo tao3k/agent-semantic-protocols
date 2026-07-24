@@ -1,4 +1,4 @@
-use agent_semantic_hook::{DecisionKind, DecisionRouteKind, ReasonKind, classify_hook};
+use agent_semantic_hook::{DecisionKind, ReasonKind, classify_hook};
 use serde_json::json;
 
 use crate::classifier::routes::registry_with_rust_and_python as registry;
@@ -33,17 +33,12 @@ fn codex_search_command_action_routes_as_raw_search() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Lexical);
-    assert!(
-        decision.routes[0]
-            .argv
-            .windows(2)
-            .any(|window| window[0] == "search" && window[1] == "lexical")
-    );
-    assert!(
-        !decision.routes[0]
-            .argv
-            .iter()
-            .any(|arg| arg == "direct-source-read")
+    assert!(decision.routes.is_empty());
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(|value| value.as_str()),
+        Some("deny-raw-registered-source-search-action")
     );
 }

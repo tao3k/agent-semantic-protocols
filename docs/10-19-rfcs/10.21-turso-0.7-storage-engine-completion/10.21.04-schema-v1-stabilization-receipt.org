@@ -1,0 +1,74 @@
+#+title: Client DB Schema v1 Stabilization Receipt
+#+date: 2026-07-20
+
+* Version decision
+
+=TURSO_CLIENT_DB_SCHEMA_VERSION= and
+=AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION= remain fixed at =1=.  This work does
+not introduce a v2 migration.  It stabilizes the existing v1 contract by
+replacing unconditional delete/reinsert behavior with version inspection,
+fail-closed handling of unknown newer versions, transactional table/history
+creation, rollback on failure, and a verified no-op path for complete v1
+databases.
+
+The v1 stabilization transaction registers the artifact pointer and failed
+attempt tables without moving the public schema version.
+
+* Fixed scenario tests
+
+Command:
+
+#+begin_src sh
+direnv exec . cargo test -p agent-semantic-client-db engine::turso_schema_lifecycle_tests -- --nocapture
+#+end_src
+
+Result: =4 passed; 0 failed=.
+
+The checked-in cases prove:
+
+- a new v1 database is initialized and repeated bootstrap preserves authority
+  data;
+- an incomplete pre-existing v1 database is stabilized exactly once while an
+  unrelated table and row remain byte-for-byte readable;
+- a database claiming version 99 is rejected without changing the version or
+  creating v1 authority tables;
+- an injected stabilization failure rolls back both newly created tables and
+  the version write.
+
+The test owner is mounted from
+=tests/unit/db/engine/turso_schema_lifecycle_private.rs= through an external
+=#[path]= declaration, as required by the Rust project harness.
+
+* Fixed benchmark
+
+Smoke command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench schema_v1_lifecycle -- --test
+#+end_src
+
+Result: both scenarios succeeded.
+
+Measurement command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench schema_v1_lifecycle
+#+end_src
+
+Result on the local 2026-07-20 checkout:
+
+| Scenario | Criterion interval | Throughput interval | Outliers |
+|----------+--------------------+---------------------+----------|
+| warm verified no-op bootstrap | 1.4845--1.9761 ms | 506.06--673.61 elem/s | 3/20 high |
+| cold new-project bootstrap | 15.980--20.239 ms | 49.410--62.580 elem/s | 1/20 high severe |
+
+The benchmark asserts =schema_version == 1= on every measured bootstrap.  The
+warm scenario reuses the same engine and database; the cold scenario creates,
+bootstraps, and removes a benchmark-owned temporary project for each iteration.
+
+* Conservative boundary
+
+This receipt closes the v1 metadata and artifact-authority stabilization path.
+It does not authorize changing the version to 2.  Other lazy client DB schemas
+and the full multi-phase outer bootstrap still require their own failure
+injection audit before the entire database lifecycle can be called atomic.

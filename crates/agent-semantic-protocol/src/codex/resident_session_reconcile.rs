@@ -25,7 +25,13 @@ pub(crate) fn reconcile_resident_session(
     role: &str,
 ) -> Result<CodexResidentSessionReconciliation, String> {
     let active_sessions: Vec<_> = registry
-        .query_sessions(project_id, None, Some(name))?
+        .query_sessions(
+            project_id,
+            None,
+            Some(agent_semantic_client_db::AgentSessionResidentName::from(
+                name,
+            )),
+        )?
         .into_iter()
         .filter(|session| session.name == name || session.role == role)
         .filter(|session| !matches!(session.status.as_str(), "archived" | "closed"))

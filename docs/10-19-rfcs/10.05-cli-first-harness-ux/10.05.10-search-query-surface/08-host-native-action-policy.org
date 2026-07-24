@@ -1,0 +1,152 @@
+* Host-native typed action policy
+
+The hook safety boundary is action-first.  It MUST classify the effect requested
+by the host tool and the semantic kind of every target before consulting command
+spelling.  A command allowlist or denylist is not an adequate source-access
+contract because wrappers, aliases, absolute executable paths, nested shells,
+and newly installed tools can express the same effect.
+
+The shared action packet is =agent.semantic-protocols.host-action= version =1=.
+Its schema is =schemas/semantic-host-action.v1.schema.json=.  Typed declarative
+match axes use =schemas/semantic-action-match.v1.schema.json=.  Host adapters,
+command parsers, hook matchers, decision materializers, and receipts MUST use
+these contracts rather than reconstructing action intent independently.
+
+** Host action and semantic effect
+
+=action= records the operation exposed by the host.  Codex-native read, edit,
+and patch tools therefore produce =read= or =edit= directly.  A shell tool
+produces =execute= as its host action.  =effect= records the normalized semantic
+effect; for example, =rtk read src/lib.rs= has =action=execute= and =effect=read=.
+
+The action projection order is normative:
+
+1. Use the host-native typed action and typed target fields when present.
+2. Inspect typed nested-tool calls without flattening them into prompt text.
+3. For an execute action, parse the shell AST and unwrap bounded wrapper stages.
+4. If semantic effect remains unknown while a registered-language source target
+   is present, fail closed with =effect=unknown=; unknown command spelling is
+   never an allow path.
+
+The raw command, wrapper chain, and logical command MAY be retained as
+=commandEvidence= for audit, digest, and replay.  Policy MUST NOT require every
+reader, editor, or search executable to be enumerated in =config.toml=.
+
+** Registry-owned source subjects
+
+Targets are typed independently from actions.  A concrete path whose suffix is
+present in an activated or registered provider's =coverage.sourceExtensions=
+is =registered-language-source=.  A pre-shell glob or pattern that can select
+one of those suffixes is =registered-language-source-pattern=.  Language ids and
+the match source are recorded on the subject; clients MUST NOT hard-code a
+Rust, TypeScript, Python, Julia, Gerbil Scheme, Org, or Markdown extension list.
+
+Extension collisions are not resolved by guessing one language.  The subject
+retains every matching registered language id, and later provider routing must
+use activation, owner, selector, or user evidence to narrow it.  Provider-owned
+configuration-file coverage MAY also classify a target, but it is a distinct
+=provider-registry-config-file= match source.
+
+Glob classification occurs before shell expansion.  Commands such as these are
+therefore protected even when no concrete regular-file operand exists yet:
+
+#+begin_src shell
+rtk read '*.rs'
+rtk read 'src/**/*.rs'
+#+end_src
+
+Existence checks are evidence about a concrete path, not a prerequisite for
+classifying a source pattern.
+
+** Authority-aware policy
+
+The default raw source-read rule is:
+
+#+begin_src text
+effect = read
+AND subject.kind IN {
+  registered-language-source,
+  registered-language-source-pattern
+}
+AND authority != parser-owned-exact-evidence
+=> deny or route to exact parser-owned evidence
+#+end_src
+
+An exact provider selector such as =query --selector ... --code= is not a raw
+read merely because it returns source text.  Its action packet carries
+=authority=parser-owned-exact-evidence= and a =structural-selector= subject.
+Conversely, wrapping a raw read with =rtk= changes neither effect nor authority.
+
+Edit actions use the same subject classification but a separate mutation rule.
+An edit of a registered-language source target must prove the configured exact
+preimage or AST-patch authority.  The read rule MUST NOT relabel an edit as a
+read, and the edit rule MUST NOT infer safety from the editor executable name.
+
+Search and enumeration are likewise semantic effects.  Reasoning search over a
+registered-language source scope routes through the configured ASP resident.
+Exact parser evidence remains main-agent eligible when its selector and
+authority satisfy the shared contract.
+
+** Config match surface
+
+Declarative rules match typed fields from the shared action packet.  The target
+shape is:
+
+#+begin_src toml
+[rules.match]
+effectAny = ["read"]
+subjectKindAny = [
+  "registered-language-source",
+  "registered-language-source-pattern",
+]
+authorityExcludeAny = ["parser-owned-exact-evidence"]
+#+end_src
+
+=commandAny=, =argvPrefixAny=, and similar lexical matchers remain useful for
+tool-specific execution policy, but they are not the source-language safety
+boundary.  A rule that protects registered source access MUST be expressible
+without naming =cat=, =sed=, =rtk=, or any other executable.
+
+** Codex projection
+
+The Codex adapter preserves the structured tool payload:
+
+| Codex surface | action | normal effect | target source |
+|---------------+--------+---------------+---------------|
+| native read   | read   | read          | typed path    |
+| edit/patch    | edit   | edit          | typed paths   |
+| shell command | execute| AST-derived   | argv/AST      |
+| nested tools  | host action per child | child-derived | typed child payload |
+
+Platform adapters may use different native tool names, but they must project to
+the same action and subject enums.  Platform-specific spelling does not enter
+shared policy decisions.
+
+** Required regression scenarios
+
+The match engine and hook suites must cover at least:
+
+- native Codex read of one registered-language source file;
+- native Codex edit of one registered-language source file;
+- =rtk read src/lib.rs= and an absolute =rtk= executable path;
+- =rtk read '*.rs'= and a recursive registered-extension glob;
+- =direnv exec . rtk read src/lib.rs=;
+- =rtk proxy cat src/lib.rs= and =rtk run -c 'cat src/lib.rs'=;
+- a nested shell and a bounded wrapper-budget failure;
+- an unknown executable with a registered source operand;
+- an exact parser-owned selector read that remains allowed;
+- a non-source metadata target that is not promoted to a language source fact.
+
+Every case asserts the normalized action packet before asserting the rendered
+hook decision.  This prevents a message-string or command-prefix test from
+passing while the shared semantic classification remains wrong.
+
+** Migration
+
+Version 1 command-prefix rules remain compatibility inputs while clients adopt
+the action packet.  During migration, a lexical rule may retain higher priority
+to preserve a more specific reason and recovery route, but typed action rules
+form the safety floor.  A lexical rule may not override that floor with allow or
+convert an unknown registered-source effect into allow.  Removal of redundant
+command lists requires parity receipts from Codex typed actions, shell-wrapper
+parsing, provider-registry extension matching, and hook decision rendering.

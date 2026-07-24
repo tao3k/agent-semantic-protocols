@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-selector-merkle-proof.v1.schema.json",
+  "title": "Exact Selector Merkle Proof v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "digestAlgorithm",
+    "languageId",
+    "workspaceRootDigest",
+    "ownerPath",
+    "ownerSubtreeDigest",
+    "ownerInclusionProof",
+    "sourceBlobDigest",
+    "parserIdentityDigest",
+    "queryPackDigest",
+    "parserFactDigest",
+    "canonicalItemSelector",
+    "structuralSelector",
+    "projectionMode",
+    "projectionDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.exact-selector-merkle-proof"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "digestAlgorithm": {
+      "const": "blake3-256"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceRootDigest": {
+      "$ref": "#/$defs/contentDigest"
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "ownerSubtreeDigest": {
+      "$ref": "#/$defs/contentDigest"
+    },
+    "ownerInclusionProof": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/inclusionStep"
+      }
+    },
+    "sourceBlobDigest": {
+      "$ref": "#/$defs/contentDigest"
+    },
+    "parserIdentityDigest": {
+      "$ref": "#/$defs/contentDigest"
+    },
+    "queryPackDigest": {
+      "$ref": "#/$defs/contentDigest"
+    },
+    "parserFactDigest": {
+      "$ref": "#/$defs/contentDigest"
+    },
+    "canonicalItemSelector": {
+      "$ref": "canonical-item-selector.v1.schema.json"
+    },
+    "structuralSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectionMode": {
+      "type": "string",
+      "enum": [
+        "code",
+        "skeleton",
+        "names",
+        "verbatim"
+      ]
+    },
+    "projectionDigest": {
+      "$ref": "#/$defs/contentDigest"
+    }
+  },
+  "$defs": {
+    "contentDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "inclusionStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "side",
+        "digest"
+      ],
+      "properties": {
+        "side": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right"
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/contentDigest"
+        }
+      }
+    }
+  }
+}

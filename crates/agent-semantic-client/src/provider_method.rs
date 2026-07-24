@@ -38,6 +38,27 @@ pub(crate) fn run_provider_method(
     method: ClientMethod,
     language_id: LanguageId,
 ) -> Result<(), String> {
+    let provider_method_name = serde_json::to_string(&method)
+        .map_err(|error| format!("serialize provider method: {error}"))?
+        .trim_matches('"')
+        .to_owned();
+    match crate::provider_runtime_storage::ProviderRuntimeStorageBinding::from_current_runtime(
+        &parsed.project_root,
+    ) {
+        Ok(Some(storage)) => {
+            if let Err(error) =
+                storage.record_invocation_start(provider_method_name.as_str(), language_id.clone())
+            {
+                debug_client_stage(&format!(
+                    "provider-method:runtime-storage-record-unavailable:{error}"
+                ));
+            }
+        }
+        Ok(None) => {}
+        Err(error) => debug_client_stage(&format!(
+            "provider-method:runtime-storage-open-unavailable:{error}"
+        )),
+    }
     debug_client_stage("provider-method:load-registry");
     let snapshot = crate::activation_cache::load_provider_registry_snapshot(
         &parsed.activation_root,
@@ -66,16 +87,9 @@ pub(crate) fn run_provider_method(
         }
         request = request.with_stdin(stdin);
     }
-    if let Some(stdout) = crate::native_prime::render_native_prime_seed_stdout(
-        &parsed.project_root,
-        &request,
-        parsed.receipt_json,
-    )? {
-        io::stdout()
-            .write_all(stdout.as_ref())
-            .map_err(|error| format!("failed to write native prime stdout: {error}"))?;
-        return Ok(());
-    }
+    snapshot
+        .provider_for_language(&request_language_id)
+        .ok_or_else(|| format!("provider is missing for language {}", request_language_id))?;
     debug_client_stage("provider-method:cache-probe");
     let request_started_at = std::time::Instant::now();
     let cache_probe = if request.stdin.is_some() {

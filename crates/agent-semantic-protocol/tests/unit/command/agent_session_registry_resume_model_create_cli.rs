@@ -4,7 +4,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
-fn missing_asp_explore_resume_reports_configured_model_create_instruction() {
+fn missing_asp_explore_resume_requires_host_tree_audit_before_typed_spawn() {
     let temp = unique_temp_dir("asp-session-resume-model-create");
     let state_home = temp.join("state-home");
     let agents_dir = state_home.join("agents");
@@ -49,16 +49,16 @@ sandbox_mode = "read-only"
     );
     assert!(
         stdout.contains(
-            "modelAlignmentAction=\"parent-create-resident-child-with-required-model-and-revalidate\""
+            "modelAlignmentAction=\"reenter-bootstrap-for-host-tree-and-typed-spawn-audit\""
         ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("model override gpt-5.4-mini and light/low reasoning"),
+        stdout.contains("Registry absence alone does not authorize Create."),
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextAction=\"create-resident-child-after-rollout-history-miss\""),
+        stdout.contains("nextAction=\"audit-host-agent-tree-after-rollout-history-miss\""),
         "{stdout}"
     );
 

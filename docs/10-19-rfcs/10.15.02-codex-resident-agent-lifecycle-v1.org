@@ -1,0 +1,1015 @@
+#+title: Codex Resident Agent Lifecycle V2
+#+startup: overview
+
+* Status — pre-release stabilization
+
+The ASP implementation is under pre-release stabilization; this document does
+not claim full lifecycle closure until the regression gates below and an
+installed-artifact =bootstrap -> Ready= receipt pass. A profile-valid native
+resident is the preferred transport. When Codex does not expose a
+custom-agent-aware creation path, ASP can explicitly select a degraded
+current-session parser transport instead of self-locking semantic search.
+
+* Problem
+
+Registry absence is not evidence that a native child is absent. A Codex task can
+retain a completed, idle, interrupted, or running child after the ASP registry
+entry is lost. Conversely, a child whose path looks canonical can still be a
+generic runtime with the wrong agent type, model, and reasoning effort.
+
+The old lifecycle collapsed these states:
+
+#+begin_example
+registry entry missing -> child absent -> create
+#+end_example
+
+That produced duplicate children, bootstrap loops, and false-positive resident
+registration.
+
+* Truth hierarchy
+
+The lifecycle uses the following evidence order:
+
+1. A current Codex native agent-tree receipt establishes whether the canonical
+   collaboration target is addressable in this root task.
+2. =SubagentStart= establishes the observed native child identity, agent type,
+   model, root attribution, and reasoning effort when the host exposes it.
+3. The ASP registry is a projection of those live host facts.  A registry row
+   is not native target existence evidence.
+4. Rollout history is lineage and recovery evidence only.  A historical child
+   that the current collaboration runtime cannot resolve is not resumable and
+   must never enter live-target rebind.
+5. A canonical task path proves neither child identity nor profile validity.
+   Path presence and child-ID equality are separate observations.
+
+The normal typed-spawn path does not read rollout history. A successful
+=asp_collaboration.spawn_agent= call selects =agent_type=asp_explorer=, and the
+resulting typed =SubagentStart= plus a fresh native host-tree identity receipt
+atomically binds the child UUID, current root, and canonical
+=/root/asp_explorer= target. The synchronized custom-agent profile is the
+configuration authority for an unobservable reasoning effort; it is recorded
+as profile attestation, never mislabeled as runtime observation.
+
+Only when Codex does not emit a fresh =SubagentStart= for an already-running child,
+ASP may compose two host-owned receipts into one live binding proof: rollout
+=session_meta= must bind the exact child session ID to the current root,
+parent, =asp_explorer= role, and =/root/asp_explorer= path; the current native
+agent tree must independently show that same canonical path as addressable.
+The resulting =codex-rollout-session-meta-plus-native-host-tree= receipt is not
+path-only recovery.  The registry validator rechecks the bound root ID, child
+session ID, and message target against the row before accepting it.
+
+* State machine
+
+#+begin_src mermaid
+flowchart TD
+    A[Bootstrap] --> B[Audit current native host tree]
+    B --> C{Canonical target addressable now?}
+    C -->|Yes| D[Observe live path, root and native child identity]
+    D --> E{Live identity equals registry owner?}
+    E -->|Yes| F[Bind current live child]
+    F --> G[Validate agent type, model and reasoning]
+    G -->|Match| H[Ready]
+    G -->|Drift| I[Retire drifted live owner]
+    I --> J[Wait for terminal host status and path release]
+    J --> K[Create exactly one typed replacement]
+    E -->|No| L[Reconcile live identity; never alias two child IDs]
+    L --> G
+    C -->|No| M{Historical rollout exists?}
+    M -->|Yes| N[HistoricalOnlyNonRebindable]
+    M -->|No| O[No existing child]
+    N --> P{Host spawn exposes agent type?}
+    O --> P
+    P -->|Yes| K
+    P -->|No| Q[Blocked: typed spawn unavailable]
+    K --> R[SubagentStart captures typed child identity and target]
+    R --> U{Type and model match typed profile?}
+    U -->|No| I
+    U -->|Yes| X{Reasoning observable in SubagentStart?}
+    X -->|Observed match| W[Atomically activate child, root and message target binding]
+    X -->|Observed mismatch| I
+    X -->|No| Y{Strict typed profile attestation valid?}
+    Y -->|Yes| W
+    Y -->|No| Z[Blocked: insufficient host evidence]
+    W --> H
+    Q --> S[Return command-local capability blocker]
+#+end_src
+Bootstrap is a read-only projection over committed evidence. It MUST NOT spawn,
+bind, orphan, replace, dispatch, complete, cleanup, or execute parser work by
+itself. Every mutation is performed by a named idempotent command handler that
+commits one event through compare-and-swap. The projection may return a next
+action, but the command handler owns the state transition.
+
+The lifecycle engine is divided into four independent state dimensions:
+- =ResidentSlot=: the logical service identity =(projectId, rootSessionId,
+  residentName)=.
+- =PhysicalGeneration=: the concrete host child for one slot generation.
+- =BindingLease=: the fresh verified live transport binding for one generation.
+- =DispatchLedger=: durable delivery and terminal receipt state for one command
+  digest.
+
+The engine never infers one dimension from another. A historical rollout can
+identify a generation, but cannot prove live routing. A canonical path can
+identify a host target, but cannot prove the expected typed profile. A matching
+model can support a profile verdict, but cannot prove agent type. A dispatch
+receipt can complete one command, but cannot prove resident readiness for a
+later command.
+
+* Lifecycle invariants
+
+- Exactly one native child may own the canonical resident path for one root
+  task and resident role.
+- Historical rollout identity, registry identity, and live collaboration target
+  are distinct evidence classes and must never be collapsed.
+- A repair epoch locks one candidate identity.  Re-entering bootstrap cannot
+  rotate through equal-scored historical children after a failed native
+  resolution attempt.
+- =RebindExistingChildTarget= is legal only when the current host can resolve
+  the canonical target.  A historical-only candidate is terminally
+  non-rebindable unless the host exposes an explicit rehydrate-by-ID API.
+- =task_name= names the native tree node; it does not prove =agent_type=.
+- =default= can never be accepted as =asp_explorer=, even if its model and
+  reasoning values happen to match.
+- =observedReasoningEffort=null= never means an observed match for a profile
+  that expects =low=. Missing hook evidence triggers one host-owned Codex
+  =thread/resume= metadata read with no turn and no overrides. It does not send
+  a follow-up task to the child.
+- When Codex still omits reasoning, ASP may accept a distinct
+  =host-profile-attested-unobservable= result only if the same child was
+  registered by typed =SubagentStart= as =asp_explorer=, or a recovery-only
+  rollout receipt proves the same root, parent, child ID, role, and canonical
+  path. Its observed model must match the active ASP profile, the canonical
+  target must be live, and no concrete drift receipt may exist for that child.
+  The receipt records whether its origin is direct SubagentStart or trusted
+  rollout recovery and must retain
+  =observedReasoningEffort=null= and =reasoningMatchesExpected=false=; it may
+  not claim runtime observation. If any condition is absent, bootstrap remains
+  =Blocked= without Cleanup, replacement, or duplicate creation.
+- A verified replacement receipt is validated against the current profile, not
+  merely against optional values copied from an earlier drift receipt.  After
+  validation, bootstrap activates the exact child row created by
+  =SubagentStart= together with its root attribution and native message target
+  before it can return =Ready=.
+
+Codex owns two complementary evidence surfaces. Typed =SubagentStart= is the
+normal fast path and supplies the native child ID, agent type, and observed
+model. =ThreadResumeResponse= is supplementary recovery evidence and may supply
+effective =model= and =reasoningEffort=, but some hosts currently return null
+reasoning. ASP may issue =thread/resume= with only =threadId= and
+=excludeTurns=true= to read that snapshot during recovery. It must not include
+model, reasoning, config, prompt, or other override parameters. The
+profile-attested branch is an explicit accommodation for the missing host
+field, not a synthetic runtime observation.
+- Model drift is not repaired by sending a natural-language model-switch task
+  to the child. Codex follow-up/resume does not expose a verified same-child
+  runtime override.
+- A drifted owner must reach a terminal host state before one typed replacement
+  is created.
+- A fresh typed replacement may use a new child identity. Its valid
+  =SubagentStart= closes the previous drift observation and rebinds registry
+  ownership.
+- A resident child never runs =asp agent session bootstrap=. It executes the
+  parser-owned search/query and returns a compact receipt.
+- Hook activation or configuration load failure triggers one idempotent =asp sync=
+  attempt and reloads the activation before classification. A successful reload
+  resumes the same unified matcher used by the normal hook path; recovery does
+  not maintain a second command allowlist or source classifier.
+- If activation repair fails, only source or resident actions identified by the
+  shared matcher may be locally blocked. Unrelated Codex tools remain available,
+  and the receipt records the repair failure and capability blocker.
+- Profile/runtime drift never authorizes a degraded parser route and must not set
+  =forbiddenUntilResolved= for unrelated Codex tools.
+- Native residency is required for resident-routed execution. Missing typed-spawn
+  or verified-live binding locally blocks that resident command without blocking
+  unrelated Codex tools.
+- Lifecycle v1 has no inline parser, =ReadyDegraded=, generic-child, path-only, or
+  historical-target execution mode. Capability absence is represented by an
+  explicit command-local =Blocked= receipt.
+
+* Configuration ownership
+
+ASP owns the source configuration and projects it during =asp sync=:
+
+#+begin_example
+~/.agent-semantic-protocols/agents/asp-explorer_codex.toml
+  -> ~/.codex/agents/asp-explorer.toml
+
+~/.codex/config.toml
+  [agents.asp_explorer]
+  config_file = "agents/asp-explorer.toml"
+#+end_example
+
+Users and hooks do not hand-edit generated Codex agent files.
+
+* Required Codex host contract
+
+A Codex deeplink such as =codex://threads/<threadId>= is an opaque host
+locator, not liveness, profile, authorization, or replacement evidence.  The
+control plane MAY retain its thread ID as a portable join key, but it MUST
+probe the corresponding canonical target through a non-mutating host read
+before Resume.  Only a successful canonical Resume/acknowledgement can
+strengthen the binding lease; a deeplink or list absence alone MUST NOT
+authorize replacement.
+
+The host must provide a create action that selects the registered custom-agent
+key, not merely a task path:
+
+#+begin_example
+create(
+  agent_type = asp_explorer,
+  fork_turns = none
+)
+#+end_example
+
+The acceptance receipt is a native =SubagentStart= whose observation matches:
+
+#+begin_example
+agent_type = asp_explorer
+model = gpt-5.4-mini
+reasoning_effort = low
+#+end_example
+
+If the host create surface only accepts =task_name/message/fork_turns= and
+creates =agent_type=default=, ASP reports
+=host-typed-resident-replacement-unavailable=. It does not register the generic
+child and does not create additional children. Bootstrap also exposes this
+bounded recovery action:
+
+#+begin_example
+ASP_INLINE_PARSER_FALLBACK=1 \
+  direnv exec . asp rust search lexical <query...> --workspace . --view seeds
+#+end_example
+
+The hook re-parses the whole command. Only a real parser-owned exploration
+intent receives =decision=allow=. The decision carries:
+
+#+begin_example
+agentSessionAction = inline-parser-fallback
+executionLane = asp-explore
+executionTransport = current-session
+executionReceiptKind = asp-search-subagent
+executionCommandDigest = sha256:<exact-command>
+residentChild = false
+degraded = true
+#+end_example
+
+This is a capability fallback owned by ASP, not a Codex lifecycle emulation.
+The registered native resident remains preferred whenever one is valid.
+
+** Codex source audit
+
+The Codex =multi_agents_v2= implementation keeps role selection separate from
+tree naming and task payload:
+
+- =core/src/tools/handlers/multi_agents_v2/spawn.rs::SpawnAgentArgs= owns the
+  typed spawn arguments.
+- =handle_spawn_agent= derives the role name from =args.agent_type= and calls
+  =core/src/agent/role.rs::apply_role_to_config= before spawning.
+- =task_name= is used for native tree identity.
+- =message= is passed as the child task payload; it is not parsed as a custom
+  role or model-selection instruction.
+
+Therefore ASP must never describe natural-language task text as the profile
+selection surface. The decisive host capability is whether the public spawn
+tool schema exposes =agent_type=. A registered TOML makes the role available to
+Codex, but does not make a reduced =task_name/message/fork_turns= tool select it.
+
+The audited Codex checkout also contains a newer v2 ToolSpec option:
+=hide_spawn_agent_metadata=. In that source revision,
+=create_spawn_agent_tool_v2= can expose =agent_type= when the option is false.
+This is not sufficient authority for ASP to write the option into a running
+host's global configuration. Black-box probes against desktop host
+=26.707.72221= showed:
+
+- a root-level =multi_agent_v2.hide_spawn_agent_metadata=false= setting was
+  accepted but did not change the exposed tool schema;
+- the source-derived nested setting made newly created desktop tasks fail at
+  startup;
+- removing the probe restored Normal-task startup immediately.
+
+ASP therefore treats the current host ToolSpec as the runtime truth and does
+not project speculative Codex-version-specific feature settings. Before Create,
+bootstrap requires a fresh schema audit proving that =collaboration.spawn_agent=
+actually exposes =agent_type=. If it exposes only
+=task_name/message/fork_turns=, the lifecycle reports
+=host-agent-type-unavailable= without creating a child.
+
+** PreToolUse rewrite experiment
+
+Codex's ordinary tool hook contract supports
+=permissionDecision=allow + updatedInput=, and a direct ASP hook replay proved
+that an =agent_type= field can be rendered in that wire format. This is not a
+valid resident-spawn bridge on the audited Desktop host.
+
+Two fresh Normal-task black-box runs established the boundary:
+
+1. With the ordinary ASP PreToolUse matcher, =collaboration.spawn_agent= emitted
+   no ASP rewrite receipt and =SubagentStart= observed =agent_type=default=.
+2. After explicitly adding =spawn_agent= and =collaboration.spawn_agent= to the
+   installed matcher, the native multi-agent control call still emitted no
+   PreToolUse rewrite receipt and again started
+   =default / gpt-5.6-sol / xhigh=.
+
+The collaboration/AgentControl path therefore does not dispatch through the
+ordinary PreToolUse tool router on this host. ASP must not present a successful
+standalone hook replay as proof that native child creation was rewritten.
+
+* 2026-07-14 Normal-task black-box receipt
+
+The global projection was present:
+
+- =~/.codex/agents/asp-explorer.toml= was a symlink to the ASP-owned TOML.
+- =~/.codex/config.toml= contained =[agents.asp_explorer]=.
+- =asp sync= reported =codexAgentRegistry=2=.
+
+Two native creation attempts were audited:
+
+1. =/root/asp_explore= demonstrated that the resident session name is not the
+   custom-agent key.
+2. =/root/asp_explorer= used the exact registered key.
+
+Both =SubagentStart= receipts observed:
+
+#+begin_example
+agent_type = default
+model = gpt-5.6-sol
+reasoning_effort = xhigh
+#+end_example
+
+ASP correctly returned =state=Repair=, refused resident registration, preserved
+the soft non-blocking policy, and the host interrupted both drifted children.
+The reasoning-search acceptance test was intentionally not run because no valid
+resident reached =Ready=.
+
+* Global Codex typed-role projection
+
+=asp sync= owns the global Codex settings required to make registered agent
+roles selectable from the model-facing multi-agent v2 tool.  Every sync must
+converge =~/.codex/config.toml= to:
+
+#+begin_src toml
+[features.multi_agent_v2]
+enabled = true
+hide_spawn_agent_metadata = false
+#+end_src
+
+The second setting is required because Codex otherwise still discovers and
+loads =~/.codex/agents/*.toml= internally but removes =agent_type= from the
+model-visible =spawn_agent= input schema.  A hidden =agent_type= is therefore
+configuration drift, not evidence that the host lacks typed-spawn support.
+
+Sync owns only =enabled= and =hide_spawn_agent_metadata= in this table.  It
+preserves other host settings such as =expose_spawn_agent_model_overrides=.
+The operation is idempotent and repairs an explicit =true= value.  A task whose
+tool schema was built before sync still requires a new task/session schema load;
+ASP must not claim that mutating the file changes an already materialized tool
+schema.
+
+The capability vocabulary is:
+
+- =hidden-by-config=: effective global config still hides =agent_type=;
+- =visible-agent-type=: effective global config projects registered role names
+  and descriptions into =spawn_agent.agent_type=;
+- =host-agent-type-unavailable=: a fresh task loaded
+  =hide_spawn_agent_metadata=false= but its native schema still lacks
+  =agent_type=.
+
+* Host observation convergence
+
+The ASP registry is a projection of host lifecycle events.  It is not an
+authority for whether a Codex collaboration target is currently addressable.
+Bootstrap therefore consumes two short-lived, root-scoped observations made by
+the main Agent:
+
+- =hostResidentTargetObservation= comes from the native live-agent tree.  Its
+  minimal form classifies =/root/asp_explorer= as =present= or =absent= but is
+  diagnostic-only.  It may authorize an existence branch, never identity
+  registration.  A binding receipt additionally requires native child ID,
+  root attribution, canonical path, and observation source.
+- =hostTypedSpawnObservation= comes from the currently exposed native spawn
+  schema and classifies the required =agent_type= field as =present= or
+  =absent=.
+
+Neither receipt registers a child.  Neither accepts an unaudited
+caller-supplied child ID, message-target ID, root ID, or alternate task path.
+Both expire, so a stale observation cannot authorize Create or fallback.
+
+The resulting action matrix is intentionally exclusive:
+
+| Host target | Typed spawn | Registry projection | Only valid next action |
+|-------------+-------------+---------------------+------------------------|
+| present     | any         | matching live owner | resume or message the same canonical child |
+| present     | any         | identity unproved   | collect a native identity receipt; do not bind by path alone |
+| absent      | present     | missing              | create once with =agent_type=asp_explorer=, =task_name=asp_explorer=, =fork_turns=none= |
+| absent      | present     | historical old owner | mark =historical-only-non-rebindable=, keep the repair identity stable, then create one canonical typed replacement |
+| absent      | absent      | any                  | expose only the exact current-session parser fallback |
+| unknown     | unknown     | any                  | audit the live host surfaces; do not create |
+
+This matrix removes the ambiguous sequence where a missing registry row was
+treated as proof that no child existed.  It also removes the opposite false
+positive where a persisted message-target ID was treated as live even though
+the current collaboration runtime could not resolve it.
+
+It is also invalid to combine a historical registry child ID with a freshly
+observed canonical path.  If the host receipt cannot prove that both refer to
+the same native child, the lifecycle remains unbound.
+
+Conversely, a canonical path message target does not need to equal the rollout
+UUID.  Codex collaboration v2 addresses a live child by canonical agent path,
+while rollout metadata uses the child thread UUID as durable identity.  ASP
+accepts this pair only through one of its trusted binding sources and only when
+the binding metadata exactly matches the registry root, child, and target.
+
+** Loop guards
+
+- Canonical live binding is evaluated before model or reasoning evidence. If
+  the native tree reports =/root/asp_explorer= absent and the registry route is
+  not live, runtime verification gates cannot overwrite the host-tree repair
+  menu. The lifecycle reports =historical-only-non-rebindable= with
+  =reasoningGateEvaluated=false=.
+- A target-absent historical child never reports
+  =host-runtime-reasoning-evidence-unavailable=. With typed spawn available,
+  the sole next action is one canonical typed replacement after orphan owner
+  release; without typed spawn, the result is the explicit parser fallback or
+  typed-spawn capability blocker.
+- Bootstrap is an external-process-free local classifier.  It reads the registry
+  and already materialized lifecycle receipts only; it never starts Codex
+  app-server, a provider, a finder, or another child process.  Missing runtime
+  evidence produces an explicit next state instead of synchronous discovery.
+- Runtime observation belongs to host lifecycle collection outside bootstrap.
+  The collector writes a typed receipt to the registry, and later bootstrap
+  calls consume that receipt in bounded local time.  Path presence alone never
+  triggers runtime probing or manufactures child identity.
+- A denied ASP command has one dispatch identity derived from the root session,
+  canonical resident target, and exact command.  The main Agent sends that
+  identity at most once.  Timeout, bootstrap re-entry, and delayed receipt
+  delivery may only continue waiting for the same dispatch; they never resend
+  the command and never concatenate a second =[search-*]= protocol block.
+- A historical unbound candidate never authorizes Resume by itself.  Without a
+  fresh host-tree observation, bootstrap returns to =Audit= and asks the main
+  Agent to inspect the current native tree first.
+- A native follow-up failure such as =target/path/id not found= is a fresh host
+  absence observation, not a reason to repeat Resume.  Record
+  =observe-host-tree --resident-target-status absent= and re-enter bootstrap;
+  typed spawn then selects one replacement, while typed-spawn absence selects
+  only the exact inline parser fallback.
+- A child session never bootstraps another resident child.  Resident children
+  execute the parser-owned ASP command directly.
+- A completed ASP search turn does not retire the resident.  The main Agent
+  uses the native follow-up surface for an idle/completed child and the message
+  surface only for a running child.
+- Codex =SubagentStop= terminates a child turn, not the resumable resident
+  identity. ASP projects that event to registry status =idle= and preserves the
+  root, child UUID, canonical message target, and trusted binding. Registry
+  =archived= is reserved for an explicit lifecycle cleanup/retirement action or
+  a host event that proves the native identity itself is no longer resumable.
+
+- A successful typed =SubagentStart= atomically supersedes any earlier
+  same-root, same-name =targetStatus=absent= observation with
+  =targetStatus=present=, =identityStatus=verified=, and source
+  =codex.subagent-start=. Both that lifecycle source and a fresh
+  =native-collaboration-list-agents= receipt are host-owned target evidence;
+  bootstrap must not retain a pre-spawn absence epoch and offer a second Create.
+
+- A fresh canonical host-tree =present= receipt outranks a terminal-looking
+  registry snapshot. A completed, idle, or previously archived row whose
+  =/root/asp_explorer= target remains addressable enters same-child Resume and
+  profile attestation. It must not enter Cleanup, close the typed child, or
+  authorize replacement until a newer native =absent= receipt proves that the
+  canonical target is no longer resumable.
+- Missing runtime model observation is =Validate=, not model drift.  Resume the
+  same child once to obtain a fresh lifecycle observation.
+- An explicit model mismatch is not repaired by asking the child to switch
+  itself.  Since the current Codex collaboration surface has no dependable
+  same-child model override parameter, retire the drifted terminal owner and
+  create exactly one typed replacement from the registered TOML profile.
+- A missing =agent_type= field is a host capability boundary.  ASP must not
+  create a generic child and must not infer the role from task name or natural
+  language.
+- Inline parser fallback is an explicit degraded transport for the exact denied
+  ASP command.  It never authorizes raw source reads and never becomes a second
+  resident lifecycle.
+
+** Normal-task acceptance
+
+A complete native acceptance requires a Normal task whose exposed spawn schema
+contains =agent_type=.  The main Agent records the live tree and schema
+observations, creates exactly one =asp_explorer= typed child, observes the
+=SubagentStart= registration, reaches =Ready=, sends one parser-owned
+=asp <language> ...= reasoning search to that child, receives a compact search
+receipt, and leaves the child resident for the next follow-up.  When the host
+schema lacks =agent_type=, the correct converged result is one
+=activate-inline-parser-fallback= action; claiming native =Ready= would be a
+false acceptance.
+
+* Reasoning evidence and verdict
+
+Reasoning lifecycle state MUST NOT be represented by a bare optional string.
+The absence of a value has several distinct meanings: the host observed an
+omitted field, the host does not implement the field, the observation transport
+failed, no live child was bound, or only historical rollout metadata exists.
+
+Each reasoning fact MUST preserve the following evidence dimensions:
+
+- child identity and resident generation;
+- root session identity;
+- value, when one was directly observed;
+- visibility: =observed=, =field-omitted=, =host-unsupported=, or
+  =transport-failed=;
+- source: =codex-thread-runtime=, =subagent-start=, =rollout-header=, or
+  =typed-role-profile=;
+- observation time, freshness, and profile digest when applicable.
+
+The reducer produces exactly one verdict:
+
+#+begin_src text
+direct-match
+profile-attested-unobservable
+direct-mismatch
+transiently-unavailable
+stale-evidence
+conflicting-evidence
+#+end_src
+
+=observedReasoningEffort= MUST contain only a direct host observation.
+=effectiveReasoningEffort= MAY contain the configured value accepted through a
+typed-role profile attestation.  Ready gates consume the verdict, never the
+optional observed value directly.  A direct contradictory value always
+overrides profile attestation.
+
+Runtime and rollout values MUST NOT be destructively coalesced.  In particular,
+an absent app-server field cannot silently become a direct observation through
+=runtime.reasoningEffort.or(rollout.reasoningEffort)=.  Both evidence records
+remain available to the reducer with their original provenance.
+
+* Logical resident slot and physical generation
+
+ASP guarantees continuity of a logical resident service slot, not physical
+retention of a Codex child that the host has evicted.  The durable identity is:
+
+#+begin_src text
+residentSlotId = (rootSessionId, residentName)
+residentGeneration = monotonically increasing child generation
+activeChildSessionId = current physical Codex child
+#+end_src
+
+Runtime drift and rebind observations may be stored under a shared root task,
+but they MUST be consumed through the full resident slot partition:
+
+#+begin_src text
+(rootSessionId, expectedManagedAgentKind, activeChildSessionId)
+#+end_src
+
+A record for =asp_explorer= is not evidence about =asp_testing= merely because
+both are children of the same root.  Likewise, an observation for an older
+generation of the same kind is not evidence about the current generation.
+Cross-kind and cross-generation observations are ignored for that slot; they
+MUST NOT create model/reasoning drift, replacement authorization, or cleanup.
+
+When the canonical child disappears from the native host tree, ASP marks that
+generation orphaned and atomically binds one verified typed replacement as the
+next generation.  Preserving the same physical child across turns requires a
+Codex durable-target or thread-rehydration API and is outside ASP authority.
+
+If that replacement is already executing before its =SubagentStart= receipt is
+available to ASP, the host-owned pre-tool envelope may safely rehydrate the
+slot.  This path requires all of the following to agree: top-level =agent_id=,
+top-level =agent_type=, exact child rollout UUID, rollout root attribution, and
+the synchronized managed profile.  ASP then performs a compare-and-swap from
+the previously registered child UUID to that exact child UUID.  The route is
+unchanged if another generation won the slot first.  Canonical path, resident
+name, task text, or =tool_input= fields alone cannot authorize this transition.
+
+#+begin_src mermaid
+flowchart TD
+  A["Host hook envelope"] --> B{"Exact agent_id and configured agent_type?"}
+  B -->|"no"| C["Remain unbound"]
+  B -->|"yes"| D{"Exact rollout proves root and managed profile?"}
+  D -->|"no"| C
+  D -->|"yes"| E["CAS expected old child -> exact new child"]
+  E -->|"lost race"| F["Keep newer owner; do not overwrite"]
+  E -->|"committed"| G["Bind canonical target and fresh host presence"]
+  G --> H["Ready"]
+#+end_src
+
+** Native target absence is one atomic transition
+
+A fresh native =absent= observation is stronger than persisted rollout or
+registry history.  ASP MUST apply the following changes in one registry
+mutation before rendering another bootstrap/status pane:
+
+#+begin_src text
+status                  -> orphan-risk
+routable                -> false
+messageTargetId         -> null
+messageTargetBinding    -> removed
+messageTargetStatus     -> unbound
+messageTargetResultSource -> native-host-target-absent
+multiAgentChildState    -> control-plane-orphaned-unbound
+#+end_src
+
+Historical rollout heartbeat, =task_complete=, or =idle-resumable= evidence is
+retained for audit and candidate identity, but cannot re-attest a native message
+target after the host tree has proved it absent.  In particular, these pairs
+are invalid states and MUST fail a regression assertion:
+
+#+begin_src text
+registryStatus=orphan-risk + messageTargetStatus=ready
+routable=false + messageTargetResultSource=trusted-live-identity-binding
+hostTarget=absent + multiAgentChildState=control-plane-idle-resumable
+#+end_src
+
+If a dispatch was in flight, target invalidation preserves its stable dispatch
+identity and command digest while revoking the delivery lease.  The dispatch
+becomes =orphaned-awaiting-rebind=.  After one verified typed generation is
+atomically bound, ASP may replay that same dispatch identity at most once when
+no terminal receipt exists; it MUST poll rather than replay when a terminal
+receipt is already durable.  Replacement generation identity is not part of
+the logical dispatch identity.
+
+Dispatch state belongs to a dedicated durable ledger keyed by
+=(projectId, rootSessionId, residentName, dispatchIdentity)=.  It MUST NOT rely
+on an optional =metadataJson.dispatchLease= projection as its write authority.
+The host control loop uses the following compare-and-set contract:
+
+#+begin_src mermaid
+flowchart TD
+  A["dispatch-claim"] --> B{"Durable lease?"}
+  B -->|"none"| C["in-flight / attempt 1 / action send"]
+  B -->|"same live target"| D["action wait"]
+  B -->|"terminal"| E["action complete"]
+  C --> F{"Native target disappears?"}
+  F -->|"yes"| G["orphaned-awaiting-rebind / target null"]
+  G --> H["verified typed replacement binds canonical slot"]
+  H --> I["dispatch-claim CAS / attempt + 1 / action send"]
+  I --> J["same replacement target / action wait"]
+  C --> K["dispatch-complete terminal receipt"]
+  I --> K
+  K --> E
+#+end_src
+
+Only =action=send= authorizes =followup_task=.  Repeated bootstrap or claim on
+the same physical target returns =wait= and cannot redeliver.  A terminal
+receipt is idempotent and permanently suppresses replay, including after later
+resident generations.
+
+** Resident parser execution is a routing terminal
+
+The hook MUST resolve host-owned resident identity proof before consulting a
+cached rollout-topology projection.  Proof may come from the native hook
+payload, Codex transcript identity, or the current live registry binding; a
+natural-language claim by the child is never proof.
+
+When the current executor is proven to be the configured resident and the tool
+command invokes =asp=, the pre-tool decision is terminal =allow=:
+
+#+begin_src text
+agentSessionAction=active-resident-child
+executionTransport=resident-child-terminal
+routingTerminal=true
+redispatchAllowed=false
+#+end_src
+
+The command MUST NOT be routed to the same canonical target again, and the
+resident MUST NOT enter bootstrap.  If identity proof is absent, the hook may
+retain the main-session routing deny, but it MUST NOT infer resident identity
+from generic subagent status or task-message text.  This ordering keeps older
+root tasks safe when their rollout topology snapshot is stale without allowing
+ordinary subagents or the main Agent to bypass resident routing.
+
+The same terminal rule applies to every configured execution lane, not only an
+ASP parser command.  After a command matches one lane, the hook compares the
+host-owned top-level =agent_type= (or exact transcript/registry identity) with
+that lane's resolved =codexAgentName=.  A match produces:
+
+#+begin_src text
+agentSessionAction=active-hook-selected-resident
+executionLane=<matched map key>
+executionTransport=resident-child-terminal
+routingTerminal=true
+redispatchAllowed=false
+#+end_src
+
+This check occurs before the main-Agent deny.  Otherwise a testing resident
+would receive a build command and route it back to its own canonical target,
+forming a self-directed wait loop.  Natural-language claims and nested
+=tool_input= fields never prove the executing identity.
+
+This terminal execution proof is intentionally weaker than registry mutation
+authority.  A host-owned top-level =agent_id + agent_type= pair is sufficient
+to prevent a typed child from routing its own lane back to itself.  It does not
+by itself register, rebind, attest =Ready=, or refresh a historical message
+target.  Those state changes still require exact registry identity or the
+rollout/profile compare-and-swap proof described above.
+
+** Hook-selected resident command bridge
+
+The degraded bridge for a live but lifecycle-unobservable child is generic; it
+MUST NOT encode =asp-explore=, =asp_explorer=, or parser-only behavior.  The
+hook owns the mapping from denied intent to configured resident lane.  A fresh
+native-tree observation records the exact canonical target selected from that
+configuration, and the durable lease binds this tuple:
+
+#+begin_src text
+(rootSessionId, residentLaneName, canonicalTarget, exactArgvDigest)
+#+end_src
+
+Execution lanes are an open map, not a Rust enum:
+
+#+begin_src toml
+[executionLanes.testing]
+residentName = "asp-testing"
+
+[executionLanes.release]
+residentName = "release-build"
+#+end_src
+
+The lane key, resident lifecycle name, resident role, and Codex =agent_type=
+are distinct identities.  The hook resolves them through configuration and
+MUST NOT derive one by spelling conversion or by comparing against a fixed list
+of roles.  Roles are validated as safe identifiers; only security-bearing
+permissions remain a closed policy set.
+
+Configured resident creation also has one generic isolation invariant.  When
+the requested =agent_type= resolves to any enabled resident profile, the host
+spawn request MUST use that profile's exact =codexAgentName= as =task_name= and
+MUST set =fork_turns=none=.  This produces the one canonical physical target
+=/root/<codexAgentName>= without inheriting root-task conversation state.  A
+missing or different =task_name=, or any other =fork_turns= value, is denied
+before spawn.  Agent types that do not resolve to a configured resident are
+outside this gate and keep the host's normal spawn semantics.
+
+#+begin_src mermaid
+flowchart TD
+  A["Host spawn request"] --> B{"agent_type resolves to enabled resident?"}
+  B -->|"no"| C["Normal host spawn semantics"]
+  B -->|"yes"| D{"task_name = codexAgentName and fork_turns = none?"}
+  D -->|"no"| E["Deny with exact canonical spawn contract"]
+  D -->|"yes"| F["Spawn isolated /root/<codexAgentName>"]
+  F --> G["Bind exact child identity after host-owned evidence"]
+#+end_src
+
+This invariant is evaluated over the configured resident set; it does not name
+or privilege explore, testing, build, or future lanes.  It simultaneously
+prevents duplicate aliases such as =/root/<codexAgentName>-copy= and prevents a
+new resident generation from mistaking inherited root-task instructions for
+its own identity.  Profile prose remains guidance, not lifecycle authority.
+
+#+begin_src mermaid
+flowchart LR
+  A["PreToolUse exact argv"] --> B["Match one configured executionLanes key"]
+  B --> C["Read lane.residentName"]
+  C --> D["Resolve enabled agents.residentAgents entry"]
+  D --> E["Read codexAgentName and role"]
+  E --> F["Return canonical /root/<codexAgentName> target"]
+  F --> G["Main Agent dispatches exact digest-bound argv"]
+  G --> H["Resident returns terminal receipt"]
+#+end_src
+
+For example, ASP reasoning may select the configured search resident, while
+build/test commands select the resident referenced by =executionLanes.testing=.
+A release hook can select =executionLanes.release= and a different registered
+Codex profile.  Future resident agents use the same mechanism without code
+changes or name inference.
+The main Agent may then send only =dispatch-execute= to the observed canonical
+target.  The child-side wrapper checks that it is not the root task, validates
+the exact argv digest and in-flight lease, executes argv without a shell, and
+terminally consumes the lease for either success or failure.
+
+The bridge does not register a child, attest a profile, or change lifecycle
+state to =Ready=.  It is a one-shot transport repair when the native target is
+addressable but the host cannot reproduce =SubagentStart=.  The hook decision
+is terminal and transport-generic:
+
+#+begin_src text
+agentSessionAction=resident-command-bridge
+executionLane=hook-selected-resident
+executionTransport=resident-command-bridge
+routingTerminal=true
+redispatchAllowed=false
+#+end_src
+
+* Lifecycle v1 release contract
+
+This document is the only normative resident lifecycle contract.  Earlier v2
+wording is merged here as pre-release stabilization; there is no parallel v2
+protocol and no legacy runtime compatibility branch.
+
+** Stable slot and physical generation
+
+The stable service identity is =(projectId, rootSessionId, residentName)=.  A
+slot owns at most one active physical generation.  Each verified replacement
+advances the generation; evidence from an orphaned or terminal generation must
+not activate, bind, or complete work for the current generation.  Lifecycle v1
+guarantees logical service continuity, not permanent retention of one Codex
+physical child across root turns.
+
+** Binding lease and derived Ready
+
+A binding lease records the generation, canonical target, verified-live source,
+and freshness.  A persisted path, registry row, historical rollout, or child id
+is not live-binding evidence by itself.  =Ready= is derived only when the slot is
+configured, its active generation has a fresh verified-live binding, the profile
+verdict passes, and no direct contradictory evidence exists.
+
+Bootstrap is a read-only projection.  Spawn, bind, orphan, replace, dispatch,
+and completion are independent idempotent command handlers and mutate through
+compare-and-swap.  Missing typed spawn or verified live binding locally blocks
+only commands routed to that resident.  It never registers a generic child,
+executes in the current parser session, reuses a historical target, or blocks
+unrelated Codex tools.  =ReadyDegraded= and inline parser fallback are not v1
+states.
+
+** Durable dispatch continuity
+
+The durable ledger binds one dispatch identity and command digest to a slot,
+delivery generation, target, attempt, state, and terminal receipt.  States are
+=pending=, =in-flight=, =orphaned-awaiting-rebind=, and =terminal=.  Digest
+conflicts are rejected.  A same-generation in-flight claim waits; a terminal
+claim returns the stored receipt; an orphaned delivery may be replayed exactly
+once after a different generation becomes verified-live.  Target loss revokes
+only the delivery lease, never the dispatch identity or digest.  Completion is
+parent-ingested and idempotent.  Delivery is at least once, so side-effecting
+executors must use dispatch identity as their idempotency key.
+
+** Evidence, permissions, and source-index release gate
+
+Reasoning consumes one verdict: =direct-match=,
+=profile-attested-unobservable=, =direct-mismatch=,
+=temporarily-unavailable=, or =conflicting-evidence=.  Profile attestation is a
+first-class Ready verdict when the host omits the runtime field; direct
+contradiction always wins.
+
+Registry status reads use a read-only connection.  Heartbeat and repair writes
+are best effort; denied writes report =registryWriteStatus=denied= and block only
+the requested mutation.  Sync creates user-owned directories and registry files
+with safe permissions and diagnoses foreign ownership without automatic chown.
+
+The independently implemented Org/source index is nevertheless a v1 release
+gate.  Refresh writes a staging generation, validates owner/content/selector
+integrity, commits a manifest, and atomically switches the active generation.
+Lookup joins selector, owner, and content within that same generation.  Missing
+content returns a structured inconsistency and must never fall through to an
+older generation or ghost owner.  Generation reuse requires scoped content
+integrity, not only matching counts or fingerprints.
+
+* Regression gates
+:PROPERTIES:
+:CUSTOM_ID: regression-gates
+:END:
+
+The lifecycle acceptance suite MUST cover host fields that are intentionally
+unobservable as explicit protocol states rather than leaving them as ambiguous
+=null= or =unknown= values:
+
+The host observation contract is
+=agent.semantic-protocols.host-resident-target-observation= schema version =2=.
+Version 2 separates weak list visibility (=absent=) from a bounded canonical
+route-probe failure (=unroutable=).
+
+- A canonical typed child with =observedReasoningEffort=null= MAY enter
+  =Ready= only through =host-profile-attested-unobservable=, with
+  =reasoningEvidenceSource=asp-typed-role-profile-attestation=. A contradictory
+  observed reasoning value MUST still fail attestation.
+- When Codex exposes no native session-status API, a
+  =trusted-live-identity-binding= changes =hostStatus=unknown= to
+  =hostStatus=unobservable-not-required=. This classification proves routing,
+  not a fabricated host thread status.
+- Parent-inherited sandbox drift is represented as
+  =sandboxVerificationStatus=host-inherited-drift-warning=,
+  =sandboxPolicy=warning-only-host-inherited=, and =sandboxAffectsReady=false=.
+  It MUST NOT trigger Resume, replacement, Cleanup, or duplicate creation.
+- A fresh native-tree =absent= receipt is weak visibility evidence. It MUST
+  require one canonical target probe, MUST NOT revoke the message target, and
+  MUST NOT authorize replacement. A successful probe records
+  =observe-host-ack= and preserves the same generation.
+- Only a canonical probe failure recorded as =targetStatus=unroutable= with a
+  bounded evidence reference atomically revokes the message target and
+  live-binding attestation. Status cannot retain =ready= or
+  =control-plane-idle-resumable= for that orphaned generation.
+- Exact hook-envelope plus rollout/profile proof may rehydrate a replacement
+  generation only through compare-and-swap; a stale hook cannot overwrite a
+  newer resident owner, and model/profile drift cannot claim the slot.
+- An in-flight dispatch survives generation loss as
+  =orphaned-awaiting-rebind= and is replayed at most once under its original
+  dispatch identity after verified rebind.
+- A host-proven resident parser command returns terminal =allow= with
+  =redispatchAllowed=false= even when the cached rollout topology is stale;
+  the corresponding main-task payload remains =asp-reasoning-routed=.
+- A host-proven execution-lane resident runs its matched command terminally;
+  the same command in the root task is denied and routed to that resident.  The
+  resident cannot re-dispatch or wait on its own canonical target.
+- A resident bridge uses the canonical target recorded by the host observation;
+  it never derives a target name from the lane name.  Both an ASP search argv
+  and a non-ASP testing/build argv pass the same digest-bound executor, while a
+  recursive wrapper or terminal lease is rejected.
+- A custom lane whose key, resident name, role, and Codex profile name are all
+  different routes to the configured canonical target and is auto-registered
+  by =asp sync= from its =*_codex.toml= profile.  This gate forbids reintroducing
+  =testing=, =asp-testing=, or =asp_explorer= as routing constants.
+- Every configured resident spawn is rejected unless =task_name= equals its
+  exact =codexAgentName= and =fork_turns=none=.  The same gate accepts an
+  arbitrary third resident from configuration while leaving a generic worker
+  agent type unchanged.
+- Runtime drift and rebind receipts are accepted only when both their expected
+  managed agent kind and child generation match the current logical slot.  An
+  =asp_explorer= receipt can never classify or replace an =asp_testing= slot,
+  even when both share one root task and the same model/reasoning values.
+- Canonical binding proof compares rollout role/path and native =agentType=
+  against the slot's configured =managedAgentKind= and
+  =/root/<codexAgentName>= target.  It MUST NOT require =asp_explorer= and MUST
+  accept a verified =asp_testing= or arbitrary future configured resident.
+
+- A generic child produces typed-replacement repair, never resident Ready.
+- A fresh typed replacement releases an invalid or replacement-required
+  registry owner and becomes the unique active resident.
+- Matching model values on an untyped child do not clear drift.
+- A fresh =asp_explorer= start with the expected runtime clears drift and reaches
+  =typed-resident-replacement-verified=.
+- Drifted resident routing allows unrelated Codex tool use and clears bootstrap
+  loop fields.
+- Child-side bootstrap fails fast with =bootstrap-owner-main-session-only=.
+- Missing resident plus explicit opt-in allows only an exact parser-owned ASP
+  search/query and emits a digest-bound =current-session= receipt.
+- The same ASP command without opt-in remains lifecycle-routed.
+- Adding the opt-in token to raw =rg= or another shell read remains denied.
+- Exact Org headline =--content= subtree materialization is covered by
+  [[file:../../languages/orgize/tests/integration/export_cli_org.rs][the orgize document-query regression]].
+- Canonical owner-key normalization and empty covering-test frontiers are
+  covered by
+  [[file:../../crates/agent-semantic-protocol/tests/unit/provider_command/facade/pipe/reasoning.rs][the ASP-owned reasoning frontier regression]].
+- Cross-process exactly-once terminal receipt recovery is covered by
+  [[file:../../crates/agent-semantic-protocol/tests/unit/client_hook_claude_smoke/codex_session.rs][the Codex lifecycle dispatch regression]].
+
+* Lifecycle engine correction
+This section is normative for lifecycle v1 stabilization and supersedes any older
+wording in this file that describes bootstrap as an imperative repair engine.
+
+The root cause of the resident drift failures is not profile syntax, symlink
+placement, or a missing fallback. The root cause is a lifecycle engine that
+collapsed five distinct authorities into one bootstrap decision:
+- logical resident slot identity;
+- physical Codex child generation;
+- verified live transport binding;
+- profile and reasoning evidence verdict;
+- durable dispatch identity and terminal receipt.
+
+Lifecycle v1 MUST implement these as separate state dimensions. The stable
+service identity is =(projectId, rootSessionId, residentName)=. The physical
+child is a generation of that slot. The live message target is a lease for one
+generation. Reasoning is a verdict over direct runtime evidence and profile
+attestation. Dispatch is a durable ledger entry keyed by dispatch identity and
+command digest.
+
+=bootstrap= and =status= are read-only projections over committed evidence. They
+MUST NOT spawn, bind, orphan, replace, dispatch, complete, cleanup, or execute
+parser work. They may return the next command handler to run. Mutation belongs
+only to idempotent command handlers that commit events through compare-and-swap.
+
+The v1 command handlers are:
+- =observe-subagent-start=: record typed child identity, model, profile, and
+  root attribution.
+- =observe-host-tree=: record weak native-tree presence or absence.
+- =observe-host-ack=: record a strong canonical follow-up or dispatch
+  acknowledgement.
+- =mark-target-not-found=: revoke only the binding lease for the affected
+  generation.
+- =create-typed-generation=: create exactly one configured typed child after
+  capability and replacement gates pass.
+- =bind-generation=: activate a verified live binding lease for one generation.
+- =orphan-generation=: mark the current generation orphaned without deleting
+  dispatch identity.
+- =replace-generation=: advance the slot to a new typed generation through CAS.
+- =claim-dispatch= and =complete-dispatch=: maintain durable dispatch continuity.
+
+Evidence strength is ordered. =list_agents= absence is weak evidence and cannot
+authorize replacement by itself. A replacement requires canonical target probe
+failure, such as native follow-up/path/id not found. If =list_agents= is absent
+but canonical follow-up succeeds, the child is hidden-but-routable and the engine
+MUST record =observe-host-ack= and rebind the same generation.
+
+Reasoning uses one verdict, not a fallback ladder:
+- =direct-match=;
+- =profile-attested-unobservable=;
+- =direct-mismatch=;
+- =temporarily-unavailable=;
+- =conflicting-evidence=.
+The =profile-attested-unobservable= verdict is Ready-capable only when typed
+profile identity, model match, root attribution, canonical binding, and absence
+of contradictory reasoning evidence all hold. It MUST preserve
+=observedReasoningEffort=null= and MUST NOT claim direct runtime observation.
+
+Dispatch continuity is first-class. Target loss changes =in-flight= to
+=orphaned-awaiting-rebind= for that delivery lease only. The dispatch identity
+and command digest remain stable. A verified later generation may replay that
+dispatch at most once. A terminal receipt is idempotent and is never replayed.
+
+Public receipts MUST be internally consistent. If the same child session ID,
+slot, generation, and trace prove same-child recovery, the receipt cannot report
+=sameChildIdentity=false=. If a target is unbound, the same receipt cannot also
+report =messageTargetStatus=ready= or =trusted-live-identity-binding=.
+
+Lifecycle v1 has no =ReadyDegraded=, inline parser fallback, generic child,
+path-only live binding, or historical-target execution path. Capability absence
+is represented as a command-local =Blocked= receipt while unrelated Codex tools
+remain usable.

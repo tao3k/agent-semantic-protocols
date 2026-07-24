@@ -95,12 +95,12 @@ fn run_graph_render_process(
         stdin,
         stdout: OutputMode::Capture,
         stderr: OutputMode::Capture,
-        limits: ProviderProcessLimits {
-            max_stdout_bytes: Some(max_stdout_bytes as usize + 1),
-            max_stderr_bytes: Some(64 * 1024),
-            timeout: None,
-            memory_limit_bytes: Some(1024 * 1024 * 1024),
-        },
+        limits: ProviderProcessLimits::new(
+            None,
+            Some(max_stdout_bytes as usize + 1),
+            Some(64 * 1024),
+            Some(1024 * 1024 * 1024),
+        ),
     }) {
         Ok(output) => output,
         Err(error) if strict => return Err(format!("failed to run graph renderer: {error}")),
@@ -108,7 +108,7 @@ fn run_graph_render_process(
     };
     if !output.status.success()
         || output.stdout.is_empty()
-        || output.receipt.stdout_bytes as u64 > max_stdout_bytes
+        || output.receipt.stdout_bytes() as u64 > max_stdout_bytes
     {
         if strict {
             let stderr = String::from_utf8_lossy(&output.stderr);

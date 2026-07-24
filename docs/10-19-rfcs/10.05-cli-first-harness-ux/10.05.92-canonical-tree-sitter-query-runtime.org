@@ -68,6 +68,8 @@ and source-index databases are not query-execution fallbacks for this command.
 
 * Runtime Ownership
 
+ASP owns the canonical tree-sitter runtime and the registered grammar lookup used by workspace query execution. A language Harness supplies activation metadata and compact projection contracts, but it MUST NOT link tree-sitter runtime or grammar packages. This ownership statement supersedes the older Harness-supplied-grammar wording below; providers may reuse the ASP ABI without creating a Cargo dependency cycle.
+
 The canonical runtime lives in a lower
 =agent-semantic-tree-sitter-runtime= crate with no dependency on a language
 Harness or on build-policy crates. Its dependency direction is:
@@ -77,12 +79,6 @@ rust-lang-project-harness ─┐
                             ├─> agent-semantic-tree-sitter-runtime
 agent-semantic-tree-sitter ─┘
 #+end_example
-
-The Harness supplies its grammar and projects runtime matches into its compact
-packet. The catalog crate may re-export the runtime API, but a build-policy
-dependency from the catalog crate back to a Harness must never make the
-Harness depend on the catalog crate. This keeps query execution reusable
-without a Cargo cycle.
 
 * Scenarios And Performance Gate
 

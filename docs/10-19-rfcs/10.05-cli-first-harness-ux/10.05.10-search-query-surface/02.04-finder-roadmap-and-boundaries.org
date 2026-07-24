@@ -1,0 +1,118 @@
+*** Roadmap: agent-facing lexical lexical search
+
+The lexical-search roadmap is intentionally separate from =query=:
+
+1. =search lexical= becomes the preferred public lexical/fuzzy search view for
+   agents.  The command name matches the mental model LLMs already have:
+   fuzzy filtering over a candidate list.
+2. The first =search lexical= backend should be =rg+lexical=.  =rg= owns fast source
+   scanning, ignore/glob semantics, and structured hit provenance; =lexical= owns
+   fuzzy ranking over candidate lines, paths, or owner labels.  Agent-facing
+   runs must use non-interactive filtering/scoring, not a terminal picker.
+   Human-facing diagnostics may optionally expose an interactive preview later.
+3. =ugrep= or a provider-owned lexical index remains a later alternative when
+   fuzzy matching, Boolean combinations, case folding, or cold large-workspace
+   pruning cannot be expressed efficiently as =rg+lexical=.
+4. Shared schemas should add backend provenance only after the RFC is stable:
+   =textBackend=, =matchMode=, =sourceSearchPasses=, =candidateFileBasis=,
+   =fuzzyFilter=, =queryTerms=, and bounded runtime cost.  These fields explain
+   how text candidates were found; they do not make text results parser-owned
+   facts.
+5. Provider guides should teach the decision ladder:
+   =query= for parser-owned extraction, =search owner/tests/deps= for
+   structured discovery, =search lexical= for broad lexical/fuzzy candidates, and
+   =search ingest= for externally generated candidate streams.
+
+This keeps the competitive advantage clear: native syntax parsing plus
+first-class =query= gives precise code slices and read locators with fewer
+tokens and less semantic drift.  =search lexical= is the widening tool, not the
+authority layer.
+
+*** Shared finder tools schema
+
+The protocol repository owns =semantic-finder-tools.v1= as the common contract
+for provider-approved lexical and structural finder pipelines.  It is not a
+new command surface and it does not expose raw shell argv to agents.  It
+describes:
+
+- the approved tool catalog, such as =rg=, =lexical=, =fd=, =ast-grep=,
+  =ugrep=, or a provider index
+- tool roles, such as source scan, fuzzy filter, path list, structural recipe,
+  candidate normalization, or scoring
+- approved pipelines, such as =lexical-rg-lines=, =text-rg-json=, or
+  =pattern-ast-grep-recipe=
+- provenance fields that search packets can later embed, such as
+  =finderPipelineId=, =matchMode=, =candidateBasis=, =sourceSearchPasses=,
+  =fuzzyFilter=, candidate counts, and runtime cost
+
+The first target pipeline is:
+
+#+begin_src text
+search lexical <query>
+  -> provider-owned rg candidate scan
+  -> provider-owned lexical headless filter/rank
+  -> provider normalize
+  -> owner/test seeds
+#+end_src
+
+=rg= owns fast lexical candidate generation.  =lexical= owns fuzzy filtering and
+ranking over candidate lines, paths, or owner labels.  The language provider
+owns the semantic boundary after that: path normalization, owner resolution,
+nearest-item resolution, test frontier selection, deduplication, caps, and
+packet rendering.
+
+Agents do not choose the =rg= command, stage order, or a shell pipe shape.
+Agents may request provider-approved lexical match options only through
+=--lexical-arg= or the terminal =--lexical= boundary.  The provider owns validation,
+normalization, defaulting, and provenance; unsupported options are rejected
+with a compact error or recorded as rejected finder arguments in JSON.
+
+=search lexical= may reuse the same finder schema with
+=surface=search-lexical=, but the preferred agent-facing surface is
+=surface=search-lexical= and view =lexical=.
+
+Agent-facing finder runs must be headless and provider-owned.  Human-facing
+diagnostics may later expose interactive =lexical= preview, but that is outside
+the agent protocol path.
+
+Finder no-hit output is a protocol receipt, not a low-quality graph frontier.
+When an agent-facing finder wrapper such as =asp fd -query ... --view seeds=
+or =asp rg -query ... --view seeds= has no selected candidates, compact stdout
+must emit a bounded =noOutput= row with =reason=no-candidates=, the finder
+source trace, one executable widening/refinement =nextCommand=, and the
+applicable =avoid= list.  It must not print empty ranked evidence, empty
+frontiers, placeholder owners such as =ownerItems=-=, or synthesized
+=owner-items= actions.  JSON artifact views may still carry the normal graph
+request with empty candidate arrays for cache/replay validation, but prompt
+facing seeds output should spend tokens only on the next decision.
+
+*** ast-grep boundary
+
+=ast-grep= has a useful place, but it is not a substitute for provider-native
+=query=.  The provider's native parser and query implementation is stronger for
+that language because it owns project configuration, package/workspace scope,
+compiler or parser facts, item identity, test reachability, provider-specific
+handles, and compact code projection.  For Rust, =rs-harness query/search= is
+the authority for Rust semantic extraction; =ast-grep= must not replace it as a
+parallel Rust query engine.
+
+The correct =ast-grep= boundary is structural evidence where native provider
+facts are absent, incomplete, or intentionally recipe-scoped:
+
+- =search pattern <recipe>= can use provider-approved =ast-grep= recipes for
+  structural patterns without asking the agent to write raw =ast-grep= DSL
+- a Rust provider may combine =rs-harness= owner/query evidence with
+  =ast-grep= structural matches when the structural recipe adds non-native
+  evidence, but the final packet must mark =ast-grep= as structural provenance,
+  not parser-owned truth
+- for languages without a mature provider, =ast-grep= can supply bounded
+  structural candidates that are then normalized by the generic finder pipeline
+  and clearly marked as non-native structural evidence
+- cross-language investigations may combine one language provider's native
+  query results with =ast-grep= structural candidates from unsupported
+  languages, as long as the synthesis preserves source/provenance boundaries
+
+In short: native harness =query= is the precision layer; =ast-grep= is a
+structural adapter and recipe runner; =rg+lexical= is the lexical fuzzy candidate
+pipeline.
+

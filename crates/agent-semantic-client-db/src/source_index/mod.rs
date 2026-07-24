@@ -5,6 +5,11 @@ pub(crate) mod language_projection;
 mod text;
 mod types;
 
+pub use agent_semantic_content_identity::exact_selector_cache::{
+    ExactSelectorMerkleLookupKeyV1, ExactSelectorMerkleMissV1,
+    ExactSelectorProjectionRecordV1 as ClientDbExactSelectorProjectionV1,
+    ExactSelectorWarmHitV1 as ClientDbExactSelectorWarmHitV1, ExactSelectorWarmSideEffectsV1,
+};
 pub use import::{
     assemble_source_index_import, build_source_index_import, source_index_file_hashes,
     source_index_import_from_language_projection, source_index_import_with_file_hashes,
@@ -14,10 +19,11 @@ pub use language_projection::{
     CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_ID, CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_VERSION,
     CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_ID, CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_VERSION,
     ClientDbLanguageProjection, ClientDbLanguageProjectionHarness,
-    ClientDbLanguageProjectionImportRequest, ClientDbLanguageProjectionItem,
-    ClientDbLanguageProjectionNodeKind, ClientDbLanguageProjectionNodeRef,
-    ClientDbLanguageProjectionOwner, ClientDbLanguageProjectionRelation,
-    ClientDbLanguageProjectionSource, ClientDbLanguageProjectionSourceKind,
+    ClientDbLanguageProjectionImport, ClientDbLanguageProjectionImportRequest,
+    ClientDbLanguageProjectionItem, ClientDbLanguageProjectionNodeKind,
+    ClientDbLanguageProjectionNodeRef, ClientDbLanguageProjectionOwner,
+    ClientDbLanguageProjectionRelation, ClientDbLanguageProjectionSource,
+    ClientDbLanguageProjectionSourceKind,
 };
 pub use types::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
@@ -28,12 +34,14 @@ pub use types::{
     ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexImport,
     ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
     ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookup, ClientDbSourceIndexLookupResult,
-    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
-    ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexQueryKey,
-    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
-    ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSelectorPayloadProof,
-    ClientDbSourceIndexSource, ClientDbSourceIndexSourceKind, ClientDbSourceIndexStats,
-    client_db_source_index_file_count, client_db_source_index_generation_id,
+    ClientDbSourceIndexLookupState, ClientDbSourceIndexMembershipChangeSet,
+    ClientDbSourceIndexOwner, ClientDbSourceIndexPath, ClientDbSourceIndexProjectLookupRequest,
+    ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshReport,
+    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexRefreshResult,
+    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorLookup,
+    ClientDbSourceIndexSelectorPayloadProof, ClientDbSourceIndexSource,
+    ClientDbSourceIndexSourceKind, ClientDbSourceIndexStats,
+    client_db_source_index_artifact_digest, client_db_source_index_file_count,
+    client_db_source_index_generation_id_for_snapshot,
     client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
 };

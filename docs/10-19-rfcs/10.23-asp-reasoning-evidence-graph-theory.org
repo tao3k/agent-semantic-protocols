@@ -15,7 +15,7 @@ It does not own:
 - the DB Engine / Turso state layout, which remains in [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]];
 - the codebase-memory-mcp search comparison, which remains in [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]];
 - policy facts and recipes, which remain in [[file:10.24-policy-facts-recipes-schema.org][10.24 policy facts recipes schema]];
-- the compact graph feature details, which remain tied to [[file:10.06-agent-compact-graph-feature.org][10.06 agent compact graph feature]] and schema work.
+- the search projection details, which remain tied to [[file:10.06-agent-search-projection.org][10.06 agent search projection]] and schema work.
 * Document map
 This theory should be the shared conceptual root for the surrounding RFCs:
 
@@ -492,4 +492,4 @@ Julia must not execute runtime route decisions. A route improvement should flow 
 - [[file:10.20-codebase-memory-mcp-code-search-research.org][10.20 codebase-memory-mcp code search research]]
 - [[file:10.21-asp-db-engine-state-and-search-architecture.org][10.21 ASP DB Engine state and search architecture]]
 - [[file:10.22-smolagents-code-as-reasoning-evidence-graph.org][10.22 smolagents code-as-reasoning EvidenceGraph]]
-- [[file:10.06-agent-compact-graph-feature.org][10.06 agent compact graph feature]]
+- [[file:10.06-agent-search-projection.org][10.06 agent search projection]]

@@ -22,8 +22,15 @@ PATCH"#;
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::SemanticAstPatchRequired);
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(|value| value.as_str()),
+        Some("materialize-apply-patch-policy")
+    );
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert!(decision.message.contains("Locator route:"));
     assert!(decision.message.contains("path-only locator output"));
@@ -59,6 +66,26 @@ PATCH"#;
 schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
+
+[agents]
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-explore"
+role = "asp_explorer"
+roles = []
+permissions = []
+codexAgentName = "asp_explorer"
+sessionLifetime = "resident"
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-testing"
+role = "asp_testing"
+roles = []
+permissions = []
+codexAgentName = "asp_testing"
+sessionLifetime = "resident"
 
 [experimental.semanticAstPatch]
 enabled = false
@@ -100,6 +127,13 @@ fn direct_apply_patch_tool_to_source_requires_semantic_ast_patch() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::SemanticAstPatchRequired);
+    assert_eq!(
+        decision
+            .fields
+            .get("configRuleId")
+            .and_then(|value| value.as_str()),
+        Some("materialize-apply-patch-policy")
+    );
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
     assert!(decision.message.contains("Locator route:"));
     assert!(decision.message.contains("path-only locator output"));

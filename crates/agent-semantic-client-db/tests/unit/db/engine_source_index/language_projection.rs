@@ -1,6 +1,6 @@
 use std::fs;
 
-use agent_semantic_client_core::{CacheGenerationId, LanguageId};
+use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_db::{
     ClientDbEngine, ClientDbLanguageProjection, ClientDbLanguageProjectionImportRequest,
     source_index_import_from_language_projection,
@@ -35,63 +35,69 @@ async fn harness_projection_imports_without_source_text_projection() {
     .expect("decode language projection");
     let import =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
-            generation_id: CacheGenerationId::from("language-projection-turso"),
             project_root: project_root.clone(),
             previous_file_hashes: None,
             registry_fingerprint: "language-projection-registry".to_string(),
             projection: projection.clone(),
         })
         .expect("assemble language projection import");
-    assert_eq!(import.owners.len(), 1);
-    assert_eq!(import.selectors.len(), 1);
-    assert_eq!(import.selectors[0].start_line, 0);
-    assert_eq!(import.selectors[0].end_line, 0);
+    let source_snapshot = import.source_snapshot.clone();
+    assert_eq!(
+        import.source_index.generation_id,
+        agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+            &source_snapshot,
+        ),
+    );
+    let import_counts = (
+        import.source_index.file_hashes.len(),
+        import.source_index.owners.len(),
+        import.source_index.selectors.len(),
+    );
+    assert_eq!(
+        import.source_index.file_hashes.len(),
+        source_snapshot.leaf_count,
+        "language projection source-index counts={import_counts:?}"
+    );
+    assert_eq!(
+        import.source_index.owners.len(),
+        1,
+        "language projection source-index counts={import_counts:?}"
+    );
+    assert_eq!(
+        import.source_index.selectors.len(),
+        1,
+        "language projection source-index counts={import_counts:?}"
+    );
+    assert_eq!(import.source_index.selectors[0].start_line, 0);
+    assert_eq!(import.source_index.selectors[0].end_line, 0);
+    assert_eq!(
+        import.source_index.owners[0]
+            .provider_id
+            .as_ref()
+            .map(|id| id.as_str()),
+        Some("gerbil-scheme-language-project-harness"),
+    );
 
-    let report = ClientDbEngine::persist_language_projection_read_model_from_client_dir(
+    ClientDbEngine::persist_language_projection_read_model_from_client_dir(
         &client_dir,
-        &import,
+        &import.source_index,
         &projection,
+        &source_snapshot,
+        &agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
     )
     .expect("persist language projection import");
-    assert_eq!(report.graph_entity_count, 3);
-    assert_eq!(report.graph_edge_count, 2);
     let language_id = LanguageId::from("gerbil-scheme");
-    let graph_selectors = ClientDbEngine::lookup_graph_owner_selectors_from_client_dir(
-        &client_dir,
-        "src/projection.ss",
-        Some(&language_id),
-        8,
-    )
-    .await
-    .expect("lookup imported graph selector");
-    assert_eq!(graph_selectors.len(), 1);
-    assert_eq!(graph_selectors[0].label, "run");
-    assert_eq!(
-        graph_selectors[0].semantic_kind.as_deref(),
-        Some("function")
-    );
-    assert_eq!(
-        graph_selectors[0].selector.as_deref(),
-        Some("gerbil-scheme://src/projection.ss#item/function/run")
-    );
-    let graph_owner = ClientDbEngine::lookup_graph_owner_read_model_from_client_dir(
-        &client_dir,
-        "src/projection.ss",
-        Some(&language_id),
-        8,
-    )
-    .await
-    .expect("lookup imported graph owner read model");
-    assert!(graph_owner.projection_ready);
-    assert_eq!(graph_owner.selector_nodes, graph_selectors);
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
+        &source_snapshot,
         "run",
         Some(&language_id),
         8,
     )
     .await
     .expect("lookup imported projection");
+    assert_eq!(lookup.source_snapshot.as_ref(), Some(&source_snapshot));
+    assert!(lookup.index_artifact_digest.is_some());
     let proof = lookup
         .candidates
         .iter()
@@ -109,7 +115,10 @@ async fn harness_projection_imports_without_source_text_projection() {
         .find(|candidate| candidate.path == "src/projection.ss")
         .expect("projection candidate");
     assert_eq!(candidate.selector_symbol.as_deref(), Some("run"));
-    assert_eq!(candidate.selector_kind.as_deref(), Some("function"));
+    assert_eq!(
+        candidate.selector_kind.as_ref().map(|kind| kind.as_str()),
+        Some("function")
+    );
 
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);

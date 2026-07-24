@@ -119,11 +119,11 @@ fn asp_agent_session_fork_guide_refuses_bootstrap_semantics() {
     );
     assert!(stdout.contains("do not use fork as bootstrap"), "{stdout}");
     assert!(
-        stdout.contains("asp agent session bootstrap --name asp-explore"),
+        stdout.contains("<residentChildName-from-hook-decision>"),
         "{stdout}"
     );
     assert!(
-        !stdout.contains("asp agent session bootstrap --name asp-explore --json"),
+        !stdout.contains("asp agent session bootstrap --name asp-explore"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -150,11 +150,11 @@ fn asp_agent_session_status_guide_explains_start_resident_child_action() {
     );
     assert!(stdout.contains("Status is diagnostic only"), "{stdout}");
     assert!(
-        stdout.contains("asp agent session bootstrap --name asp-explore"),
+        stdout.contains("<residentChildName-from-hook-decision>"),
         "{stdout}"
     );
     assert!(
-        !stdout.contains("asp agent session bootstrap --name asp-explore --json"),
+        !stdout.contains("asp agent session bootstrap --name asp-explore"),
         "{stdout}"
     );
     assert!(

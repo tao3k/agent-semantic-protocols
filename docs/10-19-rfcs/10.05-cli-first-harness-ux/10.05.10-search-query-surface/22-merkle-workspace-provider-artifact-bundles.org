@@ -1,0 +1,109 @@
+#+title: Merkle Workspace Provider Artifact Bundles
+#+status: accepted
+
+* Decision
+
+=asp install language ... --from-workspace= treats a provider artifact as a
+Merkle bundle, not as one copied executable file.  A workspace-capable provider
+MUST declare an artifact root and an entrypoint inside that root.  A
+directory artifact MAY additionally declare an explicit launch recipe when the
+entrypoint cannot execute independently.
+
+This replaces =workspaceBinary=.  There is no copy-only or live-workspace
+symlink compatibility path.  The stable =asp.rust.parse-artifact.v1= contract
+is unchanged.
+
+** Provider-owned workspace install descriptor
+
+The sole workspace-build authority is =provider-workspace-install.v1=.  Its
+owner key is =providerId=, and one provider publishes exactly one descriptor
+containing =schemaAuthority=, =providerId=, =binary=, =workspaceArtifact=, and
+=workspaceBuild=.  Language manifests resolve a language to its provider id;
+they MUST NOT copy the build recipe.  Consequently Org and Markdown both
+resolve the single Orgize descriptor instead of publishing two recipes.
+
+Install source selection is exclusive.  =--from-workspace= reads only the
+provider-owned workspace descriptor and MUST NOT call or consult pinned release
+resolution.  Release installation reads only the pinned release catalog.  The
+pinned catalog contains release repository, version, archive layout, checksum,
+and target facts; it MUST NOT contain =workspaceArtifact= or =workspaceBuild=.
+There is no fallback, compatibility projection, dual-read, or merge between the
+two authorities.
+
+* Artifact contract
+
+The provider-owned =provider-workspace-install.v1= descriptor declares
+=workspaceArtifact= with:
+
+- =root=: project-relative file or directory produced by =workspaceBuild=;
+- =entrypoint=: artifact-root-relative executable or script;
+- optional =launch=: an executable, ordered arguments, and explicit flags that
+  state whether the executable and arguments resolve inside the artifact root.
+
+The artifact root MUST be contained by one declared =derivedPaths= boundary.
+All paths reject absolute components and parent traversal.  Launch behavior is
+manifest data; the installer MUST NOT infer it from language ids, filename
+extensions, shebang text, or provider-private string heuristics.
+
+* Merkle materialization
+
+After the pre/post source snapshot stability check succeeds, the installer
+MUST:
+
+1. walk the complete artifact root, including hidden files and symbolic links;
+2. hash canonical leaves with BLAKE3, including relative path, leaf kind,
+   executable permissions, file bytes, or symbolic-link target;
+3. derive one artifact Merkle root and leaf count;
+4. copy the complete tree into an immutable provider CAS generation addressed
+   by that root;
+5. recalculate the copied tree and reject any root or leaf-count mismatch;
+6. install only an entrypoint or generated launcher whose referenced files live
+   in that immutable CAS generation; and
+7. record source snapshot root, build recipe digest, artifact Merkle root,
+   artifact leaf count, entrypoint, and installed entrypoint digest in the
+   provider install lock and compact receipt.
+
+An installed entrypoint MUST remain runnable after the workspace build output
+is removed.  A successful copy operation is not installation evidence.
+
+* CAS and launcher boundary
+
+Single-file native providers are one-leaf bundles and may be copied from the
+immutable generation into the stable runtime bin directory.  Directory
+providers retain the entire CAS tree.  If a launch recipe is present, ASP
+generates the stable launcher from that explicit recipe and absolute immutable
+CAS paths.  The launcher itself is content-digested and is installed
+immutably; it never points back into the mutable checkout.
+
+* Install lock source identity
+
+The provider install lock v1 is source-discriminated.  It records
+=sourceKind=release= together with =repo= and =rev= only for a pinned release,
+or =sourceKind=workspace= together with the source snapshot, build-recipe,
+artifact, entrypoint, installed-entrypoint, and launcher digests.  Workspace
+installation MUST omit release-only =repo= and =rev=; it MUST NOT use a label or
+Merkle digest as a synthetic release identity.
+
+* Acceptance
+
+- Workspace installation enumerates provider-owned
+  =provider-workspace-install.v1= descriptors by =providerId=.  Org and
+  Markdown both resolve exactly one Orgize descriptor; no recipe is copied into
+  either language manifest.
+- =--from-workspace= succeeds without a pinned release entry and never reads
+  the release catalog.  Release installation never reads a workspace
+  descriptor.  A dual-read, fallback, or merged source fails the gate.
+- Rust and native Julia install as one-leaf bundles and execute from the
+  installed path.
+- TypeScript installs the complete compiled tree; relative ESM imports resolve
+  when the installed entrypoint runs.
+- Python installs the complete environment artifact and invokes its
+  artifact-local interpreter explicitly; no workspace-absolute shebang is an
+  execution dependency.
+- Modifying a source leaf during build fails with deterministic
+  =changedPaths= evidence.
+- Corrupting an existing CAS leaf fails verification and rematerializes that
+  generation from the verified workspace artifact; a mismatching replacement
+  still fails installation.
+- Removing the workspace artifact after installation does not affect any
+  installed provider.

@@ -37,6 +37,13 @@ Scenario benchmark metadata must make timer units explicit in field names. Gates
 
 ** Routing principle
 
+Explicit query-set clauses and parser-owned typed =Symbol= or =Context= terms are
+valid pre-acquisition evidence.  A specific-anchor gate MUST NOT infer evidence
+only from punctuation, digits, or path-like characters.  Broad typed queries
+that satisfy bounded acquisition budgets proceed to query-pack quality,
+package-cohesion, ranking, and action-frontier convergence; they are not rejected
+early merely because the user did not manufacture a path-shaped token.
+
 Search is not a mandatory pipeline. Before =search prime=, =search pipe=,
 =search lexical=, or =query --code=, the agent or runner derives an
 =evidenceState=:

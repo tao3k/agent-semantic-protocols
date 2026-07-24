@@ -1,0 +1,14 @@
+* ASP resident agent profiles
+
+This directory owns the platform-specific resident agent configurations.
+=*_codex.toml= files are Codex subagent profiles.  =*_claude.md= files are
+Claude subagent profiles.  They define agent role and execution boundaries, not
+search ranking, graph topology, or router policy.
+
+The protocol installer substitutes only the configured model token.  It MUST
+NOT duplicate or redefine agent behavior in hook/runtime source.  =asp sync=
+refreshes canonical state-home profiles from these assets and projects them
+into client-owned agent directories such as =~/.codex/agents/=.
+
+State-home profiles and client links are generated artifacts, not independent
+prompt authorities.

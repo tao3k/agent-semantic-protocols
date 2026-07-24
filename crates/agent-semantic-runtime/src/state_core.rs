@@ -15,7 +15,7 @@ pub const ASP_STATE_HOME_ENV: &str = "ASP_STATE_HOME";
 /// Default directory under `HOME` for ASP v2 durable state.
 pub const DEFAULT_STATE_HOME_DIR: &str = ".agent-semantic-protocols";
 /// Layout version for global ASP state directories.
-pub const STATE_LAYOUT_VERSION: &str = "state-v2";
+pub const STATE_LAYOUT_VERSION: &str = "state-v1";
 /// Initial scope identity used before multiple named scopes exist.
 pub const DEFAULT_SCOPE_ID: &str = "default";
 /// Active DB backend recorded in State Core manifests.

@@ -1,84 +1,60 @@
 //! Agent session routing owns resident child lifecycle decisions for hook-time `asp` commands.
 
 use crate::command::{has_current_agent_session, record_current_session_tool_event};
-use agent_semantic_client_db::AgentSessionRecord;
 use agent_semantic_config::{
-    HookClientAgentSessionMessagesConfig, HookClientAgentsConfig,
-    HookClientAspCommandIntentPolicyConfig, HookClientConfigFile, HookClientExecutionLanesConfig,
-    HookClientExecutionTransport, default_hook_client_config_template_for_source_extensions,
-    load_hook_client_config_file,
+    HookClientAgentSessionMessagesConfig, HookClientAgentsConfig, HookClientConfigFile,
+    load_asp_project_config_file, load_hook_client_config_file, merge_asp_project_hook_config,
 };
 use agent_semantic_hook::{
     DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
-    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, HookRuntime, ReasonKind,
-    classify_asp_language_command_tokens_with_policy,
+    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, ReasonKind,
 };
-#[path = "hook_runtime_agent_session_activation_failure.rs"]
-mod hook_runtime_agent_session_activation_failure;
-#[path = "hook_runtime_agent_session_command.rs"]
-mod hook_runtime_agent_session_command;
-#[path = "hook_runtime_agent_session_inline_fallback.rs"]
-mod hook_runtime_agent_session_inline_fallback;
+#[path = "hook_runtime_agent_session_identity.rs"]
+mod hook_runtime_agent_session_identity;
+#[path = "hook_runtime_agent_session_pane.rs"]
+mod hook_runtime_agent_session_pane;
+#[path = "hook_runtime_agent_session_payload.rs"]
+mod hook_runtime_agent_session_payload;
+#[path = "hook_runtime_agent_session_presence.rs"]
+mod hook_runtime_agent_session_presence;
 #[path = "hook_runtime_agent_session_profile.rs"]
 mod hook_runtime_agent_session_profile;
 #[path = "hook_runtime_agent_session_rollout_topology.rs"]
 mod hook_runtime_agent_session_rollout_topology;
 #[path = "hook_runtime_agent_session_session_start.rs"]
 mod hook_runtime_agent_session_session_start;
+#[path = "hook_runtime_agent_session_terminal.rs"]
+mod hook_runtime_agent_session_terminal;
 #[path = "hook_runtime_agent_session_typed_replacement.rs"]
 mod hook_runtime_agent_session_typed_replacement;
-pub(super) use hook_runtime_agent_session_activation_failure::classify_activation_failure_main_session_asp;
-use hook_runtime_agent_session_command::{
-    command_contains_asp_binary, command_prefix_matches, command_prefix_matches_wrapped,
-    command_prefix_tokens, command_requires_resident_child, shell_like_tokens,
+use hook_runtime_agent_session_pane::{
+    agent_session_allow_decision, agent_session_route_fields, render_agent_session_template,
 };
-use hook_runtime_agent_session_inline_fallback::{
-    command_enables_inline_parser_fallback, current_session_exploration_fallback_decision,
-    missing_resident_asp_explore_decision,
+use hook_runtime_agent_session_payload::{
+    payload_command_strings, payload_evidence_ref, string_field,
 };
 use hook_runtime_agent_session_profile::{
-    append_resident_agent_fields, resident_agent_host_action, resident_child_create_action,
+    append_resident_agent_fields, resident_child_create_action,
 };
-use hook_runtime_agent_session_rollout_topology::{
-    nested_resident_child_decision, register_required_resident_child_decision,
-};
-use hook_runtime_agent_session_session_start::{
-    classify_session_start_bootstrap, main_session_route_context,
-};
+use hook_runtime_agent_session_session_start::classify_session_start_bootstrap;
 pub(super) use hook_runtime_agent_session_session_start::{
+    current_session_configured_resident_identity_proof,
     current_session_resident_child_identity_proof, session_matches_resident_agent,
 };
-use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
+pub(super) use hook_runtime_agent_session_terminal::append_terminal_execution_fields;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-struct AspExplorationCommand {
-    facade: String,
-    stage: Option<String>,
-    language_id: Option<String>,
-}
-
 pub(super) struct AspSessionPolicy {
-    command_intent_policy: HookClientAspCommandIntentPolicyConfig,
     enabled: bool,
     resident_child_name: String,
     resident_agent_role: String,
     resident_codex_agent_name: String,
-    resident_route_source: &'static str,
-    main_allowed_asp_command_prefixes: Vec<Vec<String>>,
-    testing_enabled: bool,
-    testing_command_prefixes: Vec<Vec<String>>,
-    testing_receipt_kind: String,
     messages: HookClientAgentSessionMessagesConfig,
 }
 
 impl AspSessionPolicy {
-    fn command_intent_policy(&self) -> &HookClientAspCommandIntentPolicyConfig {
-        &self.command_intent_policy
-    }
-
-    fn enabled(&self) -> bool {
+    pub(super) fn enabled(&self) -> bool {
         self.enabled
     }
 
@@ -90,161 +66,60 @@ impl AspSessionPolicy {
         &self.resident_agent_role
     }
 
-    fn resident_codex_agent_name(&self) -> &str {
+    pub(super) fn resident_codex_agent_name(&self) -> &str {
         &self.resident_codex_agent_name
     }
-
-    pub(super) fn uses_builtin_resident_fallback(&self) -> bool {
-        self.resident_route_source == "built-in-fallback"
-    }
-
-    fn main_asp_command_allowed(&self, tokens: &[String], asp_index: usize) -> bool {
-        match hook_runtime_agent_session_command::classify_main_session_asp_command(
-            tokens,
-            asp_index,
-            &self.command_intent_policy,
-        ) {
-            hook_runtime_agent_session_command::MainSessionAspCommandClass::ControlPlane
-            | hook_runtime_agent_session_command::MainSessionAspCommandClass::ExactEvidenceRead
-            | hook_runtime_agent_session_command::MainSessionAspCommandClass::DirectReadFallback
-            | hook_runtime_agent_session_command::MainSessionAspCommandClass::InvalidEvidence => {
-                true
-            }
-            hook_runtime_agent_session_command::MainSessionAspCommandClass::ReasoningFlow => false,
-            hook_runtime_agent_session_command::MainSessionAspCommandClass::Unknown => self
-                .main_allowed_asp_command_prefixes
-                .iter()
-                .any(|prefix| command_prefix_matches(tokens, asp_index, prefix)),
-        }
-    }
 }
 
-pub(super) fn load_asp_session_policy(config_path: &Path) -> Result<AspSessionPolicy, String> {
-    let default_messages = default_hook_client_config_file()?.agent_session_messages;
-    let mut config = if config_path.is_file() {
-        load_hook_client_config_file(config_path)?
-    } else {
-        default_hook_client_config_file()?
-    };
-    config.agent_session_messages =
-        merge_agent_session_messages(config.agent_session_messages, default_messages);
-    AspSessionPolicy::try_from(config)
+pub(super) fn load_asp_session_policy(
+    config_path: &Path,
+    project_root: &Path,
+) -> Result<AspSessionPolicy, String> {
+    let base = load_hook_client_config_file(config_path)?;
+    let project = load_asp_project_config_file(&agent_semantic_hook::project_agent_config_path(
+        project_root,
+    ))?;
+    AspSessionPolicy::try_from(merge_asp_project_hook_config(base, project)?)
 }
 
-pub(super) fn default_asp_session_policy() -> Result<AspSessionPolicy, String> {
-    let mut config = default_hook_client_config_file()?;
-    let default_messages = default_hook_client_config_file()?.agent_session_messages;
-    config.agent_session_messages =
-        merge_agent_session_messages(config.agent_session_messages, default_messages);
-    AspSessionPolicy::try_from(config)
-}
-
-fn default_hook_client_config_file() -> Result<HookClientConfigFile, String> {
-    toml::from_str(&default_hook_client_config_template_for_source_extensions(
-        [".rs"],
-    ))
-    .map_err(|error| format!("failed to parse default hook client config template: {error}"))
-}
-
-fn merge_agent_session_messages(
-    mut config: HookClientAgentSessionMessagesConfig,
-    defaults: HookClientAgentSessionMessagesConfig,
-) -> HookClientAgentSessionMessagesConfig {
-    if config.session_start_reuse.is_none() {
-        config.session_start_reuse = defaults.session_start_reuse;
-    }
-    if config.session_start_bootstrap.is_none() {
-        config.session_start_bootstrap = defaults.session_start_bootstrap;
-    }
-    if config.missing_resident_explore.is_none() {
-        config.missing_resident_explore = defaults.missing_resident_explore;
-    }
-    if config.main_restricted_with_child.is_none() {
-        config.main_restricted_with_child = defaults.main_restricted_with_child;
-    }
-    if config.main_restricted_without_child.is_none() {
-        config.main_restricted_without_child = defaults.main_restricted_without_child;
-    }
-    if config.binary_gate_with_child.is_none() {
-        config.binary_gate_with_child = defaults.binary_gate_with_child;
-    }
-    if config.binary_gate_without_child.is_none() {
-        config.binary_gate_without_child = defaults.binary_gate_without_child;
-    }
-    if config.binary_gate_invalid_child.is_none() {
-        config.binary_gate_invalid_child = defaults.binary_gate_invalid_child;
-    }
-    if config.binary_gate_registry_blocked.is_none() {
-        config.binary_gate_registry_blocked = defaults.binary_gate_registry_blocked;
-    }
-    if config.source_access_compact.is_none() {
-        config.source_access_compact = defaults.source_access_compact;
-    }
-    if config.source_access_compact_repeated.is_none() {
-        config.source_access_compact_repeated = defaults.source_access_compact_repeated;
-    }
-    if config.source_access_compact_subagent.is_none() {
-        config.source_access_compact_subagent = defaults.source_access_compact_subagent;
-    }
-    config
+pub(super) fn load_embedded_asp_session_policy(
+    project_root: &Path,
+) -> Result<AspSessionPolicy, String> {
+    let base = agent_semantic_config::default_hook_client_config_file()?;
+    let project = load_asp_project_config_file(&agent_semantic_hook::project_agent_config_path(
+        project_root,
+    ))?;
+    AspSessionPolicy::try_from(merge_asp_project_hook_config(base, project)?)
 }
 
 impl AspSessionPolicy {
     fn try_from_parts(
         config: HookClientAgentsConfig,
         messages: HookClientAgentSessionMessagesConfig,
-        command_intent_policy: HookClientAspCommandIntentPolicyConfig,
-        execution_lanes: HookClientExecutionLanesConfig,
     ) -> Result<Self, String> {
-        let default_agents = HookClientAgentsConfig::default();
-        let configured_explore_agent = configured_resident_agent(&config, "asp-command");
-        let explore_agent = configured_explore_agent
-            .or_else(|| configured_resident_agent(&default_agents, "asp-command"));
-        let main_allowed_asp_command_prefixes = explore_agent
-            .into_iter()
-            .flat_map(|agent| agent.main_allowed_asp_command_prefixes.iter())
-            .map(|prefix| command_prefix_tokens(prefix))
-            .collect::<Result<Vec<_>, _>>()?;
-        let testing_command_prefixes = execution_lanes
-            .testing
-            .command_prefixes
-            .iter()
-            .map(|prefix| command_prefix_tokens(prefix))
-            .collect::<Result<Vec<_>, _>>()?;
+        let explore_agent = configured_search_resident_agent(&config).ok_or_else(|| {
+            "agents.residentAgents must define an enabled resident with role tag search".to_string()
+        })?;
         Ok(Self {
-            command_intent_policy,
-            enabled: explore_agent.is_some_and(|agent| agent.enabled),
-            resident_child_name: explore_agent
-                .map(|agent| agent.name.clone())
-                .unwrap_or_default(),
-            resident_agent_role: explore_agent
-                .map(|agent| agent.role.clone())
-                .unwrap_or_default(),
-            resident_codex_agent_name: explore_agent
-                .map(configured_codex_agent_name)
-                .unwrap_or_default(),
-            resident_route_source: if configured_explore_agent.is_some() {
-                "hook-config"
-            } else {
-                "built-in-fallback"
-            },
-            main_allowed_asp_command_prefixes,
-            testing_enabled: execution_lanes.testing.enabled,
-            testing_command_prefixes,
-            testing_receipt_kind: execution_lanes.testing.receipt_kind,
+            enabled: explore_agent.enabled,
+            resident_child_name: explore_agent.name.clone(),
+            resident_agent_role: explore_agent.role.clone(),
+            resident_codex_agent_name: configured_codex_agent_name(explore_agent),
             messages,
         })
     }
 }
 
-fn configured_resident_agent<'a>(
-    config: &'a HookClientAgentsConfig,
-    lifecycle: &str,
-) -> Option<&'a agent_semantic_config::HookClientResidentAgentConfig> {
-    config
-        .resident_agents
-        .iter()
-        .find(|agent| agent.lifecycle == lifecycle)
+fn configured_search_resident_agent(
+    config: &HookClientAgentsConfig,
+) -> Option<&agent_semantic_config::HookClientResidentAgentConfig> {
+    config.resident_agents.iter().find(|agent| {
+        agent.enabled
+            && agent
+                .roles
+                .iter()
+                .any(|role| role.eq_ignore_ascii_case("search"))
+    })
 }
 
 fn configured_codex_agent_name(
@@ -261,26 +136,7 @@ impl TryFrom<HookClientConfigFile> for AspSessionPolicy {
     type Error = String;
 
     fn try_from(config: HookClientConfigFile) -> Result<Self, Self::Error> {
-        Self::try_from_parts(
-            config.agents,
-            config.agent_session_messages,
-            config.asp_command_intent_policy,
-            config.execution_lanes,
-        )
-    }
-}
-
-impl AspSessionPolicy {
-    fn testing_receipt_kind(&self) -> &str {
-        &self.testing_receipt_kind
-    }
-
-    fn testing_command_matches(&self, command_tokens: &[String]) -> bool {
-        self.testing_enabled
-            && self
-                .testing_command_prefixes
-                .iter()
-                .any(|prefix| command_prefix_matches_wrapped(command_tokens, prefix))
+        Self::try_from_parts(config.agents, config.agent_session_messages)
     }
 }
 
@@ -288,7 +144,6 @@ pub(super) fn classify_main_session_asp_exploration(
     project_root: &Path,
     platform: &str,
     event: &str,
-    runtime: &HookRuntime,
     asp_session_policy: &AspSessionPolicy,
     payload: &serde_json::Value,
 ) -> Result<Option<HookDecision>, String> {
@@ -317,171 +172,8 @@ pub(super) fn classify_main_session_asp_exploration(
                 Ok(None)
             }
         }
-        "pre-tool" => classify_pre_tool_main_session_asp(
-            project_root,
-            platform,
-            event,
-            runtime,
-            payload,
-            asp_session_policy,
-        ),
         _ => Ok(None),
     }
-}
-
-fn classify_pre_tool_main_session_asp(
-    project_root: &Path,
-    platform: &str,
-    event: &str,
-    runtime: &HookRuntime,
-    payload: &serde_json::Value,
-    asp_session_policy: &AspSessionPolicy,
-) -> Result<Option<HookDecision>, String> {
-    let commands = payload_command_strings(payload);
-    if commands.is_empty() {
-        return Ok(None);
-    }
-
-    let context = main_session_route_context(project_root, asp_session_policy, payload)?;
-    let now = unix_timestamp()?;
-    if context.current_is_active_resident_child(now, asp_session_policy) {
-        if commands
-            .iter()
-            .any(|command| command_contains_asp_binary(command))
-        {
-            return Ok(Some(agent_session_allow_decision(
-                platform,
-                event,
-                payload,
-                "active-resident-child",
-                "ASP allowed resident asp-explore child session command.",
-            )));
-        }
-        if let Some(command) = first_testing_command(&commands, asp_session_policy) {
-            return Ok(Some(main_session_testing_command_decision(
-                platform,
-                event,
-                payload,
-                command,
-                asp_session_policy,
-            )));
-        }
-        return Ok(None);
-    }
-    if context.outside_agent_session() {
-        return Ok(None);
-    }
-    if let Some(command) = first_testing_command(&commands, asp_session_policy) {
-        return Ok(Some(main_session_testing_command_decision(
-            platform,
-            event,
-            payload,
-            command,
-            asp_session_policy,
-        )));
-    }
-    if context.active_explore_session.is_none()
-        && let Some((command, invocation)) =
-            first_asp_exploration_command(&commands, runtime, asp_session_policy)
-    {
-        if command_enables_inline_parser_fallback(command) {
-            return Ok(Some(current_session_exploration_fallback_decision(
-                platform,
-                event,
-                payload,
-                command,
-                invocation,
-                asp_session_policy,
-            )));
-        }
-        if let Some(topology) = context.current_nested_resident_child(asp_session_policy) {
-            return Ok(Some(nested_resident_child_decision(
-                platform,
-                event,
-                payload,
-                topology,
-                asp_session_policy,
-            )));
-        }
-        if let Some(topology) = context.current_register_required_resident_child(asp_session_policy)
-        {
-            return Ok(Some(register_required_resident_child_decision(
-                platform,
-                event,
-                payload,
-                topology,
-                asp_session_policy,
-            )));
-        }
-        return Ok(Some(missing_resident_asp_explore_decision(
-            platform,
-            event,
-            payload,
-            commands.first().map(String::as_str),
-            context.root_session_id,
-            asp_session_policy,
-        )));
-    }
-
-    if let Some((command, invocation)) =
-        first_asp_exploration_command(&commands, runtime, asp_session_policy)
-    {
-        return Ok(Some(main_session_asp_exploration_decision(
-            platform,
-            event,
-            payload,
-            command,
-            invocation,
-            context.active_explore_session.as_ref(),
-            asp_session_policy,
-        )));
-    }
-    if let Some((command, invocation)) =
-        first_restricted_main_session_asp_command(&commands, Some(runtime), asp_session_policy)
-    {
-        return Ok(Some(main_session_restricted_asp_command_decision(
-            platform,
-            event,
-            payload,
-            command,
-            invocation,
-            context.active_explore_session.as_ref(),
-            asp_session_policy,
-        )));
-    }
-    Ok(None)
-}
-
-fn first_asp_exploration_command<'a>(
-    commands: &'a [String],
-    runtime: &HookRuntime,
-    asp_session_policy: &AspSessionPolicy,
-) -> Option<(&'a str, AspExplorationCommand)> {
-    commands.iter().find_map(|command| {
-        asp_exploration_command(command, runtime, asp_session_policy)
-            .map(|invocation| (command.as_str(), invocation))
-    })
-}
-
-fn first_restricted_main_session_asp_command<'a>(
-    commands: &'a [String],
-    runtime: Option<&HookRuntime>,
-    asp_session_policy: &AspSessionPolicy,
-) -> Option<(&'a str, AspExplorationCommand)> {
-    commands.iter().find_map(|command| {
-        restricted_main_session_asp_command(command, runtime, asp_session_policy)
-            .map(|invocation| (command.as_str(), invocation))
-    })
-}
-
-fn first_testing_command<'a>(
-    commands: &'a [String],
-    asp_session_policy: &AspSessionPolicy,
-) -> Option<&'a str> {
-    commands
-        .iter()
-        .find(|command| asp_session_policy.testing_command_matches(&shell_like_tokens(command)))
-        .map(String::as_str)
 }
 
 fn record_post_tool_session_event(
@@ -500,645 +192,8 @@ fn record_post_tool_session_event(
     Ok(())
 }
 
-fn main_session_asp_exploration_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    command: &str,
-    invocation: AspExplorationCommand,
-    explore_session: Option<&AgentSessionRecord>,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    let resident_child_name = asp_session_policy.resident_child_name();
-    let command_label = match invocation.stage.as_deref() {
-        Some(stage) => format!("asp {} {stage}", invocation.facade),
-        None => format!("asp {}", invocation.facade),
-    };
-    let host_action =
-        resident_agent_host_action(platform, asp_session_policy, explore_session.is_some());
-    let message = if let Some(session) = explore_session {
-        format!(
-            "ASP denied main-session ASP exploration (`{command_label}`). Use the resident-child interactive pane for registered resident {resident_child_name} child session `{}`. {host_action} Run `asp agent session bootstrap --name {resident_child_name}`, choose one number, perform that native platform action, and re-enter the pane until state=Ready.\nCommand: {command}",
-            session.session_id
-        )
-    } else {
-        format!(
-            "ASP denied main-session ASP exploration (`{command_label}`). No registered and profile-valid {resident_child_name} child is available. Run the resident-child interactive pane: `asp agent session bootstrap --name {resident_child_name}`. {host_action} Choose one number, perform that native platform action, and re-enter the same pane until state=Ready. The pane owns audit, recovery, cleanup, creation, model alignment, and registration for configured agent `{}`.\nCommand: {command}",
-            asp_session_policy.resident_codex_agent_name()
-        )
-    };
-    let mut fields = agent_session_route_fields(
-        if explore_session.is_some() {
-            "reuse-resident-child"
-        } else {
-            "start-resident-child"
-        },
-        resident_child_name,
-    );
-    append_resident_agent_fields(&mut fields, platform, asp_session_policy);
-    append_asp_command_intent_fields(&mut fields, command, asp_session_policy);
-    fields.insert(
-        "blockedAspFacade".to_string(),
-        serde_json::Value::String(invocation.facade.clone()),
-    );
-    if let Some(stage) = invocation.stage.as_ref() {
-        fields.insert(
-            "blockedAspStage".to_string(),
-            serde_json::Value::String(stage.clone()),
-        );
-    }
-    if let Some(session) = explore_session {
-        fields.insert(
-            "rootSessionId".to_string(),
-            serde_json::Value::String(session.root_session_id.clone()),
-        );
-        fields.insert(
-            "childSessionId".to_string(),
-            serde_json::Value::String(session.session_id.clone()),
-        );
-        fields.insert(
-            "agentSessionResumeId".to_string(),
-            serde_json::Value::String(session.session_id.clone()),
-        );
-        fields.insert(
-            "childSessionName".to_string(),
-            serde_json::Value::String(session.name.clone()),
-        );
-    }
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::AspReasoningRouted,
-        language_ids: invocation.language_id.into_iter().collect(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: Some(command.to_string()),
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message,
-        fields,
-    }
-}
-
-fn main_session_restricted_asp_command_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    command: &str,
-    invocation: AspExplorationCommand,
-    explore_session: Option<&AgentSessionRecord>,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    let resident_child_name = asp_session_policy.resident_child_name();
-    let command_label = match invocation.stage.as_deref() {
-        Some(stage) => format!("asp {} {stage}", invocation.facade),
-        None => format!("asp {}", invocation.facade),
-    };
-    let mut fields = agent_session_route_fields("resume-resident-child", resident_child_name);
-    append_resident_agent_fields(&mut fields, platform, asp_session_policy);
-    append_asp_command_intent_fields(&mut fields, command, asp_session_policy);
-    fields.insert(
-        "mainSessionAspPolicy".to_string(),
-        serde_json::Value::String("session-checkpoint-recovery-only".to_string()),
-    );
-    fields.insert(
-        "blockedAspFacade".to_string(),
-        serde_json::Value::String(invocation.facade.clone()),
-    );
-    if let Some(stage) = invocation.stage.as_ref() {
-        fields.insert(
-            "blockedAspStage".to_string(),
-            serde_json::Value::String(stage.clone()),
-        );
-    }
-    let message = if let Some(session) = explore_session {
-        fields.insert(
-            "rootSessionId".to_string(),
-            serde_json::Value::String(session.root_session_id.clone()),
-        );
-        fields.insert(
-            "childSessionId".to_string(),
-            serde_json::Value::String(session.session_id.clone()),
-        );
-        fields.insert(
-            "agentSessionResumeId".to_string(),
-            serde_json::Value::String(session.session_id.clone()),
-        );
-        render_agent_session_template(
-            asp_session_policy
-                .messages
-                .main_restricted_with_child
-                .as_deref(),
-            &[
-                template_value("residentChildName", resident_child_name),
-                template_value("childSessionId", &session.session_id),
-                template_value("rootSessionId", &session.root_session_id),
-                template_value("commandLabel", &command_label),
-                template_value("command", command),
-            ],
-        )
-    } else {
-        let create_action = resident_child_create_action(platform, asp_session_policy);
-        render_agent_session_template(
-            asp_session_policy
-                .messages
-                .main_restricted_without_child
-                .as_deref(),
-            &[
-                template_value("residentChildName", resident_child_name),
-                template_value(
-                    "residentCodexAgentName",
-                    asp_session_policy.resident_codex_agent_name(),
-                ),
-                template_value("createAction", &create_action),
-                template_value("commandLabel", &command_label),
-                template_value("command", command),
-            ],
-        )
-    };
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::AspReasoningRouted,
-        language_ids: invocation.language_id.into_iter().collect(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: Some(command.to_string()),
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message,
-        fields,
-    }
-}
-
-fn append_asp_command_intent_fields(
-    fields: &mut BTreeMap<String, serde_json::Value>,
-    command: &str,
-    asp_session_policy: &AspSessionPolicy,
-) {
-    let tokens = agent_semantic_hook::semantic_shell_tokens(command);
-    let Some(parsed) = classify_asp_language_command_tokens_with_policy(
-        &tokens,
-        asp_session_policy.command_intent_policy(),
-    ) else {
-        return;
-    };
-    fields.insert(
-        "aspCommandIntent".to_string(),
-        serde_json::Value::String(parsed.intent.as_str().to_string()),
-    );
-    fields.insert(
-        "aspCommandRoute".to_string(),
-        serde_json::Value::String(parsed.route),
-    );
-    fields.insert(
-        "languageId".to_string(),
-        serde_json::Value::String(parsed.language_id),
-    );
-    if let Some(selector) = parsed.selector {
-        fields.insert("selector".to_string(), serde_json::Value::String(selector));
-    }
-}
-
-fn main_session_testing_command_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    command: &str,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    current_session_testing_execution_decision(
-        platform,
-        event,
-        payload,
-        command,
-        asp_session_policy,
-    )
-}
-
-fn current_session_testing_execution_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    command: &str,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    let mut fields = BTreeMap::from([
-        (
-            "executionLane".to_string(),
-            serde_json::Value::String("asp-testing".to_string()),
-        ),
-        (
-            "executionTransport".to_string(),
-            serde_json::Value::String(
-                HookClientExecutionTransport::CurrentSession
-                    .as_str()
-                    .to_string(),
-            ),
-        ),
-        (
-            "executionReceiptKind".to_string(),
-            serde_json::Value::String(asp_session_policy.testing_receipt_kind().to_string()),
-        ),
-        (
-            "executionCommandDigest".to_string(),
-            serde_json::Value::String(command_sha256(command)),
-        ),
-        (
-            "blockedCommandClass".to_string(),
-            serde_json::Value::String("test-build-command".to_string()),
-        ),
-    ]);
-    if let Some(root_session_id) = string_field(
-        payload,
-        &[
-            "root_session_id",
-            "rootSessionId",
-            "session_id",
-            "sessionId",
-        ],
-    ) {
-        fields.insert(
-            "rootSessionId".to_string(),
-            serde_json::Value::String(root_session_id),
-        );
-    }
-    if let Some(cwd) = string_field(payload, &["cwd"]) {
-        fields.insert("cwd".to_string(), serde_json::Value::String(cwd));
-    }
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Allow,
-        reason_kind: ReasonKind::None,
-        language_ids: Vec::new(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: Some(command.to_string()),
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message: "ASP allowed an exact configured testing command in the current session with a command-digest execution receipt.".to_string(),
-        fields,
-    }
-}
-
-fn command_sha256(command: &str) -> String {
-    format!("sha256:{:x}", Sha256::digest(command.as_bytes()))
-}
-
 fn template_value(key: &'static str, value: impl Into<String>) -> (&'static str, String) {
     (key, value.into())
-}
-
-fn render_agent_session_template(
-    template: Option<&str>,
-    values: &[(&'static str, String)],
-) -> String {
-    let mut rendered = template
-        .unwrap_or("ASP agent session routing template missing. Run `asp sync` and retry.")
-        .to_string();
-    for (key, value) in values {
-        rendered = rendered.replace(&format!("{{{{{key}}}}}"), value);
-    }
-    rendered.trim().to_string()
-}
-
-fn agent_session_route_fields(
-    action: &str,
-    resident_child_name: &str,
-) -> BTreeMap<String, serde_json::Value> {
-    let resident_role = if resident_child_name == "asp-testing" {
-        "asp-testing"
-    } else {
-        "asp-explore"
-    };
-    let mut fields = BTreeMap::from([
-        (
-            "agentSessionRoute".to_string(),
-            serde_json::Value::String(resident_child_name.to_string()),
-        ),
-        (
-            "agentSessionLifecycle".to_string(),
-            serde_json::Value::String("resident".to_string()),
-        ),
-        (
-            "agentSessionLoopCommand".to_string(),
-            serde_json::Value::String(format!(
-                "asp agent session bootstrap --name {resident_child_name}"
-            )),
-        ),
-        (
-            "agentSessionTimeoutPolicy".to_string(),
-            serde_json::Value::String("timeout-is-not-duplicate-worker-trigger".to_string()),
-        ),
-        (
-            "agentSessionAction".to_string(),
-            serde_json::Value::String(action.to_string()),
-        ),
-        (
-            "agentSessionSpawnPolicy".to_string(),
-            serde_json::Value::String("registered-profile-valid-child-only".to_string()),
-        ),
-        (
-            "agentSessionValidationPolicy".to_string(),
-            serde_json::Value::String("register-hard-validates-profile".to_string()),
-        ),
-        (
-            "agentSessionInvalidChildAction".to_string(),
-            serde_json::Value::String(
-                "close-native-subagent-or-archive-temporary-thread-and-create-configured-child"
-                    .to_string(),
-            ),
-        ),
-        (
-            "agentSessionDuplicatePolicy".to_string(),
-            serde_json::Value::String(
-                "one-active-resident-child-per-root-session-and-name".to_string(),
-            ),
-        ),
-    ]);
-    append_agent_session_recovery_action_fields(
-        &mut fields,
-        action,
-        resident_child_name,
-        resident_role,
-    );
-    fields
-}
-
-fn append_agent_session_recovery_action_fields(
-    fields: &mut BTreeMap<String, serde_json::Value>,
-    action: &str,
-    resident_child_name: &str,
-    resident_role: &str,
-) {
-    let (required_action, next_action, completion_receipt) = match action {
-        "start-resident-child" => (
-            format!("enter-{resident_child_name}-choice-pane"),
-            "choose-one-bootstrap-pane-option".to_string(),
-            format!("{resident_child_name}-choice-pane-receipt"),
-        ),
-        "reuse-resident-child" | "resume-resident-child" => (
-            format!("use-existing-{resident_child_name}-through-pane"),
-            "enter-bootstrap-pane-if-transport-is-not-ready".to_string(),
-            format!("{resident_child_name}-child-command"),
-        ),
-        _ => (
-            format!("enter-{resident_child_name}-choice-pane"),
-            "choose-one-bootstrap-pane-option".to_string(),
-            format!("{resident_child_name}-choice-pane-receipt"),
-        ),
-    };
-
-    fields.insert(
-        "requiredAction".to_string(),
-        serde_json::Value::String(required_action),
-    );
-    fields.insert(
-        "nextAction".to_string(),
-        serde_json::Value::String(next_action),
-    );
-    fields.insert(
-        "targetAgentName".to_string(),
-        serde_json::Value::String(resident_child_name.to_string()),
-    );
-    fields.insert(
-        "targetAgentRole".to_string(),
-        serde_json::Value::String(resident_role.to_string()),
-    );
-    fields.insert(
-        "forbiddenUntilResolved".to_string(),
-        serde_json::Value::String("raw-source-fallback".to_string()),
-    );
-    fields.insert(
-        "completionReceipt".to_string(),
-        serde_json::Value::String(completion_receipt),
-    );
-}
-
-fn agent_session_allow_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    action: &str,
-    message: &str,
-) -> HookDecision {
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Allow,
-        reason_kind: ReasonKind::None,
-        language_ids: Vec::new(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: payload_command_strings(payload).into_iter().next(),
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message: message.to_string(),
-        fields: BTreeMap::from([(
-            "agentSessionAction".to_string(),
-            serde_json::Value::String(action.to_string()),
-        )]),
-    }
-}
-
-fn payload_command_strings(payload: &serde_json::Value) -> Vec<String> {
-    let mut commands = Vec::new();
-    collect_payload_command_strings(payload, &mut commands);
-    commands.sort();
-    commands.dedup();
-    commands
-}
-
-fn payload_evidence_ref(payload: &serde_json::Value) -> Option<String> {
-    string_field(
-        payload,
-        &[
-            "evidenceRef",
-            "evidence_ref",
-            "lastEvidenceRef",
-            "last_evidence_ref",
-            "recoveryRef",
-            "recovery_ref",
-        ],
-    )
-}
-
-fn collect_payload_command_strings(value: &serde_json::Value, commands: &mut Vec<String>) {
-    match value {
-        serde_json::Value::Array(values) => {
-            for value in values {
-                collect_payload_command_strings(value, commands);
-            }
-        }
-        serde_json::Value::Object(map) => {
-            for (key, value) in map {
-                match (key.as_str(), value) {
-                    ("command" | "cmd" | "script", serde_json::Value::String(command))
-                        if !command.trim().is_empty() =>
-                    {
-                        commands.push(command.clone());
-                    }
-                    ("command" | "cmd", serde_json::Value::Array(parts)) => {
-                        let command = parts
-                            .iter()
-                            .filter_map(serde_json::Value::as_str)
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        if !command.trim().is_empty() {
-                            commands.push(command);
-                        }
-                    }
-                    _ => collect_payload_command_strings(value, commands),
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn asp_exploration_command(
-    command: &str,
-    runtime: &HookRuntime,
-    asp_session_policy: &AspSessionPolicy,
-) -> Option<AspExplorationCommand> {
-    let tokens = agent_semantic_hook::semantic_shell_tokens(command);
-    let provider_language_ids = runtime
-        .providers
-        .iter()
-        .map(|provider| provider.language_id.as_str())
-        .collect::<BTreeSet<_>>();
-    for index in agent_semantic_hook::asp_invocation_indices(&tokens) {
-        if hook_runtime_agent_session_command::classify_main_session_asp_command(
-            &tokens,
-            index,
-            asp_session_policy.command_intent_policy(),
-        ) != hook_runtime_agent_session_command::MainSessionAspCommandClass::ReasoningFlow
-        {
-            continue;
-        }
-        let parsed = classify_asp_language_command_tokens_with_policy(
-            &tokens[index..],
-            asp_session_policy.command_intent_policy(),
-        );
-        if parsed
-            .as_ref()
-            .is_some_and(|command| !provider_language_ids.contains(command.language_id.as_str()))
-        {
-            continue;
-        }
-        let facade = tokens.get(index + 1)?;
-        let stage = tokens.get(index + 2).cloned();
-        if matches!(facade.as_str(), "fd" | "rg" | "query" | "search") {
-            return Some(AspExplorationCommand {
-                facade: facade.clone(),
-                stage,
-                language_id: parsed.map(|command| command.language_id),
-            });
-        }
-        if facade == "org" {
-            if stage
-                .as_deref()
-                .is_some_and(|stage| matches!(stage, "query" | "search"))
-            {
-                return Some(AspExplorationCommand {
-                    facade: facade.clone(),
-                    stage,
-                    language_id: Some("org".to_string()),
-                });
-            }
-            continue;
-        }
-        if provider_language_ids.contains(facade.as_str())
-            && stage
-                .as_deref()
-                .is_some_and(|stage| matches!(stage, "guide" | "query" | "search"))
-        {
-            return Some(AspExplorationCommand {
-                facade: facade.clone(),
-                stage,
-                language_id: Some(facade.clone()),
-            });
-        }
-    }
-    None
-}
-
-fn restricted_main_session_asp_command(
-    command: &str,
-    runtime: Option<&HookRuntime>,
-    asp_session_policy: &AspSessionPolicy,
-) -> Option<AspExplorationCommand> {
-    let tokens = agent_semantic_hook::semantic_shell_tokens(command);
-    for index in agent_semantic_hook::asp_invocation_indices(&tokens) {
-        if let (Some(runtime), Some(parsed)) = (
-            runtime,
-            classify_asp_language_command_tokens_with_policy(
-                &tokens[index..],
-                asp_session_policy.command_intent_policy(),
-            ),
-        ) && !runtime
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == parsed.language_id)
-        {
-            continue;
-        }
-        if asp_session_policy.main_asp_command_allowed(&tokens, index) {
-            continue;
-        }
-        let facade = tokens.get(index + 1)?.clone();
-        return Some(AspExplorationCommand {
-            facade,
-            stage: tokens.get(index + 2).cloned(),
-            language_id: None,
-        });
-    }
-    None
-}
-
-fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
-    match value {
-        serde_json::Value::Object(map) => {
-            for key in keys {
-                if let Some(value) = map.get(*key).and_then(serde_json::Value::as_str) {
-                    return Some(value.to_string());
-                }
-            }
-            for value in map.values() {
-                if let Some(found) = string_field(value, keys) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-        serde_json::Value::Array(values) => {
-            values.iter().find_map(|value| string_field(value, keys))
-        }
-        _ => None,
-    }
 }
 
 fn unix_timestamp() -> Result<i64, String> {

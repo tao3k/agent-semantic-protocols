@@ -6,35 +6,69 @@ use crate::dynamic_overlay::SEARCH_OVERLAY_ROUTE_SOURCE;
 use crate::structural_index_search::TursoStructuralIndexSearchHit;
 use crate::{LexicalOverlaySearchHit, SourceIndexRankCandidate};
 
+macro_rules! search_candidate_text {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+    };
+}
+
+search_candidate_text!(SearchCandidateRouteSource);
+search_candidate_text!(SearchCandidateFallbackReason);
+search_candidate_text!(SearchCandidateId);
+search_candidate_text!(SearchCandidateIdentityKind);
+search_candidate_text!(SearchCandidateSelector);
+search_candidate_text!(SearchCandidateOwnerPath);
+search_candidate_text!(SearchCandidateGeneration);
+search_candidate_text!(SearchCandidateOverlayNamespace);
+search_candidate_text!(SearchCandidateProofSource);
+search_candidate_text!(SearchCandidateFieldName);
+search_candidate_text!(SearchCandidateFieldValue);
+search_candidate_text!(SearchCandidateMatchedTerm);
+search_candidate_text!(SearchCandidateRankFeatureName);
+
 /// Search candidate shared by source-index, overlay, Turso FTS, and graph routes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SearchCandidate {
-    pub route_source: String,
-    pub fallback_reason: String,
-    pub candidate_id: String,
-    pub identity_kind: String,
-    pub selector: Option<String>,
-    pub owner_path: Option<String>,
-    pub generation: Option<String>,
-    pub overlay_namespace: Option<String>,
+    pub route_source: SearchCandidateRouteSource,
+    pub fallback_reason: SearchCandidateFallbackReason,
+    pub candidate_id: SearchCandidateId,
+    pub identity_kind: SearchCandidateIdentityKind,
+    pub selector: Option<SearchCandidateSelector>,
+    pub owner_path: Option<SearchCandidateOwnerPath>,
+    pub generation: Option<SearchCandidateGeneration>,
+    pub overlay_namespace: Option<SearchCandidateOverlayNamespace>,
     pub score: f32,
     pub field_hits: Vec<FieldHit>,
     pub rank_features: Vec<RankFeature>,
-    pub proof_source: String,
+    pub proof_source: SearchCandidateProofSource,
 }
 
 /// Matched field evidence that contributed to a search candidate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FieldHit {
-    pub field: String,
-    pub value: String,
-    pub matched_terms: Vec<String>,
+    pub field: SearchCandidateFieldName,
+    pub value: SearchCandidateFieldValue,
+    pub matched_terms: Vec<SearchCandidateMatchedTerm>,
 }
 
 /// Named score component used by router and analyzer replay.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RankFeature {
-    pub name: String,
+    pub name: SearchCandidateRankFeatureName,
     pub value: f32,
 }
 
@@ -158,7 +192,7 @@ pub fn structural_index_hit_to_search_candidate(
         },
         selector: hit.selector.clone(),
         owner_path: None,
-        generation: structural_index_generation(hit.document_id.as_str()),
+        generation: Some(hit.generation.clone()),
         overlay_namespace: None,
         score: matched_terms.len() as f32,
         field_hits: vec![FieldHit {
@@ -304,16 +338,6 @@ fn structural_index_hit_matches_term(hit: &TursoStructuralIndexSearchHit, term: 
                     .to_ascii_lowercase()
                     .contains(normalized_term.as_str())
             }))
-}
-
-fn structural_index_generation(document_id: &str) -> Option<String> {
-    let mut parts = document_id.splitn(3, ':');
-    match (parts.next(), parts.next()) {
-        (Some("structural-index"), Some(generation)) if !generation.is_empty() => {
-            Some(generation.to_string())
-        }
-        _ => None,
-    }
 }
 
 fn contains_executable_line_identity(value: &str) -> bool {

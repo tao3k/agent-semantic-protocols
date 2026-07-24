@@ -4,7 +4,7 @@ mod hook_runtime_skill;
 
 use agent_semantic_hook::{
     ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy, HookActivation,
-    ProviderExecution, RuntimeProfiles, RuntimeProfilesGeneratedBy,
+    RuntimeProfiles, RuntimeProfilesGeneratedBy,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -19,19 +19,35 @@ fn activation_provider(
     provider_id: &str,
     binary: &str,
 ) -> ActivatedProviderConfig {
+    let manifest = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == language_id && manifest.provider_id == provider_id)
+        .expect("canonical builtin provider manifest");
+    let provider_command_prefix = vec![
+        std::env::current_exe()
+            .expect("resolve test executable")
+            .display()
+            .to_string(),
+    ];
+    let execution_command_digest =
+        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
+            .expect("digest provider execution command");
     ActivatedProviderConfig {
-        manifest_id: format!("agent.semantic-protocols.providers.{language_id}.{provider_id}"),
-        manifest_digest: "sha256:test".to_string(),
-        language_id: language_id.to_string(),
-        provider_id: provider_id.to_string(),
+        manifest_id: manifest.manifest_id.clone(),
+        manifest_digest: agent_semantic_hook::provider_manifest_digest(&manifest)
+            .expect("digest canonical builtin provider manifest"),
+        language_id: manifest.language_id.clone(),
+        provider_id: manifest.provider_id.clone(),
         binary: binary.to_string(),
-        execution: if matches!(language_id, "org" | "md") {
-            ProviderExecution::Embedded
-        } else {
-            ProviderExecution::ExternalProcess
-        },
-        provider_command_prefix: vec![binary.to_string()],
-        search_capabilities: serde_json::Value::Null,
+        execution: manifest.execution,
+        execution_command_digest,
+        provider_command_prefix,
+        search_capabilities: manifest.search_capabilities.clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
+        query_pack_descriptor: manifest.query_pack_descriptor.clone(),
+        semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
+        routes: agent_semantic_hook::materialize_provider_routes(&manifest)
+            .expect("materialize canonical builtin provider routes"),
         coverage: ActivationCoverage {
             package_roots: vec![".".to_string()],
             source_roots: Vec::new(),
@@ -46,6 +62,7 @@ fn test_activation() -> HookActivation {
     HookActivation {
         schema_id: "agent.semantic-protocols.hook.activation".to_string(),
         schema_version: "1".to_string(),
+        schema_authority: "https://tao3k.github.io/agent-semantic-protocols/schemas/".to_string(),
         protocol_id: "agent.semantic-protocols.hook".to_string(),
         protocol_version: "1".to_string(),
         project_root: "/tmp/asp-test".to_string(),

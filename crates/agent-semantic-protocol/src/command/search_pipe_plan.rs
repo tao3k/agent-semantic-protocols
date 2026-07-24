@@ -5,10 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_actions::{SearchPipeActionRequest, render_action_next_command};
-use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_quality_model::SearchPipeQuality;
-use super::search_pipe_seed_decision::SeedActionIntent;
-use super::search_query_wrapper_preview::fd_query_preview_from_candidates;
 use super::{search_pipe_model::Candidate, search_pipe_projection::candidate_executable_selector};
 
 pub(super) struct SearchPipePlanRequest<'a> {
@@ -18,9 +15,8 @@ pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) scopes: &'a [PathBuf],
     pub(super) query: &'a str,
     pub(super) candidates: &'a [Candidate],
-    pub(super) precomputed_quality: Option<SearchPipeQuality>,
+    pub(super) quality: SearchPipeQuality,
     pub(super) ranked_compact: Option<&'a str>,
-    pub(super) seed_action_intents: &'a [SeedActionIntent],
     pub(super) read_memory_selectors: &'a [String],
     pub(super) dependency_action_targets: &'a [String],
 }
@@ -33,14 +29,12 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         scopes,
         query,
         candidates,
-        precomputed_quality,
+        quality,
         ranked_compact,
-        seed_action_intents,
         read_memory_selectors,
         dependency_action_targets,
     } = request;
-    let mut quality = precomputed_quality
-        .unwrap_or_else(|| analyze_search_pipe_quality(language_id, query, candidates));
+    let mut quality = quality;
     let projected_selector_actions = rank_projected_selector_actions(
         query,
         &quality,
@@ -63,80 +57,24 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     } else {
         Vec::new()
     };
-    let fd_preview = if !quality.allow_query_selector
-        && !candidates.is_empty()
-        && !skip_fd_preview_for_action_meta_query(&quality, candidates)
-    {
-        fd_query_preview_from_candidates(candidates)
-    } else {
-        None
-    };
     let next_command_line = render_action_next_command(SearchPipeActionRequest {
         language_id,
         project_root,
         locator_root,
         scopes,
         quality: &quality,
-        candidates,
         ranked_compact,
         selector_actions: &actions,
-        fd_preview: fd_preview.as_ref(),
-        seed_action_intents,
         read_memory_selectors,
         dependency_action_targets,
     });
-    let fd_preview_line = fd_preview
-        .as_ref()
-        .filter(|preview| !preview.is_empty())
-        .map(render_fd_preview_line)
-        .unwrap_or_default();
     format!(
         "seedPlan=seed-query alg=asp-search-pipe-v1 budget=frontier<=3 repeated=0\n\
-{fd_preview_line}\
 {next_command_line}\
-nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector\n\
+nextClasses=search-deps,owner-items,treesitter-query,query-selector\n\
 omit=source,full-candidate-list,raw-search-overlay-output,long-field-signatures\n\
 avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read\n",
     )
-}
-
-fn render_fd_preview_line(preview: &super::search_query_wrapper_model::FdQueryPreview) -> String {
-    format!(
-        "fdPreview=ownerCandidates={} packageClusters={} rgScopeNext={}\n",
-        display_preview_terms(&preview.owner_candidates),
-        display_preview_terms(&preview.package_clusters),
-        display_preview_terms(&preview.rg_scope_next),
-    )
-}
-
-fn display_preview_terms(values: &[String]) -> String {
-    if values.is_empty() {
-        "-".to_string()
-    } else {
-        values.join(",")
-    }
-}
-
-fn skip_fd_preview_for_action_meta_query(
-    quality: &SearchPipeQuality,
-    candidates: &[Candidate],
-) -> bool {
-    candidates.is_empty()
-        && quality.global_matched.is_empty()
-        && quality.owner_seed_terms.is_empty()
-        && !quality.concept_terms.is_empty()
-        && quality.concept_terms.iter().all(|term| {
-            matches!(
-                term.as_str(),
-                "fd-query"
-                    | "rg-query"
-                    | "rg-query-set"
-                    | "owner-items"
-                    | "selector-code"
-                    | "treesitter-query"
-                    | "query-selector"
-            )
-        })
 }
 
 fn compact_has_provider_semantic_answer(query: &str, compact: &str) -> bool {

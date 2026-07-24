@@ -59,6 +59,14 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 .find(|manifest| manifest.language_id == spec.language_id)
                 .unwrap_or_else(|| panic!("missing manifest for {}", spec.language_id));
             let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
+            let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
+                .expect("materialize provider routes");
+            let execution_command_digest = if spec.command_prefix.is_empty() {
+                format!("sha256:{}", "0".repeat(64))
+            } else {
+                agent_semantic_hook::provider_execution_command_digest(&spec.command_prefix)
+                    .expect("provider execution command digest")
+            };
             let provider = json!({
                 "manifestId": manifest.manifest_id,
                 "manifestDigest": manifest_digest,
@@ -67,6 +75,12 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 "binary": manifest.binary,
                 "execution": manifest.execution,
                 "providerCommandPrefix": spec.command_prefix,
+                "executionCommandDigest": execution_command_digest,
+                "searchCapabilities": manifest.search_capabilities,
+                "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+                "queryPackDescriptor": manifest.query_pack_descriptor,
+                "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
+                "routes": routes,
                 "coverage": {
                     "packageRoots": [package_root.clone()],
                     "sourceRoots": manifest.source.default_source_roots,
@@ -81,6 +95,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
     let activation = json!({
         "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
         "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
+        "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
         "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": root.display().to_string(),
@@ -206,6 +221,12 @@ pub(super) fn write_cache_source_fixture(root: &Path) {
 }
 
 pub(crate) fn asp_command(root: &Path) -> Command {
+    let runtime_bin = state_home(root).join("runtime/bin");
+    write_default_workspace_scope_provider_shims(&runtime_bin);
+    write_default_workspace_scope_provider_shims(
+        &root.join(".cache/agent-semantic-protocol/runtime/bin"),
+    );
+    write_default_workspace_scope_provider_shims(&home_local_bin(root));
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
         .current_dir(root)
@@ -258,12 +279,68 @@ pub(super) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
 }
 
 pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path) {
+    let delegate = bin_dir.join(format!(".{binary}-delegate"));
+    let (language_id, source_extensions) = match binary {
+        "rs-harness" => ("rust", r#"[".rs"]"#),
+        "ts-harness" => ("typescript", r#"[".ts",".tsx"]"#),
+        "python-harness" | "py-harness" => ("python", r#"[".py"]"#),
+        "julia-harness" | "asp-julia-harness" => ("julia", r#"[".jl"]"#),
+        "gslph" => ("gerbil-scheme", r#"[".ss",".ssi",".scm",".sld"]"#),
+        _ => ("test", r#"[".txt"]"#),
+    };
     write_provider_script(
         bin_dir,
         binary,
-        &format!("#!/bin/sh\nprintf called > '{}'\n", marker.display()),
+        &format!(
+            r#"#!/bin/sh
+# agent-semantic-protocol-test-workspace-scope-shim-v1
+if [ "$1" = "search" ] && [ "$2" = "workspace-scope" ] && [ "$3" = "--json" ]; then
+  root=$(pwd -P)
+  printf '{{"schemaId":"agent.semantic-protocols.semantic-workspace-scope","schemaVersion":"1","workspaceId":"test:%s","languageId":"{language_id}","providerId":"{binary}","packageManager":"test","sourceExtensions":{source_extensions},"discoveryRoot":"%s","anchors":[{{"kind":"test-manifest","path":"%s/Cargo.toml","sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}],"packages":[{{"packageId":"test:%s","name":"fixture","languageId":"{language_id}","root":"%s","manifestPath":"%s/Cargo.toml"}}],"admittedRoots":["%s"],"fingerprint":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}\n' "$root" "$root" "$root" "$root" "$root" "$root" "$root"
+  exit 0
+fi
+if [ -x '{}' ]; then
+  exec '{}' "$@"
+fi
+printf called > '{}'
+"#,
+            delegate.display(),
+            delegate.display(),
+            marker.display()
+        ),
     );
 }
+
+fn write_default_workspace_scope_provider_shims(bin_dir: &Path) {
+    std::fs::create_dir_all(bin_dir).expect("create default provider shim directory");
+    for binary in [
+        "rs-harness",
+        "ts-harness",
+        "py-harness",
+        "asp-julia-harness",
+        "gslph",
+    ] {
+        let provider = bin_dir.join(binary);
+        let delegate = bin_dir.join(format!(".{binary}-delegate"));
+        if provider.exists() && !is_default_workspace_scope_provider_shim(&provider) {
+            if delegate.exists() {
+                std::fs::remove_file(&delegate).expect("replace test provider delegate");
+            }
+            std::fs::rename(&provider, &delegate).expect("preserve test provider delegate");
+        }
+        let marker = bin_dir.join(format!(".{binary}-marker"));
+        write_marker_provider(bin_dir, binary, &marker);
+    }
+}
+
+fn is_default_workspace_scope_provider_shim(provider: &Path) -> bool {
+    std::fs::read_to_string(provider)
+        .ok()
+        .is_some_and(|source| source.starts_with(DEFAULT_WORKSPACE_SCOPE_PROVIDER_SHIM_PREFIX))
+}
+
+const DEFAULT_WORKSPACE_SCOPE_PROVIDER_SHIM_PREFIX: &str =
+    "#!/bin/sh\n# agent-semantic-protocol-test-workspace-scope-shim-v1\n";
 
 pub(super) fn write_guide_provider(bin_dir: &Path, binary: &str) {
     write_provider_script(
@@ -301,15 +378,17 @@ pub(super) fn write_semantic_facts_provider(
     let stderr_path = bin_dir.join(format!("{binary}.semantic-facts.stderr"));
     std::fs::write(&stdout_path, stdout_text).expect("write semantic facts stdout");
     std::fs::write(&stderr_path, stderr_text).expect("write semantic facts stderr");
+    let semantic_facts_script = format!(
+        "#!/bin/sh\ncat >/dev/null\ncat {}\ncat {} >&2\nexit 0\n",
+        shell_single_quote(&stdout_path.to_string_lossy()),
+        shell_single_quote(&stderr_path.to_string_lossy())
+    );
     write_provider_script(
         bin_dir,
-        binary,
-        &format!(
-            "#!/bin/sh\ncat >/dev/null\ncat {}\ncat {} >&2\nexit 0\n",
-            shell_single_quote(&stdout_path.to_string_lossy()),
-            shell_single_quote(&stderr_path.to_string_lossy())
-        ),
+        &format!(".{binary}-delegate"),
+        &semantic_facts_script,
     );
+    write_marker_provider(bin_dir, binary, &bin_dir.join(format!(".{binary}-marker")));
 }
 
 pub(super) fn write_stdout_stderr_exit_provider(

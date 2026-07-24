@@ -71,6 +71,7 @@ fn planner_file_locator_hot_path_stays_under_two_milliseconds() {
 
 #[test]
 fn source_index_adapter_uses_file_locator_on_cache_miss() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = tempfile::tempdir().expect("project tempdir");
     let cache_root = tempfile::tempdir().expect("cache tempdir");
     let locator = FileLocatorIndex::build(vec![PathBuf::from("src/search_planner.rs")]);
@@ -83,6 +84,7 @@ fn source_index_adapter_uses_file_locator_on_cache_miss() {
                 language_id: None,
                 query: "search_planner.rs",
                 limit: 8,
+                source_snapshot: &fixture.evidence,
             },
             file_locator: Some(&locator),
         },

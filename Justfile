@@ -20,10 +20,8 @@ _agent-tools-run-asp bin_dir +args:
     if [ -x "${protocol_bin}" ]; then \
       stale_reason=""; \
       if [ -z "${ASP_BIN:-}" ]; then \
-        if [ -x target/release/asp ] && [ target/release/asp -nt "${protocol_bin}" ]; then \
-          stale_reason="target/release/asp is newer"; \
-        elif find crates/agent-semantic-protocol/src crates/agent-semantic-protocol/Cargo.toml Cargo.lock -type f -newer "${protocol_bin}" 2>/dev/null | grep -q .; then \
-          stale_reason="agent-semantic-protocol Rust source is newer"; \
+        if [ -x target/release/asp ] && ! cmp -s target/release/asp "${protocol_bin}"; then \
+          stale_reason="target/release/asp content differs"; \
         fi; \
       fi; \
       if [ -n "${stale_reason}" ]; then \
@@ -35,7 +33,7 @@ _agent-tools-run-asp bin_dir +args:
       SEMANTIC_AGENT_BIN_DIR="${bin_dir}" cargo run -q -p agent-semantic-protocol --bin asp -- {{args}}; \
     fi
 
-# Install asp, asp-graph-turbo, and provider harnesses into $HOME/.local/bin by default, then install Codex hooks.
+# Develop mode: install this checkout's tools and Codex hooks.
 install bin_dir="":
 	@just agent-tools-ensure-local-bin-path
 	@just agent-hooks-install "{{bin_dir}}"
@@ -97,7 +95,7 @@ agent-hooks-smoke-codex:
       fi; \
       rm -f "${out}"
 
-# Install asp, asp-graph-turbo, and all language provider harnesses under $HOME/.local/bin by default.
+# Develop mode: build and install asp plus all providers from this checkout.
 agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
@@ -106,7 +104,7 @@ agent-tools-install-global bin_dir="":
       just agent-tools-install-languages "${bin_dir}"; \
       echo "[agent-tools-install-global] installed asp, asp-graph-turbo, and all language provider harnesses into ${bin_dir}"
 
-# Install all language provider harnesses under $HOME/.local/bin by default.
+# Develop mode: build and install all language providers from this checkout.
 agent-tools-install-languages bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
@@ -117,7 +115,7 @@ agent-tools-install-languages bin_dir="":
       just agent-tools-install-gerbil "${bin_dir}"; \
       echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, and gslph into ${bin_dir}"
 
-# Install only the shared asp binary.
+# Develop mode: build and install the shared asp binary from this checkout.
 agent-tools-install-asp bin_dir="":
 	@just agent-tools-install-protocol "{{bin_dir}}"
 
@@ -127,38 +125,27 @@ agent-tools-install-protocol bin_dir="":
         mkdir -p "${requested_bin_dir}"; \
         requested_bin_dir="$(cd "${requested_bin_dir}" && pwd -P)"; \
       fi; \
-      cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
+      cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
       target/release/asp --version --require-release >/dev/null; \
-      artifact_digest="$(shasum -a 256 target/release/asp | awk '{print $1}')"; \
       if [ -n "${requested_bin_dir}" ]; then \
-        destinations="${requested_bin_dir}/asp"; \
+        destination="${requested_bin_dir}/asp"; \
       elif [ -n "${SEMANTIC_AGENT_BIN_DIR:-}" ]; then \
-        destinations="${SEMANTIC_AGENT_BIN_DIR}/asp"; \
+        destination="${SEMANTIC_AGENT_BIN_DIR}/asp"; \
       else \
-        destinations="$(printf '%s\n' "$HOME/.local/bin/asp" $(which -a asp 2>/dev/null || true) | awk 'NF && !seen[$0]++')"; \
+        destination="$HOME/.local/bin/asp"; \
       fi; \
-      printf '%s\n' "${destinations}" | while IFS= read -r destination; do \
-        [ -n "${destination}" ] || continue; \
-        bin_dir="$(dirname "${destination}")"; \
-        artifact_dir="${bin_dir}/.asp-versions/${artifact_digest}"; \
-        mkdir -p "${artifact_dir}"; \
-        install -m 755 target/release/asp "${artifact_dir}/asp"; \
-        next_link="${bin_dir}/.asp-next.$$"; \
-        ln -sfn "${artifact_dir}/asp" "${next_link}"; \
-        mv -f "${next_link}" "${destination}"; \
-        rm -f "${bin_dir}/semantic-agent-protocol"; \
-        test -x "${destination}"; \
-        "${destination}" --version --require-release >/dev/null; \
-        "${destination}" guide >/dev/null; \
-        printf '%s\n' "[agent-tools-install] binaryPath=${destination} binaryArtifactDigest=${artifact_digest} binarySwitch=atomic"; \
-      done
+      target/release/asp install binary --target "${destination}"; \
+      rm -f "$(dirname "${destination}")/semantic-agent-protocol"; \
+      test -x "${destination}"; \
+      "${destination}" --version --require-release >/dev/null; \
+      "${destination}" guide >/dev/null
 
 # Install the debug protocol binary into a local bin dir and prewarm it.
 agent-tools-install-protocol-debug bin_dir=".bin":
     @bin_dir="{{bin_dir}}"; \
       mkdir -p "${bin_dir}"; \
       cargo build --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
-      install -m 755 target/debug/asp "${bin_dir}/asp"; \
+      target/debug/asp install binary --target "${bin_dir}/asp"; \
       rm -f "${bin_dir}/semantic-agent-protocol"; \
       test -x "${bin_dir}/asp"; \
       "${bin_dir}/asp" guide >/dev/null
@@ -168,9 +155,9 @@ agent-tools-install-hook bin_dir="":
 	@just agent-tools-install-protocol "{{bin_dir}}"
 
 # Install a released language provider binary through asp.
-# Target priority is owned by asp itself: asp.toml [languages.<id>].bin, SEMANTIC_AGENT_BIN_DIR, $HOME/.local/bin, PATH.
+# Develop-mode only: install the current workspace via internal --from-workspace; target priority remains asp.toml, SEMANTIC_AGENT_BIN_DIR, $HOME/.local/bin, then PATH.
 agent-tools-install-language language bin_dir="" target="" project=".":
-	@args=(install language "{{language}}" --project "{{project}}"); \
+	@args=(install language "{{language}}" --from-workspace --project "{{project}}"); \
 	if [ -n "{{target}}" ]; then args+=(--target "{{target}}"); fi; \
 	just _agent-tools-run-asp "{{bin_dir}}" "${args[@]}"
 
@@ -187,28 +174,28 @@ agent-tools-install-asp-graph-turbo bin_dir="":
       test -x "${bin_dir}/asp-graph-turbo"; \
       "${bin_dir}/asp-graph-turbo" --help >/dev/null
 
-# Install only the Rust provider binary.
+# Develop mode: build and install the Rust provider from this checkout.
 agent-tools-install-rust bin_dir="":
     @just agent-tools-install-rs "{{bin_dir}}"
 
 agent-tools-install-rs bin_dir="":
     @just agent-tools-install-language rust "{{bin_dir}}"
 
-# Install only the TypeScript provider binary.
+# Develop mode: build and install the TypeScript provider from this checkout.
 agent-tools-install-typescript bin_dir="":
     @just agent-tools-install-ts "{{bin_dir}}"
 
 agent-tools-install-ts bin_dir="":
     @just agent-tools-install-language typescript "{{bin_dir}}"
 
-# Install only the Python provider binary.
+# Develop mode: build and install the Python provider from this checkout.
 agent-tools-install-python bin_dir="":
     @just agent-tools-install-py "{{bin_dir}}"
 
 agent-tools-install-py bin_dir="":
     @just agent-tools-install-language python "{{bin_dir}}"
 
-# Install only the Julia provider binary.
+# Develop mode: build and install the Julia provider from this checkout.
 agent-tools-install-julia bin_dir="":
     @just agent-tools-install-jl "{{bin_dir}}"
 
@@ -220,9 +207,9 @@ agent-tools-install-jl bin_dir="":
         "${package_dir}/juliac/build_provider.sh"; \
       direnv exec . just _agent-tools-run-asp "{{bin_dir}}" install language julia --from-workspace --project .
 
-# Install only the Gerbil Scheme standalone binary.
+# Develop mode: build and install the Gerbil Scheme provider from this checkout.
 agent-tools-install-gerbil bin_dir="":
-    @just agent-tools-build-gerbil "{{bin_dir}}"
+    @just agent-tools-install-language gerbil-scheme "{{bin_dir}}"
 
 agent-tools-build-gerbil bin_dir="":
     @set -e; \
@@ -247,7 +234,8 @@ agent-tools-build-gerbil bin_dir="":
       if [ ! "${launcher}" -ef "${bin_dir}/gslph" ]; then install -m 755 "${launcher}" "${bin_dir}/gslph"; fi; \
       test -x "${root_bin}/gslph"; \
       test -x "${bin_dir}/gslph"; \
-      "${bin_dir}/gslph" --help >/dev/null
+      "${bin_dir}/gslph" --help >/dev/null; \
+      echo "[agent-tools-install] provider=gslph installMode=develop-workspace source=justfile-native-build installedPath=${bin_dir}/gslph"
 
 agent-tools-install-gx bin_dir="":
     @just agent-tools-build-gerbil "{{bin_dir}}"

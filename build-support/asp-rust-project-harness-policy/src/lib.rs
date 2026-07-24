@@ -3,7 +3,6 @@
 pub use rust_lang_project_harness::{
     RustHarnessConfig, RustOwnerResponsibility, RustProjectHarnessDownstreamPolicy,
     RustVerificationProfileHint, RustVerificationStabilityPictureConfig, RustVerificationTaskKind,
-    assert_rust_project_harness_cargo_check_clean_from_env_with_config,
     assert_rust_project_harness_clean_with_config,
     assert_rust_project_harness_downstream_policy_from_env,
     assert_rust_project_harness_verification_from_env_with_config, default_rust_harness_config,
@@ -11,6 +10,7 @@ pub use rust_lang_project_harness::{
 };
 
 pub mod build_gate;
+pub use build_gate::assert_asp_rust_project_harness_member_policy_from_env;
 pub mod evidence;
 pub mod member_policy;
 pub mod package_evidence_graph;

@@ -45,6 +45,20 @@ deny that output-mode error with `reasonKind=agent-search-json` and guide to
 the equivalent compact command. Providers should emit JSON in a compact
 machine-oriented form, leaving readability to validators and artifact viewers
 rather than spending terminal tokens on pretty-print whitespace.
+`semantic-agent-search-dispatch-receipt.v1.schema.json` owns the language-neutral
+resident dispatch lifecycle. It joins one exact command digest to the verified
+root, child, and message target; records monotonic dispatch state; marks resident
+execution terminal and non-redispatchable; and requires completed receipts to
+carry a materialized owner selector plus a placeholder-free executable command.
+
+`semantic-agent-search-playbook-receipt.v1.schema.json` owns one bounded search
+exploration across evidence state, graph topology, open frontier, router trace,
+metrics, synthesis, and reflection. It rejects duplicate commands and unresolved
+next-command placeholders.
+
+`semantic-workspace-scope.v1.schema.json` owns provider-resolved package-manager
+workspace membership. Search and graph consumers use its admitted package roots
+to reject cross-workspace and cross-language candidates before ranking.
 Document language providers such as `org` and `md` use document-specific packet
 shapes. `semantic-document-search-packet.v1.schema.json` owns metadata search
 facts for headings, TOC outlines, properties, tables, blocks, links, and

@@ -3,7 +3,6 @@
 use std::collections::{BTreeSet, HashMap};
 
 use super::search_pipe_model::Candidate;
-use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_pipe_quality_model::{OwnerCoverage, SearchPipeQuality};
 use super::search_pipe_query_evidence::{
     declaration_header_match, handle_paths, high_value_matches, high_value_missing,
@@ -19,9 +18,14 @@ pub(super) fn analyze_search_pipe_quality(
     language_id: &str,
     query: &str,
     candidates: &[Candidate],
+    query_pack_descriptor: agent_semantic_search::SearchPipeQueryPackDescriptor<'_>,
 ) -> SearchPipeQuality {
-    let clauses = query_clauses(language_id, query);
+    let clauses = query_clauses(language_id, query, query_pack_descriptor);
     let terms = unique_query_terms(&clauses);
+    let query_terms = terms
+        .iter()
+        .map(|term| format!("{}:{}", term.raw, term.role.label()))
+        .collect::<Vec<_>>();
     let search_terms = search_terms_from_protocol(&terms);
     let global_matched = matched_terms(&terms, candidates);
     let global_missing = missing_terms(&terms, &global_matched);
@@ -62,27 +66,25 @@ pub(super) fn analyze_search_pipe_quality(
     );
     let allow_query_selector =
         query_pack_quality != "low" && package_cohesion != "low" && weak_terms.is_empty();
-    let fd_query = agent_semantic_search::search_pipe_fd_query_terms(
-        &search_terms,
-        &weak_terms,
-        &strong_matched,
-        &risks,
-    );
     let context_terms = role_terms(&terms, TermRole::Context);
     let owner_seed_terms =
         agent_semantic_search::search_pipe_owner_seed_terms(&search_terms, &missing_path_terms);
     let concept_terms = role_terms(&terms, TermRole::Concept);
     let page_index_handles = handle_paths(candidates, |candidate| {
         candidate.source == "finder-path"
-            || candidate.source == "fd-query"
             || candidate.confidence == "path-exact"
             || candidate.confidence == "path"
     });
     let parser_handles = parser_handles(language_id, candidates, &terms);
     let overlay_handles = search_overlay_handles(candidates, &terms);
-    let next_query_pack_hint =
-        next_query_pack_hint(&context_terms, &owner_seed_terms, &concept_terms);
+    let next_query_pack_hint = next_query_pack_hint(
+        query_pack_descriptor,
+        &context_terms,
+        &owner_seed_terms,
+        &concept_terms,
+    );
     SearchPipeQuality {
+        query_terms,
         clause_count: clauses.len(),
         query_pack_quality,
         global_matched,
@@ -100,7 +102,6 @@ pub(super) fn analyze_search_pipe_quality(
         packages,
         risks,
         allow_query_selector,
-        fd_query,
         context_terms,
         owner_seed_terms,
         concept_terms,
@@ -113,14 +114,6 @@ pub(super) fn analyze_search_pipe_quality(
 }
 
 impl SearchPipeQuality {
-    pub(super) fn query_terms_line(&self, language_id: &str, query: &str) -> String {
-        let terms = unique_query_terms(&query_clauses(language_id, query))
-            .into_iter()
-            .map(|term| format!("{}:{}", term.raw, term.role.label()))
-            .collect::<Vec<_>>();
-        format!("queryTerms={}", display_terms(&terms))
-    }
-
     pub(super) fn lines(&self) -> Vec<String> {
         let mut lines = vec![
             format!(
@@ -151,7 +144,7 @@ impl SearchPipeQuality {
         ];
         if !self.missing_path_terms.is_empty() {
             lines.push(format!(
-                "selectorGuard=missingPathTerms={} usableAsSelector=false usableAsOwner=false next=fd-query",
+                "selectorGuard=missingPathTerms={} usableAsSelector=false usableAsOwner=false",
                 display_terms(&self.missing_path_terms)
             ));
         }
@@ -312,6 +305,33 @@ fn owner_role_score(owner: &str, terms: &[QueryTerm]) -> usize {
 
 fn query_has_secondary_owner_intent(terms: &[QueryTerm]) -> bool {
     has_strong_secondary_owner_intent(terms.iter().map(|term| term.lower.as_str()))
+}
+
+fn has_strong_secondary_owner_intent<'a>(terms: impl IntoIterator<Item = &'a str>) -> bool {
+    terms.into_iter().any(|term| {
+        matches!(
+            term,
+            "test"
+                | "tests"
+                | "fixture"
+                | "fixtures"
+                | "bench"
+                | "benches"
+                | "example"
+                | "examples"
+                | "owner"
+                | "owners"
+        )
+    })
+}
+
+fn secondary_like_owner(owner: &str) -> bool {
+    owner.contains("/tests/")
+        || owner.ends_with("/tests")
+        || owner.contains("/benches/")
+        || owner.ends_with("/benches")
+        || owner.contains("/examples/")
+        || owner.ends_with("/examples")
 }
 
 fn config_like_owner(owner: &str) -> bool {

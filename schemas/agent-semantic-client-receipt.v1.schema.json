@@ -330,7 +330,7 @@
           ]
         },
         "layoutVersion": {
-          "const": "state-v2"
+          "const": "state-v1"
         },
         "dbFileName": {
           "enum": [

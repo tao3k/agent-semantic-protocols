@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.client-db.turso-cdc-page-receipt.v1",
+  "title": "Turso CDC Page Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "profile",
+    "captureMode",
+    "afterChangeId",
+    "limit",
+    "hasMore",
+    "nextChangeId",
+    "changes"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.client-db.turso-cdc-page-receipt.v1"
+    },
+    "profile": { "const": "cdc-non-mvcc" },
+    "captureMode": { "enum": ["id", "before", "after", "full"] },
+    "afterChangeId": { "type": ["integer", "null"], "minimum": 0 },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 1000 },
+    "hasMore": { "type": "boolean" },
+    "nextChangeId": { "type": ["integer", "null"], "minimum": 0 },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "changeId",
+          "changeTime",
+          "changeTxnId",
+          "kind",
+          "rawChangeType",
+          "tableName",
+          "rowId",
+          "before",
+          "after",
+          "updates"
+        ],
+        "properties": {
+          "changeId": { "type": "integer", "minimum": 0 },
+          "changeTime": { "type": "integer", "minimum": 0 },
+          "changeTxnId": { "type": "integer", "minimum": 0 },
+          "kind": {
+            "enum": ["delete", "update", "insert", "commit", "unknown"]
+          },
+          "rawChangeType": { "type": "integer" },
+          "tableName": { "type": ["string", "null"] },
+          "rowId": { "type": ["string", "null"] },
+          "before": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 } }
+            ]
+          },
+          "after": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 } }
+            ]
+          },
+          "updates": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 } }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -23,7 +23,7 @@
   ],
   "properties": {
     "layoutVersion": {
-      "const": "state-v2"
+      "const": "state-v1"
     },
     "backend": {
       "const": "turso"
@@ -40,7 +40,7 @@
       "const": "default"
     },
     "dbFileName": {
-      "const": "client.turso"
+      "const": "facts.turso"
     },
     "schemaVersion": {
       "const": 1
@@ -84,17 +84,7 @@
         "vector",
         "overlaySearch",
         "sync",
-        "encryption",
-        "multiProcessWal",
-        "serializedWriterSlot",
-        "busyTimeoutMs",
-        "openLockRetryAttempts",
-        "openLockRetryBaseMs",
-        "openLockRetryMaxMs",
-        "statementLockRetryAttempts",
-        "operationLock",
-        "operationLockRetryAttempts",
-        "operationLockRetryMs",
+      "encryption",
         "mvcc",
         "beginConcurrent"
       ],
@@ -102,8 +92,8 @@
         "asyncIo": {
           "const": true
         },
-        "concurrentWrites": {
-          "const": false
+      "concurrentWrites": {
+        "const": true
         },
         "fts": {
           "const": true
@@ -123,38 +113,8 @@
         "encryption": {
           "const": false
         },
-        "multiProcessWal": {
-          "const": true
-        },
-        "serializedWriterSlot": {
-          "const": true
-        },
-        "busyTimeoutMs": {
-          "const": 5000
-        },
-        "openLockRetryAttempts": {
-          "const": 80
-        },
-        "openLockRetryBaseMs": {
-          "const": 5
-        },
-        "openLockRetryMaxMs": {
-          "const": 200
-        },
-        "statementLockRetryAttempts": {
-          "const": 80
-        },
-        "operationLock": {
-          "const": true
-        },
-        "operationLockRetryAttempts": {
-          "const": 240
-        },
-        "operationLockRetryMs": {
-          "const": 250
-        },
-        "mvcc": {
-          "const": false
+      "mvcc": {
+        "const": true
         },
         "beginConcurrent": {
           "const": false
@@ -192,7 +152,7 @@
           ]
         },
         "dbFileName": {
-          "const": "client.turso"
+          "const": "facts.turso"
         },
         "schemaVersion": {
           "const": 1

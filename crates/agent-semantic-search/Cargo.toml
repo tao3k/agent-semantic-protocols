@@ -17,12 +17,15 @@ path = "tests/integration/source_index_rank_performance.rs"
 [package]
 name = "agent-semantic-search"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "Search orchestration services for ASP agent-facing queries."
 license = "MIT"
 
 [dependencies]
-globset = "0.4"
+agent-semantic-content-identity.workspace = true
+blake3.workspace = true
+agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
+globset.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-db = { path = "../agent-semantic-client-db" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
@@ -36,7 +39,7 @@ turso = { workspace = true }
 which = { workspace = true }
 
 [build-dependencies]
-rust-lang-project-harness = { workspace = true }
+asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
 rust-lang-project-harness = { workspace = true }

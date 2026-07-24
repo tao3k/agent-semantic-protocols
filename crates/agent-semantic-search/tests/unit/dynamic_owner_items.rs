@@ -46,6 +46,32 @@ fn owner_local_phrase_hit_attributes_to_parser_item() {
 }
 
 #[test]
+fn owner_no_match_emits_semantic_frontier_without_legacy_wrapper_command() {
+    let root =
+        std::env::temp_dir().join(format!("asp-dynamic-owner-no-match-{}", std::process::id()));
+    let owner = root.join("src/lib.rs");
+    fs::create_dir_all(owner.parent().expect("owner parent")).expect("create fixture dir");
+    fs::write(&owner, "pub fn existing_item() {}\n").expect("write fixture owner");
+    let items = [DynamicOwnerItem::new("existing_item", "function", 1, 1)];
+
+    let output = render_dynamic_owner_items_frontier(DynamicOwnerItemsRequest {
+        language: DynamicSearchLanguage::new("rust"),
+        roots: DynamicSearchRoots::new(&root, &root),
+        owner: DynamicOwnerPath::new(std::path::Path::new("src/lib.rs")),
+        query: DynamicOwnerQuery::new("missing_symbol"),
+        items: &items,
+    });
+
+    assert_eq!(output.matches("[search-owner]").count(), 1, "{output}");
+    assert!(output.contains("reason=no-owner-item-match"), "{output}");
+    assert!(output.contains("recommendedNext=revise-query"), "{output}");
+    assert!(output.contains("actionFrontier=revise-query"), "{output}");
+    assert!(!output.contains("asp rg"), "{output}");
+    assert!(!output.contains("asp fd"), "{output}");
+    fs::remove_dir_all(root).expect("remove fixture root");
+}
+
+#[test]
 fn owner_local_source_hit_emits_only_the_most_specific_ast_item() {
     let root = std::env::temp_dir().join(format!(
         "asp-dynamic-owner-item-minimal-cut-{}",

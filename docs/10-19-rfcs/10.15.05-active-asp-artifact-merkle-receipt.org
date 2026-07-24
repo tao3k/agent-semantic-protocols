@@ -1,0 +1,86 @@
+#+title: Active ASP Artifact Merkle Receipt v1
+
+* Status
+
+Worktree implementation.
+
+* Problem
+
+Health and freshness checks currently compare the running ASP executable with
+the executable on =PATH= by reading and hashing both files.  This repeats work
+that the build or install materializer already performed and makes a read-only
+health command proportional to binary size.  Activation is also parsed more
+than once by the health flow.
+
+Increasing a timeout does not address this ownership error.
+
+* Contract
+
+The build or install materializer MUST publish one
+=agent.semantic-protocols.active-asp-artifact-receipt= v1 document after all
+artifact bytes are final.  The receipt is the canonical full verification
+result for the active artifact set.
+
+Every leaf binds a logical path, artifact kind, BLAKE3-256 digest, and byte
+length.  Leaves are sorted by logical path.  The artifact root is the
+domain-separated Merkle root of those canonical leaves.
+
+The receipt MUST include exactly one =asp-binary= leaf and one =activation=
+leaf.  Provider binaries and registry/config artifacts that participate in
+the activation are additional leaves.
+
+* Digest-addressed materialization
+
+The ASP executable MUST be installed beneath a digest-addressed target:
+
+#+begin_example
+runtime/bin/by-digest/<binary-digest>/asp
+#+end_example
+
+The public runtime path is a link or atomic pointer to that immutable target.
+The receipt is published atomically only after the target and activation are
+durable.
+
+* Lightweight verifier
+
+Healthcheck is a read-only verifier, not a materializer.  It:
+
+1. resolves project state paths;
+2. reads activation and the active-artifact receipt once each;
+3. validates receipt schema, sorted unique leaves, leaf digests, and Merkle
+   root;
+4. checks that current and =PATH= ASP resolve to the receipt's
+   digest-addressed binary target;
+5. checks file kind and byte length from metadata;
+6. reports the receipt/root/binary digest and freshness state.
+
+The verified path MUST NOT start Cargo, a provider, a DB engine, or a resident
+agent.  It MUST NOT re-hash the ASP binary.  A missing or invalid receipt is a
+typed degraded result and does not fall back to large-file hashing.
+
+* Materialized path authority
+Every provider executable resolved by the activation materializer MUST be a
+=provider-binary= leaf.  The materializer reads and hashes those bytes once;
+the warm verifier checks their canonical path, file kind, and byte length only.
+
+Every leaf MUST bind its canonical absolute =materializedPath=.  This receipt
+is a machine-local runtime receipt, not a portable build manifest, so a
+verifier MUST NOT guess the physical root from =logicalPath=.  The
+=materializedPath= participates in the leaf digest and therefore in the
+artifact root.
+
+All public ASP entries installed by one materialization MUST resolve to the
+same BLAKE3-addressed immutable target.  Per-PATH copies addressed by another
+digest algorithm are not active-artifact authority.
+
+The repository build recipe MUST delegate binary publication to
+=asp install binary --target <path>=.  Shell recipes may build the executable,
+but they do not own digest selection, immutable target layout, or atomic
+pointer switching.
+
+* Performance gate
+
+The warm health path has a 10 millisecond p95 process-internal budget after
+argument parsing.  Its receipt MUST report zero subprocesses, zero DB opens,
+zero manifest writes, and zero binary-byte reads.  End-to-end CLI startup is
+measured separately and cannot be hidden by a larger timeout.

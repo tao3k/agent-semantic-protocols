@@ -42,7 +42,11 @@ pub(super) fn effective_project_root_and_args(
     if let Some((workspace_root, normalized_args)) =
         explicit_workspace_project_root(language_id, &args, invocation_root)?
     {
-        return Ok((workspace_root, normalized_args));
+        return Ok(rebase_structural_selector_to_member_root(
+            language_id,
+            workspace_root,
+            normalized_args,
+        ));
     }
     if let Some((root, args)) =
         explicit_positional_project_root(language_id, &args, invocation_root, activation_root)?
@@ -73,6 +77,69 @@ pub(super) fn effective_project_root_and_args(
     } else {
         Ok((activation_root.to_path_buf(), args))
     }
+}
+
+fn rebase_structural_selector_to_member_root(
+    language_id: &str,
+    workspace_root: PathBuf,
+    mut args: Vec<String>,
+) -> (PathBuf, Vec<String>) {
+    let selector_prefix = format!("{language_id}://");
+    let selector = args.iter().enumerate().find_map(|(index, arg)| {
+        if arg == "--selector" {
+            return args
+                .get(index + 1)
+                .map(|value| (index + 1, value.as_str(), false));
+        }
+        arg.strip_prefix("--selector=")
+            .map(|value| (index, value, true))
+    });
+    let Some((selector_index, selector, inline)) = selector else {
+        return (workspace_root, args);
+    };
+    let Some(selector_body) = selector.strip_prefix(&selector_prefix) else {
+        return (workspace_root, args);
+    };
+    let Some((owner, fragment)) = selector_body.split_once('#') else {
+        return (workspace_root, args);
+    };
+    let owner = PathBuf::from(owner);
+    if owner.is_absolute()
+        || owner.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        return (workspace_root, args);
+    }
+    let absolute_owner = workspace_root.join(&owner);
+    let marker_start = if absolute_owner.is_dir() {
+        absolute_owner.as_path()
+    } else {
+        absolute_owner.parent().unwrap_or(workspace_root.as_path())
+    };
+    let member_root = marker_start
+        .ancestors()
+        .take_while(|candidate| candidate.starts_with(&workspace_root))
+        .find_map(|candidate| language_project_marker_root(language_id, candidate));
+    let Some(member_root) = member_root.filter(|root| root != &workspace_root) else {
+        return (workspace_root, args);
+    };
+    let Ok(member_owner) = absolute_owner.strip_prefix(&member_root) else {
+        return (workspace_root, args);
+    };
+    let member_owner = member_owner.to_string_lossy().replace('\\', "/");
+    let rebased = format!("{selector_prefix}{member_owner}#{fragment}");
+    args[selector_index] = if inline {
+        format!("--selector={rebased}")
+    } else {
+        rebased
+    };
+    (member_root, args)
 }
 
 fn trailing_dot_is_context_root_only(args: &[String]) -> bool {

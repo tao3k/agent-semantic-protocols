@@ -12,14 +12,15 @@ use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_mode
 use super::{
     display_path, ensure_supported_client, flag_value, optional_flag_value, project_root_arg,
 };
-use crate::command::{ensure_protocol_binary_installed_for_path, run_org_state_sync};
+use crate::command::{
+    ProtocolBinaryInstallPlan, ensure_protocol_binary_installed, run_org_state_sync,
+};
 use agent_semantic_hook::{
-    claude_hook_block, default_claude_settings_path, default_client_config_path,
-    load_client_config, load_or_refresh_default_activation, merge_claude_settings,
-    remove_incompatible_hook_event_state, runtime_profiles_for_activation,
+    claude_hook_block, default_claude_settings_path, load_or_refresh_default_activation,
+    merge_claude_settings, remove_incompatible_hook_event_state, runtime_profiles_for_activation,
     validate_claude_settings_json,
 };
-use agent_semantic_runtime::{project_activation_path, project_runtime_state};
+use agent_semantic_runtime::project_runtime_state;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,7 +30,7 @@ pub(super) fn run_install(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     if client == "codex" {
         return Err(
-            "Codex plugin installation uses `asp install plugin --codex [PROJECT_ROOT]`; direct hook configuration is not a Codex surface."
+            "Codex plugin installation uses `asp install plugin --codex`; direct hook configuration is not a Codex surface."
                 .to_string(),
         );
     }
@@ -39,18 +40,11 @@ pub(super) fn run_install(args: &[String]) -> Result<(), String> {
 pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
     if optional_flag_value(args, "--client")?.is_some() {
         return Err(
-            "asp install plugin --codex does not accept --client; use `asp install plugin --codex [PROJECT_ROOT]`"
+            "asp install plugin --codex does not accept --client; use `asp install plugin --codex`"
                 .to_string(),
         );
     }
-    let mut global_args = args.to_vec();
-    if !global_args
-        .iter()
-        .any(|arg| matches!(arg.as_str(), "--global" | "--global-plugin"))
-    {
-        global_args.push("--global".to_string());
-    }
-    run_install_for_client("codex", &global_args, "plugin-install")
+    run_install_for_client("codex", args, "plugin-install")
 }
 
 fn run_install_for_client(
@@ -65,27 +59,49 @@ fn run_install_for_client(
         subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
     let project_root = project_root_arg(args)?;
     timings.mark("args");
+    let binary_install_plan = ProtocolBinaryInstallPlan::capture()?;
     let runtime_state = project_runtime_state(&project_root)?;
     timings.mark("runtime-state");
     let org_state_sync = run_org_state_sync(&project_root)?;
     timings.mark("org-state");
-    let binary_install = ensure_protocol_binary_installed_for_path()?;
+    let binary_install = ensure_protocol_binary_installed(&binary_install_plan)?;
     timings.mark("binary");
-    let activation_path = project_activation_path(&project_root)?;
+    let activation_path = runtime_state.activation_path.clone();
     let activation_sync = load_or_refresh_default_activation(&activation_path, &project_root)?;
     let activation_status = activation_sync.status;
     let activation = activation_sync.activation;
     timings.mark("activation");
     let runtime_profiles = runtime_profiles_for_activation(&project_root, &activation)?;
     timings.mark("runtime-profiles");
+    let client_config_path = runtime_state
+        .protocol_home
+        .join("hooks")
+        .join("config.toml");
+    let user_config_status = crate::command::managed_hook_config::materialize(&client_config_path)?;
+    timings.mark("user-config");
+    let mut provider_artifacts = runtime_profiles
+        .providers
+        .iter()
+        .filter_map(|provider| {
+            provider.resolved_binary.as_ref().map(|binary| {
+                agent_semantic_hook::ActiveAspArtifactInput {
+                    logical_path: format!(
+                        "providers/{}/{}",
+                        provider.language_id, provider.provider_id
+                    ),
+                    artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::ProviderBinary,
+                    materialized_path: PathBuf::from(binary),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    provider_artifacts.push(agent_semantic_hook::ActiveAspArtifactInput {
+        logical_path: "runtime/hooks/config.toml".to_string(),
+        artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::RuntimeConfig,
+        materialized_path: client_config_path.clone(),
+    });
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
-    let client_config_path = default_client_config_path(&project_root.to_string_lossy());
-    if client_config_path.is_file() {
-        load_client_config(&client_config_path)
-            .map_err(|error| format!("invalid user hook config: {error}"))?;
-    }
-    timings.mark("user-config");
     let (config_path, extra_config_receipt) = match client {
         "codex" => install_codex_plugin_hooks(&project_root, codex_plugin_scope, &subagent_model)?,
         "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
@@ -128,6 +144,13 @@ fn run_install_for_client(
         }
     }
     timings.mark("plugin-cache");
+    let active_artifact = agent_semantic_hook::materialize_active_asp_artifact_receipt(
+        &binary_install.path,
+        &binary_install.artifact_digest,
+        &activation_path,
+        &provider_artifacts,
+    )?;
+    timings.mark("active-artifact-receipt");
     let project_skill_receipt = installed_skill
         .as_ref()
         .and_then(|installed_skill| installed_skill.skill_path.as_ref())
@@ -149,35 +172,28 @@ fn run_install_for_client(
         .as_ref()
         .map(|cache_path| format!(" pluginCache={}", display_path(&project_root, cache_path)))
         .unwrap_or_default();
-    let user_config_receipt = if client_config_path.is_file() {
-        format!(
-            " userConfig={} userConfigStatus=present",
-            display_path(&project_root, &client_config_path)
-        )
-    } else {
-        " userConfigStatus=missing".to_string()
-    };
-    let binary_paths = binary_install
-        .paths
-        .iter()
-        .map(|path| path.display().to_string())
-        .collect::<Vec<_>>()
-        .join(",");
+    let user_config_receipt = format!(
+        " userConfig={} userConfigStatus={}",
+        display_path(&project_root, &client_config_path),
+        user_config_status.as_str()
+    );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} agentConfig={} orgState={} orgStateSync={} config={}{}{}{}{} binary=asp binaryPath={} binaryPaths={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
+        display_path(&project_root, &active_artifact.receipt_path),
+        active_artifact.receipt.artifact_root_digest.as_str(),
         display_path(&project_root, &agent_config_path),
         display_path(&project_root, &runtime_state.protocol_home.join("org")),
         org_state_sync.status,
+        org_state_sync.source_index_status,
         display_path(&project_root, &config_path),
         extra_config_receipt,
         project_skill_receipt,
         plugin_skill_receipt,
         plugin_cache_receipt,
         binary_install.path.display(),
-        binary_paths,
         binary_install.status,
         binary_install.artifact_digest,
     );

@@ -1,7 +1,6 @@
 //! Public value types for DB Engine-owned source index rows.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
@@ -17,37 +16,37 @@ pub const CLIENT_DB_SOURCE_INDEX_SCOPE_REGISTRY_EVIDENCE_PATH: &str = "@scope/re
 pub const CLIENT_DB_SOURCE_INDEX_SCOPE_WITNESS_SHA256: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
-static LAST_SOURCE_INDEX_GENERATION_NANOS: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-
-#[must_use]
-pub fn client_db_source_index_generation_id() -> CacheGenerationId {
-    let observed_nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0) as u64;
-    let nanos = loop {
-        let previous =
-            LAST_SOURCE_INDEX_GENERATION_NANOS.load(std::sync::atomic::Ordering::Acquire);
-        let candidate = observed_nanos.max(previous.saturating_add(1));
-        if LAST_SOURCE_INDEX_GENERATION_NANOS
-            .compare_exchange_weak(
-                previous,
-                candidate,
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-            )
-            .is_ok()
-        {
-            break candidate;
-        }
-    };
-    CacheGenerationId::from(format!("source-index-{nanos}"))
-}
-
 #[must_use]
 pub fn client_db_source_index_file_count(file_count: usize) -> u32 {
     file_count.min(u32::MAX as usize) as u32
+}
+
+/// Content address of the disposable source-index projection for one snapshot.
+#[must_use]
+pub fn client_db_source_index_artifact_digest(
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> String {
+    agent_semantic_content_identity::hash_derived_artifact_key(
+        agent_semantic_content_identity::DerivedArtifactKeyInput {
+            artifact_kind: "source-index",
+            schema_id: "asp.source-index-artifact.v1",
+            snapshot_root: &source_snapshot.root_digest,
+            provider_digest: &source_snapshot.provider_digest,
+            parameters: &[],
+        },
+    )
+    .value
+}
+
+/// Deterministic generation identity; there is deliberately no timestamp fallback.
+#[must_use]
+pub fn client_db_source_index_generation_id_for_snapshot(
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> CacheGenerationId {
+    CacheGenerationId::from(format!(
+        "source-index-{}",
+        client_db_source_index_artifact_digest(source_snapshot)
+    ))
 }
 
 #[must_use]
@@ -117,6 +116,18 @@ source_index_value_type!(
 source_index_value_type!(
     /// Query key used for index-first owner recall.
     ClientDbSourceIndexQueryKey
+);
+source_index_value_type!(
+    /// Stable structural selector identity retained by the source index.
+    ClientDbSourceIndexSelectorId
+);
+source_index_value_type!(
+    /// Optional symbol label projected by the language provider.
+    ClientDbSourceIndexSelectorSymbol
+);
+source_index_value_type!(
+    /// Optional item kind projected by the language provider.
+    ClientDbSourceIndexSelectorKind
 );
 source_index_value_type!(
     /// Source authority for a selector or owner row.
@@ -222,24 +233,24 @@ impl ClientDbSourceIndexLookupState {
 /// Agent-facing source-index candidate row returned by the DB facade.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexCandidate {
-    pub path: String,
+    pub path: ClientDbSourceIndexCandidatePath,
     pub language_id: Option<LanguageId>,
     pub provider_id: Option<ProviderId>,
     pub source_kind: ClientDbSourceIndexSourceKind,
     pub line_count: Option<u32>,
-    pub query_keys: Vec<String>,
+    pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     /// Parser-owned item identity associated with the bounded selector proof.
-    pub selector_symbol: Option<String>,
+    pub selector_symbol: Option<ClientDbSourceIndexSelectorSymbol>,
     /// Parser-owned item kind associated with the bounded selector proof.
-    pub selector_kind: Option<String>,
+    pub selector_kind: Option<ClientDbSourceIndexSelectorKind>,
     pub selector_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
 }
 
 /// Provider/parser proof that a source-index candidate has a bounded payload.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelectorPayloadProof {
-    pub structural_selector: String,
-    pub payload_kind: String,
+    pub structural_selector: ClientDbSourceIndexStructuralSelector,
+    pub payload_kind: ClientDbSourceIndexSelectorPayloadKind,
     pub bounded: bool,
 }
 
@@ -295,6 +306,8 @@ pub struct ClientDbSourceIndexLookupResult {
     pub db_path: PathBuf,
     pub state: ClientDbSourceIndexLookupState,
     pub candidates: Vec<ClientDbSourceIndexCandidate>,
+    pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    pub index_artifact_digest: Option<String>,
 }
 
 /// Request for looking up source-index candidates through a project state root.
@@ -304,6 +317,8 @@ pub struct ClientDbSourceIndexProjectLookupRequest<'a> {
     pub language_id: Option<&'a LanguageId>,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
+    pub expected_snapshot_root: &'a str,
+    pub expected_index_artifact_digest: &'a str,
 }
 
 /// Request for looking up source-index candidates from an already resolved
@@ -314,6 +329,8 @@ pub struct ClientDbSourceIndexClientDirLookupRequest<'a> {
     pub language_id: Option<&'a LanguageId>,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
+    pub expected_snapshot_root: &'a str,
+    pub expected_index_artifact_digest: &'a str,
 }
 
 /// DB-owned source-index candidate lookup result without path projection.
@@ -330,9 +347,9 @@ pub struct ClientDbSourceIndexCandidateLookupResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelector {
     pub owner_path: ClientDbSourceIndexPath,
-    pub selector_id: String,
-    pub symbol: Option<String>,
-    pub kind: Option<String>,
+    pub selector_id: ClientDbSourceIndexSelectorId,
+    pub symbol: Option<ClientDbSourceIndexSelectorSymbol>,
+    pub kind: Option<ClientDbSourceIndexSelectorKind>,
     pub start_line: u32,
     pub end_line: u32,
     pub source: ClientDbSourceIndexSource,
@@ -346,6 +363,31 @@ pub struct ClientDbSourceIndexStats {
     pub generation_id: CacheGenerationId,
     pub owner_count: u32,
     pub selector_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+}
+
+impl ClientDbSourceIndexRefreshResult {
+    pub fn source_snapshot(&self) -> &agent_semantic_content_identity::SourceSnapshotEvidence {
+        &self.source_snapshot
+    }
+
+    /// Content address for the disposable index projection of this source snapshot.
+    #[must_use]
+    pub fn index_artifact_digest(&self) -> &str {
+        &self.index_artifact_digest
+    }
+}
+
+/// Membership authority used when applying a source-index snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ClientDbSourceIndexMembershipChangeSet {
+    /// Publish a complete cold snapshot and reconcile its full membership.
+    FullSnapshot,
+    /// Apply only the owner leaves committed by a Merkle overlay.
+    MerkleOverlay {
+        changed_owner_paths: Vec<ClientDbSourceIndexPath>,
+        removed_owner_paths: Vec<ClientDbSourceIndexPath>,
+    },
 }
 
 /// Request for applying a source-index import to the DB.
@@ -353,6 +395,8 @@ pub struct ClientDbSourceIndexStats {
 pub struct ClientDbSourceIndexRefreshRequest {
     pub import: ClientDbSourceIndexImport,
     pub file_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub membership_change_set: ClientDbSourceIndexMembershipChangeSet,
 }
 
 /// DB-owned refresh result for source-index generation writes.
@@ -380,31 +424,27 @@ pub struct ClientDbSourceIndexRefreshResult {
     pub file_count: u32,
     pub owner_count: u32,
     pub selector_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub index_artifact_digest: String,
 }
 
 impl ClientDbSourceIndexRefreshResult {
     #[must_use]
-    pub fn from_stats(
-        db_path: impl Into<PathBuf>,
-        stats: ClientDbSourceIndexStats,
-        file_count: usize,
-        reused_generation: bool,
-    ) -> Self {
-        Self {
-            db_path: db_path.into(),
-            generation_id: stats.generation_id,
-            reused_generation,
-            file_count: client_db_source_index_file_count(file_count),
-            owner_count: stats.owner_count,
-            selector_count: stats.selector_count,
-        }
-    }
-
-    #[must_use]
     pub fn from_report(
         db_path: impl Into<PathBuf>,
         report: ClientDbSourceIndexRefreshReport,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Self {
+        let index_artifact_digest = agent_semantic_content_identity::hash_derived_artifact_key(
+            agent_semantic_content_identity::DerivedArtifactKeyInput {
+                artifact_kind: "source-index",
+                schema_id: "asp.source-index-artifact.v1",
+                snapshot_root: &source_snapshot.root_digest,
+                provider_digest: &source_snapshot.provider_digest,
+                parameters: &[],
+            },
+        )
+        .value;
         Self {
             db_path: db_path.into(),
             generation_id: report.generation_id,
@@ -412,6 +452,8 @@ impl ClientDbSourceIndexRefreshResult {
             file_count: report.file_count,
             owner_count: report.owner_count,
             selector_count: report.selector_count,
+            source_snapshot,
+            index_artifact_digest,
         }
     }
 }
@@ -471,7 +513,7 @@ pub struct ClientDbSourceIndexCandidateLookup {
 pub struct ClientDbSourceIndexSelectorLookup {
     pub project_root: PathBuf,
     pub language_id: Option<LanguageId>,
-    pub kind: Option<String>,
+    pub kind: Option<ClientDbSourceIndexSelectorKind>,
     pub query: Option<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
 }

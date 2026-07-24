@@ -1,10 +1,69 @@
 use crate::protocol::{normalize_source_route_selector, normalize_source_selector};
-use crate::protocol_activation::{ActivatedProvider, HookRuntime, SourceSelectorKind};
+use crate::protocol_activation::protocol_activation_manifest::{
+    ActivatedProvider, HookRuntime, ProviderSelectorMatch, SourceSelectorKind,
+};
 
 pub(crate) struct SourceSelectorMatch<'provider> {
     pub(crate) route_selector: String,
     pub(crate) provider: &'provider ActivatedProvider,
     pub(crate) kind: SourceSelectorKind,
+}
+
+pub(crate) fn derive_agent_action_subjects(
+    registry: &HookRuntime,
+    paths: &[String],
+) -> Vec<crate::tool_action::AgentActionSubject> {
+    let (mut semantic_subjects, other_subjects): (Vec<_>, Vec<_>) = paths
+        .iter()
+        .map(|path| crate::tool_action::AgentActionSubject {
+            value: path.clone(),
+            kind: infer_agent_action_subject_kind(registry, path),
+        })
+        .partition(|subject| {
+            !matches!(
+                &subject.kind,
+                crate::tool_action::AgentActionSubjectKind::Other
+            )
+        });
+    semantic_subjects.extend(other_subjects);
+    semantic_subjects
+}
+
+fn infer_agent_action_subject_kind(
+    registry: &HookRuntime,
+    value: &str,
+) -> crate::tool_action::AgentActionSubjectKind {
+    use crate::tool_action::AgentActionSubjectKind;
+
+    if value.contains("://") || value.contains("#item/") {
+        return AgentActionSubjectKind::StructuralSelector;
+    }
+    if value == "." || value == ".." || value.ends_with(['/', '\\']) {
+        return AgentActionSubjectKind::Directory;
+    }
+
+    let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
+    let Some((_, suffix)) = leaf.rsplit_once('.') else {
+        return AgentActionSubjectKind::Other;
+    };
+    if suffix.is_empty()
+        || !suffix
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '*' | '?' | '[' | ']' | '-'))
+    {
+        return AgentActionSubjectKind::Other;
+    }
+
+    let registered =
+        !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty();
+    if !registered {
+        return AgentActionSubjectKind::Other;
+    }
+    if leaf.chars().any(|ch| matches!(ch, '*' | '?' | '[' | ']')) {
+        AgentActionSubjectKind::RegisteredLanguageSourcePattern
+    } else {
+        AgentActionSubjectKind::RegisteredLanguageSource
+    }
 }
 
 pub(crate) fn collect_source_selector_matches<'provider, I, S, F>(
@@ -36,7 +95,7 @@ fn matching_blocked_providers<'provider, F>(
     registry: &'provider HookRuntime,
     route_selector: &str,
     should_block: &F,
-) -> Vec<crate::protocol_activation::ProviderSelectorMatch<'provider>>
+) -> Vec<ProviderSelectorMatch<'provider>>
 where
     F: Fn(&ActivatedProvider) -> bool,
 {
@@ -108,83 +167,4 @@ fn is_line_locator_suffix(value: &str) -> bool {
 
 fn is_decimal_locator(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
-}
-
-pub(crate) fn provider_source_selector(provider: &ActivatedProvider) -> String {
-    let mut extensions = provider
-        .source_extensions
-        .iter()
-        .map(|extension| extension.trim_start_matches('.').to_string())
-        .filter(|extension| !extension.is_empty())
-        .collect::<Vec<_>>();
-    extensions.sort();
-    extensions.dedup();
-    match extensions.as_slice() {
-        [] => "**/*".to_string(),
-        [extension] => format!("**/*.{extension}"),
-        extensions => format!("**/*.{{{}}}", extensions.join(",")),
-    }
-}
-
-pub(crate) fn provider_matches_source_extension(
-    provider: &ActivatedProvider,
-    extension: &str,
-) -> bool {
-    provider
-        .source_extensions
-        .iter()
-        .any(|source| source == extension)
-}
-
-pub(crate) fn provider_matches_source_type(
-    provider: &ActivatedProvider,
-    target_type: &str,
-) -> bool {
-    target_type == provider.language_id
-        || target_type == provider.namespace
-        || provider
-            .source_extensions
-            .iter()
-            .any(|source| source.trim_start_matches('.') == target_type)
-}
-
-pub(crate) fn push_source_extension(extensions: &mut Vec<String>, token: &str, allow_bare: bool) {
-    let clean = token
-        .trim_matches(|character| matches!(character, '\'' | '"' | ',' | ';'))
-        .trim_start_matches('*')
-        .to_ascii_lowercase();
-    if let Some(start) = clean.find(".{")
-        && let Some(end) = clean[start + 2..].find('}')
-    {
-        for extension in clean[start + 2..start + 2 + end].split(',') {
-            if is_source_extension_atom(extension) {
-                extensions.push(format!(".{extension}"));
-            }
-        }
-        return;
-    }
-    let clean = clean.trim_start_matches('{').trim_end_matches('}');
-    if allow_bare && is_source_extension_atom(clean) {
-        extensions.push(format!(".{clean}"));
-        return;
-    }
-    if let Some((_, extension)) = clean.rsplit_once('.') {
-        let extension = extension.trim_end_matches('}');
-        if is_source_extension_atom(extension) {
-            extensions.push(format!(".{extension}"));
-        }
-    }
-}
-
-pub(crate) fn selector_has_glob(token: &str) -> bool {
-    token
-        .chars()
-        .any(|character| matches!(character, '*' | '?' | '[' | ']' | '{' | '}'))
-}
-
-fn is_source_extension_atom(extension: &str) -> bool {
-    !extension.is_empty()
-        && extension
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric())
 }

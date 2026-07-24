@@ -1,0 +1,53 @@
+#+TITLE: V1 Contract Stabilization
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Adopted. The protocol is still stabilizing its first public contract.
+
+* Decision
+
+ASP publishes one current contract version: =v1=. New fields and corrected
+semantics are incorporated into =v1= until that contract is explicitly frozen.
+Implementation progress must not create =v2=, =v3=, or =v4= schema families,
+registry payloads, provider manifests, activation packets, doctor packets, or
+descriptor versions.
+
+This stabilization phase has no backward-compatibility lane. When a newer
+working-tree draft contains the intended architecture, its semantics replace
+the earlier =v1= definition in place and the higher-version draft is removed.
+Readers, generators, tests, embedded schema paths, and provider artifacts must
+then consume only =v1=.
+
+* Covered Contracts
+
+- hook activation
+- provider manifest and route bindings
+- provider query-pack descriptor
+- semantic document query packet
+- semantic language registry and provider registry payload
+- semantic provider doctor packet
+- derived source artifact evidence
+- semantic owner-item evidence
+- global state layout identifier
+- language-provider copies and generated or embedded schema references
+
+The Rust parse artifact remains =asp.rust.parse-artifact.v1=. Its fields may be
+completed, but its schema identifier must not be bumped during this phase.
+
+* Runtime Rule
+
+Runtime selection is based on the activated =v1= contract and the current
+Merkle-pinned workspace snapshot. A version number is not a cache key and must
+not be used to choose between stale and live facts. Derived artifacts remain
+disposable and are keyed by their source snapshot and producer identity.
+
+* Acceptance
+
+- No owned =v2=, =v3=, or =v4= schema or registry file remains.
+- No generator emits schema, registry, or descriptor version =2=, =3=, or =4=.
+- No provider or client contains a compatibility reader for those drafts.
+- Rust, TypeScript, Python, Julia, Gerbil, Org, and Markdown emit and validate
+  the same =v1= shapes.
+- Installed provider artifacts and the installed =asp= binary pass doctor,
+  search, exact-selector, and schema validation against only =v1= resources.

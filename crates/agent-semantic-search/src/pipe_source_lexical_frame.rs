@@ -2,11 +2,8 @@
 
 use crate::{
     LexicalSearchFrameCandidate, LexicalSearchFrameRequest, LexicalSearchFrameRoute,
-    SearchPipeCandidate,
-    pipe_source::{
-        SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
-        SearchPipeSourceIndexDecision,
-    },
+    SearchPipeCandidate, SearchPipeSourceAcquisitionTrace, SearchPipeSourceIndexAcquisition,
+    SearchPipeSourceIndexDecision,
 };
 
 pub(crate) fn plan_pipe_lexical_search_frame(
@@ -45,6 +42,8 @@ pub(crate) fn lexical_search_frame_trace(
         missing: usize::from(route.fallback_reason != "none"),
         normalized: route.selected_candidate_count,
         elapsed: None,
+        source_snapshot: None,
+        artifact_digest: None,
     }
 }
 

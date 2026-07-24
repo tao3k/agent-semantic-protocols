@@ -1,0 +1,26 @@
+#+TITLE: Healthcheck Active Skill And Artifact Identity
+
+* Decision
+
+Health checks MUST validate the active installation scope. A project-local
+=.agents/skills/agent-semantic-protocols/SKILL.org= is one valid legacy
+surface, but it is not required when the enabled Codex plugin resolves to a
+materialized project or global versioned plugin-cache skill.
+
+The compact and JSON receipts MUST expose the resolved plugin skill separately
+from the legacy project skill. =missing-agent-skill= is emitted only when no
+active skill surface is materialized.
+
+Codex plugin enablement parsing is configuration ownership. It MUST live in the
+shared config crate; install and health commands consume that parser rather than
+maintaining command-private TOML readers or module-layout-dependent facades.
+
+* Latency contract
+
+Interactive health and search paths MUST NOT recover by widening a timeout.
+They either finish inside their millisecond budget or return a terminal stage
+receipt naming the failed owner.
+
+Binary freshness on the default health path MUST use constant-time artifact
+identity metadata. Whole-binary hashing belongs to install or an explicit deep
+verification command; it MUST NOT run on every healthcheck invocation.

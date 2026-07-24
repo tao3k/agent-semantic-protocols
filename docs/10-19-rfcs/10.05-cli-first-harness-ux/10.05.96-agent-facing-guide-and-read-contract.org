@@ -1,0 +1,79 @@
+#+title: Agent-facing Guide and Exact Read Contract
+#+property: header-args :eval never
+
+* Exact direct-read contract
+
+For exact selectors without =--code=, the provider returns a =read-owner=
+source window or a =read-plan= frontier.  Those responses must keep code
+omitted and provide executable read locators so the caller can choose the next
+parser-owned read explicitly.
+
+The =read-owner= source window and =read-plan= frontier must keep code omitted and provide executable read locators.
+
+For an exact =direct-source-read= selector with =--code=, the response is pure
+source code.  It must not repeat =line= or =endLine= metadata around that code.
+
+The fixed validator is:
+
+#+begin_src sh
+python -m tools tree-sitter validate exact-direct-read-contract
+#+end_src
+
+Search read-plan flows must return locators/frontier rather than inline code.
+The fixed validator is:
+
+#+begin_src sh
+python -m tools tree-sitter validate search-read-plan-frontier-contract
+#+end_src
+
+* Shell-safe literal contract
+
+Agents must also quote literal query text.  Backticks are command substitution
+in a shell; any literal containing them must be passed as a single-quoted argv
+literal.  For example:
+
+Agents must pass that content as a single-quoted argv literal.
+
+#+begin_example
+--query-set 'Start with `asp <language> guide --workspace .`'
+#+end_example
+
+Long or generated prose must use a provider-documented file/stdin input
+surface rather than interpolating raw prose into a shell command.  Guidance
+must not ask agents to depend on shell escaping side effects.
+
+* Guide as the primary tool map
+
+Agent-facing guides must expose the syntax ABI.  The guide is the compact,
+stable map of supported commands; low-frequency subguides remain discoverable
+without expanding the default response.
+
+#+begin_example
+[guide] lang=<language> provider=<asp-provider> protocol=guide.v1 root=.
+#+end_example
+
+=guide= is the provider's default agent-facing guide command.
+
+The agent-prefixed guide spelling is retired.
+
+=query guide treesitter .= as a low-frequency reference.
+
+Agent-facing guide acceptance:
+
+#+begin_example
+guide-main        command="asp <language> guide --workspace ."
+guide-help        command="asp <language> guide --help ."
+lowFrequency=true
+inlineSubguides=false
+search-prime      output=handles/profiles/frontier code=false json=false
+syntax-locate     command="query --treesitter-query <pattern>"
+syntax-code       command="query --selector <exact> --treesitter-query <pattern> --code" output=pure-code
+hook-recovery     output=markdown-prompt runNext=owner-items detectedBinaries=runtime-profile
+debug-surfaces    json,receipts,cachePaths,artifactIds hiddenFromDefault=true
+retired-routes    agent-prefixed-guide,search-wrapper-hook-query,ts-query,syntax-query rejectedFromGuides=true
+#+end_example
+
+This acceptance surface must remain stable, low-token, and executable through
+the installed provider binary.
+
+Hook recovery reason text is a compact Markdown prompt.

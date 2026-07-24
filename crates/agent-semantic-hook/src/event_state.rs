@@ -1,8 +1,5 @@
 //! Append-only hook event state persisted by `asp hook`.
 
-use crate::command::{
-    AspLanguageCommandIntent, classify_asp_language_command_tokens, semantic_shell_tokens,
-};
 use fs2::FileExt;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -19,32 +16,69 @@ use crate::event_replay::{
 use crate::protocol::{HOOK_PROTOCOL_ID, HookDecision};
 
 pub(crate) const HOOK_EVENT_STATE_FILE: &str = "events.jsonl";
+const PROMPT_SCOPE_WINDOW_MS: u128 = 10 * 60 * 1000;
 const HOOK_EVENT_SCHEMA_ID: &str = "agent.semantic-protocols.hook.event";
 const DENY_REPLAY_WINDOW_MS: u128 = 3 * 60 * 1000;
-const SEARCH_PIPE_FEEDBACK_WINDOW_MS: u128 = 10 * 60 * 1000;
 const HOOK_EVENT_STATE_TAIL_BYTES: u64 = 1024 * 1024;
 const HOOK_EVENT_STATE_TAIL_LINE_CAP: usize = 4096;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventSessionId(String);
+
+impl HookEventSessionId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for HookEventSessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for HookEventSessionId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventTranscriptPath(String);
+
+impl HookEventTranscriptPath {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for HookEventTranscriptPath {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for HookEventTranscriptPath {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookEventStateError(String);
+
+impl From<String> for HookEventStateError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 fn should_preserve_agent_session_route_message(decision: &HookDecision) -> bool {
-    decision.fields.contains_key("agentSessionAction")
-        && decision.fields.contains_key("agentSessionRoute")
+    decision.has_configured_resident_dispatch()
+        || decision.fields.contains_key("agentSessionAction")
+            && decision.fields.contains_key("agentSessionRoute")
 }
 const HOOK_EVENT_STATE_MAX_BYTES: u64 = HOOK_EVENT_STATE_TAIL_BYTES * 4;
-
-/// Recent search state for a prompt/session that needs `search pipe`.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct SearchPipeFeedback {
-    pub(crate) language_id: String,
-    pub(crate) saw_pipe: bool,
-    pub(crate) pipe_command_tokens: Vec<Vec<String>>,
-}
-
-/// ASP command stage that matters for prompt search-flow feedback.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) enum AspSearchCommandStage {
-    Prime(String),
-    Pipe(String),
-}
 
 /// Convert a repeated deny in the same source-access lane into a compact replay.
 pub fn apply_repeated_deny_replay(
@@ -64,11 +98,11 @@ pub fn apply_repeated_deny_replay(
         Value::String(recovery_ref.clone()),
     );
     let source_access_replay = is_source_access_replay_key(&replay_key);
-    if source_access_replay {
-        insert_asp_explore_recovery_action_fields(decision);
-    }
     let preserve_agent_session_route_message =
         should_preserve_agent_session_route_message(decision);
+    if source_access_replay && !preserve_agent_session_route_message {
+        insert_asp_explore_recovery_action_fields(decision);
+    }
     let compact_first_source_access_replay =
         source_access_replay && should_compact_source_access_deny_message(decision);
 
@@ -231,24 +265,12 @@ pub fn append_hook_event_state(
     Ok(state_path)
 }
 
-/// Return feedback when a prompt/session has run `search prime` but no pipe.
-pub(crate) fn missing_search_pipe_after_prime(
-    project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<Option<SearchPipeFeedback>, String> {
-    Ok(
-        prompt_search_flow_after_prime(project_root, session_id, transcript_path)?
-            .filter(|feedback| !feedback.saw_pipe),
-    )
-}
-
 /// Return whether the current prompt/session already recorded subagent context.
 pub fn has_recorded_subagent_context(
     project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<bool, String> {
+    session_id: Option<HookEventSessionId>,
+    transcript_path: Option<HookEventTranscriptPath>,
+) -> Result<bool, HookEventStateError> {
     if session_id.is_none() && transcript_path.is_none() {
         return Ok(false);
     }
@@ -262,7 +284,7 @@ pub fn has_recorded_subagent_context(
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        if !is_recent_for_window(&event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS) {
+        if !is_recent_for_window(&event, now, PROMPT_SCOPE_WINDOW_MS) {
             break;
         }
         if !event_matches_prompt_scope(&event, session_id, transcript_path) {
@@ -285,102 +307,6 @@ pub fn has_recorded_subagent_context(
         }
     }
     Ok(false)
-}
-
-/// Return recent prompt/session search-flow state after prime or pipe has run.
-pub(crate) fn prompt_search_flow_after_prime(
-    project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<Option<SearchPipeFeedback>, String> {
-    if session_id.is_none() && transcript_path.is_none() {
-        return Ok(None);
-    }
-    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
-    if !state_path.is_file() {
-        return Ok(None);
-    }
-    let now = unix_time_ms();
-    let lines = read_hook_event_state_tail(&state_path)?;
-    let mut prime_language_id = None;
-    let mut saw_pipe = false;
-    let mut pipe_command_tokens = Vec::new();
-    for line in lines.iter().rev() {
-        let Ok(event) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        if !is_recent_for_window(&event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS) {
-            break;
-        }
-        if !event_matches_prompt_scope(&event, session_id, transcript_path) {
-            continue;
-        }
-        if is_prompt_scope_boundary(&event) {
-            break;
-        }
-        let Some(command) = event.pointer("/subject/command").and_then(Value::as_str) else {
-            continue;
-        };
-        match asp_search_stage(command) {
-            Some(AspSearchCommandStage::Pipe(language_id)) => {
-                saw_pipe = true;
-                pipe_command_tokens.push(semantic_shell_tokens(command));
-                prime_language_id.get_or_insert(language_id);
-            }
-            Some(AspSearchCommandStage::Prime(language_id)) => {
-                prime_language_id.get_or_insert(language_id);
-            }
-            None => {}
-        }
-    }
-    Ok(prime_language_id.map(|language_id| SearchPipeFeedback {
-        language_id,
-        saw_pipe,
-        pipe_command_tokens,
-    }))
-}
-
-/// Count ASP commands that completed in the current prompt/session.
-pub(crate) fn prompt_asp_command_count(
-    project_root: &Path,
-    session_id: Option<&str>,
-    transcript_path: Option<&str>,
-) -> Result<usize, String> {
-    if session_id.is_none() && transcript_path.is_none() {
-        return Ok(0);
-    }
-    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
-    if !state_path.is_file() {
-        return Ok(0);
-    }
-    let now = unix_time_ms();
-    let mut count = 0;
-    let lines = read_hook_event_state_tail(&state_path)?;
-    for event in lines
-        .iter()
-        .rev()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-    {
-        if !is_recent_for_window(&event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS) {
-            break;
-        }
-        if !event_matches_prompt_scope(&event, session_id, transcript_path) {
-            continue;
-        }
-        if is_prompt_scope_boundary(&event) {
-            break;
-        }
-        if event.get("event").and_then(Value::as_str) != Some("post-tool") {
-            continue;
-        }
-        let Some(command) = event.pointer("/subject/command").and_then(Value::as_str) else {
-            continue;
-        };
-        if asp_command(command) {
-            count += 1;
-        }
-    }
-    Ok(count)
 }
 
 /// Remove cached hook event state when it belongs to an older hook protocol.
@@ -544,98 +470,6 @@ fn event_matches_prompt_scope(
 
 fn is_prompt_scope_boundary(event: &Value) -> bool {
     event.get("event").and_then(Value::as_str) == Some("user-prompt")
-}
-
-/// Classify an ASP search command into prime/pipe stages.
-pub(crate) fn asp_search_stage(command: &str) -> Option<AspSearchCommandStage> {
-    let tokens = semantic_shell_tokens(command);
-    asp_search_stage_tokens(&tokens)
-}
-
-pub(crate) fn asp_search_stage_tokens(tokens: &[String]) -> Option<AspSearchCommandStage> {
-    let command = classify_asp_language_command_tokens(tokens)?;
-    if command.intent != AspLanguageCommandIntent::Reasoning {
-        return None;
-    }
-    match command.route.as_str() {
-        "search-prime" => Some(AspSearchCommandStage::Prime(command.language_id)),
-        "search-pipe" => Some(AspSearchCommandStage::Pipe(command.language_id)),
-        _ => None,
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AspDirectSourceReadShape {
-    Bounded { line_span: usize },
-    Unbounded,
-}
-
-pub(crate) fn asp_query_direct_source_read_shape_tokens(
-    tokens: &[String],
-) -> Option<AspDirectSourceReadShape> {
-    let asp_index = asp_token_index(tokens)?;
-    let after_asp = &tokens[asp_index + 1..];
-    let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
-        after_asp
-    } else if after_asp.get(1).map(String::as_str) == Some("query") {
-        &after_asp[1..]
-    } else {
-        return None;
-    };
-    if !query_tokens
-        .windows(2)
-        .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
-    {
-        return None;
-    }
-    let Some(selector) = option_value(query_tokens, "--selector") else {
-        return Some(AspDirectSourceReadShape::Unbounded);
-    };
-    selector_line_span(selector)
-        .map(|line_span| AspDirectSourceReadShape::Bounded { line_span })
-        .or(Some(AspDirectSourceReadShape::Unbounded))
-}
-
-fn selector_line_span(selector: &str) -> Option<usize> {
-    parse_colon_line_span(selector).or_else(|| parse_dash_line_span(selector))
-}
-
-fn parse_colon_line_span(selector: &str) -> Option<usize> {
-    let (path_or_start, end_text) = selector.rsplit_once(':')?;
-    let end = end_text.parse::<usize>().ok()?;
-    let Some((_, start_text)) = path_or_start.rsplit_once(':') else {
-        return (end > 0).then_some(1);
-    };
-    let start = start_text.parse::<usize>().ok()?;
-    valid_line_span(start, end)
-}
-
-fn parse_dash_line_span(selector: &str) -> Option<usize> {
-    let (_, range_text) = selector.rsplit_once(':')?;
-    let (start_text, end_text) = range_text.split_once('-')?;
-    let start = start_text.parse::<usize>().ok()?;
-    let end = end_text.parse::<usize>().ok()?;
-    valid_line_span(start, end)
-}
-
-fn valid_line_span(start: usize, end: usize) -> Option<usize> {
-    (start > 0 && end >= start).then_some(end - start + 1)
-}
-
-fn option_value<'a>(args: &'a [String], option: &str) -> Option<&'a str> {
-    args.windows(2).find_map(|window| {
-        if window[0] == option {
-            Some(window[1].as_str())
-        } else {
-            None
-        }
-    })
-}
-
-/// Return true when a shell command invokes ASP.
-pub(crate) fn asp_command(command: &str) -> bool {
-    let tokens = semantic_shell_tokens(command);
-    asp_command_tokens(&tokens)
 }
 
 pub(crate) fn asp_command_tokens(tokens: &[String]) -> bool {

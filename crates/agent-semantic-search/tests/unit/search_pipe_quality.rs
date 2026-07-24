@@ -1,8 +1,8 @@
 use crate::{
     SearchPipeCohesionTerm, SearchPipeQueryTerm, SearchPipeTermRole,
-    search_pipe_candidate_packages, search_pipe_fd_query_terms, search_pipe_missing_path_terms,
-    search_pipe_owner_seed_terms, search_pipe_package_cohesion, search_pipe_package_key,
-    search_pipe_quality_risks, search_pipe_query_pack_quality,
+    search_pipe_candidate_packages, search_pipe_missing_path_terms, search_pipe_owner_seed_terms,
+    search_pipe_package_cohesion, search_pipe_package_key, search_pipe_quality_risks,
+    search_pipe_query_pack_quality,
 };
 
 #[test]
@@ -96,10 +96,6 @@ fn search_pipe_quality_decision_flags_broad_weak_package_drift() {
     assert_eq!(
         search_pipe_query_pack_quality(&terms, &global_missing, &weak_terms, &risks),
         "low"
-    );
-    assert_eq!(
-        search_pipe_fd_query_terms(&terms, &weak_terms, &strong_matched, &risks),
-        Some("SearchRouter".to_string())
     );
 }
 

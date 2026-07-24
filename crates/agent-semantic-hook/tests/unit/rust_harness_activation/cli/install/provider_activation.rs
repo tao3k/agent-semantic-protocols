@@ -4,7 +4,8 @@ use agent_semantic_hook::{
 use std::env;
 
 use crate::rust_harness_activation::support::{
-    write_failing_provider_binary, write_fake_provider_binary, write_fake_provider_file,
+    asp_bin_dir, write_failing_provider_binary, write_fake_provider_binary,
+    write_fake_provider_file,
 };
 
 use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
@@ -14,8 +15,12 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
     let root = git_project_root("install-static-provider-manifest");
     let asp_state_home = root.join(".asp-state-home");
     let provider_path = write_failing_provider_binary(&root, "py-harness");
+    let asp_bin_dir = asp_bin_dir();
+    let path = env::join_paths([provider_path.as_path(), asp_bin_dir.as_path()])
+        .expect("provider and asp PATH");
     let output = protocol_command()
-        .env("PATH", &provider_path)
+        .env("PATH", &path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
@@ -34,18 +39,6 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
             .providers
             .iter()
             .any(|provider| provider.language_id == "python")
-    );
-    assert!(
-        registry
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == "org")
-    );
-    assert!(
-        registry
-            .providers
-            .iter()
-            .any(|provider| provider.language_id == "md")
     );
     let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
     let python_profile = runtime_profiles
@@ -78,10 +71,16 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
     let external_root = git_project_root("install-external-provider");
     let project_provider_path = write_fake_provider_binary(&root, "py-harness");
     let external_provider_path = write_fake_provider_file(&external_root, "py-harness", 0o755);
-    let path = std::env::join_paths([external_provider_path, project_provider_path])
-        .expect("provider path");
+    let asp_bin_dir = asp_bin_dir();
+    let path = std::env::join_paths([
+        external_provider_path.as_path(),
+        project_provider_path.as_path(),
+        asp_bin_dir.as_path(),
+    ])
+    .expect("provider and asp PATH");
     let output = protocol_command()
         .env("PATH", path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
@@ -159,9 +158,17 @@ enabled = false
     )
     .expect("write .agents/asp.toml");
 
-    let path = env::join_paths([root.join(".bin"), empty_path]).expect("join PATH");
+    let asp_bin_dir = asp_bin_dir();
+    let project_bin = root.join(".bin");
+    let path = env::join_paths([
+        project_bin.as_path(),
+        empty_path.as_path(),
+        asp_bin_dir.as_path(),
+    ])
+    .expect("join PATH");
     let output = protocol_command()
         .env("PATH", &path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
@@ -220,8 +227,12 @@ fn cli_install_writes_executable_python_ingest_route() {
     let root = git_project_root("install-python");
     let asp_state_home = root.join(".asp-state-home");
     let provider_path = write_fake_provider_binary(&root, "py-harness");
+    let asp_bin_dir = asp_bin_dir();
+    let path = env::join_paths([provider_path.as_path(), asp_bin_dir.as_path()])
+        .expect("provider and asp PATH");
     let output = protocol_command()
-        .env("PATH", &provider_path)
+        .env("PATH", &path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
@@ -247,10 +258,10 @@ fn cli_install_writes_executable_python_ingest_route() {
             "py-harness",
             "search",
             "ingest",
-            "items",
+            "owner",
             "tests",
             "--workspace",
-            "{projectRoot}",
+            "{workspace}",
             "--view",
             "seeds"
         ]
@@ -261,8 +272,31 @@ fn cli_install_writes_executable_python_ingest_route() {
 fn installed_activation_path(root: &std::path::Path) -> std::path::PathBuf {
     let mut matches = Vec::new();
     collect_activation_paths(root, &mut matches);
+    let expected_project_root = root
+        .parent()
+        .expect("state home must be rooted under the fixture project")
+        .canonicalize()
+        .expect("canonical fixture project root");
+    // Provider-control-plane activations may coexist with the fixture project
+    // under ASP_STATE_HOME. Select the activation owned by this project scope.
+    matches.retain(|path| {
+        let activation: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(path).expect("read activation candidate"),
+        )
+        .expect("parse activation candidate");
+        activation
+            .get("projectRoot")
+            .and_then(serde_json::Value::as_str)
+            .map(std::path::PathBuf::from)
+            .and_then(|project_root| project_root.canonicalize().ok())
+            .is_some_and(|project_root| project_root == expected_project_root)
+    });
     matches.sort();
-    assert_eq!(matches.len(), 1, "activation paths: {matches:?}");
+    assert_eq!(
+        matches.len(),
+        1,
+        "project activation paths for {expected_project_root:?}: {matches:?}"
+    );
     matches.remove(0)
 }
 

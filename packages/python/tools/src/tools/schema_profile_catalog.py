@@ -62,7 +62,7 @@ _CORE_QUERY_SCHEMAS = (
     "semantic-search-packet.v1.schema.json",
     "semantic-query-packet.v1.schema.json",
     "semantic-exact-selector-receipt.v1.schema.json",
-    "semantic-owner-item-evidence.v2.schema.json",
+    "semantic-owner-item-evidence.v1.schema.json",
     "semantic-content-compaction.v1.schema.json",
     "semantic-read-packet.v1.schema.json",
     "semantic-source-location.v1.schema.json",

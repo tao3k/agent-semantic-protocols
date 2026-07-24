@@ -12,8 +12,12 @@ const SCHEMA_ID: &str = "agent.semantic-protocols.host-typed-spawn-observation";
 const SCHEMA_VERSION: &str = "1";
 const SOURCE: &str = "native-collaboration-spawn-agent-schema";
 const HOST_TREE_SCHEMA_ID: &str = "agent.semantic-protocols.host-resident-target-observation";
+const HOST_TREE_SCHEMA_VERSION: &str = "2";
 const HOST_TREE_SOURCE: &str = "native-collaboration-list-agents";
+const HOST_ROUTE_PROBE_SOURCE: &str = "native-collaboration-canonical-target-probe";
+const HOST_ACK_SOURCE: &str = "native-collaboration-followup-ack";
 const NATIVE_SUBAGENT_START_SOURCE: &str = "codex.subagent-start";
+const TRUSTED_RESIDENT_HOOK_SOURCE: &str = "codex.pre-tool-resident-envelope";
 const NATIVE_SUBAGENT_START_OBSERVATION_TTL_SECONDS: i64 = 300;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -39,7 +43,7 @@ impl HostTypedSpawnObservation {
             && self.root_session_id == root_session_id
             && self.resident_name == name
             && self.required_field == "agent_type"
-            && self.required_value == "asp_explorer"
+            && self.required_value == "configured-resident-agent-type"
             && matches!(self.field_status.as_str(), "present" | "absent")
             && self.source == SOURCE
             && self.observed_at <= now
@@ -55,11 +59,19 @@ pub(super) struct HostResidentTargetObservation {
     pub(super) root_session_id: String,
     pub(super) resident_name: String,
     pub(super) target_status: String,
+    /// Canonical native path observed by the host, selected from hook routing
+    /// configuration rather than inferred from the registry lane name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) canonical_target: Option<String>,
     /// `present` proves path addressability only.  Native child identity is
     /// established separately by a lifecycle receipt such as SubagentStart.
     #[serde(default = "unverified_identity_status")]
     pub(super) identity_status: String,
     pub(super) source: String,
+    /// Bounded native failure receipt for a canonical target probe. This is
+    /// required for `unroutable` and absent for weak list visibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) probe_evidence_ref: Option<String>,
     pub(super) observed_at: i64,
     pub(super) expires_at: i64,
 }
@@ -70,15 +82,45 @@ fn unverified_identity_status() -> String {
 
 impl HostResidentTargetObservation {
     pub(super) fn is_fresh_for(&self, root_session_id: &str, name: &str, now: i64) -> bool {
+        let status_evidence_valid = match self.target_status.as_str() {
+            "present" => {
+                self.canonical_target
+                    .as_deref()
+                    .is_some_and(|target| !target.trim().is_empty())
+                    && self.identity_status == "verified"
+                    && self.probe_evidence_ref.is_none()
+                    && matches!(
+                        self.source.as_str(),
+                        HOST_TREE_SOURCE
+                            | HOST_ACK_SOURCE
+                            | NATIVE_SUBAGENT_START_SOURCE
+                            | TRUSTED_RESIDENT_HOOK_SOURCE
+                    )
+            }
+            "absent" => {
+                self.canonical_target.is_none()
+                    && self.identity_status == "unverified"
+                    && self.probe_evidence_ref.is_none()
+                    && self.source == HOST_TREE_SOURCE
+            }
+            "unroutable" => {
+                self.canonical_target
+                    .as_deref()
+                    .is_some_and(|target| !target.trim().is_empty())
+                    && self.identity_status == "unverified"
+                    && self
+                        .probe_evidence_ref
+                        .as_deref()
+                        .is_some_and(|evidence| !evidence.trim().is_empty())
+                    && self.source == HOST_ROUTE_PROBE_SOURCE
+            }
+            _ => false,
+        };
         self.schema_id == HOST_TREE_SCHEMA_ID
-            && self.schema_version == SCHEMA_VERSION
+            && self.schema_version == HOST_TREE_SCHEMA_VERSION
             && self.root_session_id == root_session_id
             && self.resident_name == name
-            && matches!(self.target_status.as_str(), "present" | "absent")
-            && matches!(
-                self.source.as_str(),
-                HOST_TREE_SOURCE | NATIVE_SUBAGENT_START_SOURCE
-            )
+            && status_evidence_valid
             && self.observed_at <= now
             && now <= self.expires_at
     }
@@ -114,7 +156,7 @@ pub(super) fn observe_host_capability(
         root_session_id,
         resident_name: name.to_string(),
         required_field: "agent_type".to_string(),
-        required_value: "asp_explorer".to_string(),
+        required_value: "configured-resident-agent-type".to_string(),
         field_status: field_status.to_string(),
         source: SOURCE.to_string(),
         schema_digest: args.schema_digest.clone(),
@@ -141,6 +183,109 @@ pub(super) fn observe_host_capability(
     Ok(())
 }
 
+pub(super) fn observe_host_ack(
+    registry: &AgentSessionRegistry,
+    args: &SessionArgs,
+) -> Result<(), String> {
+    reject_identity_flags(args, "host ack observation")?;
+
+    let root_session_id = non_empty_env("CODEX_THREAD_ID")?;
+    let resident_name = args.name.as_deref().unwrap_or("asp-explore");
+    let canonical_target = args.canonical_target.as_deref().ok_or_else(|| {
+        "observe-host-ack requires --canonical-target because lane names never infer live targets"
+            .to_string()
+    })?;
+    let expected_agent_type = canonical_codex_agent_type(canonical_target).ok_or_else(|| {
+        format!(
+            "observe-host-ack requires a canonical /root/<agent> target, got {canonical_target}"
+        )
+    })?;
+    let observed_at = unix_timestamp()?;
+    let ttl = args.observation_ttl_seconds;
+    let observation = HostResidentTargetObservation {
+        schema_id: HOST_TREE_SCHEMA_ID.to_string(),
+        schema_version: HOST_TREE_SCHEMA_VERSION.to_string(),
+        root_session_id: root_session_id.clone(),
+        resident_name: resident_name.to_string(),
+        target_status: "present".to_string(),
+        canonical_target: Some(canonical_target.to_string()),
+        identity_status: "verified".to_string(),
+        source: HOST_ACK_SOURCE.to_string(),
+        probe_evidence_ref: None,
+        observed_at,
+        expires_at: observed_at + ttl,
+    };
+    write_host_tree_observation(registry, &observation)?;
+
+    let project_root = std::env::current_dir()
+        .map_err(|error| format!("failed to read current directory: {error}"))?;
+    let project_id =
+        super::agent_session_registry_state::project_session_scope_id(registry, &project_root)?;
+    let record = registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
+        project_id: &project_id,
+        session_id: None,
+        root_session_id: Some(root_session_id.as_str()),
+        name: Some(resident_name),
+    })?;
+
+    let registers_resident_child =
+        super::agent_session_registry_bootstrap::binding::maybe_bind_verified_canonical_target(
+            registry,
+            record.as_ref(),
+            true,
+            Some(canonical_target),
+            expected_agent_type,
+            record
+                .as_ref()
+                .and_then(|existing| existing.model.as_deref()),
+            None,
+        )?
+        .is_some();
+
+    if args.json {
+        let mut value = serde_json::to_value(&observation).map_err(|error| error.to_string())?;
+        if let serde_json::Value::Object(ref mut object) = value {
+            object.insert(
+                "registersResidentChild".to_string(),
+                serde_json::Value::Bool(registers_resident_child),
+            );
+            object.insert(
+                "acknowledgementKind".to_string(),
+                serde_json::Value::String("host-native-followup-or-dispatch".to_string()),
+            );
+            if let Some(evidence_ref) = args.evidence_ref.as_deref() {
+                object.insert(
+                    "evidenceRef".to_string(),
+                    serde_json::Value::String(evidence_ref.to_string()),
+                );
+            }
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&value).map_err(|error| error.to_string())?
+        );
+    } else {
+        println!(
+            "[agent-session-host-ack] rootSession=\"{}\" name=\"{}\" canonicalTarget=\"{}\" identityStatus={} source={} acknowledgementKind={} evidenceRef=\"{}\" expiresAt={} registersResidentChild={}",
+            observation.root_session_id,
+            observation.resident_name,
+            observation.canonical_target.as_deref().unwrap_or(""),
+            observation.identity_status,
+            observation.source,
+            "host-native-followup-or-dispatch",
+            args.evidence_ref.as_deref().unwrap_or(""),
+            observation.expires_at,
+            registers_resident_child,
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_host_capability.rs"]
+mod tests;
+
 pub(super) fn observe_host_tree(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
@@ -148,26 +293,118 @@ pub(super) fn observe_host_tree(
     reject_identity_flags(args, "host tree observation")?;
     let root_session_id = non_empty_env("CODEX_THREAD_ID")?;
     let name = args.name.as_deref().unwrap_or("asp-explore");
-    let target_status = args
-        .resident_target_status
-        .as_deref()
-        .ok_or_else(|| "--resident-target-status present|absent is required".to_string())?;
-    if !matches!(target_status, "present" | "absent") {
-        return Err("--resident-target-status must be `present` or `absent`".to_string());
+    let target_status = args.resident_target_status.as_deref().ok_or_else(|| {
+        "--resident-target-status present|absent|unroutable is required".to_string()
+    })?;
+    if !matches!(target_status, "present" | "absent" | "unroutable") {
+        return Err(
+            "--resident-target-status must be `present`, `absent`, or `unroutable`".to_string(),
+        );
     }
+    let canonical_target = match target_status {
+        "present" | "unroutable" => Some(
+            args.canonical_target
+                .as_deref()
+                .ok_or_else(|| {
+                    format!(
+                        "--canonical-target is required when the native resident target is {target_status}"
+                    )
+                })?
+                .to_string(),
+        ),
+        _ if args.canonical_target.is_some() => {
+            return Err("--canonical-target is forbidden when target status is absent".to_string());
+        }
+        _ => None,
+    };
+    let probe_evidence_ref = match target_status {
+        "unroutable" => Some(
+            args.evidence_ref
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    "--evidence-ref is required when canonical target status is unroutable"
+                        .to_string()
+                })?
+                .to_string(),
+        ),
+        _ if args.evidence_ref.is_some() => {
+            return Err(
+                "--evidence-ref is accepted by observe-host-tree only for target status unroutable"
+                    .to_string(),
+            );
+        }
+        _ => None,
+    };
     let observed_at = unix_timestamp()?;
     let observation = HostResidentTargetObservation {
         schema_id: HOST_TREE_SCHEMA_ID.to_string(),
-        schema_version: SCHEMA_VERSION.to_string(),
+        schema_version: HOST_TREE_SCHEMA_VERSION.to_string(),
         root_session_id,
         resident_name: name.to_string(),
         target_status: target_status.to_string(),
-        identity_status: unverified_identity_status(),
-        source: HOST_TREE_SOURCE.to_string(),
+        canonical_target,
+        identity_status: if target_status == "present" {
+            "verified".to_string()
+        } else {
+            unverified_identity_status()
+        },
+        source: if target_status == "unroutable" {
+            HOST_ROUTE_PROBE_SOURCE
+        } else {
+            HOST_TREE_SOURCE
+        }
+        .to_string(),
+        probe_evidence_ref,
         observed_at,
         expires_at: observed_at + args.observation_ttl_seconds,
     };
     write_host_tree_observation(registry, &observation)?;
+    let project_root = std::env::current_dir()
+        .map_err(|error| format!("failed to read current directory: {error}"))?;
+    let project_id =
+        super::agent_session_registry_state::project_session_scope_id(registry, &project_root)?;
+    let mut record =
+        registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
+            project_id: &project_id,
+            session_id: None,
+            root_session_id: Some(observation.root_session_id.as_str()),
+            name: Some(observation.resident_name.as_str()),
+        })?;
+    let existing_live_binding = record.as_ref().is_some_and(|existing| {
+        observation.target_status == "present"
+            && agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
+                existing,
+                existing.root_session_id.as_str(),
+            )
+    });
+    let mut registers_resident_child = existing_live_binding;
+    if observation.target_status == "present" {
+        if let Some(canonical_target) = observation.canonical_target.as_deref()
+            && let Some(expected_agent_type) = canonical_codex_agent_type(canonical_target)
+            && super::agent_session_registry_bootstrap::binding::maybe_bind_verified_canonical_target(
+                registry,
+                record.as_ref(),
+                true,
+                Some(canonical_target),
+                expected_agent_type,
+                record.as_ref().and_then(|existing| existing.model.as_deref()),
+                None,
+            )?
+            .is_some()
+        {
+            registers_resident_child = true;
+        }
+    } else if observation.target_status == "unroutable" {
+        let _ =
+            super::agent_session_registry_bootstrap::binding::invalidate_unroutable_canonical_target(
+                registry,
+                &project_id,
+                record.as_mut(),
+                true,
+                observed_at,
+            )?;
+    }
     if args.json {
         println!(
             "{}",
@@ -176,16 +413,25 @@ pub(super) fn observe_host_tree(
         );
     } else {
         println!(
-            "[agent-session-host-tree] rootSession=\"{}\" name=\"{}\" targetStatus={} identityStatus={} source={} expiresAt={} registersResidentChild=false",
+            "[agent-session-host-tree] rootSession=\"{}\" name=\"{}\" targetStatus={} canonicalTarget=\"{}\" identityStatus={} source={} evidenceRef=\"{}\" expiresAt={} registersResidentChild={}",
             observation.root_session_id,
             observation.resident_name,
             observation.target_status,
+            observation.canonical_target.as_deref().unwrap_or(""),
             observation.identity_status,
             observation.source,
+            observation.probe_evidence_ref.as_deref().unwrap_or(""),
             observation.expires_at,
+            registers_resident_child,
         );
     }
     Ok(())
+}
+
+fn canonical_codex_agent_type(canonical_target: &str) -> Option<&str> {
+    canonical_target
+        .strip_prefix("/root/")
+        .filter(|agent_type| !agent_type.is_empty() && !agent_type.contains('/'))
 }
 
 pub(super) fn fresh_host_typed_spawn_observation(
@@ -226,6 +472,34 @@ pub(super) fn fresh_host_resident_target_observation(
     Ok(observation
         .is_fresh_for(root_session_id, name, now)
         .then_some(observation))
+}
+
+/// Consume one fresh canonical `unroutable` probe receipt as the lease
+/// authorizing a typed resident replacement. Removing the observation is the
+/// fencing step: concurrent SubagentStart hooks cannot both use the same probe
+/// failure to evict different resident owners.
+pub(in crate::command) fn consume_fresh_unroutable_resident_target_observation(
+    registry: &AgentSessionRegistry,
+    root_session_id: &str,
+    name: &str,
+    now: i64,
+) -> Result<bool, String> {
+    let Some(observation) =
+        fresh_host_resident_target_observation(registry, root_session_id, name, now)?
+    else {
+        return Ok(false);
+    };
+    if observation.target_status != "unroutable" {
+        return Ok(false);
+    }
+    let path = host_tree_observation_path(registry, root_session_id, name)?;
+    match fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!(
+            "consume unroutable canonical target observation for resident replacement: {error}"
+        )),
+    }
 }
 
 fn write_observation(
@@ -277,22 +551,82 @@ pub(in crate::command) fn record_subagent_start_target_present(
     registry: &AgentSessionRegistry,
     root_session_id: &str,
     resident_name: &str,
+    canonical_target: &str,
     observed_at: i64,
 ) -> Result<(), String> {
     write_host_tree_observation(
         registry,
         &HostResidentTargetObservation {
             schema_id: HOST_TREE_SCHEMA_ID.to_string(),
-            schema_version: SCHEMA_VERSION.to_string(),
+            schema_version: HOST_TREE_SCHEMA_VERSION.to_string(),
             root_session_id: root_session_id.to_string(),
             resident_name: resident_name.to_string(),
             target_status: "present".to_string(),
+            canonical_target: Some(canonical_target.to_string()),
             identity_status: "verified".to_string(),
             source: NATIVE_SUBAGENT_START_SOURCE.to_string(),
+            probe_evidence_ref: None,
             observed_at,
             expires_at: observed_at + NATIVE_SUBAGENT_START_OBSERVATION_TTL_SECONDS,
         },
     )
+}
+
+pub(in crate::command) struct TrustedResidentHookTargetPresentInput<'a> {
+    pub project_id: &'a str,
+    pub root_session_id: &'a str,
+    pub resident_name: &'a str,
+    pub canonical_target: &'a str,
+    pub observed_at: i64,
+}
+
+impl TrustedResidentHookTargetPresentInput<'_> {
+    fn observation(&self) -> HostResidentTargetObservation {
+        HostResidentTargetObservation {
+            schema_id: HOST_TREE_SCHEMA_ID.to_string(),
+            schema_version: HOST_TREE_SCHEMA_VERSION.to_string(),
+            root_session_id: self.root_session_id.to_string(),
+            resident_name: self.resident_name.to_string(),
+            target_status: "present".to_string(),
+            canonical_target: Some(self.canonical_target.to_string()),
+            identity_status: "verified".to_string(),
+            source: TRUSTED_RESIDENT_HOOK_SOURCE.to_string(),
+            probe_evidence_ref: None,
+            observed_at: self.observed_at,
+            expires_at: self.observed_at + NATIVE_SUBAGENT_START_OBSERVATION_TTL_SECONDS,
+        }
+    }
+}
+
+pub(in crate::command) fn record_trusted_resident_hook_target_present(
+    registry: &AgentSessionRegistry,
+    input: TrustedResidentHookTargetPresentInput<'_>,
+) -> Result<(), String> {
+    write_host_tree_observation(registry, &input.observation())?;
+    if let Some(record) =
+        registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
+            project_id: input.project_id,
+            session_id: None,
+            root_session_id: Some(input.root_session_id),
+            name: Some(input.resident_name),
+        })?
+    {
+        let expected_agent_type = record
+            .configured_agent_type
+            .as_deref()
+            .unwrap_or(record.role.as_str());
+        let _ =
+            super::agent_session_registry_bootstrap::binding::maybe_bind_verified_canonical_target(
+                registry,
+                Some(&record),
+                true,
+                Some(input.canonical_target),
+                expected_agent_type,
+                record.model.as_deref(),
+                record.model.as_deref(),
+            )?;
+    }
+    Ok(())
 }
 
 fn observation_path(
@@ -366,3 +700,7 @@ fn unix_timestamp() -> Result<i64, String> {
         .map(|duration| duration.as_secs() as i64)
         .map_err(|error| format!("system clock precedes unix epoch: {error}"))
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_host_capability.rs"]
+mod agent_session_registry_host_capability_tests;

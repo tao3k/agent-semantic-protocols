@@ -1,11 +1,16 @@
 [package]
 name = "agent-semantic-client-db"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 description = "Turso-backed DB Engine for the agent semantic client cache."
 license = "MIT"
 
+[features]
+default = []
+turso-sync-server-e2e = []
+
 [dependencies]
+agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 serde = { workspace = true, features = ["derive"] }
@@ -13,14 +18,47 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 fs2 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
-turso = { workspace = true }
-turso_sdk_kit = "=0.7.0-pre.18"
+turso.workspace = true
+turso_sdk_kit.workspace = true
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
 which = { workspace = true }
 
 [[bench]]
 name = "turso_cache_hot_path"
 harness = false
+
+[[bench]]
+name = "turso_mvcc_concurrent_write"
+harness = false
+
+[[bench]]
+name = "artifact_pointer_cas"
+harness = false
+
+[[bench]]
+name = "turso_sync_local"
+harness = false
+
+[[bench]]
+name = "schema_v1_lifecycle"
+harness = false
+
+[[bench]]
+name = "turso_cdc_profile"
+harness = false
+
+[[bench]]
+name = "turso_encryption_profile"
+harness = false
+
+[[bench]]
+name = "turso_storage_slo_matrix"
+harness = false
+
+[[bench]]
+name = "turso_sync_server_e2e"
+harness = false
+required-features = ["turso-sync-server-e2e"]
 
 
 [dev-dependencies]
@@ -30,3 +68,6 @@ tokio = { workspace = true }
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
+[[bench]]
+name = "turso_source_index"
+harness = false

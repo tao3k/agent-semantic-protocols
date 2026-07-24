@@ -107,6 +107,18 @@ This lets an agent ask "which owner evidence justified this edit?" and get a
 compact root reference that can be re-expanded only when needed.
 
 ** Turso Queryable Provenance
+Turso source-index rows are disposable projections, never source authority. Read-only
+lookup MUST NOT bootstrap, migrate, or repair their schema. A present but non-canonical
+source-index namespace returns =cold-required=; an absent namespace returns
+=empty-index=. An explicit refresh holding both the complete source-index import and its
+=SourceSnapshotEvidence= MAY discard the non-canonical source-index namespace and
+rebuild it wholesale. It MUST NOT preserve or incrementally migrate legacy layouts.
+
+The canonical source-index artifact digest belongs to lookup evidence/results, not to a
+refresh report. It is derived from =SourceSnapshotEvidence= with artifact kind
+=source-index=, schema id =asp.source-index-artifact.v1=, the snapshot root, the provider
+digest, and canonical parameters.
+
 
 Turso integration should not reverse the ownership of state layout. State Core
 owns paths and workspace identity; DB Engine owns durable rows; the artifact
@@ -122,6 +134,11 @@ This is the difference between "hash archives exist" and "the agent can route
 through provenance in fewer turns".
 
 ** Dynamic Overlay Without Durable Churn
+Exact owner and item selectors MUST resolve against the active workspace snapshot and
+its dirty overlay. A durable source-index artifact MAY rank or narrow candidates only
+when its derived-artifact identity matches that snapshot. Missing, stale, or unavailable
+DB state is a cache miss and MUST NOT by itself produce =item-not-found=.
+
 
 Dynamic code search is high-churn and should not become a durable DB write on
 every edit. The Merkle design therefore treats overlay roots as workspace and
@@ -511,6 +528,16 @@ different workspaces or sessions from being accidentally treated as equivalent
 when their payload happens to match.
 
 * Identity Rules
+=SourceSnapshotEvidence= is the canonical root-of-record for every source-derived
+artifact. Generations, source indexes, graph projections, and parser artifacts derive
+their identities from it; none may establish an independent source generation.
+
+The Rust parser CAS contract remains =asp.rust.parse-artifact.v1=. Version 1 MUST use
+canonical structural item kinds and snapshot/provider-bound keys. Legacy item-kind aliases
+or generation-only keys are cache misses, not compatibility inputs. The schema identifier
+MUST NOT advance merely to accommodate implementation churn; version 1 is stabilized by
+completing its invariants and conformance matrix first.
+
 
 Merkle identity must include:
 

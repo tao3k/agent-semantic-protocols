@@ -99,7 +99,7 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
     );
     assert!(
         list_stdout.contains(
-            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"cheap-code-model\" status=\"active\""
+            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"\" status=\"active\""
         ),
         "{list_stdout}"
     );
@@ -125,7 +125,7 @@ fn asp_agent_session_registers_named_root_and_subagent_sessions() {
     let show_stdout = String::from_utf8(show.stdout).expect("session show stdout");
     assert!(
         show_stdout.contains(
-            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"cheap-code-model\" status=\"active\""
+            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"search,subagent\" model=\"\" status=\"active\""
         ),
         "{show_stdout}"
     );
@@ -420,6 +420,134 @@ fn asp_agent_session_reuse_adopts_existing_codex_asp_child_from_root_rollout() {
     assert!(
         second_stdout.contains("messageTargetStatus=\"missing\""),
         "{second_stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_agent_session_bootstrap_followup_ack_reports_same_child_identity() {
+    let root = temp_project_root("agent-command-session-bootstrap-followup-ack-same-child");
+    let home = root.join("home");
+    std::fs::create_dir_all(&home).expect("create temp home");
+    let state_root = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("agent");
+    let root_session_id = "same-child-root-thread";
+    let child_session_id = "same-child-asp-explorer";
+    write_codex_asp_explorer_fixture(
+        &home,
+        root_session_id,
+        child_session_id,
+        "gpt-5.4-mini",
+        "read-only",
+    );
+
+    let register = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("CODEX_THREAD_ID", root_session_id)
+        .env_remove("CLAUDE_CODE_SESSION_ID")
+        .env_remove("CLAUDE_CODE_REMOTE_SESSION_ID")
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--state-root",
+            state_root.to_str().unwrap(),
+            "--name",
+            "asp-explore",
+            "--child-session-id",
+            child_session_id,
+            "--root-session-id",
+            root_session_id,
+            "--parent-session-id",
+            root_session_id,
+            "--roles",
+            "search",
+            "--model",
+            "gpt-5.4-mini",
+        ])
+        .output()
+        .expect("register asp explorer child");
+    assert!(
+        register.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&register.stderr)
+    );
+
+    let ack = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("CODEX_THREAD_ID", root_session_id)
+        .args([
+            "agent",
+            "session",
+            "observe-host-ack",
+            "--state-root",
+            state_root.to_str().unwrap(),
+            "--name",
+            "asp-explore",
+            "--canonical-target",
+            "/root/asp_explorer",
+            "--evidence-ref",
+            "same-child-followup-ack-test",
+        ])
+        .output()
+        .expect("observe host ack");
+    assert!(
+        ack.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&ack.stderr)
+    );
+
+    let bootstrap = asp_command(&root)
+        .env("HOME", &home)
+        .env("CODEX_HOME", home.join(".codex"))
+        .env("CODEX_THREAD_ID", root_session_id)
+        .args([
+            "agent",
+            "session",
+            "bootstrap",
+            "--state-root",
+            state_root.to_str().unwrap(),
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            root_session_id,
+            "--json",
+        ])
+        .output()
+        .expect("bootstrap resident session");
+    assert!(
+        bootstrap.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&bootstrap.stderr)
+    );
+    let stdout = String::from_utf8(bootstrap.stdout).expect("bootstrap stdout");
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("bootstrap json");
+
+    assert_eq!(json["state"].as_str(), Some("Ready"), "{stdout}");
+    assert_eq!(
+        json["hostControlDirective"]["intent"].as_str(),
+        Some("same-child-followup-ack-rebind"),
+        "{stdout}"
+    );
+    assert_eq!(
+        json["hostControlDirective"]["createPolicy"].as_str(),
+        Some("not-created"),
+        "{stdout}"
+    );
+    assert_eq!(
+        json["hostLifecycleObservation"]["sameChildIdentity"].as_bool(),
+        Some(true),
+        "{stdout}"
+    );
+    assert_eq!(
+        json["hostLifecycleObservation"]["typedReplacementVerified"].as_bool(),
+        Some(false),
+        "{stdout}"
     );
 
     let _ = std::fs::remove_dir_all(root);

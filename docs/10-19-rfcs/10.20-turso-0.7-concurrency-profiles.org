@@ -1,0 +1,99 @@
+#+title: Turso 0.7 Concurrency Profiles
+#+startup: overview
+
+* Status
+
+Implemented for =agent-semantic-client-db= with profile-specific receipts and
+crate-local concurrency tests. Performance ordering remains scenario-specific.
+
+* Source Decision
+
+This record adapts the workload-specific profile policy from Marlin RFC
+=40.160-turso-agent-storage-engine.org= to ASP. It does not copy Marlin's
+storage ownership or expose a global "fastest" database mode.
+
+Turso 0.7 establishes two hard runtime constraints that ASP verifies rather
+than hiding behind feature flags:
+
+- =journal_mode=mvcc= cannot be combined with experimental multiprocess WAL.
+- MVCC cannot host the custom index modules used by the current FTS search
+  schema.
+
+Therefore the existing unified =client.turso= authority MUST remain the
+multiprocess-safe FTS profile. Append-heavy MVCC state MUST use an independent
+database authority.
+
+* Multiprocess FTS Profile
+
+The existing client/search database keeps:
+
+- experimental multiprocess WAL
+- the cross-process operation lock for write serialization
+- FTS custom index support
+- bounded lock retry and busy timeout
+
+ASP optimizes this profile without changing its semantics by retaining the
+=Database= authority and four long-lived connection lanes. Each lane has an
+async mutex, so connection reuse and prepared statement caches are bounded and
+transactions cannot overlap on the same connection. Search-document batches
+use one =BEGIN IMMEDIATE= transaction and roll back explicitly on prepare,
+write, or commit failure.
+
+* Append MVCC Profile
+
+=TursoMvccStore= owns a separate, FTS-free, single-process database authority.
+Its public contract is:
+
+- =journal_mode=mvcc= is enabled and read back during open
+- multiprocess WAL and custom index methods are disabled
+- four independent long-lived connection lanes are the default
+- four stable physical event-table shards remove the single hot B-tree; a
+  partition hashes to the same shard and connection lane
+- each lane owns a =prepare_cached= statement cache and async mutex backpressure; append batches use parameterized multi-row inserts capped at 32 rows per statement, so a 128-row batch crosses four statement-execution boundaries rather than 128
+- each batch uses =BEGIN CONCURRENT= and whole-batch rollback
+- an atomic batch contains exactly one partition
+- busy, lock, snapshot, and conflict failures retry the complete transaction
+- stable =(partition_key, event_id)= identity rejects duplicate writes
+
+The store emits =asp.turso-mvcc-optimization-receipt.v1= and
+=asp.turso-mvcc-batch-write-receipt.v1=. The optimization receipt exposes
+=insertRowsPerStatement=32= so batching is contract-visible rather than a
+hidden tuning heuristic. The schemas live under =schemas/=.
+
+* Acceptance
+
+Fast acceptance MUST prove:
+
+1. the existing multiprocess open/write/read pressure tests still pass;
+2. four concurrent MVCC batches persist all rows under the typed receipt and a
+   reopened store reads the same ordered rows;
+3. a duplicate identity rolls back the entire batch;
+4. the release benchmark compares one lane and four lanes using the same
+   sustained =4 x 512= append workload.
+
+Benchmark results are evidence for that named append scenario only. They MUST
+NOT be used to move the FTS or multiprocess database into MVCC mode.
+
+* 2026-07-20 Verification Receipt
+
+- The typed four-lane scenario persisted four concurrent 64-event batches and
+  reproduced all 256 ordered records.
+- The duplicate-identity scenario rejected a two-row batch after its first row
+  was attempted and proved that only the pre-existing row remained.
+- Existing multiprocess bootstrap, artifact-event, cache-status, and
+  source-index pressure tests remained green under the FTS profile.
+- Release Criterion, four writers with 32 events each: one lane point estimate
+  =2.5397 ms=; four lanes =3.7316 ms=. This short batch favors one lane.
+- Release Criterion confirmation, four writers with 128 events each: one lane
+  =11.895 ms= with interval =[10.247, 13.362] ms=; four lanes =9.7982 ms=
+  with interval =[8.4359, 11.415] ms=. The four-lane point estimate is about
+  =17.6%= lower, but the intervals overlap, so this is directional throughput
+  evidence rather than a universal or statistically separated win.
+- Release Criterion sustained confirmation after landing 32-row parameterized
+  inserts, four writers with 512 events each: one lane =42.675 ms= with interval
+  =[37.700, 48.079] ms= and =47.990 Kelem/s=; four lanes =33.127 ms= with
+  interval =[26.799, 40.070] ms= and =61.822 Kelem/s=. The four-lane point
+  estimate is about =22.4%= lower in time and =28.8%= higher in throughput, but
+  the intervals overlap and severe high outliers remain. Criterion did not emit
+  a direct between-profile p-value, so this remains evidence for the named
+  append workload rather than a universal profile ordering.

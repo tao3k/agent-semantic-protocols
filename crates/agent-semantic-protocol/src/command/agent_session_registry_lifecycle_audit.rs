@@ -21,8 +21,15 @@ pub(super) fn lifecycle_audit_session(
         }
     };
     registry.refresh_expired_sessions()?;
-    let sessions =
-        registry.query_sessions(&project_id, root_filter.as_deref(), args.name.as_deref())?;
+    let sessions = registry.query_sessions(
+        project_id.as_str(),
+        root_filter
+            .as_deref()
+            .map(agent_semantic_client_db::AgentSessionRootSessionId::from),
+        args.name
+            .as_deref()
+            .map(agent_semantic_client_db::AgentSessionResidentName::from),
+    )?;
     let (rollout_session_index, rollout_index_error) = match root_filter.as_deref() {
         Some(root_session_id) if !sessions.is_empty() => {
             let session_ids = sessions.iter().map(|session| session.session_id.as_str());
@@ -177,7 +184,6 @@ pub(super) fn lifecycle_audit_report(
 
     let missing_registered_rollout_sessions: Vec<serde_json::Value> = sessions
         .iter()
-        .filter(|session| session.status != "archived")
         .filter(|session| !rollout_session_ids.contains(&session.session_id))
         .map(lifecycle_registry_session_entry)
         .collect();

@@ -1,0 +1,53 @@
+#+title: Exact Source Wrapper Snapshot Envelope
+#+filetags: :asp:search:snapshot:exact-selector:v1:
+
+* Status
+
+In implementation.
+
+* Decision
+
+The ASP wrapper is the sole authority for workspace content identity.  Before
+invoking a language provider for an exact source query, ASP captures one
+=WorkspaceSnapshot=, publishes the captured owner bytes to the ASP-owned
+content-addressed store, and passes an
+=asp.exact-source-snapshot-envelope.v1= manifest to the provider.
+
+Language providers MUST NOT rescan the workspace or calculate a workspace
+Merkle root.  They consume only the root, normalized owner namespace, blob
+digests, and CAS handle supplied by the wrapper.  Provider parsing and stale
+selector relocation operate over those pinned bytes.
+
+* V1 invariants
+
+- =sourceSnapshot.rootDigest= is calculated exactly once by the ASP wrapper.
+- Every envelope owner path is committed by that root and maps to one CAS blob.
+- Exact code rendering and item discovery consume the same parser-owned facts.
+- A provider cache hit is valid only for the envelope root, owner blob digest,
+  provider digest, and =asp.rust.parse-artifact.v1= key.
+- Missing owner, missing item, kind mismatch, ambiguity, parser failure, and
+  source unavailability remain distinct v1 states.
+- The durable index contains only the depth-zero workspace projection.  Exact
+  item parsing and relocation are dynamic, root-bound operations.
+- No =v2= contract or legacy filesystem fallback is permitted.
+
+* Flow
+
+#+begin_src text
+asp rust query
+  -> ASP captures WorkspaceSnapshot and owner bytes once
+  -> ASP publishes bytes to source CAS
+  -> ASP writes exact-source-snapshot-envelope.v1
+  -> Rust provider reads only envelope-owned CAS blobs
+  -> parser resolves requested owner/item
+  -> parser relocates inside the same root when the old owner moved
+  -> ASP/provider returns typed v1 resolution evidence
+#+end_src
+
+* Failure policy
+
+If snapshot capture or CAS publication fails, ASP does not invoke the provider.
+If an envelope blob is missing, the provider returns =source-unavailable=.  An
+owner absent from the envelope returns =owner-missing=; an owner that parses but
+lacks the item returns =item-missing=.  None of these states may be rendered as
+the generic phrase =did not resolve under workspace=.

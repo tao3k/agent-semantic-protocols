@@ -65,7 +65,23 @@ fn run_contract_capture(args: &[String]) -> Result<(), String> {
 pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, String> {
     let paths = project_state_paths(project_root)?;
     let state_root = paths.protocol_home.join("org");
-    let sync = sync_default_org_state(&state_root)?;
+    let mut sync = sync_default_org_state(&state_root)?;
+    if matches!(sync.status, "updated" | "cloned") {
+        match agent_semantic_client::refresh_source_index(&state_root) {
+            Ok(Some(report)) => {
+                sync.source_index_status = if report.reused_generation() {
+                    "reused".to_string()
+                } else {
+                    "refreshed".to_string()
+                };
+                sync.source_index_generation = Some(report.generation_id().to_string());
+            }
+            Ok(None) => sync.source_index_status = "cold-required".to_string(),
+            Err(_) => sync.source_index_status = "deferred".to_string(),
+        }
+    } else {
+        sync.source_index_status = "skipped-dirty".to_string();
+    }
     let artifacts_root = paths.artifacts_dir.join("org");
     ensure_flow_dirs(&artifacts_root)?;
     Ok(sync)
@@ -79,6 +95,8 @@ pub(crate) fn org_artifacts_root_for_project(project_root: &Path) -> Result<Path
 pub(crate) struct OrgStateSync {
     pub(crate) source: String,
     pub(crate) status: &'static str,
+    pub(crate) source_index_status: String,
+    pub(crate) source_index_generation: Option<String>,
 }
 
 fn sync_default_org_state(state_root: &Path) -> Result<OrgStateSync, String> {
@@ -104,6 +122,8 @@ fn sync_org_state_repo(state_root: &Path, repo_url: &str) -> Result<OrgStateSync
             return Ok(OrgStateSync {
                 source: repo_url.to_string(),
                 status: "dirty-skipped",
+                source_index_status: "pending".to_string(),
+                source_index_generation: None,
             });
         }
         run_git(&["pull", "--ff-only"], Some(state_root))?;
@@ -111,6 +131,8 @@ fn sync_org_state_repo(state_root: &Path, repo_url: &str) -> Result<OrgStateSync
         return Ok(OrgStateSync {
             source: repo_url.to_string(),
             status: "updated",
+            source_index_status: "pending".to_string(),
+            source_index_generation: None,
         });
     }
 
@@ -131,6 +153,8 @@ fn sync_org_state_repo(state_root: &Path, repo_url: &str) -> Result<OrgStateSync
     Ok(OrgStateSync {
         source: repo_url.to_string(),
         status: "cloned",
+        source_index_status: "pending".to_string(),
+        source_index_generation: None,
     })
 }
 

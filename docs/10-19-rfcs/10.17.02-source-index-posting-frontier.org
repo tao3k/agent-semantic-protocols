@@ -1,0 +1,67 @@
+#+title: Source-index posting frontier and millisecond refresh contract
+#+startup: overview
+
+* Status
+
+Implemented as an amendment to =10.17.01-incremental-source-index-generation.org=.
+
+* Problem
+
+The source-index refresh path expanded every lexical term into a posting and
+materialized the projection through host-side packets.  On a representative
+1,278-owner workspace this produced 61,026 candidate terms, 39,091 bounded
+postings, repeated database round trips, and a 30-second budget failure.
+
+Increasing that budget is forbidden.  Search and cache control paths must fail
+inside their existing deadline when they cannot meet the millisecond contract.
+
+* Posting frontier
+
+Each owner persists at most 16 ranked posting terms.  Ranking order is:
+
+1. owner query keys;
+2. selector symbols and selector query keys;
+3. owner path, language, provider, and source kind;
+4. selector identity, kind, and bounded source terms.
+
+Terms are deduplicated before truncation.  Full selector facts remain in the
+canonical owner row; the frontier bounds only the lookup posting projection.
+
+* Relational projection
+
+Canonical owner rows own the bounded term frontier.  The client groups those
+already-bounded terms by token, retains the deterministic owner window, and
+encodes the complete posting set once.  One relational =INSERT ... SELECT=
+expands that JSON value through =json_each= and writes the projection in the
+active transaction.  There are no per-packet database round trips and no SQL
+window sort over the posting relation.
+
+Removal-only generations materialize retained owners into the new immutable
+generation.  Removed owners may enter the changed-membership frontier, but the
+generation-qualified owner join contributes no posting rows for them.
+
+* Receipt semantics
+
+Turso mutation counters are storage counters, not logical row counters.  They
+may be connection-cumulative and may count composite-primary-key index writes.
+They must not populate =posting_write_count=.  After the single bulk insert
+succeeds, that receipt is the cardinality of the deduplicated, bounded input
+posting set; it does not require a second table scan.
+
+Lifecycle code that only needs to know whether a statement mutated storage may
+use a before/after =total_changes()= signal.  Source-index receipts must query
+the owning posting table for the logical, generation-qualified rows written for
+the changed-membership frontier.
+
+* Performance gates
+
+- A 1,193-owner cold write remains below one second in release mode.
+- A 1,278-owner, 32-unique-query-term-per-owner cold write remains below one
+  second in release mode.
+- The 1,278-owner fixture writes no more than 20,448 logical postings.
+- No acceptance change may increase the source-index timeout or the transport
+  deadline to make either gate pass.
+
+Compile and link time are outside the measured interval.  The gate measures
+only =refresh_source_index_import_from_client_dir= from invocation through the
+committed source-index receipt.

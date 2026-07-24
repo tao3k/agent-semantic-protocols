@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use agent_semantic_provider_transport::byte_text;
 use serde_json::{Value, json};
 
-use super::graph::render_graph_turbo_packet;
+use super::graph::rank_graph_turbo_packet;
 use super::search_pipe_model::Candidate;
 
 const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
@@ -29,11 +29,21 @@ pub(super) fn render_failure_frontier(
     );
     let packet_bytes = serde_json::to_vec(&packet)
         .map_err(|error| format!("failed to serialize failure graph turbo request: {error}"))?;
-    let output = render_graph_turbo_packet(&packet_bytes)?.ok_or_else(|| {
+    let ranked_packet = rank_graph_turbo_packet(&packet_bytes)?.ok_or_else(|| {
         "search failure requires asp-graph-turbo with failure-frontier support".to_string()
     })?;
-    String::from_utf8(output)
-        .map_err(|error| format!("asp-graph-turbo emitted non-UTF8 output: {error}"))
+    let request = agent_semantic_search_projection::SearchProjectionRequestV1::new(
+        "ranked-frontier",
+        agent_semantic_search_projection::SearchProjectionDensityV1::Terse,
+    );
+    let renderer = agent_semantic_search_projection::RankedFrontierSearchProjectionRenderer;
+    let rendered = agent_semantic_search_projection::SearchProjectionRenderer::render(
+        &renderer,
+        &ranked_packet,
+        &request,
+    )
+    .map_err(|error| format!("failed to render ranked failure frontier: {error}"))?;
+    Ok(rendered.content)
 }
 
 pub(super) fn render_failure_graph_turbo_request(

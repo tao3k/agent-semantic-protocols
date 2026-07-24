@@ -1,0 +1,115 @@
+#+title: Merkle-pinned exact-selector relocation
+#+startup: overview
+
+* Decision
+
+An exact source selector records agent intent, but its owner path is not an
+independent source of truth.  The pinned =WorkspaceSnapshot= is authoritative.
+When fast coding changes move an item after a selector was produced, exact
+query resolution MUST recover against that snapshot instead of consulting a
+mutable source index or failing only because the requested owner is stale.
+
+This decision stabilizes the existing =exact-source-query-result.v1= packet and
+=asp.rust.parse-artifact.v1=.  It does not introduce a new packet or parser
+artifact version.
+
+* Resolution contract
+
+The provider MUST pin the filesystem or editor-buffer snapshot before it
+resolves the selector.  All owner bytes, BLAKE3 digests, parser artifacts, and
+relocation candidates MUST come from that one snapshot.
+
+Resolution proceeds in this order:
+
+1. Normalize the selector namespace inside the pinned snapshot.
+2. Probe the requested owner and its Rust module children for an exact
+   =(item-kind, item-name)= match.
+3. If that probe misses or the requested owner is absent, scan the pinned
+   snapshot's Rust owners for the same exact identity.  Reuse
+   =asp.rust.parse-artifact.v1= by owner blob digest; parse and publish only
+   missing artifacts.
+4. A single candidate is a relocated hit.  The packet preserves the requested
+   selector and owner while =resolvedOwnerPath= and resolution evidence identify
+   the canonical live owner.
+5. Multiple exact candidates are =item-relocation-ambiguous=.  Candidates are
+   deterministically ordered and the provider MUST NOT choose one silently.
+6. If no exact-kind candidate exists but the name exists under other kinds,
+   return =item-kind-mismatch= with the observed kinds.
+7. If neither exact nor other-kind candidates exist, return
+   =item-not-in-snapshot=.
+
+Requested-owner absence is relocation input, not a terminal DB/index failure.
+Namespace ambiguity remains terminal because the requested namespace itself is
+not uniquely defined.
+
+* Evidence states
+
+Exact live and warm-CAS hits keep =live-hit= and =artifact-cache-hit=.
+Relocated hits use =live-relocated= and =artifact-cache-relocated=.  Failure
+states are =item-relocation-ambiguous=, =item-kind-mismatch=, and
+=item-not-in-snapshot=.
+
+For every successful relocation:
+
+- the outer packet's =selector= and requested =ownerPath= remain unchanged;
+- =resolvedOwnerPath= is the canonical owner in the pinned snapshot;
+- =sourceSnapshot.rootDigest= binds the result to the Merkle root;
+- =ownerBlobDigest= binds the resolved owner bytes;
+- =parserArtifactDigest= binds the stable v1 parse artifact;
+- =indexArtifactDigest= remains optional and MUST NOT be required for
+  correctness.
+
+* Accelerator boundary
+
+Turso/source-index state is a snapshot-bound accelerator only.  Exact hits,
+relocations, ambiguity, kind mismatch, and absence MUST remain decidable when
+the DB is empty, corrupt, invalidated, or unavailable.  A DB failure MUST NOT
+replace snapshot/parser evidence with =owner-not-found= or =item-not-found=.
+
+The fallback scan is failure-path work, not a steady-state full reparse.  It
+walks the already pinned Merkle owner map and uses content-addressed parser
+artifacts.  Content edits, deletes, renames, source overlays, and provider
+implementation changes naturally invalidate the relevant artifact keys.
+
+* Acceptance matrix
+
+- stale owner plus one exact candidate returns relocated code and evidence;
+- stale owner plus two exact candidates returns deterministic ambiguity;
+- same name under a different kind returns kind mismatch;
+- absent name returns item-not-in-snapshot;
+- editor overlay move resolves against overlay bytes and overlay Merkle root;
+- corrupt or empty Turso DB does not change any result above;
+- cold resolution publishes v1 parser artifacts and the next identical query
+  returns an artifact-cache relocation hit;
+- the historical =AgentOptions= selector resolves from
+  =src/cli/runner/mod.rs= to its canonical live owner after the source move.
+
+* Workspace provider installation is a correctness boundary
+
+=asp install language ... --from-workspace= MUST materialize the provider from
+the current workspace.  Copying or linking a pre-existing build artifact is
+not an installation implementation because the artifact can precede the
+source snapshot that the query packet reports.
+
+Each workspace-capable pinned provider release MUST therefore declare a
+non-shell build recipe as an executable, ordered argv, project-relative working
+directory, and explicit environment.  The installer MUST:
+
+1. hash the canonical build recipe into the provider digest;
+2. capture a BLAKE3 Merkle workspace snapshot before the build;
+3. execute the recipe without a command shell;
+4. capture the workspace snapshot again and reject installation if its root or
+   leaf count changed during the build;
+5. require the configured artifact to have been materialized;
+6. bind the installed artifact digest, SHA-256, recipe digest, provider digest,
+   and source snapshot root into =asp.provider-install-lock.v1=.
+
+Each recipe MUST declare its project-relative derived paths.  Those paths and
+the configured workspace artifact are derived state and MUST NOT become source
+leaves.  Any other leaf drift aborts installation and reports the Merkle roots
+plus deterministic =changedPaths= evidence.  The installed provider is
+acceptable only when its receipt identifies the same immutable source root
+from which it was built.
+Workspace installation always copies the attested artifact; symlink modes are
+forbidden because they allow the installed bytes to drift after lock creation.
+This deployment boundary does not change =asp.rust.parse-artifact.v1=.

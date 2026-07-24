@@ -2,9 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use agent_semantic_search::{
-    IngestSearchCandidate, QueryWrapperCandidate, SearchOverlayCandidate, SearchPipeCandidate,
-};
+use agent_semantic_search::{IngestSearchCandidate, SearchOverlayCandidate, SearchPipeCandidate};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -42,21 +40,6 @@ impl From<SearchPipeCandidate> for Candidate {
             end_line: candidate.end_line,
             symbol: candidate.symbol,
             selector: None,
-            text: candidate.text,
-            source: candidate.source,
-            confidence: candidate.confidence,
-        }
-    }
-}
-
-impl From<QueryWrapperCandidate> for Candidate {
-    fn from(candidate: QueryWrapperCandidate) -> Self {
-        Self {
-            path: candidate.path,
-            line: candidate.line,
-            end_line: candidate.end_line,
-            symbol: candidate.symbol,
-            selector: candidate.selector,
             text: candidate.text,
             source: candidate.source,
             confidence: candidate.confidence,

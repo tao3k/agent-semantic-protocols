@@ -1,5 +1,6 @@
 //! Runtime healthcheck for project-local ASP state.
 
+use super::hook_runtime::active_codex_plugin_skill_path;
 use super::protocol_binary::protocol_binary_on_path;
 use agent_semantic_config::{PRJ_CACHE_HOME_ENV, ProjectRuntimeLayout, project_runtime_layout};
 use agent_semantic_hook::{
@@ -18,17 +19,15 @@ const HEALTHCHECK_PROTOCOL_VERSION: &str = "1";
 pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let options = HealthcheckOptions::parse(args)?;
     let layout = project_runtime_layout(&options.project_root);
-    let activation = check_activation(layout.activation_path.as_deref());
-    let activation_runtime = check_activation_runtime(
-        layout.activation_path.as_deref(),
-        layout
-            .git_toplevel
-            .as_deref()
-            .unwrap_or(&options.project_root),
-    );
-    let binary = check_binary();
+    let context = agent_semantic_client_core::ProjectContext::resolve(&options.project_root)?;
+    let project_state_paths = agent_semantic_runtime::project_state_paths(context.cwd())?;
+    let activation_path = project_state_paths.activation_path;
+    let (activation, activation_runtime) =
+        check_activation_and_runtime(Some(&activation_path), context.cwd());
+    let binary = check_binary(&activation_path);
+    let skill = check_skill(&options.project_root);
 
-    let mut issues = collect_layout_issues(&layout);
+    let mut issues = collect_layout_issues(&layout, &skill);
     collect_read_issue(
         &mut issues,
         "missing-activation",
@@ -45,18 +44,22 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         print_json(
             status,
             &layout,
+            &activation_path,
             &activation,
             &activation_runtime,
             &binary,
+            &skill,
             &issues,
         )?;
     } else {
         print_compact(
             status,
             &layout,
+            &activation_path,
             &activation,
             &activation_runtime,
             &binary,
+            &skill,
             &issues,
         );
     }
@@ -110,6 +113,15 @@ struct HealthIssue {
     message: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillHealthReceipt {
+    authority: &'static str,
+    path: Option<PathBuf>,
+    status: &'static str,
+    error: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 struct ActivationCheck {
     status: &'static str,
@@ -130,6 +142,10 @@ struct BinaryCheck {
     current_asp: Option<PathBuf>,
     path_asp: Option<PathBuf>,
     status: &'static str,
+    receipt_path: Option<PathBuf>,
+    artifact_root_digest: Option<String>,
+    binary_artifact_digest: Option<String>,
+    error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -138,87 +154,119 @@ enum FsKind {
     File,
 }
 
-fn check_activation(path: Option<&Path>) -> ActivationCheck {
+fn check_activation_and_runtime(
+    path: Option<&Path>,
+    project_root: &Path,
+) -> (ActivationCheck, ActivationRuntimeCheck) {
     let Some(path) = path else {
-        return ActivationCheck {
-            status: "unresolved",
-            provider_count: None,
-            error: None,
-        };
+        return (
+            ActivationCheck {
+                status: "unresolved",
+                provider_count: None,
+                error: None,
+            },
+            ActivationRuntimeCheck {
+                status: "unresolved",
+                provider_count: None,
+                error: None,
+                profiles: None,
+            },
+        );
     };
     if !path.is_file() {
-        return ActivationCheck {
-            status: "missing",
-            provider_count: None,
-            error: None,
-        };
+        return (
+            ActivationCheck {
+                status: "missing",
+                provider_count: None,
+                error: None,
+            },
+            ActivationRuntimeCheck {
+                status: "missing",
+                provider_count: None,
+                error: None,
+                profiles: None,
+            },
+        );
     }
     match load_activation(path) {
-        Ok(runtime) => ActivationCheck {
-            status: "ok",
-            provider_count: Some(runtime.providers.len()),
-            error: None,
-        },
-        Err(error) => ActivationCheck {
-            status: "invalid",
-            provider_count: None,
-            error: Some(error),
-        },
+        Ok(runtime) => {
+            let provider_count = runtime.providers.len();
+            let profiles = runtime_profiles_for_runtime(project_root, &runtime);
+            (
+                ActivationCheck {
+                    status: "ok",
+                    provider_count: Some(provider_count),
+                    error: None,
+                },
+                ActivationRuntimeCheck {
+                    status: "ok",
+                    provider_count: Some(profiles.providers.len()),
+                    error: None,
+                    profiles: Some(profiles),
+                },
+            )
+        }
+        Err(error) => (
+            ActivationCheck {
+                status: "invalid",
+                provider_count: None,
+                error: Some(error.clone()),
+            },
+            ActivationRuntimeCheck {
+                status: "invalid",
+                provider_count: None,
+                error: Some(error),
+                profiles: None,
+            },
+        ),
     }
 }
 
-fn check_activation_runtime(path: Option<&Path>, project_root: &Path) -> ActivationRuntimeCheck {
-    let Some(path) = path else {
-        return ActivationRuntimeCheck {
-            status: "unresolved",
-            provider_count: None,
-            error: None,
-            profiles: None,
-        };
-    };
-    if !path.is_file() {
-        return ActivationRuntimeCheck {
-            status: "missing",
-            provider_count: None,
-            error: None,
-            profiles: None,
-        };
-    }
-    match load_activation(path).map(|runtime| runtime_profiles_for_runtime(project_root, &runtime))
-    {
-        Ok(profiles) => ActivationRuntimeCheck {
-            status: "ok",
-            provider_count: Some(profiles.providers.len()),
-            error: None,
-            profiles: Some(profiles),
-        },
-        Err(error) => ActivationRuntimeCheck {
-            status: "invalid",
-            provider_count: None,
-            error: Some(error),
-            profiles: None,
-        },
-    }
-}
-
-fn check_binary() -> BinaryCheck {
+fn check_binary(activation_path: &Path) -> BinaryCheck {
     let current_asp = env::current_exe().ok();
     let path_asp = protocol_binary_on_path();
-    let status = match (&current_asp, &path_asp) {
-        (Some(current), Some(on_path)) if same_path(current, on_path) => "ok",
-        (Some(_), Some(_)) => "mismatch",
-        (Some(_), None) => "path-missing",
-        (None, Some(_)) => "current-missing",
-        (None, None) => "missing",
-    };
+    let receipt_path = agent_semantic_hook::active_asp_artifact_receipt_path(activation_path).ok();
+    let (status, artifact_root_digest, binary_artifact_digest, error) =
+        match (&current_asp, &path_asp) {
+            (Some(current), Some(on_path)) => {
+                match agent_semantic_hook::verify_active_asp_artifact_receipt(
+                    activation_path,
+                    &[current, on_path],
+                ) {
+                    Ok(receipt) => (
+                        "ok",
+                        Some(receipt.artifact_root_digest.as_str().to_string()),
+                        Some(
+                            receipt
+                                .asp_binary_leaf()
+                                .artifact_digest
+                                .as_str()
+                                .to_string(),
+                        ),
+                        None,
+                    ),
+                    Err(error) => ("artifact-degraded", None, None, Some(error)),
+                }
+            }
+            (Some(_), None) => ("path-missing", None, None, None),
+            (None, Some(_)) => ("current-missing", None, None, None),
+            (None, None) => ("missing", None, None, None),
+        };
     BinaryCheck {
         current_asp,
         path_asp,
         status,
+        receipt_path,
+        artifact_root_digest,
+        binary_artifact_digest,
+        error,
     }
 }
 
-fn collect_layout_issues(layout: &ProjectRuntimeLayout) -> Vec<HealthIssue> {
+fn collect_layout_issues(
+    layout: &ProjectRuntimeLayout,
+    skill: &SkillHealthReceipt,
+) -> Vec<HealthIssue> {
     let mut issues = Vec::new();
     if layout.git_toplevel.is_none() {
         issues.push(error(
@@ -241,13 +289,41 @@ fn collect_layout_issues(layout: &ProjectRuntimeLayout) -> Vec<HealthIssue> {
         "git toplevel .agents directory is missing",
         fs_status(layout.agents_dir.as_deref(), FsKind::Dir),
     );
-    collect_file_issue(
-        &mut issues,
-        "missing-agent-skill",
-        "git toplevel agent-semantic-protocols skill is missing",
-        fs_status(layout.agent_skill_path.as_deref(), FsKind::File),
-    );
+    match skill.status {
+        "ok" => {}
+        "missing" => issues.push(error(
+            "missing-agent-skill",
+            "active plugin-installed agent-semantic-protocols skill is missing".to_owned(),
+        )),
+        _ => issues.push(error(
+            "invalid-agent-skill",
+            skill
+                .error
+                .clone()
+                .unwrap_or_else(|| "failed to resolve active plugin-installed skill".to_owned()),
+        )),
+    }
     issues
+}
+
+fn check_skill(project_root: &Path) -> SkillHealthReceipt {
+    match active_codex_plugin_skill_path(project_root) {
+        Ok(path) => {
+            let status = fs_status(path.as_deref(), FsKind::File);
+            SkillHealthReceipt {
+                authority: "plugin-installed",
+                path,
+                status,
+                error: None,
+            }
+        }
+        Err(error) => SkillHealthReceipt {
+            authority: "plugin-installed",
+            path: None,
+            status: "invalid",
+            error: Some(error.to_string()),
+        },
+    }
 }
 
 fn collect_file_issue(
@@ -291,9 +367,12 @@ fn collect_read_issue(
 fn collect_binary_issue(issues: &mut Vec<HealthIssue>, binary: &BinaryCheck) {
     match binary.status {
         "ok" => {}
-        "mismatch" => issues.push(warn(
-            "asp-binary-mismatch",
-            "current asp executable differs from asp on PATH".to_string(),
+        "artifact-degraded" => issues.push(warn(
+            "active-asp-artifact-receipt-invalid",
+            binary
+                .error
+                .clone()
+                .unwrap_or_else(|| "active ASP artifact receipt could not be verified".to_string()),
         )),
         _ => issues.push(warn(
             "asp-binary-path-missing",
@@ -337,18 +416,14 @@ fn fs_status(path: Option<&Path>, kind: FsKind) -> &'static str {
     }
 }
 
-fn same_path(left: &Path, right: &Path) -> bool {
-    let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
-    let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
-    left == right
-}
-
 fn print_compact(
     status: &str,
     layout: &ProjectRuntimeLayout,
+    activation_path: &Path,
     activation: &ActivationCheck,
     activation_runtime: &ActivationRuntimeCheck,
     binary: &BinaryCheck,
+    skill: &SkillHealthReceipt,
     issues: &[HealthIssue],
 ) {
     println!(
@@ -373,13 +448,15 @@ fn print_compact(
         fs_status(layout.agents_dir.as_deref(), FsKind::Dir)
     );
     println!(
-        "|path agentsSkill={} status={}",
-        display_opt(layout.agent_skill_path.as_deref()),
-        fs_status(layout.agent_skill_path.as_deref(), FsKind::File)
+        "|skill authority={} path={} status={} error={}",
+        skill.authority,
+        display_opt(skill.path.as_deref()),
+        skill.status,
+        skill.error.as_deref().unwrap_or("none")
     );
     println!(
         "|path activation={} status={} providers={}",
-        display_opt(layout.activation_path.as_deref()),
+        activation_path.display(),
         activation.status,
         display_count(activation.provider_count)
     );
@@ -389,10 +466,14 @@ fn print_compact(
         display_count(activation_runtime.provider_count)
     );
     println!(
-        "|binary currentAsp={} pathAsp={} status={}",
+        "|binary currentAsp={} pathAsp={} status={} activeArtifactReceipt={} artifactRoot={} binaryArtifactDigest={} verification=receipt-metadata subprocesses=0 dbOpens=0 manifestWrites=0 binaryByteReads=0 error={}",
         display_opt(binary.current_asp.as_deref()),
         display_opt(binary.path_asp.as_deref()),
-        binary.status
+        binary.status,
+        display_opt(binary.receipt_path.as_deref()),
+        binary.artifact_root_digest.as_deref().unwrap_or("none"),
+        binary.binary_artifact_digest.as_deref().unwrap_or("none"),
+        binary.error.as_deref().unwrap_or("none")
     );
     if let Some(profiles) = activation_runtime.profiles.as_ref() {
         for provider in &profiles.providers {
@@ -419,9 +500,11 @@ fn print_compact(
 fn print_json(
     status: &str,
     layout: &ProjectRuntimeLayout,
+    activation_path: &Path,
     activation: &ActivationCheck,
     activation_runtime: &ActivationRuntimeCheck,
     binary: &BinaryCheck,
+    skill: &SkillHealthReceipt,
     issues: &[HealthIssue],
 ) -> Result<(), String> {
     let providers = activation_runtime
@@ -460,9 +543,9 @@ fn print_json(
         },
         "paths": {
             "agentsDir": path_report(layout.agents_dir.as_deref(), fs_status(layout.agents_dir.as_deref(), FsKind::Dir), None, None),
-            "agentsSkill": path_report(layout.agent_skill_path.as_deref(), fs_status(layout.agent_skill_path.as_deref(), FsKind::File), None, None),
-            "activation": path_report(layout.activation_path.as_deref(), activation.status, activation.provider_count, activation.error.as_deref()),
+            "activation": path_report(Some(activation_path), activation.status, activation.provider_count, activation.error.as_deref()),
         },
+        "skill": skill,
         "activationRuntime": {
             "status": activation_runtime.status,
             "providerCount": activation_runtime.provider_count,
@@ -472,6 +555,15 @@ fn print_json(
             "currentAsp": path_value(binary.current_asp.as_deref()),
             "pathAsp": path_value(binary.path_asp.as_deref()),
             "status": binary.status,
+            "activeArtifactReceipt": path_value(binary.receipt_path.as_deref()),
+            "artifactRootDigest": binary.artifact_root_digest,
+            "binaryArtifactDigest": binary.binary_artifact_digest,
+            "verification": "receipt-metadata",
+            "subprocessCount": 0,
+            "dbOpenCount": 0,
+            "manifestWriteCount": 0,
+            "binaryByteReadCount": 0,
+            "error": binary.error,
         },
         "providers": providers,
         "issues": issues,

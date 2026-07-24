@@ -17,6 +17,7 @@ const SCENARIO_ROOT: &str = concat!(
 
 #[test]
 fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let scenario = fs::read_to_string(Path::new(SCENARIO_ROOT).join("scenario.toml"))
         .expect("read scenario manifest");
     let benchmark = fs::read_to_string(Path::new(SCENARIO_ROOT).join("benchmark.toml"))
@@ -30,11 +31,8 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
 
     let root = tempfile::tempdir().expect("create scenario root");
     fs::create_dir_all(root.path().join("docs")).expect("create docs");
-    fs::write(
-        root.path().join("docs").join("plan.org"),
-        "* Plan\n\nThe document_auto_overlay_fixture token lives in Org body text.\n",
-    )
-    .expect("write org fixture");
+    let org_source = "* Plan\n\nThe document_auto_overlay_fixture token lives in Org body text.\n";
+    fs::write(root.path().join("docs").join("plan.org"), org_source).expect("write org fixture");
 
     let ignore_dirs = vec!["target".to_string(), "node_modules".to_string()];
     let include_hidden_dirs = Vec::new();
@@ -51,6 +49,8 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
             ignore_dirs: &ignore_dirs,
             include_hidden_dirs: &include_hidden_dirs,
             search_overlay_limit: 16,
+            base_snapshot: &fixture.workspace,
+            provider_digest: fixture.provider_digest.as_str(),
         })
         .expect("collect auto document candidates");
     let elapsed = started_at.elapsed();
@@ -66,6 +66,17 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
     assert_eq!(acquisition.source_trace.len(), 1);
     assert_eq!(acquisition.source_trace[0].source, "search-overlay");
     assert_eq!(acquisition.source_trace[0].status, "used");
+    let source_snapshot = acquisition
+        .source_snapshot
+        .as_ref()
+        .expect("overlay acquisition source snapshot");
+    assert_eq!(source_snapshot.root_digest, fixture.evidence.root_digest);
+    assert_eq!(
+        acquisition.source_trace[0].source_snapshot.as_ref(),
+        Some(source_snapshot)
+    );
+    assert_eq!(acquisition.artifact_digest, None);
+    assert_eq!(acquisition.source_trace[0].artifact_digest, None);
     assert!(
         acquisition.candidates.iter().any(|candidate| {
             candidate.path == "docs/plan.org"
@@ -87,6 +98,8 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
             ignore_dirs: &ignore_dirs,
             include_hidden_dirs: &include_hidden_dirs,
             search_overlay_limit: 16,
+            base_snapshot: &fixture.workspace,
+            provider_digest: fixture.provider_digest.as_str(),
         })
         .expect("collect provider document candidates");
     assert_eq!(
@@ -96,6 +109,59 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
     assert_eq!(
         provider_acquisition.source_trace[0].source,
         "document-element"
+    );
+}
+
+#[test]
+fn document_auto_lexical_overlay_rejects_snapshot_mismatch_before_candidates() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let root = tempfile::tempdir().expect("create scenario root");
+    fs::create_dir_all(root.path().join("docs")).expect("create docs");
+    let org_source = "* Plan\n\nThe document_auto_overlay_fixture token lives in Org body text.\n";
+    fs::write(root.path().join("docs/plan.org"), org_source).expect("write org fixture");
+    let ignore_dirs = vec!["target".to_string(), "node_modules".to_string()];
+    let include_hidden_dirs = Vec::new();
+
+    let receipt = crate::pipe_source::collect_search_pipe_search_overlay_acquisition(
+        crate::pipe_source::SearchPipeSearchOverlayAcquisitionRequest {
+            language_id: DocumentLanguage::Org.id(),
+            project_root: root.path(),
+            locator_root: root.path(),
+            query: "document_auto_overlay_fixture",
+            owners: &[],
+            ignore_dirs: &ignore_dirs,
+            include_hidden_dirs: &include_hidden_dirs,
+            base_snapshot: &fixture.workspace,
+            provider_digest: fixture.provider_digest.as_str(),
+            require_multi_clause: false,
+            limit: 16,
+        },
+    )
+    .expect("collect one overlay acquisition receipt");
+    let actual_root = receipt.base_source_snapshot.root_digest.clone();
+    let finalize_base = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+        "different-base.txt",
+        agent_semantic_content_identity::hash_blob(b"different base").value,
+    )]);
+    let requested_root = finalize_base
+        .evidence(
+            receipt.base_source_snapshot.source_kind,
+            fixture.provider_digest.clone(),
+        )
+        .root_digest;
+    let error =
+        crate::pipe_source_document_acquisition::finalize_search_overlay_source_acquisition(
+            &finalize_base,
+            fixture.provider_digest.as_str(),
+            receipt,
+        )
+        .expect_err("reject stale base snapshot before returning candidates");
+
+    assert_eq!(
+        error,
+        format!(
+            "search overlay source snapshot mismatch: requestedRoot={requested_root} actualRoot={actual_root}; retry against a fresh source snapshot"
+        )
     );
 }
 

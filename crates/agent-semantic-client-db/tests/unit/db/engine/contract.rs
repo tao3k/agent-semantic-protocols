@@ -40,20 +40,24 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(manifest["schemaVersion"], report.schema_version);
     assert_eq!(manifest["durability"], report.durability);
     assert_eq!(manifest["features"]["asyncIo"], true);
-    assert_eq!(manifest["features"]["concurrentWrites"], false);
+    assert_eq!(manifest["features"]["concurrentWrites"], true);
     assert_eq!(manifest["features"]["fts"], true);
     assert_eq!(manifest["features"]["ftsIndexMethod"], true);
-    assert_eq!(manifest["features"]["multiProcessWal"], true);
-    assert_eq!(manifest["features"]["serializedWriterSlot"], true);
-    assert_eq!(manifest["features"]["busyTimeoutMs"], 5000);
-    assert_eq!(manifest["features"]["openLockRetryAttempts"], 80);
-    assert_eq!(manifest["features"]["openLockRetryBaseMs"], 5);
-    assert_eq!(manifest["features"]["openLockRetryMaxMs"], 200);
-    assert_eq!(manifest["features"]["statementLockRetryAttempts"], 80);
-    assert_eq!(manifest["features"]["operationLock"], true);
-    assert_eq!(manifest["features"]["operationLockRetryAttempts"], 1000);
-    assert_eq!(manifest["features"]["operationLockRetryMs"], 5);
-    assert_eq!(manifest["features"]["mvcc"], false);
+    for retired_feature in [
+        "multiProcessWal",
+        "serializedWriterSlot",
+        "busyTimeoutMs",
+        "openLockRetryAttempts",
+        "openLockRetryBaseMs",
+        "openLockRetryMaxMs",
+        "statementLockRetryAttempts",
+        "operationLock",
+        "operationLockRetryAttempts",
+        "operationLockRetryMs",
+    ] {
+        assert!(manifest["features"].get(retired_feature).is_none());
+    }
+    assert_eq!(manifest["features"]["mvcc"], true);
     assert_eq!(manifest["features"]["beginConcurrent"], false);
     assert_eq!(manifest["features"]["sync"], false);
     assert_eq!(manifest["dbPath"], report.db_path.to_str().unwrap());
@@ -77,12 +81,12 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(engine.backend(), ClientDbBackend::Turso);
     assert_eq!(report.backend, TURSO_BACKEND);
     assert_eq!(engine.backend().as_str(), TURSO_BACKEND);
-    assert_eq!(report.db_file_name, "client.turso");
+    assert_eq!(report.db_file_name, "facts.turso");
     assert_eq!(
         engine.db_path(),
-        state.paths.client_dir.join("client.turso")
+        state.paths.client_dir.join("facts.turso")
     );
-    assert_eq!(report.db_path, state.paths.client_dir.join("client.turso"));
+    assert_eq!(report.db_path, state.paths.client_dir.join("facts.turso"));
     assert!(
         !report.db_path.exists(),
         "DB Engine inspect must not create the active DB file"
@@ -91,6 +95,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         engine.inspect_backend().status,
         agent_semantic_client_db::ClientDbStatus::Missing
     );
+    let expected_snapshot_root = "a".repeat(64);
+    let expected_index_artifact_digest = "b".repeat(64);
     let source_index_lookup = ClientDbEngine::lookup_source_index_from_client_dir(
         agent_semantic_client_db::ClientDbSourceIndexClientDirLookupRequest {
             client_dir: &state.paths.client_dir,
@@ -98,6 +104,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
             language_id: None,
             query_keys: Vec::new(),
             limit: 8,
+            expected_snapshot_root: &expected_snapshot_root,
+            expected_index_artifact_digest: &expected_index_artifact_digest,
         },
     )
     .expect("lookup missing source-index control DB");
@@ -118,6 +126,8 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
                 language_id: None,
                 query_keys: Vec::new(),
                 limit: 8,
+                expected_snapshot_root: &expected_snapshot_root,
+                expected_index_artifact_digest: &expected_index_artifact_digest,
             },
         )
         .expect("lookup missing source-index control DB from project root");
@@ -131,13 +141,23 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         state.workspace.workspace_id.as_str()
     );
     assert_eq!(report_json["scopeId"], state.scope_id.to_string());
-    assert_eq!(report_json["features"]["concurrentWrites"], false);
+    assert_eq!(report_json["features"]["concurrentWrites"], true);
     assert_eq!(report_json["features"]["ftsIndexMethod"], true);
-    assert_eq!(report_json["features"]["multiProcessWal"], true);
-    assert_eq!(report_json["features"]["serializedWriterSlot"], true);
-    assert_eq!(report_json["features"]["busyTimeoutMs"], 5000);
-    assert_eq!(report_json["features"]["operationLock"], true);
-    assert_eq!(report_json["features"]["mvcc"], false);
+    for retired_feature in [
+        "multiProcessWal",
+        "serializedWriterSlot",
+        "busyTimeoutMs",
+        "openLockRetryAttempts",
+        "openLockRetryBaseMs",
+        "openLockRetryMaxMs",
+        "statementLockRetryAttempts",
+        "operationLock",
+        "operationLockRetryAttempts",
+        "operationLockRetryMs",
+    ] {
+        assert!(report_json["features"].get(retired_feature).is_none());
+    }
+    assert_eq!(report_json["features"]["mvcc"], true);
     assert_eq!(report_json["features"]["beginConcurrent"], false);
     assert!(report_json.get("controlReport").is_none());
     assert!(report_json.get("sqliteReport").is_none());
@@ -150,7 +170,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         "https://agent-semantic-protocols.local/schemas/semantic-db-engine-report.v1.schema.json"
     );
     assert_eq!(schema["properties"]["backend"]["const"], TURSO_BACKEND);
-    assert_eq!(schema["properties"]["dbFileName"]["const"], "client.turso");
+    assert_eq!(schema["properties"]["dbFileName"]["const"], "facts.turso");
     assert_eq!(
         schema["properties"]["durability"]["const"],
         "turso-local-file"
@@ -161,23 +181,11 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     );
     assert_eq!(
         schema["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
-        false
-    );
-    assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["multiProcessWal"]["const"],
-        true
-    );
-    assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["busyTimeoutMs"]["const"],
-        5000
-    );
-    assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["operationLock"]["const"],
         true
     );
     assert_eq!(
         schema["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
-        false
+        true
     );
     assert_eq!(
         schema["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
@@ -217,7 +225,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     );
     assert_eq!(
         manifest_schema["properties"]["dbFileName"]["const"],
-        "client.turso"
+        "facts.turso"
     );
     assert_eq!(
         manifest_schema["properties"]["durability"]["const"],
@@ -229,23 +237,11 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     );
     assert_eq!(
         manifest_schema["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
-        false
-    );
-    assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["multiProcessWal"]["const"],
-        true
-    );
-    assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["busyTimeoutMs"]["const"],
-        5000
-    );
-    assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["operationLock"]["const"],
         true
     );
     assert_eq!(
         manifest_schema["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
-        false
+        true
     );
     assert_eq!(
         manifest_schema["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],

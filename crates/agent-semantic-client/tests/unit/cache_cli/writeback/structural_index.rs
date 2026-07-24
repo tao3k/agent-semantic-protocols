@@ -15,10 +15,21 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
         .expect("cache test lock");
     let root = temp_root("structural-index-writeback");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src")).expect("create source directory");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn parse_config(input: &str) -> &str { input }\n",
+    )
+    .expect("write lib source");
+    std::fs::write(root.join("src/unchanged.rs"), "fn cached_helper() {}\n")
+        .expect("write unchanged source");
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join("activation.json"),
         providers: vec![rust_provider()],
     };
+    let current_snapshot =
+        crate::source_index::current_source_index_snapshot_with_registry(&root, &snapshot)
+            .expect("capture current Rust source snapshot");
     let request = ClientRequest::new(ClientMethod::Search, &root)
         .with_language(LanguageId::from("rust"))
         .with_forwarded_args(vec!["prime".to_string(), ".".to_string()]);
@@ -47,7 +58,8 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
     let cache_root = cache_report.cache_root.expect("cache root");
     let copied_symbols = ClientDbEngine::search_structural_index_documents_from_client_dir(
         &cache_root,
-        "cached_helper",
+        &current_snapshot.source_snapshot,
+        "parse_config",
         8,
     )
     .expect("lookup copied symbol through DB Engine");
@@ -55,14 +67,14 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
     assert_eq!(first_probe.db_write_count, 3);
     assert_eq!(second_probe.db_write_count, 3);
     assert!(
-        copied_symbols.iter().any(|symbol| {
+        copied_symbols.hits.iter().any(|symbol| {
             symbol.entity_id.as_deref().is_some_and(|entity_id| {
-                entity_id.contains("src/unchanged.rs") && entity_id.contains("cached_helper")
+                entity_id.contains("src/lib.rs") && entity_id.contains("parse_config")
             })
         }),
         "copied_symbols={copied_symbols:?}"
     );
-    assert!(cache_root.join("client.turso").exists());
+    assert!(ClientDbEngine::turso_path_for_client_dir(&cache_root).exists());
     assert!(
         artifacts_root_from_cache_root(&cache_root)
             .join("structural-index/rust-index-2.json")
@@ -78,10 +90,23 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
         .expect("cache test lock");
     let root = temp_root("gerbil-structural-index-writeback");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src/commands")).expect("create source directory");
+    std::fs::write(
+        root.join("src/commands/search.ss"),
+        "(def (search-main) #t)\n",
+    )
+    .expect("write source file");
+    let mut provider = gerbil_scheme_provider();
+    provider.source_roots = vec!["src".to_string()];
+    provider.source_extensions = vec!["ss".to_string()];
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join("activation.json"),
-        providers: vec![gerbil_scheme_provider()],
+        providers: vec![provider],
     };
+    let current_snapshot =
+        crate::source_index::current_source_index_snapshot_with_registry(&root, &snapshot)
+            .expect("capture current Gerbil source snapshot");
+    assert!(current_snapshot.source_snapshot.leaf_count > 0);
     let request = ClientRequest::new(ClientMethod::Search, &root)
         .with_language(LanguageId::from("gerbil-scheme"))
         .with_forwarded_args(vec!["structural".to_string(), "--json".to_string()]);
@@ -100,6 +125,7 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
     let cache_root = cache_report.cache_root.expect("cache root");
     let symbols = ClientDbEngine::search_structural_index_documents_from_client_dir(
         &cache_root,
+        &current_snapshot.source_snapshot,
         "search-main",
         8,
     )
@@ -107,12 +133,12 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
 
     assert_eq!(probe.db_write_count, 3);
     assert!(
-        symbols.iter().any(|symbol| symbol
+        symbols.hits.iter().any(|symbol| symbol
             .document_id
             .contains("src/commands/search.ss:def:search-main")),
         "symbols={symbols:?}"
     );
-    assert!(cache_root.join("client.turso").exists());
+    assert!(ClientDbEngine::turso_path_for_client_dir(&cache_root).exists());
     assert!(
         artifacts_root_from_cache_root(&cache_root)
             .join("structural-index/gerbil-structural-1.json")

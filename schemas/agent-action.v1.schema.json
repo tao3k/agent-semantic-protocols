@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/agent-action.v1.schema.json",
+  "title": "Agent Action v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "effect", "authority", "subjects"],
+  "properties": {
+    "action": { "$ref": "#/$defs/actionKind" },
+    "effect": { "$ref": "#/$defs/actionKind" },
+    "authority": { "$ref": "#/$defs/authority" },
+    "subjects": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/subject" }
+    }
+  },
+  "$defs": {
+    "actionKind": {
+      "type": "string",
+      "enum": ["read", "edit", "search", "enumerate", "execute", "unknown"]
+    },
+    "authority": {
+      "type": "string",
+      "enum": [
+        "raw-host-action",
+        "raw-shell",
+        "parser-owned-exact-evidence",
+        "parser-owned-search",
+        "ast-patch-evidence",
+        "unknown"
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "kind"],
+      "properties": {
+        "value": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "registered-language-source",
+            "registered-language-source-pattern",
+            "directory",
+            "structural-selector",
+            "other"
+          ]
+        }
+      }
+    }
+  }
+}

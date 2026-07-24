@@ -8,8 +8,8 @@ mod cache_replay;
 pub mod cli;
 mod cli_args;
 mod compact_mode;
-mod native_prime;
 mod provider_method;
+pub mod provider_runtime_storage;
 mod search_history;
 pub mod source_index;
 mod syntax_query_preflight;
@@ -28,8 +28,7 @@ pub use cli::{run_cli_args, run_cli_from_env};
 pub use source_index::{
     SourceIndexCandidate, SourceIndexClientCacheLookupRequest, SourceIndexLookupRequest,
     SourceIndexLookupResult, SourceIndexLookupState, SourceIndexRefreshReport,
-    SourceIndexSourceKind, lookup_query_wrapper_source_index,
-    lookup_search_pipe_source_index_for_language, lookup_source_index,
+    SourceIndexSourceKind, lookup_search_pipe_source_index_for_language, lookup_source_index,
     lookup_source_index_for_language, lookup_source_index_in_client_cache_dir,
     refresh_source_index,
 };
@@ -62,14 +61,17 @@ mod cache_replay_tests;
 #[path = "../tests/unit/cli_args.rs"]
 mod cli_args_tests;
 #[cfg(test)]
+#[path = "../tests/unit/cli.rs"]
+mod cli_tests;
+#[cfg(test)]
 #[path = "../tests/unit/compact_mode.rs"]
 mod compact_mode_tests;
 #[cfg(test)]
-#[path = "../tests/unit/native_prime.rs"]
-mod native_prime_tests;
-#[cfg(test)]
 #[path = "../tests/unit/provider_method.rs"]
 mod provider_method_tests;
+#[cfg(test)]
+#[path = "../tests/unit/provider_runtime_storage.rs"]
+mod provider_runtime_storage_tests;
 #[cfg(test)]
 #[path = "../tests/unit/search_history.rs"]
 mod search_history_tests;

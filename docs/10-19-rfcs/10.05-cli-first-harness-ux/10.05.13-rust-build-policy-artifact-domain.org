@@ -1,0 +1,200 @@
+#+title: Rust Build Policy Artifact Domain
+#+options: toc:3 num:nil
+
+* Status
+
+Canonical v1 protocol. This RFC owns the artifact boundary between the full Rust
+project harness, the policy prepare runner, and member =build.rs= verifiers.
+Only the v1 receipt and v1 member-policy registry defined here are readable.
+There are no legacy names, aliases, compatibility features, or dual-read paths.
+
+* Problem
+
+The existing build-gate cache owner already records a content snapshot, cache
+key, payload digest, report, verification plan, dependency-baseline receipts,
+and downstream-policy receipt. The downstream receipt is embedded in the cache
+record, however, and a member =build.rs= cannot validate it without linking the
+full harness graph. The existing key also has no harness execution-command
+digest. Calling the full analyzer from every member build script therefore
+makes target compilation pay host-domain parser, planning, and runtime costs.
+
+The artifact architecture must preserve fail-closed policy enforcement while
+moving analysis out of =build.rs=.
+
+* Canonical v1 owners
+
+| Owner | Domain | Responsibility |
+|-
+| full harness | explicit prepare | discover and analyze the workspace once; create the verification plan and policy report |
+| policy runner | explicit prepare | load the canonical member registry, execute the full harness once, and atomically write one receipt per selected member |
+| member-policy registry | shared contract | declaratively own every member policy and the snapshot/execution inputs used by both runner and verifier |
+| lightweight verifier | host build dependency | hash the member package directory and canonical descriptors, validate exactly one v1 receipt, then return or fail closed |
+| member =build.rs= | host build script | call only the lightweight verifier; never analyze source semantics or invoke Cargo |
+
+The runner and verifier consume the same
+=rust-project-harness-member-policy-registry.v1= descriptor bytes. A Rust
+hard-coded member-policy table is not a second owner and MUST be deleted when
+the registry implementation lands.
+
+* Explicit prepare protocol
+
+The canonical repository command is:
+
+#+begin_src sh
+cargo run -p rust-project-harness-policy-runner -- prepare --workspace-root . --package <cargo-package-name>
+#+end_src
+
+Preparing all registered members uses =--all-members= in place of
+=--package <cargo-package-name>=. This command is the exact remediation printed
+by the verifier for a missing, stale, malformed, or mismatched receipt. The
+message MUST substitute the failing Cargo package name and MUST NOT suggest a
+fallback build, disabled gate, timeout extension, or alternate cache path.
+
+Prepare performs these steps exactly once per invocation:
+
+1. Parse and validate the canonical v1 member-policy registry.
+2. Select one member or all registered members.
+3. Snapshot the selected package directories using the registry exclusions.
+4. Run one full-harness workspace analysis and derive all selected member
+   policy reports and verification plans from that analysis.
+5. Compute the member policy digest and harness execution-command digest.
+6. Compute the cache payload digest over the canonical payload projection.
+7. Write each v1 downstream-policy receipt atomically using write, sync, and
+   rename in the receipt directory.
+
+No receipt is published until the full analysis and every selected policy gate
+succeeds. A failed prepare MUST leave the previous receipt untouched; its input
+digests will make it stale when any relevant input changed.
+
+* Canonical receipt location
+
+The cache base follows the existing build-gate cache owner:
+
+- =$XDG_CACHE_HOME/agent-semantic-protocols= when =XDG_CACHE_HOME= is set;
+- otherwise =$HOME/.agent-semantic-protocols/cache=.
+
+Under the existing project-identity directory, the only verifier-readable
+receipt is:
+
+#+begin_example
+rust-project-harness/build-policy/v1/<cargo-package-name>/receipt.json
+#+end_example
+
+Existing cache-key JSON records remain runner-internal analysis caches. They
+are not alternate receipts, and the verifier MUST NOT scan them.
+
+* Digest contracts
+
+All digests use the provider content-digest representation
+=blake3:<lowercase-hex>= over canonical UTF-8 JSON with recursively sorted
+object keys and no insignificant whitespace.
+
+** Package source snapshot
+
+=source_snapshot.digest= covers the package directory relative to the workspace
+root. It includes every regular file except the exact exclusion paths declared
+by that member's registry entry. Paths are normalized with =/= separators,
+sorted bytewise, and hashed with file length and bytes. Symlinks that escape the
+package directory fail closed. The receipt file, target output, VCS metadata,
+and configured cache roots MUST be excluded explicitly by the descriptor.
+
+The verifier recomputes this snapshot without parsing Rust, Cargo metadata, or
+the workspace dependency graph.
+
+** Member policy digest
+
+=policy_digest= is the digest of the single canonical member object selected
+from the v1 registry. It includes package directory, gate label, snapshot
+exclusions, rule severities, verification skills, and owner/task policy. The
+runner and verifier compute it from the same descriptor bytes; neither owns a
+Rust reconstruction of the policy table.
+
+** Harness execution-command digest
+
+=execution_command_digest= is the digest of the registry's
+=harness_execution= object: runner package, runner version, and the exact argv
+template. The lightweight verifier embeds the expected v1 registry and rejects
+a receipt prepared by a different harness execution contract.
+
+** Cache payload digest
+
+=cache_payload_digest= is the digest of the canonical full-harness payload
+projection containing the report, verification plan, and sorted
+dependency-baseline receipts. The projection explicitly omits the downstream
+receipt and all envelope digest fields. This exclusion is normative: including
+the receipt would make its own =cache_payload_digest= recursively
+self-referential.
+
+* Lightweight verifier algorithm
+
+For =CARGO_PKG_NAME=, the verifier MUST:
+
+1. Load exactly the canonical v1 registry and require exactly one member match.
+2. Derive the canonical receipt path; do not search other paths.
+3. Read and schema-validate the v1 receipt.
+4. Require receipt package name and directory to match the descriptor and
+   =CARGO_MANIFEST_DIR=.
+5. Recompute and compare =source_snapshot.digest= and its counts.
+6. Recompute and compare =policy_digest=.
+7. Recompute and compare =execution_command_digest=.
+8. Require a non-empty valid =cache_payload_digest= and a successful policy
+   receipt with all existing downstream report obligations intact.
+9. Return success without starting a process.
+
+Missing receipt, malformed JSON, unknown schema, absent member, duplicate
+member, snapshot drift, policy drift, execution drift, package mismatch, or
+payload mismatch is a hard error. Every error prints the exact package-specific
+prepare command. There is no warning-only mode, environment bypass, feature
+flag, timeout fallback, legacy receipt reader, or dual-read migration window.
+
+* Forbidden build-script behavior
+
+A member =build.rs= and its normal/build dependency closure MUST NOT:
+
+- call the full harness analyzer or verification planner;
+- parse Rust syntax or load search, client, hook, runtime, tree-sitter, database,
+  or full-harness crates;
+- execute =cargo=, =rustc=, the prepare runner, or any subprocess;
+- write or refresh a receipt;
+- accept an old cache record as a receipt;
+- synthesize policy defaults outside the canonical registry.
+
+Receipt preparation is explicit. Build-script verification is read-only.
+
+* Performance acceptance
+
+The static Cargo graph MUST show that every member build dependency reaches
+only the lightweight verifier and contract crates, never the full harness,
+search/client/hook/runtime/tree-sitter/database graph.
+
+On a warm filesystem cache, 100 serial verifier invocations for an unchanged
+member MUST have p95 wall time at or below 50 milliseconds, zero subprocesses,
+and zero writes. The receipt read, registry lookup, directory snapshot, and
+three digest comparisons are all included. Prepare latency is reported
+separately and MUST demonstrate one full analysis for =--all-members= rather
+than one analysis per member.
+
+* Shared schemas
+
+- =schemas/rust-project-harness-downstream-policy-receipt.v1.schema.json=
+  owns the only accepted receipt shape and retains schema version =1=.
+- =schemas/rust-project-harness-member-policy-registry.v1.schema.json= owns the
+  only accepted declarative member-policy table.
+
+Both schemas are closed with =additionalProperties: false=. Implementations
+MUST reject unknown schema identifiers, versions, properties, enum values, and
+duplicate package entries.
+
+* Acceptance invariants
+
+- one explicit prepare performs one analysis and writes canonical v1 receipts;
+- every =build.rs= verifier is read-only, subprocess-free, and lightweight;
+- source, policy, execution, package, and cache-payload digests must all match;
+- missing, stale, or mismatched evidence fails closed with the exact prepare
+  command;
+- the declarative registry is the sole member-policy owner consumed by runner
+  and verifier;
+- canonical v1 has no aliases, compatibility modules, features, or dual reads;
+- warm verification meets the millisecond acceptance bound;
+- full analysis and receipt verification occupy different Cargo artifact
+  domains.

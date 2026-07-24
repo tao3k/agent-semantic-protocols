@@ -502,6 +502,14 @@ Rust Project Structural Harness
     └── closeout
 #+end_example
 
+* Build-gate derived artifact cache
+
+A Rust project-harness build gate MAY reuse a previously published clean receipt only when the current invocation recomputes the complete monitored-source snapshot and derives the same content-addressed artifact identity from the snapshot root, canonical harness policy and config, harness/schema version, run scope, verification obligations, and dependency-baseline inputs. The cache is a disposable proof projection, not policy authority: a hit MUST re-emit the recorded Cargo rerun inputs and re-assert the typed report, verification, and baseline obligations; missing, stale, corrupt, partial, or mismatched receipts MUST execute the full analysis. Implementations MUST NOT key reuse by timestamps, target-directory freshness, package name alone, or a previous pass boolean, and MUST NOT share one receipt across member policies whose effective inputs differ.
+
+Discovery and snapshot collection MUST apply the same filesystem-boundary policy. The Rust project harness does not follow symbolic links during source discovery or cache-key acquisition; a symlink is not monitored source evidence and cannot escape the project root or introduce traversal cycles. A cached record MUST bind a canonical integrity digest over its report, verification plan, downstream receipt, and baseline receipts in addition to its input key; any payload mismatch is a cold miss.
+
+This artifact attests parser-owned structural analysis, not compiler execution. Its cacheable computation reads the complete project snapshot, canonical harness policy and config, and dependency-baseline declarations; it does not read Rust or Cargo toolchain identity, target, profile, feature, or =RUSTFLAGS= state. Toolchain identity therefore MUST NOT fragment this cache unless a future version adds a toolchain-dependent computation, in which case that version must add the new input to its artifact key. =CARGO_MANIFEST_DIR= selects the canonical project root and =XDG_CACHE_HOME=/=HOME= selects storage only; neither is proof payload.
+
 * The bottom line
 
 Config is not an escape hatch.  Config is the /codified expression of

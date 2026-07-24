@@ -84,50 +84,136 @@ pub struct ProviderProcessFraming {
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 pub struct ProviderProcessLimits {
     /// Maximum wall-clock runtime before timeout.
-    pub timeout: Option<Duration>,
+    timeout: Option<Duration>,
     /// Maximum stdout bytes retained in memory.
-    pub max_stdout_bytes: Option<usize>,
+    max_stdout_bytes: Option<usize>,
     /// Maximum stderr bytes retained in memory.
-    pub max_stderr_bytes: Option<usize>,
+    max_stderr_bytes: Option<usize>,
     /// Maximum provider address-space bytes on supported platforms.
-    pub memory_limit_bytes: Option<u64>,
+    memory_limit_bytes: Option<u64>,
+}
+
+impl ProviderProcessLimits {
+    #[must_use]
+    pub const fn new(
+        timeout: Option<Duration>,
+        max_stdout_bytes: Option<usize>,
+        max_stderr_bytes: Option<usize>,
+        memory_limit_bytes: Option<u64>,
+    ) -> Self {
+        Self {
+            timeout,
+            max_stdout_bytes,
+            max_stderr_bytes,
+            memory_limit_bytes,
+        }
+    }
+
+    #[must_use]
+    pub const fn timeout(&self) -> Option<Duration> {
+        self.timeout
+    }
+
+    #[must_use]
+    pub const fn max_stdout_bytes(&self) -> Option<usize> {
+        self.max_stdout_bytes
+    }
+
+    #[must_use]
+    pub const fn max_stderr_bytes(&self) -> Option<usize> {
+        self.max_stderr_bytes
+    }
+
+    #[must_use]
+    pub const fn memory_limit_bytes(&self) -> Option<u64> {
+        self.memory_limit_bytes
+    }
 }
 
 /// Structured receipt for provider process execution.
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ProviderProcessReceipt {
     /// Elapsed wall-clock duration.
-    pub elapsed: Duration,
+    elapsed: Duration,
     /// Provider exit status code when the process exited normally.
-    pub status_code: Option<i32>,
+    status_code: Option<i32>,
     /// Whether the provider exit status was successful.
-    pub status_success: bool,
+    status_success: bool,
     /// Full stdout byte count before truncation.
-    pub stdout_bytes: usize,
+    stdout_bytes: usize,
     /// Full stderr byte count before truncation.
-    pub stderr_bytes: usize,
+    stderr_bytes: usize,
     /// SHA-256 digest of full stdout bytes before truncation.
-    pub stdout_sha256: Option<String>,
+    stdout_sha256: Option<String>,
     /// SHA-256 digest of full stderr bytes before truncation.
-    pub stderr_sha256: Option<String>,
+    stderr_sha256: Option<String>,
     /// Whether stdout was truncated in the retained buffer.
-    pub stdout_truncated: bool,
+    stdout_truncated: bool,
     /// Whether stderr was truncated in the retained buffer.
-    pub stderr_truncated: bool,
+    stderr_truncated: bool,
     /// Whether the process exceeded its timeout.
-    pub timed_out: bool,
+    timed_out: bool,
     /// Whether the parent observed the provider above its memory ceiling.
-    pub memory_limit_exceeded: bool,
+    memory_limit_exceeded: bool,
     /// Unix signal that terminated the provider, when available.
-    pub exit_signal: Option<i32>,
+    exit_signal: Option<i32>,
     /// Configured provider memory ceiling.
-    pub memory_limit_bytes: Option<u64>,
+    memory_limit_bytes: Option<u64>,
     /// Whether the current platform applied the memory ceiling.
-    pub memory_limit_enforced: bool,
+    memory_limit_enforced: bool,
     /// Whether the provider failed through timeout, signal, or non-zero exit.
-    pub abnormal_termination: bool,
+    abnormal_termination: bool,
     /// Stable termination classification for client receipts and diagnostics.
-    pub termination_reason: String,
+    termination_reason: String,
+}
+
+impl ProviderProcessReceipt {
+    #[must_use]
+    pub const fn stdout_bytes(&self) -> usize {
+        self.stdout_bytes
+    }
+}
+
+pub(crate) struct ProviderProcessReceiptInput {
+    pub(crate) elapsed: Duration,
+    pub(crate) status_code: Option<i32>,
+    pub(crate) status_success: bool,
+    pub(crate) stdout_bytes: usize,
+    pub(crate) stderr_bytes: usize,
+    pub(crate) stdout_sha256: Option<String>,
+    pub(crate) stderr_sha256: Option<String>,
+    pub(crate) stdout_truncated: bool,
+    pub(crate) stderr_truncated: bool,
+    pub(crate) timed_out: bool,
+    pub(crate) memory_limit_exceeded: bool,
+    pub(crate) exit_signal: Option<i32>,
+    pub(crate) memory_limit_bytes: Option<u64>,
+    pub(crate) memory_limit_enforced: bool,
+    pub(crate) abnormal_termination: bool,
+    pub(crate) termination_reason: String,
+}
+
+impl ProviderProcessReceipt {
+    pub(crate) fn from_input(input: ProviderProcessReceiptInput) -> Self {
+        Self {
+            elapsed: input.elapsed,
+            status_code: input.status_code,
+            status_success: input.status_success,
+            stdout_bytes: input.stdout_bytes,
+            stderr_bytes: input.stderr_bytes,
+            stdout_sha256: input.stdout_sha256,
+            stderr_sha256: input.stderr_sha256,
+            stdout_truncated: input.stdout_truncated,
+            stderr_truncated: input.stderr_truncated,
+            timed_out: input.timed_out,
+            memory_limit_exceeded: input.memory_limit_exceeded,
+            exit_signal: input.exit_signal,
+            memory_limit_bytes: input.memory_limit_bytes,
+            memory_limit_enforced: input.memory_limit_enforced,
+            abnormal_termination: input.abnormal_termination,
+            termination_reason: input.termination_reason,
+        }
+    }
 }
 
 /// Transport-level failure while running an external provider process.

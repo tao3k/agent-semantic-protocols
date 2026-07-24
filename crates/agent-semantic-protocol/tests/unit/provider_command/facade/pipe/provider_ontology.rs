@@ -131,6 +131,46 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_ontology_facts() {
     assert_graph_turbo_request_contract(&payload);
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
     assert!(
+        payload["candidateSources"]
+            .as_array()
+            .expect("candidate sources")
+            .iter()
+            .any(|source| source.as_str() == Some("workspace-scope-topology")),
+        "{payload}"
+    );
+    let source_trace = payload["sourceTrace"].as_array().expect("source trace");
+    let topology_trace = source_trace
+        .iter()
+        .find(|trace| trace["source"].as_str() == Some("workspace-scope-topology"))
+        .expect("workspace scope topology trace");
+    assert!(
+        matches!(
+            topology_trace["status"].as_str(),
+            Some("used" | "truncated")
+        ),
+        "{payload}"
+    );
+    assert!(
+        topology_trace["matched"].as_u64().unwrap_or(0) > 0,
+        "{payload}"
+    );
+    let provider_trace = source_trace
+        .iter()
+        .find(|trace| trace["source"].as_str() == Some("providerFacts"))
+        .expect("provider facts trace");
+    assert_eq!(provider_trace["status"].as_str(), Some("used"), "{payload}");
+    assert!(
+        provider_trace["fields"]["inputCandidates"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0,
+        "{payload}"
+    );
+    assert!(
+        provider_trace["fields"]["nodes"].as_u64().unwrap_or(0) > 0,
+        "{payload}"
+    );
+    assert!(
         nodes.iter().any(|node| {
             node["kind"].as_str() == Some("field")
                 && node["fields"]["languageId"].as_str() == Some("python")

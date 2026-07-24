@@ -1,0 +1,63 @@
+#+title: Turso 0.7 CDC Non-MVCC Profile Receipt
+#+date: 2026-07-20
+
+* Boundary
+
+Change Data Capture is implemented as an explicit =cdc-non-mvcc= profile in
+the existing =agent-semantic-client-db= crate.  It does not reuse the MVCC
+writer lanes.  Capture configuration is connection-owned, its table identifier
+is validated before interpolation, and reads use database-side keyset paging
+with =limit+1= over =change_id=.
+
+The typed packet owner is
+=schemas/turso-cdc-page-receipt.v1.schema.json=.  It preserves raw change type,
+typed insert/update/delete/commit classification, transaction identity,
+before/after/update images, and the stable next cursor.
+
+* Fixed scenario tests
+
+Command:
+
+#+begin_src sh
+direnv exec . cargo test -p agent-semantic-client-db turso_cdc_storage -- --nocapture
+#+end_src
+
+Result: =3 passed; 0 failed=.
+
+The checked-in scenarios prove:
+
+- an untrusted CDC table name fails closed;
+- a four-operation committed transaction produces two insert, one update, and
+  one delete change, while a rolled-back insert never becomes CDC truth;
+- =limit+1= returns =hasMore= and the second page starts strictly after the
+  first page's =change_id= cursor;
+- the opened CDC profile does not use =journal_mode= =mvcc=.
+
+* Fixed benchmark
+
+Smoke command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench turso_cdc_profile -- --test
+#+end_src
+
+Result: both registered scenarios succeeded.
+
+Measurement command:
+
+#+begin_src sh
+direnv exec . cargo bench -p agent-semantic-client-db --bench turso_cdc_profile
+#+end_src
+
+Result on the local 2026-07-20 checkout:
+
+| Scenario | Criterion interval | Throughput interval | Outliers |
+|----------+--------------------+---------------------+----------|
+| commit 256 plus keyset tail | 3.3536--4.4839 ms | 57.093--76.336 Kelem/s | 1/20 high mild |
+| rollback 256 plus empty tail | 3.4108--4.2746 ms | 59.888--75.056 Kelem/s | none reported |
+
+The benchmark checks semantic behavior during measurement: every committed
+batch exposes exactly 256 inserted fixture changes, and every rolled-back batch
+leaves the fixture tail empty.  These numbers apply to the dedicated CDC
+profile and must not be compared as if CDC and MVCC could be enabled on the same
+connection.

@@ -3,6 +3,21 @@ use std::collections::BTreeSet;
 use crate::{SearchPipeQueryTerm, SearchPipeTermRole, search_pipe_package_key};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchPipeEvidenceLanguageId(String);
+
+impl SearchPipeEvidenceLanguageId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SearchPipeEvidenceLanguageId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchPipeEvidenceCandidate {
     pub path: String,
     pub line: usize,
@@ -28,14 +43,14 @@ pub fn search_pipe_weak_match(
 
 #[must_use]
 pub fn search_pipe_strong_match(
-    language_id: &str,
+    language_id: &SearchPipeEvidenceLanguageId,
     candidate: &SearchPipeEvidenceCandidate,
     term: &SearchPipeQueryTerm,
 ) -> bool {
     !matches!(term.role, SearchPipeTermRole::Context)
         && (search_pipe_path_exact_match(candidate, term)
-            || search_pipe_declaration_header_match(language_id, candidate, term)
-            || rust_path_compound_match(language_id, candidate, term)
+            || search_pipe_declaration_header_match(language_id.as_str(), candidate, term)
+            || rust_path_compound_match(language_id.as_str(), candidate, term)
             || owner_local_symbol_exact_match(candidate, term))
 }
 
@@ -78,7 +93,7 @@ pub fn search_pipe_path_exact_match(
 
 #[must_use]
 pub fn search_pipe_declaration_header_match(
-    language_id: &str,
+    language_id: &SearchPipeEvidenceLanguageId,
     candidate: &SearchPipeEvidenceCandidate,
     term: &SearchPipeQueryTerm,
 ) -> bool {
@@ -86,7 +101,7 @@ pub fn search_pipe_declaration_header_match(
     if !tokens.iter().any(|token| token == &term.raw) {
         return false;
     }
-    let declaration_keywords = match language_id {
+    let declaration_keywords = match language_id.as_str() {
         "rust" => &[
             "fn", "struct", "enum", "trait", "type", "mod", "const", "static", "impl",
         ][..],
@@ -165,7 +180,7 @@ pub fn search_pipe_handle_paths(
 
 #[must_use]
 pub fn search_pipe_parser_handles(
-    language_id: &str,
+    language_id: &SearchPipeEvidenceLanguageId,
     candidates: &[SearchPipeEvidenceCandidate],
     terms: &[SearchPipeQueryTerm],
 ) -> Vec<String> {

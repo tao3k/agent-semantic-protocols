@@ -2,12 +2,14 @@
 
 mod agent_org_artifacts;
 mod core;
+pub(crate) use core::{
+    materialize_agent_search_json_decision, materialize_apply_patch_decision,
+    materialize_source_access_decision,
+};
 mod decision;
-#[path = "../classifier_inline_source_read.rs"]
-mod inline_source_read;
-mod prompt_search_flow;
 #[path = "../classifier_recovery.rs"]
 mod recovery;
+pub(crate) use recovery::command_line;
 mod source_access_routes;
 
 pub use core::{HookClassificationRequest, classify_hook, classify_hook_with_config};

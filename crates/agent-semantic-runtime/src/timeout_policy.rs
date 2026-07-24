@@ -23,12 +23,12 @@ impl RuntimeOperationTimeoutPolicy {
 /// Runtime-owned receipt for timeout and cancellation accounting.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeOperationTimeoutReceipt {
-    pub operation: String,
-    pub elapsed_ms: u128,
-    pub max_elapsed_ms: u128,
-    pub cancel_after_ms: u128,
-    pub timed_out: bool,
-    pub cancellation_required: bool,
+    operation: String,
+    elapsed_ms: u128,
+    max_elapsed_ms: u128,
+    cancel_after_ms: u128,
+    timed_out: bool,
+    cancellation_required: bool,
 }
 
 /// Build a runtime timeout receipt without coupling timeout policy to commands.

@@ -1,17 +1,16 @@
 [package]
 name = "agent-semantic-artifacts"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 license = "MIT"
 description = "Content-addressed artifact identity and Merkle root primitives for ASP."
 
 [dependencies]
+agent-semantic-content-identity.workspace = true
 blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-asp-rust-project-harness-policy.workspace = true
 
 [build-dependencies]
-asp-rust-project-harness-policy.workspace = true

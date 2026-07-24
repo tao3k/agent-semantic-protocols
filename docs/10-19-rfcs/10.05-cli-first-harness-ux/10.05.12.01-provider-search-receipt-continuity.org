@@ -1,0 +1,69 @@
+#+title: Provider Search Receipt Snapshot Continuity
+#+startup: overview
+
+* Status
+
+Accepted.
+
+This decision refines =10.05.12-search-overlay-snapshot-continuity.org= without
+creating a new schema version.  All fields remain in =asp.source-snapshot.v1=.
+
+* Canonical rule
+
+A provider search command MUST render the =SourceSnapshotEvidence= returned by
+the acquisition that supplied its candidates.  It MUST NOT replace an overlay
+result snapshot with the source-index snapshot that was captured before
+acquisition.
+
+The fallback order is exact:
+
+1. acquisition result snapshot, including editor overlay Merkle delta;
+2. current source-index snapshot only when the acquisition returned no snapshot;
+3. a typed =source-snapshot-missing= failure when the selected view requires a
+   continuity receipt and neither snapshot exists.
+
+The same evidence packet is used by =seeds=, =graph-turbo-request=, compact
+owner/item, and exact-selector views.  Human rendering MAY be compact, but it
+MUST expose =schemaId=, =rootDigest=, =baseRootDigest=, =dirtyPathsDigest=,
+=leafCount=, and =providerDigest= with the same values as the JSON packet.
+
+* Merkle authority
+
+Snapshot construction happens before provider or language candidate selection.
+One workspace authority owns the base Merkle tree and applies one ordered delta:
+
+- edit: replace =normalized-path -> BLAKE3(content)=;
+- create: insert a new leaf;
+- delete: apply a tombstone and remove the leaf;
+- rename: delete the old path and insert the new path;
+- provider digest change: retain the workspace root and invalidate only the
+  provider-derived artifact namespace.
+
+Only the changed leaf-to-root branches are recomputed.  Rust, Markdown, Python,
+Julia, TypeScript, Gerbil, and future providers receive the resulting immutable
+=WorkspaceSnapshot=; they MUST NOT derive a snapshot from their language file
+predicate or candidate set.  Language predicates run after snapshot selection
+and affect candidates only.
+
+=reconcile= is a transaction on the Merkle authority, not a provider-local full
+workspace scan.  When no trusted dirty-path set is available, a filesystem
+discovery adapter MAY produce the delta, but its output is normalized into the
+same Merkle transaction before any provider runs.
+
+* Continuity invariant
+
+Candidate evidence, graph facts, artifact digests, and the rendered source
+snapshot MUST describe one root.  A renderer cannot consult a second snapshot
+after acquisition.  Snapshot mismatch is a typed failure and never triggers an
+implicit refresh or database mutation.
+
+* Acceptance
+
+1. A dirty workspace search renders an overlay root different from its base
+   root and preserves that root in every view.
+2. Deleting an owner removes its old item selectors without refreshing the base
+   index.
+3. Rust and document providers emit the same v1 field set for the same workspace
+   acquisition.
+4. Tests fail if =current_source_index_snapshot= is substituted after overlay
+   acquisition.

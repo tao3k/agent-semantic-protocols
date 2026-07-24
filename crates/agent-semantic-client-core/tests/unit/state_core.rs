@@ -115,7 +115,7 @@ fn state_locate_schema_declares_report_contract_fields() {
     let schema_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("schemas")
-        .join("semantic-state-locate-report.v2.schema.json");
+        .join("semantic-state-locate-report.v1.schema.json");
     let schema: serde_json::Value =
         serde_json::from_slice(&fs::read(schema_path).unwrap()).unwrap();
     let required = schema["required"].as_array().expect("required array");

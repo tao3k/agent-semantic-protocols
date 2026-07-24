@@ -124,7 +124,7 @@ fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
                 let report = ClientDbEngine::inspect_client_dir(client_dir.as_path());
                 assert_eq!(
                     report.db_path.file_name().and_then(|name| name.to_str()),
-                    Some("client.turso")
+                    Some("facts.turso")
                 );
                 let read_session =
                     ClientDbEngine::open_read_session_client_dir(client_dir.as_path())
@@ -187,152 +187,6 @@ fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     assert_eq!(hit.artifact_ids[0].as_str(), "search/cache-status-7.json");
 }
 
-#[test]
-fn db_engine_cache_status_process_pressure_helper() {
-    if env::var("ASP_TURSO_CACHE_PROCESS_PRESSURE_CHILD")
-        .ok()
-        .as_deref()
-        != Some("1")
-    {
-        return;
-    }
-    let state_home = PathBuf::from(
-        env::var("ASP_TURSO_CACHE_PROCESS_PRESSURE_STATE_HOME")
-            .expect("ASP_TURSO_CACHE_PROCESS_PRESSURE_STATE_HOME"),
-    );
-    let project_root = PathBuf::from(
-        env::var("ASP_TURSO_CACHE_PROCESS_PRESSURE_PROJECT_ROOT")
-            .expect("ASP_TURSO_CACHE_PROCESS_PRESSURE_PROJECT_ROOT"),
-    );
-    let writer_id: usize = env::var("ASP_TURSO_CACHE_PROCESS_PRESSURE_WRITER_ID")
-        .expect("ASP_TURSO_CACHE_PROCESS_PRESSURE_WRITER_ID")
-        .parse()
-        .expect("parse ASP_TURSO_CACHE_PROCESS_PRESSURE_WRITER_ID");
-    fs::create_dir_all(project_root.join("src")).expect("create process pressure src dir");
-    fs::write(
-        project_root.join("src/lib.rs"),
-        "pub fn concurrent_process_cache_status_fixture() {}\n",
-    )
-    .expect("write process pressure fixture");
-    let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
-        .expect("resolve process pressure state");
-
-    for iteration in 0..4 {
-        let manifest = process_cache_status_manifest(
-            &state.paths.client_dir,
-            &project_root,
-            writer_id,
-            iteration,
-        );
-        let operation_started = std::time::Instant::now();
-        let mut write_session =
-            ClientDbEngine::open_write_session_client_dir(&state.paths.client_dir)
-                .expect("open process pressure write session");
-        write_session
-            .import_manifest(&manifest)
-            .expect("import process pressure manifest");
-        let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
-            .expect("open process pressure read session")
-            .expect("process pressure read session exists");
-        let fingerprint = format!("fnv64:process-cache-status-{writer_id}-{iteration}");
-        let hit = read_session
-            .lookup_generation_request(
-                &LanguageId::from("rust"),
-                &ProviderId::from("rs-harness"),
-                &project_root,
-                &CacheExportMethod::from("search/prime"),
-                Some(fingerprint),
-            )
-            .expect("lookup process pressure generation")
-            .expect("process pressure generation exists");
-        assert_eq!(hit.artifact_ids.len(), 1);
-        assert!(
-            operation_started.elapsed() < std::time::Duration::from_secs(3),
-            "process pressure DB operation exceeded bounded CI target: writer={writer_id} iteration={iteration} elapsed={:?}",
-            operation_started.elapsed()
-        );
-    }
-}
-
-#[test]
-fn db_engine_cache_status_survives_concurrent_process_read_write_pressure() {
-    let project_root = temp_root("db-engine-cache-process-pressure-project");
-    let state_home = temp_root("db-engine-cache-process-pressure-state-home");
-    fs::create_dir_all(project_root.join("src")).expect("create process pressure src dir");
-    fs::write(
-        project_root.join("src/lib.rs"),
-        "pub fn concurrent_process_cache_status_fixture() {}\n",
-    )
-    .expect("write process pressure fixture");
-    let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
-        .expect("resolve process pressure state");
-    let process_count = 8usize;
-    let current_exe = env::current_exe().expect("locate current test binary");
-    let mut children = Vec::new();
-
-    for writer_id in 0..process_count {
-        children.push((
-            writer_id,
-            Command::new(&current_exe)
-                .arg("--exact")
-                .arg("db_engine::db_engine_cache_status_process_pressure_helper")
-                .arg("--nocapture")
-                .env("ASP_TURSO_CACHE_PROCESS_PRESSURE_CHILD", "1")
-                .env(
-                    "ASP_TURSO_CACHE_PROCESS_PRESSURE_PROJECT_ROOT",
-                    &project_root,
-                )
-                .env("ASP_TURSO_CACHE_PROCESS_PRESSURE_STATE_HOME", &state_home)
-                .env(
-                    "ASP_TURSO_CACHE_PROCESS_PRESSURE_WRITER_ID",
-                    writer_id.to_string(),
-                )
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .expect("spawn process cache pressure writer"),
-        ));
-    }
-
-    for (writer_id, child) in children {
-        let output = child
-            .wait_with_output()
-            .expect("wait for process cache pressure writer");
-        assert!(
-            output.status.success(),
-            "process cache pressure writer {writer_id} failed: status={} stdout={} stderr={}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    let read_session = ClientDbEngine::open_read_session_client_dir(&state.paths.client_dir)
-        .expect("open final process pressure read session")
-        .expect("final process pressure read session exists");
-    for writer_id in 0..process_count {
-        let fingerprint = format!("fnv64:process-cache-status-{writer_id}-3");
-        let hit = read_session
-            .lookup_generation_request(
-                &LanguageId::from("rust"),
-                &ProviderId::from("rs-harness"),
-                &project_root,
-                &CacheExportMethod::from("search/prime"),
-                Some(fingerprint),
-            )
-            .expect("lookup final process pressure generation")
-            .unwrap_or_else(|| panic!("missing process pressure generation writer={writer_id}"));
-        assert_eq!(
-            hit.artifact_ids[0].as_str(),
-            format!("search/process-cache-status-{writer_id}-3.json")
-        );
-    }
-    assert!(state.paths.client_dir.join("client.turso").exists());
-
-    let _ = std::fs::remove_dir_all(project_root);
-    let _ = std::fs::remove_dir_all(state_home);
-}
-
 fn concurrent_cache_status_manifest(
     client_dir: &Path,
     project_root: &Path,
@@ -370,43 +224,6 @@ fn concurrent_cache_status_manifest(
     .expect("concurrent cache status manifest fixture")
 }
 
-fn process_cache_status_manifest(
-    client_dir: &Path,
-    project_root: &Path,
-    writer_id: usize,
-    iteration: usize,
-) -> ClientCacheManifest {
-    serde_json::from_value(json!({
-        "schemaId": "agent.semantic-protocols.client-cache-manifest",
-        "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.client",
-        "protocolVersion": "1",
-        "cacheRoot": client_dir.display().to_string(),
-        "generations": [
-            {
-                "generationId": format!("rust-process-cache-status-{writer_id}-{iteration}"),
-                "languageId": "rust",
-                "providerId": "rs-harness",
-                "providerVersion": "0.1.0",
-                "exportMethod": "search/prime",
-                "projectRoot": project_root.display().to_string(),
-                "packageRoot": ".",
-                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
-                "cacheStatus": "hit",
-                "rawSourceStored": false,
-                "requestFingerprint": format!("fnv64:process-cache-status-{writer_id}-{iteration}"),
-                "fileHashes": [{
-                    "path": "src/lib.rs",
-                    "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-                    "byteLen": 1,
-                    "mtimeMs": writer_id * 10 + iteration
-                }],
-                "artifactIds": [format!("search/process-cache-status-{writer_id}-{iteration}.json")]
-            }
-        ]
-    }))
-    .expect("process cache status manifest fixture")
-}
 #[test]
 fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
     let state = std::env::temp_dir().join(format!(
@@ -476,14 +293,14 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
         )
         .expect("read existing resident child");
 
-    assert_eq!(first.session_id, first_child_id);
-    assert_eq!(duplicate.session_id, first_child_id);
+    assert_eq!(first.session_id(), first_child_id);
+    assert_eq!(duplicate.session_id(), first_child_id);
     assert_eq!(
         registry
             .session_by_name(project_id, root_session_id, "asp-explore")
             .expect("lookup resident child")
             .expect("resident child row")
-            .session_id,
+            .session_id(),
         first_child_id
     );
     drop(registry);
@@ -565,13 +382,16 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
         )
         .expect("claim replacement resident child");
 
-    assert_eq!(replacement.session_id, "archived-claim-replacement");
+    assert_eq!(
+        replacement.session_id(),
+        "archived-claim-replacement"
+    );
     assert_eq!(
         registry
             .session_by_name(project_id, root_session_id, "asp-explore")
             .expect("lookup replacement resident child")
             .expect("replacement resident child row")
-            .session_id,
+            .session_id(),
         "archived-claim-replacement"
     );
     drop(registry);

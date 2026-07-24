@@ -27,12 +27,15 @@ fn lexical_overlay_candidates_project_path_and_content_hits_without_executable_r
 
     let terms = vec!["dynamic".to_string()];
     let search_roots = vec![vec![owner]];
-    let candidates = collect_dynamic_lexical_overlay_candidates(DynamicSearchCandidateRequest {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let collection = collect_dynamic_lexical_overlay_candidates(DynamicSearchCandidateRequest {
         locator_root: &root,
         terms: &terms,
         search_roots: &search_roots,
+        source_snapshot: &fixture.evidence,
         limit: 8,
     });
+    let candidates = collection.candidates;
 
     assert!(
         candidates
@@ -81,7 +84,8 @@ fn root_candidates_walk_workspace_with_language_filter_and_ignore_dirs() {
     let terms = vec!["dynamic".to_string()];
     let ignore_dirs = vec!["target".to_string()];
     let include_hidden_dirs = Vec::new();
-    let candidates =
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let collection =
         collect_dynamic_lexical_overlay_candidates_from_roots(DynamicSearchRootCandidateRequest {
             project_root: &root,
             locator_root: &root,
@@ -89,12 +93,15 @@ fn root_candidates_walk_workspace_with_language_filter_and_ignore_dirs() {
             owners: &[],
             ignore_dirs: &ignore_dirs,
             include_hidden_dirs: &include_hidden_dirs,
+            base_snapshot: &fixture.workspace,
+            provider_digest: fixture.provider_digest.as_str(),
             file_matches: &|path| {
                 path.extension().and_then(|extension| extension.to_str()) == Some("rs")
             },
             limit: 8,
         })
         .expect("collect root candidates");
+    let candidates = collection.candidates;
 
     assert!(
         candidates

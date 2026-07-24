@@ -44,7 +44,9 @@ use super::turso_syntax::{
 impl ClientDbEngineReadSession {
     /// Inspect the opened DB Engine session without exposing its concrete backend type.
     pub fn inspect(&self) -> Result<crate::ClientDbReport, String> {
-        Ok(super::facade::turso_client_db_report(&self.turso_db_path))
+        Ok(super::facade_turso_report::turso_client_db_report(
+            &self.turso_db_path,
+        ))
     }
 
     /// Return matching generation metadata using this already opened DB Engine session.
@@ -158,7 +160,9 @@ impl ClientDbEngineReadSession {
 impl ClientDbEngineWriteSession {
     /// Inspect the opened DB Engine session without exposing its concrete backend type.
     pub fn inspect(&self) -> Result<crate::ClientDbReport, String> {
-        Ok(super::facade::turso_client_db_report(&self.turso_db_path))
+        Ok(super::facade_turso_report::turso_client_db_report(
+            &self.turso_db_path,
+        ))
     }
 
     /// Import one cache manifest through the DB Engine control adapter.
@@ -355,11 +359,13 @@ impl ClientDbEngineWriteSession {
         &mut self,
         generation: &ClientCacheGeneration,
         packet_bytes: &[u8],
+        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Result<(), String> {
         let import = parse_structural_index_packet_import(generation, packet_bytes)?;
         let db_path = self.turso_db_path.clone();
+        let source_snapshot = source_snapshot.clone();
         block_on_db_engine_async(async move {
-            persist_structural_index_read_model_at_path(&db_path, &import)
+            persist_structural_index_read_model_at_path(&db_path, &import, &source_snapshot)
                 .await
                 .map(|_| ())
         })

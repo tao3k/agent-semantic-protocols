@@ -1,0 +1,354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-manifest.v1.schema.json",
+  "title": "ASP Provider Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "manifestId",
+    "manifestVersion",
+    "languageId",
+    "providerId",
+    "namespace",
+    "binary",
+    "source",
+    "searchCapabilities",
+    "queryPackDescriptor",
+    "policy",
+    "routeBindings"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.hook.provider-manifest"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocolVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifestVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "binary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution": {
+      "$ref": "#/$defs/providerExecution"
+    },
+    "source": {
+      "$ref": "#/$defs/manifestSourceDefaults"
+    },
+    "searchCapabilities": {
+      "$ref": "#/$defs/providerSearchCapabilities"
+    },
+    "semanticFactsDescriptor": {
+      "$ref": "#/$defs/providerSemanticFactsDescriptor"
+    },
+    "queryPackDescriptor": {
+      "$ref": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-query-pack-descriptor.v1.schema.json"
+    },
+    "policy": {
+      "$ref": "#/$defs/hookPolicy"
+    },
+    "routeBindings": {
+      "$ref": "#/$defs/hookRouteBindings"
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "providerExecution": {
+      "enum": [
+        "external-process",
+        "embedded"
+      ]
+    },
+    "manifestSourceDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defaultExtensions",
+        "defaultConfigFiles",
+        "defaultSourceRoots",
+        "defaultIgnoredPathPrefixes"
+      ],
+      "properties": {
+        "defaultExtensions": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "defaultConfigFiles": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "defaultSourceRoots": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "defaultIgnoredPathPrefixes": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "defaultProjectMarkers": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "defaultDependencyMarkers": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "providerSearchCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerItems",
+        "semanticFacts",
+        "dependencyTopology",
+        "dependencyTopologyMetadata",
+        "workspaceScope"
+      ],
+      "properties": {
+        "ownerItems": {
+          "type": "boolean"
+        },
+        "semanticFacts": {
+          "type": "boolean"
+        },
+        "dependencyTopology": {
+          "type": "boolean"
+        },
+        "dependencyTopologyMetadata": {
+          "type": "boolean"
+        },
+        "workspaceScope": {
+          "type": "boolean"
+        },
+        "sourceSnapshot": {
+          "$ref": "#/$defs/providerSourceSnapshotDescriptor"
+        }
+      }
+    },
+    "providerSourceSnapshotDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "descriptorId",
+        "descriptorVersion",
+        "languageId",
+        "packetSchemaId",
+        "exactSourcePacketSchemaId",
+        "sourceSnapshotEnvelopeSchemaId",
+        "derivedArtifactEvidenceSchemaId",
+        "algorithm",
+        "authority",
+        "exactSelectorResolution",
+        "overlayMode"
+      ],
+      "properties": {
+        "descriptorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "descriptorVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packetSchemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exactSourcePacketSchemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceSnapshotEnvelopeSchemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "derivedArtifactEvidenceSchemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "algorithm": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exactSelectorResolution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "overlayMode": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "providerSemanticFactsDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "descriptorId",
+        "descriptorVersion",
+        "packetSchemaIds",
+        "factKinds",
+        "intentAxes"
+      ],
+      "properties": {
+        "descriptorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "descriptorVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packetSchemaIds": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "factKinds": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "intentAxes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "axis",
+              "terms"
+            ],
+            "properties": {
+              "axis": {
+                "type": "string",
+                "minLength": 1
+              },
+              "terms": {
+                "$ref": "#/$defs/stringArray"
+              },
+              "roles": {
+                "$ref": "#/$defs/stringArray"
+              }
+            }
+          }
+        }
+      }
+    },
+    "hookPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directSourceRead",
+        "bulkSourceDump",
+        "rawSourceSearch",
+        "agentSearchJson"
+      ],
+      "properties": {
+        "directSourceRead": {
+          "$ref": "#/$defs/actionPolicy"
+        },
+        "bulkSourceDump": {
+          "$ref": "#/$defs/actionPolicy"
+        },
+        "rawSourceSearch": {
+          "$ref": "#/$defs/actionPolicy"
+        },
+        "agentSearchJson": {
+          "$ref": "#/$defs/actionPolicy"
+        }
+      }
+    },
+    "actionPolicy": {
+      "enum": [
+        "block",
+        "allow",
+        "advisory"
+      ]
+    },
+    "methodId": {
+      "type": "string",
+      "pattern": "^(?:guide|query|(search|query|check|proof|review|verification|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
+    },
+    "hookRouteBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prime",
+        "owner",
+        "lexical",
+        "ingest",
+        "checkChanged"
+      ],
+      "properties": {
+        "prime": {
+          "$ref": "#/$defs/methodId"
+        },
+        "owner": {
+          "$ref": "#/$defs/methodId"
+        },
+        "lexical": {
+          "$ref": "#/$defs/methodId"
+        },
+        "query": {
+          "$ref": "#/$defs/methodId"
+        },
+        "ingest": {
+          "$ref": "#/$defs/methodId"
+        },
+        "checkChanged": {
+          "$ref": "#/$defs/methodId"
+        },
+        "dependencyTopology": {
+          "$ref": "#/$defs/methodId"
+        },
+        "dependencyTopologyMetadata": {
+          "$ref": "#/$defs/methodId"
+        },
+        "workspaceScope": {
+          "$ref": "#/$defs/methodId"
+        },
+        "exportIndex": {
+          "$ref": "#/$defs/methodId"
+        },
+        "guide": {
+          "$ref": "#/$defs/methodId"
+        }
+      }
+    }
+  }
+}

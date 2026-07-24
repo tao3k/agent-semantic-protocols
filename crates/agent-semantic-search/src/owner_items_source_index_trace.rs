@@ -63,16 +63,21 @@ pub fn source_index_owner_query(project_root: &Path, owner: &Path) -> String {
 pub fn render_owner_items_source_index_trace(
     project_root: &Path,
     owner: &Path,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Result<Option<String>, String> {
-    Ok(owner_items_source_index_trace(project_root, owner)?.map(|trace| trace.line))
+    Ok(
+        owner_items_source_index_trace(project_root, owner, source_snapshot)?
+            .map(|trace| trace.line),
+    )
 }
 
 pub fn owner_items_source_index_trace(
     project_root: &Path,
     owner: &Path,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Result<Option<OwnerItemsSourceIndexTrace>, String> {
     let query = source_index_owner_query(project_root, owner);
-    let lookup = match lookup_source_index(project_root, &query, 8) {
+    let lookup = match lookup_source_index(project_root, source_snapshot, &query, 8) {
         Ok(lookup) => lookup,
         Err(error) => {
             return Ok(Some(OwnerItemsSourceIndexTrace::new(

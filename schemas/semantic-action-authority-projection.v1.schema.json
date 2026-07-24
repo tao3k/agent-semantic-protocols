@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-action-authority-projection.v1.schema.json",
+  "title": "Semantic action authority projection",
+  "description": "Projects parser-owned authority only after a configured command prefix resolves through the registered language/provider registry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "argvPrefix",
+    "authority"
+  ],
+  "properties": {
+    "argvPrefix": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "authority": {
+      "enum": [
+        "parser-owned-exact-evidence",
+        "parser-owned-search",
+        "ast-patch-evidence"
+      ]
+    }
+  }
+}

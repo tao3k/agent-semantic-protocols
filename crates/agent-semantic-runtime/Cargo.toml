@@ -2,21 +2,23 @@
 name = "agent-semantic-runtime"
 version = "0.1.0"
 edition = "2024"
-description = "Runtime state materialization for ASP project-local storage."
 license = "MIT"
+description = "Runtime state materialization for ASP project-local storage."
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
-bytes = { workspace = true }
-sha2 = { workspace = true }
-tokio = { workspace = true }
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = [
+    "io-std",
+    "io-util",
+    "macros",
+    "net",
+    "process",
+    "rt",
+    "time",
+] }
 uuid = "1.23.4"
-
-[build-dependencies]
-rust-lang-project-harness = { workspace = true }
-
-[dev-dependencies]
-rust-lang-project-harness = { workspace = true }

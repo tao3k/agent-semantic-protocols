@@ -228,7 +228,14 @@ fn execute_records_transport_receipt_fields() {
 }
 
 fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
+    let manifest = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == language_id)
+        .expect("provider manifest");
     ResolvedProvider {
+        manifest_id: format!("{binary}-test-manifest"),
+        manifest_digest: format!("sha256:{binary}-test-manifest"),
+        namespace: language_id.to_string(),
         language_id: language_id.into(),
         provider_id: binary.into(),
         binary: binary.to_string(),
@@ -239,6 +246,7 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
             ".".to_string(),
             binary.to_string(),
         ],
+        execution_command_digest: "test-execution-command-digest".to_string(),
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: vec![".".to_string()],
@@ -246,6 +254,9 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
         config_files: Vec::new(),
         source_extensions: Vec::new(),
         ignored_path_prefixes: Vec::new(),
+        search_capabilities: manifest.search_capabilities,
+        query_pack_descriptor: manifest.query_pack_descriptor,
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor,
     }
 }
 

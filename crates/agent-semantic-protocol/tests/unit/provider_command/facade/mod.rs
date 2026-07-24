@@ -111,4 +111,3 @@ mod provider_invocation;
 mod rewrite;
 mod root_language;
 mod roots;
-mod search_output_snapshots;

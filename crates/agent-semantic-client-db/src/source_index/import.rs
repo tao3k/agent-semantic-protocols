@@ -39,7 +39,7 @@ pub fn assemble_source_index_import(
 /// Import parser-owned language projection rows without projecting raw source text.
 pub fn source_index_import_from_language_projection(
     request: ClientDbLanguageProjectionImportRequest,
-) -> Result<ClientDbSourceIndexImport, String> {
+) -> Result<super::language_projection::ClientDbLanguageProjectionImport, String> {
     let rows = language_projection_source_index_rows(&request.projection, &request.project_root)?;
     let file_hashes = source_index_file_hashes(
         &request.project_root,
@@ -48,15 +48,33 @@ pub fn source_index_import_from_language_projection(
         &request.registry_fingerprint,
         std::iter::empty(),
     )?;
-    Ok(ClientDbSourceIndexImport {
-        generation_id: request.generation_id,
-        project_root: request.project_root,
-        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
-        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
-        file_hashes,
-        owners: rows.owners,
-        selectors: rows.selectors,
-    })
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        file_hashes
+            .iter()
+            .map(|file_hash| (file_hash.path.as_str(), file_hash.sha256.as_str())),
+    );
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        agent_semantic_content_identity::provider_digest(request.registry_fingerprint.as_bytes()),
+    );
+    let generation_id =
+        crate::source_index::client_db_source_index_generation_id_for_snapshot(&source_snapshot);
+    Ok(
+        super::language_projection::ClientDbLanguageProjectionImport {
+            source_index: ClientDbSourceIndexImport {
+                generation_id,
+                project_root: request.project_root,
+                schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+                schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+                file_hashes,
+                owners: rows.owners,
+                selectors: rows.selectors,
+            },
+            source_snapshot,
+            membership_change_set:
+                super::types::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
+        },
+    )
 }
 
 /// Return source-index file and scope evidence hashes without assembling rows.
@@ -318,14 +336,19 @@ fn source_index_file_hash(
     previous_by_path: Option<&BTreeMap<&str, &ClientCacheFileHash>>,
     force_content_hash: bool,
 ) -> Result<ClientCacheFileHash, String> {
-    let metadata = fs::metadata(&file.path).map_err(|error| {
+    let source_path = if file.path.is_absolute() {
+        file.path.clone()
+    } else {
+        project_root.join(&file.path)
+    };
+    let metadata = fs::metadata(&source_path).map_err(|error| {
         format!(
             "failed to read source index file metadata {}: {error}",
-            file.path.display()
+            source_path.display()
         )
     })?;
-    let mtime_ms = metadata_mtime_ms(&metadata, &file.path)?;
-    let relative_path = source_index_relative_path(project_root, &file.path);
+    let mtime_ms = metadata_mtime_ms(&metadata, &source_path)?;
+    let relative_path = source_index_relative_path(project_root, &source_path);
     if !force_content_hash
         && let Some(previous) =
             previous_by_path.and_then(|hashes| hashes.get(relative_path.as_str()))
@@ -334,10 +357,10 @@ fn source_index_file_hash(
     {
         return Ok((*previous).clone());
     }
-    let bytes = fs::read(&file.path).map_err(|error| {
+    let bytes = fs::read(&source_path).map_err(|error| {
         format!(
             "failed to read source index file {}: {error}",
-            file.path.display()
+            source_path.display()
         )
     })?;
     Ok(ClientCacheFileHash {

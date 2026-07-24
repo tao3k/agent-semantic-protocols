@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_client_core::{LanguageId, ProviderExecution, ProviderId, ResolvedProvider};
+use agent_semantic_client_core::ResolvedProvider;
 use serde_json::{Value, json};
 
 mod prompt_output;
@@ -42,52 +42,13 @@ fn temp_root(name: &str) -> std::path::PathBuf {
 }
 
 fn rust_provider() -> ResolvedProvider {
-    ResolvedProvider {
-        language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
-        binary: "rs-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: vec![".".to_string()],
-        source_roots: vec!["src".to_string()],
-        config_files: vec!["Cargo.toml".to_string()],
-        source_extensions: vec!["rs".to_string()],
-        ignored_path_prefixes: Vec::new(),
-    }
+    crate::test_support::resolved_provider("rust")
 }
 
 fn python_provider() -> ResolvedProvider {
-    ResolvedProvider {
-        language_id: LanguageId::from("python"),
-        provider_id: ProviderId::from("py-harness"),
-        binary: "py-harness".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: vec![".".to_string()],
-        source_roots: vec!["src".to_string()],
-        config_files: vec!["pyproject.toml".to_string()],
-        source_extensions: vec!["py".to_string()],
-        ignored_path_prefixes: Vec::new(),
-    }
+    crate::test_support::resolved_provider("python")
 }
 
 fn gerbil_scheme_provider() -> ResolvedProvider {
-    ResolvedProvider {
-        language_id: LanguageId::from("gerbil-scheme"),
-        provider_id: ProviderId::from("gerbil-scheme-harness"),
-        binary: "gslph".to_string(),
-        execution: ProviderExecution::ExternalProcess,
-        provider_command_prefix: Vec::new(),
-        runtime_command_argv: None,
-        runtime_profile_status: None,
-        package_roots: vec![".".to_string()],
-        source_roots: vec!["src".to_string()],
-        config_files: vec!["gerbil.pkg".to_string()],
-        source_extensions: vec!["ss".to_string()],
-        ignored_path_prefixes: Vec::new(),
-    }
+    crate::test_support::resolved_provider("gerbil-scheme")
 }

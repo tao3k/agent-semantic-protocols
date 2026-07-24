@@ -24,8 +24,6 @@ pub(super) struct ArtifactEventWriteback<'a> {
     pub(super) artifact_bytes: u64,
     pub(super) command_artifact_id: Option<&'a str>,
     pub(super) command_artifact_bytes: Option<u64>,
-    pub(super) analysis_metadata_artifact_id: Option<&'a str>,
-    pub(super) analysis_metadata_artifact_bytes: Option<u64>,
     pub(super) provider: &'a ResolvedProvider,
     pub(super) project_root: &'a Path,
     pub(super) export_method: &'a CacheExportMethod,
@@ -75,11 +73,7 @@ fn text_artifact_event(
         query: String::new(),
         project_root: normalized_path(input.project_root),
         project_root_arg: ".".to_string(),
-        bytes: if Some(artifact_id) == input.analysis_metadata_artifact_id {
-            input.analysis_metadata_artifact_bytes.unwrap_or(0)
-        } else {
-            0
-        },
+        bytes: 0,
     }
 }
 
@@ -181,9 +175,6 @@ fn command_method(argv: &[String]) -> String {
         return format!("search/{}", surface.unwrap_or("unknown"));
     }
     if argv.iter().any(|arg| arg == "query") {
-        if command_is_direct_source_read(argv) {
-            return "query/direct-source-read".to_string();
-        }
         if command_is_tree_sitter_query(argv) {
             return "query/tree-sitter".to_string();
         }
@@ -229,11 +220,6 @@ fn command_query(argv: &[String]) -> String {
     } else {
         String::new()
     }
-}
-
-fn command_is_direct_source_read(argv: &[String]) -> bool {
-    argv.iter().any(|arg| arg == "--from-hook")
-        && argv.iter().any(|arg| arg == "direct-source-read")
 }
 
 fn command_is_tree_sitter_query(argv: &[String]) -> bool {

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-invocation-match.v1.schema.json",
+  "title": "Semantic invocation match",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "invocationShapeAny": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "host-native",
+          "command",
+          "wrapped-command"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "wrapperMatchAny": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "matched",
+          "unmatched",
+          "unknown"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "flagPresenceAny": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "present",
+          "absent"
+        ]
+      },
+      "uniqueItems": true
+    }
+  }
+}

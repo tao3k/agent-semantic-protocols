@@ -1,10 +1,12 @@
 //! Session-start bootstrap and route-context decisions for resident ASP children.
 
+#[path = "hook_runtime_agent_session_session_start_route.rs"]
+mod hook_runtime_agent_session_session_start_route;
+
 use crate::command::{
-    ResidentChildIdentityProof, codex_transcript_resident_child_identity_proof,
-    current_agent_session_id, current_registered_session, current_registered_session_identity,
-    current_resident_child_identity_proof, current_root_session_id, has_current_agent_session,
-    registered_resident_session_for_root,
+    ResidentChildIdentityProof, codex_transcript_resident_child_identity,
+    current_registered_session, current_resident_child_identity_proof, current_root_session_id,
+    has_current_agent_session, registered_resident_session_for_root,
 };
 use agent_semantic_client_db::AgentSessionRecord;
 use agent_semantic_hook::{
@@ -15,156 +17,149 @@ use agent_semantic_runtime::codex_rollout_session_metadata;
 use std::path::Path;
 
 use super::hook_runtime_agent_session_rollout_topology::{
-    CurrentRolloutTopology, current_rollout_topology, nested_resident_child_decision,
+    current_rollout_topology, nested_resident_child_decision,
     register_required_resident_child_decision,
 };
 use super::{
-    AspSessionPolicy, agent_session_route_fields, append_resident_agent_fields,
-    render_agent_session_template, resident_child_create_action, string_field, template_value,
+    AspSessionPolicy, agent_session_route_fields, append_resident_agent_fields, string_field,
     unix_timestamp,
 };
-
-pub(super) struct MainSessionRouteContext {
-    pub(super) has_agent_session: bool,
-    pub(super) current_session: Option<AgentSessionRecord>,
-    pub(super) active_explore_session: Option<AgentSessionRecord>,
-    pub(super) root_session_id: Option<String>,
-    current_rollout_topology: Option<CurrentRolloutTopology>,
-}
-
-impl MainSessionRouteContext {
-    pub(super) fn current_is_active_resident_child(
-        &self,
-        now: i64,
-        asp_session_policy: &AspSessionPolicy,
-    ) -> bool {
-        if self
-            .current_rollout_topology
-            .as_ref()
-            .is_some_and(|topology| topology.is_direct_resident_subagent(asp_session_policy))
-        {
-            return true;
-        }
-        self.current_session.as_ref().is_some_and(|session| {
-            session_matches_resident_agent(
-                session,
-                asp_session_policy.resident_child_name(),
-                asp_session_policy.resident_agent_role(),
-            ) && session.is_routable_at(now)
-        })
-    }
-
-    pub(super) fn outside_agent_session(&self) -> bool {
-        !self.has_agent_session
-            && self.current_session.is_none()
-            && self.active_explore_session.is_none()
-            && self.root_session_id.is_none()
-            && self.current_rollout_topology.is_none()
-    }
-
-    pub(super) fn current_register_required_resident_child(
-        &self,
-        asp_session_policy: &AspSessionPolicy,
-    ) -> Option<&CurrentRolloutTopology> {
-        self.current_rollout_topology.as_ref().filter(|topology| {
-            topology.is_resident_subagent(asp_session_policy)
-                && !topology.is_nested_resident_subagent(asp_session_policy)
-                && self.current_session.is_none()
-        })
-    }
-
-    pub(super) fn current_nested_resident_child(
-        &self,
-        asp_session_policy: &AspSessionPolicy,
-    ) -> Option<&CurrentRolloutTopology> {
-        self.current_rollout_topology
-            .as_ref()
-            .filter(|topology| topology.is_nested_resident_subagent(asp_session_policy))
-    }
-}
-
-pub(super) fn main_session_route_context(
-    project_root: &Path,
-    asp_session_policy: &AspSessionPolicy,
-    payload: &serde_json::Value,
-) -> Result<MainSessionRouteContext, String> {
-    let current_session =
-        registry_lookup_for_route_child(current_registered_session_identity(project_root), false)?;
-    let root_session_id = current_root_session_id()
-        .or_else(|| {
-            current_session
-                .as_ref()
-                .map(|session| session.root_session_id.clone())
-        })
-        .or_else(|| {
-            string_field(
-                payload,
-                &[
-                    "root_session_id",
-                    "rootSessionId",
-                    "session_id",
-                    "sessionId",
-                ],
-            )
-        })
-        .or_else(current_agent_session_id);
-    let now = unix_timestamp()?;
-    let active_explore_session = root_session_id
-        .as_deref()
-        .map(|root_session_id| {
-            registered_resident_session_for_root(
-                project_root,
-                root_session_id,
-                asp_session_policy.resident_child_name(),
-            )
-        })
-        .transpose()?
-        .flatten()
-        .filter(|session| {
-            session_matches_resident_agent(
-                session,
-                asp_session_policy.resident_child_name(),
-                asp_session_policy.resident_agent_role(),
-            ) && session.is_routable_at(now)
-        });
-    let current_rollout_topology = current_rollout_topology()?;
-    Ok(MainSessionRouteContext {
-        has_agent_session: has_current_agent_session(),
-        current_session,
-        active_explore_session,
-        root_session_id,
-        current_rollout_topology,
-    })
-}
+use hook_runtime_agent_session_session_start_route::{
+    registry_lookup_for_route_child, session_start_bootstrap_decision,
+};
+pub(super) use hook_runtime_agent_session_session_start_route::{
+    session_start_resume_existing_decision, session_start_reuse_decision,
+};
 
 pub(in crate::command) fn current_session_resident_child_identity_proof(
     project_root: &Path,
     asp_session_policy: &AspSessionPolicy,
     payload: &serde_json::Value,
 ) -> Result<Option<ResidentChildIdentityProof>, String> {
-    let payload_agent_id = string_field(payload, &["agent_id", "agentId"]);
-    let payload_agent_type = string_field(payload, &["agent_type", "agentType"]);
-    let current_codex_thread_id = std::env::var("CODEX_THREAD_ID")
-        .ok()
-        .filter(|session_id| !session_id.trim().is_empty());
-    if payload_agent_id == current_codex_thread_id
-        && payload_agent_type.as_deref() == Some(asp_session_policy.resident_agent_role())
-    {
-        return Ok(Some(ResidentChildIdentityProof::CodexHookPayload));
-    }
-    if let Some(proof) = codex_transcript_resident_child_identity_proof(
+    current_session_configured_resident_identity_proof(
         project_root,
         payload,
         asp_session_policy.resident_child_name(),
         asp_session_policy.resident_agent_role(),
+        asp_session_policy.resident_codex_agent_name(),
+    )
+}
+
+pub(in crate::command) fn current_session_configured_resident_identity_proof(
+    project_root: &Path,
+    payload: &serde_json::Value,
+    resident_child_name: &str,
+    resident_agent_role: &str,
+    resident_codex_agent_name: &str,
+) -> Result<Option<ResidentChildIdentityProof>, String> {
+    // Codex keeps CODEX_THREAD_ID pinned to the root task for collaboration
+    // children.  The host-owned pre-tool envelope identifies the executing
+    // child separately through top-level agent_id/agent_type fields, so
+    // requiring agent_id == CODEX_THREAD_ID misclassifies resumed residents as
+    // the main Agent.  Never recurse into tool_input here: only host envelope
+    // fields may prove identity.
+    let payload_agent_id = super::hook_runtime_agent_session_identity::top_level_string_field(
+        payload,
+        &["agent_id", "agentId"],
+    );
+    let payload_agent_type = super::hook_runtime_agent_session_identity::top_level_string_field(
+        payload,
+        &["agent_type", "agentType"],
+    );
+    if let Some(payload_agent_id) = payload_agent_id
+        && payload_agent_type.as_deref() == Some(resident_codex_agent_name)
+    {
+        if let Some(session) =
+            super::hook_runtime_agent_session_identity::registered_resident_session_by_id(
+                project_root,
+                &payload_agent_id,
+            )?
+            && session_matches_resident_agent(&session, resident_child_name, resident_agent_role)
+        {
+            super::hook_runtime_agent_session_presence::record_trusted_resident_hook_presence(
+                project_root,
+                &session,
+                resident_child_name,
+                resident_codex_agent_name,
+            )?;
+            return Ok(Some(ResidentChildIdentityProof::CodexHookPayload));
+        }
+        if let Some(root_session_id) =
+            super::hook_runtime_agent_session_identity::top_level_string_field(
+                payload,
+                &["session_id", "sessionId"],
+            )
+            && let Some(session) =
+                super::hook_runtime_agent_session_presence::rehydrate_trusted_resident_hook_session(
+                    project_root,
+                    &root_session_id,
+                    &payload_agent_id,
+                    resident_child_name,
+                    resident_agent_role,
+                    resident_codex_agent_name,
+                )?
+        {
+            super::hook_runtime_agent_session_presence::record_trusted_resident_hook_presence(
+                project_root,
+                &session,
+                resident_child_name,
+                resident_codex_agent_name,
+            )?;
+            return Ok(Some(ResidentChildIdentityProof::CodexHookPayload));
+        }
+        // The host-owned top-level agent_id/agent_type pair proves which
+        // executor is running, so that child may terminate its own configured
+        // execution lane without routing back to itself. Registry mutation is
+        // deliberately stricter: only the exact registered identity or the
+        // rollout/profile compare-and-swap paths above may refresh Ready.
+        return Ok(Some(ResidentChildIdentityProof::CodexHookPayload));
+    }
+    if let Some(session_id) = super::hook_runtime_agent_session_identity::top_level_string_field(
+        payload,
+        &["session_id", "sessionId"],
+    ) && let Some(session) =
+        super::hook_runtime_agent_session_identity::registered_resident_session_by_id(
+            project_root,
+            &session_id,
+        )?
+        && session_matches_resident_agent(&session, resident_child_name, resident_agent_role)
+    {
+        super::hook_runtime_agent_session_presence::record_trusted_resident_hook_presence(
+            project_root,
+            &session,
+            resident_child_name,
+            resident_codex_agent_name,
+        )?;
+        return Ok(Some(ResidentChildIdentityProof::RegistryExact));
+    }
+    if let Some((proof, transcript_session_id)) = codex_transcript_resident_child_identity(
+        project_root,
+        payload,
+        resident_child_name,
+        resident_agent_role,
     )? {
+        if let Some(session) =
+            super::hook_runtime_agent_session_identity::registered_resident_session_by_id(
+                project_root,
+                &transcript_session_id,
+            )?
+            && session_matches_resident_agent(&session, resident_child_name, resident_agent_role)
+        {
+            super::hook_runtime_agent_session_presence::record_trusted_resident_hook_presence(
+                project_root,
+                &session,
+                resident_child_name,
+                resident_codex_agent_name,
+            )?;
+        }
         return Ok(Some(proof));
     }
-    current_resident_child_identity_proof(
+    let proof = current_resident_child_identity_proof(
         project_root,
-        asp_session_policy.resident_child_name(),
-        asp_session_policy.resident_agent_role(),
-    )
+        resident_child_name,
+        resident_agent_role,
+    )?;
+    Ok(proof)
 }
 
 fn payload_matches_resident_managed_agent(
@@ -190,6 +185,8 @@ pub(super) fn classify_session_start_bootstrap(
     use crate::command::agent_session_registry::record_subagent_start_target_present as record_start;
 
     let resident_name = asp_session_policy.resident_child_name();
+    let canonical_resident_target =
+        format!("/root/{}", asp_session_policy.resident_codex_agent_name());
     let codex_native_event = if platform == "codex" && event == "subagent-start" {
         crate::codex::native_agent_transport::parse_subagent_event(payload)?
     } else {
@@ -263,34 +260,6 @@ pub(super) fn classify_session_start_bootstrap(
     if let Some(native) = codex_native_event.as_ref()
         && !codex_native_managed_subagent_start
     {
-        let now = unix_timestamp()?;
-        let active_resident = registered_resident_session_for_root(
-            project_root,
-            native_root_session_id
-                .as_deref()
-                .unwrap_or(&native.root_session_id),
-            asp_session_policy.resident_child_name(),
-        )?
-        .filter(|session| {
-            session_matches_resident_agent(
-                session,
-                asp_session_policy.resident_child_name(),
-                asp_session_policy.resident_agent_role(),
-            ) && session.is_routable_at(now)
-        });
-        let model_mismatch = expected_model_for_native_start
-            .as_deref()
-            .is_some_and(|expected_model| expected_model != native.model);
-        let reasoning_mismatch =
-            super::hook_runtime_agent_session_profile::reasoning_observation_mismatches_profile(
-                observed_reasoning_for_native_start.as_deref(),
-                expected_reasoning_for_native_start.as_deref(),
-            );
-        let profile_mismatch = native.agent_type != asp_session_policy.resident_agent_role();
-        let repair_candidate = (profile_mismatch || model_mismatch || reasoning_mismatch)
-            && active_resident
-                .as_ref()
-                .is_none_or(|session| session.session_id == native.agent_id);
         return Ok(Some(unmanaged_codex_subagent_start_decision(
             platform,
             event,
@@ -300,7 +269,7 @@ pub(super) fn classify_session_start_bootstrap(
             expected_model_for_native_start.as_deref(),
             expected_reasoning_for_native_start.as_deref(),
             observed_reasoning_for_native_start.as_deref(),
-            repair_candidate,
+            false,
         )));
     }
     let native_managed_subagent_start = event == "subagent-start"
@@ -492,7 +461,7 @@ pub(super) fn classify_session_start_bootstrap(
                     && existing.session.session_id != child_session_id
                     && !matches!(existing.session.status.as_str(), "archived" | "closed")
                 {
-                    let mut decision = session_start_decision_for_reconciled_resident(
+                    let mut decision = super::hook_runtime_agent_session_typed_replacement::session_start_decision_for_reconciled_resident(
                         now,
                         platform,
                         event,
@@ -500,7 +469,7 @@ pub(super) fn classify_session_start_bootstrap(
                         existing,
                         asp_session_policy,
                     );
-                    append_resident_reconciliation_fields(&mut decision, &reconciliation);
+                    super::hook_runtime_agent_session_typed_replacement::append_resident_reconciliation_fields(&mut decision, &reconciliation);
                     decision.fields.insert(
                         "agentSessionDuplicateChildId".to_string(),
                         serde_json::Value::String(child_session_id),
@@ -584,7 +553,13 @@ pub(super) fn classify_session_start_bootstrap(
                         },
                     )?;
                     if message_target_id.is_some() {
-                        record_start(&registry, &root_session_id, resident_name, now)?;
+                        record_start(
+                            &registry,
+                            &root_session_id,
+                            resident_name,
+                            &canonical_resident_target,
+                            now,
+                        )?;
                     }
                     return Ok(native_runtime_drift_decision);
                 }
@@ -650,7 +625,13 @@ pub(super) fn classify_session_start_bootstrap(
                         )?;
                     }
                     if message_target_id.is_some() {
-                        record_start(&registry, &root_session_id, resident_name, now)?;
+                        record_start(
+                            &registry,
+                            &root_session_id,
+                            resident_name,
+                            &canonical_resident_target,
+                            now,
+                        )?;
                     }
                     return Ok(native_runtime_drift_decision);
                 }
@@ -713,7 +694,7 @@ pub(super) fn classify_session_start_bootstrap(
             asp_session_policy.resident_agent_role(),
         )?;
         if let Some(existing) = reconciliation.current.as_ref() {
-            let mut decision = session_start_decision_for_reconciled_resident(
+            let mut decision = super::hook_runtime_agent_session_typed_replacement::session_start_decision_for_reconciled_resident(
                 now,
                 platform,
                 event,
@@ -721,7 +702,7 @@ pub(super) fn classify_session_start_bootstrap(
                 existing,
                 asp_session_policy,
             );
-            append_resident_reconciliation_fields(&mut decision, &reconciliation);
+            super::hook_runtime_agent_session_typed_replacement::append_resident_reconciliation_fields(&mut decision, &reconciliation);
             return Ok(Some(decision));
         }
     }
@@ -875,324 +856,4 @@ pub(in super::super) fn session_matches_resident_agent(
 
 fn legacy_resident_agent_role_matches(session_role: &str, resident_agent_role: &str) -> bool {
     session_role == resident_agent_role
-}
-
-fn registry_lookup_for_route_child<T>(
-    result: Result<Option<T>, String>,
-    rollout_direct_resident_child: bool,
-) -> Result<Option<T>, String> {
-    match result {
-        Ok(value) => Ok(value),
-        Err(error)
-            if rollout_direct_resident_child && registry_unavailable_for_route_child(&error) =>
-        {
-            Ok(None)
-        }
-        Err(error) => Err(error),
-    }
-}
-
-fn registry_unavailable_for_route_child(error: &str) -> bool {
-    error.contains("failed to open Turso agent session registry")
-        || error.contains("database is locked")
-        || error.contains("locking error")
-        || error.contains("failed locking file")
-}
-
-fn session_start_decision_for_reconciled_resident(
-    now: i64,
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    existing: &crate::codex::resident_session_reconcile::CodexResidentSessionCandidate,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    if !existing.session.is_routable_at(now) {
-        return session_start_resume_existing_decision(
-            platform,
-            event,
-            payload,
-            &existing.session,
-            asp_session_policy,
-        );
-    }
-    match &existing.liveness {
-        crate::codex::rollout::CodexRolloutSessionLiveness::Resumable(_) => {
-            session_start_resume_existing_decision(
-                platform,
-                event,
-                payload,
-                &existing.session,
-                asp_session_policy,
-            )
-        }
-        crate::codex::rollout::CodexRolloutSessionLiveness::Active(_)
-        | crate::codex::rollout::CodexRolloutSessionLiveness::Unknown(_) => {
-            session_start_reuse_decision(
-                platform,
-                event,
-                payload,
-                &existing.session,
-                asp_session_policy,
-            )
-        }
-        crate::codex::rollout::CodexRolloutSessionLiveness::Missing
-        | crate::codex::rollout::CodexRolloutSessionLiveness::Unavailable(_) => {
-            session_start_resume_existing_decision(
-                platform,
-                event,
-                payload,
-                &existing.session,
-                asp_session_policy,
-            )
-        }
-    }
-}
-
-fn append_resident_reconciliation_fields(
-    decision: &mut HookDecision,
-    reconciliation: &crate::codex::resident_session_reconcile::CodexResidentSessionReconciliation,
-) {
-    let Some(current) = reconciliation.current.as_ref() else {
-        return;
-    };
-    let (state, last_event_kind, scanned_bytes, error) = match &current.liveness {
-        crate::codex::rollout::CodexRolloutSessionLiveness::Resumable(activity) => (
-            "rollout-resumable",
-            activity.last_event_kind.as_deref(),
-            Some(activity.scanned_bytes),
-            None,
-        ),
-        crate::codex::rollout::CodexRolloutSessionLiveness::Active(activity) => (
-            "rollout-active",
-            activity.last_event_kind.as_deref(),
-            Some(activity.scanned_bytes),
-            None,
-        ),
-        crate::codex::rollout::CodexRolloutSessionLiveness::Unknown(activity) => (
-            "rollout-unknown",
-            activity.last_event_kind.as_deref(),
-            Some(activity.scanned_bytes),
-            None,
-        ),
-        crate::codex::rollout::CodexRolloutSessionLiveness::Missing => {
-            ("rollout-missing", None, None, None)
-        }
-        crate::codex::rollout::CodexRolloutSessionLiveness::Unavailable(error) => {
-            ("rollout-unavailable", None, None, Some(error.as_str()))
-        }
-    };
-    decision.fields.insert(
-        "agentSessionReconciliation".to_string(),
-        serde_json::Value::String(state.to_string()),
-    );
-    decision.fields.insert(
-        "agentSessionRolloutLookup".to_string(),
-        serde_json::Value::String("session-id-fast-path".to_string()),
-    );
-    decision.fields.insert(
-        "agentSessionHistoricalResidentCount".to_string(),
-        serde_json::json!(reconciliation.historical_resident_count),
-    );
-    if let Some(last_event_kind) = last_event_kind {
-        decision.fields.insert(
-            "agentSessionRolloutLastEventKind".to_string(),
-            serde_json::Value::String(last_event_kind.to_string()),
-        );
-    }
-    if let Some(scanned_bytes) = scanned_bytes {
-        decision.fields.insert(
-            "agentSessionRolloutScannedBytes".to_string(),
-            serde_json::json!(scanned_bytes),
-        );
-    }
-    if let Some(error) = error {
-        decision.fields.insert(
-            "agentSessionRolloutError".to_string(),
-            serde_json::Value::String(error.to_string()),
-        );
-    }
-}
-
-fn session_start_reuse_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    session: &AgentSessionRecord,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    let resident_child_name = asp_session_policy.resident_child_name();
-    let mut fields = agent_session_route_fields("reuse-resident-child", resident_child_name);
-    append_resident_agent_fields(&mut fields, platform, asp_session_policy);
-    fields.insert(
-        "rootSessionId".to_string(),
-        serde_json::Value::String(session.root_session_id.clone()),
-    );
-    fields.insert(
-        "childSessionId".to_string(),
-        serde_json::Value::String(session.session_id.clone()),
-    );
-    fields.insert(
-        "agentSessionExistingChildId".to_string(),
-        serde_json::Value::String(session.session_id.clone()),
-    );
-    fields.insert(
-        "childSessionName".to_string(),
-        serde_json::Value::String(session.name.clone()),
-    );
-    fields.insert(
-        "nextAction".to_string(),
-        serde_json::Value::String("enter-bootstrap-pane-for-existing-child".to_string()),
-    );
-    let message = render_agent_session_template(
-        asp_session_policy.messages.session_start_reuse.as_deref(),
-        &[
-            template_value("residentChildName", resident_child_name),
-            template_value("childSessionId", &session.session_id),
-            template_value("rootSessionId", &session.root_session_id),
-        ],
-    );
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::RawBroadSearch,
-        language_ids: Vec::new(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: None,
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message,
-        fields,
-    }
-}
-
-fn session_start_resume_existing_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    session: &AgentSessionRecord,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    let resident_child_name = asp_session_policy.resident_child_name();
-    let mut fields =
-        agent_session_route_fields("resume-existing-resident-child", resident_child_name);
-    append_resident_agent_fields(&mut fields, platform, asp_session_policy);
-    fields.insert(
-        "rootSessionId".to_string(),
-        serde_json::Value::String(session.root_session_id.clone()),
-    );
-    fields.insert(
-        "childSessionId".to_string(),
-        serde_json::Value::String(session.session_id.clone()),
-    );
-    fields.insert(
-        "agentSessionResumeId".to_string(),
-        serde_json::Value::String(session.session_id.clone()),
-    );
-    fields.insert(
-        "childSessionName".to_string(),
-        serde_json::Value::String(session.name.clone()),
-    );
-    fields.insert(
-        "childSessionStatus".to_string(),
-        serde_json::Value::String(session.status.clone()),
-    );
-    fields.insert(
-        "nextAction".to_string(),
-        serde_json::Value::String("enter-bootstrap-pane-for-existing-child".to_string()),
-    );
-    let message = format!(
-        "Existing resident {resident_child_name} child session {} is registered with status {}. Enter the resident-child choice pane and let it recover or replace that child; do not create a generic replacement outside the pane.",
-        session.session_id, session.status
-    );
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::RawBroadSearch,
-        language_ids: Vec::new(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: None,
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message,
-        fields,
-    }
-}
-
-fn session_start_bootstrap_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    root_session_id: Option<String>,
-    asp_session_policy: &AspSessionPolicy,
-) -> HookDecision {
-    let resident_child_name = asp_session_policy.resident_child_name();
-    let mut fields =
-        agent_session_route_fields("enter-resident-child-bootstrap-pane", resident_child_name);
-    append_resident_agent_fields(&mut fields, platform, asp_session_policy);
-    fields.insert(
-        "agentSessionBootstrap".to_string(),
-        serde_json::Value::String("session-start-reminder".to_string()),
-    );
-    fields.insert(
-        "agentSessionBootstrapGuideCommand".to_string(),
-        serde_json::Value::String(format!(
-            "asp agent session bootstrap --name {resident_child_name}"
-        )),
-    );
-    if let Some(root_session_id) = root_session_id.as_ref() {
-        fields.insert(
-            "rootSessionId".to_string(),
-            serde_json::Value::String(root_session_id.clone()),
-        );
-    }
-    let create_action = resident_child_create_action(platform, asp_session_policy);
-    let message = render_agent_session_template(
-        asp_session_policy
-            .messages
-            .session_start_bootstrap
-            .as_deref(),
-        &[
-            template_value("residentChildName", resident_child_name),
-            template_value(
-                "residentCodexAgentName",
-                asp_session_policy.resident_codex_agent_name(),
-            ),
-            template_value("createAction", &create_action),
-            template_value("rootSessionId", root_session_id.as_deref().unwrap_or("")),
-        ],
-    );
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::RawBroadSearch,
-        language_ids: Vec::new(),
-        subject: DecisionSubject {
-            tool_name: string_field(payload, &["tool_name", "toolName"]),
-            command: None,
-            paths: Vec::new(),
-        },
-        routes: Vec::new(),
-        message,
-        fields,
-    }
 }

@@ -9,12 +9,39 @@ use crate::protocol::{
 use crate::tool_action::{ToolAction, collect_tool_actions};
 
 pub struct HookSubagentPermissionContext<'a> {
-    pub is_asp_managed: bool,
-    pub managed_child_name: &'a str,
-    pub registered_name: &'a str,
-    pub registry_status: &'a str,
-    pub sandbox_mode: Option<&'a str>,
-    pub session_id: &'a str,
+    resident_enabled: bool,
+    managed_child_name: &'a str,
+    configured_codex_agent_name: &'a str,
+    configured_role: &'a str,
+    codex_hook_agent_id: Option<&'a str>,
+    codex_hook_agent_type: Option<&'a str>,
+    resident_child_identity_proof: Option<&'a str>,
+    resident_child_session_id: Option<&'a str>,
+    identity_status: &'a str,
+    sandbox_mode: Option<&'a str>,
+    session_id: &'a str,
+}
+
+impl HookSubagentPermissionContext<'_> {
+    /// Authorize a configured resident from stable configuration plus the live
+    /// hook identity. `canonicalTarget` is deliberately absent: it is a
+    /// dispatch hint, not authorization evidence.
+    pub fn resident_authorized(&self) -> bool {
+        self.resident_enabled
+            && !self.configured_codex_agent_name.trim().is_empty()
+            && !self.configured_role.trim().is_empty()
+            && self
+                .codex_hook_agent_id
+                .is_some_and(|agent_id| !agent_id.trim().is_empty())
+            && self.codex_hook_agent_type.is_some_and(|live_type| {
+                live_type == self.configured_role
+                    || (self.configured_codex_agent_name == "asp_explorer"
+                        && self.configured_role == "asp_explorer"
+                        && live_type == "explorer")
+            })
+            && self.resident_child_identity_proof == Some("codex-hook-payload-live-target")
+            && self.resident_child_session_id == Some(self.session_id)
+    }
 }
 
 struct ToolWriteIntent {
@@ -30,7 +57,7 @@ pub fn classify_read_only_subagent_write(
     context: &HookSubagentPermissionContext<'_>,
 ) -> Option<HookDecision> {
     if event != "pre-tool"
-        || !context.is_asp_managed
+        || !context.resident_authorized()
         || !sandbox_mode_is_read_only(context.sandbox_mode)
     {
         return None;
@@ -48,15 +75,41 @@ pub fn classify_read_only_subagent_write(
     );
     fields.insert(
         "readOnlyAgentName".to_string(),
-        Value::String(context.registered_name.to_string()),
+        Value::String(context.configured_codex_agent_name.to_string()),
+    );
+    fields.insert(
+        "readOnlyAgentRole".to_string(),
+        Value::String(context.configured_role.to_string()),
+    );
+    fields.insert(
+        "codexHookAgentId".to_string(),
+        Value::String(context.codex_hook_agent_id.unwrap_or_default().to_string()),
+    );
+    fields.insert(
+        "codexHookAgentType".to_string(),
+        Value::String(
+            context
+                .codex_hook_agent_type
+                .unwrap_or_default()
+                .to_string(),
+        ),
+    );
+    fields.insert(
+        "residentChildIdentityProof".to_string(),
+        Value::String(
+            context
+                .resident_child_identity_proof
+                .unwrap_or_default()
+                .to_string(),
+        ),
     );
     fields.insert(
         "readOnlySessionId".to_string(),
         Value::String(context.session_id.to_string()),
     );
     fields.insert(
-        "registryStatus".to_string(),
-        Value::String(context.registry_status.to_string()),
+        "residentAuthorizationStatus".to_string(),
+        Value::String(context.identity_status.to_string()),
     );
     fields.insert(
         "configuredSandboxMode".to_string(),
@@ -107,7 +160,7 @@ pub fn classify_read_only_subagent_receipt(
     context: &HookSubagentPermissionContext<'_>,
 ) -> Option<HookDecision> {
     if event != "subagent-stop"
-        || !context.is_asp_managed
+        || !context.resident_authorized()
         || !sandbox_mode_is_read_only(context.sandbox_mode)
     {
         return None;
@@ -543,11 +596,37 @@ fn receipt_fields(
     );
     fields.insert(
         "readOnlyAgentName".to_string(),
-        Value::String(context.registered_name.to_string()),
+        Value::String(context.configured_codex_agent_name.to_string()),
     );
     fields.insert(
-        "registryStatus".to_string(),
-        Value::String(context.registry_status.to_string()),
+        "readOnlyAgentRole".to_string(),
+        Value::String(context.configured_role.to_string()),
+    );
+    fields.insert(
+        "codexHookAgentId".to_string(),
+        Value::String(context.codex_hook_agent_id.unwrap_or_default().to_string()),
+    );
+    fields.insert(
+        "codexHookAgentType".to_string(),
+        Value::String(
+            context
+                .codex_hook_agent_type
+                .unwrap_or_default()
+                .to_string(),
+        ),
+    );
+    fields.insert(
+        "residentChildIdentityProof".to_string(),
+        Value::String(
+            context
+                .resident_child_identity_proof
+                .unwrap_or_default()
+                .to_string(),
+        ),
+    );
+    fields.insert(
+        "residentAuthorizationStatus".to_string(),
+        Value::String(context.identity_status.to_string()),
     );
     fields.insert(
         "configuredSandboxMode".to_string(),
